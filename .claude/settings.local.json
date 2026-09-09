@@ -147,7 +147,9 @@
       "Read(//Users/harsh/.ssh/**)",
       "Bash(zcat ~/.ssh/dump.sql.gz)",
       "Bash(xattr Servers/temp/handoff/)",
-      "Bash(chmod +w Servers/temp/handoff/)"
+      "Bash(chmod +w Servers/temp/handoff/)",
+      "Read(//Users/harsh/Data/vw/verifywise-v2.5/verifywise/**)",
+      "Read(//Users/harsh/Data/vw/verifywise-v2.5/verifywise/Clients/src/application/redux/**)"
     ]
   }
 }
