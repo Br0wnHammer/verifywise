@@ -1,6 +1,5 @@
 import { apiServices } from "../../infrastructure/api/networkServices";
 import { ApiResponse } from "../../domain/types/User";
-import { IAdvisorToolsRoadmap } from "../../domain/interfaces/i.advisorRoadmap";
 
 /**
  * Message structure for advisor conversations
@@ -159,18 +158,3 @@ export const deleteConversationAPI = async (
   }
 };
 
-/**
- * Fetch the read-only AI Advisor tools roadmap: planned vs. implemented
- * tools from the AI Implementation Plan, with domain/phase rollups and
- * per-tool status. Available to Admin, Editor, Reviewer and Auditor roles.
- */
-export const getToolsRoadmapAPI = async (): Promise<IAdvisorToolsRoadmap> => {
-  try {
-    const response = await apiServices.get(`/advisor/tools/roadmap`);
-    // The backend wraps the payload in a { message, data } envelope and
-    // apiServices adds another layer, so the roadmap is at response.data.data.
-    return (response.data as { data: IAdvisorToolsRoadmap }).data;
-  } catch (error) {
-    rethrow(error);
-  }
-};
