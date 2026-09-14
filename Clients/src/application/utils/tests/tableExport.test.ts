@@ -156,7 +156,7 @@ describe("tableExport", () => {
   });
 
   describe("exportToExcel", () => {
-    it("creates worksheet data, sets !cols widths (capped at 50), and calls XLSX.writeFile", () => {
+    it("creates worksheet data, sets !cols widths (capped at 50), and calls XLSX.writeFile", async () => {
       const aoa_to_sheet = XLSX.utils.aoa_to_sheet as unknown as ReturnType<typeof vi.fn>;
       const book_new = XLSX.utils.book_new as unknown as ReturnType<typeof vi.fn>;
       const book_append_sheet = XLSX.utils.book_append_sheet as unknown as ReturnType<typeof vi.fn>;
@@ -175,7 +175,7 @@ describe("tableExport", () => {
         { name: "Bob", note: "x".repeat(200) }, // should force width cap at 50
       ];
 
-      exportToExcel(data as any, columns as any, "sheet");
+      await exportToExcel(data as any, columns as any, "sheet");
 
       expect(aoa_to_sheet).toHaveBeenCalledTimes(1);
       const [wsData] = aoa_to_sheet.mock.calls[0];
@@ -196,7 +196,7 @@ describe("tableExport", () => {
       expect(writeFile).toHaveBeenCalledWith(wb, "sheet.xlsx");
     });
 
-    it("uses default filename 'export' when not provided", () => {
+    it("uses default filename 'export' when not provided", async () => {
       const writeFile = XLSX.writeFile as unknown as ReturnType<typeof vi.fn>;
       const aoa_to_sheet = XLSX.utils.aoa_to_sheet as unknown as ReturnType<typeof vi.fn>;
       const book_new = XLSX.utils.book_new as unknown as ReturnType<typeof vi.fn>;
@@ -204,12 +204,12 @@ describe("tableExport", () => {
       aoa_to_sheet.mockReturnValue({});
       book_new.mockReturnValue({});
 
-      exportToExcel([{ name: "X", note: "Y" }] as any, columns as any);
+      await exportToExcel([{ name: "X", note: "Y" }] as any, columns as any);
 
       expect(writeFile).toHaveBeenCalledWith(expect.anything(), "export.xlsx");
     });
 
-    it("sanitizes special characters in Excel filename", () => {
+    it("sanitizes special characters in Excel filename", async () => {
       const writeFile = XLSX.writeFile as unknown as ReturnType<typeof vi.fn>;
       const aoa_to_sheet = XLSX.utils.aoa_to_sheet as unknown as ReturnType<typeof vi.fn>;
       const book_new = XLSX.utils.book_new as unknown as ReturnType<typeof vi.fn>;
@@ -217,12 +217,12 @@ describe("tableExport", () => {
       aoa_to_sheet.mockReturnValue({});
       book_new.mockReturnValue({});
 
-      exportToExcel([{ name: "A", note: "B" }] as any, columns as any, "bad<file?name");
+      await exportToExcel([{ name: "A", note: "B" }] as any, columns as any, "bad<file?name");
 
       expect(writeFile).toHaveBeenCalledWith(expect.anything(), "bad_file_name.xlsx");
     });
 
-    it("exportToExcel: uses empty string for nullish values but keeps 0/false (covers ?? branches)", () => {
+    it("exportToExcel: uses empty string for nullish values but keeps 0/false (covers ?? branches)", async () => {
       // Spy on aoa_to_sheet AND make it return a worksheet object
       const aoaSpy = vi.spyOn(XLSX.utils, "aoa_to_sheet").mockReturnValue({} as any);
 
@@ -237,7 +237,7 @@ describe("tableExport", () => {
         { name: null, note: "Hello", count: 5 }, // null -> ''
       ];
 
-      exportToExcel(data as any, columns as any, "test-export");
+      await exportToExcel(data as any, columns as any, "test-export");
 
       expect(aoaSpy).toHaveBeenCalledTimes(1);
 
@@ -255,8 +255,8 @@ describe("tableExport", () => {
   });
 
   describe("exportToPDF", () => {
-    it("generates PDF without title and saves .pdf (startY=10)", () => {
-      exportToPDF([{ name: "Alice", note: "ok" }] as any, columns as any, "pdf-file");
+    it("generates PDF without title and saves .pdf (startY=10)", async () => {
+      await exportToPDF([{ name: "Alice", note: "ok" }] as any, columns as any, "pdf-file");
 
       const instances = (jsPDFModule as any).__instances as any[];
       expect(instances.length).toBeGreaterThan(0);
@@ -272,8 +272,13 @@ describe("tableExport", () => {
       expect(doc.save).toHaveBeenCalledWith("pdf-file.pdf");
     });
 
-    it("generates PDF with title (startY=25) and writes title", () => {
-      exportToPDF([{ name: "Alice", note: "ok" }] as any, columns as any, "pdf-title", "My Report");
+    it("generates PDF with title (startY=25) and writes title", async () => {
+      await exportToPDF(
+        [{ name: "Alice", note: "ok" }] as any,
+        columns as any,
+        "pdf-title",
+        "My Report",
+      );
 
       const instances = (jsPDFModule as any).__instances as any[];
       const doc = instances[instances.length - 1];
@@ -288,7 +293,7 @@ describe("tableExport", () => {
       expect(doc.save).toHaveBeenCalledWith("pdf-title.pdf");
     });
 
-    it("catches errors, logs and alerts user", () => {
+    it("catches errors, logs and alerts user", async () => {
       const Original = (jsPDFModule as any).default;
 
       // Force constructor to throw to hit the catch block
@@ -298,7 +303,7 @@ describe("tableExport", () => {
         }
       };
 
-      exportToPDF([{ name: "A", note: "B" }] as any, columns as any, "x");
+      await exportToPDF([{ name: "A", note: "B" }] as any, columns as any, "x");
 
       expect(console.error).toHaveBeenCalledWith("Error generating PDF:", expect.any(Error));
       expect(globalThis.alert).toHaveBeenCalledWith(
@@ -308,15 +313,15 @@ describe("tableExport", () => {
       (jsPDFModule as any).default = Original;
     });
 
-    it("sanitizes special characters in PDF filename", () => {
-      exportToPDF([{ name: "A", note: "B" }] as any, columns as any, "bad/name:file");
+    it("sanitizes special characters in PDF filename", async () => {
+      await exportToPDF([{ name: "A", note: "B" }] as any, columns as any, "bad/name:file");
 
       const instances = (jsPDFModule as any).__instances as any[];
       const doc = instances[instances.length - 1];
       expect(doc.save).toHaveBeenCalledWith("bad_name_file.pdf");
     });
 
-    it("exportToPDF: converts nullish cell values to empty string (covers ?? branch)", () => {
+    it("exportToPDF: converts nullish cell values to empty string (covers ?? branch)", async () => {
       // Capture autoTable payload
       const autoTableMock = autoTable as unknown as ReturnType<typeof vi.fn>;
       autoTableMock.mockClear();
@@ -331,7 +336,7 @@ describe("tableExport", () => {
         { name: null, note: "Hi" }, // null -> ''
       ];
 
-      exportToPDF(data as any, columns as any, "pdf-export");
+      await exportToPDF(data as any, columns as any, "pdf-export");
 
       expect(autoTableMock).toHaveBeenCalledTimes(1);
 
@@ -368,13 +373,13 @@ describe("tableExport", () => {
       vi.spyOn(URL as any, "revokeObjectURL").mockImplementation(() => {});
     });
 
-    it("opens new window and triggers print on load when popups are allowed", () => {
+    it("opens new window and triggers print on load when popups are allowed", async () => {
       const fakePrint = vi.fn();
       const fakeWindow: any = { onload: null, onafterprint: null, print: fakePrint };
 
       const openSpy = vi.spyOn(window, "open").mockReturnValue(fakeWindow);
 
-      printTable([{ name: "A", note: "B" }] as any, columns as any, "Title");
+      await printTable([{ name: "A", note: "B" }] as any, columns as any, "Title");
 
       expect(openSpy).toHaveBeenCalledWith("blob:mock", "_blank");
       expect(typeof fakeWindow.onload).toBe("function");
@@ -384,12 +389,12 @@ describe("tableExport", () => {
       expect(fakePrint).toHaveBeenCalledTimes(1);
     });
 
-    it("sets up cleanup via onafterprint and timeout fallback", () => {
+    it("sets up cleanup via onafterprint and timeout fallback", async () => {
       vi.useFakeTimers();
       const fakeWindow: any = { onload: null, onafterprint: null, print: vi.fn() };
       vi.spyOn(window, "open").mockReturnValue(fakeWindow);
 
-      printTable([{ name: "A", note: "B" }] as any, columns as any);
+      await printTable([{ name: "A", note: "B" }] as any, columns as any);
 
       // onafterprint should be set
       expect(typeof fakeWindow.onafterprint).toBe("function");
@@ -405,21 +410,21 @@ describe("tableExport", () => {
       vi.useRealTimers();
     });
 
-    it("alerts when popups are blocked (window.open returns null) and cleans up blob URL", () => {
+    it("alerts when popups are blocked (window.open returns null) and cleans up blob URL", async () => {
       vi.spyOn(window, "open").mockReturnValue(null);
 
-      printTable([{ name: "A", note: "B" }] as any, columns as any);
+      await printTable([{ name: "A", note: "B" }] as any, columns as any);
 
       expect(globalThis.alert).toHaveBeenCalledWith("Please allow popups to print the table.");
       expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock");
     });
 
-    it("catches errors, logs and alerts", () => {
+    it("catches errors, logs and alerts", async () => {
       (URL.createObjectURL as any).mockImplementation(() => {
         throw new Error("boom");
       });
 
-      printTable([{ name: "A", note: "B" }] as any, columns as any);
+      await printTable([{ name: "A", note: "B" }] as any, columns as any);
 
       expect(console.error).toHaveBeenCalledWith(
         "Error generating print preview:",
@@ -430,7 +435,7 @@ describe("tableExport", () => {
       );
     });
 
-    it("printTable: converts nullish cell values to empty string (covers ?? branch)", () => {
+    it("printTable: converts nullish cell values to empty string (covers ?? branch)", async () => {
       // Capture autoTable payload
       const autoTableMock = autoTable as unknown as ReturnType<typeof vi.fn>;
       autoTableMock.mockClear();
@@ -457,7 +462,7 @@ describe("tableExport", () => {
         { name: null, note: "Hi" }, // null -> ''
       ];
 
-      printTable(data as any, columns as any);
+      await printTable(data as any, columns as any);
 
       expect(autoTableMock).toHaveBeenCalledTimes(1);
 

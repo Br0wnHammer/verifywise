@@ -57,7 +57,7 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({
   };
 
   const handlePrint = () => {
-    printTable(data, columns, title);
+    void printTable(data, columns, title);
     handleClose();
   };
 
@@ -67,10 +67,10 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({
         exportToCSV(data, columns, filename);
         break;
       case "excel":
-        exportToExcel(data, columns, filename);
+        void exportToExcel(data, columns, filename);
         break;
       case "pdf":
-        exportToPDF(data, columns, filename, title);
+        void exportToPDF(data, columns, filename, title);
         break;
     }
     handleClose();
