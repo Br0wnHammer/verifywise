@@ -46,7 +46,7 @@ import StandardModal from "../../components/Modals/StandardModal";
 import Field from "../../components/Inputs/Field";
 import Select from "../../components/Inputs/Select";
 import { PageHeaderExtended } from "../../components/Layout/PageHeaderExtended";
-import { useUserGuideSidebarContext } from "../../components/UserGuide";
+import { useUserGuideSidebarContext } from "../../components/UserGuide/UserGuideSidebarContext";
 import { palette } from "../../themes/palette";
 import { displayFormattedDate } from "../../tools/isoDateToString";
 

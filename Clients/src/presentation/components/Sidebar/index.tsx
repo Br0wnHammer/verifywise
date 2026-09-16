@@ -23,7 +23,7 @@ import { VerifyWiseContext } from "../../../application/contexts/VerifyWise.cont
 import useMultipleOnScreen from "../../../application/hooks/useMultipleOnScreen";
 import { getAllTasks } from "../../../application/repository/task.repository";
 import { TaskStatus } from "../../../domain/enums/task.enum";
-import { useUserGuideSidebarContext } from "../UserGuide";
+import { useUserGuideSidebarContext } from "../UserGuide/UserGuideSidebarContext";
 import SidebarShell, { SidebarMenuItem, SidebarMenuGroup } from "./SidebarShell";
 
 import "./index.css";
