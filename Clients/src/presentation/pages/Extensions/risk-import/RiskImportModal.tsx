@@ -21,7 +21,6 @@ import {
   Paper,
 } from "@mui/material";
 import { Download, Upload, CheckCircle, XCircle, X } from "lucide-react";
-import * as ExcelJS from "exceljs";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 
 interface RiskImportModalProps {
@@ -87,6 +86,8 @@ export default function RiskImportModal({ open, onClose, onImportComplete }: Ris
     setImportResult(null);
 
     try {
+      // Loaded on demand: exceljs is ~280 KiB gz, only needed to parse an upload.
+      const ExcelJS = await import("exceljs");
       const arrayBuffer = await file.arrayBuffer();
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(arrayBuffer);
