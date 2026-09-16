@@ -11,7 +11,7 @@ export const HuggingFaceLogo = (props: React.SVGProps<SVGSVGElement>) => (
     alt="Hugging Face"
     width={props.width || 24}
     height={props.height || 24}
-    style={{ display: "inline-block" }}
+    style={{ display: "inline-block", ...props.style }}
   />
 );
 
@@ -21,6 +21,16 @@ export const BuildIcon = (props: React.SVGProps<SVGSVGElement>) => (
     alt="Build"
     width={props.width || 24}
     height={props.height || 24}
-    style={{ display: "inline-block" }}
+    style={{ display: "inline-block", ...props.style }}
+  />
+);
+
+export const OllamaLogo = (props: React.SVGProps<SVGSVGElement>) => (
+  <img
+    src="/assets/icons/ollama_logo.svg"
+    alt="Ollama"
+    width={props.width || 24}
+    height={props.height || 24}
+    style={{ display: "inline-block", ...props.style }}
   />
 );
