@@ -11,7 +11,10 @@ export const LazyFallback = () => (
       height: "100%",
     }}
   >
-    <CircularProgress size={32} />
+    {/* role="progressbar" needs an accessible name (axe: aria-progressbar-name).
+        This fallback is on screen for every lazy route while its chunk loads,
+        so an unnamed spinner here is the one a11y violation every page shows. */}
+    <CircularProgress size={32} aria-label="Loading" />
   </Box>
 );
 
