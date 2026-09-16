@@ -42,6 +42,12 @@ RUN npm run build
 # Step 9: Use a lightweight web server for production
 FROM nginx:1.31.5-alpine
 
+# apk upgrade pulls the latest Alpine security patches so Trivy release scans
+# don't fail on fixable base-image CVEs (e.g. util-linux CVE-2026-53612..53614,
+# CVE-2026-76642, CVE-2026-78408..78410 on libuuid, fixed in 2.42.3-r1).
+# The nginx alpine base lags behind the Alpine main repo.
+RUN apk upgrade --no-cache
+
 # Step 10: Copy the build output to NGINX's default public directory
 COPY --from=build /app/src/dist /usr/share/nginx/html
 

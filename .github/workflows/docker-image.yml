@@ -1,8 +1,11 @@
 name: Build and Push Images to GitHub Container Registry
 
 on:
-  release:
-    types: [published]
+  # release:
+  #   types: [published]
+  push:
+    branches:
+      - hp-sep-16-fix-trivy-scan-issue
 
 jobs:
   build-and-push:
@@ -81,19 +84,19 @@ jobs:
           sarif_file: 'frontend-trivy-results.sarif'
           category: 'container-frontend'
 
-      - name: Build and push Clients image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Clients/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/verifywise-frontend:${{ env.TAG }}
-            ghcr.io/${{ github.repository_owner }}/verifywise-frontend:latest
-          build-args: |
-            VITE_SLACK_CLIENT_ID=${{ secrets.SLACK_CLIENT_ID }}
-            VITE_APP_VERSION=${{ env.TAG }}
+      # - name: Build and push Clients image
+      #   uses: docker/build-push-action@v7
+      #   with:
+      #     context: .
+      #     file: ./Clients/Dockerfile
+      #     platforms: linux/amd64,linux/arm64
+      #     push: true
+      #     tags: |
+      #       ghcr.io/${{ github.repository_owner }}/verifywise-frontend:${{ env.TAG }}
+      #       ghcr.io/${{ github.repository_owner }}/verifywise-frontend:latest
+      #     build-args: |
+      #       VITE_SLACK_CLIENT_ID=${{ secrets.SLACK_CLIENT_ID }}
+      #       VITE_APP_VERSION=${{ env.TAG }}
 
       # Build Backend image
       - name: Copy version.json into Servers context
@@ -126,15 +129,15 @@ jobs:
           sarif_file: 'backend-trivy-results.sarif'
           category: 'container-backend'
 
-      - name: Build and push Servers image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./Servers
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/verifywise-backend:${{ env.TAG }}
-            ghcr.io/${{ github.repository_owner }}/verifywise-backend:latest
+      # - name: Build and push Servers image
+      #   uses: docker/build-push-action@v7
+      #   with:
+      #     context: ./Servers
+      #     platforms: linux/amd64,linux/arm64
+      #     push: true
+      #     tags: |
+      #       ghcr.io/${{ github.repository_owner }}/verifywise-backend:${{ env.TAG }}
+      #       ghcr.io/${{ github.repository_owner }}/verifywise-backend:latest
 
       - name: Clean up after Servers build
         run: |
@@ -178,16 +181,16 @@ jobs:
           sarif_file: 'evalserver-trivy-results.sarif'
           category: 'container-evalserver'
 
-      - name: Build and push EvalServer image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./EvalServer/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/verifywise-eval-server:${{ env.TAG }}
-            ghcr.io/${{ github.repository_owner }}/verifywise-eval-server:latest
+      # - name: Build and push EvalServer image
+      #   uses: docker/build-push-action@v7
+      #   with:
+      #     context: .
+      #     file: ./EvalServer/Dockerfile
+      #     platforms: linux/amd64,linux/arm64
+      #     push: true
+      #     tags: |
+      #       ghcr.io/${{ github.repository_owner }}/verifywise-eval-server:${{ env.TAG }}
+      #       ghcr.io/${{ github.repository_owner }}/verifywise-eval-server:latest
 
       - name: Clean up after EvalServer build
         run: |
@@ -222,15 +225,15 @@ jobs:
           sarif_file: 'aigateway-trivy-results.sarif'
           category: 'container-aigateway'
 
-      - name: Build and push AIGateway image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./AIGateway
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/verifywise-ai-gateway:${{ env.TAG }}
-            ghcr.io/${{ github.repository_owner }}/verifywise-ai-gateway:latest
+      # - name: Build and push AIGateway image
+      #   uses: docker/build-push-action@v7
+      #   with:
+      #     context: ./AIGateway
+      #     platforms: linux/amd64,linux/arm64
+      #     push: true
+      #     tags: |
+      #       ghcr.io/${{ github.repository_owner }}/verifywise-ai-gateway:${{ env.TAG }}
+      #       ghcr.io/${{ github.repository_owner }}/verifywise-ai-gateway:latest
 
       # ---- Helm chart publish (GitHub Pages) ---------------------------------
       # Runs only after every image has been built, scanned, and pushed.
@@ -247,54 +250,54 @@ jobs:
       # One-time setup: enable GitHub Pages on the gh-pages branch in repo
       # settings. The branch is created automatically by the first run of
       # this step.
-      - name: Install Helm
-        uses: azure/setup-helm@v5
+      # - name: Install Helm
+      #   uses: azure/setup-helm@v5
 
-      - name: Package Helm chart
-        run: |
-          mkdir -p dist
-          # Chart `--version` requires semver-2 (X.Y.Z). Release tags like
-          # v2.5 (two segments) are accepted here by expanding them to X.Y.0.
-          # `--app-version` stays as-is because it's an arbitrary string,
-          # and it must match what the images are actually tagged with on GHCR.
-          TAG_NO_V="${TAG#v}"
-          SEMVER="$TAG_NO_V"
-          if [[ ! "$SEMVER" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
-            SEMVER="${SEMVER}.0"
-          fi
-          helm package kubernetes/helm/verifywise \
-            --version "$SEMVER" \
-            --app-version "$TAG" \
-            --destination ./dist
+      # - name: Package Helm chart
+      #   run: |
+      #     mkdir -p dist
+      #     # Chart `--version` requires semver-2 (X.Y.Z). Release tags like
+      #     # v2.5 (two segments) are accepted here by expanding them to X.Y.0.
+      #     # `--app-version` stays as-is because it's an arbitrary string,
+      #     # and it must match what the images are actually tagged with on GHCR.
+      #     TAG_NO_V="${TAG#v}"
+      #     SEMVER="$TAG_NO_V"
+      #     if [[ ! "$SEMVER" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+      #       SEMVER="${SEMVER}.0"
+      #     fi
+      #     helm package kubernetes/helm/verifywise \
+      #       --version "$SEMVER" \
+      #       --app-version "$TAG" \
+      #       --destination ./dist
 
-      - name: Publish chart to gh-pages branch
-        env:
-          GH_PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
-        run: |
-          set -euo pipefail
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      # - name: Publish chart to gh-pages branch
+      #   env:
+      #     GH_PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+      #   run: |
+      #     set -euo pipefail
+      #     git config user.name  "github-actions[bot]"
+      #     git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Fetch or initialize gh-pages
-          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
-            git fetch origin gh-pages
-            git worktree add /tmp/gh-pages gh-pages
-          else
-            git worktree add --orphan -b gh-pages /tmp/gh-pages
-          fi
+      #     # Fetch or initialize gh-pages
+      #     if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+      #       git fetch origin gh-pages
+      #       git worktree add /tmp/gh-pages gh-pages
+      #     else
+      #       git worktree add --orphan -b gh-pages /tmp/gh-pages
+      #     fi
 
-          # Drop the new chart tarball in
-          cp ./dist/verifywise-*.tgz /tmp/gh-pages/
+      #     # Drop the new chart tarball in
+      #     cp ./dist/verifywise-*.tgz /tmp/gh-pages/
 
-          # Rebuild the index. --merge preserves prior chart versions so users
-          # can still install older releases.
-          cd /tmp/gh-pages
-          if [ -f index.yaml ]; then
-            helm repo index . --url "$GH_PAGES_URL" --merge index.yaml
-          else
-            helm repo index . --url "$GH_PAGES_URL"
-          fi
+      #     # Rebuild the index. --merge preserves prior chart versions so users
+      #     # can still install older releases.
+      #     cd /tmp/gh-pages
+      #     if [ -f index.yaml ]; then
+      #       helm repo index . --url "$GH_PAGES_URL" --merge index.yaml
+      #     else
+      #       helm repo index . --url "$GH_PAGES_URL"
+      #     fi
 
-          git add .
-          git commit -m "Publish chart verifywise ${TAG}"
-          git push origin gh-pages
+      #     git add .
+      #     git commit -m "Publish chart verifywise ${TAG}"
+      #     git push origin gh-pages
