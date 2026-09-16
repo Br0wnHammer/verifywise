@@ -1060,6 +1060,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Deleted only": "Nur gelöschte",
 
     // Empty / loading / error
+    "Loading": "Wird geladen",
     "Loading...": "Wird geladen...",
     "Loading agents...": "Agenten werden geladen...",
     "Loading dashboard": "Dashboard wird geladen",
@@ -10132,6 +10133,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Annexes": "Annexes",
 
     // Empty / loading / error
+    "Loading": "Chargement",
     "Loading...": "Chargement...",
     "Loading dashboard": "Chargement du tableau de bord",
     "Loading datasets...": "Chargement des jeux de données...",
@@ -19278,6 +19280,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Search workflows...": "Buscar flujos de trabajo...",
     "Find in document...": "Buscar en el documento...",
     "Deleted only": "Solo eliminados",
+    "Loading": "Cargando",
     "Loading...": "Cargando...",
     "Loading agents...": "Cargando agentes...",
     "Loading dashboard": "Cargando panel",
