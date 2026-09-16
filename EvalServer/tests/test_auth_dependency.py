@@ -72,8 +72,12 @@ def test_all_app_routes_enforce_internal_key() -> None:
     api_routes = [r for r in app.routes if isinstance(r, APIRoute)]
     assert api_routes, "expected the real app to expose API routes"
 
+    # Liveness/readiness probes stay exempt: the Docker HEALTHCHECK and the
+    # k8s liveness/readiness probes (kubernetes/eval-server-deployment.yaml)
+    # hit these paths with plain HTTP and cannot send the internal key.
+    EXEMPT_PATHS = {"/", "/health"}
     for route in api_routes:
-        if route.path == "/":  # liveness root stays exempt
+        if route.path in EXEMPT_PATHS:
             continue
         dependency_calls = [d.call for d in route.dependencies]
         assert verify_internal_key_dependency in dependency_calls, (
