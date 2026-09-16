@@ -169,6 +169,8 @@ const Field = forwardRef(
             "min": min,
             "max": max,
             "aria-describedby": describedBy,
+            "aria-invalid": !!error,
+            "aria-errormessage": error ? errorTextId : undefined,
             "sx": {
               "color": theme.palette.text.secondary,
               "&:-webkit-autofill": {
