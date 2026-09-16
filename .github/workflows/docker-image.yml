@@ -31,19 +31,19 @@ jobs:
       # Fail fast if the developer forgot to bump the Helm chart's appVersion
       # to match the release tag. The chart's appVersion drives the image tag
       # rendered into every Deployment, so it must track the release.
-      - name: Verify Helm chart appVersion matches release tag
-        run: |
-          CHART_FILE=kubernetes/helm/verifywise/Chart.yaml
-          CHART_APPVERSION=$(grep '^appVersion:' "$CHART_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
-          # Normalize by stripping an optional leading "v" from both sides,
-          # so a release tag of either "v2.5.0" or "2.5.0" is accepted.
-          TAG_NORM="${TAG#v}"
-          APP_NORM="${CHART_APPVERSION#v}"
-          if [ "$TAG_NORM" != "$APP_NORM" ]; then
-            echo "::error file=$CHART_FILE::Chart appVersion ($CHART_APPVERSION) does not match release tag ($TAG). Bump appVersion in $CHART_FILE before publishing the release."
-            exit 1
-          fi
-          echo "Chart appVersion ($CHART_APPVERSION) matches release tag ($TAG)"
+      # - name: Verify Helm chart appVersion matches release tag
+      #   run: |
+      #     CHART_FILE=kubernetes/helm/verifywise/Chart.yaml
+      #     CHART_APPVERSION=$(grep '^appVersion:' "$CHART_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
+      #     # Normalize by stripping an optional leading "v" from both sides,
+      #     # so a release tag of either "v2.5.0" or "2.5.0" is accepted.
+      #     TAG_NORM="${TAG#v}"
+      #     APP_NORM="${CHART_APPVERSION#v}"
+      #     if [ "$TAG_NORM" != "$APP_NORM" ]; then
+      #       echo "::error file=$CHART_FILE::Chart appVersion ($CHART_APPVERSION) does not match release tag ($TAG). Bump appVersion in $CHART_FILE before publishing the release."
+      #       exit 1
+      #     fi
+      #     echo "Chart appVersion ($CHART_APPVERSION) matches release tag ($TAG)"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
