@@ -406,7 +406,9 @@ def upgrade() -> None:
         );
     '''))
 
-    print("✓ Created all shared-schema tables in verifywise schema")
+    # Keep output ASCII-only: Windows consoles default to cp1252 and crash on
+    # non-ASCII glyphs when stdout is piped (UnicodeEncodeError rolls the migration back).
+    print("OK: created all shared-schema tables in verifywise schema")
 
 
 def downgrade() -> None:
@@ -434,4 +436,4 @@ def downgrade() -> None:
     for table in tables:
         op.execute(_text('DROP TABLE IF EXISTS verifywise."' + table + '" CASCADE;'))
 
-    print("✓ Dropped all shared-schema tables from verifywise schema")
+    print("OK: dropped all shared-schema tables from verifywise schema")
