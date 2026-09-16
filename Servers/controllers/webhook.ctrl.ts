@@ -58,8 +58,7 @@ export async function githubWebhookController(req: Request, res: Response): Prom
 
     // 4. Extract repository info from payload
     const repoInfo = payload.repository as
-      | { owner?: { login?: string }; name?: string }
-      | undefined;
+      { owner?: { login?: string }; name?: string } | undefined;
     const owner = repoInfo?.owner?.login;
     const name = repoInfo?.name;
 

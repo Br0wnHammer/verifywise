@@ -818,8 +818,7 @@ async function loginUserWithMicrosoft(req: Request, res: Response): Promise<any>
     }
 
     const roleClaim = ((tokenResponse.idTokenClaims as Record<string, any>)?.roles ?? [])[0] as
-      | string
-      | undefined;
+      string | undefined;
     const roleName = roleClaim && SSO_ROLE_MAP.has(roleClaim) ? roleClaim : "Editor";
     const roleId = SSO_ROLE_MAP.get(roleName)!;
 

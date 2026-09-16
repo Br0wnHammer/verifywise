@@ -135,12 +135,7 @@ export async function executeCreateRisk(
       severity,
       likelihood,
       risk_level_autocalculated: riskLevelAutocalculated as
-        | "No risk"
-        | "Very low risk"
-        | "Low risk"
-        | "Medium risk"
-        | "High risk"
-        | "Very high risk",
+        "No risk" | "Very low risk" | "Low risk" | "Medium risk" | "High risk" | "Very high risk",
       review_notes: input.review_notes,
       risk_owner: riskOwner,
       projects: input.project_ids ?? [],

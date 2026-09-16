@@ -112,13 +112,7 @@ const LOW_RISK_PROVIDERS = [
 
 /** All valid finding types */
 export type FindingType =
-  | "library"
-  | "dependency"
-  | "api_call"
-  | "secret"
-  | "model_ref"
-  | "rag_component"
-  | "agent";
+  "library" | "dependency" | "api_call" | "secret" | "model_ref" | "rag_component" | "agent";
 
 /**
  * Calculate risk level for a finding based on provider and finding type
