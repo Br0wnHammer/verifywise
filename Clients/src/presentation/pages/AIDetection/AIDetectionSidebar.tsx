@@ -13,7 +13,7 @@ import SidebarShell, {
   SidebarMenuItem,
   RecentSection,
 } from "../../components/Sidebar/SidebarShell";
-import { useUserGuideSidebarContext } from "../../components/UserGuide";
+import { useUserGuideSidebarContext } from "../../components/UserGuide/UserGuideSidebarContext";
 import { Scan } from "../../../domain/ai-detection/types";
 
 interface RecentScan {

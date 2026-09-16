@@ -52,52 +52,48 @@ export default defineConfig({
   build: {
     // Generate manifest for cache busting
     manifest: true,
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 500,
     cssCodeSplit: true,
-    modulePreload: {
-      // Drop heavy chunks that aren't needed for first paint (charts, rich-text editor,
-      // xlsx) so they don't compete with the critical-path bundle download.
-      resolveDependencies: (_filename, deps) =>
-        deps.filter((d) => !/vendor-charts|vendor-editor|xlsx|ExportMenu/.test(d)),
-    },
     rollupOptions: {
       output: {
         // Add hash to filenames for cache busting
         entryFileNames: "assets/[name]-[hash].js",
         chunkFileNames: "assets/[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash].[ext]",
-        manualChunks(id) {
-          if (id.includes("node_modules")) {
-            if (
-              id.includes("react-dom") ||
-              id.includes("react-router") ||
-              (id.includes("/react/") && !id.includes("react-"))
-            ) {
-              return "vendor-react";
-            }
-            if (
-              id.includes("@mui/material") ||
-              id.includes("@mui/lab") ||
-              id.includes("@mui/x-charts") ||
-              id.includes("@mui/x-date-pickers")
-            ) {
-              return "vendor-mui";
-            }
-            if (
-              id.includes("@reduxjs/toolkit") ||
-              id.includes("react-redux") ||
-              id.includes("redux-persist") ||
-              id.includes("@tanstack/react-query")
-            ) {
-              return "vendor-state";
-            }
-            if (id.includes("@tiptap")) {
-              return "vendor-editor";
-            }
-            if (id.includes("recharts") || id.includes("html2canvas")) {
-              return "vendor-charts";
-            }
-          }
+        // Native rolldown chunk groups. `includeDependenciesRecursively: false`
+        // keeps each group limited to the packages it matches — with the old
+        // manualChunks function, group dependency capture pulled unrelated
+        // modules (e.g. react/jsx-runtime into vendor-editor, @xyflow/react and
+        // @tiptap/react into vendor-react) onto the critical path.
+        advancedChunks: {
+          includeDependenciesRecursively: false,
+          groups: [
+            {
+              name: "vendor-react",
+              test: /node_modules\/(react|react-dom|scheduler|react-router)\//,
+              priority: 20,
+            },
+            {
+              name: "vendor-mui",
+              test: /node_modules\/@mui\/(material|lab|x-charts|x-date-pickers)\//,
+              priority: 10,
+            },
+            {
+              name: "vendor-state",
+              test: /node_modules\/(@reduxjs\/toolkit|react-redux|redux-persist|@tanstack\/react-query)\//,
+              priority: 10,
+            },
+            {
+              name: "vendor-editor",
+              test: /node_modules\/@tiptap\//,
+              priority: 10,
+            },
+            {
+              name: "vendor-charts",
+              test: /node_modules\/(recharts|html2canvas)\//,
+              priority: 10,
+            },
+          ],
         },
       },
     },

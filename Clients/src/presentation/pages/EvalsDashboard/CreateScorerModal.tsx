@@ -46,7 +46,7 @@ import { ReactComponent as GeminiLogo } from "../../assets/icons/gemini_logo.svg
 import { ReactComponent as MistralLogo } from "../../assets/icons/mistral_logo.svg";
 import { ReactComponent as XAILogo } from "../../assets/icons/xai_logo.svg";
 import { ReactComponent as OpenRouterLogo } from "../../assets/icons/openrouter_logo.svg";
-import { ReactComponent as OllamaLogo } from "../../assets/icons/ollama_logo.svg";
+import { OllamaLogo } from "./NewExperiment/experimentIcons";
 
 const PROVIDER_ICONS: Record<string, React.FC<React.SVGProps<SVGSVGElement>>> = {
   "openai": OpenAILogo,

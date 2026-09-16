@@ -5,7 +5,7 @@ import type { Scan } from "../../../../domain/ai-detection/types";
 const mockOpenUserGuide = vi.fn();
 const mockOpenTab = vi.fn();
 
-vi.mock("../../../components/UserGuide", () => ({
+vi.mock("../../../components/UserGuide/UserGuideSidebarContext", () => ({
   useUserGuideSidebarContext: () => ({
     open: mockOpenUserGuide,
     openTab: mockOpenTab,

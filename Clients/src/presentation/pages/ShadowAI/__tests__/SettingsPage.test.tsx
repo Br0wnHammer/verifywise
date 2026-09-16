@@ -31,7 +31,7 @@ vi.mock("../../../../application/repository/shadowAi.repository", () => ({
 }));
 
 const mockOpenGuide = vi.fn();
-vi.mock("../../../components/UserGuide", () => ({
+vi.mock("../../../components/UserGuide/UserGuideSidebarContext", () => ({
   useUserGuideSidebarContext: () => ({ open: mockOpenGuide }),
 }));
 

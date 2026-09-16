@@ -18,28 +18,26 @@ vi.mock("../../../application/redux/auth/authSlice", () => ({
 
 vi.mock("../../../i18n/domTranslator", () => ({
   getLanguage: vi.fn(() => "en"),
-}));
-
-vi.mock("../../../i18n/translations", () => ({
-  translations: {
-    de: {
-      "Error": "Fehler",
-      "An error occurred. Please try again later":
-        "Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut",
-    },
-  },
+  translateKey: vi.fn((key: string) => key),
 }));
 
 import { CanceledError, type AxiosError } from "axios";
 import CustomAxios, { showAlert, setShowAlertCallback } from "../customAxios";
 import { store } from "../../../application/redux/store";
-import { getLanguage } from "../../../i18n/domTranslator";
+import { translateKey } from "../../../i18n/domTranslator";
 
 const mockStore = vi.mocked(store);
+
+const DE: Record<string, string> = {
+  "Error": "Fehler",
+  "An error occurred. Please try again later":
+    "Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut",
+};
 
 describe("customAxios", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(translateKey).mockImplementation((key: string) => key);
     setShowAlertCallback(null as any);
     mockStore.getState.mockReturnValue({
       auth: { authToken: "test-token" },
@@ -135,7 +133,7 @@ describe("customAxios", () => {
     });
 
     it("translates the toast body when the active language is not English", async () => {
-      vi.mocked(getLanguage).mockReturnValue("de");
+      vi.mocked(translateKey).mockImplementation((key: string) => DE[key] ?? key);
       const callback = vi.fn();
       setShowAlertCallback(callback);
 
@@ -154,7 +152,6 @@ describe("customAxios", () => {
     });
 
     it("shows a translated toast with the envelope detail for 4xx client errors", async () => {
-      vi.mocked(getLanguage).mockReturnValue("en");
       const callback = vi.fn();
       setShowAlertCallback(callback);
 
@@ -174,7 +171,6 @@ describe("customAxios", () => {
     });
 
     it("falls back to the top-level message for legacy raw 4xx bodies", async () => {
-      vi.mocked(getLanguage).mockReturnValue("en");
       const callback = vi.fn();
       setShowAlertCallback(callback);
 

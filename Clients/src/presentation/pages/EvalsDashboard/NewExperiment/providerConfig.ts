@@ -7,13 +7,12 @@
 import type { ComponentType, SVGProps } from "react";
 import { ReactComponent as OpenAILogo } from "../../../assets/icons/openai_logo.svg";
 import { ReactComponent as AnthropicLogo } from "../../../assets/icons/anthropic_logo.svg";
-import { ReactComponent as OllamaLogo } from "../../../assets/icons/ollama_logo.svg";
 import { ReactComponent as GeminiLogo } from "../../../assets/icons/gemini_logo.svg";
 import { ReactComponent as MistralLogo } from "../../../assets/icons/mistral_logo.svg";
 import { ReactComponent as XAILogo } from "../../../assets/icons/xai_logo.svg";
 import { ReactComponent as OpenRouterLogo } from "../../../assets/icons/openrouter_logo.svg";
 import { ReactComponent as FolderFilledIcon } from "../../../assets/icons/folder_filled.svg";
-import { BuildIcon, HuggingFaceLogo } from "./experimentIcons";
+import { BuildIcon, HuggingFaceLogo, OllamaLogo } from "./experimentIcons";
 import type { ProviderType } from "./newExperimentConfig";
 
 export type ProviderLogo = ComponentType<SVGProps<SVGSVGElement>>;

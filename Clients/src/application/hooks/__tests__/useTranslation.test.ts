@@ -1,15 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
-vi.mock("../../../i18n/translations", () => ({
-  translations: {
-    tr: { Hello: "Merhaba" },
-  },
-}));
-
 let mockLang: "en" | "tr" = "en";
+const dict: Record<string, string> = { Hello: "Merhaba" };
+
 vi.mock("../../../i18n/domTranslator", () => ({
   getLanguage: () => mockLang,
+  translateKey: (key: string) => (mockLang === "en" ? key : dict[key] || key),
 }));
 
 import { useTranslation } from "../useTranslation";
