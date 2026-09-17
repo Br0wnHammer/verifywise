@@ -61,7 +61,9 @@ describe("loadProfiles", () => {
 
   it("names the expected path when the file is missing", () => {
     const missing = path.join(dir, "absent.json");
-    expect(() => loadProfiles(missing)).toThrow(new RegExp(missing.replace(/\//g, "\\/")));
+    // Plain string, not a regex: toThrow does a substring match, and the path
+    // is untrusted input here (a temp dir name) that would need escaping.
+    expect(() => loadProfiles(missing)).toThrow(missing);
   });
 
   it("reports invalid JSON", () => {
