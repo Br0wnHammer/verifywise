@@ -36,6 +36,6 @@
         name: "{{ item }}"
         state: started
       loop:
-        - sshd            # change to 'ssh' on Debian/Ubuntu
+        - ssh             # service name on Debian/Ubuntu hosts ('sshd' on RHEL/CentOS)
         - docker          # remove this line if the host doesn't run Docker
       ignore_errors: yes   # don't fail the whole task if a service doesn't exist on this host
