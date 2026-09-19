@@ -89,6 +89,42 @@ const PRODUCTION = {
     maxRequests: 100,
     message: "Too many webhook requests from this IP, please slow down and retry",
   },
+  login: {
+    windowMinutes: 1,
+    maxRequests: 5,
+    message: "Too many login attempts from this IP, please try again after a minute",
+  },
+  passwordResetEmail: {
+    windowMinutes: 1,
+    maxRequests: 5,
+    message: "Too many password reset requests from this IP, please try again later",
+  },
+  inviteEmail: {
+    windowMinutes: 1,
+    maxRequests: 5,
+    message: "Too many invite requests from this IP, please try again later",
+  },
+  invitationResend: {
+    windowMinutes: 1,
+    maxRequests: 5,
+    message: "Too many resend requests from this IP, please try again later",
+  },
+  slackWebhookCreate: {
+    windowMinutes: 60,
+    maxRequests: 10,
+    message: "Too many webhook creation requests from this IP, please try again after an hour",
+  },
+  slackWorkspaceCreate: {
+    windowMinutes: 60,
+    maxRequests: 10,
+    message:
+      "Too many Slack workspace creation requests from this IP, please try again after an hour",
+  },
+  healthCheck: {
+    windowMinutes: 1,
+    maxRequests: 1000,
+    message: "Too many health-check requests from this IP, please slow down",
+  },
 } as const;
 
 /** The relaxed ceilings, which apply ONLY under an explicit dev/test NODE_ENV. */
@@ -100,6 +136,13 @@ const RELAXED_MAX_REQUESTS: Record<string, number> = {
   aiDetectionScan: 10, // deliberately not relaxed
   mrmIngestion: 100000,
   webhook: 100000,
+  login: 1000,
+  passwordResetEmail: 5, // deliberately not relaxed
+  inviteEmail: 5, // deliberately not relaxed
+  invitationResend: 5, // deliberately not relaxed
+  slackWebhookCreate: 10, // deliberately not relaxed
+  slackWorkspaceCreate: 10, // deliberately not relaxed
+  healthCheck: 100000,
 };
 
 describe("production rate limit configuration", () => {
@@ -137,11 +180,38 @@ describe("dev/test relaxation surface", () => {
     expect(relaxed[key].maxRequests).toBe(RELAXED_MAX_REQUESTS[key]);
   });
 
-  it("never relaxes file operations or AI detection scans", () => {
-    // These two are throttled for cost and I/O reasons, not brute-force reasons, so
-    // a developer hammering localhost should feel them exactly as production does.
-    expect(relaxed.fileOperations.maxRequests).toBe(strict.fileOperations.maxRequests);
-    expect(relaxed.aiDetectionScan.maxRequests).toBe(strict.aiDetectionScan.maxRequests);
+  it("never relaxes the cost-driven limiters", () => {
+    // These are throttled because the work is expensive or reaches a third party
+    // (disk I/O, model scans, outbound email, Slack), not because of brute force —
+    // so a developer hammering localhost should feel them exactly as production does.
+    const NEVER_RELAXED = [
+      "fileOperations",
+      "aiDetectionScan",
+      "passwordResetEmail",
+      "inviteEmail",
+      "invitationResend",
+      "slackWebhookCreate",
+      "slackWorkspaceCreate",
+    ];
+    for (const key of NEVER_RELAXED) {
+      expect(relaxed[key].maxRequests).toBe(strict[key].maxRequests);
+    }
+  });
+
+  it("relaxes the brute-force and volume limiters", () => {
+    // The mirror of the test above: these MUST be relaxed, or a developer on one
+    // localhost IP locks themselves out of their own login page.
+    for (const key of [
+      "auth",
+      "login",
+      "generalApi",
+      "tokenRefresh",
+      "mrmIngestion",
+      "webhook",
+      "healthCheck",
+    ]) {
+      expect(relaxed[key].maxRequests).toBeGreaterThan(strict[key].maxRequests);
+    }
   });
 
   it("changes only the request ceiling, never the window or the message", () => {
@@ -203,6 +273,7 @@ describe("NODE_ENV gate fails closed", () => {
     const mod = loadUnderNodeEnv(value);
     expect(mod.isNonProduction).toBe(false);
     expect(mod.RATE_LIMIT_CONFIGS.auth.maxRequests).toBe(5);
+    expect(mod.RATE_LIMIT_CONFIGS.login.maxRequests).toBe(5);
     expect(mod.RATE_LIMIT_CONFIGS.generalApi.maxRequests).toBe(300);
     expect(mod.RATE_LIMIT_CONFIGS.tokenRefresh.maxRequests).toBe(60);
     expect(mod.RATE_LIMIT_CONFIGS.mrmIngestion.maxRequests).toBe(5000);

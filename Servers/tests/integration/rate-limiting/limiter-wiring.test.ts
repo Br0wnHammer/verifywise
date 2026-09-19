@@ -16,6 +16,8 @@
 
 import { beforeAll, describe, expect, it, jest } from "@jest/globals";
 import { Application } from "express";
+import fs from "fs";
+import path from "path";
 
 import { createTestApp } from "../setup";
 import * as rateLimiters from "../../../middleware/rateLimit.middleware";
@@ -127,6 +129,33 @@ const PROTECTED_ROUTES = [
   },
   { mount: "/api/file-manager", method: "post", path: "/", limiter: "fileOperationsLimiter" },
   { mount: "/api/file-manager", method: "get", path: "/:id", limiter: "fileOperationsLimiter" },
+  { mount: "/api/users", method: "post", path: "/login", limiter: "loginLimiter" },
+  { mount: "/api/users", method: "post", path: "/login-microsoft", limiter: "loginLimiter" },
+  {
+    mount: "/api/mail",
+    method: "post",
+    path: "/reset-password",
+    limiter: "passwordResetEmailLimiter",
+  },
+  { mount: "/api/mail", method: "post", path: "/invite", limiter: "inviteEmailLimiter" },
+  {
+    mount: "/api/invitations",
+    method: "post",
+    path: "/:id/resend",
+    limiter: "invitationResendLimiter",
+  },
+  {
+    mount: "/api/slackWebhooks",
+    method: "post",
+    path: "/",
+    limiter: "slackWebhookCreateLimiter",
+  },
+  {
+    mount: "/api/extensions/slack",
+    method: "post",
+    path: "/oauth/workspaces",
+    limiter: "slackWorkspaceCreateLimiter",
+  },
 ] as const;
 
 describe("rate limiter wiring", () => {
@@ -158,6 +187,16 @@ describe("rate limiter wiring", () => {
     });
   });
 
+  it("guards GET /health, which is defined on the app rather than in a router", () => {
+    const healthRoute = stackOf(app).find((layer) => layer.route?.path === "/health");
+    expect(healthRoute).toBeDefined();
+
+    const limiters = healthRoute!
+      .route!.stack.map((handler) => LIMITER_NAMES.get(handler.handle))
+      .filter(Boolean);
+    expect(limiters).toContain("healthCheckLimiter");
+  });
+
   describe("whole-router coverage", () => {
     it("rate limits every route under /api/file-manager", () => {
       // The intent in fileManager.route.ts is that the entire router is throttled —
@@ -182,6 +221,37 @@ describe("rate limiter wiring", () => {
         .filter((route) => !route.limiters.includes("webhookLimiter"))
         .map((route) => `${route.method.toUpperCase()} ${route.path}`);
       expect(unguarded).toEqual([]);
+    });
+  });
+
+  /**
+   * Every limiter must come from middleware/rateLimit.middleware.ts.
+   *
+   * A limiter declared inline in a route file silently opts out of the shared
+   * contract: express-rate-limit defaults to legacy `X-RateLimit-*` headers and its
+   * own body, so the endpoint stops emitting `RateLimit-*` and stops returning the
+   * STATUS_CODE[429] envelope. Six limiters were in exactly that state before this
+   * suite existed, and nothing flagged it.
+   */
+  describe("single source of limiters", () => {
+    const sourceFiles = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          return ["node_modules", "dist", "coverage", "tests", "__tests__"].includes(entry.name)
+            ? []
+            : sourceFiles(full);
+        }
+        return entry.isFile() && full.endsWith(".ts") ? [full] : [];
+      });
+
+    it("imports express-rate-limit in exactly one module", () => {
+      const root = path.resolve(__dirname, "../../..");
+      const importers = sourceFiles(root)
+        .filter((file) => /from ["']express-rate-limit["']/.test(fs.readFileSync(file, "utf8")))
+        .map((file) => path.relative(root, file));
+
+      expect(importers).toEqual(["middleware/rateLimit.middleware.ts"]);
     });
   });
 

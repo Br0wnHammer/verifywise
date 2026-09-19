@@ -62,6 +62,18 @@ const LIMITERS = [
   { name: "aiDetectionScanLimiter", key: "aiDetectionScan", limit: 10, windowMinutes: 60 },
   { name: "mrmIngestionLimiter", key: "mrmIngestion", limit: 5000, windowMinutes: 15 },
   { name: "webhookLimiter", key: "webhook", limit: 100, windowMinutes: 1 },
+  { name: "loginLimiter", key: "login", limit: 5, windowMinutes: 1 },
+  { name: "passwordResetEmailLimiter", key: "passwordResetEmail", limit: 5, windowMinutes: 1 },
+  { name: "inviteEmailLimiter", key: "inviteEmail", limit: 5, windowMinutes: 1 },
+  { name: "invitationResendLimiter", key: "invitationResend", limit: 5, windowMinutes: 1 },
+  { name: "slackWebhookCreateLimiter", key: "slackWebhookCreate", limit: 10, windowMinutes: 60 },
+  {
+    name: "slackWorkspaceCreateLimiter",
+    key: "slackWorkspaceCreate",
+    limit: 10,
+    windowMinutes: 60,
+  },
+  { name: "healthCheckLimiter", key: "healthCheck", limit: 1000, windowMinutes: 1 },
 ] as const;
 
 describe.each(LIMITERS)("$name (production config)", ({ key, limit, windowMinutes }) => {
@@ -127,9 +139,8 @@ describe.each(LIMITERS)("$name (production config)", ({ key, limit, windowMinute
  * the endpoints authLimiter actually guards (/register, /reset-password,
  * /chng-pass/:id).
  *
- * Note this is NOT the login endpoint: POST /api/users/login is guarded by a
- * separate inline `loginLimiter` (5/min) in routes/user.route.ts. Covering that one
- * requires extracting it into the middleware module — tracked as Phase 5.
+ * Note this is NOT the login endpoint: POST /api/users/login is guarded by
+ * `loginLimiter` (5/min), which has its own brute-force block below.
  */
 describe("authLimiter brute-force protection (5 attempts / 15 minutes)", () => {
   const config = PROD.auth;
@@ -190,6 +201,60 @@ describe("authLimiter brute-force protection (5 attempts / 15 minutes)", () => {
   it("lets the blocked client back in after the 15-minute window", async () => {
     freezeClock();
     advancePastWindow(15);
+
+    const res = await attempt(ATTACKER);
+    expect(res.status).toBe(200);
+    expect(res.headers["ratelimit-remaining"]).toBe("4");
+  });
+});
+
+/**
+ * The same scenario on the login endpoints themselves, which are guarded by
+ * loginLimiter rather than authLimiter. Shorter window (1 minute, not 15) because
+ * credential stuffing is fast and locking a real user out for fifteen minutes after
+ * a mistyped password is its own kind of outage.
+ */
+describe("loginLimiter brute-force protection (5 attempts / minute)", () => {
+  const config = PROD.login;
+  const ATTACKER = "198.51.100.30";
+  let limited: LimitedApp;
+
+  const attempt = (ip: string) =>
+    supertest(limited.server)
+      .post("/api/users/login")
+      .set("X-Forwarded-For", ip)
+      .send({ email: "victim@example.com", password: "guess" });
+
+  beforeAll(() => {
+    limited = createLimitedApp(createRateLimiter(config));
+  });
+
+  afterAll(async () => {
+    await limited.close();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("allows five attempts and blocks the sixth", async () => {
+    for (let n = 1; n <= 5; n++) {
+      const res = await attempt(ATTACKER);
+      expect(res.status).toBe(200);
+      expect(res.headers["ratelimit-limit"]).toBe("5");
+      expect(res.headers["ratelimit-remaining"]).toBe(String(5 - n));
+    }
+
+    expectLimitedResponse(await attempt(ATTACKER), {
+      limit: 5,
+      windowMinutes: 1,
+      message: config.message,
+    });
+  });
+
+  it("lets the client back in after a minute, not fifteen", async () => {
+    freezeClock();
+    advancePastWindow(1);
 
     const res = await attempt(ATTACKER);
     expect(res.status).toBe(200);
