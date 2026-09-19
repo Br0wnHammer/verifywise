@@ -36,7 +36,7 @@ export const isNonProduction =
 /**
  * Rate limit configuration with time window and request limits
  */
-interface RateLimitConfig {
+export interface RateLimitConfig {
   windowMinutes: number;
   maxRequests: number;
   message: string;
@@ -46,9 +46,17 @@ interface RateLimitConfig {
 }
 
 /**
- * Predefined rate limit configurations for different endpoint types
+ * Builds the rate limit configurations for every endpoint type.
+ *
+ * Parameterised on `relaxed` rather than reading `isNonProduction` directly so the
+ * PRODUCTION limits can be built inside a test process (which necessarily runs with
+ * NODE_ENV=test). Without this, a brute-force test would silently exercise the
+ * relaxed dev limits — 1000 auth attempts instead of 5 — and pass without ever
+ * reaching the limit it claims to verify.
+ *
+ * @param relaxed - true to apply the loosened dev/test limits, false for production
  */
-const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
+export const buildRateLimitConfigs = (relaxed: boolean): Record<string, RateLimitConfig> => ({
   fileOperations: {
     windowMinutes: 15,
     maxRequests: 100,
@@ -61,14 +69,14 @@ const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
   // a developer hammering localhost from one IP is not locked out.
   generalApi: {
     windowMinutes: 1,
-    maxRequests: isNonProduction ? 100000 : 300,
+    maxRequests: relaxed ? 100000 : 300,
     message: "Too many requests from this IP, please slow down and retry",
   },
   auth: {
     windowMinutes: 15,
     // Strict by default to prevent brute force; relaxed only in explicit
     // dev/test so a single developer on one localhost IP is not locked out.
-    maxRequests: isNonProduction ? 1000 : 5,
+    maxRequests: relaxed ? 1000 : 5,
     message: "Too many authentication attempts from this IP, please try again after 15 minutes",
   },
   // Token refresh happens automatically and legitimately many times in a normal
@@ -76,7 +84,7 @@ const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
   // brute-force limiter. It still requires a valid refresh-token cookie.
   tokenRefresh: {
     windowMinutes: 15,
-    maxRequests: isNonProduction ? 1000 : 60,
+    maxRequests: relaxed ? 1000 : 60,
     message: "Too many token refresh attempts from this IP, please try again after 15 minutes",
   },
   aiDetectionScan: {
@@ -93,7 +101,7 @@ const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
   // runaway token must not 429 every other tenant on the same egress IP.
   mrmIngestion: {
     windowMinutes: 15,
-    maxRequests: isNonProduction ? 100000 : 5000,
+    maxRequests: relaxed ? 100000 : 5000,
     message: "Too many metric ingestion requests for this token, please slow down and retry",
     keyGenerator: (req) => {
       const tokenId = (req as { mrmIngestionToken?: { tokenId?: number } }).mrmIngestionToken
@@ -106,10 +114,15 @@ const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
   },
   webhook: {
     windowMinutes: 1,
-    maxRequests: isNonProduction ? 100000 : 100,
+    maxRequests: relaxed ? 100000 : 100,
     message: "Too many webhook requests from this IP, please slow down and retry",
   },
-};
+});
+
+/**
+ * The configurations the running process actually uses, resolved once from NODE_ENV.
+ */
+export const RATE_LIMIT_CONFIGS = buildRateLimitConfigs(isNonProduction);
 
 /**
  * Creates a standardized rate limit error handler
