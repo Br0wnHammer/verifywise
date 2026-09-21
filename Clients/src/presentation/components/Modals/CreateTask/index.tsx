@@ -147,7 +147,7 @@ const CreateTask: FC<ICreateTaskProps> = ({
             );
         })(),
         categories: initialData.categories || [],
-        entity_links: (initialData as any).entity_links || [],
+        entity_links: initialData.entity_links || [],
       });
     } else {
       setValues(initialState);
