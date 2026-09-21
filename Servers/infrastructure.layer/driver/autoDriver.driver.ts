@@ -585,6 +585,87 @@ export async function insertMockData(
       );
 
       // =====================================================
+      // Project risks for the additional use cases
+      // =====================================================
+      await createRiskQuery(
+        {
+          risk_name: "Source code and secret leakage via AI coding assistant",
+          risk_owner: userId,
+          ai_lifecycle_phase: "Deployment & integration",
+          risk_description:
+            "Developers may paste proprietary source code, credentials, or secrets into the AI coding assistant, where content may be transmitted to or retained by an external model provider, exposing intellectual property outside the organization's control.",
+          risk_category: ["Strategic risk"],
+          impact:
+            "Loss of intellectual property, exposure of credentials leading to unauthorized system access, and potential breach of confidentiality obligations with customers and partners.",
+          assessment_mapping: "",
+          controls_mapping: "",
+          likelihood: "Likely",
+          severity: "Major",
+          risk_level_autocalculated: "High risk",
+          review_notes:
+            "Route assistant traffic through the AI gateway and confirm provider retention/training is disabled.",
+          mitigation_status: "In Progress",
+          current_risk_level: "High risk",
+          deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          mitigation_plan:
+            "Enforce an approved-tools policy for the coding assistant, enable data-loss-prevention scanning on assistant traffic, and disable provider retention/training on submitted content. Train developers on what must never be pasted and provide sanctioned internal alternatives for sensitive repositories.",
+          implementation_strategy:
+            "Roll out DLP rules and provider retention controls, publish the approved-tools policy, and deliver secure-use training to all engineers before general availability.",
+          mitigation_evidence_document: "",
+          likelihood_mitigation: "Unlikely",
+          risk_severity: "Moderate",
+          final_risk_level: "Medium risk",
+          risk_approval: userId,
+          approval_status: "In Progress",
+          date_of_assessment: new Date(Date.now()),
+          projects: [codingAssistantProject.id!],
+          frameworks: [1], // EU AI Act framework
+          is_demo: true,
+        },
+        organizationId,
+        transaction,
+      );
+
+      await createRiskQuery(
+        {
+          risk_name: "Forecast data drift degrading demand accuracy",
+          risk_owner: userId,
+          ai_lifecycle_phase: "Monitoring & maintenance",
+          risk_description:
+            "Changes in demand patterns, supplier catalog feeds, or seasonality can cause the forecasting model to drift, producing inaccurate predictions that drive stockouts or overstock and erode planner trust in the system.",
+          risk_category: ["Operational risk"],
+          impact:
+            "Inaccurate replenishment recommendations, increased carrying cost and lost sales, and reduced confidence in the forecasting system.",
+          assessment_mapping: "",
+          controls_mapping: "",
+          likelihood: "Possible",
+          severity: "Major",
+          risk_level_autocalculated: "High risk",
+          review_notes:
+            "Monitor forecast error against actuals and alert on drift beyond agreed thresholds.",
+          mitigation_status: "In Progress",
+          current_risk_level: "High risk",
+          deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          mitigation_plan:
+            "Track forecast accuracy and input-feed stability, set drift-detection alerts, schedule periodic retraining, and keep automated ordering within human-approved thresholds until accuracy recovers.",
+          implementation_strategy:
+            "Instrument drift monitoring on inputs and forecast error, define retraining triggers, and require human sign-off on ordering when drift alerts fire.",
+          mitigation_evidence_document: "",
+          likelihood_mitigation: "Unlikely",
+          risk_severity: "Moderate",
+          final_risk_level: "Medium risk",
+          risk_approval: userId,
+          approval_status: "In Progress",
+          date_of_assessment: new Date(Date.now()),
+          projects: [demandForecastProject.id!],
+          frameworks: [1], // EU AI Act framework
+          is_demo: true,
+        },
+        organizationId,
+        transaction,
+      );
+
+      // =====================================================
       // AI apps (inventory)
       // =====================================================
       await createAiAppQuery(
@@ -655,7 +736,7 @@ export async function insertMockData(
           is_demo: true,
         } as unknown as ModelInventoryModel,
         organizationId,
-        [],
+        [codingAssistantProject.id!],
         [],
         transaction,
       );
@@ -682,7 +763,7 @@ export async function insertMockData(
           is_demo: true,
         } as unknown as ModelInventoryModel,
         organizationId,
-        [],
+        [demandForecastProject.id!],
         [],
         transaction,
       );
