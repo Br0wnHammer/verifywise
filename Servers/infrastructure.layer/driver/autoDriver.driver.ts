@@ -16,6 +16,7 @@ import { createNewModelInventoryQuery } from "../../utils/modelInventory.utils";
 import { createNewDatasetQuery } from "../../utils/dataset.utils";
 
 import { insertShadowAiDemoData, deleteShadowAiDemoData } from "./shadowAiDemoData";
+import { insertAiGatewayDemoData, deleteAiGatewayDemoData } from "./aiGatewayDemoData";
 import { addVendorProjects } from "../../utils/vendor.utils";
 import { ProjectModel } from "../../domain.layer/models/project/project.model";
 import { HighRiskRole } from "../../domain.layer/enums/high-risk-role.enum";
@@ -953,6 +954,9 @@ export async function insertMockData(
     // Seed Shadow AI demo data (tools, events, rollups, rules, alerts)
     await insertShadowAiDemoData(organizationId, userId, transaction);
 
+    // Seed AI Gateway demo data (endpoints, virtual keys, ~30 days of spend logs)
+    await insertAiGatewayDemoData(organizationId, userId, transaction);
+
     await transaction.commit();
   } catch (error) {
     await transaction.rollback();
@@ -965,6 +969,9 @@ export async function deleteMockData(organizationId: number) {
   try {
     // Clean all Shadow AI demo data first (no FK ties to governance tables)
     await deleteShadowAiDemoData(organizationId, transaction);
+
+    // Clean AI Gateway demo data (spend logs, virtual keys, endpoints)
+    await deleteAiGatewayDemoData(organizationId, transaction);
 
     // =====================================================
     // DELETE ORDER MATTERS - respect foreign key constraints
