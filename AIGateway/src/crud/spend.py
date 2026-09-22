@@ -481,7 +481,7 @@ async def get_spend_logs_detail(
             sl.model,
             sl.status_code,
             CASE WHEN sl.virtual_key_id IS NOT NULL THEN 'virtual-key' ELSE 'playground' END AS source,
-            sl.cost_usd AS cost,
+            CASE WHEN sl.cost_usd = 'NaN'::numeric THEN 0 ELSE sl.cost_usd END AS cost,
             sl.prompt_tokens,
             sl.completion_tokens,
             sl.total_tokens,

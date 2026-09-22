@@ -18,6 +18,7 @@ from sqlalchemy import text
 
 from config import settings
 from database.db import get_db
+from services.cost_service import _safe_cost
 from services.guardrail_service import scan_text
 from utils.encryption import decrypt as decrypt_api_key  # noqa: F401 — re-export
 from utils.redis import get_redis as _get_redis
@@ -198,7 +199,11 @@ async def check_org_budget(organization_id: int, estimated_cost: float) -> bool:
 
 async def reconcile_budget(organization_id: int, estimated_cost: float, actual_cost: float):
     """Adjust budget after request completes: remove estimate, add actual."""
-    adjustment = actual_cost - estimated_cost
+    # Coerce non-finite costs to 0.0 so a NaN never reaches current_spend_usd —
+    # GREATEST(0, current_spend_usd + NaN) yields NaN in Postgres (NaN sorts as
+    # the greatest numeric), which would permanently corrupt the counter and
+    # make hard budget checks (nan >= limit -> False) stop blocking requests.
+    adjustment = _safe_cost(actual_cost) - _safe_cost(estimated_cost)
     if abs(adjustment) < 0.000001:
         return
     async with get_db() as db:
@@ -246,6 +251,12 @@ async def log_spend(
     response_text: Optional[str] = None,
 ):
     """Insert a spend log entry and update virtual key spend."""
+    # Sanitize at the write boundary: every cost producer (streaming and
+    # non-streaming completions, embeddings, cache hits) funnels through here,
+    # and litellm's cost helpers can return NaN without raising for models it
+    # can't price. A NaN persisted to cost_usd breaks the spend dashboards and,
+    # via the virtual-key/budget counters, silently defeats budget enforcement.
+    cost_usd = _safe_cost(cost_usd)
     try:
         async with get_db() as db:
             await db.execute(
