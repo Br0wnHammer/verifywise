@@ -14,7 +14,7 @@ async def list_runs(org_id: int, limit: int = 50, offset: int = 0) -> dict:
             SELECT agent_run_id,
                    COUNT(*) AS model_count,
                    COALESCE(SUM(total_tokens), 0) AS tokens,
-                   COALESCE(SUM(cost_usd), 0) AS cost,
+                   COALESCE(SUM(cost_usd) FILTER (WHERE cost_usd <> 'NaN'::numeric), 0) AS cost,
                    MIN(created_at) AS first_at,
                    MAX(created_at) AS last_at
             FROM ai_gateway_spend_logs
@@ -54,7 +54,7 @@ async def list_runs(org_id: int, limit: int = 50, offset: int = 0) -> dict:
             SELECT agent_run_id,
                    COUNT(*) AS model_count,
                    COALESCE(SUM(total_tokens), 0) AS tokens,
-                   COALESCE(SUM(cost_usd), 0) AS cost,
+                   COALESCE(SUM(cost_usd) FILTER (WHERE cost_usd <> 'NaN'::numeric), 0) AS cost,
                    MIN(created_at) AS first_at,
                    MAX(created_at) AS last_at
             FROM ai_gateway_spend_logs
