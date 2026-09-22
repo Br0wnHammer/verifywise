@@ -255,17 +255,6 @@ export const aiAdvisorEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
-    path: '/advisor/tools/roadmap',
-    summary: "Get Tools Roadmap",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "AI Advisor",
-  },
-  {
-    method: 'GET',
     path: '/advisor/conversations/{domain}',
     summary: "List conversations for a domain",
     description: "Returns all conversations the current user has in the given advisor domain, most recent first. Lightweight summaries only — no message bodies.",
@@ -9813,6 +9802,18 @@ export const superAdminEndpoints: Endpoint[] = [
     tag: "Super Admin",
   },
   {
+    method: 'POST',
+    path: '/super-admin/organizations-with-user',
+    summary: "Create Org With User",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
     method: 'PATCH',
     path: '/super-admin/organizations/{id}',
     summary: "Update Org",
@@ -9862,6 +9863,18 @@ export const superAdminEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/super-admin/users/exists',
+    summary: "Email Exists",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'GET',
     path: '/super-admin/users',
     summary: "List All Users",
     description: "Requires role: Super Admin",
@@ -9887,6 +9900,18 @@ export const superAdminEndpoints: Endpoint[] = [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
       { status: 403, description: "Forbidden - insufficient role" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'POST',
+    path: '/super-admin/organizations/{id}/users',
+    summary: "Create User In Org",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Super Admin",

@@ -56,6 +56,12 @@ async def shutdown_redis():
 
 app = FastAPI(on_shutdown=[shutdown_redis])
 
+
+@app.get("/health")
+async def health():
+    """Liveness probe used by the Docker HEALTHCHECK and k8s deployments."""
+    return {"status": "ok"}
+
 # enable CORS
 origins = [os.environ.get("BACKEND_URL") or "http://localhost:3000"]
 

@@ -8,8 +8,10 @@
  * @returns `true` if the email address is valid, `false` otherwise.
  */
 
-import validator from "validator";
+// Subpath import: the full `validator` package is ~85 KiB gz (locale data for
+// tax IDs, postal codes, etc.); only isEmail is needed here.
+import isEmail from "validator/lib/isEmail";
 
 export function isValidEmail(email: string): boolean {
-  return validator.isEmail(email);
+  return isEmail(email);
 }

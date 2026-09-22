@@ -1,7 +1,7 @@
 import { IconButton, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { Info as GreyCircleInfoIcon } from "lucide-react";
-import { useUserGuideSidebarContext } from "../UserGuide";
+import { useUserGuideSidebarContext } from "../UserGuide/UserGuideSidebarContext";
 
 interface HelperIconProps {
   /** Path to the User Guide article (e.g., "ai-governance/model-inventory") */

@@ -67,12 +67,7 @@ export interface FetchRisksParams {
     | "Canceled"
     | "Requires review";
   riskLevel?:
-    | "No risk"
-    | "Very low risk"
-    | "Low risk"
-    | "Medium risk"
-    | "High risk"
-    | "Very high risk";
+    "No risk" | "Very low risk" | "Low risk" | "Medium risk" | "High risk" | "Very high risk";
   aiLifecyclePhase?: string;
   limit?: number;
 }

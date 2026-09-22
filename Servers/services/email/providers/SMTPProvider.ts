@@ -1,8 +1,9 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
+import type SMTPPool from "nodemailer/lib/smtp-pool";
 import { EmailProvider, EmailOptions, EmailResult, SMTPConfig } from "../types";
 
 export class SMTPProvider implements EmailProvider {
-  private transporter: nodemailer.Transporter;
+  private transporter: Transporter<SMTPPool.SentMessageInfo>;
   private config: SMTPConfig;
 
   constructor(config: SMTPConfig) {

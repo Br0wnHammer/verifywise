@@ -18,7 +18,7 @@ import {
   FileText as FileIcon,
   Eye as ViewIcon,
 } from "lucide-react";
-import * as LucideIcons from "lucide-react";
+import type * as LucideIcons from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import dayjs from "dayjs";
 import Select from "../../Inputs/Select";

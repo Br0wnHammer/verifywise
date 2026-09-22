@@ -28,14 +28,7 @@ export interface RuleEvaluationResult {
  */
 export interface ApprovalFacts {
   operation_type:
-    | "read"
-    | "create"
-    | "update"
-    | "delete"
-    | "archive"
-    | "approve"
-    | "review"
-    | "submit";
+    "read" | "create" | "update" | "delete" | "archive" | "approve" | "review" | "submit";
   entity_type?: string;
   entity_count: number;
   risk_level: "info" | "warning" | "danger";

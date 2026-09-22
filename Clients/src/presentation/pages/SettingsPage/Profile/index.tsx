@@ -10,7 +10,8 @@ import {
 import { useTheme } from "@mui/material";
 import Field from "../../../components/Inputs/Field";
 import { checkStringValidation } from "../../../../application/validations/stringValidation";
-import validator from "validator";
+// Subpath import: avoids bundling the full `validator` package (~85 KiB gz).
+import isEmail from "validator/lib/isEmail";
 import { logEngine } from "../../../../application/tools/log.engine";
 import ConfirmationModal from "../../../components/Dialogs/ConfirmationModal";
 import Alert from "../../../components/Alert";
@@ -305,7 +306,7 @@ const ProfileForm: React.FC = () => {
     const newEmail = e.target.value;
     setEmail(newEmail);
 
-    if (!validator.isEmail(newEmail)) {
+    if (!isEmail(newEmail)) {
       setEmailError("Invalid email address");
     } else {
       setEmailError(null);

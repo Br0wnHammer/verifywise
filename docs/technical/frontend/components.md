@@ -94,7 +94,7 @@ Toggle between multiple options with animated background.
 
 ### Field
 
-Text input with label, validation, and helper text.
+Text input with label, validation, and helper text. When `error` is set, the input is marked `aria-invalid` and linked to the error text via `aria-errormessage`.
 
 ```tsx
 // File: Clients/src/presentation/components/Inputs/Field/index.tsx

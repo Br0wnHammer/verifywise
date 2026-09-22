@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useParams, useNavigate, useLocation } from "react-router";
+import { lazyRoute, LazyFallback } from "../../../application/utils/lazyRoute";
 import { storageService } from "../../../infrastructure/storage";
 import {
   Box,
@@ -78,10 +79,18 @@ import { ReactComponent as GeminiLogo } from "../../assets/icons/gemini_logo.svg
 import { ReactComponent as MistralLogo } from "../../assets/icons/mistral_logo.svg";
 import { ReactComponent as XAILogo } from "../../assets/icons/xai_logo.svg";
 import { ReactComponent as OpenRouterLogo } from "../../assets/icons/openrouter_logo.svg";
-import { ReactComponent as OllamaLogo } from "../../assets/icons/ollama_logo.svg";
 import { ReactComponent as FolderFilledIcon } from "../../assets/icons/folder_filled.svg";
 
 // Large SVGs loaded from public/ to avoid bundling
+const OllamaLogo = (props: React.SVGProps<SVGSVGElement>) => (
+  <img
+    src="/assets/icons/ollama_logo.svg"
+    alt="Ollama"
+    width={props.width || 24}
+    height={props.height || 24}
+    style={{ display: "inline-block", ...props.style }}
+  />
+);
 const HuggingFaceLogo = (props: React.SVGProps<SVGSVGElement>) => (
   <img
     src="/assets/icons/huggingface_logo.svg"
@@ -102,19 +111,23 @@ const BuildIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 import { ENV_VARs } from "../../../../env.vars";
 
-// Tab components
-import ProjectsList from "./ProjectsList";
-import ProjectOverview from "./ProjectOverview";
-import ProjectExperiments from "./ProjectExperiments";
-import { ProjectDatasets } from "./ProjectDatasets";
-import ProjectScorers from "./ProjectScorers";
-import ModelsPage from "./ModelsPage";
-import ExperimentDetailContent from "./ExperimentDetailContent";
-import PlaygroundPage from "./PlaygroundPage";
-import ArenaPage from "./ArenaPage";
-import BiasAuditsList from "./BiasAuditsList";
-import BiasAuditDetail from "./BiasAuditDetail";
-import ReportPage from "./ReportPage";
+// Tab components — loaded per tab so the dashboard shell stays lean and
+// heavy subtrees (experiment detail with katex, arena, bias audits) only
+// ship when the user navigates to them.
+const ProjectsList = lazyRoute(() => import("./ProjectsList"));
+const ProjectOverview = lazyRoute(() => import("./ProjectOverview"));
+const ProjectExperiments = lazyRoute(() => import("./ProjectExperiments"));
+const ProjectDatasets = lazyRoute(() =>
+  import("./ProjectDatasets").then((m) => ({ default: m.ProjectDatasets })),
+);
+const ProjectScorers = lazyRoute(() => import("./ProjectScorers"));
+const ModelsPage = lazyRoute(() => import("./ModelsPage"));
+const ExperimentDetailContent = lazyRoute(() => import("./ExperimentDetailContent"));
+const PlaygroundPage = lazyRoute(() => import("./PlaygroundPage"));
+const ArenaPage = lazyRoute(() => import("./ArenaPage"));
+const BiasAuditsList = lazyRoute(() => import("./BiasAuditsList"));
+const BiasAuditDetail = lazyRoute(() => import("./BiasAuditDetail"));
+const ReportPage = lazyRoute(() => import("./ReportPage"));
 import type { DeepEvalProject } from "./types";
 
 // Track if Evals dashboard has been loaded before (persists across module switches)
@@ -1886,89 +1899,99 @@ export default function EvalsDashboard() {
           </Box>
         ) : !projectId ? (
           /* No project selected - show projects list */
-          <ProjectsList />
+          <Suspense fallback={<LazyFallback />}>
+            <ProjectsList />
+          </Suspense>
         ) : (
           /* Project selected - show tab content */
-          <>
-            {tab === "overview" && (
-              <ProjectOverview
-                projectId={projectId}
-                orgId={orgId}
-                project={currentProject}
-                onProjectUpdate={setCurrentProject}
-                onViewExperiment={(experimentId) => {
-                  setSelectedExperimentId(experimentId);
-                  setTab("experiments");
-                  navigate(`${location.pathname}#experiments`);
-                }}
-              />
-            )}
-
-            {tab === "experiments" &&
-              (selectedExperimentId ? (
-                <ExperimentDetailContent
-                  experimentId={selectedExperimentId}
-                  projectId={projectId || ""}
-                  onBack={() => setSelectedExperimentId(null)}
-                />
-              ) : currentProject ? (
-                <ProjectExperiments
+          <Suspense fallback={<LazyFallback />}>
+            <>
+              {tab === "overview" && (
+                <ProjectOverview
                   projectId={projectId}
                   orgId={orgId}
-                  onViewExperiment={(experimentId) => setSelectedExperimentId(experimentId)}
-                  useCase={(currentProject.useCase || "chatbot") as "chatbot" | "rag" | "agent"}
+                  project={currentProject}
+                  onProjectUpdate={setCurrentProject}
+                  onViewExperiment={(experimentId) => {
+                    setSelectedExperimentId(experimentId);
+                    setTab("experiments");
+                    navigate(`${location.pathname}#experiments`);
+                  }}
                 />
-              ) : null)}
+              )}
 
-            {tab === "datasets" && (
-              <ProjectDatasets projectId={projectId} orgId={orgId || currentProject?.orgId || ""} />
-            )}
+              {tab === "experiments" &&
+                (selectedExperimentId ? (
+                  <ExperimentDetailContent
+                    experimentId={selectedExperimentId}
+                    projectId={projectId || ""}
+                    onBack={() => setSelectedExperimentId(null)}
+                  />
+                ) : currentProject ? (
+                  <ProjectExperiments
+                    projectId={projectId}
+                    orgId={orgId}
+                    onViewExperiment={(experimentId) => setSelectedExperimentId(experimentId)}
+                    useCase={(currentProject.useCase || "chatbot") as "chatbot" | "rag" | "agent"}
+                  />
+                ) : null)}
 
-            {tab === "scorers" && projectId && (
-              <ProjectScorers projectId={projectId} orgId={orgId || currentProject?.orgId || ""} />
-            )}
-
-            {tab === "models" && (
-              <ModelsPage
-                orgId={orgId || currentProject?.orgId || ""}
-                openAddModal={openModelsAddModal}
-                onAddModalConsumed={() => setOpenModelsAddModal(false)}
-              />
-            )}
-
-            {tab === "arena" && <ArenaPage orgId={orgId || currentProject?.orgId || ""} />}
-
-            {tab === "playground" && (
-              <PlaygroundPage
-                orgId={orgId || currentProject?.orgId || ""}
-                onNavigateToModels={() => {
-                  setOpenModelsAddModal(true);
-                  setTab("models");
-                }}
-              />
-            )}
-
-            {tab === "bias-audits" &&
-              (selectedBiasAuditId ? (
-                <BiasAuditDetail
-                  auditId={selectedBiasAuditId}
-                  onBack={() => setSelectedBiasAuditId(null)}
-                />
-              ) : (
-                <BiasAuditsList
+              {tab === "datasets" && (
+                <ProjectDatasets
+                  projectId={projectId}
                   orgId={orgId || currentProject?.orgId || ""}
-                  onViewAudit={(id) => setSelectedBiasAuditId(id)}
                 />
-              ))}
+              )}
 
-            {tab === "reports" && (
-              <ReportPage
-                projectId={projectId}
-                projectName={currentProject?.name || ""}
-                orgId={orgId || currentProject?.orgId || ""}
-              />
-            )}
-          </>
+              {tab === "scorers" && projectId && (
+                <ProjectScorers
+                  projectId={projectId}
+                  orgId={orgId || currentProject?.orgId || ""}
+                />
+              )}
+
+              {tab === "models" && (
+                <ModelsPage
+                  orgId={orgId || currentProject?.orgId || ""}
+                  openAddModal={openModelsAddModal}
+                  onAddModalConsumed={() => setOpenModelsAddModal(false)}
+                />
+              )}
+
+              {tab === "arena" && <ArenaPage orgId={orgId || currentProject?.orgId || ""} />}
+
+              {tab === "playground" && (
+                <PlaygroundPage
+                  orgId={orgId || currentProject?.orgId || ""}
+                  onNavigateToModels={() => {
+                    setOpenModelsAddModal(true);
+                    setTab("models");
+                  }}
+                />
+              )}
+
+              {tab === "bias-audits" &&
+                (selectedBiasAuditId ? (
+                  <BiasAuditDetail
+                    auditId={selectedBiasAuditId}
+                    onBack={() => setSelectedBiasAuditId(null)}
+                  />
+                ) : (
+                  <BiasAuditsList
+                    orgId={orgId || currentProject?.orgId || ""}
+                    onViewAudit={(id) => setSelectedBiasAuditId(id)}
+                  />
+                ))}
+
+              {tab === "reports" && (
+                <ReportPage
+                  projectId={projectId}
+                  projectName={currentProject?.name || ""}
+                  orgId={orgId || currentProject?.orgId || ""}
+                />
+              )}
+            </>
+          </Suspense>
         )}
       </Box>
 

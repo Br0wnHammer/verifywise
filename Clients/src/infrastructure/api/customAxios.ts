@@ -27,8 +27,7 @@ import { ENV_VARs } from "../../../env.vars";
 import { clearAuthState, setAuthToken } from "../../application/redux/auth/authSlice";
 import { storageService } from "../storage";
 import { AlertProps } from "../../presentation/types/alert.types";
-import { translations, type Lang } from "../../i18n/translations";
-import { getLanguage } from "../../i18n/domTranslator";
+import { translateKey } from "../../i18n/domTranslator";
 import type {
   ApiErrorEnvelope,
   ApiSuccessEnvelope,
@@ -58,13 +57,9 @@ export const showAlert = (alert: AlertProps) => {
 };
 
 // Lightweight translation helper for non-React infrastructure code.
-// Looks up the current language from the DOM translator and falls back to the
-// English source key when no translation is available.
-const translate = (key: string): string => {
-  const lang: Lang = getLanguage();
-  if (lang === "en") return key;
-  return translations[lang]?.[key] || key;
-};
+// Reads the dictionary currently loaded by the DOM translator and falls back
+// to the English source key when no translation is available.
+const translate = (key: string): string => translateKey(key);
 
 // Extract the human-readable detail from the standardized error envelope:
 // 1xx-4xx responses carry it in `data` (a string, or an object with

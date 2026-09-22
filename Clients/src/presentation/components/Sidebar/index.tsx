@@ -17,14 +17,13 @@ import {
   Bot,
   Network,
   Database,
-  Map,
   Rocket,
 } from "lucide-react";
 import { VerifyWiseContext } from "../../../application/contexts/VerifyWise.context";
 import useMultipleOnScreen from "../../../application/hooks/useMultipleOnScreen";
 import { getAllTasks } from "../../../application/repository/task.repository";
 import { TaskStatus } from "../../../domain/enums/task.enum";
-import { useUserGuideSidebarContext } from "../UserGuide";
+import { useUserGuideSidebarContext } from "../UserGuide/UserGuideSidebarContext";
 import SidebarShell, { SidebarMenuItem, SidebarMenuGroup } from "./SidebarShell";
 
 import "./index.css";
@@ -205,12 +204,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           label: "Incident management",
           icon: <AlertCircle size={16} strokeWidth={1.5} />,
           path: "/ai-incident-managements",
-        },
-        {
-          id: "advisor-roadmap",
-          label: "AI Advisor roadmap",
-          icon: <Map size={16} strokeWidth={1.5} />,
-          path: "/advisor-roadmap",
         },
       ],
     },

@@ -3,11 +3,10 @@ import { Route, Navigate } from "react-router";
 import { lazyRoute, LazyFallback } from "../utils/lazyRoute";
 import { SHOW_AI_GATEWAY_PROMPTS } from "./featureFlags";
 
-// Eager imports — app shell, route guard, and Use cases page (mounts with layout for table skeleton UX)
+// Eager imports — app shell and route guard
 import Dashboard from "../../presentation/containers/Dashboard";
 import SuperAdminLayout from "../../presentation/containers/SuperAdminLayout";
 import ProtectedRoute from "../../presentation/components/ProtectedRoute";
-import VWHome from "../../presentation/pages/Home/1.0Home";
 
 // ── Authentication routes ─────────────────────────────────────────────
 const Login = lazyRoute(() => import("../../presentation/pages/Authentication/Login"));
@@ -31,6 +30,7 @@ const RegisterUser = lazyRoute(
 );
 
 // ── Core dashboard routes ─────────────────────────────────────────────
+const VWHome = lazyRoute(() => import("../../presentation/pages/Home/1.0Home"));
 const Vendors = lazyRoute(() => import("../../presentation/pages/Vendors"));
 const Setting = lazyRoute(() => import("../../presentation/pages/SettingsPage"));
 const Organization = lazyRoute(() => import("../../presentation/pages/SettingsPage/Organization"));
@@ -73,7 +73,6 @@ const DatasetEditorPage = lazyRoute(
 const AgentDiscovery = lazyRoute(() => import("../../presentation/pages/AgentDiscovery"));
 const ModelInventory = lazyRoute(() => import("../../presentation/pages/ModelInventory"));
 const AIApps = lazyRoute(() => import("../../presentation/pages/AIApps"));
-const AIAdvisorRoadmap = lazyRoute(() => import("../../presentation/pages/AIAdvisorRoadmap"));
 const ModelLifecycleDetail = lazyRoute(
   () => import("../../presentation/pages/ModelInventory/ModelLifecycleDetail"),
 );
@@ -356,7 +355,14 @@ export const createRoutes = (
         </Suspense>
       }
     />
-    <Route path="/overview" element={<VWHome />} />
+    <Route
+      path="/overview"
+      element={
+        <Suspense fallback={<LazyFallback />}>
+          <VWHome />
+        </Suspense>
+      }
+    />
     <Route
       path="/framework/:tab?"
       element={
@@ -593,14 +599,6 @@ export const createRoutes = (
       element={
         <Suspense fallback={<LazyFallback />}>
           <AIApps />
-        </Suspense>
-      }
-    />
-    <Route
-      path="/advisor-roadmap"
-      element={
-        <Suspense fallback={<LazyFallback />}>
-          <AIAdvisorRoadmap />
         </Suspense>
       }
     />

@@ -10,7 +10,7 @@ vi.mock("../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({ userRoleName: mockUserRoleName }),
 }));
 
-vi.mock("../../../components/UserGuide", () => ({
+vi.mock("../../../components/UserGuide/UserGuideSidebarContext", () => ({
   useUserGuideSidebarContext: () => ({ open: mockOpenUserGuide }),
 }));
 

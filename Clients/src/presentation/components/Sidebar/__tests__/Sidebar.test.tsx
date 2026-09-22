@@ -10,7 +10,7 @@ vi.mock("../../../../application/repository/task.repository", () => ({
   getAllTasks: vi.fn().mockResolvedValue({ data: { tasks: [] } }),
 }));
 
-vi.mock("../../UserGuide", () => ({
+vi.mock("../../UserGuide/UserGuideSidebarContext", () => ({
   useUserGuideSidebarContext: () => ({
     open: vi.fn(),
     openTab: vi.fn(),

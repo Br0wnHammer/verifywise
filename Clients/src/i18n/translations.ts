@@ -724,6 +724,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Implemented": "Umgesetzt",
     "Investigating": "In Untersuchung",
     "Mitigated": "Gemindert",
+    "Emergency action": "Notfallmaßnahme",
+    "Suspended": "Ausgesetzt",
     "Planned": "Geplant",
     "Planning": "Planung",
     "Production": "Produktion",
@@ -1058,6 +1060,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Deleted only": "Nur gelöschte",
 
     // Empty / loading / error
+    "Loading": "Wird geladen",
     "Loading...": "Wird geladen...",
     "Loading agents...": "Agenten werden geladen...",
     "Loading dashboard": "Dashboard wird geladen",
@@ -1169,6 +1172,9 @@ export const translations: Record<string, Record<string, string>> = {
     "AI project": "KI-Projekt",
     "AI Project": "KI-Projekt",
     "AI PROJECT": "KI-PROJEKT",
+    "Affected model": "Betroffenes Modell",
+    "AFFECTED MODEL": "BETROFFENES MODELL",
+    "Select model from inventory": "Modell aus dem Inventar auswählen",
     "Project": "Projekt",
     "Create a new use case by filling in the following details":
       "Erstellen Sie einen neuen Anwendungsfall, indem Sie die folgenden Angaben ausfüllen",
@@ -1630,6 +1636,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Close drawer": "Schublade schließen",
     "Close editor": "Editor schließen",
     "Close entity graph modal": "Entitätsgraph-Modal schließen",
+    "Close file preview": "Dateivorschau schließen",
     "Close icon": "Schließen-Symbol",
     "Close image lightbox": "Bild-Lightbox schließen",
     "Close notification": "Benachrichtigung schließen",
@@ -1744,6 +1751,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Edit declaration of conformity": "Konformitätserklärung bearbeiten",
     "Edit EU registration": "EU-Registrierung bearbeiten",
     "Edit EU registration details": "EU-Registrierungsdetails bearbeiten",
+    "Edit file": "Datei bearbeiten",
     "Edit file metadata": "Dateimetadaten bearbeiten",
     "Edit folder": "Ordner bearbeiten",
     "Edit project": "Projekt bearbeiten",
@@ -7022,8 +7030,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Monitor": "Überwachen",
     "Monitor and respond to incidents involving third-party components.":
       "Überwachen und reagieren Sie auf Vorfälle mit Drittanbieterkomponenten.",
-    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, and Closed. Track resolution progress and identify incidents requiring immediate attention.":
-      "Überwachen Sie Vorfälle über ihren Lebenszyklus: Offen, In Untersuchung, Gemildert und Geschlossen. Verfolgen Sie den Behebungsfortschritt und identifizieren Sie Vorfälle, die sofortige Aufmerksamkeit erfordern.",
+    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, Closed, Suspended, and Emergency action. Track resolution progress and identify incidents requiring immediate attention.":
+      "Überwachen Sie Vorfälle über ihren Lebenszyklus: Offen, In Untersuchung, Gemildert, Geschlossen, Ausgesetzt und Notfallmaßnahme. Verfolgen Sie den Behebungsfortschritt und identifizieren Sie Vorfälle, die sofortige Aufmerksamkeit erfordern.",
     "Monitor incidents related to AI systems and respond post-deployment.":
       "Überwachen Sie Vorfälle im Zusammenhang mit KI-Systemen und reagieren Sie nach der Bereitstellung.",
     "Monitor mitigation efforts in real-time": "Minderungsbemühungen in Echtzeit überwachen",
@@ -9265,26 +9273,13 @@ export const translations: Record<string, Record<string, string>> = {
     "View lifecycle": "Lebenszyklus anzeigen",
     "Workspace disconnected successfully!": "Workspace erfolgreich getrennt!",
     "Workspace status updated successfully!": "Workspace-Status erfolgreich aktualisiert!",
-    // AI Advisor roadmap
-    "AI Advisor roadmap": "KI-Berater-Roadmap",
-    "All domains": "Alle Domänen",
-    "All kinds": "Alle Typen",
-    "All phases": "Alle Phasen",
-    "Failed to load the advisor tools roadmap. Please try again.":
-      "Die Advisor-Tool-Roadmap konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
-    "Implemented under a different name": "Unter einem anderen Namen implementiert",
-    "No tools match your search or filter criteria.":
-      "Keine Tools entsprechen Ihren Such- oder Filterkriterien.",
-    "Overall progress": "Gesamtfortschritt",
-    "Planned tools": "Geplante Tools",
-    "Planned vs. implemented AI Advisor tools from the AI Implementation Plan.":
-      "Geplante vs. implementierte KI-Berater-Tools aus dem KI-Implementierungsplan.",
-    "Progress by domain": "Fortschritt nach Domäne",
-    "Progress by phase": "Fortschritt nach Phase",
-    "Read": "Lesen",
-    "Renamed": "Umbenannt",
-    "Search tools": "Tools suchen",
-    "Write": "Schreiben",
+    "Add first user": "Ersten Benutzer hinzufügen",
+    "Add user": "Benutzer hinzufügen",
+    "Create directly": "Direkt erstellen",
+    "Enter or generate": "Eingeben oder generieren",
+    "Invite via email": "Per E-Mail einladen",
+    "Must include an uppercase letter, a lowercase letter, and a digit. Minimum 8 characters.":
+      "Muss einen Großbuchstaben, einen Kleinbuchstaben und eine Ziffer enthalten. Mindestens 8 Zeichen.",
   },
 
   fr: {
@@ -9973,6 +9968,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Implemented": "Mis en œuvre",
     "Investigating": "En cours d'investigation",
     "Mitigated": "Atténué",
+    "Emergency action": "Action d'urgence",
+    "Suspended": "Suspendu",
     "Planned": "Planifié",
     "Planning": "Planification",
     "Production": "Production",
@@ -10138,6 +10135,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Annexes": "Annexes",
 
     // Empty / loading / error
+    "Loading": "Chargement",
     "Loading...": "Chargement...",
     "Loading dashboard": "Chargement du tableau de bord",
     "Loading datasets...": "Chargement des jeux de données...",
@@ -10639,6 +10637,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Deadline view": "Vue des échéances",
     "Operations view": "Vue opérationnelle",
     "AI PROJECT": "PROJET IA",
+    "Affected model": "Modèle affecté",
+    "AFFECTED MODEL": "MODÈLE AFFECTÉ",
+    "Select model from inventory": "Sélectionner un modèle dans l'inventaire",
     "How deadlines work": "Comment fonctionnent les échéances",
     "Open any task and set a due date. It will automatically appear in the correct deadline group on this view.":
       "Ouvrez une tâche et définissez une date d'échéance. Elle apparaîtra automatiquement dans le bon groupe d'échéance sur cette vue.",
@@ -11034,6 +11035,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Close drawer": "Fermer le tiroir",
     "Close editor": "Fermer l'éditeur",
     "Close entity graph modal": "Fermer la fenêtre du graphe d'entités",
+    "Close file preview": "Fermer l'aperçu du fichier",
     "Close icon": "Icône de fermeture",
     "Close image lightbox": "Fermer la lightbox d'image",
     "Close notification": "Fermer la notification",
@@ -11143,6 +11145,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Edit declaration of conformity": "Modifier la déclaration de conformité",
     "Edit EU registration": "Modifier l'enregistrement UE",
     "Edit EU registration details": "Modifier les détails d'enregistrement UE",
+    "Edit file": "Modifier le fichier",
     "Edit file metadata": "Modifier les métadonnées du fichier",
     "Edit folder": "Modifier le dossier",
     "Edit project": "Modifier le projet",
@@ -16238,8 +16241,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Monitor": "Surveiller",
     "Monitor and respond to incidents involving third-party components.":
       "Surveillez et répondez aux incidents impliquant des composants tiers.",
-    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, and Closed. Track resolution progress and identify incidents requiring immediate attention.":
-      "Surveillez les incidents tout au long de leur cycle de vie : ouverts, en cours d'enquête, atténués et clôturés. Suivez la progression de la résolution et identifiez les incidents nécessitant une attention immédiate.",
+    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, Closed, Suspended, and Emergency action. Track resolution progress and identify incidents requiring immediate attention.":
+      "Surveillez les incidents tout au long de leur cycle de vie : Ouverts, En cours d'investigation, Atténués, Clôturés, Suspendus et Action d'urgence. Suivez la progression de la résolution et identifiez les incidents nécessitant une attention immédiate.",
     "Monitor incidents related to AI systems and respond post-deployment.":
       "Surveillez les incidents liés aux systèmes IA et réagissez après le déploiement.",
     "Monitor mitigation efforts in real-time": "Surveiller les efforts d'atténuation en temps réel",
@@ -18480,26 +18483,13 @@ export const translations: Record<string, Record<string, string>> = {
     "Workspace disconnected successfully!": "Espace de travail déconnecté avec succès !",
     "Workspace status updated successfully!":
       "Statut de l'espace de travail mis à jour avec succès !",
-    // AI Advisor roadmap
-    "AI Advisor roadmap": "Feuille de route du conseiller IA",
-    "All domains": "Tous les domaines",
-    "All kinds": "Tous les types",
-    "All phases": "Toutes les phases",
-    "Failed to load the advisor tools roadmap. Please try again.":
-      "Échec du chargement de la feuille de route des outils du conseiller. Veuillez réessayer.",
-    "Implemented under a different name": "Implémenté sous un nom différent",
-    "No tools match your search or filter criteria.":
-      "Aucun outil ne correspond à vos critères de recherche ou de filtrage.",
-    "Overall progress": "Progression globale",
-    "Planned tools": "Outils planifiés",
-    "Planned vs. implemented AI Advisor tools from the AI Implementation Plan.":
-      "Outils du conseiller IA planifiés vs implémentés, issus du plan d'implémentation IA.",
-    "Progress by domain": "Progression par domaine",
-    "Progress by phase": "Progression par phase",
-    "Read": "Lecture",
-    "Renamed": "Renommé",
-    "Search tools": "Rechercher des outils",
-    "Write": "Écriture",
+    "Add first user": "Ajouter le premier utilisateur",
+    "Add user": "Ajouter un utilisateur",
+    "Create directly": "Créer directement",
+    "Enter or generate": "Saisir ou générer",
+    "Invite via email": "Inviter par e-mail",
+    "Must include an uppercase letter, a lowercase letter, and a digit. Minimum 8 characters.":
+      "Doit contenir une majuscule, une minuscule et un chiffre. Minimum 8 caractères.",
   },
   es: {
     "Deployment name": "Nombre del despliegue",
@@ -18978,6 +18968,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Implemented": "Implementado",
     "Investigating": "Investigando",
     "Mitigated": "Mitigado",
+    "Emergency action": "Acción de emergencia",
+    "Suspended": "Suspendido",
     "Planned": "Planificado",
     "Planning": "Planificación",
     "Production": "Producción",
@@ -19292,6 +19284,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Search workflows...": "Buscar flujos de trabajo...",
     "Find in document...": "Buscar en el documento...",
     "Deleted only": "Solo eliminados",
+    "Loading": "Cargando",
     "Loading...": "Cargando...",
     "Loading agents...": "Cargando agentes...",
     "Loading dashboard": "Cargando panel",
@@ -19377,6 +19370,9 @@ export const translations: Record<string, Record<string, string>> = {
     "AI project": "Proyecto de IA",
     "AI Project": "Proyecto de IA",
     "AI PROJECT": "PROYECTO DE IA",
+    "Affected model": "Modelo afectado",
+    "AFFECTED MODEL": "MODELO AFECTADO",
+    "Select model from inventory": "Seleccionar modelo del inventario",
     "Project": "Proyecto",
     "How deadlines work": "Cómo funcionan los plazos",
     "Tasks in a filterable table": "Tareas en una tabla filtrable",
@@ -19646,6 +19642,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Close drawer": "Cerrar panel",
     "Close editor": "Cerrar editor",
     "Close entity graph modal": "Cerrar la ventana del gráfico de entidades",
+    "Close file preview": "Cerrar vista previa del archivo",
     "Close icon": "Icono de cerrar",
     "Close image lightbox": "Cerrar lightbox de imagen",
     "Close notification": "Cerrar notificación",
@@ -19754,6 +19751,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Edit declaration of conformity": "Editar declaración de conformidad",
     "Edit EU registration": "Editar registro de la UE",
     "Edit EU registration details": "Editar detalles del registro de la UE",
+    "Edit file": "Editar archivo",
     "Edit file metadata": "Editar metadatos del archivo",
     "Edit folder": "Editar carpeta",
     "Edit project": "Editar proyecto",
@@ -25946,8 +25944,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Restricciones moderadas (LGPL, MPL, CC-BY-SA). Algunas obligaciones, pero por lo general permite el uso comercial.",
     "Monitor and respond to incidents involving third-party components.":
       "Supervise y responda a los incidentes que afecten a componentes de terceros.",
-    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, and Closed. Track resolution progress and identify incidents requiring immediate attention.":
-      "Supervise los incidentes a lo largo de su ciclo de vida: Abierto, En investigación, Mitigado y Cerrado. Haga seguimiento del progreso de resolución e identifique los incidentes que requieren atención inmediata.",
+    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, Closed, Suspended, and Emergency action. Track resolution progress and identify incidents requiring immediate attention.":
+      "Supervise los incidentes a lo largo de su ciclo de vida: Abierto, En investigación, Mitigado, Cerrado, Suspendido y Acción de emergencia. Haga seguimiento del progreso de resolución e identifique los incidentes que requieren atención inmediata.",
     "Monitor incidents related to AI systems and respond post-deployment.":
       "Supervise los incidentes relacionados con los sistemas de IA y responda tras el despliegue.",
     "Monitor progress from initiation to completion with real-time status updates.":
@@ -27614,25 +27612,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Workspace disconnected successfully!": "¡Espacio de trabajo desconectado correctamente!",
     "Workspace status updated successfully!":
       "¡Estado del espacio de trabajo actualizado correctamente!",
-    // AI Advisor roadmap
-    "AI Advisor roadmap": "Hoja de ruta del asesor de IA",
-    "All domains": "Todos los dominios",
-    "All kinds": "Todos los tipos",
-    "All phases": "Todas las fases",
-    "Failed to load the advisor tools roadmap. Please try again.":
-      "No se pudo cargar la hoja de ruta de herramientas del asesor. Inténtelo de nuevo.",
-    "Implemented under a different name": "Implementado con un nombre diferente",
-    "No tools match your search or filter criteria.":
-      "Ninguna herramienta coincide con sus criterios de búsqueda o filtrado.",
-    "Overall progress": "Progreso general",
-    "Planned tools": "Herramientas planificadas",
-    "Planned vs. implemented AI Advisor tools from the AI Implementation Plan.":
-      "Herramientas del asesor de IA planificadas frente a implementadas del Plan de Implementación de IA.",
-    "Progress by domain": "Progreso por dominio",
-    "Progress by phase": "Progreso por fase",
-    "Read": "Lectura",
-    "Renamed": "Renombrado",
-    "Search tools": "Buscar herramientas",
-    "Write": "Escritura",
+    "Add first user": "Añadir primer usuario",
+    "Add user": "Añadir usuario",
+    "Create directly": "Crear directamente",
+    "Enter or generate": "Introducir o generar",
+    "Invite via email": "Invitar por correo",
+    "Must include an uppercase letter, a lowercase letter, and a digit. Minimum 8 characters.":
+      "Debe incluir una mayúscula, una minúscula y un dígito. Mínimo 8 caracteres.",
   },
 };
