@@ -105,12 +105,25 @@ const CreateTask: FC<ICreateTaskProps> = ({
       return;
     }
 
+  // useEffect: hydrating when users transitions unloaded -> loaded is still
+    // allowed (assignee names need the users list); any later identity or
+    // emptiness fluctuation must NOT reset in-progress edits.
     const usersReady = Array.isArray(users) && users.length > 0;
     const prev = hydratedRef.current;
-    if (prev && prev.data === initialData && prev.usersReady === usersReady) {
-      return; // same task, users already applied — keep in-progress edits
+    if (prev && prev.data === initialData) {
+      if (prev.usersReady) return; // hydrated for this task; never reset again
+      if (!usersReady) return; // users still unavailable; keep current values
+      // users just became ready -> fall through and hydrate once
     }
     hydratedRef.current = { data: initialData, usersReady };
+    console.debug(
+      "[TaskLinkDebug] hydrate task=",
+      initialData?.id ?? "new",
+      "links=",
+      initialData?.entity_links?.length ?? 0,
+      "usersReady=",
+      usersReady,
+    );
 
     if (initialData) {
       setValues({
@@ -232,6 +245,7 @@ const CreateTask: FC<ICreateTaskProps> = ({
   );
 
   const handleEntityLinksChange = useCallback((newLinks: EntityLink[]) => {
+    console.debug("[TaskLinkDebug] entity_links onChange:", JSON.stringify(newLinks));
     setValues((prev) => ({
       ...prev,
       entity_links: newLinks,
@@ -257,6 +271,10 @@ const CreateTask: FC<ICreateTaskProps> = ({
             ...values,
             assignees: values.assignees.map((user) => String(user.id)),
           };
+          console.debug(
+            "[TaskLinkDebug] submit entity_links:",
+            JSON.stringify(formattedValues.entity_links),
+          );
           const result = await onSuccess(formattedValues as any);
           // Parent's onSuccess returns the new entity id on create. In edit
           // mode the id is already known.
