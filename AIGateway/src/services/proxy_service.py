@@ -170,6 +170,9 @@ async def resolve_endpoint_by_id(organization_id: int, endpoint_id: int) -> Opti
 
 async def check_org_budget(organization_id: int, estimated_cost: float) -> bool:
     """Check if org budget allows the request. Atomic UPDATE prevents TOCTOU."""
+    # Mirror reconcile_budget: never let a non-finite estimate mutate the
+    # current_spend_usd counter (a NaN there defeats hard-limit enforcement).
+    estimated_cost = _safe_cost(estimated_cost)
     if estimated_cost <= 0:
         return True
 
