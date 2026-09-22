@@ -45,7 +45,7 @@ async def get_spend_summary(
     """
     sql = text("""
         SELECT
-            COALESCE(SUM(cost_usd), 0)           AS total_cost,
+            COALESCE(SUM(cost_usd) FILTER (WHERE cost_usd <> 'NaN'::numeric), 0) AS total_cost,
             COUNT(*)                              AS total_requests,
             COALESCE(SUM(total_tokens), 0)        AS total_tokens,
             COALESCE(AVG(latency_ms), 0)          AS avg_latency_ms
@@ -84,7 +84,7 @@ async def get_spend_by_model(
     sql = text("""
         SELECT
             model,
-            COALESCE(SUM(cost_usd), 0)      AS total_cost,
+            COALESCE(SUM(cost_usd) FILTER (WHERE cost_usd <> 'NaN'::numeric), 0)      AS total_cost,
             COUNT(*)                         AS total_requests,
             COALESCE(SUM(total_tokens), 0)  AS total_tokens
         FROM ai_gateway_spend_logs
@@ -118,7 +118,7 @@ async def get_spend_by_endpoint(
         SELECT
             sl.endpoint_id,
             COALESCE(ep.display_name, sl.endpoint_id::text) AS endpoint_name,
-            COALESCE(SUM(sl.cost_usd), 0)      AS total_cost,
+            COALESCE(SUM(sl.cost_usd) FILTER (WHERE sl.cost_usd <> 'NaN'::numeric), 0)      AS total_cost,
             COUNT(*)                            AS total_requests,
             COALESCE(SUM(sl.total_tokens), 0)  AS total_tokens
         FROM ai_gateway_spend_logs sl
@@ -156,7 +156,7 @@ async def get_spend_by_user(
             sl.user_id,
             COALESCE(u.name, sl.user_id::text) AS user_name,
             u.email                             AS user_email,
-            COALESCE(SUM(sl.cost_usd), 0)      AS total_cost,
+            COALESCE(SUM(sl.cost_usd) FILTER (WHERE sl.cost_usd <> 'NaN'::numeric), 0)      AS total_cost,
             COUNT(*)                            AS total_requests,
             COALESCE(SUM(sl.total_tokens), 0)  AS total_tokens
         FROM ai_gateway_spend_logs sl
@@ -197,7 +197,7 @@ async def get_spend_by_day(
             )
             SELECT
                 TO_CHAR(hours.hour, 'FM00') || ':00'    AS period,
-                COALESCE(SUM(sl.cost_usd), 0)             AS total_cost,
+                COALESCE(SUM(sl.cost_usd) FILTER (WHERE sl.cost_usd <> 'NaN'::numeric), 0)             AS total_cost,
                 COUNT(sl.id)                            AS total_requests,
                 COALESCE(SUM(sl.total_tokens), 0)       AS total_tokens
             FROM hours
@@ -213,7 +213,7 @@ async def get_spend_by_day(
         sql = text("""
             SELECT
                 DATE(created_at)                        AS period,
-                COALESCE(SUM(cost_usd), 0)              AS total_cost,
+                COALESCE(SUM(cost_usd) FILTER (WHERE cost_usd <> 'NaN'::numeric), 0)              AS total_cost,
                 COUNT(*)                                AS total_requests,
                 COALESCE(SUM(total_tokens), 0)          AS total_tokens
             FROM ai_gateway_spend_logs
@@ -256,7 +256,7 @@ async def get_spend_by_tag(
     sql = text("""
         SELECT
             metadata->>:tag_key                 AS tag_value,
-            COALESCE(SUM(cost_usd), 0)          AS total_cost,
+            COALESCE(SUM(cost_usd) FILTER (WHERE cost_usd <> 'NaN'::numeric), 0)          AS total_cost,
             COUNT(*)                            AS total_requests,
             COALESCE(SUM(total_tokens), 0)      AS total_tokens
         FROM ai_gateway_spend_logs
@@ -295,7 +295,7 @@ async def get_spend_by_provider(
     sql = text("""
         SELECT
             COALESCE(ep.provider, 'unknown')    AS provider,
-            COALESCE(SUM(sl.cost_usd), 0)       AS total_cost,
+            COALESCE(SUM(sl.cost_usd) FILTER (WHERE sl.cost_usd <> 'NaN'::numeric), 0)       AS total_cost,
             COUNT(*)                            AS total_requests,
             COALESCE(SUM(sl.total_tokens), 0)   AS total_tokens
         FROM ai_gateway_spend_logs sl
