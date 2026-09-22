@@ -89,14 +89,30 @@ const CreateTask: FC<ICreateTaskProps> = ({
   const [activeTab, setActiveTab] = useState("details");
   const customFieldsRef = useRef<CustomFieldsSectionHandle | null>(null);
   const customFieldsGate = useRequiredCustomFieldsGate("task", initialData?.id ?? null);
+  // Tracks the last hydrated (initialData, users-ready) pair so refetches
+  // that return a new `users` array identity (e.g. react-query
+  // refetchOnWindowFocus) do NOT reset the form while the user is editing —
+  // the old behavior silently wiped freshly added linked items.
+  const hydratedRef = useRef<{ data: unknown; usersReady: boolean } | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
+      hydratedRef.current = null;
       setValues(initialState);
       resetErrors();
       setIsSubmitting(false);
       setActiveTab("details");
-    } else if (isOpen && initialData) {
+      return;
+    }
+
+    const usersReady = Array.isArray(users) && users.length > 0;
+    const prev = hydratedRef.current;
+    if (prev && prev.data === initialData && prev.usersReady === usersReady) {
+      return; // same task, users already applied — keep in-progress edits
+    }
+    hydratedRef.current = { data: initialData, usersReady };
+
+    if (initialData) {
       setValues({
         title: initialData.title || "",
         description: initialData.description || "",
@@ -152,7 +168,7 @@ const CreateTask: FC<ICreateTaskProps> = ({
     } else {
       setValues(initialState);
     }
-  }, [isOpen, mode, initialData, users]);
+  }, [isOpen, mode, initialData, users, resetErrors]);
 
   const handleOnTextFieldChange = useCallback(
     (prop: keyof ICreateTaskFormValues) => (event: React.ChangeEvent<HTMLInputElement>) => {
