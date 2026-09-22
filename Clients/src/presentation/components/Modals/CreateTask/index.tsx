@@ -105,7 +105,7 @@ const CreateTask: FC<ICreateTaskProps> = ({
       return;
     }
 
-  // useEffect: hydrating when users transitions unloaded -> loaded is still
+    // useEffect: hydrating when users transitions unloaded -> loaded is still
     // allowed (assignee names need the users list); any later identity or
     // emptiness fluctuation must NOT reset in-progress edits.
     const usersReady = Array.isArray(users) && users.length > 0;
