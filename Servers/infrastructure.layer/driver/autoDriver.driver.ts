@@ -1156,7 +1156,7 @@ export async function deleteMockData(organizationId: number) {
     }
 
     // 10. Delete demo users (last, as they may be referenced by other entities)
-    await deleteDemoUsersQuery(transaction);
+    await deleteDemoUsersQuery(organizationId, transaction);
 
     await transaction.commit();
   } catch (error) {
