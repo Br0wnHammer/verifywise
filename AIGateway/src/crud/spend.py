@@ -404,6 +404,21 @@ async def get_tokens_per_request_by_endpoint(
 # Paginated spend log detail
 # ---------------------------------------------------------------------------
 
+async def has_spend_logs(db: AsyncSession, org_id: int) -> bool:
+    """
+    Return whether the organisation has any spend log at all. EXISTS stops at
+    the first matching index entry, unlike the COUNT(*) behind the logs list.
+    """
+    result = await db.execute(
+        text(
+            "SELECT EXISTS (SELECT 1 FROM ai_gateway_spend_logs"
+            " WHERE organization_id = :org_id) AS has_logs"
+        ),
+        {"org_id": org_id},
+    )
+    return bool(result.scalar())
+
+
 async def get_spend_logs_detail(
     db: AsyncSession,
     org_id: int,

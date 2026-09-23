@@ -195,6 +195,22 @@ async def spend_by_tag(
 # GET /spend/logs
 # ---------------------------------------------------------------------------
 
+@router.get("/exists", summary="Whether the organisation has any spend logs")
+async def spend_logs_exist(request: Request):
+    """Cheap first-time check for the dashboard (no count, no joins)."""
+    verify_internal_key(request)
+    org_id = get_org_id(request)
+
+    async with get_db() as db:
+        has_logs = await spend_crud.has_spend_logs(db, org_id)
+
+    return {"has_logs": has_logs}
+
+
+# ---------------------------------------------------------------------------
+# GET /spend/logs
+# ---------------------------------------------------------------------------
+
 @router.get("/logs", summary="Paginated spend log detail")
 async def spend_logs(
     request: Request,
