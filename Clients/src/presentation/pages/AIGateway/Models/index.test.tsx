@@ -401,12 +401,15 @@ describe("AIGateway - ModelsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Show all 55 models")).toBeInTheDocument();
     });
+    // Sorted cheapest first, so the most expensive model is past the top 50.
+    expect(screen.queryByText("chat-model-54")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Show all 55 models"));
 
     await waitFor(() => {
       expect(screen.getByText("Show top 50 of 55")).toBeInTheDocument();
     });
+    expect(screen.getByText("chat-model-54")).toBeInTheDocument();
   });
 
   it("shows the feature comparison table pre-populated with default models", async () => {

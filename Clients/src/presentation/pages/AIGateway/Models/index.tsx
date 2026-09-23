@@ -203,7 +203,7 @@ export default function ModelsPage() {
   const calcResultsTotal = calcResults.length;
   const calcResultsVisible = useMemo(() => {
     return calcShowAll ? calcResults : calcResults.slice(0, 50);
-  }, [filtered, calcRequests, calcInputTokens, calcOutputTokens]);
+  }, [calcResults, calcShowAll]);
 
   // Compare models
   const compareModels = useMemo(
