@@ -80,7 +80,9 @@ class IdMapping:
 class MigrationResult:
     """Result of a migration run."""
     success: bool
-    status: str  # "completed", "just_completed", "failed", "no_tenants", "already_completed"
+    # "completed", "just_completed", "failed", "no_tenants", "already_completed",
+    # "schema_not_ready"
+    status: str
     organizations_migrated: int = 0
     tables_processed: int = 0
     rows_migrated: int = 0
@@ -732,6 +734,28 @@ async def check_and_run_migration(database_url: str) -> MigrationResult:
 
             try:
                 async with Session() as session:
+                    # The shared llm_evals_* tables are created by Alembic. If they
+                    # are missing, copying would silently move 0 rows (migrate_table
+                    # skips tables with no target columns) and the run would still be
+                    # marked "completed", permanently stranding the tenant data.
+                    # Bail out without touching the status table so the migration
+                    # runs on the next startup after `alembic upgrade head`.
+                    missing_tables = [
+                        table_name
+                        for table_name in get_all_tables_in_order()
+                        if not await table_exists(session, "verifywise", table_name)
+                    ]
+                    if missing_tables:
+                        return MigrationResult(
+                            success=False,
+                            status="schema_not_ready",
+                            errors=[
+                                "Shared tables missing in verifywise schema ("
+                                + ", ".join(missing_tables)
+                                + "). Run `alembic upgrade head` in EvalServer/src, then restart."
+                            ],
+                        )
+
                     # Ensure migration status table exists
                     await ensure_migration_status_table(session)
 
