@@ -981,7 +981,7 @@ export async function insertMockData(
     // Seed Shadow AI demo data (tools, events, rollups, rules, alerts)
     await insertShadowAiDemoData(organizationId, userId, transaction);
 
-    // Seed AI Gateway demo data (endpoints, virtual keys, ~30 days of spend logs)
+    // Seed AI Gateway demo data (config, 90 days of traffic, guardrails, prompts, Agent Control, risk)
     await insertAiGatewayDemoData(organizationId, userId, transaction);
 
     await transaction.commit();
@@ -997,7 +997,7 @@ export async function deleteMockData(organizationId: number) {
     // Clean all Shadow AI demo data first (no FK ties to governance tables)
     await deleteShadowAiDemoData(organizationId, transaction);
 
-    // Clean AI Gateway demo data (spend logs, virtual keys, endpoints)
+    // Clean AI Gateway demo data (only the rows the seeder created)
     await deleteAiGatewayDemoData(organizationId, transaction);
 
     // =====================================================
