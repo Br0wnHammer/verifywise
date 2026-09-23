@@ -274,6 +274,34 @@ describe("AIGateway - SpendDashboard (index)", () => {
     expect(screen.queryByTestId("onboarding-overlay")).not.toBeInTheDocument();
   });
 
+  it("requests the period data without waiting for the first-time logs check", async () => {
+    mockNonFirstTime();
+    const defaultImpl = mockGet.getMockImplementation()!;
+    let releaseLogsCheck: () => void = () => {};
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes("/ai-gateway/spend/logs?limit=1")) {
+        return new Promise((resolve) => {
+          releaseLogsCheck = () => resolve({ data: { total: 1 } });
+        });
+      }
+      return defaultImpl(url);
+    });
+    renderWithProviders(<SpendDashboardPage />);
+
+    await waitFor(() => {
+      const urls = mockGet.mock.calls.map(([url]) => url as string);
+      expect(urls.some((u) => u.startsWith("/ai-gateway/spend?period="))).toBe(true);
+      expect(urls.some((u) => u.includes("/ai-gateway/guardrails/stats"))).toBe(true);
+      expect(urls.some((u) => u.includes("/ai-gateway/cache/stats"))).toBe(true);
+    });
+    expect(screen.queryByTestId("stat-Total cost")).not.toHaveTextContent("$12.3456");
+
+    releaseLogsCheck();
+    await waitFor(() => {
+      expect(screen.getByTestId("stat-Total cost")).toHaveTextContent("$12.3456");
+    });
+  });
+
   it("changes the analytics period and persists it to storage", async () => {
     mockNonFirstTime();
     renderWithProviders(<SpendDashboardPage />);

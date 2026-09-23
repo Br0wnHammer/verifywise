@@ -89,10 +89,24 @@ export default function SpendDashboardPage() {
     const load = async () => {
       setLoading(true);
       try {
-        // Check first-time status before loading period-based data
-        const logsCheck = await apiServices
-          .get<Record<string, any>>("/ai-gateway/spend/logs?limit=1")
-          .catch(() => null);
+        // Fetch the first-time check and the period data together, so the
+        // charts wait for the slowest request instead of two round trips.
+        const [logsCheck, spendRes, endpointRes, userRes, gsRes, cacheRes] = await Promise.all([
+          apiServices.get<Record<string, any>>("/ai-gateway/spend/logs?limit=1").catch(() => null),
+          apiServices
+            .get<Record<string, any>>(`/ai-gateway/spend?period=${period}`)
+            .catch(() => null),
+          apiServices
+            .get<Record<string, any>>(`/ai-gateway/spend/by-endpoint?period=${period}`)
+            .catch(() => null),
+          apiServices
+            .get<Record<string, any>>(`/ai-gateway/spend/by-user?period=${period}`)
+            .catch(() => null),
+          apiServices
+            .get<Record<string, any>>(`/ai-gateway/guardrails/stats?period=${period}`)
+            .catch(() => null),
+          apiServices.get<Record<string, any>>("/ai-gateway/cache/stats").catch(() => null),
+        ]);
         const totalLogs = logsCheck?.data?.total || 0;
         if (totalLogs === 0) {
           const [keysRes, endpointsRes, vkeysRes] = await Promise.all([
@@ -112,19 +126,6 @@ export default function SpendDashboardPage() {
         }
         setIsFirstTime(false);
 
-        const [spendRes, endpointRes, userRes, gsRes, cacheRes] = await Promise.all([
-          apiServices.get<Record<string, any>>(`/ai-gateway/spend?period=${period}`),
-          apiServices
-            .get<Record<string, any>>(`/ai-gateway/spend/by-endpoint?period=${period}`)
-            .catch(() => null),
-          apiServices
-            .get<Record<string, any>>(`/ai-gateway/spend/by-user?period=${period}`)
-            .catch(() => null),
-          apiServices
-            .get<Record<string, any>>(`/ai-gateway/guardrails/stats?period=${period}`)
-            .catch(() => null),
-          apiServices.get<Record<string, any>>("/ai-gateway/cache/stats").catch(() => null),
-        ]);
         setData(spendRes?.data || null);
         setByEndpoint(
           (endpointRes?.data?.data || []).map((d: any) => ({
