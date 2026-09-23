@@ -196,7 +196,7 @@ async def get_spend_by_day(
                 SELECT generate_series(0, 23) AS hour
             )
             SELECT
-                TO_CHAR(hours.hour, 'FM00') || ':00'    AS period,
+                TO_CHAR(hours.hour, 'FM00') || '\\:00'  AS period,
                 COALESCE(SUM(sl.cost_usd) FILTER (WHERE sl.cost_usd <> 'NaN'::numeric), 0)             AS total_cost,
                 COUNT(sl.id)                            AS total_requests,
                 COALESCE(SUM(sl.total_tokens), 0)       AS total_tokens
