@@ -373,6 +373,22 @@ describe("AIGateway - ModelsPage", () => {
     expect(screen.queryByText("text-embedding-3-small")).not.toBeInTheDocument();
   });
 
+  it("includes priced responses-mode models in the cost calculator", async () => {
+    (apiServices.get as any).mockResolvedValue({
+      data: {
+        data: {
+          models: [
+            ...richModels,
+            baseModel({ id: "gpt-5.1-codex", provider: "openai", mode: "responses" }),
+          ],
+        },
+      },
+    });
+    renderModels("/ai-gateway/models/calculator");
+
+    expect(await screen.findByText("gpt-5.1-codex")).toBeInTheDocument();
+  });
+
   it("recalculates costs when calculator inputs change", async () => {
     (apiServices.get as any).mockResolvedValue({ data: { data: { models: richModels } } });
     renderModels("/ai-gateway/models/calculator");
