@@ -864,10 +864,10 @@ components:
     ModelInventoryType:
       type: string
       enum:
-        - Traditional ML
+        - 'Traditional ML'
         - GenAI
         - RAG
-        - Agentic AI
+        - 'Agentic AI'
       nullable: true
       description: 'Classification of the model AI paradigm (optional)'
     Filedata:
