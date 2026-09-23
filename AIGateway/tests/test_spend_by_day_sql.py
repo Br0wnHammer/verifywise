@@ -111,3 +111,20 @@ async def test_spend_summary_never_overlaps_session_operations(monkeypatch):
 
     response = await spend_router.spend_summary(MagicMock(), period="1d")
     assert response["period"] == "1d"
+
+
+# The dashboard's first-time check must not count every log: EXISTS stops at
+# the first row, COUNT(*) scans the organisation's whole history.
+@pytest.mark.parametrize("found", [True, False])
+async def test_has_spend_logs_uses_exists(found):
+    from crud.spend import has_spend_logs
+
+    result = MagicMock()
+    result.scalar.return_value = found
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+
+    assert await has_spend_logs(db, 7) is found
+    sql, params = db.execute.await_args.args
+    assert "EXISTS" in str(sql) and "COUNT" not in str(sql).upper()
+    assert params == {"org_id": 7}
