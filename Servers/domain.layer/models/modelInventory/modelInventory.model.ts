@@ -1,6 +1,7 @@
 import { Column, DataType, Model, Table } from "sequelize-typescript";
 import { Filedata, IModelInventory } from "../../interfaces/i.modelInventory";
 import { ModelInventoryStatus } from "../../enums/model-inventory-status.enum";
+import { ModelInventoryType } from "../../enums/model-inventory-type.enum";
 import { MrmTier } from "../../enums/mrm.enum";
 import { ValidationException } from "../../exceptions/custom.exception";
 
@@ -72,6 +73,12 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
     allowNull: false,
   })
   status_date!: Date;
+
+  @Column({
+    type: DataType.ENUM(...Object.values(ModelInventoryType)),
+    allowNull: true,
+  })
+  type?: ModelInventoryType;
 
   @Column({
     type: DataType.TEXT,
@@ -329,6 +336,7 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
       security_assessment: this.security_assessment,
       status: this.status,
       status_date: this.status_date?.toISOString(),
+      type: this.type ?? null,
       reference_link: this.reference_link?.trim() || null,
       biases: this.biases,
       limitations: this.limitations,
@@ -370,6 +378,7 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
       security_assessment: this.security_assessment,
       status: this.status,
       status_date: this.status_date?.toISOString(),
+      type: this.type ?? null,
       reference_link: this.reference_link,
       biases: this.biases,
       limitations: this.limitations,
@@ -447,6 +456,7 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
       security_assessment: data.security_assessment || false,
       status: data.status || ModelInventoryStatus.PENDING,
       status_date: data.status_date || new Date(),
+      type: data.type ?? undefined,
       reference_link: data.reference_link || "",
       biases: data.biases || "",
       limitations: data.limitations || "",
@@ -498,6 +508,9 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
     }
     if (data.status_date !== undefined) {
       existingModel.status_date = data.status_date;
+    }
+    if (data.type !== undefined) {
+      existingModel.type = data.type;
     }
     if (data.reference_link !== undefined) {
       existingModel.reference_link = data.reference_link;
