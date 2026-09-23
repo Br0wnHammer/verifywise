@@ -88,4 +88,5 @@ jobs:
         run: |
           .venv/bin/python -m pytest \
             tests/test_cache_service.py \
+            tests/test_spend_by_day_sql.py \
             -v
