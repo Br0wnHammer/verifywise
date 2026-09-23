@@ -1,6 +1,6 @@
 # Servers — Backend Development Guide
 
-> **Last Updated:** 2026-09-26
+> **Last Updated:** 2026-09-28
 
 ---
 
@@ -123,6 +123,16 @@ On startup (after migrations, before `app.listen`), `Servers/utils/devAutoBootst
 Log on success: `[dev-bootstrap] created org "<name>" (id=<id>) and admin <email>`.
 
 This is for local developer convenience only — never enable on shared environments.
+
+---
+
+## Seeders
+
+Demo data seeders live in `scripts/seeds/` with npm commands (`seed:demo`,
+`seed:demo-org`, `seed:incidents`, `seed:automation-logs`, `seed:e2e`). See
+`scripts/seeds/README.md` for every seeder in the repo, including the E2E
+seeders that stay in `scripts/` because CI references them by path, `reset-db`,
+and the reference-data seeds that run with migrations.
 
 ---
 
