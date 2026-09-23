@@ -464,7 +464,7 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
       intended_use: data.intended_use ?? undefined,
       security_assessment_data: data.security_assessment_data || [],
       is_demo: data.is_demo || false,
-      external_key: data.external_key ?? undefined,
+      external_key: data.external_key || undefined, // empty string must become NULL (partial unique index on external_key)
       created_at: new Date(),
       updated_at: new Date(),
     });
@@ -534,7 +534,7 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
       existingModel.is_demo = data.is_demo;
     }
     if (data.external_key !== undefined) {
-      existingModel.external_key = data.external_key;
+      existingModel.external_key = data.external_key || undefined;
     }
 
     // Always update the updated_at timestamp
