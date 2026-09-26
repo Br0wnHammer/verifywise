@@ -47,9 +47,11 @@ RUN npm run build
 # exists — the layer below removes npm from the runtime image, so nothing can be
 # built after this point.
 COPY ./MCPServer/package.json ./MCPServer/package-lock.json ./MCPServer/
-RUN cd MCPServer && npm ci --no-audit --no-fund
+# --include=dev is required because NODE_ENV=production is set above: tsc and
+# @types/node are devDependencies and the build below needs both.
+RUN cd MCPServer && npm ci --include=dev --no-audit --no-fund
 COPY ./MCPServer/ ./MCPServer/
-RUN cd MCPServer && npm run build
+RUN cd MCPServer && npm run build && npm prune --omit=dev
 
 # Strip the package managers from the runtime image. npm/npx/corepack are only
 # needed at build time (npm ci + npm run build, both done above). Their bundled
