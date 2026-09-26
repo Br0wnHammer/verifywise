@@ -23,7 +23,7 @@ import MLFlowTab from "../Extensions/mlflow/MLFlowTab";
 import AzureAIFoundryTab from "../Extensions/azure-ai-foundry/AzureAIFoundryTab";
 // Import the table and modal components specific to ModelInventory
 import ModelInventoryTable from "./modelInventoryTable";
-// Note: LifecycleConfigEditor is now provided by the model-lifecycle plugin via plugin slots
+// Note: the lifecycle config editor lives in the Model Lifecycle extension (pages/Extensions/model-lifecycle)
 import { IModelInventory } from "../../../domain/interfaces/i.modelInventory";
 import NewModelInventory from "../../components/Modals/NewModelInventory";
 import ModelRisksTable from "./ModelRisksTable";
@@ -151,7 +151,7 @@ const ModelInventory: React.FC = () => {
   const [modelInventoryData, setModelInventoryData] = useState<IModelInventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isNewModelInventoryModalOpen, setIsNewModelInventoryModalOpen] = useState(false);
-  // Note: Lifecycle config is now provided by the model-lifecycle plugin via plugin slots
+  // Note: Lifecycle config is managed by the Model Lifecycle extension (pages/Extensions/model-lifecycle)
 
   const [selectedModelInventory, setSelectedModelInventory] = useState<IModelInventory | null>(
     null,
@@ -1979,7 +1979,7 @@ const ModelInventory: React.FC = () => {
     } else if (newValue === "model-risk-management") {
       navigate("/model-inventory/model-risk-management");
     } else {
-      // Handle plugin tabs dynamically
+      // Handle extension tabs (e.g. MLflow, Azure AI Foundry) dynamically
       navigate(`/model-inventory/${newValue}`);
     }
   };
@@ -2285,7 +2285,7 @@ const ModelInventory: React.FC = () => {
                 >
                   <BarChart3 size={16} color={palette.text.secondary} />
                 </IconButton>
-                {/* Lifecycle config is now accessed via Plugin Settings page */}
+                {/* Lifecycle config is accessed from the Model Lifecycle extension settings page */}
                 <div data-joyride-id="add-model-button">
                   <CustomizableButton
                     variant="contained"
@@ -2632,7 +2632,7 @@ const ModelInventory: React.FC = () => {
           onOpenLink={handleOpenLink}
         />
 
-        {/* Lifecycle Config is now provided by the model-lifecycle plugin */}
+        {/* Lifecycle config is provided by the Model Lifecycle extension */}
       </PageHeaderExtended>
     </Stack>
   );
