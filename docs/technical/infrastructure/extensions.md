@@ -396,8 +396,8 @@ for live features.
 
 - `Servers/database/seeds/plugins/manifests.json` is unused.
 - `Clients/e2e/plugins.spec.ts` is skipped (`test.describe.skip`).
-- `Servers/docs/api/files-plugins-shadow-pmm-openapi.yaml` still documents
-  `/plugins` paths.
+- `Servers/docs/api/files-plugins-shadow-pmm-openapi.yaml` keeps its old file
+  name but now documents the `/extensions` catalog paths.
 - The legacy `/api/slackWebhooks` router is still mounted in `Servers/app.ts`
   and is **not** behind the extension gate. It shares handlers with
   `/api/extensions/slack/oauth/workspaces`.

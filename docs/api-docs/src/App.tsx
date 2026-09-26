@@ -822,11 +822,11 @@ const OverviewSection: React.FC = () => (
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
         {[
           { label: 'Core resources', count: 6, desc: 'Users, Organizations, Projects, Roles, Invitations, Super admin' },
-          { label: 'Risk management', count: 5, desc: 'Project risks, Vendors, Vendor risks, Quantitative risks, Risk benchmarks' },
+          { label: 'Risk management', count: 6, desc: 'Project risks, Vendors, Vendor risks, Quantitative risks, Risk benchmarks, Risk history' },
           { label: 'AI governance', count: 9, desc: 'Model inventory, Model risks, Datasets, Training, AI Trust Centre, AI detection, AI advisor, Agent discovery, Shadow AI' },
           { label: 'Compliance', count: 10, desc: 'Assessments, Policies, Frameworks, EU AI Act, ISO 27001, ISO 42001, NIST AI RMF, FRIA, Compliance score, Approval workflows' },
-          { label: 'Utilities', count: 14, desc: 'Files, Email, Dashboard, Search, System & logs, Tasks, Tokens, Preferences, Notes, Notifications, Share links, Reporting, Slack, Subscriptions' },
-          { label: 'Advanced', count: 12, desc: 'Evidence hub, AI incidents, CE marking, Automation, Integrations, Intake forms, Entity graph, Post-market monitoring, Extensions, Change history, Audit ledger, LLM keys' },
+          { label: 'Utilities', count: 12, desc: 'Files, Email services, Dashboard, Search, System & logs, Tasks, Notes, Notifications, Share links, Reporting, Settings, Subscription' },
+          { label: 'Advanced', count: 15, desc: 'Evidence hub, AI incidents, CE marking, Automation, Integrations, Intake forms, Entity graph, Post-market monitoring, Extensions, Change history, Audit ledger, Webhooks, Demo data, Internal, LLM keys' },
         ].map((category) => (
           <Box
             key={category.label}
