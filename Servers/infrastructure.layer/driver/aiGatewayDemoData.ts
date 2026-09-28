@@ -153,10 +153,18 @@ export async function insertAiGatewayDemoData(
     return;
   }
 
-  // Idempotent: skip if spend logs already seeded for this organization.
+  // Idempotent: skip if the demo endpoints already exist. Checked by slug, not
+  // by "any spend logs", so an organization with real gateway traffic still
+  // gets the demo history alongside it. Slugs are unique per organization, so
+  // any match also means inserting them would violate that constraint.
   const existing = await sequelize.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM ai_gateway_spend_logs WHERE organization_id = :organizationId`,
-    { type: QueryTypes.SELECT, transaction, replacements: { organizationId } },
+    `SELECT COUNT(*)::text AS count FROM ai_gateway_endpoints
+     WHERE organization_id = :organizationId AND slug IN (:slugs)`,
+    {
+      type: QueryTypes.SELECT,
+      transaction,
+      replacements: { organizationId, slugs: ENDPOINTS.map((ep) => ep.slug) },
+    },
   );
   if (parseInt(existing[0].count) > 0) {
     return;
@@ -329,16 +337,40 @@ export async function deleteAiGatewayDemoData(
     return;
   }
 
+  // Delete only the seeded rows: demo data can sit next to real gateway traffic,
+  // which must survive "Delete demo data". Demo endpoints match on every seeded
+  // field (slug alone could be a real endpoint); demo keys on their fixed hashes.
+  const demoEndpointIds = `(
+    SELECT id FROM ai_gateway_endpoints
+    WHERE organization_id = :organizationId
+      AND (slug, display_name, provider, model) IN (${ENDPOINTS.map(
+        (_, i) => `(:slug${i}, :displayName${i}, :provider${i}, :model${i})`,
+      ).join(", ")})
+  )`;
+  const demoKeyIds = `(
+    SELECT id FROM ai_gateway_virtual_keys
+    WHERE organization_id = :organizationId AND key_hash IN (:keyHashes)
+  )`;
+  const replacements: Record<string, unknown> = {
+    organizationId,
+    keyHashes: VIRTUAL_KEYS.map((vk) => vk.key_hash),
+  };
+  ENDPOINTS.forEach((ep, i) => {
+    replacements[`slug${i}`] = ep.slug;
+    replacements[`displayName${i}`] = ep.display_name;
+    replacements[`provider${i}`] = ep.provider;
+    replacements[`model${i}`] = ep.model;
+  });
+
   // FK-safe order: spend logs reference endpoints + virtual keys.
-  const tables = ["ai_gateway_spend_logs", "ai_gateway_virtual_keys", "ai_gateway_endpoints"];
-  for (const table of tables) {
-    try {
-      await sequelize.query(`DELETE FROM ${table} WHERE organization_id = :organizationId`, {
-        replacements: { organizationId },
-        transaction,
-      });
-    } catch {
-      // Table may not exist — safe to skip.
-    }
+  const statements = [
+    `DELETE FROM ai_gateway_spend_logs
+     WHERE organization_id = :organizationId
+       AND (endpoint_id IN ${demoEndpointIds} OR virtual_key_id IN ${demoKeyIds})`,
+    `DELETE FROM ai_gateway_virtual_keys WHERE id IN ${demoKeyIds}`,
+    `DELETE FROM ai_gateway_endpoints WHERE id IN ${demoEndpointIds}`,
+  ];
+  for (const statement of statements) {
+    await sequelize.query(statement, { replacements, transaction });
   }
 }
