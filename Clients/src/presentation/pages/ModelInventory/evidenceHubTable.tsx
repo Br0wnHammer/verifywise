@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { displayFormattedDate } from "../../tools/isoDateToString";
+import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import { User } from "../../../domain/types/User";
 import { getAllEntities } from "../../../application/repository/entity.repository";
 import { EmptyState } from "../../components/EmptyState";
@@ -193,6 +193,7 @@ const EvidenceHubTable: React.FC<EvidenceHubTableProps> = ({
   hidePagination = false,
   visibleColumns,
 }) => {
+  const formatDate = useFormattedDate();
   const theme = useTheme();
   const [users, setUsers] = useState<User[]>([]);
   const [page, setPage] = useState(0);
@@ -579,7 +580,7 @@ const EvidenceHubTable: React.FC<EvidenceHubTableProps> = ({
                   {(() => {
                     const f = evidence.evidence_files?.[0] as any;
                     const d = f?.upload_date ?? f?.uploaded_time;
-                    return d ? displayFormattedDate(d) : "-";
+                    return d ? formatDate(d) : "-";
                   })()}
                 </TableCell>
               )}
@@ -587,7 +588,7 @@ const EvidenceHubTable: React.FC<EvidenceHubTableProps> = ({
                 <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
                   {evidence.expiry_date ? (
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <span>{displayFormattedDate(evidence.expiry_date)}</span>
+                      <span>{formatDate(evidence.expiry_date)}</span>
                       {getExpiryStatus(evidence.expiry_date) === "expired" && (
                         <StatusChip label="Expired" variant="error" />
                       )}
@@ -633,6 +634,7 @@ const EvidenceHubTable: React.FC<EvidenceHubTableProps> = ({
       isColVisible,
       visibleTableColumns,
       hidePagination,
+      formatDate,
     ],
   );
 
