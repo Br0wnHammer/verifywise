@@ -35,8 +35,8 @@ import { paginationStyle } from "../Table/styles";
 import { FileIcon } from "../FileIcon";
 import { getUserFilesMetaData } from "../../../application/repository/file.repository";
 import CustomizableToast from "../../components/Toast";
-import { displayFormattedDate } from "../../tools/isoDateToString";
 import { FileExpiryChip } from "../FileExpiryChip";
+import useFormattedDate from "../../../application/hooks/useFormattedDate";
 
 const SORT_KEY = "vw_link_evidence_selector_sort";
 
@@ -147,6 +147,7 @@ const LinkEvidenceSelectorModal: React.FC<LinkEvidenceSelectorModalProps> = ({
   hidePagination = false,
   paginated = true,
 }) => {
+  const formatDate = useFormattedDate();
   const [evidences, setEvidences] = useState<any[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
@@ -313,9 +314,7 @@ const LinkEvidenceSelectorModal: React.FC<LinkEvidenceSelectorModalProps> = ({
 
                   <TableCell>{ev.uploader_name}</TableCell>
 
-                  <TableCell>
-                    {ev.upload_date !== "-" ? displayFormattedDate(ev.upload_date) : "-"}
-                  </TableCell>
+                  <TableCell>{ev.upload_date !== "-" ? formatDate(ev.upload_date) : "-"}</TableCell>
 
                   <TableCell width={50}>
                     <Checkbox

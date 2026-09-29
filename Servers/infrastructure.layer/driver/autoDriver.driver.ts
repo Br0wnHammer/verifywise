@@ -36,15 +36,33 @@ import {
   AIIncidentManagementStatus,
   AIIncidentManagementApprovalStatus,
 } from "../../domain.layer/enums/ai-incident-management.enum";
+export interface InsertMockDataOptions {
+  /**
+   * Seed the governance block (demo use cases, risks, vendors, models, tasks,
+   * policies, trainings, AI apps, incidents). Defaults to true, which is what
+   * the UI "Create demo data" button uses. The block is still skipped when the
+   * org already has demo (is_demo) projects, so it never duplicates; the
+   * org's own non-demo projects do not block it. Pass false to seed only the
+   * Shadow AI and AI Gateway demo data.
+   */
+  includeGovernance?: boolean;
+}
+
 export async function insertMockData(
   organizationId: number,
   _organization: number,
   userId: number,
+  options: InsertMockDataOptions = {},
 ) {
+  const { includeGovernance = true } = options;
   const transaction = await sequelize.transaction();
   try {
-    let projects = ((await getData("projects", organizationId, transaction)) as ProjectModel[])[0];
-    if (!projects) {
+    // getData only returns is_demo rows, so this is "the org has no demo
+    // projects yet", not "the org has no projects".
+    const demoProject = (
+      (await getData("projects", organizationId, transaction)) as ProjectModel[]
+    )[0];
+    if (includeGovernance && !demoProject) {
       // create project
       const project = await createNewProjectQuery(
         {
@@ -62,7 +80,9 @@ export async function insertMockData(
           last_updated_by: userId,
         },
         [], // no additional members
-        [1, 2], // frameworks: EU AI Act (1) + ISO/IEC 42001 (2)
+        [1], // frameworks: EU AI Act (1) — ISO/IEC 42001 (2) is organizational
+        // and lives on its own organizational project below, per the
+        // is_organizational partition enforced by createNewProjectQuery
         organizationId,
         userId,
         transaction,
@@ -72,8 +92,33 @@ export async function insertMockData(
       await createEUFrameworkQuery(project.id!, true, organizationId, transaction, true);
 
       // create ISO/IEC 42001 framework — seeds clause/annex implementation
-      // descriptions, auditor feedback and a mix of statuses (is_mock_data=true)
-      await createISOFrameworkQuery(project.id!, true, organizationId, transaction, true);
+      // descriptions, auditor feedback and a mix of statuses (is_mock_data=true).
+      // ISO/IEC 42001 is an organizational framework (is_organizational=true), so
+      // it can only be attached to an organizational project — never to the
+      // non-organizational use case project above.
+      const isoOrgProject = await createNewProjectQuery(
+        {
+          project_title: "Organization-wide AI Management System",
+          owner: userId,
+          start_date: new Date(Date.now()),
+          geography: 1,
+          target_industry: "Human Resources",
+          description:
+            "An organization-wide AI management system (AIMS) establishing governance, policies, roles and controls for the responsible development and operation of AI across the entire organization, implemented in accordance with ISO/IEC 42001.",
+          ai_risk_classification: AiRiskClassification.LIMITED_RISK,
+          goal: "To provide a single organizational framework for AI governance, risk management and continual improvement that all business units and AI systems align with, in compliance with ISO/IEC 42001 requirements",
+          last_updated: new Date(Date.now()),
+          last_updated_by: userId,
+          is_organizational: true,
+        },
+        [], // no additional members
+        [2], // frameworks: ISO/IEC 42001 (2) — organizational framework
+        organizationId,
+        userId,
+        transaction,
+        true, // is demo
+      );
+      await createISOFrameworkQuery(isoOrgProject.id!, true, organizationId, transaction, true);
 
       // create project risks
       await createRiskQuery(
@@ -947,14 +992,12 @@ export async function insertMockData(
           },
         );
       }
-    } else {
-      // project already exists, delete it and insert a new one
     }
 
     // Seed Shadow AI demo data (tools, events, rollups, rules, alerts)
     await insertShadowAiDemoData(organizationId, userId, transaction);
 
-    // Seed AI Gateway demo data (endpoints, virtual keys, ~30 days of spend logs)
+    // Seed AI Gateway demo data (config, 90 days of traffic, guardrails, prompts, Agent Control, risk)
     await insertAiGatewayDemoData(organizationId, userId, transaction);
 
     await transaction.commit();
@@ -970,7 +1013,7 @@ export async function deleteMockData(organizationId: number) {
     // Clean all Shadow AI demo data first (no FK ties to governance tables)
     await deleteShadowAiDemoData(organizationId, transaction);
 
-    // Clean AI Gateway demo data (spend logs, virtual keys, endpoints)
+    // Clean AI Gateway demo data (only the rows the seeder created)
     await deleteAiGatewayDemoData(organizationId, transaction);
 
     // =====================================================
@@ -1129,7 +1172,7 @@ export async function deleteMockData(organizationId: number) {
     }
 
     // 10. Delete demo users (last, as they may be referenced by other entities)
-    await deleteDemoUsersQuery(transaction);
+    await deleteDemoUsersQuery(organizationId, transaction);
 
     await transaction.commit();
   } catch (error) {
