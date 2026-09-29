@@ -18532,10 +18532,12 @@ export const translations: Record<string, Record<string, string>> = {
       "Doit contenir une majuscule, une minuscule et un chiffre. Minimum 8 caractères.",
     "Default retention policy": "Politique de rétention par défaut",
     "Expired files": "Fichiers expirés",
+    "File Manager": "Gestionnaire de fichiers",
     "File retention": "Rétention des fichiers",
     "Retention policy": "Politique de rétention",
     "Create API tokens for the super admin API":
       "Créer des tokens d'API pour l'API super administrateur",
+    "Install": "Installer",
     "Install the MCP server to manage organizations and users from Claude Code":
       "Installer le serveur MCP pour gérer les organisations et les utilisateurs depuis Claude Code",
     "Installed": "Installé",
@@ -18544,6 +18546,7 @@ export const translations: Record<string, Record<string, string>> = {
       "Les sources du serveur MCP n'ont pas été trouvées à côté du backend. Elles sont incluses depuis MCPServer/ au moment de la compilation.",
   },
   es: {
+    "Deployment name": "Nombre del despliegue",
     "Save the deployment name first, then generate the token.":
       "Primero guarde el nombre del despliegue y luego genere el token.",
     "Enable centralized monitoring": "Habilitar la supervisión centralizada",
