@@ -593,6 +593,13 @@ export const translations: Record<string, Record<string, string>> = {
     "Add new": "Neu hinzufügen",
     "Add agent": "Agent hinzufügen",
     "Add new risk": "Neues Risiko hinzufügen",
+    "Add a new risk": "Neues Risiko hinzufügen",
+    "Create a detailed breakdown of risks and their mitigation strategies to assist in documenting your risk management activities effectively.":
+      "Erstellen Sie eine detaillierte Aufschlüsselung der Risiken und ihrer Minderungsstrategien, um Ihre Risikomanagement-Aktivitäten wirksam zu dokumentieren.",
+    "Manage all organization risks in risk management":
+      "Alle Risiken der Organisation im Risikomanagement verwalten",
+    "View and add risks for this use case":
+      "Risiken für diesen Anwendungsfall anzeigen und hinzufügen",
     "Add new risks": "Neue Risiken hinzufügen",
     "Add new risk manually": "Neues Risiko manuell hinzufügen",
     "Add new risk menu": "Menü für neues Risiko",
@@ -9878,6 +9885,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Add new": "Ajouter",
     "Add agent": "Ajouter un agent",
     "Add new risk": "Ajouter un nouveau risque",
+    "Add a new risk": "Ajouter un nouveau risque",
+    "Create a detailed breakdown of risks and their mitigation strategies to assist in documenting your risk management activities effectively.":
+      "Créez une description détaillée des risques et de leurs stratégies d'atténuation afin de documenter efficacement vos activités de gestion des risques.",
+    "Manage all organization risks in risk management":
+      "Gérer tous les risques de l'organisation dans la gestion des risques",
+    "View and add risks for this use case": "Consulter et ajouter des risques pour ce cas d'usage",
     "Add new risks": "Ajouter de nouveaux risques",
     "Add new vendor": "Ajouter un nouveau fournisseur",
     "Add new policy": "Ajouter une nouvelle politique",
@@ -18901,6 +18914,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Add new": "Añadir nuevo",
     "Add agent": "Añadir agente",
     "Add new risk": "Añadir nuevo riesgo",
+    "Add a new risk": "Añadir un nuevo riesgo",
+    "Create a detailed breakdown of risks and their mitigation strategies to assist in documenting your risk management activities effectively.":
+      "Cree un desglose detallado de los riesgos y sus estrategias de mitigación para documentar eficazmente sus actividades de gestión de riesgos.",
+    "Manage all organization risks in risk management":
+      "Gestionar todos los riesgos de la organización en gestión de riesgos",
+    "View and add risks for this use case": "Ver y añadir riesgos para este caso de uso",
     "Add new risks": "Añadir nuevos riesgos",
     "Add new risk manually": "Añadir nuevo riesgo manualmente",
     "Add new risk menu": "Menú de nuevo riesgo",
