@@ -6,6 +6,7 @@
  */
 
 import { isISO27001 } from "../constants/frameworks";
+import { isCompletedStatus } from "../../domain/types/Status";
 
 /**
  * Common interfaces used across framework components
@@ -164,8 +165,8 @@ export const calculateItemPercentages = (items: SubClauseData[]) => {
     };
   }
 
-  // Calculate completion percentage (implemented items)
-  const implementedCount = items.filter((item) => item.status === "Implemented").length;
+  // Calculate completion percentage (items in a completed status: Implemented or Audited)
+  const implementedCount = items.filter((item) => isCompletedStatus(item.status)).length;
   const completionPercentage = Math.round((implementedCount / items.length) * 100);
 
   // Calculate assignment percentage (items with owner assigned)

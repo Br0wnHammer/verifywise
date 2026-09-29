@@ -172,6 +172,17 @@ describe("frameworkDataUtils", () => {
       // Assigned (owner not null/undefined) = 2/4 => 50
       expect(result.assignmentPercentage).toBe(50);
     });
+
+    it("counts Audited as completed", () => {
+      const items = [
+        { id: 1, title: "a", status: "Implemented", owner: 1 },
+        { id: 2, title: "b", status: "Audited", owner: null },
+        { id: 3, title: "c", status: "In progress", owner: null },
+        { id: 4, title: "d", status: "Not started", owner: null },
+      ];
+
+      expect(calculateItemPercentages(items as any).completionPercentage).toBe(50);
+    });
   });
 
   describe("isValidClauseNumber", () => {

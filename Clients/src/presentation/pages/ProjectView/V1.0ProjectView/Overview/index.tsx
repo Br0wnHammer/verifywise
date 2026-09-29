@@ -1,11 +1,12 @@
 import { Divider, Stack, Typography } from "@mui/material";
 import { columnStyle, rowStyle } from "./style";
 import { GroupStatsCard } from "../../../../components/Cards/GroupStatsCard";
-import { projectRiskSection } from "../style";
+import { projectRiskSection, projectRiskSectionLink } from "../style";
 import { StatusTileCards, StatusTileItem } from "../../../../components/Cards/StatusTileCards";
 import { InfoCard } from "../../../../components/Cards/InfoCard";
 import { DescriptionCard } from "../../../../components/Cards/DescriptionCard";
 import { TeamCard } from "../../../../components/Cards/TeamCard";
+import { Link } from "react-router";
 import { Project } from "../../../../../domain/types/Project";
 import CustomizableSkeleton from "../../../../components/Skeletons";
 import useFormattedDate from "../../../../../application/hooks/useFormattedDate";
@@ -388,6 +389,18 @@ const VWProjectOverview = ({ project }: { project?: Project }) => {
                 entityName="risk"
                 size="small"
               />
+              <Stack sx={{ gap: 2 }}>
+                <Typography
+                  component={Link}
+                  to={`/project-view?projectId=${projectId}&tab=project-risks`}
+                  sx={projectRiskSectionLink}
+                >
+                  View and add risks for this use case
+                </Typography>
+                <Typography component={Link} to="/risk-management" sx={projectRiskSectionLink}>
+                  Manage all organization risks in risk management
+                </Typography>
+              </Stack>
             </>
           ) : (
             <>
