@@ -35,6 +35,7 @@ import { paginationStyle } from "../Table/styles";
 import { FileIcon } from "../FileIcon";
 import { getUserFilesMetaData } from "../../../application/repository/file.repository";
 import CustomizableToast from "../../components/Toast";
+import { FileExpiryChip } from "../FileExpiryChip";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
 
 const SORT_KEY = "vw_link_evidence_selector_sort";
@@ -304,6 +305,8 @@ const LinkEvidenceSelectorModal: React.FC<LinkEvidenceSelectorModalProps> = ({
                       <Tooltip title={ev.filename || ""}>
                         <span>{truncate(ev.filename, 25)}</span>
                       </Tooltip>
+
+                      <FileExpiryChip expiryDate={(ev as any).expiry_date} />
                     </Box>
                   </TableCell>
 
