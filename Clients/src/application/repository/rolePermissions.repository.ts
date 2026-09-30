@@ -21,7 +21,7 @@ export async function getPermissionCatalog({ signal }: { signal?: AbortSignal } 
   PermissionCatalogEntry[]
 > {
   const response = await apiServices.get("/roles/permissions/catalog", { signal });
-  return response.data;
+  return response.data?.data ?? [];
 }
 
 /**
@@ -35,7 +35,7 @@ export async function getRolePermissions({
   signal?: AbortSignal;
 }): Promise<string[]> {
   const response = await apiServices.get(`/roles/${roleId}/permissions`, { signal });
-  return response.data;
+  return response.data?.data ?? [];
 }
 
 /**
@@ -60,5 +60,5 @@ export async function getMyPermissions({ signal }: { signal?: AbortSignal } = {}
   string[]
 > {
   const response = await apiServices.get("/roles/my-permissions", { signal });
-  return response.data;
+  return response.data?.data ?? [];
 }
