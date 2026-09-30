@@ -59,6 +59,8 @@ import authorize from "../middleware/accessControl.middleware";
 router.get("/", authenticateJWT, getAllRoles);
 
 router.get("/permissions/catalog", authenticateJWT, getPermissionCatalog);
+// Single-segment path — must be declared before "/:id".
+router.get("/my-permissions", authenticateJWT, getMyPermissions);
 
 /**
  * GET /roles/:id
