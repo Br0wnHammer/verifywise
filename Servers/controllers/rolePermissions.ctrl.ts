@@ -70,6 +70,55 @@ export async function getPermissionCatalog(req: Request, res: Response): Promise
 }
 
 /**
+ * GET /roles/my-permissions
+ *
+ * The authenticated user's effective permission keys (built-ins against the
+ * static matrix, custom roles against their `role_permissions` rows). Feeds
+ * the client's permission context so the UI can reconcile role-name gates
+ * with custom roles (issue #4588) — backend remains the enforcing authority.
+ */
+export async function getMyPermissions(req: Request, res: Response): Promise<any> {
+  logProcessing({
+    description: "starting getMyPermissions",
+    functionName: "getMyPermissions",
+    fileName: "rolePermissions.ctrl.ts",
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+
+  try {
+    if (!req.role) {
+      return res.status(401).json(STATUS_CODE[401](req.t!("Authentication required")));
+    }
+
+    const permissions = await getEffectivePermissions(req.organizationId ?? null, req.role);
+
+    await logSuccess({
+      eventType: "Read",
+      description: "Retrieved own permissions",
+      functionName: "getMyPermissions",
+      fileName: "rolePermissions.ctrl.ts",
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+
+    return res.status(200).json(STATUS_CODE[200](Array.from(permissions)));
+  } catch (error) {
+    await logFailure({
+      eventType: "Read",
+      description: "Failed to retrieve own permissions",
+      functionName: "getMyPermissions",
+      fileName: "rolePermissions.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
  * Loads a role for a permissions mutation/read and enforces ownership:
  * the role must exist, be custom (not a global built-in), and belong to the
  * caller's organization. Returns the role or sends the error response.
