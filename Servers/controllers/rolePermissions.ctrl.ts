@@ -119,14 +119,16 @@ export async function getMyPermissions(req: Request, res: Response): Promise<any
 }
 
 /**
- * Loads a role for a permissions mutation/read and enforces ownership:
- * the role must exist, be custom (not a global built-in), and belong to the
- * caller's organization. Returns the role or sends the error response.
+ * Loads a role for a permissions read/mutation and enforces ownership.
+ * Reads may target built-in roles (their static matrix is not secret);
+ * mutations (`forMutation`) are limited to the org's own custom roles.
+ * Returns the role or sends the error response.
  */
 async function loadCustomRoleOrRespond(
   req: Request,
   res: Response,
-): Promise<{ id: number; name: string; organization_id: number } | null> {
+  forMutation: boolean,
+): Promise<{ id: number; name: string; organization_id: number | null } | null> {
   const roleId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
   const role = await getRoleByIdQuery(roleId);
 
@@ -134,15 +136,15 @@ async function loadCustomRoleOrRespond(
     res.status(404).json(STATUS_CODE[404]({}));
     return null;
   }
-  if (role.organization_id == null) {
+  if (forMutation && role.organization_id == null) {
     res.status(403).json(STATUS_CODE[403](req.t!("Built-in roles cannot be modified")));
     return null;
   }
-  if (role.organization_id !== (req.organizationId ?? null)) {
+  if (role.organization_id != null && role.organization_id !== (req.organizationId ?? null)) {
     res.status(403).json(STATUS_CODE[403](req.t!("Access denied")));
     return null;
   }
-  return role as { id: number; name: string; organization_id: number };
+  return role as { id: number; name: string; organization_id: number | null };
 }
 
 /**
@@ -161,7 +163,7 @@ export async function getRolePermissionsById(req: Request, res: Response): Promi
   });
 
   try {
-    const role = await loadCustomRoleOrRespond(req, res);
+    const role = await loadCustomRoleOrRespond(req, res, false);
     if (!role) return;
 
     const permissions = await getEffectivePermissions(role.organization_id, role.name);
@@ -209,7 +211,7 @@ export async function replaceRolePermissions(req: Request, res: Response): Promi
   });
 
   try {
-    const role = await loadCustomRoleOrRespond(req, res);
+    const role = await loadCustomRoleOrRespond(req, res, true);
     if (!role) {
       await transaction.rollback();
       return;
@@ -224,7 +226,7 @@ export async function replaceRolePermissions(req: Request, res: Response): Promi
       );
     }
 
-    await replaceRolePermissionsQuery(role.organization_id, role.id, permissions, transaction);
+    await replaceRolePermissionsQuery(role.organization_id!, role.id, permissions, transaction);
 
     await transaction.commit();
 
