@@ -30,6 +30,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: Servers/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -64,6 +66,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: Servers/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -146,6 +150,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: Servers/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -250,6 +256,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: Servers/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -281,6 +289,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: Servers/package-lock.json
 
       - name: Install dependencies
         run: npm ci
