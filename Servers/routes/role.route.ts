@@ -26,9 +26,16 @@
 import express from "express";
 const router = express.Router();
 
-import { getAllRoles, getRoleById } from "../controllers/role.ctrl";
+import {
+  createRole,
+  deleteRoleById,
+  getAllRoles,
+  getRoleById,
+  updateRoleById,
+} from "../controllers/role.ctrl";
 
 import authenticateJWT from "../middleware/auth.middleware";
+import authorize from "../middleware/accessControl.middleware";
 
 /**
  * GET /roles
@@ -76,7 +83,7 @@ router.get("/:id", authenticateJWT, getRoleById);
  * @param {express.Response} res - Express response object
  * @returns {Object} Created role object
  */
-// router.post("/", authenticateJWT, createRole);
+router.post("/", authenticateJWT, authorize("roles.manage"), createRole);
 
 /**
  * PUT /roles/:id
@@ -92,7 +99,7 @@ router.get("/:id", authenticateJWT, getRoleById);
  * @param {express.Response} res - Express response object
  * @returns {Object} Updated role object
  */
-// router.put("/:id", authenticateJWT, updateRoleById);
+router.put("/:id", authenticateJWT, authorize("roles.manage"), updateRoleById);
 
 /**
  * DELETE /roles/:id
@@ -109,6 +116,6 @@ router.get("/:id", authenticateJWT, getRoleById);
  * @param {express.Response} res - Express response object
  * @returns {Object} Deleted role object
  */
-// router.delete("/:id", authenticateJWT, deleteRoleById);
+router.delete("/:id", authenticateJWT, authorize("roles.manage"), deleteRoleById);
 
 export default router;
