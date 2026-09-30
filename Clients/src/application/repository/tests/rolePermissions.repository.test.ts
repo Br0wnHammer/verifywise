@@ -24,7 +24,9 @@ describe("rolePermissions.repository", () => {
     expect(apiServices.get).toHaveBeenCalledWith("/roles/permissions/catalog", {
       signal: undefined,
     });
-    expect(result).toEqual([{ key: "risks.edit", module: "Risks", description: "Create and update risks" }]);
+    expect(result).toEqual([
+      { key: "risks.edit", module: "Risks", description: "Create and update risks" },
+    ]);
   });
 
   it("getRolePermissions calls GET /roles/:id/permissions and unwraps the envelope", async () => {
