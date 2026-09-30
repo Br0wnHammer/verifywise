@@ -33,6 +33,11 @@ import {
   getRoleById,
   updateRoleById,
 } from "../controllers/role.ctrl";
+import {
+  getPermissionCatalog,
+  getRolePermissionsById,
+  replaceRolePermissions,
+} from "../controllers/rolePermissions.ctrl";
 
 import authenticateJWT from "../middleware/auth.middleware";
 import authorize from "../middleware/accessControl.middleware";
@@ -52,6 +57,8 @@ import authorize from "../middleware/accessControl.middleware";
  * @returns {Array<Object>} Array of role objects
  */
 router.get("/", authenticateJWT, getAllRoles);
+
+router.get("/permissions/catalog", authenticateJWT, getPermissionCatalog);
 
 /**
  * GET /roles/:id
@@ -117,5 +124,9 @@ router.put("/:id", authenticateJWT, authorize("roles.manage"), updateRoleById);
  * @returns {Object} Deleted role object
  */
 router.delete("/:id", authenticateJWT, authorize("roles.manage"), deleteRoleById);
+
+// Custom-role permission matrix (issue #4588). Same roles.manage guard.
+router.get("/:id/permissions", authenticateJWT, getRolePermissionsById);
+router.put("/:id/permissions", authenticateJWT, authorize("roles.manage"), replaceRolePermissions);
 
 export default router;
