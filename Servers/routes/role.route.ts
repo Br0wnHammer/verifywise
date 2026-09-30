@@ -34,6 +34,7 @@ import {
   updateRoleById,
 } from "../controllers/role.ctrl";
 import {
+  getMyPermissions,
   getPermissionCatalog,
   getRolePermissionsById,
   replaceRolePermissions,
