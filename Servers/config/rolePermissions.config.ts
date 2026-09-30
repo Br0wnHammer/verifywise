@@ -29,10 +29,21 @@ export interface PermissionMeta {
 const ADMIN = ["Admin"] as const;
 const EDITOR = ["Admin", "Editor"] as const;
 const CONTRIBUTOR = ["Admin", "Reviewer", "Editor"] as const;
+const READER = ["Admin", "Editor", "Reviewer", "Auditor"] as const;
 const SUPER = ["Admin", "SuperAdmin"] as const;
 
 export const ROLE_PERMISSIONS = {
   // ── Admin tier (was authorize(["Admin"])) ────────────────────────────────
+  "aiDetection.admin": {
+    module: "AI detection",
+    description: "Delete scans and configure risk scoring",
+    legacyRoles: ADMIN,
+  },
+  "aiDetectionRepository.admin": {
+    module: "AI detection",
+    description: "Delete registered repositories",
+    legacyRoles: ADMIN,
+  },
   "agentDiscovery.admin": {
     module: "AI agent discovery",
     description: "Configure AI agent discovery runs and sources",
@@ -93,6 +104,11 @@ export const ROLE_PERMISSIONS = {
     description: "Read raw file content",
     legacyRoles: ADMIN,
   },
+  "githubIntegration.admin": {
+    module: "GitHub integration",
+    description: "Configure the GitHub integration",
+    legacyRoles: ADMIN,
+  },
   "governanceOs.admin": {
     module: "Governance OS",
     description: "Delete mappings/scenarios and edit preferences",
@@ -115,6 +131,16 @@ export const ROLE_PERMISSIONS = {
   },
 
   // ── Editor tier (was authorize(["Admin", "Editor"])) ─────────────────────
+  "aiDetection.edit": {
+    module: "AI detection",
+    description: "Start and cancel scans, manage finding governance and suppressions",
+    legacyRoles: EDITOR,
+  },
+  "aiDetectionRepository.edit": {
+    module: "AI detection",
+    description: "Register and update repositories, trigger scans",
+    legacyRoles: EDITOR,
+  },
   "aiApp.edit": {
     module: "AI applications",
     description: "Create and update AI applications",
@@ -138,6 +164,11 @@ export const ROLE_PERMISSIONS = {
   "file.edit": {
     module: "Files",
     description: "Bulk-tag files",
+    legacyRoles: EDITOR,
+  },
+  "intakeForm.edit": {
+    module: "Intake forms",
+    description: "Create and manage intake forms and submissions",
     legacyRoles: EDITOR,
   },
   "fria.edit": {
@@ -191,6 +222,18 @@ export const ROLE_PERMISSIONS = {
     module: "File manager",
     description: "Manage files and folders",
     legacyRoles: CONTRIBUTOR,
+  },
+
+  // ── Reader tier (was authorize(["Admin", "Editor", "Reviewer", "Auditor"])) ──
+  "aiDetection.read": {
+    module: "AI detection",
+    description: "View AI detection scans, findings and statistics",
+    legacyRoles: READER,
+  },
+  "aiDetectionRepository.read": {
+    module: "AI detection",
+    description: "View registered repositories and scan history",
+    legacyRoles: READER,
   },
 
   // ── Super tier (was authorize(["Admin", "SuperAdmin"])) ──────────────────
