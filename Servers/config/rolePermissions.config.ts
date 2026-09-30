@@ -124,6 +124,11 @@ export const ROLE_PERMISSIONS = {
     description: "Configure reporting integrations",
     legacyRoles: ADMIN,
   },
+  "roles.manage": {
+    module: "Roles",
+    description: "Create, update and delete custom organization roles",
+    legacyRoles: ADMIN,
+  },
   "ssoConfig.admin": {
     module: "SSO",
     description: "Configure SSO",
