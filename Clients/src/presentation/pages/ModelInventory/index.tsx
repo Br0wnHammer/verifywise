@@ -1501,9 +1501,12 @@ const ModelInventory: React.FC = () => {
 
         errorMessage = validationMessages;
       }
-      // Handle general error message
+      // Handle general error message — prefer the specific payload (STATUS_CODE
+      // puts the specific text in `data`, e.g. a 409 "Conflict" carries the
+      // human-readable reason there) over the generic `message` (issue #4755).
       else if (errorData.message) {
-        errorMessage = errorData.message;
+        errorMessage =
+          typeof errorData.data === "string" && errorData.data ? errorData.data : errorData.message;
       }
     }
 

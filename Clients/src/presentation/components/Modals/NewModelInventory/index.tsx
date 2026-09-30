@@ -47,6 +47,7 @@ import { CirclePlus as AddCircleOutlineIcon } from "lucide-react";
 import { VWLink } from "../../Link/VWLink";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFormValidation } from "../../../../application/hooks/useFormValidation";
+import { focusFormFieldById } from "../../../../application/utils/formValidationFocus";
 import { checkStringValidation } from "../../../../application/validations/stringValidation";
 
 dayjs.extend(utc);
@@ -211,7 +212,7 @@ const NewModelInventory: FC<NewModelInventoryProps> = ({
     [],
   );
 
-  const { errors, validateAll, clearFieldError, resetErrors } =
+  const { errors, validateAll, clearFieldError, resetErrors, setServerErrors } =
     useFormValidation<NewModelInventoryFormValues>(validators);
 
   // Prefetch history data when modal opens in edit mode
@@ -498,6 +499,16 @@ const NewModelInventory: FC<NewModelInventoryProps> = ({
         handleClose();
       } catch (error: any) {
         setIsSubmitting(false);
+        // Surface a duplicate external key (409) as a field-level error so the
+        // user sees it next to the input, not only as a toast (issue #4755).
+        if (error?.response?.status === 409) {
+          const message =
+            error?.response?.data?.data ||
+            error?.response?.data?.message ||
+            "A model with this external key already exists in your organization.";
+          setServerErrors({ external_key: message });
+          focusFormFieldById("external_key");
+        }
         // Propagate error to parent for toast notification
         if (onError) {
           onError(error);
@@ -817,6 +828,7 @@ const NewModelInventory: FC<NewModelInventoryProps> = ({
           width={"50%"}
           value={values.external_key ?? ""}
           onChange={handleOnTextFieldChange("external_key")}
+          error={errors.external_key}
           sx={fieldStyle}
           placeholder="eg. credit-scoring-v3"
         />
