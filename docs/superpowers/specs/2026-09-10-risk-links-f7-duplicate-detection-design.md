@@ -205,7 +205,8 @@ in the same category, and on live data **every risk has a category**
 (`no_category = 0`, max 2 categories per risk). Largest bucket is 10 risks
 (Operational risk), so the real pair count per bucket is 45.
 
-`MAX_DUPLICATE_PAIRS = 2000` caps the total scored pairs regardless, and
+`MAX_DUPLICATE_PAIRS = 250_000` caps the total scored pairs regardless (raised from
+2000, which tripped at 213 risks — ~6500 blocked pairs — and hid 13 of 15 matches), and
 `MAX_DUPLICATE_RESULTS = 50` caps what the endpoint returns.
 
 > `ponytail:` category blocking plus a hard pair cap. If an org ever has a
@@ -267,7 +268,7 @@ New file `Servers/services/riskLinks/duplicates.ts`.
 ```ts
 export const DUPLICATE_SIMILARITY_THRESHOLD = 0.25;  // see §3.2 — measured, not chosen
 export const MAX_DUPLICATE_SCAN = 2000;
-export const MAX_DUPLICATE_PAIRS = 2000;
+export const MAX_DUPLICATE_PAIRS = 250_000;
 export const MAX_DUPLICATE_RESULTS = 50;
 
 export interface DuplicateCandidate {
@@ -282,7 +283,8 @@ export interface DuplicateReport {
   organization_id: number;
   scanned: number;             // risks read
   compared: number;            // pairs actually scored
-  truncated: boolean;          // hit MAX_DUPLICATE_SCAN or MAX_DUPLICATE_PAIRS
+  matched: number;             // pairs above the threshold, before MAX_DUPLICATE_RESULTS
+  truncated: boolean;          // the scan stopped early: MAX_DUPLICATE_SCAN or MAX_DUPLICATE_PAIRS
   candidates: DuplicateCandidate[];
 }
 
@@ -381,7 +383,8 @@ the query:
 4. A risk whose tokens all filter out (every word <= 2 chars, e.g. a name of
    `"AI on"` with no description) → no divide-by-zero, no candidate.
 5. `risk_a.id < risk_b.id` always, and results are sorted by similarity desc.
-6. More than `MAX_DUPLICATE_RESULTS` matches → list capped, `truncated` true.
+6. More than `MAX_DUPLICATE_RESULTS` matches → list capped, `matched` counts them all,
+   `truncated` stays false: keeping the closest 50 of a complete scan is not a sample.
 
 **Integration** — `Servers/tests/integration/riskLinks.duplicates.test.ts`,
 following `riskLinks.hierarchy.test.ts` and using

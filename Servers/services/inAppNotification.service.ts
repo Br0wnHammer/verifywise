@@ -12,6 +12,8 @@ import {
 } from "../domain.layer/interfaces/i.notification";
 import { notificationService } from "./notificationService";
 import { EMAIL_TEMPLATES } from "../constants/emailTemplates";
+import { translate, type SupportedLang } from "../utils/i18n.utils";
+import { getUserLanguage } from "../utils/userPreference.utils";
 
 /**
  * Build a frontend-compatible URL for a given entity type and id.
@@ -893,17 +895,27 @@ export const notifyVendorReviewDue = async (
   );
 };
 
-/** "due on 12 Sep" / "3 days overdue" — shared by both deadline notifiers. */
-const deadlineDistanceText = (deadline: Date): string => {
+/**
+ * "due on 12 Sep" / "3 days overdue" — shared by both deadline notifiers.
+ * English unless a language is passed: the email template is English, so only
+ * the in-app row is worded for the recipient.
+ */
+const deadlineDistanceText = (deadline: Date, lang: SupportedLang = "en"): string => {
   const daysLeft = Math.ceil((deadline.getTime() - Date.now()) / 86400000);
-  if (daysLeft > 1) return `in ${daysLeft} days`;
-  if (daysLeft === 1) return "tomorrow";
-  if (daysLeft === 0) return "today";
-  return `${-daysLeft} days overdue`;
+  if (daysLeft > 1) return translate(lang, "in {days} days", { days: daysLeft });
+  if (daysLeft === 1) return translate(lang, "tomorrow");
+  if (daysLeft === 0) return translate(lang, "today");
+  return translate(lang, "{days} days overdue", { days: -daysLeft });
 };
 
-const deadlineDateText = (deadline: Date): string =>
-  deadline.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+const DATE_LOCALES: Record<SupportedLang, string> = { en: "en-US", de: "de-DE", fr: "fr-FR" };
+
+const deadlineDateText = (deadline: Date, lang: SupportedLang = "en"): string =>
+  deadline.toLocaleDateString(DATE_LOCALES[lang], {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
 /**
  * Notify one recipient that a project risk's deadline is approaching.
@@ -920,6 +932,7 @@ export const notifyRiskDeadlineDueSoon = async (
   sendEmail = true,
 ): Promise<void> => {
   const recipient = await getUserById(recipientId);
+  const lang = await getUserLanguage(recipientId);
   const distance = deadlineDistanceText(risk.deadline);
 
   await sendInAppNotification(
@@ -927,8 +940,12 @@ export const notifyRiskDeadlineDueSoon = async (
     {
       user_id: recipientId,
       type: NotificationType.RISK_DEADLINE_DUE_SOON,
-      title: "Risk deadline approaching",
-      message: `Risk "${risk.name}" is due ${distance} (${deadlineDateText(risk.deadline)}).`,
+      title: translate(lang, "Risk deadline approaching"),
+      message: translate(lang, 'Risk "{name}" is due {distance} ({date}).', {
+        name: risk.name,
+        distance: deadlineDistanceText(risk.deadline, lang),
+        date: deadlineDateText(risk.deadline, lang),
+      }),
       entity_type: NotificationEntityType.RISK,
       entity_id: risk.id,
       entity_name: risk.name,
@@ -972,6 +989,7 @@ export const notifyModelRiskDueSoon = async (
   sendEmail = true,
 ): Promise<void> => {
   const recipient = await getUserById(recipientId);
+  const lang = await getUserLanguage(recipientId);
   const distance = deadlineDistanceText(modelRisk.deadline);
   const modelPath =
     modelRisk.model_id != null
@@ -983,8 +1001,12 @@ export const notifyModelRiskDueSoon = async (
     {
       user_id: recipientId,
       type: NotificationType.MODEL_RISK_DUE_SOON,
-      title: "Model risk target date approaching",
-      message: `Model risk "${modelRisk.name}" is due ${distance} (${deadlineDateText(modelRisk.deadline)}).`,
+      title: translate(lang, "Model risk target date approaching"),
+      message: translate(lang, 'Model risk "{name}" is due {distance} ({date}).', {
+        name: modelRisk.name,
+        distance: deadlineDistanceText(modelRisk.deadline, lang),
+        date: deadlineDateText(modelRisk.deadline, lang),
+      }),
       entity_type: NotificationEntityType.MODEL,
       entity_id: modelRisk.id,
       entity_name: modelRisk.name,
@@ -1069,14 +1091,17 @@ export const notifyEvidenceStale = async (
   },
 ): Promise<void> => {
   if (risk.risk_owner == null) return;
+  const lang = await getUserLanguage(risk.risk_owner);
 
   await sendInAppNotification(
     organizationId,
     {
       user_id: risk.risk_owner,
       type: NotificationType.EVIDENCE_STALE,
-      title: "Evidence stale",
-      message: `Risk "${risk.risk_name}" has stale linked evidence. Review and refresh it.`,
+      title: translate(lang, "Evidence stale"),
+      message: translate(lang, 'Risk "{name}" has stale linked evidence. Review and refresh it.', {
+        name: risk.risk_name,
+      }),
       entity_type: NotificationEntityType.RISK,
       entity_id: risk.id,
       entity_name: risk.risk_name,
@@ -1100,14 +1125,19 @@ export const notifyParentLevelChanged = async (
   },
 ): Promise<void> => {
   if (risk.risk_owner == null) return;
+  const lang = await getUserLanguage(risk.risk_owner);
 
   await sendInAppNotification(
     organizationId,
     {
       user_id: risk.risk_owner,
       type: NotificationType.RISK_INHERITANCE_STALE,
-      title: "Inherited risk level may be stale",
-      message: `A parent risk's level changed, so the inherited level on "${risk.risk_name}" may be out of date. Review it.`,
+      title: translate(lang, "Inherited risk level may be stale"),
+      message: translate(
+        lang,
+        'A parent risk\'s level changed, so the inherited level on "{name}" may be out of date. Review it.',
+        { name: risk.risk_name },
+      ),
       entity_type: NotificationEntityType.RISK,
       entity_id: risk.id,
       entity_name: risk.risk_name,
@@ -1128,17 +1158,26 @@ export const notifyRiskOfModelCandidates = async (
   modelRiskIds: number[] = [],
 ): Promise<boolean> => {
   if (risk.risk_owner == null) return false;
+  const lang = await getUserLanguage(risk.risk_owner);
   try {
     await sendInAppNotification(
       organizationId,
       {
         user_id: risk.risk_owner,
         type: NotificationType.MODEL_RISK_CANDIDATES,
-        title: "New model risks to review",
+        title: translate(lang, "New model risks to review"),
         message:
-          `Risk "${risk.risk_name}" now shares a project with ` +
-          `${candidateCount} model risk${candidateCount === 1 ? "" : "s"} ` +
-          `from "${model.name}". Review the suggested links.`,
+          candidateCount === 1
+            ? translate(
+                lang,
+                'Risk "{riskName}" now shares a project with 1 model risk from "{modelName}". Review the suggested links.',
+                { riskName: risk.risk_name, modelName: model.name },
+              )
+            : translate(
+                lang,
+                'Risk "{riskName}" now shares a project with {count} model risks from "{modelName}". Review the suggested links.',
+                { riskName: risk.risk_name, count: candidateCount, modelName: model.name },
+              ),
         entity_type: NotificationEntityType.RISK,
         entity_id: risk.id,
         entity_name: risk.risk_name,
@@ -1161,10 +1200,7 @@ export const notifyRiskOfModelCandidates = async (
     const pg =
       (error as { parent?: { code?: string; constraint?: string } })?.parent ??
       (error as { original?: { code?: string; constraint?: string } })?.original;
-    if (
-      pg?.code === "23505" &&
-      pg?.constraint === "notifications_model_risk_candidates_uniq"
-    ) {
+    if (pg?.code === "23505" && pg?.constraint === "notifications_model_risk_candidates_uniq") {
       return false;
     }
     throw error;

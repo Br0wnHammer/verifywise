@@ -148,7 +148,7 @@ describe("findDuplicateCandidates", () => {
     ]);
   });
 
-  it("caps the list and marks truncated, via both cap paths", async () => {
+  it("keeps the closest matches without calling a complete scan truncated", async () => {
     const identical = (id: number) =>
       row({
         id,
@@ -160,10 +160,13 @@ describe("findDuplicateCandidates", () => {
     const capped = await findDuplicateCandidates(1);
 
     expect(capped.candidates).toHaveLength(MAX_DUPLICATE_RESULTS);
-    expect(capped.truncated).toBe(true);
+    expect(capped.matched).toBe((60 * 59) / 2);
+    expect(capped.truncated).toBe(false);
+  });
 
-    // Scan-cap path: exactly MAX_DUPLICATE_SCAN rows in, each in its own
-    // category so nothing is even compared — still truncated, honestly.
+  it("marks a scan that stopped at the risk cap as truncated", async () => {
+    // Exactly MAX_DUPLICATE_SCAN rows in, each in its own category so nothing
+    // is even compared — still truncated, honestly.
     mockQuery.mockResolvedValue(
       Array.from({ length: MAX_DUPLICATE_SCAN }, (_, i) =>
         row({ id: i + 1, risk_category: [`Category ${i + 1}`] }),
@@ -176,5 +179,22 @@ describe("findDuplicateCandidates", () => {
     expect(scanCapped.compared).toBe(0);
     expect(scanCapped.candidates).toHaveLength(0);
     expect(scanCapped.truncated).toBe(true);
+  });
+
+  it("scans a few-hundred-risk bucket in full, not a sample of its first pairs", async () => {
+    // 120 risks in one category = 7140 pairs, past the old 2000-pair cap that
+    // stopped the scan before it reached the duplicate filed last.
+    const rows = Array.from({ length: 118 }, (_, i) =>
+      row({ id: i + 1, risk_name: `topic${i}a topic${i}b` }),
+    );
+    const twin = (id: number) =>
+      row({ id, risk_name: "Vendor assessment overdue", risk_description: "Stays incomplete." });
+    mockQuery.mockResolvedValue([...rows, twin(119), twin(120)]);
+
+    const report = await findDuplicateCandidates(1);
+
+    expect(report.compared).toBe((120 * 119) / 2);
+    expect(report.truncated).toBe(false);
+    expect(report.candidates.map((c) => [c.risk_a.id, c.risk_b.id])).toEqual([[119, 120]]);
   });
 });

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { STATUS_CODE } from "../utils/statusCode.utils";
+import { translateError } from "../utils/i18n.utils";
 import { logFailure, logProcessing, logSuccess } from "../utils/logger/logHelper";
 import {
   enqueueRiskLinkDirection,
@@ -119,30 +120,49 @@ const toResponse = (link: RiskLinkWithRelated, riskId: number) => ({
   },
 });
 
-const HIERARCHY_MESSAGES: Record<HierarchyViolation, string> = {
-  child_already_has_parent: "This risk already has a parent. Remove it first.",
-  parent_is_a_child: "That risk is already a child of another risk, so it cannot be a parent.",
-  child_has_children: "This risk has child risks, so it cannot become a child.",
+const hierarchyMessage = (req: Request, violation: HierarchyViolation): string => {
+  switch (violation) {
+    case "child_already_has_parent":
+      return req.t!("This risk already has a parent. Remove it first.");
+    case "parent_is_a_child":
+      return req.t!("That risk is already a child of another risk, so it cannot be a parent.");
+    case "child_has_children":
+      return req.t!("This risk has child risks, so it cannot become a child.");
+  }
 };
 
-const DISMISS_REASON_MESSAGES: Record<DismissReasonRejection, string> = {
-  note_without_reason: "A note needs a dismissal reason",
-  note_not_text: "The note must be text",
-  not_a_dismissal: "A dismissal reason only applies when dismissing a link",
-  not_a_suggestion: "A dismissal reason only applies to a suggested link",
-  unknown_reason: "Invalid dismissal reason",
-  wrong_relation_type: "That dismissal reason does not apply to this kind of link",
-  note_required: "A note is required when the dismissal reason is Other",
-  note_too_long: "The note must be 500 characters or fewer",
+const dismissReasonMessage = (req: Request, rejection: DismissReasonRejection): string => {
+  switch (rejection) {
+    case "note_without_reason":
+      return req.t!("A note needs a dismissal reason");
+    case "note_not_text":
+      return req.t!("The note must be text");
+    case "not_a_dismissal":
+      return req.t!("A dismissal reason only applies when dismissing a link");
+    case "not_a_suggestion":
+      return req.t!("A dismissal reason only applies to a suggested link");
+    case "unknown_reason":
+      return req.t!("Invalid dismissal reason");
+    case "wrong_relation_type":
+      return req.t!("That dismissal reason does not apply to this kind of link");
+    case "note_required":
+      return req.t!("A note is required when the dismissal reason is Other");
+    case "note_too_long":
+      return req.t!("The note must be 500 characters or fewer");
+  }
 };
 
 const SINGLE_PARENT_INDEX = "risk_links_single_parent_idx";
 
 type TargetRejection = "not_exactly_one" | "cross_entity_related_to";
 
-const TARGET_MESSAGES: Record<TargetRejection, string> = {
-  not_exactly_one: "Provide exactly one parent risk.",
-  cross_entity_related_to: "Only inheritance links are supported across risk types.",
+const targetMessage = (req: Request, rejection: TargetRejection): string => {
+  switch (rejection) {
+    case "not_exactly_one":
+      return req.t!("Provide exactly one parent risk.");
+    case "cross_entity_related_to":
+      return req.t!("Only inheritance links are supported across risk types.");
+  }
 };
 
 /**
@@ -201,12 +221,12 @@ export async function getRiskLinks(req: Request, res: Response): Promise<any> {
   try {
     const riskId = toId(req.params.riskId);
     if (isNaN(riskId)) {
-      return res.status(400).json(STATUS_CODE[400]("Invalid risk ID"));
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid risk ID")));
     }
 
     const requested = req.query.status;
     if (requested !== undefined && !isRiskLinkStatus(requested)) {
-      return res.status(400).json(STATUS_CODE[400]("Invalid status filter"));
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid status filter")));
     }
     const statuses = requested ? [requested] : DEFAULT_STATUSES;
 
@@ -232,7 +252,7 @@ export async function getRiskLinks(req: Request, res: Response): Promise<any> {
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -255,7 +275,7 @@ export async function getRiskGraph(req: Request, res: Response): Promise<any> {
   try {
     const requested = req.query.status;
     if (requested !== undefined && !isRiskLinkStatus(requested)) {
-      return res.status(400).json(STATUS_CODE[400]("Invalid status filter"));
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid status filter")));
     }
     const statuses = requested ? [requested] : DEFAULT_STATUSES;
 
@@ -317,7 +337,7 @@ export async function getRiskGraph(req: Request, res: Response): Promise<any> {
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -360,7 +380,7 @@ export async function getDismissalAnalytics(req: Request, res: Response): Promis
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -401,7 +421,7 @@ export async function getDuplicateCandidates(req: Request, res: Response): Promi
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -443,7 +463,7 @@ export async function getControlCoverage(req: Request, res: Response): Promise<a
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -466,7 +486,7 @@ export async function getSharedProjects(req: Request, res: Response): Promise<an
   try {
     const riskId = toId(req.params.riskId);
     if (isNaN(riskId)) {
-      return res.status(400).json(STATUS_CODE[400]("Invalid risk ID"));
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid risk ID")));
     }
 
     const candidates = await getSharedProjectCandidatesQuery(req.organizationId!, riskId);
@@ -491,7 +511,7 @@ export async function getSharedProjects(req: Request, res: Response): Promise<an
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -527,7 +547,9 @@ export async function suggestRiskHierarchy(req: Request, res: Response): Promise
         .status(400)
         .json(
           STATUS_CODE[400](
-            "No LLM key is configured for this organization. Add one under Settings before suggesting a hierarchy.",
+            req.t!(
+              "No LLM key is configured for this organization. Add one under Settings before suggesting a hierarchy.",
+            ),
           ),
         );
     }
@@ -558,7 +580,7 @@ export async function suggestRiskHierarchy(req: Request, res: Response): Promise
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -574,23 +596,27 @@ export async function updateRiskLinkStatus(req: Request, res: Response): Promise
   try {
     const id = toId(req.params.id);
     if (isNaN(id)) {
-      return res.status(400).json(STATUS_CODE[400]("Invalid link ID"));
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid link ID")));
     }
 
     const next = req.body?.status;
     if (!isRiskLinkStatus(next)) {
-      return res.status(400).json(STATUS_CODE[400]("Invalid status"));
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid status")));
     }
 
     const link = await getRiskLinkByIdQuery(id, req.organizationId!);
     if (!link) {
-      return res.status(404).json(STATUS_CODE[404]("Risk link not found"));
+      return res.status(404).json(STATUS_CODE[404](req.t!("Risk link not found")));
     }
 
     if (!ALLOWED_TRANSITIONS[link.status].includes(next)) {
       return res
         .status(400)
-        .json(STATUS_CODE[400](`Cannot change status from ${link.status} to ${next}`));
+        .json(
+          STATUS_CODE[400](
+            req.t!("Cannot change status from {from} to {to}", { from: link.status, to: next }),
+          ),
+        );
     }
 
     // Pure, and ahead of the hierarchy round trip. `dismissal.reason` and
@@ -603,7 +629,7 @@ export async function updateRiskLinkStatus(req: Request, res: Response): Promise
       relationType: link.relation_type,
     });
     if (!dismissal.ok) {
-      return res.status(400).json(STATUS_CODE[400](DISMISS_REASON_MESSAGES[dismissal.rejection]));
+      return res.status(400).json(STATUS_CODE[400](dismissReasonMessage(req, dismissal.rejection)));
     }
 
     // Confirming a suggestion, or restoring a dismissed link, reaches the same
@@ -621,7 +647,7 @@ export async function updateRiskLinkStatus(req: Request, res: Response): Promise
         await getConfirmedHierarchyEdgesQuery(req.organizationId!, link.source_risk_id, parent),
       );
       if (violation) {
-        return res.status(409).json(STATUS_CODE[409](HIERARCHY_MESSAGES[violation]));
+        return res.status(409).json(STATUS_CODE[409](hierarchyMessage(req, violation)));
       }
     }
 
@@ -649,7 +675,9 @@ export async function updateRiskLinkStatus(req: Request, res: Response): Promise
     return res.status(200).json(STATUS_CODE[200]({ id, status: next }));
   } catch (error) {
     if (isSingleParentViolation(error)) {
-      return res.status(409).json(STATUS_CODE[409](HIERARCHY_MESSAGES.child_already_has_parent));
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](hierarchyMessage(req, "child_already_has_parent")));
     }
     logFailure({
       eventType: "Update",
@@ -660,7 +688,7 @@ export async function updateRiskLinkStatus(req: Request, res: Response): Promise
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -681,7 +709,7 @@ export async function acknowledgeParentLevelChange(req: Request, res: Response):
   try {
     const id = toId(req.params.id);
     if (isNaN(id)) {
-      return res.status(400).json(STATUS_CODE[400]("Invalid link ID"));
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid link ID")));
     }
 
     const cleared = await acknowledgeParentLevelChangeQuery(req.organizationId!, id);
@@ -690,7 +718,7 @@ export async function acknowledgeParentLevelChange(req: Request, res: Response):
       // that was already reviewed (200, idempotent).
       const link = await getRiskLinkByIdQuery(id, req.organizationId!);
       if (!link) {
-        return res.status(404).json(STATUS_CODE[404]("Risk link not found"));
+        return res.status(404).json(STATUS_CODE[404](req.t!("Risk link not found")));
       }
     }
 
@@ -714,7 +742,7 @@ export async function acknowledgeParentLevelChange(req: Request, res: Response):
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -737,32 +765,32 @@ export async function createRiskLink(req: Request, res: Response): Promise<any> 
     const relationType = req.body?.relationType;
 
     if (isNaN(sourceRiskId) || !isRelationType(relationType)) {
-      return res.status(400).json(STATUS_CODE[400]("Invalid link payload"));
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid link payload")));
     }
 
     const resolved = resolveTarget(req.body, relationType);
     if ("rejection" in resolved) {
-      return res.status(400).json(STATUS_CODE[400](TARGET_MESSAGES[resolved.rejection]));
+      return res.status(400).json(STATUS_CODE[400](targetMessage(req, resolved.rejection)));
     }
     const { parent } = resolved;
 
     // Self-linking is only expressible within one table.
     if (parent.entityType === "risk" && sourceRiskId === parent.id) {
-      return res.status(400).json(STATUS_CODE[400]("A risk cannot link to itself"));
+      return res.status(400).json(STATUS_CODE[400](req.t!("A risk cannot link to itself")));
     }
 
     if (parent.entityType === "risk") {
       const live = await getLiveRiskIdsQuery([sourceRiskId, parent.id], req.organizationId!);
       if (live.length !== 2) {
-        return res.status(404).json(STATUS_CODE[404]("Risk not found"));
+        return res.status(404).json(STATUS_CODE[404](req.t!("Risk not found")));
       }
     } else {
       const childLive = await getLiveRiskIdsQuery([sourceRiskId], req.organizationId!);
       if (childLive.length !== 1) {
-        return res.status(404).json(STATUS_CODE[404]("Risk not found"));
+        return res.status(404).json(STATUS_CODE[404](req.t!("Risk not found")));
       }
       if (!(await getLiveCrossEntityParentQuery(parent, req.organizationId!))) {
-        return res.status(404).json(STATUS_CODE[404]("Risk not found"));
+        return res.status(404).json(STATUS_CODE[404](req.t!("Risk not found")));
       }
     }
 
@@ -780,7 +808,7 @@ export async function createRiskLink(req: Request, res: Response): Promise<any> 
         await getConfirmedHierarchyEdgesQuery(req.organizationId!, sourceRiskId, parent),
       );
       if (violation) {
-        return res.status(409).json(STATUS_CODE[409](HIERARCHY_MESSAGES[violation]));
+        return res.status(409).json(STATUS_CODE[409](hierarchyMessage(req, violation)));
       }
     }
 
@@ -806,7 +834,9 @@ export async function createRiskLink(req: Request, res: Response): Promise<any> 
         .status(409)
         .json(
           STATUS_CODE[409](
-            'These risks are already linked. If the link was dismissed, use "Show dismissed" to restore it.',
+            req.t!(
+              'These risks are already linked. If the link was dismissed, use "Show dismissed" to restore it.',
+            ),
           ),
         );
     }
@@ -830,7 +860,9 @@ export async function createRiskLink(req: Request, res: Response): Promise<any> 
     // A lost race is a user-facing conflict, not a system failure — and the
     // endpoint's other 409s do not log either.
     if (isSingleParentViolation(error)) {
-      return res.status(409).json(STATUS_CODE[409](HIERARCHY_MESSAGES.child_already_has_parent));
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](hierarchyMessage(req, "child_already_has_parent")));
     }
     logFailure({
       eventType: "Create",
@@ -841,7 +873,7 @@ export async function createRiskLink(req: Request, res: Response): Promise<any> 
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
@@ -886,6 +918,6 @@ export async function recomputeAllRiskLinks(req: Request, res: Response): Promis
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }

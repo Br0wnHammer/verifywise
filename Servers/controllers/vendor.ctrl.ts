@@ -233,7 +233,7 @@ export async function getVendorRiskSuggestions(req: Request, res: Response): Pro
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 

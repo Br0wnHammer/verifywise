@@ -26,7 +26,14 @@ export const DUPLICATE_SIMILARITY_THRESHOLD = 0.25;
 /** Band below the threshold whose pair count is logged for re-tuning. */
 const NEAR_MISS_BAND = 0.05;
 export const MAX_DUPLICATE_SCAN = 2000;
-export const MAX_DUPLICATE_PAIRS = 2000;
+/**
+ * A CPU guard, not a sampling knob: past it the report stops being a full scan.
+ * 2000 was sized for the 33-risk org (largest bucket 45 pairs) and tripped at
+ * 213 risks, where category blocking yields ~6500 pairs — it scored 2000 and
+ * found 2 of the 15 matches. Scoring runs ~1µs a pair (6498 pairs in <10ms),
+ * so this bounds the worst case, one 700-risk bucket, at roughly 250ms.
+ */
+export const MAX_DUPLICATE_PAIRS = 250_000;
 export const MAX_DUPLICATE_RESULTS = 50;
 
 export interface DuplicateCandidate {
@@ -41,7 +48,8 @@ export interface DuplicateReport {
   organization_id: number;
   scanned: number; // risks read
   compared: number; // pairs actually scored
-  truncated: boolean; // hit MAX_DUPLICATE_SCAN or MAX_DUPLICATE_PAIRS
+  matched: number; // pairs above the threshold; candidates keeps the closest MAX_DUPLICATE_RESULTS
+  truncated: boolean; // the scan stopped early: hit MAX_DUPLICATE_SCAN or MAX_DUPLICATE_PAIRS
   candidates: DuplicateCandidate[];
 }
 
@@ -166,10 +174,10 @@ export async function findDuplicateCandidates(
     organization_id: organizationId,
     scanned: rows.length,
     compared,
-    truncated:
-      pairCapHit ||
-      scored.length > MAX_DUPLICATE_RESULTS ||
-      rows.length >= MAX_DUPLICATE_SCAN,
+    matched: scored.length,
+    // Only a scan that stopped early is a sample. Keeping the closest 50 of a
+    // complete scan is reported through `matched`, not as truncation.
+    truncated: pairCapHit || rows.length >= MAX_DUPLICATE_SCAN,
     candidates,
   };
 }

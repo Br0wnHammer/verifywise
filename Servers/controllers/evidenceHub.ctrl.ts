@@ -326,7 +326,7 @@ export async function runFreshnessSweep(req: Request, res: Response): Promise<an
       "evidenceHub.controller.ts",
     );
     logger.error("❌ Error in runFreshnessSweep:", error);
-    return res.status(500).json(STATUS_CODE[500]((error as Error).message));
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
