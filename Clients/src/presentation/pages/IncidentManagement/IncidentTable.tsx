@@ -15,7 +15,7 @@ import CustomizableSkeleton from "../../components/Skeletons";
 import Chip from "../../components/Chip";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { displayFormattedDate } from "../../tools/isoDateToString";
+import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import { singleTheme } from "../../themes";
 import { AIIncidentManagementModel } from "../../../domain/models/Common/incidentManagement/incidentManagement.model";
 import { IncidentTableProps } from "../../types/interfaces/i.table";
@@ -34,6 +34,8 @@ const cellStyle = singleTheme.tableStyles.primary.body.cell;
 const TABLE_COLUMNS: StandardColumn[] = [
   { id: "incident_id", label: "INCIDENT ID", sortable: true },
   { id: "ai_project", label: "AI PROJECT", sortable: true },
+  { id: "model_inventory_name", label: "AFFECTED MODEL", sortable: true },
+  { id: "assignee_name", label: "OWNER", sortable: true },
   { id: "type", label: "TYPE", sortable: true },
   { id: "severity", label: "SEVERITY", sortable: true },
   { id: "status", label: "STATUS", sortable: true },
@@ -67,6 +69,7 @@ const IncidentTable: React.FC<IncidentTableProps> = ({
   hidePagination = false,
   visibleColumns,
 }) => {
+  const formatDate = useFormattedDate();
   const isVisible = useCallback(
     (key: string) => {
       if (!visibleColumns) return true;
@@ -93,6 +96,14 @@ const IncidentTable: React.FC<IncidentTableProps> = ({
         case "ai_project":
           aValue = a.ai_project?.toLowerCase() || "";
           bValue = b.ai_project?.toLowerCase() || "";
+          break;
+        case "model_inventory_name":
+          aValue = a.model_inventory_name?.toLowerCase() || "";
+          bValue = b.model_inventory_name?.toLowerCase() || "";
+          break;
+        case "assignee_name":
+          aValue = a.assignee_name?.toLowerCase() || "";
+          bValue = b.assignee_name?.toLowerCase() || "";
           break;
         case "type":
           aValue = a.type?.toLowerCase() || "";
@@ -190,6 +201,30 @@ const IncidentTable: React.FC<IncidentTableProps> = ({
                       <TooltipCell value={incident.ai_project} />
                     </TableCell>
                   )}
+                  {isVisible("model_inventory_name") && (
+                    <TableCell
+                      sx={{
+                        ...cellStyle,
+                        backgroundColor:
+                          sortConfig.key === "model_inventory_name"
+                            ? "background.surface"
+                            : "inherit",
+                      }}
+                    >
+                      <TooltipCell value={incident.model_inventory_name} />
+                    </TableCell>
+                  )}
+                  {isVisible("assignee_name") && (
+                    <TableCell
+                      sx={{
+                        ...cellStyle,
+                        backgroundColor:
+                          sortConfig.key === "assignee_name" ? "background.surface" : "inherit",
+                      }}
+                    >
+                      <TooltipCell value={incident.assignee_name} />
+                    </TableCell>
+                  )}
                   {isVisible("type") && (
                     <TableCell
                       sx={{
@@ -231,7 +266,7 @@ const IncidentTable: React.FC<IncidentTableProps> = ({
                           sortConfig.key === "occurred_date" ? "background.surface" : "inherit",
                       }}
                     >
-                      {incident.occurred_date ? displayFormattedDate(incident.occurred_date) : "-"}
+                      {incident.occurred_date ? formatDate(incident.occurred_date) : "-"}
                     </TableCell>
                   )}
                   {isVisible("approved_by") && (
@@ -282,6 +317,7 @@ const IncidentTable: React.FC<IncidentTableProps> = ({
       sortConfig.key,
       visibleTableColumns.length,
       hidePagination,
+      formatDate,
     ],
   );
 

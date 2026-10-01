@@ -30,6 +30,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # The frontend Dockerfile intentionally copies only package.json (not the
+      # lockfile) and runs `npm install` fresh for musl platform binaries, so the
+      # BuildKit layer cache cannot see dependency changes on its own. Scope the
+      # GHA cache by the lockfile hash instead: a lockfile change switches to a
+      # fresh scope (full rebuild with new deps), while an unchanged lockfile
+      # hits the cache. The plain `clients` scope is a rolling fallback.
+      - name: Hash Clients lockfile for cache scope
+        id: clients-lock
+        run: echo "hash=$(sha256sum Clients/package-lock.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Clients image
         uses: docker/build-push-action@v7
         with:
@@ -38,7 +48,10 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/verifywise-frontend:test
-          no-cache: true
+          cache-from: |
+            type=gha,scope=clients-${{ steps.clients-lock.outputs.hash }}
+            type=gha,scope=clients
+          cache-to: type=gha,mode=max,scope=clients-${{ steps.clients-lock.outputs.hash }}
           build-args: |
             VITE_SLACK_CLIENT_ID=${{ secrets.SLACK_CLIENT_ID }}
             VITE_APP_VERSION=develop
@@ -49,7 +62,8 @@ jobs:
       - name: Build and push Servers image
         uses: docker/build-push-action@v7
         with:
-          context: ./Servers
+          context: .
+          file: ./Servers/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/verifywise-backend:test
@@ -77,6 +91,58 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Nightly informational Trivy scans of the pushed :test images.
+      # Non-blocking (exit-code 0); results go to the job summary.
+      - name: Scan Frontend test image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/verifywise-frontend:test'
+          format: 'table'
+          output: 'frontend-trivy-results.txt'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Scan Backend test image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/verifywise-backend:test'
+          format: 'table'
+          output: 'backend-trivy-results.txt'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Scan EvalServer test image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/verifywise-eval-server:test'
+          format: 'table'
+          output: 'evalserver-trivy-results.txt'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Scan AIGateway test image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: 'ghcr.io/${{ github.repository_owner }}/verifywise-ai-gateway:test'
+          format: 'table'
+          output: 'aigateway-trivy-results.txt'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Add Trivy results to job summary
+        if: always()
+        run: |
+          for f in frontend backend evalserver aigateway; do
+            echo "## Trivy scan — $f:test" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "$f-trivy-results.txt" >> "$GITHUB_STEP_SUMMARY" || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done
+
       - name: Deploy to Testing
         uses: appleboy/ssh-action@v1.2.5
         with:
@@ -86,5 +152,5 @@ jobs:
           script: |
             cd /root/verifywise/_saas_deployment
             docker-compose --env-file .env.prod down
-            docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}" | grep -v -E "(redis|postgres|admin)" | awk 'NR>1 {print $2}' | xargs -r docker rmi -f || true
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod pull
             ./install.sh

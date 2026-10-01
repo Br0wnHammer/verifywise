@@ -24,7 +24,7 @@ import {
   deleteEntityById,
 } from "../../../../application/repository/entity.repository";
 import { logEngine } from "../../../../application/tools/log.engine";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import useProjectData from "../../../../application/hooks/useProjectData";
 import useUsers from "../../../../application/hooks/useUsers";
 import { CustomizableButton } from "../../../components/button/customizable-button";
@@ -732,10 +732,7 @@ const ProjectSettings = React.memo(
           deployment_context:
             deploymentContextItems.find((item) => item._id === values.deploymentContext)?.name ||
             null,
-          framework: values.monitoredRegulationsAndStandards.map((fw) => ({
-            project_framework_id: fw._id,
-            framework_id: fw._id,
-          })),
+          framework: values.monitoredRegulationsAndStandards.map((fw) => fw._id),
         },
       }).then(async (response) => {
         if (response.status === 202) {

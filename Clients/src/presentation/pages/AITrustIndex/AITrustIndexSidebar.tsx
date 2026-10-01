@@ -10,7 +10,7 @@
 import { useCallback } from "react";
 import { Compass, Star, Settings } from "lucide-react";
 import SidebarShell, { SidebarMenuItem } from "../../components/Sidebar/SidebarShell";
-import { useUserGuideSidebarContext } from "../../components/UserGuide";
+import { useUserGuideSidebarContext } from "../../components/UserGuide/UserGuideSidebarContext";
 
 interface AITrustIndexSidebarProps {
   activeTab: string;

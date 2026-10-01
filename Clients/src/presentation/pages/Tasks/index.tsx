@@ -3,7 +3,7 @@ import React, { useState, useEffect, useContext, useMemo, useCallback, useRef } 
 import { useQueryClient } from "@tanstack/react-query";
 import { Box, Stack, Typography, Fade } from "@mui/material";
 import TabContext from "@mui/lab/TabContext";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { CirclePlus as AddCircleIcon, Flag } from "lucide-react";
 import { SearchBox } from "../../components/Search";
 import TasksTable from "../../components/Table/TasksTable";
@@ -14,15 +14,11 @@ import { VerifyWiseContext } from "../../../application/contexts/VerifyWise.cont
 import { storageService } from "../../../infrastructure/storage";
 import { ITask, TaskSummary } from "../../../domain/interfaces/i.task";
 import {
-  createTask,
-  updateTask,
-  deleteTask,
   getTaskById,
   restoreTask,
   hardDeleteTask,
 } from "../../../application/repository/task.repository";
 import {
-  addTaskEntityLink,
   removeTaskEntityLink,
   getTaskEntityLinks,
 } from "../../../application/repository/taskEntityLink.repository";
@@ -32,6 +28,11 @@ import useUsers from "../../../application/hooks/useUsers";
 import { useTasks, taskQueryKeys } from "../../../application/hooks/useTasks";
 import { useUpdateTaskStatus } from "../../../application/hooks/useUpdateTaskStatus";
 import { useUpdateTaskPriority } from "../../../application/hooks/useUpdateTaskPriority";
+import {
+  useCreateTask,
+  useUpdateTask,
+  useArchiveTask,
+} from "../../../application/hooks/useTaskMutations";
 
 import Toggle from "../../components/Inputs/Toggle";
 import { TaskPriority, TaskStatus } from "../../../domain/enums/task.enum";
@@ -48,7 +49,7 @@ import { ColumnSelector } from "../../components/Table/ColumnSelector";
 import { FilterBy, FilterColumn } from "../../components/Table/FilterBy";
 import { useFilterBy } from "../../../application/hooks/useFilterBy";
 import { useColumnVisibility, ColumnConfig } from "../../../application/hooks/useColumnVisibility";
-import { displayFormattedDate } from "../../tools/isoDateToString";
+import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import Alert from "../../components/Alert";
 import CustomizableSkeleton from "../../components/Skeletons";
 import TabBar from "../../components/TabBar";
@@ -84,6 +85,7 @@ const TASKS_TABLE_COLUMNS: ColumnConfig<TaskColumnKey>[] = [
 ];
 
 const Tasks: React.FC = () => {
+  const formatDate = useFormattedDate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [includeArchived, setIncludeArchived] = useState(false);
   const queryClient = useQueryClient();
@@ -96,6 +98,9 @@ const Tasks: React.FC = () => {
   const tasks = useMemo(() => rawTasks.map((task) => new TaskModel(task)), [rawTasks]);
   const updateTaskStatusMutation = useUpdateTaskStatus();
   const updateTaskPriorityMutation = useUpdateTaskPriority();
+  const createTaskMutation = useCreateTask();
+  const updateTaskMutation = useUpdateTask();
+  const archiveTaskMutation = useArchiveTask();
   const error = queryError ? "Failed to load tasks. Please try again later." : null;
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<ITask | null>(null);
@@ -347,42 +352,19 @@ const Tasks: React.FC = () => {
 
   const handleTaskCreated = async (formData: any) => {
     try {
-      // Extract entity_links - we'll pass them to the API for notification purposes
-      // but also sync them separately after creation
+      // entity_links are persisted by the backend inside the create
+      // transaction; they are also used for the assignment notification.
       const { entity_links, ...taskData } = formData;
 
-      const response = await createTask({
+      const response = await createTaskMutation.mutateAsync({
         body: {
           ...taskData,
-          // Include entity_links for notification email (backend uses these immediately)
           entity_links: entity_links || [],
         },
       });
       if (response && response.data) {
         const newTaskId = response.data.id;
 
-        // Save entity links if any
-        if (entity_links && entity_links.length > 0 && newTaskId) {
-          try {
-            for (const link of entity_links) {
-              await addTaskEntityLink(
-                newTaskId,
-                link.entity_id,
-                link.entity_type,
-                link.entity_name,
-              );
-            }
-          } catch (linkError) {
-            console.error("Error saving entity links:", linkError);
-            // Don't fail the whole operation, just log the error
-          }
-        }
-
-        // Add the new task to the cache
-        queryClient.setQueryData(
-          taskQueryKeys.list({ includeArchived }),
-          (old: ITask[] | undefined) => (old ? [response.data, ...old] : [response.data]),
-        );
         setAlert({
           variant: "success",
           title: "Task created successfully",
@@ -395,13 +377,9 @@ const Tasks: React.FC = () => {
       }
       return undefined;
     } catch (error) {
+      // The mutation hook surfaces a global error toast (and the axios
+      // interceptor covers 5xx/network), so no local alert here.
       console.error("Error creating task:", error);
-      setAlert({
-        variant: "error",
-        title: "Error creating task",
-        body: "Failed to create the task. Please try again.",
-      });
-      setTimeout(() => setAlert(null), 4000);
       return undefined;
     }
   };
@@ -416,11 +394,7 @@ const Tasks: React.FC = () => {
     if (!task) return;
 
     try {
-      await deleteTask({ id: taskId });
-      queryClient.setQueryData(
-        taskQueryKeys.list({ includeArchived }),
-        (old: ITask[] | undefined) => old?.filter((t) => t.id !== taskId) ?? [],
-      );
+      await archiveTaskMutation.mutateAsync({ id: taskId });
       setAlert({
         variant: "success",
         title: "Task archived successfully",
@@ -428,13 +402,8 @@ const Tasks: React.FC = () => {
       });
       setTimeout(() => setAlert(null), 4000);
     } catch (error) {
+      // Global error toast handled by the mutation hook / axios interceptor.
       console.error("Error archiving task:", error);
-      setAlert({
-        variant: "error",
-        title: "Error archiving task",
-        body: "Failed to archive the task. Please try again.",
-      });
-      setTimeout(() => setAlert(null), 4000);
     }
   };
 
@@ -446,7 +415,7 @@ const Tasks: React.FC = () => {
       // but also sync them separately after the update
       const { entity_links: newEntityLinks, ...taskData } = formData;
 
-      const response = await updateTask({
+      const response = await updateTaskMutation.mutateAsync({
         id: editingTask.id!,
         body: {
           ...taskData,
@@ -455,7 +424,9 @@ const Tasks: React.FC = () => {
         },
       });
       if (response && response.data) {
-        // Sync entity links: get existing, compare, remove old, add new
+        // Sync removals only: the backend persists new links atomically
+        // inside the update transaction, so the diff below only needs to
+        // delete links that were removed in the form.
         if (newEntityLinks) {
           try {
             const existingLinks = await getTaskEntityLinks(editingTask.id!);
@@ -470,29 +441,9 @@ const Tasks: React.FC = () => {
                 ),
             );
 
-            // Find links to add (in new but not in existing)
-            const linksToAdd = newEntityLinks.filter(
-              (newLink: any) =>
-                !existingLinks.some(
-                  (existing) =>
-                    existing.entity_id === newLink.entity_id &&
-                    existing.entity_type === newLink.entity_type,
-                ),
-            );
-
             // Remove old links
             for (const link of linksToRemove) {
               await removeTaskEntityLink(editingTask.id!, link.id);
-            }
-
-            // Add new links
-            for (const link of linksToAdd) {
-              await addTaskEntityLink(
-                editingTask.id!,
-                link.entity_id,
-                link.entity_type,
-                link.entity_name,
-              );
             }
           } catch (linkError) {
             console.error("Error syncing entity links:", linkError);
@@ -500,17 +451,8 @@ const Tasks: React.FC = () => {
           }
         }
 
-        // Update task in cache with new entity links
-        const updatedTaskWithLinks = {
-          ...response.data,
-          entity_links: newEntityLinks || [],
-        };
-
-        queryClient.setQueryData(
-          taskQueryKeys.list({ includeArchived }),
-          (old: ITask[] | undefined) =>
-            old?.map((task) => (task.id === editingTask.id ? updatedTaskWithLinks : task)) ?? [],
-        );
+        // The mutation hook already patched the cache (optimistic merge keeps
+        // entity_links; the server entity is merged in on success).
 
         // Flash the updated row
         setFlashRowId(editingTask.id!);
@@ -527,13 +469,8 @@ const Tasks: React.FC = () => {
         setTimeout(() => setAlert(null), 4000);
       }
     } catch (error) {
+      // Global error toast handled by the mutation hook / axios interceptor.
       console.error("Error updating task:", error);
-      setAlert({
-        variant: "error",
-        title: "Error updating task",
-        body: "Failed to update the task. Please try again.",
-      });
-      setTimeout(() => setAlert(null), 4000);
     }
   };
 
@@ -708,7 +645,7 @@ const Tasks: React.FC = () => {
         }
         return "Unassigned";
       case "due_date":
-        return task.due_date ? displayFormattedDate(task.due_date) : "No Due Date";
+        return task.due_date ? formatDate(task.due_date) : "No Due Date";
       default:
         return "Other";
     }
@@ -758,12 +695,12 @@ const Tasks: React.FC = () => {
         status: STATUS_DISPLAY_MAP[task.status as TaskStatus] || task.status || "-",
         priority: task.priority || "-",
         assignees: assigneeNames,
-        due_date: task.due_date ? displayFormattedDate(task.due_date) : "-",
+        due_date: task.due_date ? formatDate(task.due_date) : "-",
         creator: creatorName,
         categories: task.categories?.join(", ") || "-",
       };
     });
-  }, [filteredTasks, users]);
+  }, [filteredTasks, users, formatDate]);
 
   return (
     <PageHeaderExtended
@@ -892,6 +829,7 @@ const Tasks: React.FC = () => {
                   <Toggle
                     checked={showMyTasksOnly}
                     onChange={(_, checked) => setShowMyTasksOnly(checked)}
+                    ariaLabel="My tasks only"
                   />
                 </Stack>
               )}
@@ -909,6 +847,7 @@ const Tasks: React.FC = () => {
                 <Toggle
                   checked={includeArchived}
                   onChange={(_, checked) => setIncludeArchived(checked)}
+                  ariaLabel="Include archived"
                 />
               </Stack>
             </Stack>

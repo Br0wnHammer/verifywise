@@ -4,14 +4,27 @@ import superAdminOnly from "../middleware/superAdminOnly.middleware";
 import {
   listOrganizations,
   createOrg,
+  createOrgWithUser,
   deleteOrg,
   updateOrg,
   getUserCount,
   listAllUsers,
   listOrgUsers,
+  listOrgInvitations,
   inviteUserToOrg,
+  createUserInOrg,
+  emailExists,
   updateUser,
   removeUser,
+  getMonitoring,
+  updateMonitoring,
+  generateMonitoringToken,
+  listSuperAdmins,
+  grantSuperAdmin,
+  revokeSuperAdmin,
+  getMcpServer,
+  installMcpServerHandler,
+  uninstallMcpServerHandler,
 } from "../controllers/superAdmin.ctrl";
 
 const router = express.Router();
@@ -21,13 +34,31 @@ router.use(authenticateJWT, superAdminOnly);
 
 router.get("/organizations", listOrganizations);
 router.post("/organizations", createOrg);
+router.post("/organizations-with-user", createOrgWithUser);
 router.delete("/organizations/:id", deleteOrg);
 router.patch("/organizations/:id", updateOrg);
 router.get("/users/count", getUserCount);
+router.get("/users/exists", emailExists);
 router.get("/users", listAllUsers);
 router.get("/organizations/:id/users", listOrgUsers);
+router.get("/organizations/:id/invitations", listOrgInvitations);
 router.post("/organizations/:id/invite", inviteUserToOrg);
+router.post("/organizations/:id/users", createUserInOrg);
 router.patch("/users/:id", updateUser);
 router.delete("/users/:id", removeUser);
+
+// Observability / monitoring configuration (instance-level)
+router.get("/monitoring", getMonitoring);
+router.put("/monitoring", updateMonitoring);
+router.post("/monitoring/token", generateMonitoringToken);
+
+// SuperAdmin membership: list current SuperAdmins, elect a user, revoke.
+router.get("/mcp-server", getMcpServer);
+router.post("/mcp-server/install", installMcpServerHandler);
+router.delete("/mcp-server", uninstallMcpServerHandler);
+
+router.get("/super-admins", listSuperAdmins);
+router.post("/super-admins", grantSuperAdmin);
+router.delete("/super-admins/:user_id", revokeSuperAdmin);
 
 export default router;

@@ -44,14 +44,9 @@ export class EvidenceHubModel extends Model<EvidenceHubModel> {
   /**
    * Evidence files - now managed via file_entity_links table
    * This property is populated dynamically by the utils layer, not stored in database
+   * Lifecycle (expiry_date, retention_policy) lives on each file, not here.
    */
   evidence_files?: FileResponse[];
-
-  @Column({
-    type: DataType.DATE,
-    allowNull: true,
-  })
-  expiry_date?: Date;
 
   @Column({
     type: DataType.ARRAY(DataType.INTEGER),
@@ -91,7 +86,6 @@ export class EvidenceHubModel extends Model<EvidenceHubModel> {
       evidence_type: this.evidence_type,
       description: this.description,
       evidence_files: this.evidence_files,
-      expiry_date: this.expiry_date?.toISOString() || null,
       mapped_model_ids: this.mapped_model_ids,
       mapped_training_ids: this.mapped_training_ids,
       mapped_risk_ids: this.mapped_risk_ids,
@@ -111,7 +105,6 @@ export class EvidenceHubModel extends Model<EvidenceHubModel> {
       evidence_type: this.evidence_type,
       description: this.description,
       evidence_files: this.evidence_files,
-      expiry_date: this.expiry_date?.toISOString() || null,
       mapped_model_ids: this.mapped_model_ids,
       mapped_training_ids: this.mapped_training_ids,
       mapped_risk_ids: this.mapped_risk_ids,
@@ -129,7 +122,6 @@ export class EvidenceHubModel extends Model<EvidenceHubModel> {
       evidence_type: data.evidence_type ?? existingEvidence.evidence_type,
       description: data.description ?? existingEvidence.description,
       evidence_files: data.evidence_files ?? existingEvidence.evidence_files,
-      expiry_date: data.expiry_date ?? existingEvidence.expiry_date,
       mapped_model_ids: data.mapped_model_ids ?? existingEvidence.mapped_model_ids,
       mapped_training_ids: data.mapped_training_ids ?? existingEvidence.mapped_training_ids,
       mapped_risk_ids: data.mapped_risk_ids ?? existingEvidence.mapped_risk_ids,

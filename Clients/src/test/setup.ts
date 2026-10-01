@@ -1,14 +1,23 @@
 import "@testing-library/jest-dom";
 
 import { matchers } from "@emotion/jest";
-import type { MatchersObject } from "@vitest/expect";
+import type { MatchersObject } from "vitest";
 import { server } from "./mocks/server";
 
 expect.extend(matchers as unknown as MatchersObject);
 
+// NOTE: URL.createObjectURL/revokeObjectURL stubs live in ./setupEnv.ts,
+// which runs before this file so modules capturing these functions at
+// import time see the stubs.
+
 // ---- MSW lifecycle ----
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+  localStorage.clear();
+});
 afterAll(() => server.close());
 
 // ---- Environment stubs ----

@@ -255,7 +255,6 @@ export async function updateEvidenceById(req: Request, res: Response) {
         { field: "evidence_name", label: "Name" },
         { field: "evidence_type", label: "Type" },
         { field: "description", label: "Description" },
-        { field: "expiry_date", label: "Expiry Date" },
       ];
 
       for (const { field, label } of fieldsToTrack) {

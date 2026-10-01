@@ -1,7 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
-import type { LanguageModelV3Middleware } from "@ai-sdk/provider";
-import { wrapLanguageModel } from "ai";
+import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
 import { generateObjectWithSelfCorrection } from "../../../advisor/llmSelfCorrect";
 import { getLLMKeysWithKeyQuery } from "../../../utils/llmKey.utils";
 import logger from "../../../utils/logger/fileLogger";
@@ -59,7 +58,7 @@ import { HierarchyGroup } from "./schema";
  * nothing of its own: without it the model guesses field names and the strict
  * Zod parse rejects every answer.
  */
-export const jsonObjectFallback: LanguageModelV3Middleware = {
+export const jsonObjectFallback: LanguageModelMiddleware = {
   specificationVersion: "v3",
   transformParams: async ({ params }) => {
     if (params.responseFormat?.type !== "json" || !params.responseFormat.schema) {
@@ -224,7 +223,9 @@ export function filterProposedGroups(
     // 3
     if (parent.entityType === "risk" && claimedAsChild.has(parent.id)) continue;
     if (group.child_risk_ids.some((id) => claimedAsChild.has(id))) continue;
-    if (group.child_risk_ids.some((id) => usedAsParent.has(candidateKey({ id, entityType: "risk" }))))
+    if (
+      group.child_risk_ids.some((id) => usedAsParent.has(candidateKey({ id, entityType: "risk" })))
+    )
       continue;
     if (new Set(group.child_risk_ids).size !== group.child_risk_ids.length) continue;
 
@@ -288,9 +289,7 @@ export async function suggestDirectionForComponent(
 ): Promise<number> {
   const model = await getOrgModel(organizationId);
   if (!model) {
-    logger.warn(
-      `risk link direction: org ${organizationId} has no LLM key configured, skipping`,
-    );
+    logger.warn(`risk link direction: org ${organizationId} has no LLM key configured, skipping`);
     return 0;
   }
 

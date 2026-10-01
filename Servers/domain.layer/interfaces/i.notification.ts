@@ -39,6 +39,7 @@ export enum NotificationType {
 
   // File notifications
   FILE_UPLOADED = "file_uploaded",
+  FILE_EXPIRING = "file_expiring",
 
   // Collaboration notifications
   COMMENT_ADDED = "comment_added",
@@ -91,6 +92,7 @@ export enum NotificationEntityType {
   SHADOW_AI_TOOL = "shadow_ai_tool",
   AI_GATEWAY = "ai_gateway",
   AI_ACTION = "ai_action",
+  EVIDENCE = "evidence",
 }
 
 /**

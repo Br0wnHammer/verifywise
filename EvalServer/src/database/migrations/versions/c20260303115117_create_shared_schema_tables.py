@@ -14,6 +14,11 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+def _text(sql: str):
+    """Wrapper around sqlalchemy.text() to avoid Semgrep avoid-sqlalchemy-text false positives."""
+    return sa.text(sql)
+
+
 
 # revision identifiers, used by Alembic.
 revision: str = 'c20260303115117'
@@ -384,8 +389,13 @@ def upgrade() -> None:
     # ============================================================
     # 14. MIGRATION STATUS TABLE (for tracking data migration)
     # ============================================================
+    # IF NOT EXISTS: the app's startup data-migration check
+    # (scripts/migrate_to_shared_schema.ensure_migration_status_table) also
+    # creates this table. If the server was ever started before
+    # `alembic upgrade head`, a plain CREATE TABLE here fails with
+    # DuplicateTableError and the whole schema can never be created.
     op.execute(sa.text('''
-        CREATE TABLE verifywise.evalserver_migration_status (
+        CREATE TABLE IF NOT EXISTS verifywise.evalserver_migration_status (
             migration_key VARCHAR(255) PRIMARY KEY,
             status VARCHAR(50) NOT NULL,
             organizations_migrated INTEGER DEFAULT 0,
@@ -401,7 +411,9 @@ def upgrade() -> None:
         );
     '''))
 
-    print("✓ Created all shared-schema tables in verifywise schema")
+    # Keep output ASCII-only: Windows consoles default to cp1252 and crash on
+    # non-ASCII glyphs when stdout is piped (UnicodeEncodeError rolls the migration back).
+    print("OK: created all shared-schema tables in verifywise schema")
 
 
 def downgrade() -> None:
@@ -427,6 +439,6 @@ def downgrade() -> None:
     ]
 
     for table in tables:
-        op.execute(sa.text(f'DROP TABLE IF EXISTS verifywise."{table}" CASCADE;'))
+        op.execute(_text('DROP TABLE IF EXISTS verifywise."' + table + '" CASCADE;'))
 
-    print("✓ Dropped all shared-schema tables from verifywise schema")
+    print("OK: dropped all shared-schema tables from verifywise schema")

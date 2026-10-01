@@ -1,12 +1,64 @@
 import { Request, Response } from "express";
+import fs from "fs";
+import jwt from "jsonwebtoken";
 import { sequelize } from "../database/db";
 import { STATUS_CODE } from "../utils/statusCode.utils";
 import { createOrganizationQuery } from "../utils/organization.utils";
 import { deleteUserByIdQuery } from "../utils/user.utils";
 import { invite } from "./vwmailer.ctrl";
+import { createNewUserWrapper } from "./user.ctrl";
 import { OrganizationModel } from "../domain.layer/models/organization/organization.model";
+import { getMonitoringConfig, upsertMonitoringConfig } from "../utils/monitoringConfig.utils";
+import { getMcpServerStatus, installMcpServer, uninstallMcpServer } from "../utils/mcpServer.utils";
+import {
+  createInvitationQuery,
+  getInvitationsByOrganizationQuery,
+} from "../utils/invitation.utils";
+import { sendInviteEmail } from "../utils/inviteEmail.utils";
+import { ONE_WEEK_MS } from "../utils/jwt.utils";
+import {
+  ConflictException,
+  ValidationException,
+} from "../domain.layer/exceptions/custom.exception";
+import {
+  countSuperAdmins,
+  grantSuperAdmin as grantSuperAdminUtil,
+  isUserSuperAdmin,
+  listSuperAdmins as listSuperAdminsUtil,
+  revokeSuperAdmin as revokeSuperAdminUtil,
+} from "../utils/superAdmin.utils";
 
 import { translateError } from "../utils/i18n.utils";
+
+/**
+ * Strip the auth_header secret before returning config to the browser.
+ * The UI only needs to know whether an auth header is set, not its value.
+ */
+function redactMonitoringConfig(config: Awaited<ReturnType<typeof getMonitoringConfig>>) {
+  const { auth_header, ...rest } = config;
+  return { ...rest, auth_header_set: Boolean(auth_header) };
+}
+
+/**
+ * Load the RSA private key used to sign observability push tokens.
+ *
+ * Accepts either `OBSERVABILITY_PRIVATE_KEY_PATH` (path to a PEM file) or an
+ * inline `OBSERVABILITY_PRIVATE_KEY` (PEM, with literal "\n" allowed so it fits
+ * on one env line). Returns null when neither is configured.
+ */
+function loadObservabilityPrivateKey(): string | null {
+  const keyPath = process.env.OBSERVABILITY_PRIVATE_KEY_PATH;
+  if (keyPath) {
+    try {
+      return fs.readFileSync(keyPath, "utf8");
+    } catch {
+      return null;
+    }
+  }
+  const inline = process.env.OBSERVABILITY_PRIVATE_KEY;
+  return inline ? inline.replace(/\\n/g, "\n") : null;
+}
+
 /**
  * List all organizations
  */
@@ -48,6 +100,133 @@ export async function createOrg(req: Request, res: Response) {
     await transaction.rollback();
     return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
+}
+
+/**
+ * Create an org and its first user (invite or direct) in a single transaction.
+ * Either both persist or neither does — prevents orphan orgs when the user
+ * step fails. For invite mode the email is sent after commit; delivery failure
+ * still leaves the invitation record intact (206 partial-success response).
+ */
+export async function createOrgWithUser(req: Request, res: Response) {
+  const { orgName, logo, mode, user } = req.body as {
+    orgName?: string;
+    logo?: string;
+    mode?: "invite" | "direct";
+    user?: {
+      email?: string;
+      name?: string;
+      surname?: string;
+      roleId?: number;
+      password?: string;
+    };
+  };
+
+  if (!orgName?.trim()) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400]({ message: req.t!("Organization name is required") }));
+  }
+  if (mode !== "invite" && mode !== "direct") {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400]({ message: req.t!("mode must be invite or direct") }));
+  }
+  if (!user?.email || !user.name || !user.roleId) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400]({ message: req.t!("user email, name, and roleId are required") }));
+  }
+  if (mode === "direct" && !user.surname) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400]({ message: req.t!("surname is required for direct creation") }));
+  }
+  if (mode === "direct" && !user.password) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400]({ message: req.t!("password is required for direct creation") }));
+  }
+
+  const transaction = await sequelize.transaction();
+  let orgId: number | undefined;
+  let invitationExpiresAt: Date | undefined;
+
+  try {
+    const orgModel = await OrganizationModel.createNewOrganization(orgName.trim(), logo);
+    const createdOrg = await createOrganizationQuery(orgModel, transaction);
+    orgId = createdOrg.id!;
+
+    if (mode === "direct") {
+      await createNewUserWrapper(
+        {
+          name: user.name,
+          surname: user.surname!,
+          email: user.email,
+          password: user.password!,
+          roleId: user.roleId,
+          organizationId: orgId,
+        },
+        transaction,
+      );
+    } else {
+      invitationExpiresAt = new Date(Date.now() + ONE_WEEK_MS);
+      await createInvitationQuery(
+        orgId,
+        user.email,
+        user.name,
+        user.surname ?? "",
+        user.roleId,
+        req.userId!,
+        invitationExpiresAt,
+        transaction,
+      );
+    }
+
+    await transaction.commit();
+  } catch (error: any) {
+    await transaction.rollback();
+    if (error instanceof ConflictException) {
+      return res.status(409).json(STATUS_CODE[409](error.message));
+    }
+    if (error instanceof ValidationException) {
+      return res
+        .status(400)
+        .json(STATUS_CODE[400]({ message: error.message, field: error.metadata?.field }));
+    }
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+
+  if (mode === "invite") {
+    try {
+      const { link, info } = await sendInviteEmail({
+        email: user.email,
+        name: user.name,
+        surname: user.surname ?? "",
+        roleId: user.roleId,
+        organizationId: orgId,
+        lang: req.lang,
+      });
+      if (info.error) {
+        return res.status(206).json(
+          STATUS_CODE[206]({
+            organizationId: orgId,
+            error: `${info.error.name}: ${info.error.message}`,
+            link,
+          }),
+        );
+      }
+    } catch (emailErr: any) {
+      return res.status(206).json(
+        STATUS_CODE[206]({
+          organizationId: orgId,
+          error: emailErr?.message || "Failed to send invitation email",
+        }),
+      );
+    }
+  }
+
+  return res.status(201).json(STATUS_CODE[201]({ organizationId: orgId }));
 }
 
 /**
@@ -127,12 +306,12 @@ export async function updateOrg(req: Request, res: Response) {
 }
 
 /**
- * Get total user count (excludes super-admins)
+ * Get total user count (excludes pure super-admins with no org/role).
  */
 export async function getUserCount(_req: Request, res: Response) {
   try {
     const [result]: any[] = await sequelize.query(
-      `SELECT COUNT(*) AS count FROM users WHERE role_id != 5`,
+      `SELECT COUNT(*) AS count FROM users WHERE organization_id IS NOT NULL`,
       { type: "SELECT" as any },
     );
     return res.status(200).json(STATUS_CODE[200]({ count: parseInt(result.count, 10) }));
@@ -142,7 +321,7 @@ export async function getUserCount(_req: Request, res: Response) {
 }
 
 /**
- * List all users across all organizations
+ * List all users across all organizations (excludes pure super-admins).
  */
 export async function listAllUsers(_req: Request, res: Response) {
   try {
@@ -153,7 +332,7 @@ export async function listAllUsers(_req: Request, res: Response) {
        FROM users u
        LEFT JOIN roles r ON u.role_id = r.id
        LEFT JOIN organizations o ON u.organization_id = o.id
-       WHERE u.role_id != 5
+       WHERE u.organization_id IS NOT NULL
        ORDER BY u.created_at DESC`,
       { type: "SELECT" as any },
     );
@@ -187,6 +366,22 @@ export async function listOrgUsers(req: Request, res: Response) {
 }
 
 /**
+ * List pending invitations for an organization.
+ */
+export async function listOrgInvitations(req: Request, res: Response) {
+  try {
+    const orgId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+    if (isNaN(orgId)) {
+      return res.status(400).json(STATUS_CODE[400]({ message: req.t!("Invalid organization ID") }));
+    }
+    const invitations = await getInvitationsByOrganizationQuery(orgId);
+    return res.status(200).json(STATUS_CODE[200](invitations));
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
  * Invite a user to an organization (reuses existing invite flow)
  */
 export async function inviteUserToOrg(req: Request, res: Response) {
@@ -197,13 +392,6 @@ export async function inviteUserToOrg(req: Request, res: Response) {
     return res
       .status(400)
       .json(STATUS_CODE[400]({ message: req.t!("email, name, and roleId are required") }));
-  }
-
-  // Prevent creating super-admin users via invite
-  if (roleId === 5) {
-    return res
-      .status(403)
-      .json(STATUS_CODE[403](req.t!("Cannot invite users with SuperAdmin role")));
   }
 
   // Check if a user with this email already exists
@@ -225,6 +413,69 @@ export async function inviteUserToOrg(req: Request, res: Response) {
 }
 
 /**
+ * Check whether a user with the given email already exists.
+ * Used by SuperAdmin flows to pre-validate before creating an org + user pair,
+ * so we don't leave an orphan org when the user step would 409.
+ */
+export async function emailExists(req: Request, res: Response) {
+  const email = typeof req.query.email === "string" ? req.query.email.trim() : "";
+  if (!email) {
+    return res.status(400).json(STATUS_CODE[400]({ message: req.t!("email is required") }));
+  }
+  try {
+    const rows: any[] = await sequelize.query(
+      `SELECT 1 FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1`,
+      { replacements: { email }, type: "SELECT" as any },
+    );
+    return res.status(200).json(STATUS_CODE[200]({ exists: rows.length > 0 }));
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Create a user directly inside an organization (no invitation email).
+ * Password is set by the SuperAdmin; user is active immediately.
+ */
+export async function createUserInOrg(req: Request, res: Response) {
+  const orgId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  if (isNaN(orgId)) {
+    return res.status(400).json(STATUS_CODE[400]({ message: req.t!("Invalid organization ID") }));
+  }
+
+  const { email, name, surname, password, roleId } = req.body;
+  if (!email || !name || !surname || !password || !roleId) {
+    return res.status(400).json(
+      STATUS_CODE[400]({
+        message: req.t!("email, name, surname, password, and roleId are required"),
+      }),
+    );
+  }
+
+  const transaction = await sequelize.transaction();
+  try {
+    const user = await createNewUserWrapper(
+      { name, surname, email, password, roleId, organizationId: orgId },
+      transaction,
+    );
+    await transaction.commit();
+    const { password_hash, ...safeUser } = user.toJSON() as any;
+    return res.status(201).json(STATUS_CODE[201](safeUser));
+  } catch (error: any) {
+    await transaction.rollback();
+    if (error instanceof ConflictException) {
+      return res.status(409).json(STATUS_CODE[409](error.message));
+    }
+    if (error instanceof ValidationException) {
+      return res
+        .status(400)
+        .json(STATUS_CODE[400]({ message: error.message, field: error.metadata?.field }));
+    }
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
  * Update a user's details (name, surname, email, role)
  */
 export async function updateUser(req: Request, res: Response) {
@@ -232,21 +483,18 @@ export async function updateUser(req: Request, res: Response) {
     const userId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
     const { name, surname, email, roleId } = req.body;
 
-    // Prevent updating to super-admin role
-    if (roleId === 5) {
-      return res.status(403).json(STATUS_CODE[403](req.t!("Cannot assign SuperAdmin role")));
-    }
-
-    const rows: any[] = await sequelize.query(`SELECT id, role_id FROM users WHERE id = :userId`, {
-      replacements: { userId },
-      type: "SELECT" as any,
-    });
+    const rows: any[] = await sequelize.query(
+      `SELECT id, role_id, organization_id FROM users WHERE id = :userId`,
+      { replacements: { userId }, type: "SELECT" as any },
+    );
 
     if (rows.length === 0) {
       return res.status(404).json(STATUS_CODE[404](req.t!("User not found")));
     }
 
-    if (rows[0].role_id === 5) {
+    // Pure SuperAdmin (no role, no org) cannot be edited through the
+    // tenant user endpoint — they have no org role to change.
+    if (rows[0].role_id == null && rows[0].organization_id == null) {
       return res.status(403).json(STATUS_CODE[403](req.t!("Super-admin user cannot be modified")));
     }
 
@@ -313,8 +561,10 @@ export async function removeUser(req: Request, res: Response) {
       return res.status(404).json(STATUS_CODE[404](req.t!("User not found")));
     }
 
-    // Prevent deletion of super-admin
-    if (user.role_id === 5) {
+    // Pure SuperAdmin (no role, no org) is not deletable through this
+    // endpoint — the DB trigger would also block it since revoking their
+    // super_admins row would orphan them.
+    if (user.role_id == null && user.organization_id == null) {
       await transaction.rollback();
       return res.status(403).json(STATUS_CODE[403](req.t!("Super-admin user cannot be deleted")));
     }
@@ -326,5 +576,243 @@ export async function removeUser(req: Request, res: Response) {
   } catch (error) {
     await transaction.rollback();
     return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Get the instance-level observability/monitoring configuration.
+ * The auth header secret is redacted; only its presence is reported.
+ */
+export async function getMonitoring(req: Request, res: Response) {
+  try {
+    const config = await getMonitoringConfig();
+    return res.status(200).json(STATUS_CODE[200](redactMonitoringConfig(config)));
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Update the instance-level observability/monitoring configuration.
+ *
+ * Changes take effect after services restart (exporters are configured at
+ * startup). The push token in `auth_header` is not set here — it is minted by
+ * `generateMonitoringToken` (Generate token button) and preserved across updates.
+ */
+export async function updateMonitoring(req: Request, res: Response) {
+  try {
+    const { enabled, otlp_endpoint, deployment_name } = req.body ?? {};
+
+    if (enabled && (!otlp_endpoint || !deployment_name)) {
+      return res.status(400).json(
+        STATUS_CODE[400]({
+          message: req.t!("Observability URL and deployment name are required when enabled"),
+        }),
+      );
+    }
+
+    if (otlp_endpoint) {
+      try {
+        const url = new URL(String(otlp_endpoint));
+        if (!["http:", "https:"].includes(url.protocol)) {
+          throw new Error("invalid protocol");
+        }
+      } catch {
+        return res
+          .status(400)
+          .json(STATUS_CODE[400]({ message: req.t!("Observability URL is not a valid URL") }));
+      }
+    }
+
+    const existing = await getMonitoringConfig();
+
+    const updated = await upsertMonitoringConfig({
+      enabled: Boolean(enabled),
+      otlp_endpoint: otlp_endpoint ?? null,
+      deployment_name: deployment_name ?? null,
+      // Token is minted separately via generateMonitoringToken; preserve it here.
+      auth_header: existing.auth_header,
+      updated_by: req.userId ?? null,
+    });
+
+    return res.status(200).json(STATUS_CODE[200](redactMonitoringConfig(updated)));
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * List all SuperAdmins.
+ */
+export async function listSuperAdmins(_req: Request, res: Response) {
+  try {
+    const rows = await listSuperAdminsUtil();
+    return res.status(200).json(STATUS_CODE[200](rows));
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(_req, error)));
+  }
+}
+
+/**
+ * Elect a user as SuperAdmin. Only existing SuperAdmins may call this
+ * (enforced by superAdminOnly middleware). Target must be an existing user
+ * that isn't already a SuperAdmin.
+ */
+export async function grantSuperAdmin(req: Request, res: Response) {
+  try {
+    const rawUserId = req.body?.user_id;
+    const targetUserId = typeof rawUserId === "number" ? rawUserId : parseInt(rawUserId, 10);
+    if (!targetUserId || isNaN(targetUserId)) {
+      return res.status(400).json(STATUS_CODE[400]({ message: req.t!("user_id is required") }));
+    }
+
+    const rows: any[] = await sequelize.query(`SELECT id FROM users WHERE id = :userId LIMIT 1`, {
+      replacements: { userId: targetUserId },
+      type: "SELECT" as any,
+    });
+    if (!rows[0]) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("User not found")));
+    }
+    if (await isUserSuperAdmin(targetUserId)) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409]({ message: req.t!("User is already a SuperAdmin") }));
+    }
+
+    await grantSuperAdminUtil(targetUserId);
+    return res.status(201).json(STATUS_CODE[201]({ user_id: targetUserId }));
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Revoke a user's SuperAdmin status. Blocks the request when the target is
+ * the last remaining SuperAdmin — the only rule; prevents lockout.
+ */
+export async function revokeSuperAdmin(req: Request, res: Response) {
+  try {
+    const rawUserId = Array.isArray(req.params.user_id)
+      ? req.params.user_id[0]
+      : req.params.user_id;
+    const targetUserId = parseInt(rawUserId, 10);
+    if (!targetUserId || isNaN(targetUserId)) {
+      return res.status(400).json(STATUS_CODE[400]({ message: req.t!("Invalid user id") }));
+    }
+
+    if (targetUserId === req.userId) {
+      return res
+        .status(400)
+        .json(STATUS_CODE[400]({ message: req.t!("You cannot revoke your own Super Admin role") }));
+    }
+    if (!(await isUserSuperAdmin(targetUserId))) {
+      return res
+        .status(404)
+        .json(STATUS_CODE[404]({ message: req.t!("User is not a SuperAdmin") }));
+    }
+    if ((await countSuperAdmins()) <= 1) {
+      return res
+        .status(400)
+        .json(STATUS_CODE[400]({ message: req.t!("Cannot revoke the last SuperAdmin") }));
+    }
+
+    await revokeSuperAdminUtil(targetUserId);
+    return res.status(200).json(STATUS_CODE[200]({ revoked: true, user_id: targetUserId }));
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Generate a signed observability push token and store it on the config row.
+ *
+ * The token is an RS256 JWT signed with the backend's RSA private key
+ * (OBSERVABILITY_PRIVATE_KEY[_PATH]), carrying `sub = deployment_name`. The
+ * observability VM's nginx verifies it with the matching PUBLIC key — the VM
+ * never holds a signing key. The raw token is never returned to the frontend;
+ * the UI only sees `auth_header_set: true` on the next GET.
+ */
+export async function generateMonitoringToken(req: Request, res: Response) {
+  try {
+    const privateKey = loadObservabilityPrivateKey();
+    if (!privateKey) {
+      return res.status(500).json(
+        STATUS_CODE[500]({
+          message: req.t!("OBSERVABILITY_PRIVATE_KEY is not configured on the server"),
+        }),
+      );
+    }
+
+    const existing = await getMonitoringConfig();
+    const deploymentName = existing.deployment_name?.trim();
+    if (!deploymentName) {
+      return res.status(400).json(
+        STATUS_CODE[400]({
+          message: req.t!("Set and save a deployment name before generating a token"),
+        }),
+      );
+    }
+
+    let token: string;
+    try {
+      token = jwt.sign({ sub: deploymentName }, privateKey, { algorithm: "RS256" });
+    } catch {
+      return res.status(500).json(
+        STATUS_CODE[500]({
+          message: req.t!(
+            "Failed to sign token — check OBSERVABILITY_PRIVATE_KEY is a valid RSA private key",
+          ),
+        }),
+      );
+    }
+
+    const updated = await upsertMonitoringConfig({
+      enabled: existing.enabled,
+      otlp_endpoint: existing.otlp_endpoint,
+      deployment_name: existing.deployment_name,
+      auth_header: `Authorization: Bearer ${token}`,
+      updated_by: req.userId ?? null,
+    });
+
+    return res.status(200).json(STATUS_CODE[200](redactMonitoringConfig(updated)));
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Whether the MCP server is built and ready to register with a client.
+ */
+export async function getMcpServer(req: Request, res: Response) {
+  try {
+    return res.status(200).json(STATUS_CODE[200](await getMcpServerStatus()));
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Build the MCP server so it can be registered with an MCP client.
+ *
+ * Runs npm install and the TypeScript build in MCPServer/. Takes a minute or
+ * two on a cold install, so the request is held until it finishes rather than
+ * reporting a success the caller would have to poll to confirm.
+ */
+export async function installMcpServerHandler(_req: Request, res: Response) {
+  try {
+    return res.status(200).json(STATUS_CODE[200](await installMcpServer()));
+  } catch (error) {
+    return res.status(400).json(STATUS_CODE[400]({ message: (error as Error).message }));
+  }
+}
+
+/**
+ * Remove the MCP server build, leaving the source in place.
+ */
+export async function uninstallMcpServerHandler(_req: Request, res: Response) {
+  try {
+    return res.status(200).json(STATUS_CODE[200](await uninstallMcpServer()));
+  } catch (error) {
+    return res.status(400).json(STATUS_CODE[400]({ message: (error as Error).message }));
   }
 }

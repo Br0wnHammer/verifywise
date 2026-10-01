@@ -7,6 +7,10 @@
 
 import { sequelize } from "../../database/db";
 
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 export interface CreateTestProjectOptions {
   project_title?: string;
   uc_id?: string;
@@ -737,7 +741,7 @@ export async function createTestMrmMetric(
         modelInventoryId,
         metric: options.metric ?? "psi",
         value: options.value ?? 0.28,
-        at: options.at ?? "2026-07-02T00:00:00Z",
+        at: options.at ?? daysAgo(10),
         // window/segment are NOT NULL with sentinels ('' / 'overall') — an explicit
         // null would violate the constraint, so mirror the ingestion normalization.
         window: options.window ?? "",
@@ -816,6 +820,50 @@ export async function createTestMrmRevalidationEvent(
         resultingValidationId: options.resulting_validation_id ?? null,
         createdValidation: options.created_validation ?? false,
         sourceRef: sourceRef === null ? null : JSON.stringify(sourceRef),
+      },
+    },
+  );
+  return (result as any[])[0].id;
+}
+
+// ---------------------------------------------------------------------------
+// AI incident management factories (issue #4583)
+// ---------------------------------------------------------------------------
+
+export interface CreateTestIncidentOptions {
+  ai_project?: string;
+  model_inventory_id?: number | null;
+  project_id?: number | null;
+  assignee_id?: number | null;
+}
+
+export async function createTestIncident(
+  orgId: number,
+  userId: number,
+  options: CreateTestIncidentOptions = {},
+): Promise<number> {
+  const suffix = Date.now();
+  const [result] = await sequelize.query(
+    `INSERT INTO ai_incident_managements (
+       organization_id, ai_project, model_inventory_id, project_id, assignee_id,
+       type, severity, status, occurred_date, date_detected, reporter,
+       approval_status, categories_of_harm, description, relationship_causality,
+       created_at, updated_at
+     )
+     VALUES (
+       :orgId, :aiProject, :modelInventoryId, :projectId, :assigneeId,
+       'Malfunction', 'Minor', 'Open', NOW(), NOW(), :reporter,
+       'Pending', '[]'::json, :description, 'Test causality', NOW(), NOW()
+     ) RETURNING id`,
+    {
+      replacements: {
+        orgId,
+        aiProject: options.ai_project ?? `Test AI Project ${suffix}`,
+        modelInventoryId: options.model_inventory_id ?? null,
+        projectId: options.project_id ?? null,
+        assigneeId: options.assignee_id ?? userId,
+        reporter: `Reporter ${suffix}`,
+        description: "Test incident description",
       },
     },
   );

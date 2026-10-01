@@ -2,6 +2,12 @@ import { test, expect } from "./fixtures/auth.fixture";
 import AxeBuilder from "@axe-core/playwright";
 
 test.describe("Reporting", () => {
+  test.beforeEach(async ({ authedPage: page }) => {
+    await page.evaluate(() => {
+      localStorage.setItem("reporting-tour", "true");
+    });
+  });
+
   test("renders the reporting page", async ({ authedPage: page }) => {
     await page.goto("/reporting");
     await expect(page).toHaveURL(/\/reporting/);

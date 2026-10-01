@@ -11,7 +11,7 @@
 import { useState } from "react";
 import { IconButton as MuiIconButton, Menu, MenuItem, Typography, useTheme } from "@mui/material";
 import { Settings } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import ConfirmationModal from "../../../components/Dialogs/ConfirmationModal";
 import singleTheme from "../../../themes/v1SingleTheme";
 import type { AlertProps } from "../../../types/alert.types";

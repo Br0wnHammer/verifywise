@@ -1,12 +1,12 @@
 import { Suspense } from "react";
-import { Route, Navigate } from "react-router-dom";
+import { Route, Navigate } from "react-router";
 import { lazyRoute, LazyFallback } from "../utils/lazyRoute";
 import { SHOW_AI_GATEWAY_PROMPTS } from "./featureFlags";
 
-// Eager imports — app shell, route guard, and Use cases page (mounts with layout for table skeleton UX)
+// Eager imports — app shell and route guard
 import Dashboard from "../../presentation/containers/Dashboard";
+import SuperAdminLayout from "../../presentation/containers/SuperAdminLayout";
 import ProtectedRoute from "../../presentation/components/ProtectedRoute";
-import VWHome from "../../presentation/pages/Home/1.0Home";
 
 // ── Authentication routes ─────────────────────────────────────────────
 const Login = lazyRoute(() => import("../../presentation/pages/Authentication/Login"));
@@ -30,6 +30,7 @@ const RegisterUser = lazyRoute(
 );
 
 // ── Core dashboard routes ─────────────────────────────────────────────
+const VWHome = lazyRoute(() => import("../../presentation/pages/Home/1.0Home"));
 const Vendors = lazyRoute(() => import("../../presentation/pages/Vendors"));
 const Setting = lazyRoute(() => import("../../presentation/pages/SettingsPage"));
 const Organization = lazyRoute(() => import("../../presentation/pages/SettingsPage/Organization"));
@@ -46,6 +47,7 @@ const PageNotFound = lazyRoute(() => import("../../presentation/pages/PageNotFou
 
 // ── Compliance & framework routes ─────────────────────────────────────
 const Framework = lazyRoute(() => import("../../presentation/pages/Framework"));
+const GenericFramework = lazyRoute(() => import("../../presentation/pages/Framework/Generic"));
 const Training = lazyRoute(() => import("../../presentation/pages/TrainingRegistar"));
 const PolicyDashboard = lazyRoute(
   () => import("../../presentation/pages/PolicyDashboard/PoliciesDashboard"),
@@ -79,6 +81,8 @@ const ModelLifecycleDetail = lazyRoute(
 );
 const Datasets = lazyRoute(() => import("../../presentation/pages/Datasets"));
 const AITrustCenter = lazyRoute(() => import("../../presentation/pages/AITrustCenter"));
+const AIAuditDashboard = lazyRoute(() => import("../../presentation/pages/AIAuditDashboard"));
+const AIObservability = lazyRoute(() => import("../../presentation/pages/AIObservability"));
 
 // ── AI Detection & Shadow AI routes ───────────────────────────────────
 const ScanPage = lazyRoute(() => import("../../presentation/pages/AIDetection/ScanPage"));
@@ -182,10 +186,8 @@ Governance OS routes are disabled while the module is not broadly released.
 */
 
 // ── Remaining routes ──────────────────────────────────────────────────
-const Plugins = lazyRoute(() => import("../../presentation/pages/Plugins"));
-const PluginManagement = lazyRoute(
-  () => import("../../presentation/pages/Plugins/PluginManagement"),
-);
+const Extensions = lazyRoute(() => import("../../presentation/pages/Extensions"));
+const ExtensionSettings = lazyRoute(() => import("../../presentation/pages/Extensions/Settings"));
 const SuperAdminOrganizations = lazyRoute(
   () => import("../../presentation/pages/SuperAdmin/Organizations"),
 );
@@ -300,34 +302,18 @@ export const createRoutes = (
       }
     />
     <Route
-      path="/plugins"
+      path="/extensions"
       element={
         <Suspense fallback={<LazyFallback />}>
-          <Plugins />
+          <Extensions />
         </Suspense>
       }
     />
     <Route
-      path="/plugins/marketplace"
+      path="/extensions/:key/settings"
       element={
         <Suspense fallback={<LazyFallback />}>
-          <Plugins />
-        </Suspense>
-      }
-    />
-    <Route
-      path="/plugins/my-plugins"
-      element={
-        <Suspense fallback={<LazyFallback />}>
-          <Plugins />
-        </Suspense>
-      }
-    />
-    <Route
-      path="/plugins/:pluginKey/manage"
-      element={
-        <Suspense fallback={<LazyFallback />}>
-          <PluginManagement />
+          <ExtensionSettings />
         </Suspense>
       }
     />
@@ -372,12 +358,27 @@ export const createRoutes = (
         </Suspense>
       }
     />
-    <Route path="/overview" element={<VWHome />} />
+    <Route
+      path="/overview"
+      element={
+        <Suspense fallback={<LazyFallback />}>
+          <VWHome />
+        </Suspense>
+      }
+    />
     <Route
       path="/framework/:tab?"
       element={
         <Suspense fallback={<LazyFallback />}>
           <Framework />
+        </Suspense>
+      }
+    />
+    <Route
+      path="/projects/:projectId/framework/:frameworkId"
+      element={
+        <Suspense fallback={<LazyFallback />}>
+          <GenericFramework />
         </Suspense>
       }
     />
@@ -671,7 +672,7 @@ export const createRoutes = (
         </Suspense>
       }
     />
-    {/* Dynamic route for plugin tabs (e.g., mlflow, other future plugins) */}
+    {/* Dynamic route for extension-contributed tabs (mlflow, azure-ai-foundry, etc.) */}
     <Route
       path="/model-inventory/:pluginTab"
       element={
@@ -725,6 +726,22 @@ export const createRoutes = (
       element={
         <Suspense fallback={<LazyFallback />}>
           <AgentDiscovery />
+        </Suspense>
+      }
+    />
+    <Route
+      path="/ai-audit"
+      element={
+        <Suspense fallback={<LazyFallback />}>
+          <AIAuditDashboard />
+        </Suspense>
+      }
+    />
+    <Route
+      path="/ai-observability"
+      element={
+        <Suspense fallback={<LazyFallback />}>
+          <AIObservability />
         </Suspense>
       }
     />
@@ -1102,8 +1119,14 @@ export const createRoutes = (
         </Suspense>
       }
     />
+  </Route>,
+  <Route
+    key="super-admin"
+    path="/super-admin"
+    element={<ProtectedRoute Component={SuperAdminLayout} requireSuperAdmin />}
+  >
     <Route
-      path="/super-admin"
+      index
       element={
         <Suspense fallback={<LazyFallback />}>
           <SuperAdminOrganizations />
@@ -1111,7 +1134,7 @@ export const createRoutes = (
       }
     />
     <Route
-      path="/super-admin/users"
+      path="users"
       element={
         <Suspense fallback={<LazyFallback />}>
           <SuperAdminAllUsers />
@@ -1119,7 +1142,7 @@ export const createRoutes = (
       }
     />
     <Route
-      path="/super-admin/organizations/:id/users"
+      path="organizations/:id/users"
       element={
         <Suspense fallback={<LazyFallback />}>
           <SuperAdminUsers />
@@ -1127,7 +1150,7 @@ export const createRoutes = (
       }
     />
     <Route
-      path="/super-admin/settings"
+      path="settings"
       element={
         <Suspense fallback={<LazyFallback />}>
           <SuperAdminSettings />
@@ -1135,7 +1158,7 @@ export const createRoutes = (
       }
     />
     <Route
-      path="/super-admin/settings/:tab"
+      path="settings/:tab"
       element={
         <Suspense fallback={<LazyFallback />}>
           <SuperAdminSettings />

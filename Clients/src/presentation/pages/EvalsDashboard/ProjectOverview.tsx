@@ -24,14 +24,14 @@ import {
 } from "../../../application/repository/deepEval.repository";
 import NewExperimentModal from "./NewExperimentModal";
 import type { DeepEvalProject } from "./types";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { PageHeader } from "../../components/Layout/PageHeader";
 import HelperIcon from "../../components/HelperIcon";
 import TipBox from "../../components/TipBox";
 import { useAuth } from "../../../application/hooks/useAuth";
 import allowedRoles from "../../../application/constants/permissions";
 import { palette } from "../../themes/palette";
-import { displayFormattedDateTime } from "../../tools/isoDateToString";
+import useFormattedDate from "../../../application/hooks/useFormattedDate";
 
 interface ProjectOverviewProps {
   projectId: string;
@@ -155,6 +155,7 @@ export default function ProjectOverview({
   onProjectUpdate,
   onViewExperiment,
 }: ProjectOverviewProps) {
+  const formatDate = useFormattedDate();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [experiments, setExperiments] = useState<Experiment[]>([]);
@@ -163,9 +164,8 @@ export default function ProjectOverview({
   const [newExperimentModalOpen, setNewExperimentModalOpen] = useState(false);
 
   // RBAC permissions
-  const { userRoleName, isSuperAdmin } = useAuth();
-  const canCreateExperiment =
-    allowedRoles.evals.createExperiment.includes(userRoleName) && !isSuperAdmin;
+  const { userRoleName } = useAuth();
+  const canCreateExperiment = allowedRoles.evals.createExperiment.includes(userRoleName);
 
   const loadOverviewData = useCallback(async () => {
     try {
@@ -340,7 +340,7 @@ export default function ProjectOverview({
       }
 
       // Format date
-      const createdDate = exp.created_at ? displayFormattedDateTime(exp.created_at) : "-";
+      const createdDate = exp.created_at ? formatDate(exp.created_at, { includeTime: true }) : "-";
 
       // Judge/scorer display
       const judgeModel = exp.config?.judgeLlm?.model || exp.config?.judgeLlm?.provider || "";

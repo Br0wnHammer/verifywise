@@ -119,8 +119,8 @@ beforeEach(() => {
 afterAll(() => setLanguage("en"));
 
 describe.each(LANGS)("linked risks panel in %s", (lang) => {
-  beforeEach(() => {
-    setLanguage(lang, true);
+  beforeEach(async () => {
+    await setLanguage(lang, true);
     resetAudit();
   });
 

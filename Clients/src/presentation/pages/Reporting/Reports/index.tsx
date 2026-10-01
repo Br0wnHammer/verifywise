@@ -11,7 +11,7 @@ import Alert from "../../../components/Alert";
 import { useProjects } from "../../../../application/hooks/useProjects";
 import CustomizableSkeleton from "../../../components/Skeletons";
 import { Project } from "../../../../domain/types/Project";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useAuth } from "../../../../application/hooks/useAuth";
 import { GetMyOrganization } from "../../../../application/repository/organization.repository";
 import { GroupBy } from "../../../components/Table/GroupBy";
@@ -70,12 +70,7 @@ const Reports: React.FC<ReportsProps> = ({
 
   // Column visibility management
   type ReportColumn =
-    | "reportName"
-    | "typeOfReport"
-    | "project"
-    | "dateGenerated"
-    | "generatedBy"
-    | "action";
+    "reportName" | "typeOfReport" | "project" | "dateGenerated" | "generatedBy" | "action";
 
   const REPORT_COLUMNS: ColumnConfig<ReportColumn>[] = useMemo(
     () => [

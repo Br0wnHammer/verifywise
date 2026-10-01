@@ -22,7 +22,7 @@ import {
 } from "./files/evidenceFiles.utils";
 import { toId } from "./validations/validation.utils";
 
-const getDemoSubClauses = (): Object[] => {
+const getDemoSubClauses = (): object[] => {
   const subClauses = [];
   for (let clause of ISO27001Clause) {
     for (let subClause of clause.subclauses) {
@@ -36,7 +36,7 @@ const getDemoSubClauses = (): Object[] => {
   return subClauses;
 };
 
-const getDemoAnnexControls = (): Object[] => {
+const getDemoAnnexControls = (): object[] => {
   const annexControls = [];
   for (let annex of ISO27001Annex) {
     for (let annexControl of annex.controls) {
@@ -58,7 +58,7 @@ export const countSubClausesISOByProjectId = async (
   doneSubclauses: string;
 }> => {
   const result = (await sequelize.query(
-    `SELECT COUNT(*) AS "totalSubclauses", SUM(CASE WHEN status = 'Implemented' THEN 1 ELSE 0 END) AS "doneSubclauses" FROM subclauses_iso27001 WHERE organization_id = :organizationId AND projects_frameworks_id = :projects_frameworks_id;`,
+    `SELECT COUNT(*) AS "totalSubclauses", SUM(CASE WHEN status IN ('Implemented', 'Audited') THEN 1 ELSE 0 END) AS "doneSubclauses" FROM subclauses_iso27001 WHERE organization_id = :organizationId AND projects_frameworks_id = :projects_frameworks_id;`,
     {
       replacements: { organizationId, projects_frameworks_id: projectFrameworkId },
     },
@@ -74,7 +74,7 @@ export const countAnnexControlsISOByProjectId = async (
   doneAnnexControls: string;
 }> => {
   const result = (await sequelize.query(
-    `SELECT COUNT(*) AS "totalAnnexControls", SUM(CASE WHEN status = 'Implemented' THEN 1 ELSE 0 END) AS "doneAnnexControls" FROM annexcontrols_iso27001 WHERE organization_id = :organizationId AND projects_frameworks_id = :projects_frameworks_id;`,
+    `SELECT COUNT(*) AS "totalAnnexControls", SUM(CASE WHEN status IN ('Implemented', 'Audited') THEN 1 ELSE 0 END) AS "doneAnnexControls" FROM annexcontrols_iso27001 WHERE organization_id = :organizationId AND projects_frameworks_id = :projects_frameworks_id;`,
     {
       replacements: { organizationId, projects_frameworks_id: projectFrameworkId },
     },

@@ -22,8 +22,12 @@ jest.mock("../../../controllers/user.ctrl", () => ({
   getUserProfilePhoto: jest.fn((_req: any, res: any) => res.status(200).json({ photo: "base64" })),
   deleteUserProfilePhoto: jest.fn((_req: any, res: any) => res.status(204).send()),
   resetPassword: jest.fn((_req: any, res: any) => res.status(200).json({ reset: true })),
+  logoutUser: jest.fn((_req: any, res: any) => res.status(200).json({ message: "Logged out" })),
   getPreferencesForCurrentUser: jest.fn((_req: any, res: any) =>
     res.status(200).json({ date_format: "DD-MM-YYYY", language: "en" }),
+  ),
+  patchPreferencesForCurrentUser: jest.fn((_req: any, res: any) =>
+    res.status(200).json({ date_format: "MM-DD-YYYY", language: "de" }),
   ),
 }));
 
@@ -39,14 +43,20 @@ jest.mock("../../../middleware/selfOnly.middleware", () => ({
   selfOnly: jest.fn((_req: any, _res: any, next: any) => next()),
 }));
 
-jest.mock("../../../middleware/rateLimit.middleware", () => ({
-  authLimiter: jest.fn((_req: any, _res: any, next: any) => next()),
-  tokenRefreshLimiter: jest.fn((_req: any, _res: any, next: any) => next()),
+jest.mock("../../../middleware/accessControl.middleware", () => ({
+  __esModule: true,
+  default: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
-jest.mock("express-rate-limit", () =>
-  jest.fn(() => (_req: unknown, _res: unknown, next: () => void) => next()),
-);
+// Every limiter this router mounts must be stubbed here. They all now come from
+// rateLimit.middleware (loginLimiter used to be declared inline in user.route.ts and
+// was covered by an express-rate-limit mock), so a limiter missing from this list
+// mounts `undefined` and the whole suite fails to load.
+jest.mock("../../../middleware/rateLimit.middleware", () => ({
+  authLimiter: jest.fn((_req: any, _res: any, next: any) => next()),
+  loginLimiter: jest.fn((_req: any, _res: any, next: any) => next()),
+  tokenRefreshLimiter: jest.fn((_req: any, _res: any, next: any) => next()),
+}));
 
 import userRoutes from "../../user.route";
 
@@ -117,5 +127,38 @@ describe("DELETE /api/users/:id", () => {
     const res = await request(app).delete("/api/users/1");
 
     expect(res.status).toBe(204);
+  });
+});
+
+describe("POST /api/users/logout", () => {
+  it("should return 200", async () => {
+    const app = createUserTestApp();
+    const res = await request(app).post("/api/users/logout");
+
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("GET /api/users/me/preferences", () => {
+  it("should return 200 with current user preferences", async () => {
+    const app = createUserTestApp();
+    const res = await request(app).get("/api/users/me/preferences");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("date_format");
+    expect(res.body).toHaveProperty("language");
+  });
+});
+
+describe("PATCH /api/users/me/preferences", () => {
+  it("should return 200 when preferences are upserted", async () => {
+    const app = createUserTestApp();
+    const res = await request(app)
+      .patch("/api/users/me/preferences")
+      .send({ date_format: "MM-DD-YYYY", language: "de" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("date_format");
+    expect(res.body).toHaveProperty("language");
   });
 });

@@ -19,8 +19,8 @@ vi.mock("../../../../application/repository/entity.repository", () => ({
   deleteEntityById: (...args: unknown[]) => mockDeleteEntityById(...args),
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react-router-dom")>()),
+vi.mock("react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router")>()),
   useNavigate: () => mockNavigate,
 }));
 

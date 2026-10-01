@@ -40,11 +40,11 @@ import { palette } from "../../themes/palette";
 // Import provider logos
 import { ReactComponent as OpenAILogo } from "../../assets/icons/openai_logo.svg";
 import { ReactComponent as AnthropicLogo } from "../../assets/icons/anthropic_logo.svg";
-import { ReactComponent as OllamaLogo } from "../../assets/icons/ollama_logo.svg";
 import { ReactComponent as GeminiLogo } from "../../assets/icons/gemini_logo.svg";
 import { ReactComponent as MistralLogo } from "../../assets/icons/mistral_logo.svg";
 import { ReactComponent as XAILogo } from "../../assets/icons/xai_logo.svg";
 import { ReactComponent as OpenRouterLogo } from "../../assets/icons/openrouter_logo.svg";
+import { OllamaLogo } from "./NewExperiment/experimentIcons";
 
 // Large SVGs loaded from public/ to avoid bundling
 const HuggingFaceLogo = (props: React.SVGProps<SVGSVGElement>) => (
@@ -104,11 +104,9 @@ export default function ModelsPage({ orgId, openAddModal, onAddModalConsumed }: 
   const [alert, setAlert] = useState<AlertState | null>(null);
 
   // RBAC permissions
-  const { userRoleName, isSuperAdmin } = useAuth();
-  const canDeleteModel =
-    (allowedRoles.evals.deleteScorer?.includes(userRoleName) ?? true) && !isSuperAdmin;
-  const canCreateModel =
-    (allowedRoles.evals.createScorer?.includes(userRoleName) ?? true) && !isSuperAdmin;
+  const { userRoleName } = useAuth();
+  const canDeleteModel = allowedRoles.evals.deleteScorer?.includes(userRoleName) ?? true;
+  const canCreateModel = allowedRoles.evals.createScorer?.includes(userRoleName) ?? true;
 
   // Delete confirmation modal state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);

@@ -35,6 +35,7 @@ import { ProjectStatus } from "../domain.layer/enums/project-status.enum";
 import { AiRiskClassification } from "../domain.layer/enums/ai-risk-classification.enum";
 import { ModelInventoryModel } from "../domain.layer/models/modelInventory/modelInventory.model";
 import { IIntakeFormSchema } from "../domain.layer/interfaces/i.intakeForm";
+import { validateIntakeFormSchemaLabels } from "../utils/intakeFormSchema.validation";
 import { STATUS_CODE } from "../utils/statusCode.utils";
 import { sanitizeUserHtml } from "../utils/sanitization.utils";
 import logger from "../utils/logger/fileLogger";
@@ -51,6 +52,7 @@ import { getCompanyLogoQuery } from "../utils/aiTrustCentre.utils";
 
 import { translateError } from "../utils/i18n.utils";
 import { toId } from "../utils/validations/validation.utils";
+import { isEmail } from "../utils/validations/email.utils";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
 
@@ -133,8 +135,7 @@ function validateFormData(formData: Record<string, unknown>, schema: IIntakeForm
     // Type-specific validation
     switch (field.type) {
       case "email": {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (typeof value !== "string" || !emailRegex.test(value)) {
+        if (!isEmail(value)) {
           errors.push(`"${field.label}" must be a valid email address`);
         }
         break;
@@ -373,6 +374,15 @@ export async function createIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid form status")));
     }
 
+    // The rendered intake form is built entirely from this schema, so a field
+    // with no label produces an input with no accessible name. Reject it here
+    // rather than letting it reach the public page.
+    const schemaErrors = validateIntakeFormSchemaLabels(schema);
+    if (schemaErrors.length > 0) {
+      await transaction.rollback();
+      return res.status(400).json(STATUS_CODE[400](schemaErrors.join("; ")));
+    }
+
     const form = await createIntakeFormQuery(
       {
         name,
@@ -474,6 +484,15 @@ export async function updateIntakeForm(req: Request, res: Response) {
     if (entityType && !Object.values(IntakeEntityType).includes(entityType)) {
       await transaction.rollback();
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid entity type")));
+    }
+
+    // The rendered intake form is built entirely from this schema, so a field
+    // with no label produces an input with no accessible name. Reject it here
+    // rather than letting it reach the public page.
+    const schemaErrors = validateIntakeFormSchemaLabels(schema);
+    if (schemaErrors.length > 0) {
+      await transaction.rollback();
+      return res.status(400).json(STATUS_CODE[400](schemaErrors.join("; ")));
     }
 
     const form = await updateIntakeFormQuery(
@@ -1495,8 +1514,7 @@ export async function submitPublicFormByPublicId(req: Request, res: Response) {
     if (!submitterEmail) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Submitter email is required")));
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(submitterEmail)) {
+    if (!isEmail(submitterEmail)) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid email format")));
     }
 
@@ -1818,8 +1836,7 @@ export async function submitPublicForm(req: Request, res: Response) {
     if (!submitterEmail) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Submitter email is required")));
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(submitterEmail)) {
+    if (!isEmail(submitterEmail)) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid email format")));
     }
 

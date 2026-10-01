@@ -1,24 +1,72 @@
 import { QueryTypes, Transaction } from "sequelize";
 import crypto from "crypto";
+import { promisify } from "util";
 import { sequelize } from "../database/db";
 import { IToken } from "../domain.layer/interfaces/i.tokens";
 import { TokenModel } from "../domain.layer/models/tokens/tokens.model";
 import { ValidationException } from "../domain.layer/exceptions/custom.exception";
 
 /**
- * Hash an API token (the signed JWT string) for storage and lookup.
- * Only the SHA-256 hash is persisted; the raw token is shown to the creator
- * once and never stored. Mirrors the Shadow AI API key pattern.
+ * Server-side secret used as the salt for API-token hashing.
+ * Falls back to ENCRYPTION_KEY for backward compatibility in existing installs,
+ * but a dedicated secret is recommended so token hashes can be rotated
+ * independently of encryption keys.
+ *
+ * Changing this secret (or the hashing scheme) changes every token's hash, which
+ * invalidates all previously-issued API tokens — the raw tokens are not stored,
+ * so existing tokens cannot be re-hashed and must be re-issued after such a change.
  */
-export const hashApiToken = (token: string): string =>
-  crypto.createHash("sha256").update(token).digest("hex");
+const API_TOKEN_HASH_SECRET = process.env.API_TOKEN_HASH_SECRET || process.env.ENCRYPTION_KEY || "";
 
-export const getNumberOfApiTokensQuery = async (organizationId: number) => {
+if (!API_TOKEN_HASH_SECRET) {
+  throw new Error("API_TOKEN_HASH_SECRET or ENCRYPTION_KEY must be set for API token hashing");
+}
+
+const pbkdf2 = promisify(crypto.pbkdf2);
+
+/**
+ * Hash an API token (the signed JWT string) for storage and lookup.
+ *
+ * Uses PBKDF2 (100k iterations, SHA-512) with the server-side secret as salt.
+ * The hash is deterministic (the same token always produces the same digest,
+ * required for the DB lookup) and an attacker with only the database cannot
+ * reconstruct tokens without the secret.
+ *
+ * IMPORTANT: this uses the ASYNC crypto.pbkdf2 (libuv threadpool), NOT
+ * pbkdf2Sync. This function runs in the auth middleware on every API-token
+ * request; the synchronous variant would block the single Node event loop for
+ * ~milliseconds per call, serializing all concurrent traffic. The async variant
+ * offloads the work so the event loop stays responsive. Keep it async — every
+ * caller must await it.
+ *
+ * Only the hash is persisted; the raw token is shown to the creator once and
+ * never stored.
+ */
+export const hashApiToken = async (token: string): Promise<string> => {
+  const derived = await pbkdf2(token, API_TOKEN_HASH_SECRET, 100000, 32, "sha512");
+  return derived.toString("hex");
+};
+
+/**
+ * SQL predicate scoping api_tokens to one owner.
+ *
+ * A super-admin token belongs to no organization, so its `organization_id` is
+ * NULL and `= :organizationId` can never match it — nothing equals NULL in SQL.
+ * The two forms are branched rather than written as
+ * `organization_id IS NOT DISTINCT FROM :organizationId`, which reads better but
+ * is not an indexable operator: this column leads
+ * idx_api_tokens_org_token (organization_id, token), and the hash lookup below
+ * runs on every API-token request.
+ */
+const orgScope = (organizationId: number | null): string =>
+  organizationId === null ? "organization_id IS NULL" : "organization_id = :organizationId";
+
+export const getNumberOfApiTokensQuery = async (organizationId: number | null) => {
   // Only active (non-revoked) tokens count toward the per-organization limit.
   // Revoked rows are retained for audit but must not consume a slot, otherwise
   // revoking a token would permanently reduce the org's creation capacity.
   const numberOfTokens = (await sequelize.query(
-    `SELECT COUNT(*) FROM api_tokens WHERE organization_id = :organizationId AND revoked = false;`,
+    `SELECT COUNT(*) FROM api_tokens WHERE ${orgScope(organizationId)} AND revoked = false;`,
     { replacements: { organizationId } },
   )) as [{ count: string }[], number];
   return parseInt(numberOfTokens[0][0].count, 10);
@@ -26,14 +74,14 @@ export const getNumberOfApiTokensQuery = async (organizationId: number) => {
 
 export const createApiTokenQuery = async (
   tokenPayload: IToken,
-  organizationId: number,
+  organizationId: number | null,
   transaction: Transaction,
 ) => {
   // Check if an active (non-revoked) token with this name already exists.
   // A revoked token frees up its name for reuse.
   const existingToken = (await sequelize.query(
     `SELECT id FROM api_tokens
-       WHERE organization_id = :organizationId AND name = :name AND revoked = false;`,
+       WHERE ${orgScope(organizationId)} AND name = :name AND revoked = false;`,
     {
       replacements: { organizationId, name: tokenPayload.name },
       transaction,
@@ -46,7 +94,7 @@ export const createApiTokenQuery = async (
     );
   }
 
-  // `tokenPayload.token` is the SHA-256 hash of the JWT, not the JWT itself.
+  // `tokenPayload.token` is the PBKDF2 hash of the JWT, not the JWT itself.
   // The raw token is returned to the caller by the controller and never stored.
   // The hash column is intentionally excluded from RETURNING so it never leaves
   // the database.
@@ -79,12 +127,12 @@ export const createApiTokenQuery = async (
  * Scoped by organization to keep the lookup tenant-isolated.
  */
 export const getActiveApiTokenByHashQuery = async (
-  organizationId: number,
+  organizationId: number | null,
   tokenHash: string,
 ): Promise<{ id: number; revoked: boolean; expires_at: Date } | null> => {
   const result = (await sequelize.query(
     `SELECT id, revoked, expires_at FROM api_tokens
-       WHERE organization_id = :organizationId
+       WHERE ${orgScope(organizationId)}
          AND token = :tokenHash
          AND revoked = false
          AND expires_at > NOW()
@@ -100,11 +148,11 @@ export const getActiveApiTokenByHashQuery = async (
  */
 export const touchApiTokenLastUsedQuery = async (
   id: number,
-  organizationId: number,
+  organizationId: number | null,
 ): Promise<void> => {
   await sequelize.query(
     `UPDATE api_tokens SET last_used_at = NOW()
-       WHERE id = :id AND organization_id = :organizationId;`,
+       WHERE id = :id AND ${orgScope(organizationId)};`,
     { replacements: { id, organizationId } },
   );
 };
@@ -114,28 +162,31 @@ export const touchApiTokenLastUsedQuery = async (
  * the UI and audit trail) but can no longer authenticate. Returns false when no
  * matching active token exists.
  */
-export const revokeApiTokenQuery = async (id: number, organizationId: number): Promise<boolean> => {
+export const revokeApiTokenQuery = async (
+  id: number,
+  organizationId: number | null,
+): Promise<boolean> => {
   const result = (await sequelize.query(
     `UPDATE api_tokens SET revoked = true
-       WHERE id = :id AND organization_id = :organizationId AND revoked = false
+       WHERE id = :id AND ${orgScope(organizationId)} AND revoked = false
        RETURNING id;`,
     { replacements: { id, organizationId } },
   )) as [{ id: number }[], number];
   return result[0].length > 0;
 };
 
-export const getApiTokensQuery = async (organizationId: number) => {
+export const getApiTokensQuery = async (organizationId: number | null) => {
   const result = (await sequelize.query(
     `SELECT id, name, expires_at, created_by, created_at, revoked, last_used_at
-       FROM api_tokens WHERE organization_id = :organizationId ORDER BY created_at DESC;`,
+       FROM api_tokens WHERE ${orgScope(organizationId)} ORDER BY created_at DESC;`,
     { replacements: { organizationId } },
   )) as [TokenModel[], number];
   return result[0];
 };
 
-export const deleteApiTokenQuery = async (id: number, organizationId: number) => {
+export const deleteApiTokenQuery = async (id: number, organizationId: number | null) => {
   const result = await sequelize.query(
-    `DELETE FROM api_tokens WHERE organization_id = :organizationId AND id = :id RETURNING *;`,
+    `DELETE FROM api_tokens WHERE ${orgScope(organizationId)} AND id = :id RETURNING *;`,
     {
       replacements: { organizationId, id },
       mapToModel: true,

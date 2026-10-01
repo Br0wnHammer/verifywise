@@ -18,30 +18,29 @@ vi.mock("../../../application/redux/auth/authSlice", () => ({
 
 vi.mock("../../../i18n/domTranslator", () => ({
   getLanguage: vi.fn(() => "en"),
+  translateKey: vi.fn((key: string) => key),
 }));
 
-vi.mock("../../../i18n/translations", () => ({
-  translations: {
-    de: {
-      "Error": "Fehler",
-      "An error occurred. Please try again later":
-        "Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut",
-    },
-  },
-}));
-
+import { CanceledError, type AxiosError } from "axios";
 import CustomAxios, { showAlert, setShowAlertCallback } from "../customAxios";
 import { store } from "../../../application/redux/store";
-import { getLanguage } from "../../../i18n/domTranslator";
+import { translateKey } from "../../../i18n/domTranslator";
 
 const mockStore = vi.mocked(store);
+
+const DE: Record<string, string> = {
+  "Error": "Fehler",
+  "An error occurred. Please try again later":
+    "Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut",
+};
 
 describe("customAxios", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(translateKey).mockImplementation((key: string) => key);
     setShowAlertCallback(null as any);
     mockStore.getState.mockReturnValue({
-      auth: { authToken: "test-token", activeOrganizationId: null },
+      auth: { authToken: "test-token" },
     } as any);
   });
 
@@ -68,18 +67,6 @@ describe("customAxios", () => {
         url: "/users/register",
       });
       expect(config.headers.Authorization).toBeUndefined();
-    });
-
-    it("adds X-Organization-Id header when activeOrganizationId exists", async () => {
-      mockStore.getState.mockReturnValue({
-        auth: { authToken: "token", activeOrganizationId: 5 },
-      } as any);
-
-      const config = await (CustomAxios.interceptors.request as any).handlers[0].fulfilled({
-        headers: {} as any,
-        url: "/some-endpoint",
-      });
-      expect(config.headers["X-Organization-Id"]).toBe("5");
     });
 
     it("sets withCredentials for login endpoint", async () => {
@@ -146,7 +133,7 @@ describe("customAxios", () => {
     });
 
     it("translates the toast body when the active language is not English", async () => {
-      vi.mocked(getLanguage).mockReturnValue("de");
+      vi.mocked(translateKey).mockImplementation((key: string) => DE[key] ?? key);
       const callback = vi.fn();
       setShowAlertCallback(callback);
 
@@ -164,14 +151,103 @@ describe("customAxios", () => {
       });
     });
 
-    it("does not show a toast for 4xx client errors", async () => {
+    it("shows a translated toast with the envelope detail for 4xx client errors", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      // Standardized 4xx envelope: reason phrase in `message`, detail in `data`
+      const error = {
+        config: { url: "/test" },
+        response: { status: 400, data: { message: "Bad Request", data: "Name is required" } },
+        message: "Bad Request",
+      };
+
+      await expect(rejected(error)).rejects.toEqual(error);
+      expect(callback).toHaveBeenCalledWith({
+        variant: "error",
+        title: "Error",
+        body: "Name is required",
+      });
+    });
+
+    it("falls back to the top-level message for legacy raw 4xx bodies", async () => {
       const callback = vi.fn();
       setShowAlertCallback(callback);
 
       const error = {
         config: { url: "/test" },
-        response: { status: 400, data: { message: "Bad request" } },
-        message: "Bad Request",
+        response: { status: 409, data: { message: "Already exists" } },
+        message: "Conflict",
+      };
+
+      await expect(rejected(error)).rejects.toEqual(error);
+      expect(callback).toHaveBeenCalledWith({
+        variant: "error",
+        title: "Error",
+        body: "Already exists",
+      });
+    });
+
+    it("does not show a toast for 404 (callers handle it as empty state)", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      const error = {
+        config: { url: "/test" },
+        response: { status: 404, data: { message: "Not Found", data: "Resource not found" } },
+        message: "Not Found",
+      };
+
+      await expect(rejected(error)).rejects.toEqual(error);
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("matches the 403 org-mismatch logout flow on the envelope `data` detail", async () => {
+      vi.useFakeTimers(); // keep the scheduled performLogout from firing
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      const error = {
+        config: { url: "/test", headers: {} },
+        response: {
+          status: 403,
+          data: { message: "Forbidden", data: "User does not belong to this organization" },
+        },
+        message: "Forbidden",
+      };
+
+      await expect(rejected(error)).rejects.toThrow("User does not belong to this organization");
+      expect(callback).toHaveBeenCalledWith({
+        variant: "info",
+        title: "Access Denied",
+        body: "Please login again to continue.",
+      });
+      vi.useRealTimers();
+    });
+
+    // Hooks that abort in-flight requests on cleanup (the assessment hooks do)
+    // reject with a CanceledError that carries no response. That is the caller
+    // walking away, not a failure — it must not reach the user as an error toast.
+    it("does not show a toast when the request was canceled", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      const error = new CanceledError("canceled");
+      (error as AxiosError).config = { url: "/test" } as AxiosError["config"];
+
+      await expect(rejected(error)).rejects.toEqual(error);
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("does not show a toast when the request was aborted via AbortSignal", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      const error = {
+        config: { url: "/test" },
+        response: undefined,
+        code: "ERR_CANCELED",
+        message: "canceled",
       };
 
       await expect(rejected(error)).rejects.toEqual(error);

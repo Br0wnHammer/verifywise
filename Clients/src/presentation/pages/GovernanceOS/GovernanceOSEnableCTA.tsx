@@ -5,7 +5,7 @@ import { useAuth } from "../../../application/hooks/useAuth";
 import { useUpdatePreferences } from "../../../application/hooks/useGovernanceOs";
 import { CustomizableButton } from "../../components/button/customizable-button";
 import { text, brand, background, border as borderPalette } from "../../themes/palette";
-import { useUserGuideSidebarContext } from "../../components/UserGuide";
+import { useUserGuideSidebarContext } from "../../components/UserGuide/UserGuideSidebarContext";
 
 interface GovernanceOSEnableCTAProps {
   onEnabled?: () => void;

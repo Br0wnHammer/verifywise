@@ -49,12 +49,7 @@ export async function executeUpdateRisk(
   const recomputedLevel =
     severityChanged || likelihoodChanged
       ? (calculateRiskLevel(effectiveSeverity, effectiveLikelihood) as
-          | "No risk"
-          | "Very low risk"
-          | "Low risk"
-          | "Medium risk"
-          | "High risk"
-          | "Very high risk")
+          "No risk" | "Very low risk" | "Low risk" | "Medium risk" | "High risk" | "Very high risk")
       : undefined;
 
   // Build the partial payload for updateRiskByIdQuery. Only set fields

@@ -1,6 +1,3 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
 interface ExportColumn {
@@ -47,11 +44,13 @@ export const exportToCSV = (
 /**
  * Export table data to Excel (.xlsx)
  */
-export const exportToExcel = (
+export const exportToExcel = async (
   data: ExportRow[],
   columns: ExportColumn[],
   filename: string = "export",
 ) => {
+  // Loaded on demand: xlsx is too heavy to bundle into every table page.
+  const XLSX = await import("xlsx");
   // Create worksheet data with headers
   const wsData = [
     columns.map((col) => col.label),
@@ -80,13 +79,19 @@ export const exportToExcel = (
 /**
  * Export table data to PDF
  */
-export const exportToPDF = (
+export const exportToPDF = async (
   data: ExportRow[],
   columns: ExportColumn[],
   filename: string = "export",
   title?: string,
 ) => {
   try {
+    // Loaded on demand: jspdf + autotable are too heavy for the critical path.
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+
     const doc = new jsPDF();
 
     // Add title
@@ -129,8 +134,14 @@ export const exportToPDF = (
 /**
  * Print table data - generates PDF and opens print dialog
  */
-export const printTable = (data: ExportRow[], columns: ExportColumn[], title?: string) => {
+export const printTable = async (data: ExportRow[], columns: ExportColumn[], title?: string) => {
   try {
+    // Loaded on demand: jspdf + autotable are too heavy for the critical path.
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+
     const doc = new jsPDF();
 
     // Add title

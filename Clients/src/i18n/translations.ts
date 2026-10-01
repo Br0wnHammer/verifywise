@@ -25,6 +25,24 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    "Deployment name": "Bereitstellungsname",
+    "Save the deployment name first, then generate the token.":
+      "Speichern Sie zuerst den Bereitstellungsnamen, dann generieren Sie das Token.",
+    "Enable centralized monitoring": "Zentrales Monitoring aktivieren",
+    "Failed to load monitoring configuration.":
+      "Monitoring-Konfiguration konnte nicht geladen werden.",
+    "Failed to save monitoring configuration.":
+      "Monitoring-Konfiguration konnte nicht gespeichert werden.",
+    "Monitoring configuration saved. Restart services to apply changes.":
+      "Monitoring-Konfiguration gespeichert. Starten Sie die Dienste neu, um die Änderungen zu übernehmen.",
+    "Monitoring configuration saved. Restart the server for the new Observability URL to take effect.":
+      "Monitoring-Konfiguration gespeichert. Starten Sie den Server neu, damit die neue Observability-URL wirksam wird.",
+    "Observability URL": "Observability-URL",
+    "Push token": "Push-Token",
+    "Push token generated. Restart services to apply changes.":
+      "Push-Token generiert. Starten Sie die Dienste neu, um die Änderungen zu übernehmen.",
+    "Send logs and metrics to a central observability stack":
+      "Logs und Metriken an einen zentralen Observability-Stack senden",
     // Rich text renderer
     "Rich text content": "Rich-Text-Inhalt",
     // Settings — help text
@@ -97,6 +115,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Alert settings saved": "Benachrichtigungseinstellungen gespeichert",
     "Failed to save alert settings":
       "Benachrichtigungseinstellungen konnten nicht gespeichert werden",
+    "Failed to save evidence retention settings":
+      "Aufbewahrungseinstellungen für Nachweise konnten nicht gespeichert werden",
     "Notifications are delivered in-app, and by email when email alerts are enabled. A threshold set to notify and flag for revalidation also marks the model as due for a fresh validation.":
       "Benachrichtigungen werden in der App zugestellt und per E-Mail, wenn E-Mail-Benachrichtigungen aktiviert sind. Ein Schwellenwert mit Benachrichtigung und Revalidierungs-Kennzeichnung markiert das Modell zusätzlich als fällig für eine neue Validierung.",
     "A finding must be verified before it can be closed.":
@@ -523,6 +543,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence": "Nachweise",
     "Evidence hub": "Nachweiszentrale",
     "Evidence Hub": "Nachweiszentrale",
+    "Evidence Hub retention": "Nachweiszentrale-Aufbewahrung",
+    "Evidence retention settings saved": "Aufbewahrungseinstellungen für Nachweise gespeichert",
     "Reporting": "Berichte",
     "AI trust center": "KI-Vertrauenszentrum",
     "GOVERNANCE": "GOVERNANCE",
@@ -571,6 +593,13 @@ export const translations: Record<string, Record<string, string>> = {
     "Add new": "Neu hinzufügen",
     "Add agent": "Agent hinzufügen",
     "Add new risk": "Neues Risiko hinzufügen",
+    "Add a new risk": "Neues Risiko hinzufügen",
+    "Create a detailed breakdown of risks and their mitigation strategies to assist in documenting your risk management activities effectively.":
+      "Erstellen Sie eine detaillierte Aufschlüsselung der Risiken und ihrer Minderungsstrategien, um Ihre Risikomanagement-Aktivitäten wirksam zu dokumentieren.",
+    "Manage all organization risks in risk management":
+      "Alle Risiken der Organisation im Risikomanagement verwalten",
+    "View and add risks for this use case":
+      "Risiken für diesen Anwendungsfall anzeigen und hinzufügen",
     "Add new risks": "Neue Risiken hinzufügen",
     "Add new risk manually": "Neues Risiko manuell hinzufügen",
     "Add new risk menu": "Menü für neues Risiko",
@@ -702,12 +731,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Implemented": "Umgesetzt",
     "Investigating": "In Untersuchung",
     "Mitigated": "Gemindert",
+    "Emergency action": "Notfallmaßnahme",
+    "Suspended": "Ausgesetzt",
     "Planned": "Geplant",
     "Planning": "Planung",
     "Production": "Produktion",
     "Public": "Öffentlich",
     "Published": "Veröffentlicht",
     "Restricted": "Eingeschränkt",
+    "Retired": "Stillgelegt",
     "Resolved": "Gelöst",
     "Reviewed": "Geprüft",
     "Skipped": "Übersprungen",
@@ -756,6 +788,10 @@ export const translations: Record<string, Record<string, string>> = {
     "STATUS": "STATUS",
     "Status date": "Statusdatum",
     "STATUS DATE": "STATUSDATUM",
+    "Traditional ML": "Traditionelles ML",
+    "GenAI": "GenAI",
+    "RAG": "RAG",
+    "Agentic AI": "Agentische KI",
     "Action": "Aktion",
     "ACTION": "AKTION",
     "Action owner": "Aktionsverantwortlicher",
@@ -768,6 +804,7 @@ export const translations: Record<string, Record<string, string>> = {
     "DATE UPDATED": "AKTUALISIERUNGSDATUM",
     "Due date": "Fälligkeitsdatum",
     "Due today": "Heute fällig",
+    "No default": "Kein Standard",
     "No due date": "Kein Fälligkeitsdatum",
     "Expiry": "Ablauf",
     "EXPIRY": "ABLAUF",
@@ -1034,6 +1071,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Deleted only": "Nur gelöschte",
 
     // Empty / loading / error
+    "Loading": "Wird geladen",
     "Loading...": "Wird geladen...",
     "Loading agents...": "Agenten werden geladen...",
     "Loading dashboard": "Dashboard wird geladen",
@@ -1145,6 +1183,9 @@ export const translations: Record<string, Record<string, string>> = {
     "AI project": "KI-Projekt",
     "AI Project": "KI-Projekt",
     "AI PROJECT": "KI-PROJEKT",
+    "Affected model": "Betroffenes Modell",
+    "AFFECTED MODEL": "BETROFFENES MODELL",
+    "Select model from inventory": "Modell aus dem Inventar auswählen",
     "Project": "Projekt",
     "Create a new use case by filling in the following details":
       "Erstellen Sie einen neuen Anwendungsfall, indem Sie die folgenden Angaben ausfüllen",
@@ -1429,6 +1470,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Create use case": "Anwendungsfall erstellen",
     "Default TTL (seconds)": "Standard-TTL (Sekunden)",
     "Default branch": "Standard-Branch",
+    "Default retention period": "Standard-Aufbewahrungsfrist",
     "Departments (comma-separated)": "Abteilungen (kommagetrennt)",
     "Describe the products or services this vendor delivers (e.g., cloud hosting, legal advisory, AI APIs).":
       "Beschreiben Sie die Produkte oder Dienstleistungen, die dieser Anbieter liefert (z. B. Cloud-Hosting, Rechtsberatung, KI-APIs).",
@@ -1590,8 +1632,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Approve": "Genehmigen",
     "Archive": "Archivieren",
     "Archive form": "Formular archivieren",
+    "Applied to new evidence that has no explicit expiry date or retention policy of its own. A daily job flags records past their expiry date and notifies the reviewer or organization admins.":
+      "Wird auf neue Nachweise angewendet, die weder ein explizites Ablaufdatum noch eine eigene Aufbewahrungsfrist haben. Ein täglicher Job markiert Datensätze nach Ablauf und benachrichtigt den Prüfer oder die Administratoren der Organisation.",
+    "Archive expired evidence": "Abgelaufene Nachweise archivieren",
+    "Archived evidence is hidden from the Evidence Hub list but never deleted. Archival also requires the server flag EVIDENCE_RETENTION_ARCHIVE_ENABLED.":
+      "Archivierte Nachweise werden in der Nachweiszentrale-Liste ausgeblendet, aber nie gelöscht. Die Archivierung erfordert zusätzlich das Server-Flag EVIDENCE_RETENTION_ARCHIVE_ENABLED.",
     "Back to history": "Zurück zum Verlauf",
     "Back to prompts": "Zurück zu Prompts",
+    "Captcha answer": "Captcha-Antwort",
     "Click to upload": "Zum Hochladen klicken",
     "Close AI dependency graph modal": "Modal für KI-Abhängigkeitsgraph schließen",
     "Close banner": "Banner schließen",
@@ -1600,6 +1648,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Close drawer": "Schublade schließen",
     "Close editor": "Editor schließen",
     "Close entity graph modal": "Entitätsgraph-Modal schließen",
+    "Close file preview": "Dateivorschau schließen",
     "Close icon": "Schließen-Symbol",
     "Close image lightbox": "Bild-Lightbox schließen",
     "Close notification": "Benachrichtigung schließen",
@@ -1714,6 +1763,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Edit declaration of conformity": "Konformitätserklärung bearbeiten",
     "Edit EU registration": "EU-Registrierung bearbeiten",
     "Edit EU registration details": "EU-Registrierungsdetails bearbeiten",
+    "Edit file": "Datei bearbeiten",
     "Edit file metadata": "Dateimetadaten bearbeiten",
     "Edit folder": "Ordner bearbeiten",
     "Edit project": "Projekt bearbeiten",
@@ -1812,6 +1862,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Run first experiment": "Erstes Experiment ausführen",
     "Run your first experiment": "Ihr erstes Experiment ausführen",
     "Save changes": "Änderungen speichern",
+    "Save retention settings": "Aufbewahrungseinstellungen speichern",
     "Save Changes": "Änderungen speichern",
     "Save configuration": "Konfiguration speichern",
     "Save dataset": "Datensatz speichern",
@@ -2851,6 +2902,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Enter the prompt text...": "Prompt-Text eingeben...",
     "Enter the risk name": "Risikoname eingeben",
     "Enter username": "Benutzername eingeben",
+    "Enter vendor contact person": "Ansprechpartner beim Anbieter eingeben",
+    "Enter vendor name": "Anbieternamen eingeben",
     "Enter vendor website": "Anbieter-Website eingeben",
     "Enter workflow title": "Workflow-Titel eingeben",
     "Enter your email": "E-Mail eingeben",
@@ -4275,6 +4328,8 @@ export const translations: Record<string, Record<string, string>> = {
       "API-Aufrufe an OpenAI, Anthropic, Google AI und andere KI-Dienste erscheinen hier",
     "Hardcoded API keys and secrets detected in the codebase. These should be moved to environment variables or a secrets manager.":
       "Im Code hart codierte API-Schlüssel und Geheimnisse erkannt. Diese sollten in Umgebungsvariablen oder einen Secret-Manager verschoben werden.",
+    "Hardcoded secrets in source code can be exposed if the repository is made public or accessed by unauthorized users. Rotate any exposed credentials immediately.":
+      "Hart codierte Geheimnisse im Quellcode können offengelegt werden, wenn das Repository öffentlich gemacht oder von unbefugten Benutzern eingesehen wird. Rotieren Sie alle offengelegten Anmeldedaten umgehend.",
     "No hardcoded secrets detected": "Keine hart codierten Geheimnisse erkannt",
     "No API keys, tokens, or other secrets were found in the scanned code.":
       "Im gescannten Code wurden keine API-Schlüssel, Tokens oder andere Geheimnisse gefunden.",
@@ -5518,6 +5573,8 @@ export const translations: Record<string, Record<string, string>> = {
     "AI Chatbot for Customer Support": "KI-Chatbot für den Kundensupport",
     "AI Gateway": "AI Gateway",
     "AI Gateway, Policy Radar, and CI/CD scanning": "AI Gateway, Policy Radar und CI/CD-Scanning",
+    "Built-in frameworks, Model Risk Management, and Extensions":
+      "Integrierte Frameworks, Model Risk Management und Extensions",
     "AI Trust Index, AI Apps inventory, and Agent Control":
       "AI Trust Index, AI Apps inventory und Agent Control",
     "EU AI Act control workflow, clearable selects, and AI advisor fix":
@@ -5605,8 +5662,16 @@ export const translations: Record<string, Record<string, string>> = {
     "Activate the compliance frameworks relevant to your organization.":
       "Aktivieren Sie die für Ihre Organisation relevanten Compliance-Rahmenwerke.",
     "Active incidents": "Aktive Vorfälle",
-    "Add SOC 2, GDPR, HIPAA, and other compliance frameworks as plugins with full controls.":
-      "Fügen Sie SOC 2, GDPR, HIPAA und andere Compliance-Rahmenwerke als Plugins mit vollständigen Kontrollen hinzu.",
+    "SOC 2, GDPR, HIPAA, DORA, and 17 more frameworks are built in, with requirements, evidence, and risk tracking.":
+      "SOC 2, GDPR, HIPAA, DORA und 17 weitere Rahmenwerke sind integriert, mit Anforderungen, Nachweisen und Risikoverfolgung.",
+    "Slack, MLflow, Azure AI Foundry, Jira Assets, Model Lifecycle, Risk Import, and Dataset Bulk Upload.":
+      "Slack, MLflow, Azure AI Foundry, Jira Assets, Model Lifecycle, Risk Import und Dataset Bulk Upload.",
+    "Admins enable, configure, and disable extensions from the Extensions page. Nothing to install.":
+      "Administratoren aktivieren, konfigurieren und deaktivieren Extensions auf der Seite Extensions. Keine Installation erforderlich.",
+    "Import risks from Excel, bulk upload datasets with PII detection, and define model lifecycle phases.":
+      "Importieren Sie Risiken aus Excel, laden Sie Datensätze gesammelt mit PII-Erkennung hoch und definieren Sie Phasen des Modelllebenszyklus.",
+    "Connect Slack, MLflow, Azure AI Foundry, Jira Assets, and more with extensions that admins enable.":
+      "Verbinden Sie Slack, MLflow, Azure AI Foundry, Jira Assets und mehr mit Extensions, die Administratoren aktivieren.",
     "Add at least one field before publishing":
       "Fügen Sie mindestens ein Feld hinzu, bevor Sie veröffentlichen",
     "Add colleagues to collaborate on compliance and risk management tasks.":
@@ -5953,8 +6018,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Conformity assessment topics": "Themen der Konformitätsbewertung",
     "Congratulations": "Glückwunsch",
     "Connect": "Verbinden",
-    "Connect Slack, Jira, MLflow, Azure AI, and more for seamless workflow integration.":
-      "Verbinden Sie Slack, Jira, MLflow, Azure AI und mehr für eine nahtlose Workflow-Integration.",
+    "Send notifications to Slack, sync models from MLflow and Azure AI Foundry, and import use cases from Jira Assets.":
+      "Senden Sie Benachrichtigungen an Slack, synchronisieren Sie Modelle aus MLflow und Azure AI Foundry und importieren Sie Anwendungsfälle aus Jira Assets.",
     "Connect a GitHub token to scan private repositories":
       "Verbinden Sie ein GitHub-Token, um private Repositories zu scannen",
     "Connect with ML platforms to track experiments, models, and deployments.":
@@ -6197,8 +6262,8 @@ export const translations: Record<string, Record<string, string>> = {
     "EU AI Act Compliance Dashboard": "EU-KI-Verordnungs-Compliance-Dashboard",
     "EU AI Act only (specific to an AI system/project)":
       "Nur EU-KI-Verordnung (spezifisch für ein KI-System/Projekt)",
-    "EU AI Act, ISO 42001, NIST AI RMF, SOC 2, GDPR, and more with pluggable framework support.":
-      "EU-KI-Verordnung, ISO 42001, NIST AI RMF, SOC 2, GDPR und mehr mit Plugin-fähiger Rahmenwerk-Unterstützung.",
+    "EU AI Act, ISO 42001, NIST AI RMF, SOC 2, GDPR, and 20 more frameworks, all built in.":
+      "EU-KI-Verordnung, ISO 42001, NIST AI RMF, SOC 2, GDPR und 20 weitere Rahmenwerke, alle integriert.",
     "EU AI act": "EU-KI-Verordnung",
     "EU Database Data Entry Timeliness": "Zeitnähe der EU-Datenbank-Dateneingabe",
     "EU Database Registration": "EU-Datenbank-Registrierung",
@@ -6301,6 +6366,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Experimental research only, not deployed to users":
       "Nur experimentelle Forschung, nicht für Nutzer bereitgestellt",
     "Expired": "Abgelaufen",
+    "Expiring soon": "Läuft bald ab",
     "Expires": "Läuft ab",
     "Explain AI models to ensure responsible use and maintain an AI systems repository.":
       "Erklären Sie KI-Modelle, um eine verantwortungsvolle Nutzung sicherzustellen, und pflegen Sie ein Repository für KI-Systeme.",
@@ -6984,8 +7050,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Monitor": "Überwachen",
     "Monitor and respond to incidents involving third-party components.":
       "Überwachen und reagieren Sie auf Vorfälle mit Drittanbieterkomponenten.",
-    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, and Closed. Track resolution progress and identify incidents requiring immediate attention.":
-      "Überwachen Sie Vorfälle über ihren Lebenszyklus: Offen, In Untersuchung, Gemildert und Geschlossen. Verfolgen Sie den Behebungsfortschritt und identifizieren Sie Vorfälle, die sofortige Aufmerksamkeit erfordern.",
+    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, Closed, Suspended, and Emergency action. Track resolution progress and identify incidents requiring immediate attention.":
+      "Überwachen Sie Vorfälle über ihren Lebenszyklus: Offen, In Untersuchung, Gemildert, Geschlossen, Ausgesetzt und Notfallmaßnahme. Verfolgen Sie den Behebungsfortschritt und identifizieren Sie Vorfälle, die sofortige Aufmerksamkeit erfordern.",
     "Monitor incidents related to AI systems and respond post-deployment.":
       "Überwachen Sie Vorfälle im Zusammenhang mit KI-Systemen und reagieren Sie nach der Bereitstellung.",
     "Monitor mitigation efforts in real-time": "Minderungsbemühungen in Echtzeit überwachen",
@@ -7025,6 +7091,7 @@ export const translations: Record<string, Record<string, string>> = {
     "My submissions": "Meine Einreichungen",
     "NEXT SCAN": "NÄCHSTER SCAN",
     "NIST Subcategories": "NIST-Unterkategorien",
+    "Name is required": "Name ist erforderlich",
     "Name of the AI model": "Name des KI-Modells",
     "Name saved": "Name gespeichert",
     "Navigate project sections": "Projektabschnitte navigieren",
@@ -7145,6 +7212,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Planen Sie Reaktionen auf KI-Systemrisiken, einschließlich der Festlegung von Risikotoleranz und Minderungsstrategien.",
     "Please add at least one recipient to the Send Email action before saving.":
       'Bitte fügen Sie mindestens einen Empfänger zur Aktion "E-Mail senden" hinzu, bevor Sie speichern.',
+    "Please complete the required fields before saving.":
+      "Bitte füllen Sie die erforderlichen Felder aus, bevor Sie speichern.",
     "Please create a model first before adding model risks. Redirecting to models tab...":
       "Bitte erstellen Sie zuerst ein Modell, bevor Sie Modellrisiken hinzufügen. Weiterleitung zum Modelle-Tab...",
     "Please create a vendor first before adding vendor risks. Redirecting to vendors tab...":
@@ -7153,6 +7222,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Please enter a token to test": "Bitte geben Sie ein Token zum Testen ein",
     "Please enter an API key for this provider":
       "Bitte geben Sie einen API-Schlüssel für diesen Anbieter ein",
+    "Please enter an automation name before saving.":
+      "Bitte geben Sie einen Automatisierungsnamen ein, bevor Sie speichern.",
     "Please enter an email address": "Bitte geben Sie eine E-Mail-Adresse ein",
     "Please login again to continue.": "Bitte melden Sie sich erneut an, um fortzufahren.",
     "Please save the changes to attach the selected files.":
@@ -7299,8 +7370,8 @@ export const translations: Record<string, Record<string, string>> = {
     "References to AI models in the codebase": "Verweise auf KI-Modelle im Code",
     "Register AI-related training programs and educational resources. Track completion status, certifications, and learning progress across your team.":
       "Registrieren Sie KI-bezogene Schulungsprogramme und Bildungsressourcen. Verfolgen Sie den Abschlussstatus, Zertifizierungen und den Lernfortschritt in Ihrem Team.",
-    "Register and track AI models with details like hosting, biases, and limitations. Extend with the lifecycle plugin.":
-      "Registrieren und verfolgen Sie KI-Modelle mit Details wie Hosting, Verzerrungen und Einschränkungen. Erweitern Sie mit dem Lebenszyklus-Plugin.",
+    "Register and track AI models with details like hosting, biases, and limitations. Extend with the Model Lifecycle extension.":
+      "Registrieren und verfolgen Sie KI-Modelle mit Details wie Hosting, Verzerrungen und Einschränkungen. Erweitern Sie mit der Extension Model Lifecycle.",
     "Register external AI providers and third-party services. Document vendor information, contracts, and compliance requirements in one centralized location.":
       "Registrieren Sie externe KI-Anbieter und Drittanbieterdienste. Dokumentieren Sie Anbieterinformationen, Verträge und Compliance-Anforderungen an einem zentralen Ort.",
     "Register providers, authorized representatives, and deployers, along with their AI systems, in the EU database as required by the AI Act.":
@@ -8897,6 +8968,7 @@ export const translations: Record<string, Record<string, string>> = {
     // AI Gateway empty/error states
     "Click Save draft to create your first version.":
       "Klicken Sie auf Entwurf speichern, um Ihre erste Version zu erstellen.",
+    "Could not load metrics.": "Die Metriken konnten nicht geladen werden.",
     "Could not load this run.": "Dieser Lauf konnte nicht geladen werden.",
     "Create your first version": "Erstellen Sie Ihre erste Version",
     "Error loading AI Trust Center settings. Please try again.":
@@ -9154,9 +9226,325 @@ export const translations: Record<string, Record<string, string>> = {
     "NIST AI RMF subcategories": "NIST-AI-RMF-Unterkategorien",
     "custom framework item": "benutzerdefiniertes Rahmenwerkelement",
     "custom framework items": "benutzerdefinierte Rahmenwerkelemente",
+    // Reporting, readiness and AI observability
+    "AI analyses": "KI-Analysen",
+    "AI observability": "KI-Observability",
+    "AI readiness": "KI-Bereitschaft",
+    "Action failed": "Aktion fehlgeschlagen",
+    "Add a language-model key in Settings to enable AI insights.":
+      "Fügen Sie in den Einstellungen einen Sprachmodell-Schlüssel hinzu, um KI-Einblicke zu aktivieren.",
+    "All frameworks in scope": "Alle Rahmenwerke im Umfang",
+    "Analyze with AI": "Mit KI analysieren",
+    "Attach file": "Datei anhängen",
+    "Choose whether this report covers a single project or the whole organization.":
+      "Wählen Sie, ob dieser Bericht ein einzelnes Projekt oder die gesamte Organisation abdeckt.",
+    "Close AI analyses": "KI-Analysen schließen",
+    "Comma separated.": "Durch Kommas getrennt.",
+    "Compliance gap analysis": "Compliance-Lückenanalyse",
+    "Create template": "Vorlage erstellen",
+    "Default report level": "Standard-Berichtsebene",
+    "Delete template": "Vorlage löschen",
+    "Delivery:": "Zustellung:",
+    "Each enabled block is one language-model call per report run.":
+      "Jeder aktivierte Block bedeutet einen Sprachmodell-Aufruf pro Berichtslauf.",
+    "Edit scheduled report": "Geplanten Bericht bearbeiten",
+    "Edit template": "Vorlage bearbeiten",
+    "Evidence analysis": "Nachweisanalyse",
+    "Executive summary": "Zusammenfassung für die Geschäftsleitung",
+    "Failed to create scheduled report": "Geplanter Bericht konnte nicht erstellt werden",
+    "Failed to create template": "Vorlage konnte nicht erstellt werden",
+    "Failed to load the template to duplicate.":
+      "Die zu duplizierende Vorlage konnte nicht geladen werden.",
+    "Failed to run report": "Bericht konnte nicht ausgeführt werden",
+    "Format:": "Format:",
+    "Frameworks:": "Rahmenwerke:",
+    "Generate": "Erstellen",
+    "Hour": "Stunde",
+    "Key findings": "Wichtigste Erkenntnisse",
+    "Latency over time": "Latenz im Zeitverlauf",
+    "Leave empty to include every framework in scope.":
+      "Leer lassen, um alle Rahmenwerke im Umfang einzuschließen.",
+    "My templates": "Meine Vorlagen",
+    "New report template": "Neue Berichtsvorlage",
+    "New template": "Neue Vorlage",
+    "No AI analyses were generated for this report run.":
+      "Für diesen Berichtslauf wurden keine KI-Analysen erstellt.",
+    "No report templates available yet.": "Noch keine Berichtsvorlagen verfügbar.",
+    "No scheduled reports yet. Create one from the Templates tab.":
+      "Noch keine geplanten Berichte. Erstellen Sie einen im Tab „Vorlagen“.",
+    "No spans found for this trace": "Keine Spans für diesen Trace gefunden",
+    "No traces found": "Keine Traces gefunden",
+    "Overall quality grade": "Gesamtbewertung der Qualität",
+    "Parallel agents": "Parallele Agenten",
+    "Per-section summaries": "Zusammenfassungen pro Abschnitt",
+    "Quality": "Qualität",
+    "Recommended actions": "Empfohlene Maßnahmen",
+    "Report level": "Berichtsebene",
+    "Risk analysis": "Risikoanalyse",
+    "Save to storage": "Im Speicher ablegen",
+    "Schedule:": "Zeitplan:",
+    "Scope:": "Umfang:",
+    "Sections:": "Abschnitte:",
+    "Select a project": "Projekt auswählen",
+    "Send email link": "E-Mail-Link senden",
+    "System templates": "Systemvorlagen",
+    "Template name": "Vorlagenname",
+    "Template:": "Vorlage:",
+    "Third-party risk analysis": "Risikoanalyse für Drittparteien",
+    "This section was not generated.": "Dieser Abschnitt wurde nicht erstellt.",
+    "This template has no configurable sections.":
+      "Diese Vorlage hat keine konfigurierbaren Abschnitte.",
+    "Timezone": "Zeitzone",
+    "Total traces": "Traces insgesamt",
+    "Trace waterfall": "Trace-Wasserfall",
+    "Traces": "Traces",
+    "Traces, cost tracking, and latency & error metrics for every AI request.":
+      "Traces, Kostenverfolgung sowie Latenz- und Fehlermetriken für jede KI-Anfrage.",
+    "Update the name, output format and delivery schedule.":
+      "Aktualisieren Sie Name, Ausgabeformat und Zustellungszeitplan.",
+    "Update the template name, description, and category.":
+      "Aktualisieren Sie Name, Beschreibung und Kategorie der Vorlage.",
+    "Use Template": "Vorlage verwenden",
+    "What this report covers and who it is for":
+      "Was dieser Bericht abdeckt und für wen er gedacht ist",
+    "Word (DOCX)": "Word (DOCX)",
+    "You haven&apos;t created any templates yet.": "Sie haben noch keine Vorlagen erstellt.",
+    "Annex controls": "Anhangskontrollen",
+    "Failed to load framework": "Rahmenwerk konnte nicht geladen werden",
+    "Failed to load record": "Datensatz konnte nicht geladen werden",
+    "Items": "Elemente",
+    "Justification for Exclusion (if Not Applicable):":
+      "Begründung für den Ausschluss (falls nicht zutreffend):",
+    "No matching items": "Keine passenden Elemente",
+    "No organizational frameworks assigned yet.":
+      "Noch keine organisatorischen Rahmenwerke zugewiesen.",
+    "No record selected for update": "Kein Datensatz zur Aktualisierung ausgewählt",
+    "Subcategories": "Unterkategorien",
+    'Use the "Manage Frameworks" button to add frameworks to your organizational project.':
+      'Verwenden Sie die Schaltfläche "Rahmenwerke verwalten", um Ihrem organisatorischen Projekt Rahmenwerke hinzuzufügen.',
+    "Elect": "Wählen",
+    "Elect Super Admin": "Super Admin wählen",
+    "Elect a Super Admin": "Einen Super Admin wählen",
+    "Elect other users as Super Admins": "Andere Benutzer als Super Admins wählen",
+    "Grant an existing user cross-organization Super Admin capabilities. Their base organization role is unchanged.":
+      "Einem bestehenden Benutzer organisationsübergreifende Super Admin-Berechtigungen erteilen. Seine Basisrolle in der Organisation bleibt unverändert.",
+    "No Super Admins yet.": "Noch keine Super Admins.",
+    "Revoke Super Admin": "Super Admin widerrufen",
+    "Search by name or email": "Nach Name oder E-Mail suchen",
+    "Sent": "Gesendet",
+    "Super Admins": "Super Admins",
+    "They will keep their normal organization role but lose cross-organization access.":
+      "Er behält seine normale Organisationsrolle, verliert jedoch den organisationsübergreifenden Zugriff.",
+
+    // Extensions surface — i18n gap fill.
+    "Accordion": "Akkordeon",
+    "Accordion view": "Akkordeon-Ansicht",
+    "Add Approver": "Genehmigenden hinzufügen",
+    "Add checklist item...": "Checklistenpunkt hinzufügen...",
+    "Add new phase": "Neue Phase hinzufügen",
+    "Add to Slack": "Zu Slack hinzufügen",
+    "After enabling the extension, add your project endpoint and API key in its settings. Then click Sync on this page to pull in your agents.":
+      "Nach dem Aktivieren der Erweiterung fügen Sie in den Einstellungen Ihren Projekt-Endpunkt und API-Schlüssel hinzu. Klicken Sie dann auf dieser Seite auf Synchronisieren, um Ihre Agenten abzurufen.",
+    "Agent discovery pulls AI agents from your cloud platforms. Enable the Azure AI Foundry extension to discover agents deployed in your Azure subscription.":
+      "Die Agentenerkennung ruft KI-Agenten von Ihren Cloud-Plattformen ab. Aktivieren Sie die Azure-AI-Foundry-Erweiterung, um in Ihrem Azure-Abonnement bereitgestellte Agenten zu erkennen.",
+    "Apply to all workspaces:": "Auf alle Workspaces anwenden:",
+    "Artifact Location:": "Artefakt-Speicherort:",
+    "Assign frameworks in the Frameworks/regulations tab.":
+      "Weisen Sie Rahmenwerke im Tab Rahmenwerke/Regulierungen zu.",
+    "Automatically sync data from JIRA on a schedule":
+      "Daten von JIRA automatisch nach einem Zeitplan synchronisieren",
+    "Azure AI Foundry": "Azure AI Foundry",
+    "Azure created": "In Azure erstellt",
+    "Azure modified": "In Azure geändert",
+    "Back to Model Inventory": "Zurück zum Modellinventar",
+    "Back to extensions": "Zurück zu den Erweiterungen",
+    "Basic Information": "Grundinformationen",
+    "Bulk import risks from an Excel file using the provided template":
+      "Risiken aus einer Excel-Datei mit der bereitgestellten Vorlage massenweise importieren",
+    "Capacity": "Kapazität",
+    "Channel": "Kanal",
+    "Checklist": "Checkliste",
+    "Choose File": "Datei auswählen",
+    'Click "Add to Slack" above to connect your first workspace.':
+      'Klicken Sie oben auf "Zu Slack hinzufügen", um Ihren ersten Workspace zu verbinden.',
+    "Click to upload documents": "Zum Hochladen von Dokumenten klicken",
+    "Configuration saved.": "Konfiguration gespeichert.",
+    "Configure Model Lifecycle": "Modelllebenszyklus konfigurieren",
+    "Configure Phases": "Phasen konfigurieren",
+    "Configure which notification types go to which Slack channels.":
+      "Konfigurieren Sie, welche Benachrichtigungstypen an welche Slack-Kanäle gesendet werden.",
+    "Connect to your Jira Service Management Assets to import AI Systems as use-cases.":
+      "Verbinden Sie sich mit Ihren Jira Service Management Assets, um KI-Systeme als Anwendungsfälle zu importieren.",
+    "Connect your Slack workspace and route VerifyWise notifications to specific channels.":
+      "Verbinden Sie Ihren Slack-Workspace und leiten Sie VerifyWise-Benachrichtigungen an bestimmte Kanäle weiter.",
+    "Create phase": "Phase erstellen",
+    "Created in JIRA": "In JIRA erstellt",
+    "Created:": "Erstellt:",
+    "Creation Date": "Erstellungsdatum",
+    "Delete item": "Element löschen",
+    "Delete phase": "Phase löschen",
+    "Delete this item? This cannot be undone.":
+      "Dieses Element löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "Delete this phase and all its items? This cannot be undone.":
+      "Diese Phase und alle zugehörigen Elemente löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "Deployment Type": "Bereitstellungstyp",
+    "Disable": "Deaktivieren",
+    "Download Template": "Vorlage herunterladen",
+    "Download the Excel template with dropdown menus for enum fields and sample data.":
+      "Laden Sie die Excel-Vorlage mit Dropdown-Menüs für Aufzählungsfelder und Beispieldaten herunter.",
+    "Download the template, fill it with your risk data, and upload to create risks in bulk":
+      "Laden Sie die Vorlage herunter, füllen Sie sie mit Ihren Risikodaten aus und laden Sie sie hoch, um Risiken in großen Mengen zu erstellen",
+    "Edit phase name": "Phasenname bearbeiten",
+    "Embeddings": "Embeddings",
+    "Enable Azure AI Foundry": "Azure AI Foundry aktivieren",
+    "Enable and configure integrations for your organization.":
+      "Aktivieren und konfigurieren Sie Integrationen für Ihre Organisation.",
+    "Enable automatic sync": "Automatische Synchronisierung aktivieren",
+    "Error Details:": "Fehlerdetails:",
+    "Every 12 hours": "Alle 12 Stunden",
+    "Every 24 hours": "Alle 24 Stunden",
+    "Every 48 hours": "Alle 48 Stunden",
+    "Every 6 hours": "Alle 6 Stunden",
+    "Every hour": "Jede Stunde",
+    "Experiment": "Experiment",
+    "Experiment ID:": "Experiment-ID:",
+    "Experiment Information": "Experimentinformationen",
+    "Experiment Name:": "Experimentname:",
+    "Extension not found.": "Erweiterung nicht gefunden.",
+    "Extension settings": "Erweiterungseinstellungen",
+    "Extensions": "Erweiterungen",
+    "Framework Completion Status": "Fertigstellungsstatus des Rahmenwerks",
+    "GPT models": "GPT-Modelle",
+    "Import & Sync": "Import & Synchronisierung",
+    "Import Risks from Excel": "Risiken aus Excel importieren",
+    "Import from Excel": "Aus Excel importieren",
+    "Import risks from Excel": "Risiken aus Excel importieren",
+    "Imported Use Cases": "Importierte Anwendungsfälle",
+    "Imported from JIRA Assets": "Aus JIRA Assets importiert",
+    "Item name": "Elementname",
+    "JIRA Assets Object": "JIRA-Assets-Objekt",
+    "JIRA Base URL": "JIRA-Basis-URL",
+    "JIRA Cloud (Atlassian-hosted)": "JIRA Cloud (von Atlassian gehostet)",
+    "JIRA Data Center / Server (Self-hosted)": "JIRA Data Center / Server (selbst gehostet)",
+    "JIRA Key": "JIRA-Schlüssel",
+    "JIRA Object Key": "JIRA-Objektschlüssel",
+    "Key": "Schlüssel",
+    "Key Attributes": "Schlüsselattribute",
+    "Last Updated in JIRA": "Zuletzt aktualisiert in JIRA",
+    "Last synced": "Zuletzt synchronisiert",
+    "Lifecycle Phase": "Lebenszyklusphase",
+    "Lifecycle Progress": "Lebenszyklusfortschritt",
+    "Lifecycle stage": "Lebenszyklusstadium",
+    "Loading MLFlow data...": "MLFlow-Daten werden geladen...",
+    "Loading workspaces...": "Workspaces werden geladen...",
+    "MLFlow": "MLFlow",
+    "Model not found": "Modell nicht gefunden",
+    "Move item down": "Element nach unten verschieben",
+    "Move item up": "Element nach oben verschieben",
+    "Move phase down": "Phase nach unten verschieben",
+    "Move phase up": "Phase nach oben verschieben",
+    "No attributes available": "Keine Attribute verfügbar",
+    "No deployments synced yet. Click Sync to pull model deployments from Azure AI Foundry.":
+      "Noch keine Bereitstellungen synchronisiert. Klicken Sie auf Synchronisieren, um Modellbereitstellungen aus Azure AI Foundry abzurufen.",
+    "No frameworks assigned to this use case yet.":
+      "Diesem Anwendungsfall wurden noch keine Rahmenwerke zugewiesen.",
+    "No items configured for this phase": "Für diese Phase sind keine Elemente konfiguriert",
+    "No lifecycle phases configured yet. Click the button below to add phases.":
+      "Es sind noch keine Lebenszyklusphasen konfiguriert. Klicken Sie auf die Schaltfläche unten, um Phasen hinzuzufügen.",
+    "No lifecycle phases configured. Contact an administrator to set up the model lifecycle.":
+      "Keine Lebenszyklusphasen konfiguriert. Wenden Sie sich an einen Administrator, um den Modelllebenszyklus einzurichten.",
+    "No use case found": "Kein Anwendungsfall gefunden",
+    "No workspaces connected": "Keine Workspaces verbunden",
+    "Notification Routing": "Benachrichtigungsweiterleitung",
+    "Object Type": "Objekttyp",
+    "Object Type (AI Systems)": "Objekttyp (KI-Systeme)",
+    "Password/token fields are stored encrypted. Leave blank to keep the existing value.":
+      "Passwort-/Token-Felder werden verschlüsselt gespeichert. Leer lassen, um den vorhandenen Wert beizubehalten.",
+    "Phase name": "Phasenname",
+    "Post-Market Monitoring": "Post-Market-Monitoring",
+    "Publisher": "Herausgeber",
+    "RAI policy": "RAI-Richtlinie",
+    "Rate limits": "Ratenbegrenzungen",
+    "Remove approver": "Genehmigenden entfernen",
+    "Remove item": "Element entfernen",
+    "Req": "Erf",
+    "Reset": "Zurücksetzen",
+    "Row": "Zeile",
+    "Run ID:": "Ausführungs-ID:",
+    "Save phase name": "Phasennamen speichern",
+    "Schema": "Schema",
+    "Select a phase from the sidebar": "Wählen Sie eine Phase aus der Seitenleiste",
+    "Slack Client ID not configured.": "Slack-Client-ID nicht konfiguriert.",
+    "Specific extension settings page": "Spezifische Erweiterungseinstellungsseite",
+    "Staging": "Staging",
+    "Step 1: Connection Settings": "Schritt 1: Verbindungseinstellungen",
+    "Step 1: Download Excel Template": "Schritt 1: Excel-Vorlage herunterladen",
+    "Step 2: Select Schema & Object Type": "Schritt 2: Schema und Objekttyp auswählen",
+    "Step 2: Upload Filled Excel File": "Schritt 2: Ausgefüllte Excel-Datei hochladen",
+    "Step 3: Import Risks": "Schritt 3: Risiken importieren",
+    "Step 3: Sync Settings": "Schritt 3: Synchronisierungseinstellungen",
+    "Stepper": "Stepper",
+    "Stepper view": "Stepper-Ansicht",
+    "Succeeded": "Erfolgreich",
+    "Sync": "Synchronisieren",
+    "Sync Interval": "Synchronisierungsintervall",
+    "Sync Status": "Synchronisierungsstatus",
+    "Team Name": "Teamname",
+    "Test connection": "Verbindung testen",
+    "Testing...": "Wird getestet...",
+    "Text Area": "Textbereich",
+    "This extension has no configuration.": "Diese Erweiterung hat keine Konfiguration.",
+    "This use case is imported from JIRA and is read-only":
+      "Dieser Anwendungsfall wurde aus JIRA importiert und ist schreibgeschützt",
+    "Total deployments": "Bereitstellungen insgesamt",
+    "UC-ID": "UC-ID",
+    "Upload your Excel file with risk data.": "Laden Sie Ihre Excel-Datei mit Risikodaten hoch.",
+    "Version:": "Version:",
+    "View lifecycle": "Lebenszyklus anzeigen",
+    "Workspace disconnected successfully!": "Workspace erfolgreich getrennt!",
+    "Workspace status updated successfully!": "Workspace-Status erfolgreich aktualisiert!",
+    "Add first user": "Ersten Benutzer hinzufügen",
+    "Add user": "Benutzer hinzufügen",
+    "Create directly": "Direkt erstellen",
+    "Enter or generate": "Eingeben oder generieren",
+    "Invite via email": "Per E-Mail einladen",
+    "Must include an uppercase letter, a lowercase letter, and a digit. Minimum 8 characters.":
+      "Muss einen Großbuchstaben, einen Kleinbuchstaben und eine Ziffer enthalten. Mindestens 8 Zeichen.",
+    "Default retention policy": "Standard-Aufbewahrungsrichtlinie",
+    "Expired files": "Abgelaufene Dateien",
+    "File Manager": "Dateimanager",
+    "File retention": "Dateiaufbewahrung",
+    "Retention policy": "Aufbewahrungsrichtlinie",
+    "Create API tokens for the super admin API":
+      "API-Tokens für die Super-Administrator-API erstellen",
+    "Install": "Installieren",
+    "Install the MCP server to manage organizations and users from Claude Code":
+      "MCP-Server installieren, um Organisationen und Benutzer über Claude Code zu verwalten",
+    "Installed": "Installiert",
+    "MCP server": "MCP-Server",
+    "The MCP server source was not found next to the backend. It is included from MCPServer/ at build time.":
+      "Die MCP-Server-Quelle wurde nicht neben dem Backend gefunden. Sie wird zur Build-Zeit aus MCPServer/ eingebunden.",
   },
 
   fr: {
+    "Deployment name": "Nom du déploiement",
+    "Save the deployment name first, then generate the token.":
+      "Enregistrez d'abord le nom du déploiement, puis générez le jeton.",
+    "Enable centralized monitoring": "Activer la surveillance centralisée",
+    "Failed to load monitoring configuration.":
+      "Échec du chargement de la configuration de surveillance.",
+    "Failed to save monitoring configuration.":
+      "Échec de l'enregistrement de la configuration de surveillance.",
+    "Monitoring configuration saved. Restart services to apply changes.":
+      "Configuration de surveillance enregistrée. Redémarrez les services pour appliquer les modifications.",
+    "Monitoring configuration saved. Restart the server for the new Observability URL to take effect.":
+      "Configuration de surveillance enregistrée. Redémarrez le serveur pour que la nouvelle URL d'observabilité prenne effet.",
+    "Observability URL": "URL d'observabilité",
+    "Push token": "Jeton d'envoi",
+    "Push token generated. Restart services to apply changes.":
+      "Jeton d'envoi généré. Redémarrez les services pour appliquer les modifications.",
+    "Send logs and metrics to a central observability stack":
+      "Envoyer les journaux et les métriques vers une pile d'observabilité centralisée",
     // Rich text renderer
     "Rich text content": "Contenu de texte enrichi",
     // Settings — help text
@@ -9228,6 +9616,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Save alert settings": "Enregistrer les paramètres d'alerte",
     "Alert settings saved": "Paramètres d'alerte enregistrés",
     "Failed to save alert settings": "Échec de l'enregistrement des paramètres d'alerte",
+    "Failed to save evidence retention settings":
+      "Échec de l'enregistrement des paramètres de conservation des preuves",
     "Notifications are delivered in-app, and by email when email alerts are enabled. A threshold set to notify and flag for revalidation also marks the model as due for a fresh validation.":
       "Les notifications sont envoyées dans l'application, et par e-mail lorsque les alertes par e-mail sont activées. Un seuil configuré pour notifier et signaler une revalidation marque également le modèle comme devant faire l'objet d'une nouvelle validation.",
     "A finding must be verified before it can be closed.":
@@ -9655,6 +10045,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence": "Preuves",
     "Evidence hub": "Centre de preuves",
     "Evidence Hub": "Centre de preuves",
+    "Evidence Hub retention": "Conservation du Centre de preuves",
+    "Evidence retention settings saved": "Paramètres de conservation des preuves enregistrés",
     "Reporting": "Rapports",
     "AI trust center": "Centre de confiance IA",
     "GOVERNANCE": "GOUVERNANCE",
@@ -9703,6 +10095,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Add new": "Ajouter",
     "Add agent": "Ajouter un agent",
     "Add new risk": "Ajouter un nouveau risque",
+    "Add a new risk": "Ajouter un nouveau risque",
+    "Create a detailed breakdown of risks and their mitigation strategies to assist in documenting your risk management activities effectively.":
+      "Créez une description détaillée des risques et de leurs stratégies d'atténuation afin de documenter efficacement vos activités de gestion des risques.",
+    "Manage all organization risks in risk management":
+      "Gérer tous les risques de l'organisation dans la gestion des risques",
+    "View and add risks for this use case": "Consulter et ajouter des risques pour ce cas d'usage",
     "Add new risks": "Ajouter de nouveaux risques",
     "Add new vendor": "Ajouter un nouveau fournisseur",
     "Add new policy": "Ajouter une nouvelle politique",
@@ -9820,12 +10218,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Implemented": "Mis en œuvre",
     "Investigating": "En cours d'investigation",
     "Mitigated": "Atténué",
+    "Emergency action": "Action d'urgence",
+    "Suspended": "Suspendu",
     "Planned": "Planifié",
     "Planning": "Planification",
     "Production": "Production",
     "Public": "Public",
     "Published": "Publié",
     "Restricted": "Restreint",
+    "Retired": "Retiré",
     "Resolved": "Résolu",
     "Reviewed": "Examiné",
     "Skipped": "Passé",
@@ -9879,6 +10280,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Date": "Date",
     "Due date": "Date d'échéance",
     "Due today": "Dû aujourd'hui",
+    "No default": "Aucune valeur par défaut",
     "No due date": "Aucune échéance",
     "Expiry": "Expiration",
     "Expiry date": "Date d'expiration",
@@ -9983,6 +10385,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Annexes": "Annexes",
 
     // Empty / loading / error
+    "Loading": "Chargement",
     "Loading...": "Chargement...",
     "Loading dashboard": "Chargement du tableau de bord",
     "Loading datasets...": "Chargement des jeux de données...",
@@ -10254,6 +10657,10 @@ export const translations: Record<string, Record<string, string>> = {
     "OWNER": "RESPONSABLE",
     "Status date": "Date de statut",
     "STATUS DATE": "DATE DE STATUT",
+    "Traditional ML": "ML traditionnel",
+    "GenAI": "GenAI",
+    "RAG": "RAG",
+    "Agentic AI": "IA agentique",
     "Action owner": "Responsable d'action",
     "Date detected": "Date de détection",
     "Date generated": "Date de génération",
@@ -10484,6 +10891,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Deadline view": "Vue des échéances",
     "Operations view": "Vue opérationnelle",
     "AI PROJECT": "PROJET IA",
+    "Affected model": "Modèle affecté",
+    "AFFECTED MODEL": "MODÈLE AFFECTÉ",
+    "Select model from inventory": "Sélectionner un modèle dans l'inventaire",
     "How deadlines work": "Comment fonctionnent les échéances",
     "Open any task and set a due date. It will automatically appear in the correct deadline group on this view.":
       "Ouvrez une tâche et définissez une date d'échéance. Elle apparaîtra automatiquement dans le bon groupe d'échéance sur cette vue.",
@@ -10708,6 +11118,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Create use case": "Créer un cas d'usage",
     "Default TTL (seconds)": "TTL par défaut (secondes)",
     "Default branch": "Branche par défaut",
+    "Default retention period": "Période de conservation par défaut",
     "Departments (comma-separated)": "Départements (séparés par des virgules)",
     "Describe the products or services this vendor delivers (e.g., cloud hosting, legal advisory, AI APIs).":
       "Décrivez les produits ou services fournis par ce fournisseur (ex. hébergement cloud, conseil juridique, API IA).",
@@ -10863,8 +11274,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Add to risk register": "Ajouter au registre des risques",
     "Add your first prompt": "Ajouter votre premier prompt",
     "Archive form": "Archiver le formulaire",
+    "Applied to new evidence that has no explicit expiry date or retention policy of its own. A daily job flags records past their expiry date and notifies the reviewer or organization admins.":
+      "Appliqué aux nouvelles preuves sans date d'expiration explicite ni politique de conservation propre. Une tâche quotidienne marque les enregistrements expirés et avertit le réviseur ou les administrateurs de l'organisation.",
+    "Archive expired evidence": "Archiver les preuves expirées",
+    "Archived evidence is hidden from the Evidence Hub list but never deleted. Archival also requires the server flag EVIDENCE_RETENTION_ARCHIVE_ENABLED.":
+      "Les preuves archivées sont masquées de la liste du Centre de preuves mais ne sont jamais supprimées. L'archivage nécessite également le flag serveur EVIDENCE_RETENTION_ARCHIVE_ENABLED.",
     "Back to history": "Retour à l'historique",
     "Back to prompts": "Retour aux prompts",
+    "Captcha answer": "Réponse au captcha",
     "Click to upload": "Cliquer pour téléverser",
     "Close AI dependency graph modal": "Fermer la fenêtre du graphe de dépendances IA",
     "Close banner": "Fermer la bannière",
@@ -10873,6 +11290,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Close drawer": "Fermer le tiroir",
     "Close editor": "Fermer l'éditeur",
     "Close entity graph modal": "Fermer la fenêtre du graphe d'entités",
+    "Close file preview": "Fermer l'aperçu du fichier",
     "Close icon": "Icône de fermeture",
     "Close image lightbox": "Fermer la lightbox d'image",
     "Close notification": "Fermer la notification",
@@ -10982,6 +11400,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Edit declaration of conformity": "Modifier la déclaration de conformité",
     "Edit EU registration": "Modifier l'enregistrement UE",
     "Edit EU registration details": "Modifier les détails d'enregistrement UE",
+    "Edit file": "Modifier le fichier",
     "Edit file metadata": "Modifier les métadonnées du fichier",
     "Edit folder": "Modifier le dossier",
     "Edit project": "Modifier le projet",
@@ -11072,6 +11491,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Run first experiment": "Lancer la première expérience",
     "Run your first experiment": "Lancez votre première expérience",
     "Save changes": "Enregistrer les modifications",
+    "Save retention settings": "Enregistrer les paramètres de conservation",
     "Save Changes": "Enregistrer les modifications",
     "Save configuration": "Enregistrer la configuration",
     "Save dataset": "Enregistrer le jeu de données",
@@ -12099,6 +12519,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Enter the prompt text...": "Saisir le texte du prompt...",
     "Enter the risk name": "Saisir le nom du risque",
     "Enter username": "Saisir le nom d'utilisateur",
+    "Enter vendor contact person": "Saisir la personne de contact chez le fournisseur",
+    "Enter vendor name": "Saisir le nom du fournisseur",
     "Enter vendor website": "Saisir le site web du fournisseur",
     "Enter workflow title": "Saisir le titre du flux",
     "Enter your email": "Saisir votre e-mail",
@@ -13385,6 +13807,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Les appels API vers OpenAI, Anthropic, Google AI et d'autres services IA apparaîtront ici",
     "Hardcoded API keys and secrets detected in the codebase. These should be moved to environment variables or a secrets manager.":
       "Clés API et secrets codés en dur détectés dans le code. Ils devraient être déplacés vers des variables d'environnement ou un gestionnaire de secrets.",
+    "Hardcoded secrets in source code can be exposed if the repository is made public or accessed by unauthorized users. Rotate any exposed credentials immediately.":
+      "Les secrets codés en dur dans le code source peuvent être exposés si le dépôt est rendu public ou consulté par des utilisateurs non autorisés. Renouvelez immédiatement toutes les informations d'identification exposées.",
     "No hardcoded secrets detected": "Aucun secret codé en dur détecté",
     "No API keys, tokens, or other secrets were found in the scanned code.":
       "Aucune clé API, jeton ou autre secret n'a été trouvé dans le code analysé.",
@@ -14601,6 +15025,8 @@ export const translations: Record<string, Record<string, string>> = {
     "AI Chatbot for Customer Support": "Chatbot IA pour le support client",
     "AI Gateway": "AI Gateway",
     "AI Gateway, Policy Radar, and CI/CD scanning": "AI Gateway, Policy Radar et analyse CI/CD",
+    "Built-in frameworks, Model Risk Management, and Extensions":
+      "Référentiels intégrés, Model Risk Management et Extensions",
     "AI Trust Index, AI Apps inventory, and Agent Control":
       "AI Trust Index, AI Apps inventory et Agent Control",
     "EU AI Act control workflow, clearable selects, and AI advisor fix":
@@ -14686,8 +15112,16 @@ export const translations: Record<string, Record<string, string>> = {
     "Activate the compliance frameworks relevant to your organization.":
       "Activez les référentiels de conformité pertinents pour votre organisation.",
     "Active incidents": "Incidents actifs",
-    "Add SOC 2, GDPR, HIPAA, and other compliance frameworks as plugins with full controls.":
-      "Ajoutez SOC 2, GDPR, HIPAA et d'autres référentiels de conformité en tant que plugins avec contrôles complets.",
+    "SOC 2, GDPR, HIPAA, DORA, and 17 more frameworks are built in, with requirements, evidence, and risk tracking.":
+      "SOC 2, RGPD, HIPAA, DORA et 17 autres référentiels sont intégrés, avec exigences, preuves et suivi des risques.",
+    "Slack, MLflow, Azure AI Foundry, Jira Assets, Model Lifecycle, Risk Import, and Dataset Bulk Upload.":
+      "Slack, MLflow, Azure AI Foundry, Jira Assets, Model Lifecycle, Risk Import et Dataset Bulk Upload.",
+    "Admins enable, configure, and disable extensions from the Extensions page. Nothing to install.":
+      "Les administrateurs activent, configurent et désactivent les extensions depuis la page Extensions. Rien à installer.",
+    "Import risks from Excel, bulk upload datasets with PII detection, and define model lifecycle phases.":
+      "Importez des risques depuis Excel, téléversez des jeux de données en masse avec détection des PII et définissez les phases du cycle de vie des modèles.",
+    "Connect Slack, MLflow, Azure AI Foundry, Jira Assets, and more with extensions that admins enable.":
+      "Connectez Slack, MLflow, Azure AI Foundry, Jira Assets et plus avec des extensions activées par les administrateurs.",
     "Add at least one field before publishing": "Ajoutez au moins un champ avant de publier",
     "Add colleagues to collaborate on compliance and risk management tasks.":
       "Ajoutez des collègues pour collaborer aux tâches de conformité et de gestion des risques.",
@@ -15033,8 +15467,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Conformity assessment topics": "Thèmes d'évaluation de conformité",
     "Congratulations": "Félicitations",
     "Connect": "Connecter",
-    "Connect Slack, Jira, MLflow, Azure AI, and more for seamless workflow integration.":
-      "Connectez Slack, Jira, MLflow, Azure AI, et plus pour une intégration de flux de travail transparente.",
+    "Send notifications to Slack, sync models from MLflow and Azure AI Foundry, and import use cases from Jira Assets.":
+      "Envoyez des notifications vers Slack, synchronisez les modèles depuis MLflow et Azure AI Foundry, et importez des cas d'usage depuis Jira Assets.",
     "Connect a GitHub token to scan private repositories":
       "Connectez un jeton GitHub pour analyser les dépôts privés",
     "Connect with ML platforms to track experiments, models, and deployments.":
@@ -15276,8 +15710,8 @@ export const translations: Record<string, Record<string, string>> = {
     "EU AI Act Compliance Dashboard": "Tableau de bord de conformité au Règlement IA de l'UE",
     "EU AI Act only (specific to an AI system/project)":
       "Règlement IA de l'UE uniquement (spécifique à un système/projet IA)",
-    "EU AI Act, ISO 42001, NIST AI RMF, SOC 2, GDPR, and more with pluggable framework support.":
-      "Règlement IA de l'UE, ISO 42001, NIST AI RMF, SOC 2, RGPD et plus avec prise en charge de référentiels enfichables.",
+    "EU AI Act, ISO 42001, NIST AI RMF, SOC 2, GDPR, and 20 more frameworks, all built in.":
+      "Règlement IA de l'UE, ISO 42001, NIST AI RMF, SOC 2, RGPD et 20 autres référentiels, tous intégrés.",
     "EU AI act": "Règlement IA de l'UE",
     "EU Database Data Entry Timeliness": "Rapidité de saisie des données dans la base UE",
     "EU Database Registration": "Enregistrement dans la base UE",
@@ -15381,6 +15815,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Experimental research only, not deployed to users":
       "Recherche expérimentale uniquement, non déployé aux utilisateurs",
     "Expired": "Expiré",
+    "Expiring soon": "Expire bientôt",
     "Expires": "Expire",
     "Explain AI models to ensure responsible use and maintain an AI systems repository.":
       "Expliquez les modèles IA pour assurer une utilisation responsable et maintenez un référentiel des systèmes IA.",
@@ -16069,8 +16504,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Monitor": "Surveiller",
     "Monitor and respond to incidents involving third-party components.":
       "Surveillez et répondez aux incidents impliquant des composants tiers.",
-    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, and Closed. Track resolution progress and identify incidents requiring immediate attention.":
-      "Surveillez les incidents tout au long de leur cycle de vie : ouverts, en cours d'enquête, atténués et clôturés. Suivez la progression de la résolution et identifiez les incidents nécessitant une attention immédiate.",
+    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, Closed, Suspended, and Emergency action. Track resolution progress and identify incidents requiring immediate attention.":
+      "Surveillez les incidents tout au long de leur cycle de vie : Ouverts, En cours d'investigation, Atténués, Clôturés, Suspendus et Action d'urgence. Suivez la progression de la résolution et identifiez les incidents nécessitant une attention immédiate.",
     "Monitor incidents related to AI systems and respond post-deployment.":
       "Surveillez les incidents liés aux systèmes IA et réagissez après le déploiement.",
     "Monitor mitigation efforts in real-time": "Surveiller les efforts d'atténuation en temps réel",
@@ -16110,6 +16545,7 @@ export const translations: Record<string, Record<string, string>> = {
     "My submissions": "Mes soumissions",
     "NEXT SCAN": "PROCHAINE ANALYSE",
     "NIST Subcategories": "Sous-catégories NIST",
+    "Name is required": "Le nom est requis",
     "Name of the AI model": "Nom du modèle IA",
     "Name saved": "Nom enregistré",
     "Navigate project sections": "Naviguer dans les sections du projet",
@@ -16228,6 +16664,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Planifiez les réponses aux risques du système IA, y compris la définition de la tolérance au risque et des stratégies d'atténuation.",
     "Please add at least one recipient to the Send Email action before saving.":
       "Veuillez ajouter au moins un destinataire à l'action Envoyer un e-mail avant d'enregistrer.",
+    "Please complete the required fields before saving.":
+      "Veuillez renseigner les champs obligatoires avant d'enregistrer.",
     "Please create a model first before adding model risks. Redirecting to models tab...":
       "Veuillez d'abord créer un modèle avant d'ajouter des risques de modèle. Redirection vers l'onglet Modèles...",
     "Please create a vendor first before adding vendor risks. Redirecting to vendors tab...":
@@ -16235,6 +16673,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Please enter a token": "Veuillez saisir un jeton",
     "Please enter a token to test": "Veuillez saisir un jeton à tester",
     "Please enter an API key for this provider": "Veuillez saisir une clé API pour ce fournisseur",
+    "Please enter an automation name before saving.":
+      "Veuillez saisir un nom d'automatisation avant d'enregistrer.",
     "Please enter an email address": "Veuillez saisir une adresse e-mail",
     "Please login again to continue.": "Veuillez vous reconnecter pour continuer.",
     "Please save the changes to attach the selected files.":
@@ -16381,8 +16821,8 @@ export const translations: Record<string, Record<string, string>> = {
     "References to AI models in the codebase": "Références aux modèles IA dans le code",
     "Register AI-related training programs and educational resources. Track completion status, certifications, and learning progress across your team.":
       "Enregistrez les programmes de formation et ressources éducatives liés à l'IA. Suivez l'état d'achèvement, les certifications et la progression de l'apprentissage dans votre équipe.",
-    "Register and track AI models with details like hosting, biases, and limitations. Extend with the lifecycle plugin.":
-      "Enregistrez et suivez les modèles IA avec des détails comme l'hébergement, les biais et les limitations. Étendez avec le plugin de cycle de vie.",
+    "Register and track AI models with details like hosting, biases, and limitations. Extend with the Model Lifecycle extension.":
+      "Enregistrez et suivez les modèles IA avec des détails comme l'hébergement, les biais et les limitations. Étendez avec l'extension Model Lifecycle.",
     "Register external AI providers and third-party services. Document vendor information, contracts, and compliance requirements in one centralized location.":
       "Enregistrez les fournisseurs IA externes et les services tiers. Documentez les informations sur les fournisseurs, contrats et exigences de conformité dans un emplacement centralisé.",
     "Register providers, authorized representatives, and deployers, along with their AI systems, in the EU database as required by the AI Act.":
@@ -17983,6 +18423,7 @@ export const translations: Record<string, Record<string, string>> = {
     // AI Gateway empty/error states
     "Click Save draft to create your first version.":
       "Cliquez sur Enregistrer le brouillon pour créer votre première version.",
+    "Could not load metrics.": "Impossible de charger les métriques.",
     "Could not load this run.": "Impossible de charger cette exécution.",
     "Create your first version": "Créer votre première version",
     "Error loading AI Trust Center settings. Please try again.":
@@ -18235,8 +18676,323 @@ export const translations: Record<string, Record<string, string>> = {
     "NIST AI RMF subcategories": "sous-catégories NIST AI RMF",
     "custom framework item": "élément de référentiel personnalisé",
     "custom framework items": "éléments de référentiel personnalisés",
+    // Reporting, readiness and AI observability
+    "AI analyses": "Analyses IA",
+    "AI observability": "Observabilité IA",
+    "AI readiness": "Préparation à l'IA",
+    "Action failed": "L'action a échoué",
+    "Add a language-model key in Settings to enable AI insights.":
+      "Ajoutez une clé de modèle de langage dans les Paramètres pour activer les analyses IA.",
+    "All frameworks in scope": "Tous les référentiels de la portée",
+    "Analyze with AI": "Analyser avec l'IA",
+    "Attach file": "Joindre le fichier",
+    "Choose whether this report covers a single project or the whole organization.":
+      "Choisissez si ce rapport couvre un seul projet ou toute l'organisation.",
+    "Close AI analyses": "Fermer les analyses IA",
+    "Comma separated.": "Séparés par des virgules.",
+    "Compliance gap analysis": "Analyse des écarts de conformité",
+    "Create template": "Créer un modèle",
+    "Default report level": "Niveau de rapport par défaut",
+    "Delete template": "Supprimer le modèle",
+    "Delivery:": "Distribution :",
+    "Each enabled block is one language-model call per report run.":
+      "Chaque bloc activé correspond à un appel au modèle de langage par exécution de rapport.",
+    "Edit scheduled report": "Modifier le rapport planifié",
+    "Edit template": "Modifier le modèle",
+    "Evidence analysis": "Analyse des preuves",
+    "Executive summary": "Résumé exécutif",
+    "Failed to create scheduled report": "Échec de la création du rapport planifié",
+    "Failed to create template": "Échec de la création du modèle",
+    "Failed to load the template to duplicate.": "Échec du chargement du modèle à dupliquer.",
+    "Failed to run report": "Échec de l'exécution du rapport",
+    "Format:": "Format :",
+    "Frameworks:": "Référentiels :",
+    "Generate": "Générer",
+    "Hour": "Heure",
+    "Key findings": "Constats clés",
+    "Latency over time": "Latence au fil du temps",
+    "Leave empty to include every framework in scope.":
+      "Laissez vide pour inclure tous les référentiels de la portée.",
+    "My templates": "Mes modèles",
+    "New report template": "Nouveau modèle de rapport",
+    "New template": "Nouveau modèle",
+    "No AI analyses were generated for this report run.":
+      "Aucune analyse IA n'a été générée pour cette exécution de rapport.",
+    "No report templates available yet.": "Aucun modèle de rapport disponible pour le moment.",
+    "No scheduled reports yet. Create one from the Templates tab.":
+      "Aucun rapport planifié pour le moment. Créez-en un depuis l'onglet Modèles.",
+    "No spans found for this trace": "Aucun span trouvé pour cette trace",
+    "No traces found": "Aucune trace trouvée",
+    "Overall quality grade": "Note globale de qualité",
+    "Parallel agents": "Agents parallèles",
+    "Per-section summaries": "Résumés par section",
+    "Quality": "Qualité",
+    "Recommended actions": "Actions recommandées",
+    "Report level": "Niveau de rapport",
+    "Risk analysis": "Analyse des risques",
+    "Save to storage": "Enregistrer dans le stockage",
+    "Schedule:": "Planification :",
+    "Scope:": "Portée :",
+    "Sections:": "Sections :",
+    "Select a project": "Sélectionner un projet",
+    "Send email link": "Envoyer un lien par e-mail",
+    "System templates": "Modèles système",
+    "Template name": "Nom du modèle",
+    "Template:": "Modèle :",
+    "Third-party risk analysis": "Analyse des risques liés aux tiers",
+    "This section was not generated.": "Cette section n'a pas été générée.",
+    "This template has no configurable sections.": "Ce modèle n'a aucune section configurable.",
+    "Timezone": "Fuseau horaire",
+    "Total traces": "Total des traces",
+    "Trace waterfall": "Cascade de la trace",
+    "Traces": "Traces",
+    "Traces, cost tracking, and latency & error metrics for every AI request.":
+      "Traces, suivi des coûts et métriques de latence et d'erreurs pour chaque requête IA.",
+    "Update the name, output format and delivery schedule.":
+      "Mettez à jour le nom, le format de sortie et la planification de distribution.",
+    "Update the template name, description, and category.":
+      "Mettez à jour le nom, la description et la catégorie du modèle.",
+    "Use Template": "Utiliser le modèle",
+    "What this report covers and who it is for": "Ce que couvre ce rapport et à qui il est destiné",
+    "Word (DOCX)": "Word (DOCX)",
+    "You haven&apos;t created any templates yet.": "Vous n'avez encore créé aucun modèle.",
+    "Annex controls": "Contrôles d'annexe",
+    "Failed to load framework": "Impossible de charger le cadre",
+    "Failed to load record": "Impossible de charger l'enregistrement",
+    "Items": "Éléments",
+    "Justification for Exclusion (if Not Applicable):":
+      "Justification de l'exclusion (le cas échéant) :",
+    "No matching items": "Aucun élément correspondant",
+    "No organizational frameworks assigned yet.":
+      "Aucun cadre organisationnel attribué pour le moment.",
+    "No record selected for update": "Aucun enregistrement sélectionné pour la mise à jour",
+    "Subcategories": "Sous-catégories",
+    'Use the "Manage Frameworks" button to add frameworks to your organizational project.':
+      'Utilisez le bouton "Gérer les cadres" pour ajouter des cadres à votre projet organisationnel.',
+    "Elect": "Élire",
+    "Elect Super Admin": "Élire un Super Admin",
+    "Elect a Super Admin": "Élire un Super Admin",
+    "Elect other users as Super Admins": "Élire d'autres utilisateurs comme Super Admins",
+    "Grant an existing user cross-organization Super Admin capabilities. Their base organization role is unchanged.":
+      "Accordez à un utilisateur existant des capacités de Super Admin inter-organisations. Son rôle de base dans l'organisation reste inchangé.",
+    "No Super Admins yet.": "Aucun Super Admin pour le moment.",
+    "Revoke Super Admin": "Révoquer Super Admin",
+    "Search by name or email": "Rechercher par nom ou e-mail",
+    "Sent": "Envoyé",
+    "Super Admins": "Super Admins",
+    "They will keep their normal organization role but lose cross-organization access.":
+      "Il conservera son rôle normal dans l'organisation mais perdra l'accès inter-organisations.",
+
+    // Extensions surface — i18n gap fill.
+    "Accordion": "Accordéon",
+    "Accordion view": "Vue accordéon",
+    "Add Approver": "Ajouter un approbateur",
+    "Add checklist item...": "Ajouter un élément de liste de contrôle...",
+    "Add new phase": "Ajouter une nouvelle phase",
+    "Add to Slack": "Ajouter à Slack",
+    "After enabling the extension, add your project endpoint and API key in its settings. Then click Sync on this page to pull in your agents.":
+      "Après avoir activé l'extension, ajoutez votre point de terminaison de projet et votre clé API dans ses paramètres. Cliquez ensuite sur Synchroniser sur cette page pour importer vos agents.",
+    "Agent discovery pulls AI agents from your cloud platforms. Enable the Azure AI Foundry extension to discover agents deployed in your Azure subscription.":
+      "La découverte d'agents récupère les agents IA depuis vos plateformes cloud. Activez l'extension Azure AI Foundry pour découvrir les agents déployés dans votre abonnement Azure.",
+    "Apply to all workspaces:": "Appliquer à tous les espaces de travail :",
+    "Artifact Location:": "Emplacement de l'artefact :",
+    "Assign frameworks in the Frameworks/regulations tab.":
+      "Attribuez des référentiels dans l'onglet Référentiels/réglementations.",
+    "Automatically sync data from JIRA on a schedule":
+      "Synchroniser automatiquement les données depuis JIRA selon un calendrier",
+    "Azure AI Foundry": "Azure AI Foundry",
+    "Azure created": "Créé dans Azure",
+    "Azure modified": "Modifié dans Azure",
+    "Back to Model Inventory": "Retour à l'inventaire des modèles",
+    "Back to extensions": "Retour aux extensions",
+    "Basic Information": "Informations de base",
+    "Bulk import risks from an Excel file using the provided template":
+      "Importer en masse des risques depuis un fichier Excel à l'aide du modèle fourni",
+    "Capacity": "Capacité",
+    "Channel": "Canal",
+    "Checklist": "Liste de contrôle",
+    "Choose File": "Choisir un fichier",
+    'Click "Add to Slack" above to connect your first workspace.':
+      "Cliquez sur « Ajouter à Slack » ci-dessus pour connecter votre premier espace de travail.",
+    "Click to upload documents": "Cliquez pour téléverser des documents",
+    "Configuration saved.": "Configuration enregistrée.",
+    "Configure Model Lifecycle": "Configurer le cycle de vie du modèle",
+    "Configure Phases": "Configurer les phases",
+    "Configure which notification types go to which Slack channels.":
+      "Configurez quels types de notifications sont envoyés vers quels canaux Slack.",
+    "Connect to your Jira Service Management Assets to import AI Systems as use-cases.":
+      "Connectez-vous à vos Jira Service Management Assets pour importer des systèmes IA en tant que cas d'utilisation.",
+    "Connect your Slack workspace and route VerifyWise notifications to specific channels.":
+      "Connectez votre espace de travail Slack et acheminez les notifications VerifyWise vers des canaux spécifiques.",
+    "Create phase": "Créer une phase",
+    "Created in JIRA": "Créé dans JIRA",
+    "Created:": "Créé :",
+    "Creation Date": "Date de création",
+    "Delete item": "Supprimer l'élément",
+    "Delete phase": "Supprimer la phase",
+    "Delete this item? This cannot be undone.":
+      "Supprimer cet élément ? Cette action est irréversible.",
+    "Delete this phase and all its items? This cannot be undone.":
+      "Supprimer cette phase et tous ses éléments ? Cette action est irréversible.",
+    "Deployment Type": "Type de déploiement",
+    "Disable": "Désactiver",
+    "Download Template": "Télécharger le modèle",
+    "Download the Excel template with dropdown menus for enum fields and sample data.":
+      "Téléchargez le modèle Excel avec des menus déroulants pour les champs d'énumération et des données d'exemple.",
+    "Download the template, fill it with your risk data, and upload to create risks in bulk":
+      "Téléchargez le modèle, remplissez-le avec vos données de risque et importez-le pour créer des risques en masse",
+    "Edit phase name": "Modifier le nom de la phase",
+    "Embeddings": "Plongements",
+    "Enable Azure AI Foundry": "Activer Azure AI Foundry",
+    "Enable and configure integrations for your organization.":
+      "Activez et configurez des intégrations pour votre organisation.",
+    "Enable automatic sync": "Activer la synchronisation automatique",
+    "Error Details:": "Détails de l'erreur :",
+    "Every 12 hours": "Toutes les 12 heures",
+    "Every 24 hours": "Toutes les 24 heures",
+    "Every 48 hours": "Toutes les 48 heures",
+    "Every 6 hours": "Toutes les 6 heures",
+    "Every hour": "Toutes les heures",
+    "Experiment": "Expérience",
+    "Experiment ID:": "ID de l'expérience :",
+    "Experiment Information": "Informations sur l'expérience",
+    "Experiment Name:": "Nom de l'expérience :",
+    "Extension not found.": "Extension introuvable.",
+    "Extension settings": "Paramètres de l'extension",
+    "Extensions": "Extensions",
+    "Framework Completion Status": "Statut d'achèvement du référentiel",
+    "GPT models": "Modèles GPT",
+    "Import & Sync": "Importation et synchronisation",
+    "Import Risks from Excel": "Importer les risques depuis Excel",
+    "Import from Excel": "Importer depuis Excel",
+    "Import risks from Excel": "Importer les risques depuis Excel",
+    "Imported Use Cases": "Cas d'utilisation importés",
+    "Imported from JIRA Assets": "Importé depuis JIRA Assets",
+    "Item name": "Nom de l'élément",
+    "JIRA Assets Object": "Objet JIRA Assets",
+    "JIRA Base URL": "URL de base JIRA",
+    "JIRA Cloud (Atlassian-hosted)": "JIRA Cloud (hébergé par Atlassian)",
+    "JIRA Data Center / Server (Self-hosted)": "JIRA Data Center / Server (auto-hébergé)",
+    "JIRA Key": "Clé JIRA",
+    "JIRA Object Key": "Clé d'objet JIRA",
+    "Key": "Clé",
+    "Key Attributes": "Attributs clés",
+    "Last Updated in JIRA": "Dernière mise à jour dans JIRA",
+    "Last synced": "Dernière synchronisation",
+    "Lifecycle Phase": "Phase du cycle de vie",
+    "Lifecycle Progress": "Progression du cycle de vie",
+    "Lifecycle stage": "Étape du cycle de vie",
+    "Loading MLFlow data...": "Chargement des données MLFlow...",
+    "Loading workspaces...": "Chargement des espaces de travail...",
+    "MLFlow": "MLFlow",
+    "Model not found": "Modèle introuvable",
+    "Move item down": "Déplacer l'élément vers le bas",
+    "Move item up": "Déplacer l'élément vers le haut",
+    "Move phase down": "Déplacer la phase vers le bas",
+    "Move phase up": "Déplacer la phase vers le haut",
+    "No attributes available": "Aucun attribut disponible",
+    "No deployments synced yet. Click Sync to pull model deployments from Azure AI Foundry.":
+      "Aucun déploiement synchronisé pour le moment. Cliquez sur Synchroniser pour importer les déploiements de modèles depuis Azure AI Foundry.",
+    "No frameworks assigned to this use case yet.":
+      "Aucun référentiel n'est encore attribué à ce cas d'utilisation.",
+    "No items configured for this phase": "Aucun élément configuré pour cette phase",
+    "No lifecycle phases configured yet. Click the button below to add phases.":
+      "Aucune phase de cycle de vie configurée pour le moment. Cliquez sur le bouton ci-dessous pour ajouter des phases.",
+    "No lifecycle phases configured. Contact an administrator to set up the model lifecycle.":
+      "Aucune phase de cycle de vie configurée. Contactez un administrateur pour configurer le cycle de vie du modèle.",
+    "No use case found": "Aucun cas d'utilisation trouvé",
+    "No workspaces connected": "Aucun espace de travail connecté",
+    "Notification Routing": "Routage des notifications",
+    "Object Type": "Type d'objet",
+    "Object Type (AI Systems)": "Type d'objet (systèmes IA)",
+    "Password/token fields are stored encrypted. Leave blank to keep the existing value.":
+      "Les champs mot de passe/jeton sont stockés chiffrés. Laissez vide pour conserver la valeur existante.",
+    "Phase name": "Nom de la phase",
+    "Post-Market Monitoring": "Surveillance post-commercialisation",
+    "Publisher": "Éditeur",
+    "RAI policy": "Politique RAI",
+    "Rate limits": "Limites de débit",
+    "Remove approver": "Retirer l'approbateur",
+    "Remove item": "Retirer l'élément",
+    "Req": "Req",
+    "Reset": "Réinitialiser",
+    "Row": "Ligne",
+    "Run ID:": "ID d'exécution :",
+    "Save phase name": "Enregistrer le nom de la phase",
+    "Schema": "Schéma",
+    "Select a phase from the sidebar": "Sélectionnez une phase dans la barre latérale",
+    "Slack Client ID not configured.": "ID client Slack non configuré.",
+    "Specific extension settings page": "Page de paramètres d'extension spécifique",
+    "Staging": "Préproduction",
+    "Step 1: Connection Settings": "Étape 1 : Paramètres de connexion",
+    "Step 1: Download Excel Template": "Étape 1 : Télécharger le modèle Excel",
+    "Step 2: Select Schema & Object Type": "Étape 2 : Sélectionner le schéma et le type d'objet",
+    "Step 2: Upload Filled Excel File": "Étape 2 : Téléverser le fichier Excel rempli",
+    "Step 3: Import Risks": "Étape 3 : Importer les risques",
+    "Step 3: Sync Settings": "Étape 3 : Paramètres de synchronisation",
+    "Stepper": "Stepper",
+    "Stepper view": "Vue stepper",
+    "Succeeded": "Réussi",
+    "Sync": "Synchroniser",
+    "Sync Interval": "Intervalle de synchronisation",
+    "Sync Status": "Statut de synchronisation",
+    "Team Name": "Nom de l'équipe",
+    "Test connection": "Tester la connexion",
+    "Testing...": "Test en cours...",
+    "Text Area": "Zone de texte",
+    "This extension has no configuration.": "Cette extension n'a pas de configuration.",
+    "This use case is imported from JIRA and is read-only":
+      "Ce cas d'utilisation est importé depuis JIRA et est en lecture seule",
+    "Total deployments": "Total des déploiements",
+    "UC-ID": "UC-ID",
+    "Upload your Excel file with risk data.":
+      "Téléversez votre fichier Excel contenant les données de risque.",
+    "Version:": "Version :",
+    "View lifecycle": "Voir le cycle de vie",
+    "Workspace disconnected successfully!": "Espace de travail déconnecté avec succès !",
+    "Workspace status updated successfully!":
+      "Statut de l'espace de travail mis à jour avec succès !",
+    "Add first user": "Ajouter le premier utilisateur",
+    "Add user": "Ajouter un utilisateur",
+    "Create directly": "Créer directement",
+    "Enter or generate": "Saisir ou générer",
+    "Invite via email": "Inviter par e-mail",
+    "Must include an uppercase letter, a lowercase letter, and a digit. Minimum 8 characters.":
+      "Doit contenir une majuscule, une minuscule et un chiffre. Minimum 8 caractères.",
+    "Default retention policy": "Politique de rétention par défaut",
+    "Expired files": "Fichiers expirés",
+    "File Manager": "Gestionnaire de fichiers",
+    "File retention": "Rétention des fichiers",
+    "Retention policy": "Politique de rétention",
+    "Create API tokens for the super admin API":
+      "Créer des tokens d'API pour l'API super administrateur",
+    "Install": "Installer",
+    "Install the MCP server to manage organizations and users from Claude Code":
+      "Installer le serveur MCP pour gérer les organisations et les utilisateurs depuis Claude Code",
+    "Installed": "Installé",
+    "MCP server": "Serveur MCP",
+    "The MCP server source was not found next to the backend. It is included from MCPServer/ at build time.":
+      "Les sources du serveur MCP n'ont pas été trouvées à côté du backend. Elles sont incluses depuis MCPServer/ au moment de la compilation.",
   },
   es: {
+    "Deployment name": "Nombre del despliegue",
+    "Save the deployment name first, then generate the token.":
+      "Primero guarde el nombre del despliegue y luego genere el token.",
+    "Enable centralized monitoring": "Habilitar la supervisión centralizada",
+    "Failed to load monitoring configuration.":
+      "No se pudo cargar la configuración de supervisión.",
+    "Failed to save monitoring configuration.":
+      "No se pudo guardar la configuración de supervisión.",
+    "Monitoring configuration saved. Restart services to apply changes.":
+      "Configuración de supervisión guardada. Reinicie los servicios para aplicar los cambios.",
+    "Monitoring configuration saved. Restart the server for the new Observability URL to take effect.":
+      "Configuración de supervisión guardada. Reinicie el servidor para que la nueva URL de observabilidad surta efecto.",
+    "Observability URL": "URL de observabilidad",
+    "Push token": "Token de envío",
+    "Push token generated. Restart services to apply changes.":
+      "Token de envío generado. Reinicie los servicios para aplicar los cambios.",
+    "Send logs and metrics to a central observability stack":
+      "Enviar registros y métricas a una pila de observabilidad centralizada",
     // Rich text renderer
     "Rich text content": "Contenido de texto enriquecido",
     // Settings — help text
@@ -18308,6 +19064,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Save alert settings": "Guardar configuración de alertas",
     "Alert settings saved": "Configuración de alertas guardada",
     "Failed to save alert settings": "No se pudo guardar la configuración de alertas",
+    "Failed to save evidence retention settings":
+      "No se pudo guardar la configuración de retención de evidencias",
     "Notifications are delivered in-app, and by email when email alerts are enabled. A threshold set to notify and flag for revalidation also marks the model as due for a fresh validation.":
       "Las notificaciones se entregan en la aplicación y por correo electrónico cuando las alertas por correo están habilitadas. Un umbral configurado para notificar y marcar para revalidación también marca el modelo como pendiente de una nueva validación.",
     "A finding must be verified before it can be closed.":
@@ -18524,6 +19282,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence": "Evidencia",
     "Evidence hub": "Centro de evidencias",
     "Evidence Hub": "Centro de evidencias",
+    "Evidence Hub retention": "Retención del Centro de evidencias",
+    "Evidence retention settings saved": "Configuración de retención de evidencias guardada",
     "Reporting": "Informes",
     "AI trust center": "Centro de confianza de IA",
     "GOVERNANCE": "GOBERNANZA",
@@ -18570,6 +19330,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Add new": "Añadir nuevo",
     "Add agent": "Añadir agente",
     "Add new risk": "Añadir nuevo riesgo",
+    "Add a new risk": "Añadir un nuevo riesgo",
+    "Create a detailed breakdown of risks and their mitigation strategies to assist in documenting your risk management activities effectively.":
+      "Cree un desglose detallado de los riesgos y sus estrategias de mitigación para documentar eficazmente sus actividades de gestión de riesgos.",
+    "Manage all organization risks in risk management":
+      "Gestionar todos los riesgos de la organización en gestión de riesgos",
+    "View and add risks for this use case": "Ver y añadir riesgos para este caso de uso",
     "Add new risks": "Añadir nuevos riesgos",
     "Add new risk manually": "Añadir nuevo riesgo manualmente",
     "Add new risk menu": "Menú de nuevo riesgo",
@@ -18691,12 +19457,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Implemented": "Implementado",
     "Investigating": "Investigando",
     "Mitigated": "Mitigado",
+    "Emergency action": "Acción de emergencia",
+    "Suspended": "Suspendido",
     "Planned": "Planificado",
     "Planning": "Planificación",
     "Production": "Producción",
     "Public": "Público",
     "Published": "Publicado",
     "Restricted": "Restringido",
+    "Retired": "Retirado",
     "Resolved": "Resuelto",
     "Reviewed": "Revisado",
     "Skipped": "Omitido",
@@ -18740,6 +19509,10 @@ export const translations: Record<string, Record<string, string>> = {
     "STATUS": "ESTADO",
     "Status date": "Fecha de estado",
     "STATUS DATE": "FECHA DE ESTADO",
+    "Traditional ML": "ML tradicional",
+    "GenAI": "GenAI",
+    "RAG": "RAG",
+    "Agentic AI": "IA agéntica",
     "Action": "Acción",
     "ACTION": "ACCIÓN",
     "Action owner": "Responsable de la acción",
@@ -18752,6 +19525,7 @@ export const translations: Record<string, Record<string, string>> = {
     "DATE UPDATED": "FECHA DE ACTUALIZACIÓN",
     "Due date": "Fecha de vencimiento",
     "Due today": "Vence hoy",
+    "No default": "Sin valor predeterminado",
     "No due date": "Sin fecha de vencimiento",
     "Expiry": "Caducidad",
     "EXPIRY": "CADUCIDAD",
@@ -19003,6 +19777,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Search workflows...": "Buscar flujos de trabajo...",
     "Find in document...": "Buscar en el documento...",
     "Deleted only": "Solo eliminados",
+    "Loading": "Cargando",
     "Loading...": "Cargando...",
     "Loading agents...": "Cargando agentes...",
     "Loading dashboard": "Cargando panel",
@@ -19088,6 +19863,9 @@ export const translations: Record<string, Record<string, string>> = {
     "AI project": "Proyecto de IA",
     "AI Project": "Proyecto de IA",
     "AI PROJECT": "PROYECTO DE IA",
+    "Affected model": "Modelo afectado",
+    "AFFECTED MODEL": "MODELO AFECTADO",
+    "Select model from inventory": "Seleccionar modelo del inventario",
     "Project": "Proyecto",
     "How deadlines work": "Cómo funcionan los plazos",
     "Tasks in a filterable table": "Tareas en una tabla filtrable",
@@ -19242,6 +20020,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Create use case": "Crear caso de uso",
     "Default TTL (seconds)": "TTL predeterminado (segundos)",
     "Default branch": "Rama predeterminada",
+    "Default retention period": "Período de retención predeterminado",
     "Departments (comma-separated)": "Departamentos (separados por comas)",
     "Display text (optional)": "Texto a mostrar (opcional)",
     "Enter folder description (optional)": "Introduzca la descripción de la carpeta (opcional)",
@@ -19341,8 +20120,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Approve": "Aprobar",
     "Archive": "Archivar",
     "Archive form": "Archivar formulario",
+    "Applied to new evidence that has no explicit expiry date or retention policy of its own. A daily job flags records past their expiry date and notifies the reviewer or organization admins.":
+      "Se aplica a las nuevas evidencias sin fecha de caducidad explícita ni política de retención propia. Una tarea diaria marca los registros caducados y notifica al revisor o a los administradores de la organización.",
+    "Archive expired evidence": "Archivar evidencias caducadas",
+    "Archived evidence is hidden from the Evidence Hub list but never deleted. Archival also requires the server flag EVIDENCE_RETENTION_ARCHIVE_ENABLED.":
+      "Las evidencias archivadas se ocultan de la lista del Centro de evidencias pero nunca se eliminan. El archivado también requiere el flag de servidor EVIDENCE_RETENTION_ARCHIVE_ENABLED.",
     "Back to history": "Volver al historial",
     "Back to prompts": "Volver a los prompts",
+    "Captcha answer": "Respuesta del captcha",
     "Click to upload": "Haga clic para cargar",
     "Close AI dependency graph modal": "Cerrar la ventana del gráfico de dependencias de IA",
     "Close banner": "Cerrar banner",
@@ -19351,6 +20136,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Close drawer": "Cerrar panel",
     "Close editor": "Cerrar editor",
     "Close entity graph modal": "Cerrar la ventana del gráfico de entidades",
+    "Close file preview": "Cerrar vista previa del archivo",
     "Close icon": "Icono de cerrar",
     "Close image lightbox": "Cerrar lightbox de imagen",
     "Close notification": "Cerrar notificación",
@@ -19459,6 +20245,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Edit declaration of conformity": "Editar declaración de conformidad",
     "Edit EU registration": "Editar registro de la UE",
     "Edit EU registration details": "Editar detalles del registro de la UE",
+    "Edit file": "Editar archivo",
     "Edit file metadata": "Editar metadatos del archivo",
     "Edit folder": "Editar carpeta",
     "Edit project": "Editar proyecto",
@@ -19557,6 +20344,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Run first experiment": "Ejecutar primer experimento",
     "Run your first experiment": "Ejecuta tu primer experimento",
     "Save changes": "Guardar cambios",
+    "Save retention settings": "Guardar configuración de retención",
     "Save Changes": "Guardar cambios",
     "Save configuration": "Guardar configuración",
     "Save dataset": "Guardar conjunto de datos",
@@ -20396,6 +21184,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Enter the prompt text...": "Introduce el texto del prompt...",
     "Enter the risk name": "Introduce el nombre del riesgo",
     "Enter username": "Introduce el nombre de usuario",
+    "Enter vendor contact person": "Introduce la persona de contacto del proveedor",
+    "Enter vendor name": "Introduce el nombre del proveedor",
     "Enter vendor website": "Introduce el sitio web del proveedor",
     "Enter workflow title": "Introduce el título del flujo de trabajo",
     "Enter your email": "Introduce tu correo electrónico",
@@ -21672,6 +22462,8 @@ export const translations: Record<string, Record<string, string>> = {
     "AI Chatbot for Customer Support": "Chatbot de IA para atención al cliente",
     "AI Gateway": "AI Gateway",
     "AI Gateway, Policy Radar, and CI/CD scanning": "AI Gateway, Policy Radar y análisis de CI/CD",
+    "Built-in frameworks, Model Risk Management, and Extensions":
+      "Marcos integrados, Model Risk Management y Extensions",
     "AI Trust Index, AI Apps inventory, and Agent Control":
       "AI Trust Index, AI Apps inventory y Agent Control",
     "AI Lifecycle Risk Management": "Gestión de riesgos del ciclo de vida de la IA",
@@ -22041,6 +22833,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Experiment name": "Nombre del experimento",
     "Experiment results downloaded": "Resultados del experimento descargados",
     "Expired": "Caducado",
+    "Expiring soon": "Caduca pronto",
     "Expires": "Caduca",
     "Explainability": "Explicabilidad",
     "Exposed API keys and credentials": "Claves de API y credenciales expuestas",
@@ -22423,6 +23216,7 @@ export const translations: Record<string, Record<string, string>> = {
     "My submissions": "Mis envíos",
     "NEXT SCAN": "PRÓXIMO ESCANEO",
     "NIST Subcategories": "Subcategorías de NIST",
+    "Name is required": "El nombre es obligatorio",
     "Name of the AI model": "Nombre del modelo de IA",
     "Name saved": "Nombre guardado",
     "Navigate project sections": "Navegar por las secciones del proyecto",
@@ -24432,6 +25226,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Aquí aparecerán las llamadas a la API de OpenAI, Anthropic, Google AI y otros servicios de IA",
     "Hardcoded API keys and secrets detected in the codebase. These should be moved to environment variables or a secrets manager.":
       "Claves de API y secretos codificados de forma fija detectados en el código base. Deberían trasladarse a variables de entorno o a un gestor de secretos.",
+    "Hardcoded secrets in source code can be exposed if the repository is made public or accessed by unauthorized users. Rotate any exposed credentials immediately.":
+      "Los secretos codificados de forma fija en el código fuente pueden quedar expuestos si el repositorio se hace público o si acceden a él usuarios no autorizados. Rote de inmediato todas las credenciales expuestas.",
     "No API keys, tokens, or other secrets were found in the scanned code.":
       "No se encontraron claves de API, tokens ni otros secretos en el código analizado.",
     "LLM-specific vulnerability findings detected through code analysis. These identify insecure patterns in how AI/LLM components are used.":
@@ -24952,8 +25748,16 @@ export const translations: Record<string, Record<string, string>> = {
       "Acciones para abordar riesgos y oportunidades (incluye evaluación de riesgos, tratamiento y evaluación de impacto)",
     "Activate the compliance frameworks relevant to your organization.":
       "Active los marcos de cumplimiento relevantes para su organización.",
-    "Add SOC 2, GDPR, HIPAA, and other compliance frameworks as plugins with full controls.":
-      "Añada SOC 2, GDPR, HIPAA y otros marcos de cumplimiento como complementos con controles completos.",
+    "SOC 2, GDPR, HIPAA, DORA, and 17 more frameworks are built in, with requirements, evidence, and risk tracking.":
+      "SOC 2, GDPR, HIPAA, DORA y 17 marcos más están integrados, con requisitos, evidencias y seguimiento de riesgos.",
+    "Slack, MLflow, Azure AI Foundry, Jira Assets, Model Lifecycle, Risk Import, and Dataset Bulk Upload.":
+      "Slack, MLflow, Azure AI Foundry, Jira Assets, Model Lifecycle, Risk Import y Dataset Bulk Upload.",
+    "Admins enable, configure, and disable extensions from the Extensions page. Nothing to install.":
+      "Los administradores activan, configuran y desactivan extensiones desde la página Extensions. No hay nada que instalar.",
+    "Import risks from Excel, bulk upload datasets with PII detection, and define model lifecycle phases.":
+      "Importe riesgos desde Excel, cargue conjuntos de datos en bloque con detección de PII y defina fases del ciclo de vida de los modelos.",
+    "Connect Slack, MLflow, Azure AI Foundry, Jira Assets, and more with extensions that admins enable.":
+      "Conecte Slack, MLflow, Azure AI Foundry, Jira Assets y más con extensiones que activan los administradores.",
     "Add colleagues to collaborate on compliance and risk management tasks.":
       "Añada colegas para colaborar en tareas de cumplimiento y gestión de riesgos.",
     "Add new AI models to your inventory with comprehensive metadata including provider, version, capabilities, security assessment, and usage details.":
@@ -25140,8 +25944,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Configure la precisión, la relevancia, la toxicidad, el sesgo y métricas personalizadas para cada evaluación.",
     "Configure automated alerts when new AI tools are detected or usage thresholds are exceeded.":
       "Configure alertas automatizadas cuando se detecten nuevas herramientas de IA o se superen los umbrales de uso.",
-    "Connect Slack, Jira, MLflow, Azure AI, and more for seamless workflow integration.":
-      "Conecte Slack, Jira, MLflow, Azure AI y más para una integración fluida del flujo de trabajo.",
+    "Send notifications to Slack, sync models from MLflow and Azure AI Foundry, and import use cases from Jira Assets.":
+      "Envíe notificaciones a Slack, sincronice modelos desde MLflow y Azure AI Foundry, e importe casos de uso desde Jira Assets.",
     "Connect a GitHub token to scan private repositories":
       "Conecte un token de GitHub para analizar repositorios privados",
     "Connect with ML platforms to track experiments, models, and deployments.":
@@ -25284,8 +26088,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Redacte nuevas políticas de gobernanza alineadas con los requisitos normativos. Use plantillas y mejores prácticas para garantizar una cobertura exhaustiva.",
     "EU AI Act only (specific to an AI system/project)":
       "Solo EU AI Act (específico de un sistema/proyecto de IA)",
-    "EU AI Act, ISO 42001, NIST AI RMF, SOC 2, GDPR, and more with pluggable framework support.":
-      "EU AI Act, ISO 42001, NIST AI RMF, SOC 2, GDPR y más, con soporte de marcos conectables.",
+    "EU AI Act, ISO 42001, NIST AI RMF, SOC 2, GDPR, and 20 more frameworks, all built in.":
+      "EU AI Act, ISO 42001, NIST AI RMF, SOC 2, GDPR y 20 marcos más, todos integrados.",
     "EU conformity assessment and CE marking status":
       "Estado de la evaluación de conformidad de la UE y del marcado CE",
     "Effective mechanisms ensure non-conforming systems can be removed or disabled to prevent further risks.":
@@ -25642,8 +26446,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Restricciones moderadas (LGPL, MPL, CC-BY-SA). Algunas obligaciones, pero por lo general permite el uso comercial.",
     "Monitor and respond to incidents involving third-party components.":
       "Supervise y responda a los incidentes que afecten a componentes de terceros.",
-    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, and Closed. Track resolution progress and identify incidents requiring immediate attention.":
-      "Supervise los incidentes a lo largo de su ciclo de vida: Abierto, En investigación, Mitigado y Cerrado. Haga seguimiento del progreso de resolución e identifique los incidentes que requieren atención inmediata.",
+    "Monitor incidents across their lifecycle: Open, Investigating, Mitigated, Closed, Suspended, and Emergency action. Track resolution progress and identify incidents requiring immediate attention.":
+      "Supervise los incidentes a lo largo de su ciclo de vida: Abierto, En investigación, Mitigado, Cerrado, Suspendido y Acción de emergencia. Haga seguimiento del progreso de resolución e identifique los incidentes que requieren atención inmediata.",
     "Monitor incidents related to AI systems and respond post-deployment.":
       "Supervise los incidentes relacionados con los sistemas de IA y responda tras el despliegue.",
     "Monitor progress from initiation to completion with real-time status updates.":
@@ -25702,10 +26506,14 @@ export const translations: Record<string, Record<string, string>> = {
       "Planifique las respuestas a los riesgos del sistema de IA, incluida la definición de la tolerancia al riesgo y las estrategias de mitigación.",
     "Please add at least one recipient to the Send Email action before saving.":
       "Añada al menos un destinatario a la acción Enviar correo electrónico antes de guardar.",
+    "Please complete the required fields before saving.":
+      "Complete los campos obligatorios antes de guardar.",
     "Please create a model first before adding model risks. Redirecting to models tab...":
       "Cree primero un modelo antes de añadir riesgos de modelo. Redirigiendo a la pestaña de modelos...",
     "Please create a vendor first before adding vendor risks. Redirecting to vendors tab...":
       "Cree primero un proveedor antes de añadir riesgos de proveedor. Redirigiendo a la pestaña de proveedores...",
+    "Please enter an automation name before saving.":
+      "Introduzca un nombre de automatización antes de guardar.",
     "Please save the changes to attach the selected files.":
       "Guarde los cambios para adjuntar los archivos seleccionados.",
     "Please save the changes to save the file changes.":
@@ -25783,8 +26591,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Controles de referencia (Declaración de aplicabilidad)",
     "Register AI-related training programs and educational resources. Track completion status, certifications, and learning progress across your team.":
       "Registre programas de formación y recursos educativos relacionados con la IA. Haga seguimiento del estado de finalización, las certificaciones y el progreso de aprendizaje de todo su equipo.",
-    "Register and track AI models with details like hosting, biases, and limitations. Extend with the lifecycle plugin.":
-      "Registre y haga seguimiento de los modelos de IA con detalles como el alojamiento, los sesgos y las limitaciones. Amplíe con el complemento de ciclo de vida.",
+    "Register and track AI models with details like hosting, biases, and limitations. Extend with the Model Lifecycle extension.":
+      "Registre y haga seguimiento de los modelos de IA con detalles como el alojamiento, los sesgos y las limitaciones. Amplíe con la extensión Model Lifecycle.",
     "Register external AI providers and third-party services. Document vendor information, contracts, and compliance requirements in one centralized location.":
       "Registre proveedores de IA externos y servicios de terceros. Documente la información de los proveedores, los contratos y los requisitos de cumplimiento en una ubicación centralizada.",
     "Register providers, authorized representatives, and deployers, along with their AI systems, in the EU database as required by the AI Act.":
@@ -26982,6 +27790,7 @@ export const translations: Record<string, Record<string, string>> = {
     // AI Gateway empty/error states
     "Click Save draft to create your first version.":
       "Haga clic en Guardar borrador para crear su primera versión.",
+    "Could not load metrics.": "No se pudieron cargar las métricas.",
     "Could not load this run.": "No se pudo cargar esta ejecución.",
     "Create your first version": "Crear su primera versión",
     "Error loading AI Trust Center settings. Please try again.":
@@ -27236,5 +28045,302 @@ export const translations: Record<string, Record<string, string>> = {
     "NIST AI RMF subcategories": "subcategorías de NIST AI RMF",
     "custom framework item": "elemento de marco personalizado",
     "custom framework items": "elementos de marco personalizados",
+    // Reporting, readiness and AI observability
+    "AI analyses": "Análisis de IA",
+    "AI observability": "Observabilidad de IA",
+    "AI readiness": "Preparación para la IA",
+    "Action failed": "La acción falló",
+    "Add a language-model key in Settings to enable AI insights.":
+      "Agregue una clave de modelo de lenguaje en Configuración para habilitar los análisis de IA.",
+    "All frameworks in scope": "Todos los marcos del alcance",
+    "Analyze with AI": "Analizar con IA",
+    "Attach file": "Adjuntar archivo",
+    "Choose whether this report covers a single project or the whole organization.":
+      "Elija si este informe abarca un solo proyecto o toda la organización.",
+    "Close AI analyses": "Cerrar los análisis de IA",
+    "Comma separated.": "Separados por comas.",
+    "Compliance gap analysis": "Análisis de brechas de cumplimiento",
+    "Create template": "Crear plantilla",
+    "Default report level": "Nivel de informe predeterminado",
+    "Delete template": "Eliminar plantilla",
+    "Delivery:": "Entrega:",
+    "Each enabled block is one language-model call per report run.":
+      "Cada bloque habilitado es una llamada al modelo de lenguaje por ejecución del informe.",
+    "Edit scheduled report": "Editar informe programado",
+    "Edit template": "Editar plantilla",
+    "Evidence analysis": "Análisis de evidencia",
+    "Executive summary": "Resumen ejecutivo",
+    "Failed to create scheduled report": "No se pudo crear el informe programado",
+    "Failed to create template": "No se pudo crear la plantilla",
+    "Failed to load the template to duplicate.":
+      "No se pudo cargar la plantilla que se va a duplicar.",
+    "Failed to run report": "No se pudo ejecutar el informe",
+    "Format:": "Formato:",
+    "Frameworks:": "Marcos:",
+    "Generate": "Generar",
+    "Hour": "Hora",
+    "Key findings": "Hallazgos clave",
+    "Latency over time": "Latencia a lo largo del tiempo",
+    "Leave empty to include every framework in scope.":
+      "Déjelo vacío para incluir todos los marcos del alcance.",
+    "My templates": "Mis plantillas",
+    "New report template": "Nueva plantilla de informe",
+    "New template": "Nueva plantilla",
+    "No AI analyses were generated for this report run.":
+      "No se generaron análisis de IA para esta ejecución del informe.",
+    "No report templates available yet.": "Aún no hay plantillas de informe disponibles.",
+    "No scheduled reports yet. Create one from the Templates tab.":
+      "Aún no hay informes programados. Cree uno desde la pestaña Plantillas.",
+    "No spans found for this trace": "No se encontraron spans para esta traza",
+    "No traces found": "No se encontraron trazas",
+    "Overall quality grade": "Calificación general de calidad",
+    "Parallel agents": "Agentes paralelos",
+    "Per-section summaries": "Resúmenes por sección",
+    "Quality": "Calidad",
+    "Recommended actions": "Acciones recomendadas",
+    "Report level": "Nivel de informe",
+    "Risk analysis": "Análisis de riesgos",
+    "Save to storage": "Guardar en el almacenamiento",
+    "Schedule:": "Programación:",
+    "Scope:": "Alcance:",
+    "Sections:": "Secciones:",
+    "Select a project": "Seleccione un proyecto",
+    "Send email link": "Enviar enlace por correo electrónico",
+    "System templates": "Plantillas del sistema",
+    "Template name": "Nombre de la plantilla",
+    "Template:": "Plantilla:",
+    "Third-party risk analysis": "Análisis de riesgos de terceros",
+    "This section was not generated.": "Esta sección no se generó.",
+    "This template has no configurable sections.":
+      "Esta plantilla no tiene secciones configurables.",
+    "Timezone": "Zona horaria",
+    "Total traces": "Trazas totales",
+    "Trace waterfall": "Cascada de la traza",
+    "Traces": "Trazas",
+    "Traces, cost tracking, and latency & error metrics for every AI request.":
+      "Trazas, seguimiento de costes y métricas de latencia y errores para cada solicitud de IA.",
+    "Update the name, output format and delivery schedule.":
+      "Actualice el nombre, el formato de salida y la programación de entrega.",
+    "Update the template name, description, and category.":
+      "Actualice el nombre, la descripción y la categoría de la plantilla.",
+    "Use Template": "Usar plantilla",
+    "What this report covers and who it is for": "Qué abarca este informe y a quién está dirigido",
+    "Word (DOCX)": "Word (DOCX)",
+    "You haven&apos;t created any templates yet.": "Aún no ha creado ninguna plantilla.",
+    "Annex controls": "Controles de anexo",
+    "Failed to load framework": "No se pudo cargar el marco",
+    "Failed to load record": "No se pudo cargar el registro",
+    "Items": "Elementos",
+    "Justification for Exclusion (if Not Applicable):":
+      "Justificación de la exclusión (si no corresponde):",
+    "No matching items": "No hay elementos coincidentes",
+    "No organizational frameworks assigned yet.": "Aún no se han asignado marcos organizacionales.",
+    "No record selected for update": "Ningún registro seleccionado para actualizar",
+    "Subcategories": "Subcategorías",
+    'Use the "Manage Frameworks" button to add frameworks to your organizational project.':
+      'Utilice el botón "Gestionar marcos" para añadir marcos a su proyecto organizacional.',
+    "Elect": "Elegir",
+    "Elect Super Admin": "Elegir Super Admin",
+    "Elect a Super Admin": "Elegir un Super Admin",
+    "Elect other users as Super Admins": "Elegir a otros usuarios como Super Admins",
+    "Grant an existing user cross-organization Super Admin capabilities. Their base organization role is unchanged.":
+      "Conceda a un usuario existente capacidades de Super Admin entre organizaciones. Su rol base en la organización no cambia.",
+    "No Super Admins yet.": "Aún no hay Super Admins.",
+    "Revoke Super Admin": "Revocar Super Admin",
+    "Search by name or email": "Buscar por nombre o correo electrónico",
+    "Sent": "Enviado",
+    "Super Admins": "Super Admins",
+    "They will keep their normal organization role but lose cross-organization access.":
+      "Mantendrá su rol normal en la organización pero perderá el acceso entre organizaciones.",
+
+    // Extensions surface — i18n gap fill.
+    "Accordion": "Acordeón",
+    "Accordion view": "Vista acordeón",
+    "Add Approver": "Añadir aprobador",
+    "Add checklist item...": "Añadir elemento de lista de verificación...",
+    "Add new phase": "Añadir nueva fase",
+    "Add to Slack": "Añadir a Slack",
+    "After enabling the extension, add your project endpoint and API key in its settings. Then click Sync on this page to pull in your agents.":
+      "Después de activar la extensión, añada su punto de conexión del proyecto y la clave API en sus ajustes. Luego, haga clic en Sincronizar en esta página para importar sus agentes.",
+    "Agent discovery pulls AI agents from your cloud platforms. Enable the Azure AI Foundry extension to discover agents deployed in your Azure subscription.":
+      "El descubrimiento de agentes extrae los agentes de IA de sus plataformas en la nube. Active la extensión de Azure AI Foundry para descubrir agentes desplegados en su suscripción de Azure.",
+    "Apply to all workspaces:": "Aplicar a todos los espacios de trabajo:",
+    "Artifact Location:": "Ubicación del artefacto:",
+    "Assign frameworks in the Frameworks/regulations tab.":
+      "Asigne marcos en la pestaña Marcos/regulaciones.",
+    "Automatically sync data from JIRA on a schedule":
+      "Sincronizar automáticamente los datos de JIRA según una programación",
+    "Azure AI Foundry": "Azure AI Foundry",
+    "Azure created": "Creado en Azure",
+    "Azure modified": "Modificado en Azure",
+    "Back to Model Inventory": "Volver al inventario de modelos",
+    "Back to extensions": "Volver a las extensiones",
+    "Basic Information": "Información básica",
+    "Bulk import risks from an Excel file using the provided template":
+      "Importar riesgos en masa desde un archivo Excel utilizando la plantilla proporcionada",
+    "Capacity": "Capacidad",
+    "Channel": "Canal",
+    "Checklist": "Lista de verificación",
+    "Choose File": "Elegir archivo",
+    'Click "Add to Slack" above to connect your first workspace.':
+      'Haga clic en "Añadir a Slack" arriba para conectar su primer espacio de trabajo.',
+    "Click to upload documents": "Haga clic para cargar documentos",
+    "Configuration saved.": "Configuración guardada.",
+    "Configure Model Lifecycle": "Configurar el ciclo de vida del modelo",
+    "Configure Phases": "Configurar fases",
+    "Configure which notification types go to which Slack channels.":
+      "Configure qué tipos de notificaciones se envían a qué canales de Slack.",
+    "Connect to your Jira Service Management Assets to import AI Systems as use-cases.":
+      "Conéctese a sus Jira Service Management Assets para importar sistemas de IA como casos de uso.",
+    "Connect your Slack workspace and route VerifyWise notifications to specific channels.":
+      "Conecte su espacio de trabajo de Slack y enrute las notificaciones de VerifyWise a canales específicos.",
+    "Create phase": "Crear fase",
+    "Created in JIRA": "Creado en JIRA",
+    "Created:": "Creado:",
+    "Creation Date": "Fecha de creación",
+    "Delete item": "Eliminar elemento",
+    "Delete phase": "Eliminar fase",
+    "Delete this item? This cannot be undone.":
+      "¿Eliminar este elemento? Esta acción no se puede deshacer.",
+    "Delete this phase and all its items? This cannot be undone.":
+      "¿Eliminar esta fase y todos sus elementos? Esta acción no se puede deshacer.",
+    "Deployment Type": "Tipo de despliegue",
+    "Disable": "Deshabilitar",
+    "Download Template": "Descargar plantilla",
+    "Download the Excel template with dropdown menus for enum fields and sample data.":
+      "Descargue la plantilla de Excel con menús desplegables para campos de enumeración y datos de ejemplo.",
+    "Download the template, fill it with your risk data, and upload to create risks in bulk":
+      "Descargue la plantilla, complétela con sus datos de riesgo y súbala para crear riesgos en masa",
+    "Edit phase name": "Editar nombre de la fase",
+    "Embeddings": "Incrustaciones",
+    "Enable Azure AI Foundry": "Activar Azure AI Foundry",
+    "Enable and configure integrations for your organization.":
+      "Active y configure integraciones para su organización.",
+    "Enable automatic sync": "Activar sincronización automática",
+    "Error Details:": "Detalles del error:",
+    "Every 12 hours": "Cada 12 horas",
+    "Every 24 hours": "Cada 24 horas",
+    "Every 48 hours": "Cada 48 horas",
+    "Every 6 hours": "Cada 6 horas",
+    "Every hour": "Cada hora",
+    "Experiment": "Experimento",
+    "Experiment ID:": "ID del experimento:",
+    "Experiment Information": "Información del experimento",
+    "Experiment Name:": "Nombre del experimento:",
+    "Extension not found.": "Extensión no encontrada.",
+    "Extension settings": "Configuración de la extensión",
+    "Extensions": "Extensiones",
+    "Framework Completion Status": "Estado de finalización del marco",
+    "GPT models": "Modelos GPT",
+    "Import & Sync": "Importar y sincronizar",
+    "Import Risks from Excel": "Importar riesgos desde Excel",
+    "Import from Excel": "Importar desde Excel",
+    "Import risks from Excel": "Importar riesgos desde Excel",
+    "Imported Use Cases": "Casos de uso importados",
+    "Imported from JIRA Assets": "Importado desde JIRA Assets",
+    "Item name": "Nombre del elemento",
+    "JIRA Assets Object": "Objeto de JIRA Assets",
+    "JIRA Base URL": "URL base de JIRA",
+    "JIRA Cloud (Atlassian-hosted)": "JIRA Cloud (alojado por Atlassian)",
+    "JIRA Data Center / Server (Self-hosted)": "JIRA Data Center / Server (autoalojado)",
+    "JIRA Key": "Clave JIRA",
+    "JIRA Object Key": "Clave de objeto JIRA",
+    "Key": "Clave",
+    "Key Attributes": "Atributos clave",
+    "Last Updated in JIRA": "Última actualización en JIRA",
+    "Last synced": "Última sincronización",
+    "Lifecycle Phase": "Fase del ciclo de vida",
+    "Lifecycle Progress": "Progreso del ciclo de vida",
+    "Lifecycle stage": "Etapa del ciclo de vida",
+    "Loading MLFlow data...": "Cargando datos de MLFlow...",
+    "Loading workspaces...": "Cargando espacios de trabajo...",
+    "MLFlow": "MLFlow",
+    "Model not found": "Modelo no encontrado",
+    "Move item down": "Mover elemento hacia abajo",
+    "Move item up": "Mover elemento hacia arriba",
+    "Move phase down": "Mover fase hacia abajo",
+    "Move phase up": "Mover fase hacia arriba",
+    "No attributes available": "No hay atributos disponibles",
+    "No deployments synced yet. Click Sync to pull model deployments from Azure AI Foundry.":
+      "Aún no se han sincronizado despliegues. Haga clic en Sincronizar para importar despliegues de modelos desde Azure AI Foundry.",
+    "No frameworks assigned to this use case yet.":
+      "Aún no se han asignado marcos a este caso de uso.",
+    "No items configured for this phase": "No hay elementos configurados para esta fase",
+    "No lifecycle phases configured yet. Click the button below to add phases.":
+      "Aún no se han configurado fases del ciclo de vida. Haga clic en el botón de abajo para añadir fases.",
+    "No lifecycle phases configured. Contact an administrator to set up the model lifecycle.":
+      "No hay fases del ciclo de vida configuradas. Póngase en contacto con un administrador para configurar el ciclo de vida del modelo.",
+    "No use case found": "No se encontró ningún caso de uso",
+    "No workspaces connected": "No hay espacios de trabajo conectados",
+    "Notification Routing": "Enrutamiento de notificaciones",
+    "Object Type": "Tipo de objeto",
+    "Object Type (AI Systems)": "Tipo de objeto (sistemas de IA)",
+    "Password/token fields are stored encrypted. Leave blank to keep the existing value.":
+      "Los campos de contraseña/token se almacenan cifrados. Deje en blanco para mantener el valor existente.",
+    "Phase name": "Nombre de la fase",
+    "Post-Market Monitoring": "Monitoreo posterior a la comercialización",
+    "Publisher": "Editor",
+    "RAI policy": "Política RAI",
+    "Rate limits": "Límites de tasa",
+    "Remove approver": "Eliminar aprobador",
+    "Remove item": "Eliminar elemento",
+    "Req": "Req",
+    "Reset": "Restablecer",
+    "Row": "Fila",
+    "Run ID:": "ID de ejecución:",
+    "Save phase name": "Guardar nombre de la fase",
+    "Schema": "Esquema",
+    "Select a phase from the sidebar": "Seleccione una fase de la barra lateral",
+    "Slack Client ID not configured.": "ID de cliente de Slack no configurado.",
+    "Specific extension settings page": "Página de configuración de extensión específica",
+    "Staging": "Preproducción",
+    "Step 1: Connection Settings": "Paso 1: Configuración de conexión",
+    "Step 1: Download Excel Template": "Paso 1: Descargar plantilla de Excel",
+    "Step 2: Select Schema & Object Type": "Paso 2: Seleccionar esquema y tipo de objeto",
+    "Step 2: Upload Filled Excel File": "Paso 2: Subir archivo Excel rellenado",
+    "Step 3: Import Risks": "Paso 3: Importar riesgos",
+    "Step 3: Sync Settings": "Paso 3: Configuración de sincronización",
+    "Stepper": "Stepper",
+    "Stepper view": "Vista de stepper",
+    "Succeeded": "Correcto",
+    "Sync": "Sincronizar",
+    "Sync Interval": "Intervalo de sincronización",
+    "Sync Status": "Estado de sincronización",
+    "Team Name": "Nombre del equipo",
+    "Test connection": "Probar conexión",
+    "Testing...": "Probando...",
+    "Text Area": "Área de texto",
+    "This extension has no configuration.": "Esta extensión no tiene configuración.",
+    "This use case is imported from JIRA and is read-only":
+      "Este caso de uso está importado desde JIRA y es de solo lectura",
+    "Total deployments": "Despliegues totales",
+    "UC-ID": "UC-ID",
+    "Upload your Excel file with risk data.": "Suba su archivo Excel con los datos de riesgo.",
+    "Version:": "Versión:",
+    "View lifecycle": "Ver ciclo de vida",
+    "Workspace disconnected successfully!": "¡Espacio de trabajo desconectado correctamente!",
+    "Workspace status updated successfully!":
+      "¡Estado del espacio de trabajo actualizado correctamente!",
+    "Add first user": "Añadir primer usuario",
+    "Add user": "Añadir usuario",
+    "Create directly": "Crear directamente",
+    "Enter or generate": "Introducir o generar",
+    "Invite via email": "Invitar por correo",
+    "Must include an uppercase letter, a lowercase letter, and a digit. Minimum 8 characters.":
+      "Debe incluir una mayúscula, una minúscula y un dígito. Mínimo 8 caracteres.",
+    "Default retention policy": "Política de retención predeterminada",
+    "Expired files": "Archivos caducados",
+    "File Manager": "Gestor de archivos",
+    "File retention": "Retención de archivos",
+    "Retention policy": "Política de retención",
+    "Create API tokens for the super admin API":
+      "Crear tokens de API para la API de superadministrador",
+    "Install": "Instalar",
+    "Install the MCP server to manage organizations and users from Claude Code":
+      "Instalar el servidor MCP para gestionar organizaciones y usuarios desde Claude Code",
+    "Installed": "Instalado",
+    "MCP server": "Servidor MCP",
+    "The MCP server source was not found next to the backend. It is included from MCPServer/ at build time.":
+      "No se encontró el código fuente del servidor MCP junto al backend. Se incluye desde MCPServer/ en tiempo de compilación.",
   },
 };

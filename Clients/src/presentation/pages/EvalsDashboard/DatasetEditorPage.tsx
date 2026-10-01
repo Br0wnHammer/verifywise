@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import { CustomizableButton } from "../../components/button/customizable-button";
 import VWChip from "../../components/Chip";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
   readDataset,
   getCurrentOrg,
@@ -119,8 +119,7 @@ export default function DatasetEditorPage() {
       type AxiosLike = { response?: { data?: unknown } };
       const axiosErr = e as AxiosLike | Error;
       const resData = (axiosErr as AxiosLike)?.response?.data as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const serverMsg =
         (resData && (String(resData.message ?? "") || String(resData.detail ?? ""))) ||
         (axiosErr instanceof Error ? axiosErr.message : null);

@@ -44,6 +44,11 @@ import {
 import { useIsAdmin } from "../../../../../application/hooks/useIsAdmin";
 import { status } from "../../../../themes/palette";
 import { displayFormattedDate } from "../../../../tools/isoDateToString";
+import { FileExpiryChip } from "../../../../components/FileExpiryChip";
+import {
+  RETENTION_POLICY_LABELS,
+  type RetentionPolicy,
+} from "../../../../../domain/enums/retention.enum";
 
 interface FilePreviewPanelProps {
   isOpen: boolean;
@@ -424,6 +429,7 @@ export const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
             <Tooltip title="Previous file">
               <span>
                 <IconButton
+                  aria-label="Previous file"
                   onClick={() => onNavigate?.((currentIndex as number) - 1)}
                   size="small"
                   disabled={!canPrev}
@@ -456,6 +462,7 @@ export const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
               <Tooltip title="Next file">
                 <span>
                   <IconButton
+                    aria-label="Next file"
                     onClick={() => onNavigate?.((currentIndex as number) + 1)}
                     size="small"
                     disabled={!canNext}
@@ -470,13 +477,19 @@ export const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
         </Box>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           {onEdit && file && (
-            <IconButton onClick={() => onEdit(file)} size="small" sx={{ color: "text.icon" }}>
+            <IconButton
+              aria-label="Edit file"
+              onClick={() => onEdit(file)}
+              size="small"
+              sx={{ color: "text.icon" }}
+            >
               <Pencil size={18} />
             </IconButton>
           )}
           <Tooltip title={!isAdmin ? "Only admins can download files" : ""}>
             <span>
               <IconButton
+                aria-label="Download file"
                 onClick={handleDownload}
                 size="small"
                 disabled={downloading || !isAdmin}
@@ -490,7 +503,12 @@ export const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
               </IconButton>
             </span>
           </Tooltip>
-          <IconButton onClick={onClose} size="small" sx={{ color: "text.icon" }}>
+          <IconButton
+            aria-label="Close file preview"
+            onClick={onClose}
+            size="small"
+            sx={{ color: "text.icon" }}
+          >
             <X size={18} />
           </IconButton>
         </Box>
@@ -578,8 +596,24 @@ export const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
               {file.expiry_date && (
                 <>
                   <Typography sx={{ fontSize: 13, color: "text.icon" }}>Expiry date</Typography>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Typography sx={{ fontSize: 13, color: "text.secondary" }}>
+                      {formatDate(file.expiry_date)}
+                    </Typography>
+                    <FileExpiryChip expiryDate={file.expiry_date} />
+                  </Box>
+                </>
+              )}
+
+              {/* Retention policy */}
+              {file.retention_policy && (
+                <>
+                  <Typography sx={{ fontSize: 13, color: "text.icon" }}>
+                    Retention policy
+                  </Typography>
                   <Typography sx={{ fontSize: 13, color: "text.secondary" }}>
-                    {formatDate(file.expiry_date)}
+                    {RETENTION_POLICY_LABELS[file.retention_policy as RetentionPolicy] ??
+                      file.retention_policy}
                   </Typography>
                 </>
               )}

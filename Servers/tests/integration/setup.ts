@@ -57,8 +57,40 @@ jest.mock("bullmq", () => {
   return { Queue: MockQueue, Worker: MockWorker, Job: MockJob };
 });
 
+// Mock the Redis client so integration tests do not require a running Redis server.
+// app.ts imports database/redis at module load, which would otherwise open a real
+// ioredis connection and emit an unhandled 'error' event if Redis is down.
+jest.mock("../../database/redis", () => ({
+  __esModule: true,
+  default: {
+    ping: jest.fn().mockResolvedValue("PONG"),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue("OK"),
+    del: jest.fn().mockResolvedValue(1),
+    publish: jest.fn().mockResolvedValue(1),
+    lpush: jest.fn().mockResolvedValue(1),
+    lrange: jest.fn().mockResolvedValue([]),
+    expire: jest.fn().mockResolvedValue(1),
+    hget: jest.fn().mockResolvedValue(null),
+    hset: jest.fn().mockResolvedValue(1),
+    exists: jest.fn().mockResolvedValue(0),
+    incr: jest.fn().mockResolvedValue(1),
+    sadd: jest.fn().mockResolvedValue(1),
+    smembers: jest.fn().mockResolvedValue([]),
+    srem: jest.fn().mockResolvedValue(1),
+    keys: jest.fn().mockResolvedValue([]),
+    on: jest.fn().mockReturnThis(),
+    once: jest.fn().mockReturnThis(),
+    quit: jest.fn().mockResolvedValue("OK"),
+    close: jest.fn().mockResolvedValue(undefined),
+    disconnect: jest.fn(),
+    duplicate: jest.fn().mockReturnThis(),
+  },
+  REDIS_URL: "redis://localhost:6379/0",
+}));
+
 import http from "http";
-import { Request, Response, NextFunction } from "express";
+import { Application, Request, Response, NextFunction } from "express";
 import supertest, { Agent } from "supertest";
 import { createApp } from "../../app";
 import { getTenantHash } from "../../tools/getTenantHash";
@@ -69,7 +101,6 @@ export interface TestAppOptions {
     userId?: number;
     role?: string;
     organizationId?: number;
-    isSuperAdmin?: boolean;
   };
 }
 
@@ -77,7 +108,6 @@ const DEFAULT_MOCK_USER = {
   userId: 1,
   role: "Admin",
   organizationId: 1,
-  isSuperAdmin: false,
 };
 
 /**
@@ -100,7 +130,12 @@ afterAll(() => {
   }
 });
 
-export async function createTestApp(options?: TestAppOptions): Promise<http.Server> {
+/**
+ * The Express app with the test auth bypass mounted, not listening. For tests
+ * that inspect the app itself (middleware order, router stack); anything that
+ * sends a request uses createTestApp, which binds it to loopback.
+ */
+export function createTestExpressApp(options?: TestAppOptions): Application {
   const mockUser = { ...DEFAULT_MOCK_USER, ...options?.mockUser };
 
   const preRoutesMiddleware: Array<(req: Request, res: Response, next: NextFunction) => void> = [];
@@ -110,14 +145,17 @@ export async function createTestApp(options?: TestAppOptions): Promise<http.Serv
       req.userId = mockUser.userId;
       req.role = mockUser.role;
       req.organizationId = mockUser.organizationId;
-      req.isSuperAdmin = mockUser.isSuperAdmin;
       req.tenantHash = getTenantHash(mockUser.organizationId);
       req.testBypassAuth = true;
       next();
     });
   }
 
-  const server = http.createServer(createApp(preRoutesMiddleware));
+  return createApp(preRoutesMiddleware);
+}
+
+export async function createTestApp(options?: TestAppOptions): Promise<http.Server> {
+  const server = http.createServer(createTestExpressApp(options));
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);

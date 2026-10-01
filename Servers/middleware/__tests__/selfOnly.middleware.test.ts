@@ -6,7 +6,9 @@ function createMockReq(userId?: number, paramsId?: string, bodyId?: number): Par
   return {
     userId,
     params: paramsId ? { id: paramsId } : {},
-    body: bodyId ? { id: bodyId } : {},
+    // `undefined` simulates bodyless requests (no JSON content-type),
+    // e.g. DELETE routes — the middleware must not throw on req.body.id.
+    body: bodyId !== undefined ? { id: bodyId } : (undefined as unknown as Request["body"]),
     t: (key: string) => key,
   } as Partial<Request>;
 }
@@ -25,6 +27,15 @@ describe("selfOnly middleware", () => {
     next = jest.fn();
   });
 
+  it("should not throw when req.body is undefined (bodyless request)", () => {
+    const req = createMockReq(2, "2") as Request;
+    (req as any).body = undefined;
+    const res = createMockRes();
+
+    expect(() => selfOnly(req, res as Response, next)).not.toThrow();
+    expect(next).toHaveBeenCalled();
+  });
+
   it("should return 401 when userId is missing", () => {
     const req = createMockReq(undefined, "1") as Request;
     const res = createMockRes();
@@ -32,7 +43,10 @@ describe("selfOnly middleware", () => {
     selfOnly(req, res as Response, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ message: "Authentication required" });
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Unauthorized",
+      data: "Authentication required",
+    });
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -43,7 +57,10 @@ describe("selfOnly middleware", () => {
     selfOnly(req, res as Response, next);
 
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({ message: "Target user ID is required" });
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Bad Request",
+      data: "Target user ID is required",
+    });
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -74,7 +91,10 @@ describe("selfOnly middleware", () => {
     selfOnly(req, res as Response, next);
 
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({ message: "You can only modify your own data" });
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Forbidden",
+      data: "You can only modify your own data",
+    });
     expect(next).not.toHaveBeenCalled();
   });
 

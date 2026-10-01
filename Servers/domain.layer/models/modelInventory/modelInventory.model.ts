@@ -1,6 +1,7 @@
 import { Column, DataType, Model, Table } from "sequelize-typescript";
 import { Filedata, IModelInventory } from "../../interfaces/i.modelInventory";
 import { ModelInventoryStatus } from "../../enums/model-inventory-status.enum";
+import { ModelInventoryType } from "../../enums/model-inventory-type.enum";
 import { MrmTier } from "../../enums/mrm.enum";
 import { ValidationException } from "../../exceptions/custom.exception";
 
@@ -74,6 +75,12 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
   status_date!: Date;
 
   @Column({
+    type: DataType.ENUM(...Object.values(ModelInventoryType)),
+    allowNull: true,
+  })
+  type?: ModelInventoryType;
+
+  @Column({
     type: DataType.TEXT,
     allowNull: false,
   })
@@ -96,6 +103,12 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
     allowNull: false,
   })
   hosting_provider!: string;
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+  })
+  intended_use?: string;
 
   @Column({
     type: DataType.JSONB,
@@ -323,10 +336,12 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
       security_assessment: this.security_assessment,
       status: this.status,
       status_date: this.status_date?.toISOString(),
+      type: this.type ?? null,
       reference_link: this.reference_link?.trim() || null,
       biases: this.biases,
       limitations: this.limitations,
       hosting_provider: this.hosting_provider,
+      intended_use: this.intended_use ?? null,
       security_assessment_data:
         this.security_assessment_data != undefined ? this.security_assessment_data : [],
       is_demo: this.is_demo,
@@ -363,10 +378,12 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
       security_assessment: this.security_assessment,
       status: this.status,
       status_date: this.status_date?.toISOString(),
+      type: this.type ?? null,
       reference_link: this.reference_link,
       biases: this.biases,
       limitations: this.limitations,
       hosting_provider: this.hosting_provider,
+      intended_use: this.intended_use ?? null,
       security_assessment_data:
         this.security_assessment_data != undefined ? this.security_assessment_data : [],
       is_demo: this.is_demo,
@@ -427,6 +444,9 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
    * Create a new ModelInventoryModel instance with minimal validations
    */
   static createNewModelInventory(data: Partial<IModelInventory>): ModelInventoryModel {
+    // Blank or whitespace-only values must become NULL so they are excluded
+    // from the partial unique index on (organization_id, external_key) (issue #4755).
+    const trimmedExternalKey = data.external_key?.trim() || undefined;
     const modelInventory = new ModelInventoryModel({
       provider_model: data.provider_model || "", // Keep for backward compatibility
       provider: data.provider || "",
@@ -439,13 +459,15 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
       security_assessment: data.security_assessment || false,
       status: data.status || ModelInventoryStatus.PENDING,
       status_date: data.status_date || new Date(),
+      type: data.type ?? undefined,
       reference_link: data.reference_link || "",
       biases: data.biases || "",
       limitations: data.limitations || "",
       hosting_provider: data.hosting_provider || "",
+      intended_use: data.intended_use ?? undefined,
       security_assessment_data: data.security_assessment_data || [],
       is_demo: data.is_demo || false,
-      external_key: data.external_key ?? undefined,
+      external_key: trimmedExternalKey,
       created_at: new Date(),
       updated_at: new Date(),
     });
@@ -490,6 +512,9 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
     if (data.status_date !== undefined) {
       existingModel.status_date = data.status_date;
     }
+    if (data.type !== undefined) {
+      existingModel.type = data.type;
+    }
     if (data.reference_link !== undefined) {
       existingModel.reference_link = data.reference_link;
     }
@@ -502,6 +527,9 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
     if (data.hosting_provider !== undefined) {
       existingModel.hosting_provider = data.hosting_provider;
     }
+    if (data.intended_use !== undefined) {
+      existingModel.intended_use = data.intended_use;
+    }
     if (data.security_assessment_data !== undefined) {
       existingModel.security_assessment_data = data.security_assessment_data;
     }
@@ -509,7 +537,9 @@ export class ModelInventoryModel extends Model<ModelInventoryModel> implements I
       existingModel.is_demo = data.is_demo;
     }
     if (data.external_key !== undefined) {
-      existingModel.external_key = data.external_key;
+      // Blank or whitespace-only values must become NULL (partial unique index,
+      // issue #4755) — same normalization as createNewModelInventory.
+      existingModel.external_key = data.external_key.trim() || undefined;
     }
 
     // Always update the updated_at timestamp

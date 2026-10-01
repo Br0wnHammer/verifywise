@@ -18,7 +18,7 @@ import {
   FileText as FileIcon,
   Eye as ViewIcon,
 } from "lucide-react";
-import * as LucideIcons from "lucide-react";
+import type * as LucideIcons from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import dayjs from "dayjs";
 import Select from "../../Inputs/Select";
@@ -46,7 +46,7 @@ import { updateControl } from "../../../../application/repository/control_eu_act
 import { useAuth } from "../../../../application/hooks/useAuth";
 import useUsers from "../../../../application/hooks/useUsers";
 import { User } from "../../../../domain/types/User";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { getFileById } from "../../../../application/repository/file.repository";
 import { getEntityById } from "../../../../application/repository/entity.repository";
 

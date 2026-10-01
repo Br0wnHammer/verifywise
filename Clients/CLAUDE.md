@@ -1,6 +1,6 @@
 # Clients — Frontend Development Guide
 
-> **Last Updated:** 2026-08-13
+> **Last Updated:** 2026-10-01
 
 ---
 
@@ -34,6 +34,8 @@ infrastructure/   → API clients, external services
 | Axios config      | `src/infrastructure/api/customAxios.ts` |
 | Redux store       | `src/application/redux/store.ts`        |
 
+**Extensions:** UI in `src/presentation/pages/Extensions/` (catalog, `Settings/`, one folder per extension key). Gate every entry point with `useExtensions().isEnabled("<key>")` (`src/application/contexts/Extensions.context.tsx`). Bundled frameworks (ids 5–25) render through `pages/Framework/Generic` + `components/Drawer/GenericFrameworkDrawer`. There is no per-framework UI. See `docs/technical/infrastructure/extensions.md` and `docs/technical/guides/adding-new-framework.md`.
+
 ---
 
 ## Environment
@@ -56,7 +58,7 @@ npx vitest run                   # Vitest, single run
 npm run lint                     # eslint . — repo-wide backlog, see below
 ```
 
-`npm run lint` currently reports a large pre-existing backlog (574 errors, 3075 warnings as of 2026-08-13), so a non-zero exit does not mean *you* broke something. Compare against the baseline for the files you touched rather than reading the total.
+`npm run lint` currently reports a large pre-existing backlog (574 errors, 3075 warnings as of 2026-08-13), so a non-zero exit does not mean _you_ broke something. Compare against the baseline for the files you touched rather than reading the total.
 
 **Always run `npm run typecheck` and `npm run build` before opening a PR.** Both are required: `build` is `node scripts/build.js`, which strips types with esbuild and never invokes `tsc`, so **type errors survive a green build**. A build that succeeds is not evidence the code typechecks.
 
@@ -68,15 +70,18 @@ npm run lint                     # eslint . — repo-wide backlog, see below
 
 Read the relevant file BEFORE implementing changes in that area:
 
-| When working on...                  | Read this file                                |
-| ----------------------------------- | --------------------------------------------- |
-| Component/page/hook patterns        | `docs/technical/guides/frontend-patterns.md`  |
-| Adding a new feature (full guide)   | `docs/technical/guides/adding-new-feature.md` |
-| MUI theming & design tokens         | `docs/technical/guides/design-tokens.md`      |
-| Frontend styling                    | `docs/technical/frontend/styling.md`          |
-| Frontend components                 | `docs/technical/frontend/components.md`       |
-| Redux, Axios, frontend architecture | `docs/technical/frontend/overview.md`         |
-| TypeScript standards & naming       | `CodeRules/02-typescript/`                    |
-| React component & hook conventions  | `CodeRules/03-react/`                         |
+| When working on...                    | Read this file                                     |
+| ------------------------------------- | -------------------------------------------------- |
+| Component/page/hook patterns          | `docs/technical/guides/frontend-patterns.md`       |
+| Adding a new feature (full guide)     | `docs/technical/guides/adding-new-feature.md`      |
+| Extensions (built-in integrations)    | `docs/technical/infrastructure/extensions.md`      |
+| Adding a compliance framework         | `docs/technical/guides/adding-new-framework.md`    |
+| MUI theming & design tokens           | `docs/technical/guides/design-tokens.md`           |
+| Frontend styling                      | `docs/technical/frontend/styling.md`               |
+| Frontend components                   | `docs/technical/frontend/components.md`            |
+| Redux, Axios, frontend architecture   | `docs/technical/frontend/overview.md`              |
+| TypeScript standards & naming         | `CodeRules/02-typescript/`                         |
+| React component & hook conventions    | `CodeRules/03-react/`                              |
+| Cross-org isolation tests (MSW guard) | `docs/technical/security/tenant-isolation.md` §6.4 |
 
 > All `docs/` paths are relative to the repository root.

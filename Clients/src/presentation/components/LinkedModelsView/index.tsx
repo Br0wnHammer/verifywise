@@ -10,7 +10,7 @@ import {
   TableRow,
   useTheme,
 } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Cpu } from "lucide-react";
 import { IModelInventory } from "../../../domain/interfaces/i.modelInventory";
 import CustomizableSkeleton from "../Skeletons";
@@ -34,6 +34,8 @@ function StatusBadge({ status }: { status: ModelInventoryStatus }) {
     [ModelInventoryStatus.PENDING]: { bg: "#FFF8E1", color: "#795548" },
     [ModelInventoryStatus.RESTRICTED]: { bg: "#FFE5D0", color: "#E64A19" },
     [ModelInventoryStatus.BLOCKED]: { bg: "#FFD6D6", color: "#D32F2F" },
+    [ModelInventoryStatus.REJECTED]: { bg: "#F5F5F5", color: "#616161" },
+    [ModelInventoryStatus.RETIRED]: { bg: "#ECEFF1", color: "#546E7A" },
   };
 
   const style = statusStyles[status] || { bg: "#E0E0E0", color: "#424242" };

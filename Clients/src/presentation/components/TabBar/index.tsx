@@ -3,8 +3,8 @@ import { Box, SxProps, Theme } from "@mui/material";
 import Tab from "@mui/material/Tab";
 import TabList from "@mui/lab/TabList";
 import { createTabLabelWithCount } from "../../utils/tabUtils";
-import * as LucideIcons from "lucide-react";
-import { LucideIcon } from "lucide-react";
+import { getLucideIcon } from "../../utils/lucideIconMap";
+import type * as LucideIcons from "lucide-react";
 import VWTooltip from "../VWTooltip";
 import { brand } from "../../themes/palette";
 
@@ -164,8 +164,8 @@ const TabBar: React.FC<TabBarProps> = ({
         })}
       >
         {tabs.map((tab) => {
-          // Dynamically get the icon component from lucide-react
-          const IconComponent = tab.icon ? (LucideIcons[tab.icon] as LucideIcon) : undefined;
+          // Look up the icon in the explicit registry (tree-shakeable)
+          const IconComponent = tab.icon ? getLucideIcon(tab.icon) : undefined;
           const iconElement = IconComponent ? (
             <IconComponent
               size={TAB_ICON_SIZE}

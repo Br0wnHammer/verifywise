@@ -10,7 +10,8 @@ import {
 import { useTheme } from "@mui/material";
 import Field from "../../../components/Inputs/Field";
 import { checkStringValidation } from "../../../../application/validations/stringValidation";
-import validator from "validator";
+// Subpath import: avoids bundling the full `validator` package (~85 KiB gz).
+import isEmail from "validator/lib/isEmail";
 import { logEngine } from "../../../../application/tools/log.engine";
 import ConfirmationModal from "../../../components/Dialogs/ConfirmationModal";
 import Alert from "../../../components/Alert";
@@ -47,7 +48,7 @@ const ProfileForm: React.FC = () => {
   const state = store.getState();
   const userData = extractUserToken(state.auth.authToken);
   const { id } = userData || {};
-  const { userRoleName, isSuperAdmin } = useAuth();
+  const { userRoleName } = useAuth();
   const isAdmin = userRoleName === "Admin";
 
   // State management
@@ -305,7 +306,7 @@ const ProfileForm: React.FC = () => {
     const newEmail = e.target.value;
     setEmail(newEmail);
 
-    if (!validator.isEmail(newEmail)) {
+    if (!isEmail(newEmail)) {
       setEmailError("Invalid email address");
     } else {
       setEmailError(null);
@@ -593,81 +594,77 @@ const ProfileForm: React.FC = () => {
           </Stack>
         )}
 
-        {!isSuperAdmin && (
-          <>
-            <Divider sx={{ borderColor: "#C2C2C2", mt: theme.spacing(3) }} />
+        <Divider sx={{ borderColor: "#C2C2C2", mt: theme.spacing(3) }} />
 
-            {loading && (
-              <CustomizableSkeleton
-                variant="rectangular"
-                width="100%"
-                height="200px"
-                minWidth={"100%"}
-                minHeight={200}
-                sx={{ borderRadius: 2 }}
-              />
-            )}
+        {loading && (
+          <CustomizableSkeleton
+            variant="rectangular"
+            width="100%"
+            height="200px"
+            minWidth={"100%"}
+            minHeight={200}
+            sx={{ borderRadius: 2 }}
+          />
+        )}
 
-            {!loading && (
-              <Box>
-                <Stack>
-                  <Typography fontWeight={"600"} gutterBottom sx={{ mb: 2, mt: 10 }}>
-                    Delete account
-                  </Typography>
-                  <Typography
-                    fontWeight={"400"}
-                    variant="body2"
-                    sx={{ mb: 8, mt: 4, color: "text.icon" }}
-                  >
-                    Note that deleting your account will remove all data from our system. This is
-                    permanent and non-recoverable.
-                  </Typography>
-                  <Stack
-                    sx={{
-                      display: "flex",
-                      flexDirection: "row",
-                      justifyContent: "flex-end",
-                      alignItems: "center",
-                    }}
-                  >
-                    <CustomizableButton
-                      sx={{
-                        width: { xs: "100%", sm: theme.spacing(80) },
-                        mb: theme.spacing(4),
-                        backgroundColor: "#DB504A",
-                        color: "background.main",
-                        border: `1px solid ${isAdmin ? "#C2C2C2" : "#DB504A"}`,
-                        gap: 2,
-                      }}
-                      icon={<DeleteIcon size={16} />}
-                      variant="contained"
-                      onClick={handleOpenDeleteDialog}
-                      text="Delete account"
-                      isDisabled={isAdmin}
-                    />
-                  </Stack>
-                </Stack>
-              </Box>
-            )}
+        {!loading && (
+          <Box>
+            <Stack>
+              <Typography fontWeight={"600"} gutterBottom sx={{ mb: 2, mt: 10 }}>
+                Delete account
+              </Typography>
+              <Typography
+                fontWeight={"400"}
+                variant="body2"
+                sx={{ mb: 8, mt: 4, color: "text.icon" }}
+              >
+                Note that deleting your account will remove all data from our system. This is
+                permanent and non-recoverable.
+              </Typography>
+              <Stack
+                sx={{
+                  display: "flex",
+                  flexDirection: "row",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                }}
+              >
+                <CustomizableButton
+                  sx={{
+                    width: { xs: "100%", sm: theme.spacing(80) },
+                    mb: theme.spacing(4),
+                    backgroundColor: "#DB504A",
+                    color: "background.main",
+                    border: `1px solid ${isAdmin ? "#C2C2C2" : "#DB504A"}`,
+                    gap: 2,
+                  }}
+                  icon={<DeleteIcon size={16} />}
+                  variant="contained"
+                  onClick={handleOpenDeleteDialog}
+                  text="Delete account"
+                  isDisabled={isAdmin}
+                />
+              </Stack>
+            </Stack>
+          </Box>
+        )}
 
-            {isDeleteModalOpen && (
-              <ConfirmationModal
-                title="Confirm delete"
-                body={
-                  <Typography fontSize={13}>
-                    Are you sure you want to delete your account? This action is permanent and
-                    cannot be undone.
-                  </Typography>
-                }
-                cancelText="Cancel"
-                proceedText="Delete"
-                onCancel={handleCloseDeleteDialog}
-                onProceed={handleDeleteAccount}
-                proceedButtonColor="error"
-                proceedButtonVariant="contained"
-              />
-            )}
-          </>
+        {isDeleteModalOpen && (
+          <ConfirmationModal
+            title="Confirm delete"
+            body={
+              <Typography fontSize={13}>
+                Are you sure you want to delete your account? This action is permanent and cannot be
+                undone.
+              </Typography>
+            }
+            cancelText="Cancel"
+            proceedText="Delete"
+            onCancel={handleCloseDeleteDialog}
+            onProceed={handleDeleteAccount}
+            proceedButtonColor="error"
+            proceedButtonVariant="contained"
+          />
         )}
       </Box>
       {/* Profile Image Upload Section */}

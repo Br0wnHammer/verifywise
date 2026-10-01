@@ -3,7 +3,7 @@ import { renderWithProviders } from "../../../../test/renderWithProviders";
 import HelperIcon from "../index";
 
 const mockOpen = vi.fn();
-vi.mock("../../UserGuide", () => ({
+vi.mock("../../UserGuide/UserGuideSidebarContext", () => ({
   useUserGuideSidebarContext: () => ({ open: mockOpen }),
 }));
 

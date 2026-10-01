@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Box, Stack, Fade, Modal, Typography, useTheme, IconButton } from "@mui/material";
 import { CirclePlus as AddCircleOutlineIcon, BarChart3 } from "lucide-react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 import { CustomizableButton } from "../../components/button/customizable-button";
 import { logEngine } from "../../../application/tools/log.engine";
@@ -18,13 +18,12 @@ import { createModelInventory } from "../../../application/repository/modelInven
 import { onAiActionCompleted } from "../../../application/events/aiActionEvents";
 import { getShareLinksForResource } from "../../../application/repository/share.repository";
 import { useAuth } from "../../../application/hooks/useAuth";
-import { usePluginRegistry } from "../../../application/contexts/PluginRegistry.context";
-import { PLUGIN_SLOTS } from "../../../domain/constants/pluginSlots";
-import { PluginSlot } from "../../components/PluginSlot";
-import { apiServices } from "../../../infrastructure/api/networkServices";
+import { useExtensions } from "../../../application/contexts/Extensions.context";
+import MLFlowTab from "../Extensions/mlflow/MLFlowTab";
+import AzureAIFoundryTab from "../Extensions/azure-ai-foundry/AzureAIFoundryTab";
 // Import the table and modal components specific to ModelInventory
 import ModelInventoryTable from "./modelInventoryTable";
-// Note: LifecycleConfigEditor is now provided by the model-lifecycle plugin via plugin slots
+// Note: the lifecycle config editor lives in the Model Lifecycle extension (pages/Extensions/model-lifecycle)
 import { IModelInventory } from "../../../domain/interfaces/i.modelInventory";
 import NewModelInventory from "../../components/Modals/NewModelInventory";
 import ModelRisksTable from "./ModelRisksTable";
@@ -52,13 +51,17 @@ import { PageHeaderExtended } from "../../components/Layout/PageHeaderExtended";
 import TabContext from "@mui/lab/TabContext";
 import { SearchBox } from "../../components/Search";
 import TabBar from "../../components/TabBar";
-import { ModelInventoryStatus } from "../../../domain/enums/modelInventory.enum";
+import {
+  ModelInventoryStatus,
+  ModelInventoryType,
+} from "../../../domain/enums/modelInventory.enum";
 import { EvidenceHubModel } from "../../../domain/models/Common/evidenceHub/evidenceHub.model";
 import NewEvidenceHub from "../../components/Modals/EvidenceHub";
 import { createEvidenceHub } from "../../../application/repository/evidenceHub.repository";
 import EvidenceHubTable from "./evidenceHubTable";
 import FilePreviewPanel from "../FileManager/components/FilePreviewPanel";
 import { FileMetadata } from "../../../application/repository/file.repository";
+import { earliestFileExpiry } from "../../../application/utils/fileExpiry";
 import ModelEvaluationsTab from "./ModelEvaluationsTab";
 import ModelRiskManagementTab from "./mrm";
 import ShareButton from "../../components/ShareViewDropdown/ShareButton";
@@ -89,6 +92,7 @@ type ModelInventoryColumn =
   | "risks"
   | "status"
   | "status_date"
+  | "type"
   | "actions";
 
 const MODEL_INVENTORY_COLUMNS: ColumnConfig<ModelInventoryColumn>[] = [
@@ -100,18 +104,13 @@ const MODEL_INVENTORY_COLUMNS: ColumnConfig<ModelInventoryColumn>[] = [
   { key: "risks", label: "Risks", defaultVisible: true },
   { key: "status", label: "Status", defaultVisible: true },
   { key: "status_date", label: "Status date", defaultVisible: true },
+  { key: "type", label: "Type", defaultVisible: true },
   { key: "actions", label: "Actions", defaultVisible: true, alwaysVisible: true },
 ];
 
 // Column visibility management for Model Risks tab
 type ModelRiskColumn =
-  | "risk_name"
-  | "model_name"
-  | "risk_level"
-  | "status"
-  | "owner"
-  | "target_date"
-  | "actions";
+  "risk_name" | "model_name" | "risk_level" | "status" | "owner" | "target_date" | "actions";
 
 const MODEL_RISK_COLUMNS: ColumnConfig<ModelRiskColumn>[] = [
   { key: "risk_name", label: "Risk name", defaultVisible: true, alwaysVisible: true },
@@ -153,7 +152,7 @@ const ModelInventory: React.FC = () => {
   const [modelInventoryData, setModelInventoryData] = useState<IModelInventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isNewModelInventoryModalOpen, setIsNewModelInventoryModalOpen] = useState(false);
-  // Note: Lifecycle config is now provided by the model-lifecycle plugin via plugin slots
+  // Note: Lifecycle config is managed by the Model Lifecycle extension (pages/Extensions/model-lifecycle)
 
   const [selectedModelInventory, setSelectedModelInventory] = useState<IModelInventory | null>(
     null,
@@ -177,9 +176,24 @@ const ModelInventory: React.FC = () => {
   const isCreatingDisabled = !userRoleName || !["Admin", "Editor"].includes(userRoleName);
   const theme = useTheme();
 
-  // Get plugin tabs dynamically from the plugin registry
-  const { getPluginTabs } = usePluginRegistry();
-  const pluginTabs = useMemo(() => getPluginTabs(PLUGIN_SLOTS.MODELS_TABS), [getPluginTabs]);
+  const { isEnabled } = useExtensions();
+  const extensionTabs = useMemo(
+    () => [
+      ...(isEnabled("mlflow")
+        ? [{ label: "MLFlow", value: "mlflow", icon: "Database" as const }]
+        : []),
+      ...(isEnabled("azure-ai-foundry")
+        ? [
+            {
+              label: "Azure AI Foundry",
+              value: "azure-ai-foundry",
+              icon: "Database" as const,
+            },
+          ]
+        : []),
+    ],
+    [isEnabled],
+  );
 
   // Share link mutations
   const createShareMutation = useCreateShareLink();
@@ -290,6 +304,7 @@ const ModelInventory: React.FC = () => {
           { value: ModelInventoryStatus.RESTRICTED, label: "Restricted" },
           { value: ModelInventoryStatus.PENDING, label: "Pending" },
           { value: ModelInventoryStatus.BLOCKED, label: "Blocked" },
+          { value: ModelInventoryStatus.RETIRED, label: "Retired" },
         ],
       },
       {
@@ -318,6 +333,17 @@ const ModelInventory: React.FC = () => {
           { value: "false", label: "Not assessed" },
         ],
       },
+      {
+        id: "type",
+        label: "Type",
+        type: "select" as const,
+        options: [
+          { value: ModelInventoryType.TRADITIONAL_ML, label: "Traditional ML" },
+          { value: ModelInventoryType.GENAI, label: "GenAI" },
+          { value: ModelInventoryType.RAG, label: "RAG" },
+          { value: ModelInventoryType.AGENTIC_AI, label: "Agentic AI" },
+        ],
+      },
     ],
     [getUniqueProviders, getUniqueApprovers],
   );
@@ -336,6 +362,8 @@ const ModelInventory: React.FC = () => {
           return item.approver?.toString();
         case "security_assessment":
           return item.security_assessment ? "true" : "false";
+        case "type":
+          return item.type ?? null;
         default:
           return null;
       }
@@ -609,7 +637,7 @@ const ModelInventory: React.FC = () => {
         case "uploaded_by":
           return item.evidence_files?.[0]?.uploaded_by?.toString();
         case "expiry_date":
-          return item.expiry_date;
+          return earliestFileExpiry(item.evidence_files);
         default:
           return null;
       }
@@ -639,27 +667,25 @@ const ModelInventory: React.FC = () => {
   const [showReplaceConfirmation, setShowReplaceConfirmation] = useState(false);
   const [isCreatingLink, setIsCreatingLink] = useState(false);
 
-  // Determine the active tab based on the URL
-  const getTabFromPath = useCallback((pathname: string, tabs: typeof pluginTabs) => {
+  const getTabFromPath = useCallback((pathname: string, tabs: typeof extensionTabs) => {
     if (pathname.includes("model-risk-management")) return "model-risk-management";
     if (pathname.includes("model-risks")) return "model-risks";
     if (pathname.includes("evidence-hub")) return "evidence-hub";
     if (pathname.includes("evaluations")) return "evaluations";
-    // Check for plugin tabs dynamically
     for (const tab of tabs) {
       if (pathname.includes(tab.value)) return tab.value;
     }
     return "models";
   }, []);
 
-  const [activeTab, setActiveTab] = useState(() => getTabFromPath(location.pathname, pluginTabs));
+  const [activeTab, setActiveTab] = useState(() =>
+    getTabFromPath(location.pathname, extensionTabs),
+  );
 
-  // Sync activeTab with URL changes (for browser back/forward navigation)
   useEffect(() => {
-    const newTab = getTabFromPath(location.pathname, pluginTabs);
+    const newTab = getTabFromPath(location.pathname, extensionTabs);
 
-    // If trying to access a plugin tab but plugin is not installed, redirect to models
-    const isPluginTab = pluginTabs.some((t) => t.value === newTab);
+    const isExtensionTab = extensionTabs.some((t) => t.value === newTab);
     const isBuiltInTab = [
       "models",
       "model-risks",
@@ -668,12 +694,12 @@ const ModelInventory: React.FC = () => {
       "model-risk-management",
     ].includes(newTab);
 
-    if (!isBuiltInTab && !isPluginTab) {
+    if (!isBuiltInTab && !isExtensionTab) {
       setActiveTab("models");
     } else {
       setActiveTab(newTab);
     }
-  }, [location.pathname, pluginTabs, getTabFromPath]);
+  }, [location.pathname, extensionTabs, getTabFromPath]);
 
   // Calculate summary from data
   const summary: Summary = {
@@ -1167,9 +1193,7 @@ const ModelInventory: React.FC = () => {
           uploader_name: uploader?.name,
           uploader_surname: uploader?.surname,
           tags: evidence?.tags,
-          expiry_date: evidence?.expiry_date
-            ? new Date(evidence.expiry_date).toISOString()
-            : undefined,
+          expiry_date: rawFile.expiry_date ?? undefined,
           description: evidence?.description ?? undefined,
         };
       });
@@ -1477,9 +1501,12 @@ const ModelInventory: React.FC = () => {
 
         errorMessage = validationMessages;
       }
-      // Handle general error message
+      // Handle general error message — prefer the specific payload (STATUS_CODE
+      // puts the specific text in `data`, e.g. a 409 "Conflict" carries the
+      // human-readable reason there) over the generic `message` (issue #4755).
       else if (errorData.message) {
-        errorMessage = errorData.message;
+        errorMessage =
+          typeof errorData.data === "string" && errorData.data ? errorData.data : errorData.message;
       }
     }
 
@@ -1785,9 +1812,10 @@ const ModelInventory: React.FC = () => {
           .filter(Boolean)
           .join(", ") || "-";
 
-      // Format expiry date
-      const formattedExpiryDate = evidence.expiry_date
-        ? new Date(evidence.expiry_date).toISOString().split("T")[0]
+      // Expiry lives on the linked files; the earliest one represents the row.
+      const earliestExpiry = earliestFileExpiry(evidence.evidence_files);
+      const formattedExpiryDate = earliestExpiry
+        ? new Date(earliestExpiry).toISOString().split("T")[0]
         : "-";
 
       return {
@@ -1954,7 +1982,7 @@ const ModelInventory: React.FC = () => {
     } else if (newValue === "model-risk-management") {
       navigate("/model-inventory/model-risk-management");
     } else {
-      // Handle plugin tabs dynamically
+      // Handle extension tabs (e.g. MLflow, Azure AI Foundry) dynamically
       navigate(`/model-inventory/${newValue}`);
     }
   };
@@ -2161,11 +2189,10 @@ const ModelInventory: React.FC = () => {
                   icon: "Database" as const,
                   tooltip: "LLM evaluations and bias audits linked to models in your inventory",
                 },
-                // Dynamically add plugin tabs
-                ...pluginTabs.map((tab) => ({
+                ...extensionTabs.map((tab) => ({
                   label: tab.label,
                   value: tab.value,
-                  icon: (tab.icon || "Database") as "Database" | "Box" | "AlertTriangle",
+                  icon: tab.icon as "Database" | "Box" | "AlertTriangle",
                 })),
                 {
                   label: "Evidence hub",
@@ -2261,7 +2288,7 @@ const ModelInventory: React.FC = () => {
                 >
                   <BarChart3 size={16} color={palette.text.secondary} />
                 </IconButton>
-                {/* Lifecycle config is now accessed via Plugin Settings page */}
+                {/* Lifecycle config is accessed from the Model Lifecycle extension settings page */}
                 <div data-joyride-id="add-model-button">
                   <CustomizableButton
                     variant="contained"
@@ -2387,15 +2414,8 @@ const ModelInventory: React.FC = () => {
           </>
         )}
 
-        {/* Render plugin tab content dynamically */}
-        {pluginTabs.some((tab) => tab.value === activeTab) && (
-          <PluginSlot
-            id={PLUGIN_SLOTS.MODELS_TABS}
-            renderType="tab"
-            activeTab={activeTab}
-            slotProps={{ apiServices }}
-          />
-        )}
+        {activeTab === "mlflow" && isEnabled("mlflow") && <MLFlowTab />}
+        {activeTab === "azure-ai-foundry" && isEnabled("azure-ai-foundry") && <AzureAIFoundryTab />}
 
         {activeTab === "evidence-hub" && (
           <>
@@ -2534,10 +2554,12 @@ const ModelInventory: React.FC = () => {
                   status_date: selectedModelInventory.status_date
                     ? new Date(selectedModelInventory.status_date).toISOString().split("T")[0]
                     : new Date().toISOString().split("T")[0],
+                  type: selectedModelInventory.type ?? "",
                   reference_link: selectedModelInventory.reference_link || "",
                   biases: selectedModelInventory.biases || "",
                   limitations: selectedModelInventory.limitations || "",
                   hosting_provider: selectedModelInventory.hosting_provider || "",
+                  intended_use: selectedModelInventory.intended_use || "",
                   projects: selectedModelInventory.projects || [],
                   frameworks: selectedModelInventory.frameworks || [],
                   security_assessment_data: selectedModelInventory.security_assessment_data || [],
@@ -2613,7 +2635,7 @@ const ModelInventory: React.FC = () => {
           onOpenLink={handleOpenLink}
         />
 
-        {/* Lifecycle Config is now provided by the model-lifecycle plugin */}
+        {/* Lifecycle config is provided by the Model Lifecycle extension */}
       </PageHeaderExtended>
     </Stack>
   );

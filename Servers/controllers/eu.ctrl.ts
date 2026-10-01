@@ -404,10 +404,7 @@ export async function saveControls(req: RequestWithFile, res: Response): Promise
     const newApprover = toUserIdOrNull(Control.approver);
     const newDueDate = blankToNull(Control.due_date);
     const newRiskReview = blankToNull(Control.risk_review) as
-      | "Acceptable risk"
-      | "Residual risk"
-      | "Unacceptable risk"
-      | null;
+      "Acceptable risk" | "Residual risk" | "Unacceptable risk" | null;
 
     const candidateAssigneeIds = [newOwner, newReviewer, newApprover].filter(
       (id): id is number => id !== null,
@@ -498,10 +495,7 @@ export async function saveControls(req: RequestWithFile, res: Response): Promise
           subcontrol.id!,
           {
             status: (subcontrol.status || undefined) as
-              | "Waiting"
-              | "In progress"
-              | "Done"
-              | undefined,
+              "Waiting" | "In progress" | "Done" | undefined,
             implementation_details: subcontrol.implementation_details,
             evidence_description: subcontrol.evidence_description,
             feedback_description: subcontrol.feedback_description,

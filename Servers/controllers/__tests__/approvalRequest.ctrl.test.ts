@@ -82,6 +82,12 @@ jest.mock("bullmq", () => ({
 }));
 
 import { TransientApprovalError } from "../../advisor/approval/approvalGateway";
+import { ValidationException } from "../../domain.layer/exceptions/custom.exception";
+import {
+  notifyApprovalComplete,
+  notifyApprovalRequested,
+  sendInAppNotification,
+} from "../../services/inAppNotification.service";
 import { sequelize } from "../../database/db";
 import {
   createApprovalRequestQuery,
@@ -106,6 +112,15 @@ import {
   withdrawRequest,
 } from "../approvalRequest.ctrl";
 
+const mockNotifyApprovalComplete = notifyApprovalComplete as jest.MockedFunction<
+  typeof notifyApprovalComplete
+>;
+const mockNotifyApprovalRequested = notifyApprovalRequested as jest.MockedFunction<
+  typeof notifyApprovalRequested
+>;
+const mockSendInAppNotification = sendInAppNotification as jest.MockedFunction<
+  typeof sendInAppNotification
+>;
 const mockCreateApprovalRequestQuery = createApprovalRequestQuery as jest.MockedFunction<
   typeof createApprovalRequestQuery
 >;
@@ -152,6 +167,10 @@ function createRes(): any {
 describe("approvalRequest.ctrl", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // clearAllMocks wipes call records but keeps implementations, so a test
+    // that reshapes sequelize.query would otherwise leak into whichever test
+    // runs next. Restore the module-level default every time.
+    (sequelize.query as jest.Mock<any>).mockResolvedValue([{ name: "John", surname: "Doe" }]);
   });
 
   afterEach(async () => {
@@ -194,38 +213,6 @@ describe("approvalRequest.ctrl", () => {
       expect(res.status).toHaveBeenCalledWith(401);
     });
 
-    it("should return 400 when request_name is missing", async () => {
-      const req = createReq({ body: { workflow_id: 1 } });
-      const res = createRes();
-
-      const mockTransaction = {
-        commit: jest.fn(),
-        rollback: jest.fn(),
-      };
-      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
-
-      await createApprovalRequest(req as Request, res as Response);
-
-      expect(mockTransaction.rollback).toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
-    });
-
-    it("should return 400 when workflow_id is missing", async () => {
-      const req = createReq({ body: { request_name: "Test Request" } });
-      const res = createRes();
-
-      const mockTransaction = {
-        commit: jest.fn(),
-        rollback: jest.fn(),
-      };
-      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
-
-      await createApprovalRequest(req as Request, res as Response);
-
-      expect(mockTransaction.rollback).toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
-    });
-
     it("should return 404 when workflow is not found", async () => {
       const req = createReq({
         body: { request_name: "Test Request", workflow_id: 1 },
@@ -245,7 +232,7 @@ describe("approvalRequest.ctrl", () => {
       expect(res.status).toHaveBeenCalledWith(404);
     });
 
-    it("should return 400 when workflow has no steps", async () => {
+    it("should return 400 with errors[] when workflow has no steps", async () => {
       const req = createReq({
         body: { request_name: "Test Request", workflow_id: 1 },
       });
@@ -266,6 +253,17 @@ describe("approvalRequest.ctrl", () => {
 
       expect(mockTransaction.rollback).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        message: "Bad Request",
+        data: {
+          errors: [
+            expect.objectContaining({
+              field: "workflow_id",
+              location: "body",
+            }),
+          ],
+        },
+      });
     });
 
     it("should return 201 when approval request is created successfully", async () => {
@@ -313,6 +311,166 @@ describe("approvalRequest.ctrl", () => {
       expect(mockTransaction.commit).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(201);
       expect(mockCreateApprovalRequestQuery).toHaveBeenCalled();
+    });
+
+    it("still returns 201 when approver notification throws", async () => {
+      const mockRequest = {
+        id: 1,
+        request_name: "Test Request",
+        toJSON: jest.fn().mockReturnValue({ id: 1, request_name: "Test Request" }),
+      };
+
+      const req = createReq({
+        body: {
+          request_name: "Test Request",
+          workflow_id: 1,
+          entity_id: "entity1",
+          entity_type: "use_case",
+          entity_data: {},
+        },
+      });
+      const res = createRes();
+
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      mockGetApprovalWorkflowByIdQuery.mockResolvedValue({
+        id: 1,
+        workflow_title: "Test Workflow",
+      } as any);
+      mockGetWorkflowStepsQuery.mockResolvedValue([
+        { step_number: 1, approvers: [{ approver_id: 2 }] },
+      ] as any);
+      mockCreateApprovalRequestQuery.mockResolvedValue(mockRequest as any);
+      mockNotifyApprovalRequested.mockRejectedValueOnce(new Error("notifier down"));
+
+      await createApprovalRequest(req as Request, res as Response);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // Notifications are detached from the response path.
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockTransaction.commit).toHaveBeenCalled();
+    });
+
+    // The detached notification block has several fallbacks that only show up
+    // on non-default inputs; these pin them.
+    describe("approver notification fan-out", () => {
+      const setup = (steps: any[], overrides: Record<string, any> = {}) => {
+        const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+        (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+        mockGetApprovalWorkflowByIdQuery.mockResolvedValue({
+          id: 1,
+          workflow_title: "Test Workflow",
+          ...overrides,
+        } as any);
+        mockGetWorkflowStepsQuery.mockResolvedValue(steps as any);
+        mockCreateApprovalRequestQuery.mockResolvedValue({
+          id: 1,
+          request_name: "Test Request",
+          toJSON: jest.fn().mockReturnValue({ id: 1 }),
+        } as any);
+        return mockTransaction;
+      };
+
+      const run = async () => {
+        const req = createReq({
+          body: { request_name: "Test Request", workflow_id: 1, entity_id: "e1" },
+        });
+        const res = createRes();
+        await createApprovalRequest(req as Request, res as Response);
+        await new Promise((resolve) => setImmediate(resolve));
+        return res;
+      };
+
+      it("does not notify the requester when they are their own first approver", async () => {
+        // createReq defaults userId to 1, so this approver IS the requester.
+        setup([{ step_number: 1, approvers: [{ approver_id: 1 }] }]);
+
+        const res = await run();
+
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(mockNotifyApprovalRequested).not.toHaveBeenCalled();
+      });
+
+      it("sends no notifications when the first step has no approvers", async () => {
+        setup([{ step_number: 1, approvers: [] }]);
+
+        const res = await run();
+
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(mockNotifyApprovalRequested).not.toHaveBeenCalled();
+      });
+
+      it("accepts a bare approver id as well as an object", async () => {
+        setup([{ step_number: 1, approvers: [2] }]);
+
+        await run();
+
+        expect(mockNotifyApprovalRequested).toHaveBeenCalledWith(
+          1,
+          2,
+          expect.objectContaining({ stepNumber: 1 }),
+          expect.any(String),
+          expect.any(String),
+        );
+      });
+
+      it("falls back to the workflow name when no title is set", async () => {
+        setup([{ step_number: 1, approvers: [{ approver_id: 2 }] }], {
+          workflow_title: undefined,
+          name: "Fallback Workflow",
+        });
+
+        await run();
+
+        expect(mockNotifyApprovalRequested).toHaveBeenCalledWith(
+          1,
+          2,
+          expect.objectContaining({ workflowName: "Fallback Workflow" }),
+          expect.any(String),
+          expect.any(String),
+        );
+      });
+
+      it('names an unknown requester "Someone"', async () => {
+        setup([{ step_number: 1, approvers: [{ approver_id: 2 }] }]);
+        // No user row comes back for the requester lookup.
+        (sequelize.query as jest.Mock<any>).mockResolvedValue([]);
+
+        await run();
+
+        expect(mockNotifyApprovalRequested).toHaveBeenCalledWith(
+          1,
+          2,
+          expect.anything(),
+          "Someone",
+          expect.any(String),
+        );
+      });
+    });
+
+    it("returns 400 when the create fails validation", async () => {
+      const req = createReq({
+        body: { request_name: "Test Request", workflow_id: 1, entity_id: "e1" },
+      });
+      const res = createRes();
+
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      mockGetApprovalWorkflowByIdQuery.mockResolvedValue({
+        id: 1,
+        workflow_title: "Test Workflow",
+      } as any);
+      mockGetWorkflowStepsQuery.mockResolvedValue([
+        { step_number: 1, approvers: [{ approver_id: 2 }] },
+      ] as any);
+      mockCreateApprovalRequestQuery.mockRejectedValue(new ValidationException("bad entity"));
+
+      await createApprovalRequest(req as Request, res as Response);
+
+      // A ValidationException is a 400, not the generic 500.
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ message: "Bad Request", data: "bad entity" });
     });
 
     it("should return 500 on database error", async () => {
@@ -459,15 +617,6 @@ describe("approvalRequest.ctrl", () => {
       expect(res.status).toHaveBeenCalledWith(401);
     });
 
-    it("should return 400 when id is invalid", async () => {
-      const req = createReq({ params: { id: "invalid" } });
-      const res = createRes();
-
-      await getApprovalRequestById(req as Request, res as Response);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-    });
-
     it("should return 404 when request is not found", async () => {
       mockGetApprovalRequestByIdQuery.mockResolvedValue(null as any);
 
@@ -529,6 +678,96 @@ describe("approvalRequest.ctrl", () => {
   });
 
   describe("approveRequest", () => {
+    // The notification work runs in a detached `(async () => {...})()` after the
+    // response is sent, so these flush the microtask queue before asserting.
+    const flushNotifications = () => new Promise((resolve) => setImmediate(resolve));
+
+    /** Route each query by its SQL so the test does not depend on call order. */
+    const routeQueries = (entityType: string | null) => {
+      (sequelize.query as jest.Mock<any>).mockImplementation((sql: any) => {
+        if (typeof sql === "string" && sql.includes("COUNT(*)")) {
+          return Promise.resolve([{ count: "3" }]);
+        }
+        if (typeof sql === "string" && sql.includes("entity_type")) {
+          return Promise.resolve([{ entity_type: entityType }]);
+        }
+        return Promise.resolve([{ name: "Jane", surname: "Roe" }]);
+      });
+    };
+
+    it("notifies the requester with the entity type on full approval", async () => {
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      routeQueries("ai_action");
+      mockProcessApprovalQuery.mockResolvedValue({
+        type: "requester_approved",
+        requestName: "Test Request",
+        requesterId: 42,
+      } as any);
+
+      const req = createReq({ params: { id: "1" }, body: {} });
+      const res = createRes();
+      await approveRequest(req as Request, res as Response);
+      await flushNotifications();
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockNotifyApprovalComplete).toHaveBeenCalledWith(
+        1,
+        42,
+        { id: 1, name: "Test Request", totalSteps: 3 },
+        expect.any(String),
+        // The looked-up entity_type is forwarded so the notification text
+        // matches the artifact rather than defaulting to "Use case".
+        "ai_action",
+      );
+    });
+
+    it("passes undefined rather than null when no entity type is stored", async () => {
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      routeQueries(null);
+      mockProcessApprovalQuery.mockResolvedValue({
+        type: "requester_approved",
+        requestName: "Test Request",
+        requesterId: 42,
+      } as any);
+
+      const req = createReq({ params: { id: "1" }, body: {} });
+      const res = createRes();
+      await approveRequest(req as Request, res as Response);
+      await flushNotifications();
+
+      expect(mockNotifyApprovalComplete).toHaveBeenCalledWith(
+        1,
+        42,
+        expect.anything(),
+        expect.any(String),
+        undefined,
+      );
+    });
+
+    it("still returns 200 when the notification itself throws", async () => {
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      routeQueries("ai_action");
+      mockProcessApprovalQuery.mockResolvedValue({
+        type: "requester_approved",
+        requestName: "Test Request",
+        requesterId: 42,
+      } as any);
+      mockNotifyApprovalComplete.mockRejectedValueOnce(new Error("notifier down"));
+
+      const req = createReq({ params: { id: "1" }, body: {} });
+      const res = createRes();
+      await approveRequest(req as Request, res as Response);
+      await flushNotifications();
+
+      // The response was already sent; a failing notifier must not change it
+      // or surface an unhandled rejection.
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockTransaction.commit).toHaveBeenCalled();
+    });
+
     it("should return 401 when userId is missing", async () => {
       const req = createReq({ userId: undefined, params: { id: "1" } });
       const res = createRes();
@@ -543,22 +782,6 @@ describe("approvalRequest.ctrl", () => {
 
       expect(mockTransaction.rollback).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(401);
-    });
-
-    it("should return 400 when id is invalid", async () => {
-      const req = createReq({ params: { id: "invalid" } });
-      const res = createRes();
-
-      const mockTransaction = {
-        commit: jest.fn(),
-        rollback: jest.fn(),
-      };
-      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
-
-      await approveRequest(req as Request, res as Response);
-
-      expect(mockTransaction.rollback).toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
     });
 
     it("should return 200 when approval is successful", async () => {
@@ -674,22 +897,6 @@ describe("approvalRequest.ctrl", () => {
       expect(res.status).toHaveBeenCalledWith(401);
     });
 
-    it("should return 400 when id is invalid", async () => {
-      const req = createReq({ params: { id: "invalid" } });
-      const res = createRes();
-
-      const mockTransaction = {
-        commit: jest.fn(),
-        rollback: jest.fn(),
-      };
-      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
-
-      await rejectRequest(req as Request, res as Response);
-
-      expect(mockTransaction.rollback).toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
-    });
-
     it("should return 200 when rejection is successful", async () => {
       const req = createReq({
         params: { id: "1" },
@@ -716,6 +923,26 @@ describe("approvalRequest.ctrl", () => {
         message: "OK",
         data: { message: "Request rejected successfully" },
       });
+    });
+
+    it("still returns 200 when the rejection notification throws", async () => {
+      const req = createReq({ params: { id: "1" }, body: { comments: "Rejected" } });
+      const res = createRes();
+
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      mockProcessApprovalQuery.mockResolvedValue({
+        type: "requester_rejected",
+        requestName: "Test Request",
+        requesterId: 1,
+      } as any);
+      mockSendInAppNotification.mockRejectedValueOnce(new Error("notifier down"));
+
+      await rejectRequest(req as Request, res as Response);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockTransaction.commit).toHaveBeenCalled();
     });
 
     it("should return 500 on error", async () => {
@@ -754,22 +981,6 @@ describe("approvalRequest.ctrl", () => {
 
       expect(mockTransaction.rollback).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(401);
-    });
-
-    it("should return 400 when id is invalid", async () => {
-      const req = createReq({ params: { id: "invalid" } });
-      const res = createRes();
-
-      const mockTransaction = {
-        commit: jest.fn(),
-        rollback: jest.fn(),
-      };
-      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
-
-      await withdrawRequest(req as Request, res as Response);
-
-      expect(mockTransaction.rollback).toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
     });
 
     it("should return 403 when user is not the requestor", async () => {

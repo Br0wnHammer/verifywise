@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { translations, type Lang } from "../../i18n/translations";
-import { getLanguage } from "../../i18n/domTranslator";
+import type { Lang } from "../../i18n/translations";
+import { getLanguage, translateKey } from "../../i18n/domTranslator";
 
 /**
  * Lightweight reactive translation hook.
@@ -25,10 +25,9 @@ export const useTranslation = () => {
   }, []);
 
   const t = useCallback(
-    (key: string): string => {
-      if (lang === "en") return key;
-      return translations[lang]?.[key] || key;
-    },
+    (key: string): string => translateKey(key),
+    // lang re-binds the callback so consumers re-render on language change;
+    // the lookup itself reads the DOM translator's loaded dictionary.
     [lang],
   );
 

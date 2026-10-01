@@ -14,13 +14,7 @@ import { storageService } from "../../infrastructure/storage";
  * Keys match the display names used in the table for consistency
  */
 export type FileColumn =
-  | "file"
-  | "upload_date"
-  | "uploader"
-  | "source"
-  | "version"
-  | "status"
-  | "action";
+  "file" | "upload_date" | "uploader" | "source" | "version" | "status" | "quality" | "action";
 
 /**
  * Column configuration with display name and default visibility
@@ -44,10 +38,17 @@ export const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: "source", label: "Source", defaultVisible: true },
   { key: "version", label: "Version", defaultVisible: true },
   { key: "status", label: "Status", defaultVisible: true },
+  { key: "quality", label: "Quality", defaultVisible: true },
   { key: "action", label: "Action", defaultVisible: true, alwaysVisible: true },
 ];
 
-const SCHEMA_VERSION = 3;
+// Bumped to 4 when the "quality" column was added, so existing users get it
+// visible by default instead of keeping their stored (pre-quality) set.
+//
+// Exported so tests can seed "the current version" without hardcoding a number.
+// The previous bump broke the migration test precisely because the test carried
+// its own copy of this value and was not updated alongside it.
+export const SCHEMA_VERSION = 4;
 const STORAGE_KEY = "verifywise_file_column_visibility";
 const VERSION_KEY = "verifywise_file_column_visibility_version";
 // Old un-namespaced keys, migrated once via the StorageService legacy-key mechanism.

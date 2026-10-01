@@ -9,5 +9,6 @@ describe("LazyFallback", () => {
     const box = container.firstChild as HTMLElement;
     expect(box).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAccessibleName("Loading");
   });
 });

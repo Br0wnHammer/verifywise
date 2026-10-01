@@ -54,6 +54,7 @@ jest.mock("../../services/inAppNotification.service", () => ({
 }));
 jest.mock("../../utils/taskEntityLink.utils", () => ({
   getTaskEntityLinksQuery: jest.fn().mockResolvedValue([]),
+  persistTaskEntityLinks: jest.fn().mockResolvedValue(0),
 }));
 jest.mock("../../utils/changeHistory.base.utils", () => ({
   recordEntityCreation: jest.fn().mockResolvedValue(undefined),
@@ -87,6 +88,11 @@ import {
   restoreTaskByIdQuery,
   hardDeleteTaskByIdQuery,
 } from "../../utils/task.utils";
+import { persistTaskEntityLinks } from "../../utils/taskEntityLink.utils";
+
+const mockPersistLinks = persistTaskEntityLinks as jest.MockedFunction<
+  typeof persistTaskEntityLinks
+>;
 
 const mockCreate = createNewTaskQuery as jest.MockedFunction<typeof createNewTaskQuery>;
 const mockGetAll = getTasksQuery as jest.MockedFunction<typeof getTasksQuery>;
@@ -153,12 +159,67 @@ describe("task.ctrl", () => {
       await createTask(req, res);
       expect(res.status).toHaveBeenCalledWith(201);
     });
+    it("should return the full created task entity in the response body", async () => {
+      const fullTask = {
+        id: 1,
+        title: "T1",
+        description: "desc",
+        creator_id: 1,
+        organization_id: 1,
+        due_date: "2026-09-01T00:00:00.000Z",
+        priority: "High",
+        status: "Open",
+        categories: ["a"],
+        created_at: "2026-08-14T00:00:00.000Z",
+        updated_at: "2026-08-14T00:00:00.000Z",
+      };
+      const task = {
+        ...mockTask(fullTask),
+        dataValues: { ...fullTask, assignees: [2, 3] },
+      };
+      mockCreate.mockResolvedValue(task as any);
+      const req = createReq({ body: { title: "T1", assignees: [2, 3] } });
+      const res = createRes();
+      await createTask(req, res);
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith({
+        message: "Created",
+        data: expect.objectContaining({
+          id: 1,
+          title: "T1",
+          description: "desc",
+          creator_id: 1,
+          priority: "High",
+          status: "Open",
+          created_at: "2026-08-14T00:00:00.000Z",
+          assignees: [2, 3],
+        }),
+      });
+    });
     it("should return 500 on error", async () => {
       mockCreate.mockRejectedValue(new Error("DB error"));
       const req = createReq({ body: { title: "T1" } });
       const res = createRes();
       await createTask(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+    it("should persist entity_links when provided", async () => {
+      const task = mockTask(buildTask({ id: 5 }));
+      mockCreate.mockResolvedValue(task as any);
+      const links = [{ entity_id: 9, entity_type: "policy", entity_name: "P" }];
+      const req = createReq({ body: { title: "T1", assignees: [], entity_links: links } });
+      const res = createRes();
+      await createTask(req, res);
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockPersistLinks).toHaveBeenCalledWith(5, links, 1, expect.anything());
+    });
+    it("should not persist entity_links when none are provided", async () => {
+      const task = mockTask(buildTask());
+      mockCreate.mockResolvedValue(task as any);
+      const req = createReq({ body: { title: "T1", assignees: [] } });
+      const res = createRes();
+      await createTask(req, res);
+      expect(mockPersistLinks).not.toHaveBeenCalled();
     });
   });
 
@@ -239,12 +300,78 @@ describe("task.ctrl", () => {
       await updateTask(req, res);
       expect(res.status).toHaveBeenCalledWith(200);
     });
+    it("should return the full updated task entity in the response body", async () => {
+      const existing = mockTask(buildTask());
+      const fullUpdated = {
+        id: 1,
+        title: "T2",
+        description: "desc",
+        creator_id: 1,
+        organization_id: 1,
+        due_date: "2026-09-01T00:00:00.000Z",
+        priority: "High",
+        status: "In Progress",
+        categories: ["a"],
+        created_at: "2026-08-14T00:00:00.000Z",
+        updated_at: "2026-08-14T01:00:00.000Z",
+      };
+      const updated = {
+        ...mockTask(fullUpdated),
+        dataValues: { ...fullUpdated, assignees: [2] },
+      };
+      mockGetById.mockResolvedValue(existing as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      const req = createReq({
+        params: { id: "1" },
+        body: { title: "T2", status: "In Progress", assignees: [2] },
+      });
+      const res = createRes();
+      await updateTask(req, res);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        message: "OK",
+        data: expect.objectContaining({
+          id: 1,
+          title: "T2",
+          status: "In Progress",
+          priority: "High",
+          updated_at: "2026-08-14T01:00:00.000Z",
+          assignees: [2],
+        }),
+      });
+    });
     it("should return 500 on error", async () => {
       mockGetById.mockRejectedValue(new Error("DB error"));
       const req = createReq({ params: { id: "1" }, body: { title: "T2" } });
       const res = createRes();
       await updateTask(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+    it("should persist entity_links when provided", async () => {
+      const existing = mockTask(buildTask());
+      const updated = mockTask(buildTask({ id: 7 }));
+      mockGetById.mockResolvedValue(existing as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      const links = [{ entity_id: 3, entity_type: "vendor", entity_name: "V" }];
+      const req = createReq({
+        params: { id: "7" },
+        body: { title: "T2", entity_links: links },
+      });
+      const res = createRes();
+      await updateTask(req, res);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockPersistLinks).toHaveBeenCalledWith(7, links, 1, expect.anything());
+    });
+    it("should not persist entity_links when none are provided", async () => {
+      const existing = mockTask(buildTask());
+      const updated = mockTask(buildTask({ id: 7 }));
+      mockGetById.mockResolvedValue(existing as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      const req = createReq({ params: { id: "7" }, body: { title: "T2" } });
+      const res = createRes();
+      await updateTask(req, res);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockPersistLinks).not.toHaveBeenCalled();
     });
   });
 
@@ -291,6 +418,34 @@ describe("task.ctrl", () => {
       const res = createRes();
       await restoreTask(req, res);
       expect(res.status).toHaveBeenCalledWith(200);
+    });
+    it("should return the full restored task entity in the response body", async () => {
+      const restored = {
+        ...buildTask(),
+        description: "desc",
+        creator_id: 1,
+        organization_id: 1,
+        priority: "Medium",
+        status: "Open",
+        categories: [],
+        created_at: "2026-08-14T00:00:00.000Z",
+        updated_at: "2026-08-14T01:00:00.000Z",
+        assignees: [2],
+      };
+      mockRestore.mockResolvedValue(restored as any);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+      await restoreTask(req, res);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        message: "OK",
+        data: expect.objectContaining({
+          id: 1,
+          title: "T1",
+          status: "Open",
+          assignees: [2],
+        }),
+      });
     });
     it("should return 404 when task is not found", async () => {
       mockRestore.mockResolvedValue(null as any);

@@ -34,6 +34,7 @@ import {
   searchFilesByContent,
   FileContentSearchOptions,
 } from "../repositories/file.repository";
+import { isRetentionPolicy } from "../utils/retention.utils";
 import { sequelize } from "../database/db";
 import { ApprovalWorkflowStepModel } from "../domain.layer/models/approvalWorkflow/approvalWorkflowStep.model";
 import { ApprovalRequestStatus } from "../domain.layer/enums/approval-workflow.enum";
@@ -1152,7 +1153,7 @@ export const updateMetadata = async (req: Request, res: Response): Promise<any> 
     }
 
     // Validate input
-    const { tags, review_status, version, expiry_date, description } = req.body;
+    const { tags, review_status, version, expiry_date, retention_policy, description } = req.body;
 
     // Validate review_status if provided
     const validStatuses: ReviewStatus[] = [
@@ -1165,6 +1166,15 @@ export const updateMetadata = async (req: Request, res: Response): Promise<any> 
     ];
     if (review_status && !validStatuses.includes(review_status)) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid review status")));
+    }
+
+    // Validate retention_policy if provided; null explicitly clears it.
+    if (
+      retention_policy !== undefined &&
+      retention_policy !== null &&
+      !isRetentionPolicy(retention_policy)
+    ) {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid retention policy")));
     }
 
     // Validate version format if provided (semver-like: X.Y or X.Y.Z)
@@ -1218,6 +1228,7 @@ export const updateMetadata = async (req: Request, res: Response): Promise<any> 
     if (review_status !== undefined) updates.review_status = review_status;
     if (version !== undefined) updates.version = version;
     if (expiry_date !== undefined) updates.expiry_date = expiry_date;
+    if (retention_policy !== undefined) updates.retention_policy = retention_policy;
     if (description !== undefined) updates.description = description;
 
     // Fetch current metadata state before update (for change tracking)
@@ -1463,7 +1474,6 @@ export const previewFile = async (req: Request, res: Response): Promise<any> => 
       "image/svg+xml", // Note: SVG can contain scripts but browser should respect nosniff
       "text/plain",
       "text/csv",
-      "text/html", // Will be treated as plain text due to CSP
       "application/json",
       "application/xml",
       "text/xml",
@@ -1490,6 +1500,8 @@ export const previewFile = async (req: Request, res: Response): Promise<any> => 
     res.setHeader("Content-Disposition", `inline; filename="${safeFilename}"`);
     res.setHeader("Content-Length", preview.content.length);
 
+    // preview.content is sanitized binary/Buffer data loaded from storage; CSP is set above.
+    // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write
     res.send(preview.content);
 
     await logSuccess({

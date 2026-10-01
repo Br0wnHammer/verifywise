@@ -11,8 +11,8 @@ export interface RiskFormValues {
   riskDescription: string;
   riskCategory: number[];
   potentialImpact: string;
-  assessmentMapping: number;
-  controlsMapping: number;
+  assessmentMapping: string;
+  controlsMapping: string;
   likelihood: number;
   riskSeverity: number;
   riskLevel: number;
@@ -85,8 +85,8 @@ export interface IRiskFormValues {
   riskDescription: string;
   riskCategory: number[];
   potentialImpact: string;
-  assessmentMapping: number;
-  controlsMapping: number;
+  assessmentMapping: string;
+  controlsMapping: string;
   likelihood: number;
   riskSeverity: number;
   riskLevel: number;

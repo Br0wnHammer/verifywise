@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { Box, Stack, Fade, Tooltip, IconButton } from "@mui/material";
 import {
   CirclePlus as AddCircleOutlineIcon,
@@ -12,7 +11,7 @@ import {
 } from "lucide-react";
 import PolicyTable from "../../components/Policies/PolicyTable";
 import { CustomizableButton } from "../../components/button/customizable-button";
-import { deletePolicy } from "../../../application/repository/policy.repository";
+import { useDeletePolicy } from "../../../application/hooks/usePolicyMutations";
 import { EmptyState } from "../../components/EmptyState";
 import EmptyStateTip from "../../components/EmptyState/EmptyStateTip";
 import StandardTableHead from "../../components/Table/StandardTableHead";
@@ -25,7 +24,7 @@ import Alert from "../../components/Alert";
 import { AlertProps } from "../../types/alert.types";
 import { PolicyManagerModel } from "../../../domain/models/Common/policy/policyManager.model";
 import { PolicyManagerProps } from "../../types/interfaces/i.policy";
-import { usePolicies, policyQueryKeys } from "../../../application/hooks/usePolicies";
+import { usePolicies } from "../../../application/hooks/usePolicies";
 import PolicyStatusCard from "./PolicyStatusCard";
 import { ExportMenu } from "../../components/Table/ExportMenu";
 import useUsers from "../../../application/hooks/useUsers";
@@ -39,7 +38,7 @@ import { ColumnSelector } from "../../components/Table/ColumnSelector";
 import { useColumnVisibility, ColumnConfig } from "../../../application/hooks/useColumnVisibility";
 import { useFilterBy } from "../../../application/hooks/useFilterBy";
 import LinkedPolicyModal from "../../components/Policies/LinkedPolicyModal";
-import { displayFormattedDate } from "../../tools/isoDateToString";
+import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import { useVirtualFolders } from "../../../application/hooks/useVirtualFolders";
 import { FolderTree } from "../FileManager/components/FolderTree";
 import { CreateFolderModal } from "../FileManager/components/CreateFolderModal";
@@ -56,13 +55,7 @@ import type {
 } from "../../../domain/interfaces/i.virtualFolder";
 
 type PolicyColumnKey =
-  | "title"
-  | "status"
-  | "next_review"
-  | "author"
-  | "last_updated"
-  | "updated_by"
-  | "actions";
+  "title" | "status" | "next_review" | "author" | "last_updated" | "updated_by" | "actions";
 
 const POLICY_TABLE_COLUMNS: ColumnConfig<PolicyColumnKey>[] = [
   { key: "title", label: "Title", defaultVisible: true, alwaysVisible: true },
@@ -75,11 +68,12 @@ const POLICY_TABLE_COLUMNS: ColumnConfig<PolicyColumnKey>[] = [
 ];
 
 const PolicyManager: React.FC<PolicyManagerProps> = ({ tags: _tags }) => {
+  const formatDate = useFormattedDate();
   const location = useLocation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: policies = [], isLoading } = usePolicies();
+  const deletePolicyMutation = useDeletePolicy();
   const [flashRowId, setFlashRowId] = useState<number | null>(null);
   const { userRoleName } = useAuth();
   const canRunBulkActions = !!userRoleName && ["Admin", "Editor"].includes(userRoleName);
@@ -194,8 +188,7 @@ const PolicyManager: React.FC<PolicyManagerProps> = ({ tags: _tags }) => {
 
   const handleDelete = async (id: number) => {
     try {
-      await deletePolicy(id);
-      queryClient.invalidateQueries({ queryKey: policyQueryKeys.lists() });
+      await deletePolicyMutation.mutateAsync(id);
 
       // Show success alert using VerifyWise standard pattern
       handleAlert({
@@ -205,15 +198,8 @@ const PolicyManager: React.FC<PolicyManagerProps> = ({ tags: _tags }) => {
         alertTimeout: 4000, // 4 seconds to give users time to read
       });
     } catch (err) {
+      // Global error toast handled by the mutation hook / axios interceptor.
       console.error(err);
-
-      // Show error alert for failed deletion
-      handleAlert({
-        variant: "error",
-        body: "Failed to delete policy. Please try again.",
-        setAlert,
-        alertTimeout: 4000,
-      });
     }
   };
 
@@ -530,13 +516,13 @@ const PolicyManager: React.FC<PolicyManagerProps> = ({ tags: _tags }) => {
       return {
         title: policy.title || "-",
         status: policy.status || "-",
-        next_review: policy.next_review_date ? displayFormattedDate(policy.next_review_date) : "-",
+        next_review: policy.next_review_date ? formatDate(policy.next_review_date) : "-",
         author: authorName,
-        last_updated: policy.last_updated_at ? displayFormattedDate(policy.last_updated_at) : "-",
+        last_updated: policy.last_updated_at ? formatDate(policy.last_updated_at) : "-",
         updated_by: updatedByName,
       };
     });
-  }, [filteredPolicies, users]);
+  }, [filteredPolicies, users, formatDate]);
 
   return (
     <>

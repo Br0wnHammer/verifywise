@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import {
   Box,
   Typography,
@@ -17,13 +17,14 @@ import {
 } from "@mui/material";
 import { Download, ShieldX } from "lucide-react";
 import { ENV_VARs } from "../../../../env.vars";
-import { displayFormattedDate } from "../../tools/isoDateToString";
+import useFormattedDate from "../../../application/hooks/useFormattedDate";
 
 /**
  * SharedView page component for displaying publicly shared data
  * Accessed via /shared/:resourceType/:token
  */
 const SharedView: React.FC = () => {
+  const formatDate = useFormattedDate();
   const { token } = useParams<{ token: string }>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +105,8 @@ const SharedView: React.FC = () => {
   if (loading) {
     return (
       <Box
+        component="main"
+        aria-busy="true"
         sx={{
           display: "flex",
           justifyContent: "center",
@@ -114,7 +117,7 @@ const SharedView: React.FC = () => {
       >
         <Box sx={{ textAlign: "center" }}>
           <CircularProgress size={48} sx={{ color: "brand.primary", mb: 2 }} />
-          <Typography variant="body1" color="textSecondary">
+          <Typography variant="body1" component="h1" color="textSecondary">
             Loading shared view...
           </Typography>
         </Box>
@@ -125,6 +128,7 @@ const SharedView: React.FC = () => {
   if (error) {
     return (
       <Box
+        component="main"
         sx={{
           display: "flex",
           justifyContent: "center",
@@ -159,6 +163,7 @@ const SharedView: React.FC = () => {
             </Box>
             <Typography
               variant="h6"
+              component="h1"
               sx={{
                 fontWeight: 600,
                 color: "#C62828",
@@ -260,7 +265,7 @@ const SharedView: React.FC = () => {
     if (key === "status_date") {
       try {
         const date = new Date(value);
-        return <Typography variant="body2">{displayFormattedDate(date)}</Typography>;
+        return <Typography variant="body2">{formatDate(date)}</Typography>;
       } catch {
         return <Typography variant="body2">{String(value)}</Typography>;
       }
@@ -285,7 +290,7 @@ const SharedView: React.FC = () => {
   };
 
   return (
-    <Box sx={{ minHeight: "100vh", backgroundColor: "background.surface", py: 4 }}>
+    <Box component="main" sx={{ minHeight: "100vh", backgroundColor: "background.surface", py: 4 }}>
       <Box sx={{ mx: "auto", px: 3 }}>
         {/* Header */}
         <Paper sx={{ p: 3, mb: 3 }}>
@@ -297,7 +302,11 @@ const SharedView: React.FC = () => {
             }}
           >
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: "brand.primary", mb: 1 }}>
+              <Typography
+                variant="h6"
+                component="h1"
+                sx={{ fontWeight: 600, color: "brand.primary", mb: 1 }}
+              >
                 Shared{" "}
                 {share_link.resource_type.charAt(0).toUpperCase() +
                   share_link.resource_type.slice(1)}{" "}
@@ -312,6 +321,7 @@ const SharedView: React.FC = () => {
               {permissions.allowDataExport && (
                 <Tooltip title="Export data">
                   <IconButton
+                    aria-label="Export data"
                     onClick={handleExport}
                     sx={{
                       "color": "brand.primary",
@@ -338,7 +348,7 @@ const SharedView: React.FC = () => {
               minHeight: "48px !important",
             }}
           >
-            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+            <Typography variant="subtitle2" component="h2" sx={{ fontWeight: 600 }}>
               {share_link.resource_type.charAt(0).toUpperCase() + share_link.resource_type.slice(1)}{" "}
               {isTableView ? "List" : "Details"}
             </Typography>

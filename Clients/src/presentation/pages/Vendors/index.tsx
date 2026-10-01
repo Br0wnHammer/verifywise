@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import "./index.css";
 import { Box, SelectChangeEvent, Stack, useTheme, Fade } from "@mui/material";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import TableWithPlaceholder from "../../components/Table/WithPlaceholder/index";
 import RiskTable from "../../components/Table/RisksTable";
 import { Suspense, useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -53,13 +53,7 @@ import { Project } from "../../../domain/types/Project";
 const REDIRECT_DELAY_MS = 2000;
 
 type VendorColumnKey =
-  | "vendor_name"
-  | "assignee"
-  | "review_status"
-  | "risk"
-  | "scorecard"
-  | "review_date"
-  | "actions";
+  "vendor_name" | "assignee" | "review_status" | "risk" | "scorecard" | "review_date" | "actions";
 type VendorRiskColumnKey =
   | "risk_description"
   | "vendor_name"

@@ -36,12 +36,13 @@ const linkProjectParent = (orgId: number, child: number, parent: number, status 
     { replacements: { orgId, child, parent, status } },
   );
 
+// Stale by age: untouched for longer than EVIDENCE_FRESHNESS_DAYS (90).
 const mapStaleEvidence = (orgId: number, riskId: number) =>
   sequelize.query(
     `INSERT INTO evidence_hub (organization_id, evidence_name, evidence_type, description,
-                               expiry_date, mapped_risk_ids, created_at, updated_at)
+                               mapped_risk_ids, created_at, updated_at)
      VALUES (:orgId, 'stale evidence', 'Documentation', 'x',
-             NOW() - INTERVAL '1 day', :riskIds, NOW(), NOW())`,
+             :riskIds, NOW() - INTERVAL '200 days', NOW() - INTERVAL '120 days')`,
     { replacements: { orgId, riskIds: `{${riskId}}` } },
   );
 
@@ -156,9 +157,7 @@ describe("stale-inheritance flag", () => {
       { replacements: { t } },
     );
 
-    expect(
-      await readFlag(`source_risk_id = :s AND target_risk_id = :t`, { s, t }),
-    ).toBeNull();
+    expect(await readFlag(`source_risk_id = :s AND target_risk_id = :t`, { s, t })).toBeNull();
   });
 
   it("does not flag when the same level is written again", async () => {

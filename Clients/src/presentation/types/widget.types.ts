@@ -73,6 +73,10 @@ export interface IconButtonProps {
   onPreview?: () => void | Promise<void>;
   onEditMetadata?: () => void | Promise<void>;
   onViewHistory?: () => void;
+  // Scheduled-report props
+  onRunNow?: () => void | Promise<void>;
+  /** Drives the Pause/Resume label the same way isVisible drives Make visible. */
+  isPaused?: boolean;
 }
 
 /**
@@ -120,6 +124,7 @@ export interface FieldProps {
   helperText?: string;
   InputProps?: TextFieldProps["InputProps"];
   formHelperTextProps?: TextFieldProps["FormHelperTextProps"];
+  dataTestId?: string;
   min?: number;
   max?: number;
   multiline?: boolean;
@@ -168,6 +173,9 @@ export interface ISearchBoxProps {
  */
 export interface IProtectedRouteProps {
   Component: React.ComponentType<any>;
+  /** When true, only authenticated SuperAdmins render Component; others are
+   * redirected to `/`. Backed by state.auth.isSuperAdmin. */
+  requireSuperAdmin?: boolean;
   [key: string]: any; // Allow rest props to be passed through
 }
 

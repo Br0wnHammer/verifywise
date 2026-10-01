@@ -58,6 +58,11 @@ const AddNewRiskForm: FC<AddNewRiskFormProps> = (props) => {
     customFieldsRef,
     customFieldsGate,
     riskFormSubmitHandler,
+    isFormValid,
+    riskServerErrors,
+    mitigationServerErrors,
+    handleRiskValidityChange,
+    handleMitigationValidityChange,
     usersLoading,
     userRoleName,
     isEditingDisabled,
@@ -161,6 +166,8 @@ const AddNewRiskForm: FC<AddNewRiskFormProps> = (props) => {
             userRoleName={userRoleName}
             disableInternalScroll={!!onSubmitRef}
             compactMode={compactMode}
+            serverErrors={riskServerErrors}
+            onValidityChange={handleRiskValidityChange}
           />
         </TabPanel>
         <TabPanel
@@ -181,6 +188,8 @@ const AddNewRiskForm: FC<AddNewRiskFormProps> = (props) => {
             userRoleName={userRoleName}
             disableInternalScroll={!!onSubmitRef}
             compactMode={compactMode}
+            serverErrors={mitigationServerErrors}
+            onValidityChange={handleMitigationValidityChange}
           />
         </TabPanel>
         {isQuantitative && (
@@ -242,6 +251,7 @@ const AddNewRiskForm: FC<AddNewRiskFormProps> = (props) => {
               onClick={riskFormSubmitHandler}
               text={popupStatus === "new" ? "Save" : "Update"}
               isDisabled={
+                !isFormValid ||
                 customFieldsGate.blocked ||
                 (popupStatus === "new" ? isCreatingDisabled : isEditingDisabled)
               }

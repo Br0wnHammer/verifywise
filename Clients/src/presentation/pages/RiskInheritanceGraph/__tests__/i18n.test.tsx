@@ -66,8 +66,8 @@ vi.mock("../../../../application/hooks/useUsers", () => ({
   }),
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react-router-dom")>()),
+vi.mock("react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router")>()),
   useNavigate: () => vi.fn(),
 }));
 
@@ -156,13 +156,13 @@ beforeEach(() => {
   mockIsAdmin = true;
 });
 
-afterAll(() => {
-  setLanguage("en");
+afterAll(async () => {
+  await setLanguage("en");
 });
 
 describe.each(LANGS)("risk inheritance in %s", (lang) => {
-  beforeEach(() => {
-    setLanguage(lang, true);
+  beforeEach(async () => {
+    await setLanguage(lang, true);
     resetAudit();
   });
 

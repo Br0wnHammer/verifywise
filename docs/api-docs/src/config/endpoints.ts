@@ -45,6 +45,7 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/agent-primitives',
     summary: "Create Agent Primitive",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 201, description: "Created successfully" },
@@ -108,6 +109,7 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/agent-primitives/{id}',
     summary: "Update Agent Primitive",
+    description: "Requires role: Admin",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -123,6 +125,7 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     method: 'DELETE',
     path: '/agent-primitives/{id}',
     summary: "Delete Agent Primitive By Id",
+    description: "Requires role: Admin",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -138,6 +141,7 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/agent-primitives/sync',
     summary: "Trigger Sync",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 201, description: "Created successfully" },
@@ -150,6 +154,7 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/agent-primitives/{id}/review',
     summary: "Review Agent Primitive",
+    description: "Requires role: Admin",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -165,6 +170,7 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/agent-primitives/{id}/link-model',
     summary: "Link Model To Agent",
+    description: "Requires role: Admin",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -180,6 +186,7 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/agent-primitives/{id}/unlink-model',
     summary: "Unlink Model From Agent",
+    description: "Requires role: Admin",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -478,6 +485,7 @@ export const aiApprovalsEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/ai-approvals/{id}/approve',
     summary: "Approve Approval Ctrl",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -489,6 +497,7 @@ export const aiApprovalsEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/ai-approvals/{id}/reject',
     summary: "Reject Approval Ctrl",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -515,6 +524,7 @@ export const aiAppsEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/ai-apps',
     summary: "Create Ai App",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -548,6 +558,7 @@ export const aiAppsEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/ai-apps/{id}',
     summary: "Update Ai App By Id",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -559,6 +570,7 @@ export const aiAppsEndpoints: Endpoint[] = [
     method: 'DELETE',
     path: '/ai-apps/{id}',
     summary: "Delete Ai App By Id",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -570,6 +582,7 @@ export const aiAppsEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/ai-apps/{id}/models',
     summary: "Link Models To Ai App",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -581,6 +594,7 @@ export const aiAppsEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/ai-apps/{id}/policies',
     summary: "Set Policies For Ai App",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -592,6 +606,7 @@ export const aiAppsEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/ai-apps/{id}/data-exposure',
     summary: "Set Data Exposure For Ai App",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -603,6 +618,7 @@ export const aiAppsEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/ai-apps/from-shadow-ai/{shadowAiToolId}',
     summary: "Promote From Shadow Ai",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -614,6 +630,7 @@ export const aiAppsEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/ai-apps/{id}/status',
     summary: "Update Ai App Status",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -640,6 +657,7 @@ export const aiAuditEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/ai-audit/export',
     summary: "Export Audit Log",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -677,6 +695,7 @@ export const aiConfirmationEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/ai-confirmation/approve/{id}',
     summary: "Approve Confirmation",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -688,6 +707,7 @@ export const aiConfirmationEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/ai-confirmation/reject/{id}',
     summary: "Reject Confirmation",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -747,6 +767,7 @@ export const aiContentEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/ai-content/{id}/review',
     summary: "Review Content",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -2518,20 +2539,6 @@ export const dashboardEndpoints: Endpoint[] = [
 // Datasets endpoints
 export const datasetEndpoints: Endpoint[] = [
   {
-    method: 'POST',
-    path: '/dataset-bulk-upload/upload',
-    summary: "Handle Multer Error",
-    description: "Requires role: Admin or Editor",
-    requiresAuth: true,
-    responses: [
-      { status: 201, description: "Created successfully" },
-      { status: 401, description: "Unauthorized" },
-      { status: 403, description: "Forbidden - insufficient role" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Datasets",
-  },
-  {
     method: 'GET',
     path: '/datasets',
     summary: "Get All Datasets",
@@ -3212,6 +3219,9 @@ export const evidenceHubEndpoints: Endpoint[] = [
     path: '/evidenceHub',
     summary: "Get All Evidences",
     requiresAuth: true,
+    parameters: [
+      { name: 'includeArchived', in: 'query', type: 'boolean', required: false, description: "Include archived (soft-archived expired) records. Default false." },
+    ],
     responses: [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
@@ -3275,6 +3285,882 @@ export const evidenceHubEndpoints: Endpoint[] = [
       { status: 500, description: "Internal server error" },
     ],
     tag: "Evidence",
+  },
+];
+
+// Extensions endpoints
+export const extensionEndpoints: Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/extensions',
+    summary: "List extensions",
+    description: "Lists every built-in extension in the catalog with its config field definitions, whether it is enabled for the caller's organization, and its configuration with secret fields removed. Available to any authenticated user.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'category', in: 'query', type: 'string', required: false, description: "Filter by category: communication, ml_ops, data_management, version_control, monitoring, security or analytics" },
+    ],
+    responses: [
+      { status: 200, description: "List of extensions" },
+      { status: 401, description: "Not authenticated" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/{key}',
+    summary: "Get extension",
+    description: "Returns one extension: catalog metadata, config field definitions, per-organization enabled state and redacted configuration. Available to any authenticated user.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'key', in: 'path', type: 'string', required: true, description: "Extension key: slack, mlflow, azure-ai-foundry, model-lifecycle, risk-import, jira-assets or dataset-bulk-upload" },
+    ],
+    responses: [
+      { status: 200, description: "Extension detail" },
+      { status: 400, description: "Invalid extension key format" },
+      { status: 401, description: "Not authenticated" },
+      { status: 404, description: "Extension not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/{key}/enable',
+    summary: "Enable extension",
+    description: "Enables the extension for the caller's organization. Optional body { configuration } is validated against the extension's config fields; secret fields are encrypted at rest. Admin only. Requires role: Admin",
+    requiresAuth: true,
+    parameters: [
+      { name: 'key', in: 'path', type: 'string', required: true, description: "Extension key: slack, mlflow, azure-ai-foundry, model-lifecycle, risk-import, jira-assets or dataset-bulk-upload" },
+    ],
+    requestBody: {
+      "configuration": "object (optional)",
+    },
+    responses: [
+      { status: 200, description: "Extension enabled" },
+      { status: 400, description: "Invalid key or configuration" },
+      { status: 401, description: "Not authenticated" },
+      { status: 403, description: "Admin role required" },
+      { status: 404, description: "Extension not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/{key}/disable',
+    summary: "Disable extension",
+    description: "Disables the extension for the caller's organization. Configuration and data are kept, so enabling it again restores the previous setup. Admin only. Requires role: Admin",
+    requiresAuth: true,
+    parameters: [
+      { name: 'key', in: 'path', type: 'string', required: true, description: "Extension key: slack, mlflow, azure-ai-foundry, model-lifecycle, risk-import, jira-assets or dataset-bulk-upload" },
+    ],
+    responses: [
+      { status: 200, description: "Extension disabled" },
+      { status: 400, description: "Invalid extension key format" },
+      { status: 401, description: "Not authenticated" },
+      { status: 403, description: "Admin role required" },
+      { status: 404, description: "Extension not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'PATCH',
+    path: '/extensions/{key}/configuration',
+    summary: "Update extension configuration",
+    description: "Updates the stored configuration. Body { configuration }. Secret fields left out of the body keep their existing encrypted value. Admin only. Requires role: Admin",
+    requiresAuth: true,
+    parameters: [
+      { name: 'key', in: 'path', type: 'string', required: true, description: "Extension key: slack, mlflow, azure-ai-foundry, model-lifecycle, risk-import, jira-assets or dataset-bulk-upload" },
+    ],
+    requestBody: {
+      "configuration": "object (required)",
+    },
+    responses: [
+      { status: 200, description: "Configuration updated" },
+      { status: 400, description: "Invalid key or configuration" },
+      { status: 401, description: "Not authenticated" },
+      { status: 403, description: "Admin role required" },
+      { status: 404, description: "Extension not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/{key}/test-connection',
+    summary: "Test extension connection",
+    description: "Checks that the extension can reach its remote service. The submitted { configuration } is overlaid on the stored configuration. Supported for mlflow, azure-ai-foundry and jira-assets; other keys return 200 with success false. Returns { success, message, testedAt }. Admin only. Requires role: Admin",
+    requiresAuth: true,
+    parameters: [
+      { name: 'key', in: 'path', type: 'string', required: true, description: "Extension key: slack, mlflow, azure-ai-foundry, model-lifecycle, risk-import, jira-assets or dataset-bulk-upload" },
+    ],
+    requestBody: {
+      "configuration": "object (optional)",
+    },
+    responses: [
+      { status: 200, description: "Connection test result" },
+      { status: 400, description: "Invalid extension key format" },
+      { status: 401, description: "Not authenticated" },
+      { status: 403, description: "Admin role required" },
+      { status: 404, description: "Extension not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/dataset-bulk-upload/upload',
+    summary: "Upload Dataset File",
+    description: "Uploads one CSV, XLS or XLSX file (multipart field file, max 30 MB) with an optional metadata JSON string and creates a dataset record; the bulk upload screen calls it once per file. Requires the dataset-bulk-upload extension to be enabled for the organization (403 otherwise). Requires role: Admin or Editor",
+    requiresAuth: true,
+    requestBody: {
+      "file": "string (required)",
+      "metadata": "string (optional)",
+    },
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 400, description: "No file or invalid metadata JSON" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 413, description: "File too large" },
+      { status: 415, description: "Unsupported file type" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/risk-import/template',
+    summary: "Download Excel Template",
+    description: "Requires the risk-import extension to be enabled for the organization (403 otherwise). Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/risk-import/import',
+    summary: "Bulk Import Risks",
+    description: "Requires the risk-import extension to be enabled for the organization (403 otherwise). Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/slack/oauth/workspaces',
+    summary: "Get All Slack Webhooks",
+    description: "Requires the slack extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/slack/oauth/workspaces',
+    summary: "Create New Slack Webhook",
+    description: "Requires the slack extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/slack/oauth/workspaces/{id}',
+    summary: "Get Slack Webhook By Id",
+    description: "Requires the slack extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'PATCH',
+    path: '/extensions/slack/oauth/workspaces/{id}',
+    summary: "Update Slack Webhook By Id",
+    description: "Requires the slack extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'DELETE',
+    path: '/extensions/slack/oauth/workspaces/{id}',
+    summary: "Delete Slack Webhook By Id",
+    description: "Requires the slack extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/slack/oauth/workspaces/{id}/send',
+    summary: "Send Slack Message",
+    description: "Requires the slack extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/mlflow/models',
+    summary: "List Models",
+    description: "Requires the mlflow extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/mlflow/sync',
+    summary: "Sync From Mlflow",
+    description: "Requires the mlflow extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/mlflow/models/{modelId}',
+    summary: "Get Model By Id",
+    description: "Requires the mlflow extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'modelId', in: 'path', type: 'string', required: true, description: "The modelId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/azure-ai-foundry/models',
+    summary: "List Deployments",
+    description: "Requires the azure-ai-foundry extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/azure-ai-foundry/sync',
+    summary: "Sync From Azure",
+    description: "Requires the azure-ai-foundry extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/azure-ai-foundry/models/{deploymentId}',
+    summary: "Get Deployment By Id",
+    description: "Requires the azure-ai-foundry extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'deploymentId', in: 'path', type: 'string', required: true, description: "The deploymentId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/azure-ai-foundry/discover',
+    summary: "Discover Ai Agents",
+    description: "Requires the azure-ai-foundry extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/config',
+    summary: "Get Config",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/jira-assets/config',
+    summary: "Post Config",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/vw-attributes',
+    summary: "Get Vw Attributes",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/schemas',
+    summary: "Get Schemas",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/schemas/{schemaId}/object-types',
+    summary: "Get Object Types",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'schemaId', in: 'path', type: 'string', required: true, description: "The schemaId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/object-types/{objectTypeId}/attributes',
+    summary: "Get Attributes",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'objectTypeId', in: 'path', type: 'string', required: true, description: "The objectTypeId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/object-types/{objectTypeId}/objects',
+    summary: "Get Objects",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'objectTypeId', in: 'path', type: 'string', required: true, description: "The objectTypeId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/jira-assets/import',
+    summary: "Post Import",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/jira-assets/sync',
+    summary: "Post Sync",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/sync/status',
+    summary: "Get Sync Status Ctrl",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/sync/history',
+    summary: "Get Sync History Ctrl",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/use-cases',
+    summary: "List Use Cases Ctrl",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/use-cases/{id}',
+    summary: "Get Use Case Ctrl",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'DELETE',
+    path: '/extensions/jira-assets/use-cases/{id}',
+    summary: "Delete Use Case Ctrl",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/jira-assets/projects/{projectId}/custom-frameworks-progress',
+    summary: "Get Custom Frameworks Progress Ctrl",
+    description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'projectId', in: 'path', type: 'integer', required: true, description: "The projectId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/model-lifecycle/config',
+    summary: "List Config",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/model-lifecycle/phases',
+    summary: "Create Phase Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'PUT',
+    path: '/extensions/model-lifecycle/phases/reorder',
+    summary: "Reorder Phases Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'PUT',
+    path: '/extensions/model-lifecycle/phases/{id}',
+    summary: "Update Phase Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'DELETE',
+    path: '/extensions/model-lifecycle/phases/{id}',
+    summary: "Delete Phase Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/model-lifecycle/phases/{phaseId}/items',
+    summary: "Create Item Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'phaseId', in: 'path', type: 'integer', required: true, description: "The phaseId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'PUT',
+    path: '/extensions/model-lifecycle/phases/{phaseId}/items/reorder',
+    summary: "Reorder Items Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'phaseId', in: 'path', type: 'integer', required: true, description: "The phaseId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'PUT',
+    path: '/extensions/model-lifecycle/items/{id}',
+    summary: "Update Item Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'DELETE',
+    path: '/extensions/model-lifecycle/items/{id}',
+    summary: "Delete Item Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle',
+    summary: "Get Lifecycle Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle/progress',
+    summary: "Get Progress Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'PUT',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle/items/{itemId}',
+    summary: "Upsert Value Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+      { name: 'itemId', in: 'path', type: 'integer', required: true, description: "The itemId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle/items/{itemId}/files',
+    summary: "Attach File Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+      { name: 'itemId', in: 'path', type: 'integer', required: true, description: "The itemId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'DELETE',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle/items/{itemId}/files/{fileId}',
+    summary: "Detach File Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+      { name: 'itemId', in: 'path', type: 'integer', required: true, description: "The itemId" },
+      { name: 'fileId', in: 'path', type: 'integer', required: true, description: "The fileId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle/items/{itemId}/people',
+    summary: "Add Person Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+      { name: 'itemId', in: 'path', type: 'integer', required: true, description: "The itemId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'DELETE',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle/items/{itemId}/people/{userId}',
+    summary: "Remove Person Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+      { name: 'itemId', in: 'path', type: 'integer', required: true, description: "The itemId" },
+      { name: 'userId', in: 'path', type: 'integer', required: true, description: "The userId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle/items/{itemId}/approvals',
+    summary: "Add Approver Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+      { name: 'itemId', in: 'path', type: 'integer', required: true, description: "The itemId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'PUT',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle/items/{itemId}/approvals/{userId}',
+    summary: "Update Approval Status Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+      { name: 'itemId', in: 'path', type: 'integer', required: true, description: "The itemId" },
+      { name: 'userId', in: 'path', type: 'integer', required: true, description: "The userId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'DELETE',
+    path: '/extensions/model-lifecycle/models/{id}/lifecycle/items/{itemId}/approvals/{userId}',
+    summary: "Remove Approver Ctrl",
+    description: "Requires the model-lifecycle extension to be enabled for the organization (403 otherwise).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+      { name: 'itemId', in: 'path', type: 'integer', required: true, description: "The itemId" },
+      { name: 'userId', in: 'path', type: 'integer', required: true, description: "The userId" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
   },
 ];
 
@@ -3477,6 +4363,29 @@ export const fileEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Files",
+  },
+  {
+    method: 'GET',
+    path: '/file-manager/org-settings',
+    summary: "Get File Org Settings Handler",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Files",
+  },
+  {
+    method: 'PUT',
+    path: '/file-manager/org-settings',
+    summary: "Update File Org Settings Handler",
+    description: "Requires role: Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Files",
@@ -3867,6 +4776,112 @@ export const frameworkEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Deleted successfully" },
       { status: 401, description: "Unauthorized" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Frameworks",
+  },
+  {
+    method: 'GET',
+    path: '/frameworks/{frameworkId}/tree/{projectId}',
+    summary: "Get framework tree",
+    description: "Returns the framework metadata (id, key, framework_type, display_name, entity_types, hierarchy_type) and the full structure tree with the project's implementation rows. Generic endpoint for the bundled frameworks declared in Servers/structures.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'frameworkId', in: 'path', type: 'integer', required: true, description: "Framework id (the bundled frameworks use ids 5-25)" },
+      { name: 'projectId', in: 'path', type: 'integer', required: true, description: "Project (use case) id, or the organizational project id" },
+    ],
+    responses: [
+      { status: 200, description: "Framework tree" },
+      { status: 400, description: "Invalid parameters" },
+      { status: 404, description: "Framework not found or not attached to this project" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Frameworks",
+  },
+  {
+    method: 'GET',
+    path: '/frameworks/{frameworkId}/dashboard/{projectFrameworkId}',
+    summary: "Get framework dashboard",
+    description: "Returns status counts for the framework's implementation rows in the given project.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'frameworkId', in: 'path', type: 'integer', required: true, description: "Framework id (the bundled frameworks use ids 5-25)" },
+      { name: 'projectFrameworkId', in: 'path', type: 'integer', required: true, description: "projects_frameworks row id linking the framework to the project" },
+    ],
+    responses: [
+      { status: 200, description: "Status counts" },
+      { status: 400, description: "Invalid parameters" },
+      { status: 404, description: "Framework not found or not attached to this project" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Frameworks",
+  },
+  {
+    method: 'GET',
+    path: '/frameworks/{frameworkId}/impl/{level}/{id}',
+    summary: "Get implementation row",
+    description: "Returns one implementation row (status, owner, reviewer, approver, due date, notes, evidence).",
+    requiresAuth: true,
+    parameters: [
+      { name: 'frameworkId', in: 'path', type: 'integer', required: true, description: "Framework id (the bundled frameworks use ids 5-25)" },
+      { name: 'level', in: 'path', type: 'string', required: true, description: "Implementation level: l2 (two-level frameworks) or l3 (leaf level of three-level frameworks)" },
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "Implementation row id" },
+    ],
+    responses: [
+      { status: 200, description: "Implementation row" },
+      { status: 400, description: "Invalid parameters" },
+      { status: 404, description: "Framework or record not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Frameworks",
+  },
+  {
+    method: 'PATCH',
+    path: '/frameworks/{frameworkId}/impl/{level}/{id}',
+    summary: "Update implementation row",
+    description: "Multipart form. Fields: status, implementation_description, owner, reviewer, approver, due_date, auditor_feedback, risksMitigated (JSON array), risksDelete (JSON array), delete (JSON array of file ids to detach), user_id; attach evidence as file parts.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'frameworkId', in: 'path', type: 'integer', required: true, description: "Framework id (the bundled frameworks use ids 5-25)" },
+      { name: 'level', in: 'path', type: 'string', required: true, description: "Implementation level: l2 (two-level frameworks) or l3 (leaf level of three-level frameworks)" },
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "Implementation row id" },
+    ],
+    requestBody: {
+      "status": "string (optional)",
+      "implementation_description": "string (optional)",
+      "owner": "string (optional)",
+      "reviewer": "string (optional)",
+      "approver": "string (optional)",
+      "due_date": "string (optional)",
+      "auditor_feedback": "string (optional)",
+      "risksMitigated": "string (optional)",
+      "risksDelete": "string (optional)",
+      "delete": "string (optional)",
+      "user_id": "string (optional)",
+    },
+    responses: [
+      { status: 200, description: "Updated implementation row" },
+      { status: 400, description: "Invalid parameters" },
+      { status: 404, description: "Framework or record not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Frameworks",
+  },
+  {
+    method: 'GET',
+    path: '/frameworks/{frameworkId}/impl/{level}/{id}/risks',
+    summary: "Get implementation row risks",
+    description: "Returns the risks linked to one implementation row.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'frameworkId', in: 'path', type: 'integer', required: true, description: "Framework id (the bundled frameworks use ids 5-25)" },
+      { name: 'level', in: 'path', type: 'string', required: true, description: "Implementation level: l2 (two-level frameworks) or l3 (leaf level of three-level frameworks)" },
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "Implementation row id" },
+    ],
+    responses: [
+      { status: 200, description: "Linked risks" },
+      { status: 400, description: "Invalid parameters" },
+      { status: 404, description: "Framework not found" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Frameworks",
@@ -4897,6 +5912,17 @@ export const internalEndpoints: Endpoint[] = [
     ],
     tag: "Internal",
   },
+  {
+    method: 'GET',
+    path: '/internal/observability-config',
+    summary: "Anonymous",
+    requiresAuth: false,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Internal",
+  },
 ];
 
 // Invitations endpoints
@@ -5858,7 +6884,7 @@ export const modelInventoryEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/modelInventory/by-projectId/{projectId}',
     summary: "Get model inventories by project ID",
-    description: "Returns all model inventories associated with a project (via the model_inventories_projects_frameworks join table where framework_id IS NULL). Non-numeric project IDs (e.g. plugin-sourced) return an empty array.",
+    description: "Returns all model inventories associated with a project (via the model_inventories_projects_frameworks join table where framework_id IS NULL). Non-numeric project IDs return an empty array.",
     requiresAuth: true,
     parameters: [
       { name: 'projectId', in: 'path', type: 'integer', required: true, description: "Project ID (integer). Non-numeric values return an empty array." },
@@ -6726,6 +7752,65 @@ export const notificationEndpoints: Endpoint[] = [
   },
 ];
 
+// Observability endpoints
+export const observabilityEndpoints: Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/observability/metrics',
+    summary: "Get Metrics",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Observability",
+  },
+  {
+    method: 'GET',
+    path: '/observability/traces',
+    summary: "Get Traces",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Observability",
+  },
+  {
+    method: 'GET',
+    path: '/observability/traces/{id}',
+    summary: "Get Trace Detail",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Observability",
+  },
+  {
+    method: 'GET',
+    path: '/observability/costs',
+    summary: "Get Costs",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Observability",
+  },
+  {
+    method: 'GET',
+    path: '/observability/performance',
+    summary: "Get Performance",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Observability",
+  },
+];
+
 // Organizations endpoints
 export const organizationEndpoints: Endpoint[] = [
   {
@@ -6758,6 +7843,7 @@ export const organizationEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/organizations/{id}',
     summary: "Update Organization By Id",
+    description: "Requires role: Admin",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -6786,6 +7872,7 @@ export const organizationEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/organizations/{id}/onboarding-status',
     summary: "Update Onboarding Status",
+    description: "Requires role: Admin",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -6796,146 +7883,6 @@ export const organizationEndpoints: Endpoint[] = [
       { status: 500, description: "Internal server error" },
     ],
     tag: "Organizations",
-  },
-];
-
-// Plugins endpoints
-export const pluginEndpoints: Endpoint[] = [
-  {
-    method: 'GET',
-    path: '/plugins/marketplace',
-    summary: "Get All Plugins",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
-  },
-  {
-    method: 'GET',
-    path: '/plugins/marketplace/{key}',
-    summary: "Get Plugin By Key",
-    requiresAuth: true,
-    parameters: [
-      { name: 'key', in: 'path', type: 'string', required: true, description: "The key" },
-    ],
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
-  },
-  {
-    method: 'GET',
-    path: '/plugins/marketplace/search',
-    summary: "Search Plugins",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
-  },
-  {
-    method: 'GET',
-    path: '/plugins/categories',
-    summary: "Get Categories",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
-  },
-  {
-    method: 'POST',
-    path: '/plugins/install',
-    summary: "Install Plugin",
-    requiresAuth: true,
-    responses: [
-      { status: 201, description: "Created successfully" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
-  },
-  {
-    method: 'DELETE',
-    path: '/plugins/installations/{id}',
-    summary: "Uninstall Plugin",
-    requiresAuth: true,
-    parameters: [
-      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
-    ],
-    responses: [
-      { status: 200, description: "Deleted successfully" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
-  },
-  {
-    method: 'GET',
-    path: '/plugins/installations',
-    summary: "Get Installed Plugins",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
-  },
-  {
-    method: 'PUT',
-    path: '/plugins/installations/{id}/configuration',
-    summary: "Update Plugin Configuration",
-    requiresAuth: true,
-    parameters: [
-      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
-    ],
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
-  },
-  {
-    method: 'POST',
-    path: '/plugins/{key}/test-connection',
-    summary: "Test Plugin Connection",
-    requiresAuth: true,
-    parameters: [
-      { name: 'key', in: 'path', type: 'string', required: true, description: "The key" },
-    ],
-    responses: [
-      { status: 201, description: "Created successfully" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
-  },
-  {
-    method: 'GET',
-    path: '/plugins/{key}/ui/dist/{filename}',
-    summary: "Serve plugin UI assets",
-    requiresAuth: true,
-    parameters: [
-      { name: 'key', in: 'path', type: 'string', required: true, description: "The key" },
-      { name: 'filename', in: 'path', type: 'string', required: true, description: "The filename" },
-    ],
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Plugins",
   },
 ];
 
@@ -8096,6 +9043,17 @@ export const reportingEndpoints: Endpoint[] = [
     tag: "Reporting",
   },
   {
+    method: 'GET',
+    path: '/reporting/sections',
+    summary: "List Sections",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting",
+  },
+  {
     method: 'DELETE',
     path: '/reporting/{id}',
     summary: "Delete Generated Report By Id",
@@ -8109,6 +9067,251 @@ export const reportingEndpoints: Endpoint[] = [
       { status: 500, description: "Internal server error" },
     ],
     tag: "Reporting",
+  },
+];
+
+// Reporting/Runs endpoints
+export const reportingrunsEndpoints: Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/reporting/runs',
+    summary: "List Runs",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Runs",
+  },
+  {
+    method: 'GET',
+    path: '/reporting/runs/{id}',
+    summary: "Get Run",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Runs",
+  },
+  {
+    method: 'DELETE',
+    path: '/reporting/runs/{id}',
+    summary: "Delete Run",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Runs",
+  },
+  {
+    method: 'GET',
+    path: '/reporting/runs/{id}/download',
+    summary: "Download Run",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Runs",
+  },
+  {
+    method: 'GET',
+    path: '/reporting/runs/{id}/analyses',
+    summary: "Get Run Analyses",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Runs",
+  },
+  {
+    method: 'PATCH',
+    path: '/reporting/runs/{id}/archive',
+    summary: "Archive Run",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Runs",
+  },
+  {
+    method: 'PATCH',
+    path: '/reporting/runs/{id}/restore',
+    summary: "Restore Run",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Runs",
+  },
+];
+
+// Reporting/Scheduled Reports endpoints
+export const reportingscheduledReportsEndpoints: Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/reporting/scheduled-reports',
+    summary: "List Scheduled Reports",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Scheduled Reports",
+  },
+  {
+    method: 'POST',
+    path: '/reporting/scheduled-reports',
+    summary: "Create Scheduled Report",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Scheduled Reports",
+  },
+  {
+    method: 'PATCH',
+    path: '/reporting/scheduled-reports/{id}',
+    summary: "Update Scheduled Report",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Scheduled Reports",
+  },
+  {
+    method: 'DELETE',
+    path: '/reporting/scheduled-reports/{id}',
+    summary: "Delete Scheduled Report",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Scheduled Reports",
+  },
+  {
+    method: 'POST',
+    path: '/reporting/scheduled-reports/{id}/pause',
+    summary: "Pause Scheduled Report",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Scheduled Reports",
+  },
+  {
+    method: 'POST',
+    path: '/reporting/scheduled-reports/{id}/resume',
+    summary: "Resume Scheduled Report",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Scheduled Reports",
+  },
+  {
+    method: 'POST',
+    path: '/reporting/scheduled-reports/{id}/run-now',
+    summary: "Run Scheduled Report Now",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Scheduled Reports",
+  },
+];
+
+// Reporting/Templates endpoints
+export const reportingtemplatesEndpoints: Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/reporting/templates',
+    summary: "List Templates",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Templates",
+  },
+  {
+    method: 'POST',
+    path: '/reporting/templates',
+    summary: "Create Template",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Templates",
+  },
+  {
+    method: 'GET',
+    path: '/reporting/templates/{id}',
+    summary: "Get Template",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Templates",
+  },
+  {
+    method: 'PATCH',
+    path: '/reporting/templates/{id}',
+    summary: "Update Template",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Templates",
+  },
+  {
+    method: 'DELETE',
+    path: '/reporting/templates/{id}',
+    summary: "Archive Template",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Templates",
+  },
+  {
+    method: 'POST',
+    path: '/reporting/templates/{id}/run',
+    summary: "Run Template Now",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Reporting/Templates",
   },
 ];
 
@@ -8897,6 +10100,7 @@ export const ssoConfigEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/ssoConfig',
     summary: "Get S S O Config",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -8908,6 +10112,7 @@ export const ssoConfigEndpoints: Endpoint[] = [
     method: 'PUT',
     path: '/ssoConfig',
     summary: "Save S S O Config",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -8919,6 +10124,7 @@ export const ssoConfigEndpoints: Endpoint[] = [
     method: 'PUT',
     path: '/ssoConfig/enable',
     summary: "Enable S S O",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -8930,6 +10136,7 @@ export const ssoConfigEndpoints: Endpoint[] = [
     method: 'PUT',
     path: '/ssoConfig/disable',
     summary: "Disable S S O",
+    description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -9028,6 +10235,18 @@ export const superAdminEndpoints: Endpoint[] = [
     tag: "Super Admin",
   },
   {
+    method: 'POST',
+    path: '/super-admin/organizations-with-user',
+    summary: "Create Org With User",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
     method: 'PATCH',
     path: '/super-admin/organizations/{id}',
     summary: "Update Org",
@@ -9077,6 +10296,18 @@ export const superAdminEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/super-admin/users/exists',
+    summary: "Email Exists",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'GET',
     path: '/super-admin/users',
     summary: "List All Users",
     description: "Requires role: Super Admin",
@@ -9102,6 +10333,30 @@ export const superAdminEndpoints: Endpoint[] = [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
       { status: 403, description: "Forbidden - insufficient role" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'POST',
+    path: '/super-admin/organizations/{id}/users',
+    summary: "Create User In Org",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'GET',
+    path: '/super-admin/organizations/{id}/invitations',
+    summary: "List Org Invitations",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Super Admin",
@@ -9148,6 +10403,114 @@ export const superAdminEndpoints: Endpoint[] = [
       { status: 200, description: "Deleted successfully" },
       { status: 401, description: "Unauthorized" },
       { status: 403, description: "Forbidden - insufficient role" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'GET',
+    path: '/super-admin/monitoring',
+    summary: "Get Monitoring",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'PUT',
+    path: '/super-admin/monitoring',
+    summary: "Update Monitoring",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'POST',
+    path: '/super-admin/monitoring/token',
+    summary: "Generate Monitoring Token",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'GET',
+    path: '/super-admin/mcp-server',
+    summary: "Get Mcp Server",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'DELETE',
+    path: '/super-admin/mcp-server',
+    summary: "Uninstall Mcp Server Handler",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'POST',
+    path: '/super-admin/mcp-server/install',
+    summary: "Install Mcp Server Handler",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'GET',
+    path: '/super-admin/super-admins',
+    summary: "List Super Admins",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'POST',
+    path: '/super-admin/super-admins',
+    summary: "Grant Super Admin",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Super Admin",
+  },
+  {
+    method: 'DELETE',
+    path: '/super-admin/super-admins/{user_id}',
+    summary: "Revoke Super Admin",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Super Admin",
@@ -9365,6 +10728,21 @@ export const taskEndpoints: Endpoint[] = [
   },
 ];
 
+// Telemetry endpoints
+export const telemetryEndpoints: Endpoint[] = [
+  {
+    method: 'POST',
+    path: '/telemetry',
+    summary: "Type",
+    requiresAuth: false,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Telemetry",
+  },
+];
+
 // Training endpoints
 export const trainingEndpoints: Endpoint[] = [
   {
@@ -9468,6 +10846,39 @@ export const userEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/users/me/preferences',
+    summary: "Get current user preferences",
+    description: "Returns the authenticated user's persisted preferences (date_format, language) from user_preferences. If no row exists, returns safe defaults including a transient theme default. Preferred alias of GET /users/preferences.",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Preferences found or defaults returned" },
+      { status: 401, description: "Unauthorized" },
+      { status: 404, description: "User not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Users",
+  },
+  {
+    method: 'PATCH',
+    path: '/users/me/preferences',
+    summary: "Update current user preferences",
+    description: "Upserts the authenticated user's date_format and/or language. At least one field is required. Unknown format strings and languages are rejected. Any user_id in the body is ignored; the JWT user is always the target.",
+    requiresAuth: true,
+    requestBody: {
+      "date_format": "DD-MM-YYYY | MM-DD-YYYY | DD/MM/YY | MM/DD/YY (optional)",
+      "language": "en | de | fr | es (optional)",
+    },
+    responses: [
+      { status: 200, description: "Preferences saved" },
+      { status: 400, description: "Validation error (missing fields or unknown format/language)" },
+      { status: 401, description: "Unauthorized" },
+      { status: 404, description: "User not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Users",
+  },
+  {
+    method: 'GET',
     path: '/users/{id}',
     summary: "Get user by ID",
     description: "Retrieves a single user by their numeric ID. Super-admins can access any user; regular users can only access users within their organization (or their own record).",
@@ -9512,7 +10923,7 @@ export const userEndpoints: Endpoint[] = [
     method: 'DELETE',
     path: '/users/{id}',
     summary: "Delete user by ID",
-    description: "Deletes a user and nullifies all their foreign key references across projects, vendors, risks, vendor risks, files, automations, and invitations. Also removes the user from projects_members. Demo users and super-admins cannot be deleted.",
+    description: "Requires role: Admin or SuperAdmin",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "User ID to delete" },
@@ -9588,6 +10999,18 @@ export const userEndpoints: Endpoint[] = [
       { status: 400, description: "Refresh token missing from cookie" },
       { status: 401, description: "Invalid refresh token" },
       { status: 406, description: "Refresh token expired" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Users",
+  },
+  {
+    method: 'POST',
+    path: '/users/logout',
+    summary: "Log out current session",
+    description: "Revokes the presented refresh token server-side and clears the refresh_token cookie. No bearer token required: only the token presented in the cookie is revoked.",
+    requiresAuth: false,
+    responses: [
+      { status: 200, description: "Logged out; refresh token revoked and cookie cleared" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Users",
@@ -10049,6 +11472,7 @@ export const allEndpoints = {
   euAiAct: euAiActEndpoints,
   evidenceAi: evidenceAiEndpoints,
   evidenceHub: evidenceHubEndpoints,
+  extension: extensionEndpoints,
   file: fileEndpoints,
   framework: frameworkEndpoints,
   fria: friaEndpoints,
@@ -10067,8 +11491,8 @@ export const allEndpoints = {
   nistAiRmf: nistAiRmfEndpoints,
   note: noteEndpoints,
   notification: notificationEndpoints,
+  observability: observabilityEndpoints,
   organization: organizationEndpoints,
-  plugin: pluginEndpoints,
   policy: policyEndpoints,
   postMarketMonitoring: postMarketMonitoringEndpoints,
   project: projectEndpoints,
@@ -10076,6 +11500,9 @@ export const allEndpoints = {
   quantitativeRisk: quantitativeRiskEndpoints,
   readiness: readinessEndpoints,
   reporting: reportingEndpoints,
+  reportingruns: reportingrunsEndpoints,
+  reportingscheduledReports: reportingscheduledReportsEndpoints,
+  reportingtemplates: reportingtemplatesEndpoints,
   riskBenchmark: riskBenchmarkEndpoints,
   riskHistory: riskHistoryEndpoints,
   risklinks: risklinksEndpoints,
@@ -10089,6 +11516,7 @@ export const allEndpoints = {
   superAdmin: superAdminEndpoints,
   system: systemEndpoints,
   task: taskEndpoints,
+  telemetry: telemetryEndpoints,
   training: trainingEndpoints,
   user: userEndpoints,
   vendor: vendorEndpoints,

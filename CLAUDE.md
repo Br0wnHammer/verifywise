@@ -1,6 +1,6 @@
 # VerifyWise - Development Guide
 
-> **Last Updated:** 2026-09-02
+> **Last Updated:** 2026-10-01
 
 This document contains cross-cutting rules for the VerifyWise codebase. Directory-scoped guides load automatically when working in each area:
 
@@ -8,6 +8,7 @@ This document contains cross-cutting rules for the VerifyWise codebase. Director
 - **Frontend:** `Clients/CLAUDE.md` — clean architecture, component patterns
 - **EvalServer:** `EvalServer/CLAUDE.md` — Alembic migrations, FastAPI patterns
 - **AI Gateway:** `AIGateway/CLAUDE.md` — LLM proxy, guardrails, spend tracking
+- **MCP Server:** `MCPServer/README.md` — MCP server for super-admin org/user administration across deployments
 
 ### Custom Agents
 
@@ -27,19 +28,21 @@ Always update the "Last Updated" date when modifying any CLAUDE.md file.
 
 ---
 
-## Related Repositories
+## Frameworks and Extensions
 
-| Repository | Location | Purpose |
-|------------|----------|---------|
-| **plugin-marketplace** | `../plugin-marketplace` (sibling directory) | All plugins (30+), framework plugins (SOC 2, GDPR, etc.), integration plugins. See `plugin-marketplace/CLAUDE.md`. |
+Everything is in this repository. There is no separate plugin repository. The former plugin system and marketplace were removed in August 2026.
 
-> Plugin source code is NOT in this repository. Work in the plugin-marketplace repo.
+| What | Where | Reference |
+|------|-------|-----------|
+| Core frameworks (EU AI Act, ISO 42001, ISO 27001, NIST AI RMF; ids 1–4) | Hand-built tables, routes and pages | `docs/technical/domains/compliance-frameworks.md` |
+| 21 bundled frameworks (SOC 2, GDPR, HIPAA, ...; ids 5–25) | `Servers/structures/<Name>/*.structure.ts`, registry `Servers/structures/index.ts` | `docs/technical/guides/adding-new-framework.md` |
+| 7 extensions (Slack, MLflow, Azure AI Foundry, Model Lifecycle, Risk Import, Jira Assets, Dataset Bulk Upload) | `Servers/extensions/<key>/` + `Clients/src/presentation/pages/Extensions/` | `docs/technical/infrastructure/extensions.md` |
 
 ---
 
 ## Project Overview
 
-VerifyWise is an AI governance platform supporting EU AI Act, ISO 42001, ISO 27001, NIST AI RMF, and plugin frameworks (SOC 2, GDPR, HIPAA, etc.).
+VerifyWise is an AI governance platform supporting EU AI Act, ISO 42001, ISO 27001, NIST AI RMF, and 21 more built-in frameworks (SOC 2, GDPR, HIPAA, etc.), plus built-in extensions (integrations an Admin enables per organization).
 
 ### Tech Stack
 
@@ -100,6 +103,9 @@ cd EvalServer/src && alembic upgrade head && uvicorn app:app --port 8000 --worke
 
 ### Git Workflow
 
+**Always work on a branch — never commit directly to `main`, `master`, or
+`develop`.** One branch per feature or fix.
+
 ```bash
 # Branch naming
 feature/description    fix/description    docs/description
@@ -114,6 +120,8 @@ fix(dashboard): resolve chart rendering issue
 
 - [ ] Build passes locally (`cd Servers && npm run build` and `cd Clients && npm run typecheck && npm run build`)
       — `typecheck` is not optional: the frontend `build` does not run `tsc`, so type errors pass a green build
+- [ ] `npm run format-check` clean in **both** `Servers` and `Clients` — if either
+      reports issues, run `npm run format`, then recommit before opening the PR
 - [ ] Self-review completed
 - [ ] Issue number included
 - [ ] No hardcoded values
@@ -121,6 +129,10 @@ fix(dashboard): resolve chart rendering issue
 - [ ] Tests written/updated
 - [ ] No console.log statements
 - [ ] No sensitive data exposed
+
+**Never open a PR without explicit permission.** "Ship it", "go ahead", "looks
+good" refer to the work in progress, not to opening a PR. Pushing a branch is
+fine unasked; `gh pr create` is not.
 
 ---
 
@@ -161,6 +173,30 @@ fix(dashboard): resolve chart rendering issue
 
 ---
 
+## UI Component Patterns
+
+**Prefer VerifyWise components over MUI where one exists.** MUI is a dependency
+(`@mui/material`, `@mui/lab`, `@mui/x-charts`, `@mui/x-date-pickers`) and is
+fine underneath, but a screen should reach for the house component first so
+behaviour stays consistent.
+
+| Need | Use | In use |
+|------|-----|--------|
+| Modal | `StandardModal` with `useStandardModal` + `onSubmitRef` | ~137 files |
+| Dropdown | `CustomizableButton` + `Popover` | ~220 files |
+| Search input | `SearchBox` | ~57 files |
+
+Check for an existing pattern before implementing a new one — these are already
+used across most of `Clients/src`, so a bespoke version is nearly always a
+duplicate.
+
+House UI rules: sentence case for all screen text; border `#d0d5dd`; border
+radius 4px; green primary `#13715B`; 30px control height on desktop (buttons,
+inputs, selects, dropdown triggers) — mobile/touch primitives keep their larger
+sizes.
+
+---
+
 ## Detailed References
 
 Read the relevant file BEFORE implementing changes in that area:
@@ -168,14 +204,15 @@ Read the relevant file BEFORE implementing changes in that area:
 | When working on... | Read this file |
 |---------------------|---------------|
 | Adding a new feature (full guide) | `docs/technical/guides/adding-new-feature.md` |
-| Adding a new framework | `docs/technical/guides/adding-new-framework.md` |
+| Adding a new framework (`Servers/structures` registry) | `docs/technical/guides/adding-new-framework.md` |
 | Code style (short version) | `docs/technical/guides/code-style.md` |
 | Detailed coding standards (TS, React, backend, security, testing) | `CodeRules/README.md` |
-| Plugin system | `docs/technical/infrastructure/plugin-system.md` |
+| Extensions (built-in integrations: catalog, enablement, gate middleware) | `docs/technical/infrastructure/extensions.md` |
 | Approval workflows | `docs/technical/domains/approvals.md` |
 | Agent Control (AI Gateway native tool-call hook, file-write gating, approval, result capture, run correlation, multi-agent wiring) | `docs/technical/domains/agent-control.md` |
 | Agent Control integrator/developer docs (connect an agent, Claude Code + Cursor, generic contract, API ref) | `shared/user-guide-content/content/developers/` |
 | AI Trust Index | `docs/technical/domains/ai-trust-index.md` |
+| Readiness scoring (requirements + assessments + evidence) | `docs/technical/domains/readiness.md` |
 | Model Risk Management (MRM: bank model-risk governance — tiering, validation, findings, monitoring/ingestion, threshold eval, revalidation triggers, attestation; SR 26-2 / SS1/23 / OSFI E-23) | `docs/technical/domains/mrm.md` |
 | AI Detection | `docs/technical/domains/ai-detection.md` |
 | Risk management | `docs/technical/domains/risk-management.md` |
@@ -195,6 +232,7 @@ Read the relevant file BEFORE implementing changes in that area:
 | Post-market monitoring | `docs/technical/domains/post-market-monitoring.md` |
 | FRIA (Fundamental Rights Impact Assessment) | `docs/technical/domains/fria.md` |
 | Compliance frameworks | `docs/technical/domains/compliance-frameworks.md` |
+| Observability (OTel metrics + logs → Grafana/Prometheus/Loki) | `docs/technical/infrastructure/observability.md` |
 | Docker & deployment | `docs/deployment/PRODUCTION_DEPLOYMENT_GUIDE.md` |
 | Database schema | `docs/technical/architecture/database-schema.md` |
 | Authentication architecture | `docs/technical/architecture/authentication.md` |
@@ -208,7 +246,7 @@ Read the relevant file BEFORE implementing changes in that area:
 ## Additional Resources
 
 - [Code Rules](./CodeRules/README.md) - Detailed coding standards
-- [Plugin System](./docs/PLUGIN_SYSTEM.md) - Plugin architecture
+- [Extensions](./docs/technical/infrastructure/extensions.md) - Built-in extensions architecture
 - [Technical Docs](./docs/technical/) - Architecture documentation
 - [API Docs](./Servers/swagger.yaml) - OpenAPI specification
 - [Agent Roles](./agents/) - AI-assisted development roles

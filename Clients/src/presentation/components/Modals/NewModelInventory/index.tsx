@@ -17,13 +17,17 @@ import { ChevronDown, DownloadIcon } from "lucide-react";
 import StandardModal from "../StandardModal";
 import CustomFieldsSection, { type CustomFieldsSectionHandle } from "../../CustomFieldsSection";
 import { useRequiredCustomFieldsGate } from "../../CustomFieldsSection/RequiredCustomFieldsGate";
-import { ModelInventoryStatus } from "../../../../domain/enums/modelInventory.enum";
+import {
+  ModelInventoryStatus,
+  ModelInventoryType,
+} from "../../../../domain/enums/modelInventory.enum";
 import { HistorySidebar } from "../../Common/HistorySidebar";
 import { useModelInventoryChangeHistory } from "../../../../application/hooks/useModelInventoryChangeHistory";
 import { getAllEntities } from "../../../../application/repository/entity.repository";
 import { User } from "../../../../domain/types/User";
 import dayjs, { Dayjs } from "dayjs";
 import utc from "dayjs/plugin/utc";
+import { earliestFileExpiry } from "../../../../application/utils/fileExpiry";
 import { useModalKeyHandling } from "../../../../application/hooks/useModalKeyHandling";
 import modelInventoryOptions from "../../../utils/model-inventory.json";
 import { useProjects } from "../../../../application/hooks/useProjects";
@@ -43,6 +47,7 @@ import { CirclePlus as AddCircleOutlineIcon } from "lucide-react";
 import { VWLink } from "../../Link/VWLink";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFormValidation } from "../../../../application/hooks/useFormValidation";
+import { focusFormFieldById } from "../../../../application/utils/formValidationFocus";
 import { checkStringValidation } from "../../../../application/validations/stringValidation";
 
 dayjs.extend(utc);
@@ -78,10 +83,12 @@ interface NewModelInventoryFormValues {
   security_assessment: boolean;
   status: ModelInventoryStatus;
   status_date: string;
+  type: ModelInventoryType | "" | null;
   reference_link: string;
   biases: string;
   limitations: string;
   hosting_provider: string;
+  intended_use: string;
   external_key?: string;
   projects: number[];
   frameworks: number[];
@@ -98,10 +105,12 @@ const initialState: NewModelInventoryFormValues = {
   security_assessment: false,
   status: ModelInventoryStatus.PENDING,
   status_date: new Date().toISOString().split("T")[0],
+  type: "",
   reference_link: "",
   biases: "",
   limitations: "",
   hosting_provider: "",
+  intended_use: "",
   external_key: "",
   projects: [],
   frameworks: [],
@@ -113,6 +122,14 @@ const statusOptions = [
   { _id: ModelInventoryStatus.RESTRICTED, name: "Restricted" },
   { _id: ModelInventoryStatus.PENDING, name: "Pending" },
   { _id: ModelInventoryStatus.BLOCKED, name: "Blocked" },
+  { _id: ModelInventoryStatus.RETIRED, name: "Retired" },
+];
+
+const typeOptions = [
+  { _id: ModelInventoryType.TRADITIONAL_ML, name: "Traditional ML" },
+  { _id: ModelInventoryType.GENAI, name: "GenAI" },
+  { _id: ModelInventoryType.RAG, name: "RAG" },
+  { _id: ModelInventoryType.AGENTIC_AI, name: "Agentic AI" },
 ];
 
 const capabilityOptions = [
@@ -195,7 +212,7 @@ const NewModelInventory: FC<NewModelInventoryProps> = ({
     [],
   );
 
-  const { errors, validateAll, clearFieldError, resetErrors } =
+  const { errors, validateAll, clearFieldError, resetErrors, setServerErrors } =
     useFormValidation<NewModelInventoryFormValues>(validators);
 
   // Prefetch history data when modal opens in edit mode
@@ -455,6 +472,7 @@ const NewModelInventory: FC<NewModelInventoryProps> = ({
         if (onSuccess) {
           const result = await onSuccess({
             ...values,
+            type: values.type || null,
             capabilities: values.capabilities,
             security_assessment: values.security_assessment,
           });
@@ -481,6 +499,16 @@ const NewModelInventory: FC<NewModelInventoryProps> = ({
         handleClose();
       } catch (error: any) {
         setIsSubmitting(false);
+        // Surface a duplicate external key (409) as a field-level error so the
+        // user sees it next to the input, not only as a toast (issue #4755).
+        if (error?.response?.status === 409) {
+          const message =
+            error?.response?.data?.data ||
+            error?.response?.data?.message ||
+            "A model with this external key already exists in your organization.";
+          setServerErrors({ external_key: message });
+          focusFormFieldById("external_key");
+        }
         // Propagate error to parent for toast notification
         if (onError) {
           onError(error);
@@ -496,14 +524,18 @@ const NewModelInventory: FC<NewModelInventoryProps> = ({
     }
 
     // Map data to rows
-    const rows = data.map((item) => ({
-      "ID": item.id,
-      "Title": item.evidence_name || "",
-      "Type": item.evidence_type || "",
-      "Mapped Models": item.mapped_model_ids?.join(", ") || "",
-      "DESCRIPTION": item.description,
-      "EXPIRY_DATE": item.expiry_date ? dayjs.utc(item.expiry_date).format("YYYY-MM-DD") : "-",
-    }));
+    const rows = data.map((item) => {
+      // Expiry lives on the linked files; the earliest one represents the row.
+      const expiryDate = earliestFileExpiry(item.evidence_files);
+      return {
+        "ID": item.id,
+        "Title": item.evidence_name || "",
+        "Type": item.evidence_type || "",
+        "Mapped Models": item.mapped_model_ids?.join(", ") || "",
+        "DESCRIPTION": item.description,
+        "EXPIRY_DATE": expiryDate ? dayjs.utc(expiryDate).format("YYYY-MM-DD") : "-",
+      };
+    });
 
     // Extract CSV header from object keys
     const header = Object.keys(rows[0]).join(",");
@@ -796,10 +828,38 @@ const NewModelInventory: FC<NewModelInventoryProps> = ({
           width={"50%"}
           value={values.external_key ?? ""}
           onChange={handleOnTextFieldChange("external_key")}
+          error={errors.external_key}
           sx={fieldStyle}
           placeholder="eg. credit-scoring-v3"
         />
+        <SelectComponent
+          items={typeOptions}
+          value={values.type ?? ""}
+          error={errors.type}
+          sx={{ width: "50%" }}
+          id="type"
+          label="Type"
+          onChange={handleOnSelectChange("type")}
+          placeholder="Select type"
+        />
       </Stack>
+
+      {/* Intended Use Section */}
+      <Field
+        id="intended_use"
+        label="Intended use"
+        type="description"
+        rows={2}
+        value={values.intended_use ?? ""}
+        onChange={handleOnTextFieldChange("intended_use")}
+        placeholder="Intended use of the model"
+        sx={{
+          "width": "100%",
+          "& #intended_use": {
+            maxHeight: 120,
+          },
+        }}
+      />
 
       {/* Security Assessment Section */}
       <Stack>

@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { useAuth } from "../../../../application/hooks/useAuth";
 import {
   Box,
   Typography,
@@ -39,6 +38,7 @@ import TablePaginationActions from "../../../components/TablePagination";
 import singleTheme from "../../../themes/v1SingleTheme";
 import { useAuditLedger } from "./hooks/useAuditLedger";
 import { useFeatureSettings } from "../../../../application/hooks/useFeatureSettings";
+import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SelectorVertical = (props: any) => <ChevronsUpDown size={16} {...props} />;
@@ -62,18 +62,6 @@ const ENTRY_TYPE_ITEMS = [
   { _id: "change_history", name: "Change history" },
 ];
 
-function formatTimestamp(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
 function getUserDisplay(name: string | null, surname: string | null): string {
   if (name || surname) {
     return `${name ?? ""} ${surname ?? ""}`.trim();
@@ -83,7 +71,7 @@ function getUserDisplay(name: string | null, surname: string | null): string {
 
 export default function AuditLedger() {
   const theme = useTheme();
-  const { isSuperAdmin } = useAuth();
+  const formatDate = useFormattedDate();
   const { settings, isLoading: featureLoading, update: updateFeature } = useFeatureSettings();
   const isEnabled = settings?.audit_ledger_enabled ?? true;
 
@@ -238,7 +226,7 @@ export default function AuditLedger() {
               text={isVerifying ? "Verifying..." : "Verify chain"}
               variant="contained"
               onClick={verify}
-              isDisabled={isVerifying || isSuperAdmin}
+              isDisabled={isVerifying}
               sx={{ height: 34, minWidth: 120 }}
             />
           </Stack>
@@ -324,7 +312,10 @@ export default function AuditLedger() {
                   {entries.map((entry) => (
                     <TableRow key={entry.id} sx={singleTheme.tableStyles.primary.body.row}>
                       <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
-                        {formatTimestamp(entry.occurred_at)}
+                        {formatDate(new Date(entry.occurred_at), {
+                          includeTime: true,
+                          includeSeconds: true,
+                        })}
                       </TableCell>
                       <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
                         {getUserDisplay(entry.user_name, entry.user_surname)}

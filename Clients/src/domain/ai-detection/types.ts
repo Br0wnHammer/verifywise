@@ -277,13 +277,15 @@ export interface FindingsByType {
   agent: number;
 }
 
+/** Mirrors backend IScanSummary from GET /ai-detection/scans/:id */
 export interface ScanSummary {
   total: number;
   by_confidence: FindingsByConfidence;
   by_provider: Record<string, number>;
-  by_finding_type?: FindingsByType;
+  by_finding_type: FindingsByType;
 }
 
+/** Mirrors backend IScanResponse from GET /ai-detection/scans/:id */
 export interface ScanResponse {
   scan: Scan;
   summary: ScanSummary;
@@ -415,21 +417,10 @@ export interface AIDetectionStats {
 // ============================================================================
 
 export type DependencyNodeType =
-  | "library"
-  | "model"
-  | "api"
-  | "secret"
-  | "rag"
-  | "agent"
-  | "repository";
+  "library" | "model" | "api" | "secret" | "rag" | "agent" | "repository";
 
 export type EdgeRelationship =
-  | "uses"
-  | "calls"
-  | "requires"
-  | "exposes"
-  | "orchestrates"
-  | "contains";
+  "uses" | "calls" | "requires" | "exposes" | "orchestrates" | "contains";
 
 export interface DependencyGraphNode {
   id: string;

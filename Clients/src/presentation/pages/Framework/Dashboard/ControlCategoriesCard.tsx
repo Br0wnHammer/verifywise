@@ -1,4 +1,5 @@
 import { Box, Typography, Stack, CircularProgress } from "@mui/material";
+import { isCompletedStatus } from "../../../../domain/types/Status";
 import { useEffect, useState } from "react";
 import {
   Building2,
@@ -194,7 +195,7 @@ const ControlCategoriesCard = ({ frameworksData, onNavigate }: ControlCategories
             );
 
             // Process ISO 27001 clauses
-            const iso27001Categories = targetClauses.map((clause: any) => {
+            const iso27001Categories = targetClauses.map((clause) => {
               const clauseNum = getClauseNumber(clause, iso27001Framework.frameworkName);
               const mapping =
                 ISO27001_CLAUSE_MAPPINGS[clauseNum as keyof typeof ISO27001_CLAUSE_MAPPINGS];
@@ -202,7 +203,7 @@ const ControlCategoriesCard = ({ frameworksData, onNavigate }: ControlCategories
               // Process subclauses using utility function
               const subClausesWithStatus = processSubItems(
                 clause.subClauses,
-                clause.arrangement || clause.clause_no,
+                clause.clause_id,
                 iso27001Framework.frameworkName,
               );
 
@@ -408,7 +409,7 @@ const ControlCategoriesCard = ({ frameworksData, onNavigate }: ControlCategories
                           fontWeight: 600,
                         }}
                       >
-                        {category.subClauses.filter((sub) => sub.status === "Implemented").length}/
+                        {category.subClauses.filter((sub) => isCompletedStatus(sub.status)).length}/
                         {category.subClauses.length}
                       </Typography>
                       <Typography

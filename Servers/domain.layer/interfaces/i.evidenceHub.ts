@@ -17,10 +17,10 @@ export interface IEvidenceHub {
   /**
    * Array of uploaded files - now managed via file_entity_links table
    * This property is populated dynamically by the utils layer, not stored in database
+   * Lifecycle (expiry_date, retention_policy) lives on each file, not on the
+   * evidence record.
    */
   evidence_files?: FileResponse[];
-
-  expiry_date?: Date | string;
 
   /** Multiple model IDs can be mapped (empty array or null allowed) */
   mapped_model_ids?: number[] | null;

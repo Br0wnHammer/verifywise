@@ -85,6 +85,7 @@ const Field = forwardRef(
       minRows,
       maxRows,
       borderless,
+      dataTestId,
     }: FieldProps,
     ref: ForwardedRef<HTMLInputElement>,
   ) => {
@@ -107,6 +108,7 @@ const Field = forwardRef(
 
     return (
       <Stack
+        data-testid={dataTestId}
         gap={theme.spacing(2)}
         className={`field field-${type}${borderless ? " field-borderless" : ""}`}
         sx={{
@@ -127,7 +129,11 @@ const Field = forwardRef(
           >
             {label}
             {isRequired && (
-              <Typography component="span" ml={theme.spacing(1)} color={theme.palette.error.text}>
+              <Typography
+                component="span"
+                ml={theme.spacing(1)}
+                color={theme.palette.status.error.text}
+              >
                 *
               </Typography>
             )}
@@ -167,6 +173,8 @@ const Field = forwardRef(
             "min": min,
             "max": max,
             "aria-describedby": describedBy,
+            "aria-invalid": !!error,
+            "aria-errormessage": error ? errorTextId : undefined,
             "sx": {
               "color": theme.palette.text.secondary,
               "&:-webkit-autofill": {

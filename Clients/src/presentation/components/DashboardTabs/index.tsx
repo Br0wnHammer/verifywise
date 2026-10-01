@@ -14,8 +14,8 @@ import {
 import Tab from "@mui/material/Tab";
 import TabList from "@mui/lab/TabList";
 import { Plus, X } from "lucide-react";
-import * as LucideIcons from "lucide-react";
-import { LucideIcon } from "lucide-react";
+import type * as LucideIcons from "lucide-react";
+import { getLucideIcon } from "../../utils/lucideIconMap";
 import { brand } from "../../themes/palette";
 import { text, border, background } from "../../themes/palette";
 
@@ -107,7 +107,7 @@ const DashboardTabs: React.FC<DashboardTabsProps> = ({
         }}
       >
         {visibleTabs.map((tab) => {
-          const IconComponent = LucideIcons[tab.icon] as LucideIcon;
+          const IconComponent = getLucideIcon(tab.icon);
           return (
             <Tab
               key={tab.id}
@@ -155,6 +155,7 @@ const DashboardTabs: React.FC<DashboardTabsProps> = ({
       {/* Add tab button */}
       <Tooltip title="Add or hide dashboard tabs">
         <IconButton
+          aria-label="Add or hide dashboard tabs"
           onClick={handleAddClick}
           size="small"
           sx={{
@@ -207,7 +208,7 @@ const DashboardTabs: React.FC<DashboardTabsProps> = ({
         </Box>
         <Divider sx={{ borderColor: border.light }} />
         {availableTabs.map((tab) => {
-          const IconComponent = LucideIcons[tab.icon] as LucideIcon;
+          const IconComponent = getLucideIcon(tab.icon);
           const isActive = activeTabs.includes(tab.id);
           const isFixed = tab.removable === false;
 

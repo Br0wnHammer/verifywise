@@ -1,4 +1,4 @@
-import { ModelInventoryStatus } from "../enums/modelInventory.enum";
+import { ModelInventoryStatus, ModelInventoryType } from "../enums/modelInventory.enum";
 import { IModelRisk } from "./i.modelRisk";
 import { User } from "../types/User";
 import { EvidenceHubModel } from "../models/Common/evidenceHub/evidenceHub.model";
@@ -14,10 +14,12 @@ export interface IModelInventory {
   security_assessment: boolean;
   status: ModelInventoryStatus;
   status_date: Date;
+  type?: ModelInventoryType | null;
   reference_link?: string;
   biases?: string;
   limitations?: string;
   hosting_provider?: string;
+  intended_use?: string;
   external_key?: string;
   projects: number[];
   frameworks: number[];

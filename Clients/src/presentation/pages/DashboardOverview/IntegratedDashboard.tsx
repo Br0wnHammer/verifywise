@@ -112,8 +112,7 @@ const DEFAULT_TABS = SHOW_AI_AGENT_DASHBOARD_TABS
 
 const IntegratedDashboard: React.FC = () => {
   const navigateSearch = useNavigateSearch();
-  const { userId, isSuperAdmin, activeOrganizationId } = useAuth();
-  const isSuperAdminWithoutOrg = isSuperAdmin && !activeOrganizationId;
+  const { userId } = useAuth();
   const { dashboard, loading: dashboardLoading, fetchDashboard } = useDashboard();
   const { data: governancePrefs } = useGovernancePreferences();
   const isGovernanceEnabled = governancePrefs?.is_enabled ?? false;
@@ -187,10 +186,10 @@ const IntegratedDashboard: React.FC = () => {
 
   // Mark content ready once loading completes
   useEffect(() => {
-    if (!loading || isSuperAdminWithoutOrg) {
+    if (!loading) {
       setContentReady(true);
     }
-  }, [loading, isSuperAdminWithoutOrg]);
+  }, [loading]);
 
   const [showOrgNameModal, setShowOrgNameModal] = useState(false);
   const [currentOrgName, setCurrentOrgName] = useState("");
@@ -377,8 +376,7 @@ const IntegratedDashboard: React.FC = () => {
   }
 
   // Don't render anything while loading (before content is ready)
-  // Skip loading wait for super admin without org — API calls will fail, show zeroes immediately
-  if (loading && !isSuperAdminWithoutOrg) {
+  if (loading) {
     return null;
   }
 
@@ -815,7 +813,9 @@ const IntegratedDashboard: React.FC = () => {
                       }
 
                       return (
-                        <Stack gap={0}>
+                        // ActivityItem carries role="listitem", which is only
+                        // valid inside a list.
+                        <Stack gap={0} role="list">
                           {sortedActivities.map((activity, index) => (
                             <ActivityItem
                               key={activity.id}
@@ -835,6 +835,7 @@ const IntegratedDashboard: React.FC = () => {
                     ) : (
                       <UseCasesTable
                         data={useCases}
+                        ariaLabel="Recent use cases"
                         onRowClick={(id) =>
                           navigateSearch("/project-view", { projectId: id.toString() })
                         }
@@ -1044,6 +1045,7 @@ const IntegratedDashboard: React.FC = () => {
                     ) : (
                       <UseCasesTable
                         data={useCases}
+                        ariaLabel="Recent use cases"
                         onRowClick={(id) =>
                           navigateSearch("/project-view", { projectId: id.toString() })
                         }
@@ -1179,7 +1181,9 @@ const IntegratedDashboard: React.FC = () => {
                       }
 
                       return (
-                        <Stack gap={0}>
+                        // ActivityItem carries role="listitem", which is only
+                        // valid inside a list.
+                        <Stack gap={0} role="list">
                           {sortedActivities.map((activity, index) => (
                             <ActivityItem
                               key={activity.id}

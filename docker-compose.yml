@@ -9,6 +9,7 @@ services:
       - POSTGRES_USER=$DB_USER
       - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD must be set in the env file before starting}
       - POSTGRES_DB=$DB_NAME
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "$DB_USER", "-d", "$DB_NAME"]
       interval: 5s
@@ -33,7 +34,9 @@ services:
     image: ghcr.io/verifywise-ai/verifywise-backend:latest
     pull_policy: always
     ports:
-      - $BACKEND_PORT:$BACKEND_PORT
+      # Bind to localhost only: the plain-HTTP API must not be reachable from
+      # the network directly. The TLS-terminating host nginx proxies to it.
+      - 127.0.0.1:$BACKEND_PORT:$BACKEND_PORT
     environment:
       - PORT=$BACKEND_PORT
       - DB_HOST=postgresdb
@@ -50,13 +53,16 @@ services:
       - ENCRYPTION_KEY=$ENCRYPTION_KEY
       - AI_GATEWAY_URL=http://ai_gateway:8100
       - AI_GATEWAY_INTERNAL_KEY=${AI_GATEWAY_INTERNAL_KEY:?AI_GATEWAY_INTERNAL_KEY must be set in the env file before starting}
+      - EVAL_SERVER_INTERNAL_KEY=${EVAL_SERVER_INTERNAL_KEY:?EVAL_SERVER_INTERNAL_KEY must be set in the env file before starting}
       - SUPERADMIN_EMAIL=$SUPERADMIN_EMAIL
       - SUPERADMIN_PASSWORD=${SUPERADMIN_PASSWORD:?SUPERADMIN_PASSWORD must be set in the env file before starting}
+    restart: unless-stopped
   frontend:
     depends_on:
       - backend
     image: ghcr.io/verifywise-ai/verifywise-frontend:latest
     pull_policy: always
+    restart: unless-stopped
   worker:
     depends_on:
       postgresdb:
@@ -97,6 +103,8 @@ services:
       - ENCRYPTION_KEY=$ENCRYPTION_KEY
       - AI_GATEWAY_URL=http://ai_gateway:8100
       - AI_GATEWAY_INTERNAL_KEY=${AI_GATEWAY_INTERNAL_KEY:?AI_GATEWAY_INTERNAL_KEY must be set in the env file before starting}
+      - EVAL_SERVER_INTERNAL_KEY=${EVAL_SERVER_INTERNAL_KEY:?EVAL_SERVER_INTERNAL_KEY must be set in the env file before starting}
+    restart: unless-stopped
   ai_gateway:
     depends_on:
       postgresdb:
@@ -114,6 +122,7 @@ services:
       - DB_NAME=$DB_NAME
       - AI_GATEWAY_INTERNAL_KEY=${AI_GATEWAY_INTERNAL_KEY:?AI_GATEWAY_INTERNAL_KEY must be set in the env file before starting}
       - AI_GATEWAY_PORT=8100
+      - BACKEND_URL=http://backend:$BACKEND_PORT
     restart: unless-stopped
 
 volumes:

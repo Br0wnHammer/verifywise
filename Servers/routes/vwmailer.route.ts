@@ -2,39 +2,22 @@ import express, { Request, Response } from "express";
 import { sendEmail } from "../services/emailService";
 import fs from "fs";
 import path from "path";
-import { generateInviteToken } from "../utils/jwt.utils";
+import { generateInviteToken, ONE_HOUR_MS } from "../utils/jwt.utils";
+import { storeOneTimeToken } from "../utils/oneTimeToken.utils";
 import { frontEndUrl } from "../config/constants";
 import { invite } from "../controllers/vwmailer.ctrl";
 import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper";
-import rateLimit from "express-rate-limit";
 import { getUserByEmailQuery } from "../utils/user.utils";
 import authenticateJWT from "../middleware/auth.middleware";
+import { inviteEmailLimiter, passwordResetEmailLimiter } from "../middleware/rateLimit.middleware";
 
 const router = express.Router();
 
-// Rate limiter: max 5 requests per minute per IP for password reset
-const resetPasswordLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 5, // limit each IP to 5 requests per windowMs
-  message: {
-    error: "Too many password reset requests from this IP, please try again later.",
-  },
-});
-
-// Rate limiter: max 5 requests per minute per IP for invite route
-const inviteLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 5, // limit each IP to 5 requests per windowMs
-  message: {
-    error: "Too many invite requests from this IP, please try again later.",
-  },
-});
-
-router.post("/invite", authenticateJWT, inviteLimiter, async (req, res) => {
+router.post("/invite", authenticateJWT, inviteEmailLimiter, async (req, res) => {
   await invite(req, res, req.body);
 });
 
-router.post("/reset-password", resetPasswordLimiter, async (req: Request, res: Response) => {
+router.post("/reset-password", passwordResetEmailLimiter, async (req: Request, res: Response) => {
   const { to, name, email } = req.body;
 
   logProcessing({
@@ -55,10 +38,22 @@ router.post("/reset-password", resetPasswordLimiter, async (req: Request, res: R
       const templatePath = path.resolve(__dirname, "../templates/password-reset-email.mjml");
       const template = fs.readFileSync(templatePath, "utf8");
 
-      const token = generateInviteToken({
-        name: name,
+      // Password-reset links are short-lived (1h) and single-use: the
+      // token hash is stored so the reset middleware can consume it.
+      const token = generateInviteToken(
+        {
+          name: name,
+          email: to,
+        },
+        ONE_HOUR_MS,
+      ) as string;
+
+      await storeOneTimeToken({
+        token,
         email: to,
-      }) as string;
+        purpose: "password_reset",
+        expiresAt: new Date(Date.now() + ONE_HOUR_MS),
+      });
 
       // Data to be replaced in the template
       const url = `${frontEndUrl}/set-new-password?${new URLSearchParams({ token }).toString()}`;

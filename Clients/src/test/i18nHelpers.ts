@@ -26,11 +26,23 @@ const debug = () => window as unknown as TranslatorDebug;
 
 const expected = new Set<string>();
 
-/** Switch the app language and turn the translator's gap audit on or off. */
-export const setLanguage = (lang: Lang, audit = false) => {
+/**
+ * Switch the app language and turn the translator's gap audit on or off.
+ *
+ * Resolves once the language's dictionary has loaded. The translator sets the
+ * language before its dictionary arrives, so rendering earlier would let the
+ * observer translate with the previous test's dictionary (the app reloads the
+ * page on such a switch; a test cannot) and would record English text the
+ * audit then reports as missing.
+ */
+export const setLanguage = async (lang: Lang, audit = false): Promise<void> => {
   storageService.setRaw("vw_audit", audit ? "1" : "0", { raw: true });
   storageService.set("language", lang);
+  const loaded = new Promise<void>((resolve) =>
+    window.addEventListener("vw:languagechange", () => resolve(), { once: true }),
+  );
   initDomTranslator();
+  await loaded;
 };
 
 /** Start a test with a clean audit and no remembered expectations. */

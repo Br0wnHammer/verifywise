@@ -1,10 +1,10 @@
-import { Routes } from "react-router-dom";
+import { Routes } from "react-router";
 import "./App.css";
 import { ThemeProvider } from "@emotion/react";
 import light from "./presentation/themes/light";
 import { CssBaseline } from "@mui/material";
 import { VerifyWiseContext } from "./application/contexts/VerifyWise.context";
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect, Suspense } from "react";
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor } from "./application/redux/store";
@@ -28,7 +28,7 @@ import {
 import Alert from "./presentation/components/Alert";
 import useUsers from "./application/hooks/useUsers";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 import { clearChunkReloadFlag } from "./application/utils/deploymentHelpers";
 import ChunkErrorBoundary from "./presentation/components/ChunkErrorBoundary";
 import { CommandPalette } from "./presentation/components/CommandPalette";
@@ -36,15 +36,21 @@ import CommandPaletteErrorBoundary from "./presentation/components/CommandPalett
 import useCommandPalette from "./application/hooks/useCommandPalette";
 import useUserPreferences from "./application/hooks/useUserPreferences";
 import { SetupModal, useOnboarding } from "./presentation/components/Onboarding";
+import { lazyRoute } from "./application/utils/lazyRoute";
 import {
-  SidebarWrapper,
   UserGuideSidebarProvider,
   useUserGuideSidebarContext,
-} from "./presentation/components/UserGuide";
+} from "./presentation/components/UserGuide/UserGuideSidebarContext";
+
+// The help/advisor sidebar carries the full user-guide content bundle and the
+// advisor chat stack (assistant-ui, AI SDK, markdown rendering). Load it off
+// the critical path; the rail renders as soon as the chunk arrives.
+const SidebarWrapper = lazyRoute(
+  () => import("./presentation/components/UserGuide/SidebarWrapper"),
+);
 import { AdvisorConversationProvider } from "./application/contexts/AdvisorConversation.context";
-import { PluginRegistryProvider } from "./application/contexts/PluginRegistry.context";
+import { ExtensionsProvider } from "./application/contexts/Extensions.context";
 import { SmartPromptProvider } from "./application/contexts/SmartPrompt.context";
-import PluginLoader from "./presentation/components/PluginLoader";
 import SmartPrompt from "./presentation/components/SmartPrompt";
 // SSE notifications disabled for now - can be re-enabled later if needed
 // import { useNotifications } from "./application/hooks/useNotifications";
@@ -82,12 +88,14 @@ const UserGuideSidebarContainer = () => {
   }
 
   return (
-    <SidebarWrapper
-      isOpen={userGuideSidebar.isOpen}
-      onClose={userGuideSidebar.close}
-      onOpen={userGuideSidebar.open}
-      initialPath={userGuideSidebar.currentPath}
-    />
+    <Suspense fallback={null}>
+      <SidebarWrapper
+        isOpen={userGuideSidebar.isOpen}
+        onClose={userGuideSidebar.close}
+        onOpen={userGuideSidebar.open}
+        initialPath={userGuideSidebar.currentPath}
+      />
+    </Suspense>
   );
 };
 
@@ -265,8 +273,7 @@ function App() {
       <Provider store={store}>
         <PersistGate loading={null} persistor={persistor}>
           <VerifyWiseContext.Provider value={contextValues}>
-            <PluginRegistryProvider>
-              <PluginLoader />
+            <ExtensionsProvider>
               <UserGuideSidebarProvider>
                 <SmartPromptProvider>
                   <ConditionalThemeWrapper>
@@ -300,7 +307,7 @@ function App() {
                   </ConditionalThemeWrapper>
                 </SmartPromptProvider>
               </UserGuideSidebarProvider>
-            </PluginRegistryProvider>
+            </ExtensionsProvider>
           </VerifyWiseContext.Provider>
         </PersistGate>
       </Provider>

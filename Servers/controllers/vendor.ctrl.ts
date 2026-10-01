@@ -23,6 +23,7 @@ import {
 } from "../utils/vendorChangeHistory.utils";
 import { notifyUserAssigned } from "../services/inAppNotification.service";
 import { getVendorRiskSuggestions as getVendorRiskSuggestionsService } from "../services/vendors/riskSuggestions";
+import { triggerVendorOnboarding } from "../services/workflows/triggers";
 import { QueryTypes } from "sequelize";
 
 import { translateError } from "../utils/i18n.utils";
@@ -300,6 +301,13 @@ export async function createVendor(req: Request, res: Response): Promise<any> {
         userId: req.userId!,
         organizationId: req.organizationId!,
       });
+
+      // Phase 6 / issue 3813 — kick off the vendor_onboarding autopilot
+      // workflow after a successful create. Fire-and-forget; never blocks
+      // or fails the response.
+      triggerVendorOnboarding(req.organizationId!, createdVendor.id!).catch((err) =>
+        console.error("Failed to trigger vendor_onboarding workflow:", err),
+      );
 
       // Send assignment notifications (fire-and-forget)
       const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";

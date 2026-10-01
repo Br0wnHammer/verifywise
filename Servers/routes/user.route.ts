@@ -30,10 +30,24 @@
 import express from "express";
 const router = express.Router();
 const multer = require("multer");
-const upload = multer({ storage: multer.memoryStorage() });
+// Profile photos: small images only (prevents memory-exhaustion DoS via
+// unbounded multipart uploads).
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+    files: 1,
+  },
+  fileFilter: (_req: Express.Request, file: Express.Multer.File, cb: any) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("UNSUPPORTED_FILE_TYPE"));
+    }
+  },
+});
 
-import rateLimit from "express-rate-limit";
-import { authLimiter, tokenRefreshLimiter } from "../middleware/rateLimit.middleware";
+import { authLimiter, loginLimiter, tokenRefreshLimiter } from "../middleware/rateLimit.middleware";
 
 import {
   checkUserExists,
@@ -42,6 +56,7 @@ import {
   getAllUsers,
   getUserById,
   getPreferencesForCurrentUser,
+  patchPreferencesForCurrentUser,
   loginUser,
   loginUserWithMicrosoft,
   updateUserById,
@@ -52,11 +67,13 @@ import {
   getUserProfilePhoto,
   deleteUserProfilePhoto,
   resetPassword,
+  logoutUser,
 } from "../controllers/user.ctrl";
 import resetPasswordMiddleware from "../middleware/resetPassword.middleware";
 import authenticateJWT from "../middleware/auth.middleware";
 import registerJWT from "../middleware/register.middleware";
 import { selfOnly } from "../middleware/selfOnly.middleware";
+import authorize from "../middleware/accessControl.middleware";
 
 /**
  * GET /users
@@ -100,6 +117,22 @@ router.get("/", authenticateJWT, getAllUsers);
  */
 router.get("/preferences", authenticateJWT, getPreferencesForCurrentUser);
 
+/**
+ * GET /users/me/preferences
+ *
+ * Returns the authenticated user's persisted date_format and language.
+ * Alias of GET /users/preferences; preferred self-scoped path.
+ */
+router.get("/me/preferences", authenticateJWT, getPreferencesForCurrentUser);
+
+/**
+ * PATCH /users/me/preferences
+ *
+ * Upserts the authenticated user's date_format and/or language.
+ * Body user_id is ignored; the JWT user is always the target.
+ */
+router.patch("/me/preferences", authenticateJWT, patchPreferencesForCurrentUser);
+
 router.get("/:id", authenticateJWT, getUserById);
 
 /**
@@ -128,16 +161,22 @@ router.post("/register", authLimiter, registerJWT, createNewUser);
  * @param {express.Request} req - Express request object
  * @param {express.Response} res - Express response object
  */
-// Apply rate limiting specifically to login route
-const loginLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 5, // limit each IP to 5 login requests per windowMs
-  message: "Too many login attempts from this IP, please try again after a minute",
-});
+// loginLimiter (5/min, relaxed in explicit dev/test) lives in
+// middleware/rateLimit.middleware.ts with every other limiter, so it shares the
+// standard RateLimit-* headers and STATUS_CODE[429] envelope.
 router.post("/login", loginLimiter, loginUser);
 router.post("/login-microsoft", loginLimiter, loginUserWithMicrosoft);
 
 router.post("/refresh-token", tokenRefreshLimiter, refreshAccessToken);
+
+/**
+ * POST /users/logout
+ *
+ * Revokes the presented refresh token server-side and clears the cookie.
+ * No JWT required: the access token may already be expired, and the
+ * endpoint only revokes the token presented in the cookie.
+ */
+router.post("/logout", logoutUser);
 
 /**
  * POST /users/reset-password
@@ -193,7 +232,7 @@ router.patch("/:id", authenticateJWT, updateUserById);
  * @param {express.Request} req - Express request object
  * @param {express.Response} res - Express response object
  */
-router.delete("/:id", authenticateJWT, deleteUserById);
+router.delete("/:id", authenticateJWT, authorize(["Admin", "SuperAdmin"]), deleteUserById);
 
 /**
  * GET /users/check-user-exists
@@ -213,10 +252,23 @@ router.get("/:id/calculate-progress", authenticateJWT, calculateProgress);
 
 /**
  * Profile Photo Routes
+ *
+ * Upload and delete are self-only (selfOnly middleware, same pattern as
+ * PATCH /chng-pass/:id) — without it any org member could overwrite or
+ * delete any other member's photo (BOLA). See issue #4723.
+ *
+ * GET stays org-scoped (no selfOnly): member avatars are legitimately
+ * rendered across the app for other users in the same organization.
  */
-router.post("/:id/profile-photo", authenticateJWT, upload.single("photo"), uploadUserProfilePhoto);
+router.post(
+  "/:id/profile-photo",
+  authenticateJWT,
+  selfOnly,
+  upload.single("photo"),
+  uploadUserProfilePhoto,
+);
 router.get("/:id/profile-photo", authenticateJWT, getUserProfilePhoto);
-router.delete("/:id/profile-photo", authenticateJWT, deleteUserProfilePhoto);
+router.delete("/:id/profile-photo", authenticateJWT, selfOnly, deleteUserProfilePhoto);
 
 export default router;
 

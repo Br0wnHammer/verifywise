@@ -27,11 +27,7 @@ type ProjectRisk = {
   likelihood: string;
   severity: string;
   risk_level_autocalculated:
-    | "No risk"
-    | "Low risk"
-    | "Medium risk"
-    | "High risk"
-    | "Very high risk";
+    "No risk" | "Low risk" | "Medium risk" | "High risk" | "Very high risk";
   review_notes: string;
   mitigation_status: string;
   current_risk_level: string;

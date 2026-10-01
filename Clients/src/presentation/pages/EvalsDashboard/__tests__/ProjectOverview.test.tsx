@@ -3,20 +3,17 @@ import { renderWithProviders } from "../../../../test/renderWithProviders";
 
 const mockNavigate = vi.fn();
 
-vi.mock("react-router-dom", async () => {
-  const actual: any = await vi.importActual("react-router-dom");
+vi.mock("react-router", async () => {
+  const actual: any = await vi.importActual("react-router");
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
 let mockUserRoleName = "Admin";
-let mockIsSuperAdmin = false;
 
 vi.mock("../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({
     userRoleName: mockUserRoleName,
     userId: 1,
-    isSuperAdmin: mockIsSuperAdmin,
-    activeOrganizationId: null,
   }),
 }));
 
@@ -157,7 +154,6 @@ describe("ProjectOverview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUserRoleName = "Admin";
-    mockIsSuperAdmin = false;
     mockGetProject.mockResolvedValue({ project: mockProject });
     mockGetExperiments.mockResolvedValue({ experiments: mockExperiments });
     mockGetLogs.mockResolvedValue({ logs: mockLogs });
@@ -263,22 +259,6 @@ describe("ProjectOverview", () => {
     const buttons = screen.getAllByTestId("customizable-button");
     buttons.forEach((btn) => {
       expect(btn).not.toBeDisabled();
-    });
-  });
-
-  it("follows RBAC for super admins", async () => {
-    mockUserRoleName = "Admin";
-    mockIsSuperAdmin = true;
-
-    renderWithProviders(<ProjectOverview {...defaultProps} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Overview")).toBeInTheDocument();
-    });
-
-    const buttons = screen.getAllByTestId("customizable-button");
-    buttons.forEach((btn) => {
-      expect(btn).toBeDisabled();
     });
   });
 

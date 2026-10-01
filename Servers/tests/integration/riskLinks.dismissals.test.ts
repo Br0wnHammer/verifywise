@@ -2,7 +2,8 @@ jest.setTimeout(60000);
 
 import { cleanupDatabase } from "./helpers";
 import { sequelize } from "../../database/db";
-import { seedTwoTenantContexts, buildTenantContext } from "./tenant-isolation/tenantIsolation.harness";
+import { seedTwoTenantContexts } from "./tenant-isolation/tenantIsolation.harness";
+import { createTestApp, testRequest } from "./setup";
 import { createTestRisk } from "../factories";
 
 afterEach(async () => {
@@ -160,15 +161,21 @@ describe("GET /api/riskLinks/dismissals", () => {
   });
 
   it("admits a SuperAdmin to the admin reports", async () => {
-    // roleId 5 is SuperAdmin: org-wide visibility like Admin. Only one
-    // SuperAdmin may exist (idx_users_superadmin_unique), so build a single
-    // context instead of the two-context seeder.
-    const owner = await buildTenantContext(5);
+    // SuperAdmin is not a roles row (it lives in super_admins); what the route
+    // gate sees is req.role === "SuperAdmin", so the request carries exactly
+    // that for a user of the seeded org.
+    const { owner } = await seedTwoTenantContexts();
+    const superAdmin = testRequest(
+      await createTestApp({
+        bypassAuth: true,
+        mockUser: { userId: owner.userId, organizationId: owner.orgId, role: "SuperAdmin" },
+      }),
+    );
 
-    const graph = await owner.request.get("/api/riskLinks");
+    const graph = await superAdmin.get("/api/riskLinks");
     expect(graph.status).toBe(200);
 
-    const dismissals = await owner.request.get("/api/riskLinks/dismissals");
+    const dismissals = await superAdmin.get("/api/riskLinks/dismissals");
     expect(dismissals.status).toBe(200);
   });
 

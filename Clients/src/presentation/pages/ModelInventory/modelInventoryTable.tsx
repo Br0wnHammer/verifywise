@@ -13,8 +13,8 @@ import "../../components/Table/index.css";
 import singleTheme from "../../themes/v1SingleTheme";
 import CustomIconButton from "../../components/IconButton";
 import ViewRelationshipsButton from "../../components/ViewRelationshipsButton";
-import PluginSlot from "../../components/PluginSlot";
-import { PLUGIN_SLOTS } from "../../../domain/constants/pluginSlots";
+import { useExtensions } from "../../../application/contexts/Extensions.context";
+import ViewLifecycleButton from "../Extensions/model-lifecycle/ViewLifecycleButton";
 import allowedRoles from "../../../application/constants/permissions";
 import { useAuth } from "../../../application/hooks/useAuth";
 import { Cpu, Layers, BarChart3, Link2 } from "lucide-react";
@@ -30,7 +30,7 @@ import { User } from "../../../domain/types/User";
 import { tableRowHoverStyle, tableRowDeletingStyle } from "./style";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { displayFormattedDate } from "../../tools/isoDateToString";
+import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import { ModelInventoryStatus } from "../../../domain/enums/modelInventory.enum";
 import Chip from "../../components/Chip";
 import { VWLink } from "../../components/Link";
@@ -56,6 +56,7 @@ const TABLE_COLUMNS: StandardColumn[] = [
   { id: "risks", label: "RISKS", sortable: true },
   { id: "status", label: "STATUS", sortable: true },
   { id: "status_date", label: "STATUS DATE", sortable: true },
+  { id: "type", label: "TYPE", sortable: true },
   { id: "actions", label: "", sortable: false },
 ];
 
@@ -94,7 +95,9 @@ const ModelInventoryTable: React.FC<ModelInventoryTableProps> = ({
   flashRowId,
   visibleColumns,
 }) => {
+  const formatDate = useFormattedDate();
   const { userRoleName } = useAuth();
+  const { isEnabled } = useExtensions();
   const [users, setUsers] = useState<User[]>([]);
 
   // Model risks dialog state
@@ -221,6 +224,10 @@ const ModelInventoryTable: React.FC<ModelInventoryTableProps> = ({
         case "status_date":
           aValue = a.status_date ? new Date(a.status_date).getTime() : 0;
           bValue = b.status_date ? new Date(b.status_date).getTime() : 0;
+          break;
+        case "type":
+          aValue = (a.type || "").toLowerCase();
+          bValue = (b.type || "").toLowerCase();
           break;
         default:
           return 0;
@@ -432,11 +439,29 @@ const ModelInventoryTable: React.FC<ModelInventoryTableProps> = ({
                   >
                     <TooltipCell
                       value={
-                        modelInventory.status_date
-                          ? displayFormattedDate(modelInventory.status_date)
-                          : "-"
+                        modelInventory.status_date ? formatDate(modelInventory.status_date) : "-"
                       }
                     />
+                  </TableCell>
+                )}
+                {isColVisible("type") && (
+                  <TableCell
+                    sx={{
+                      ...singleTheme.tableStyles.primary.body.cell,
+                      whiteSpace: "nowrap",
+                      backgroundColor:
+                        sortConfig.key === "type"
+                          ? singleTheme.tableColors.sortedColumn
+                          : undefined,
+                    }}
+                  >
+                    {modelInventory.type ? (
+                      <Chip label={modelInventory.type} />
+                    ) : (
+                      <Typography variant="body2" sx={{ color: palette.text.disabled }}>
+                        -
+                      </Typography>
+                    )}
                   </TableCell>
                 )}
                 {customFieldDefs.map((def) => {
@@ -464,14 +489,12 @@ const ModelInventoryTable: React.FC<ModelInventoryTableProps> = ({
                       entityType="model"
                       entityLabel={modelInventory.model || undefined}
                     />
-                    {/* Plugin-injected icon buttons for model rows */}
-                    <PluginSlot
-                      id={PLUGIN_SLOTS.MODEL_ROW_ICON_ACTIONS}
-                      slotProps={{
-                        modelId: modelInventory.id,
-                        modelName: modelInventory.model,
-                      }}
-                    />
+                    {isEnabled("model-lifecycle") && modelInventory.id != null && (
+                      <ViewLifecycleButton
+                        modelId={modelInventory.id}
+                        modelName={modelInventory.model || undefined}
+                      />
+                    )}
                     {isDeletingAllowed && (
                       <CustomIconButton
                         id={modelInventory.id || 0}
@@ -527,6 +550,7 @@ const ModelInventoryTable: React.FC<ModelInventoryTableProps> = ({
       flashRowId,
       isColVisible,
       visibleTableColumns,
+      formatDate,
     ],
   );
 

@@ -53,6 +53,10 @@ describe("useDashboardMetrics", () => {
     mockGetEntityById.mockResolvedValue({ data: {} });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("should set loading=false after all groups complete", async () => {
     const { result } = renderHook(() => useDashboardMetrics());
 
@@ -356,6 +360,8 @@ describe("useDashboardMetrics", () => {
             { id: 2, status: "Investigating", severity: "Medium" },
             { id: 3, status: "Mitigated", severity: "Low" },
             { id: 4, status: "Closed", severity: "Low" },
+            { id: 5, status: "Suspended", severity: "Medium" },
+            { id: 6, status: "Emergency action", severity: "High" },
           ],
         };
       }
@@ -369,12 +375,14 @@ describe("useDashboardMetrics", () => {
     });
 
     expect(result.current.incidentMetrics).not.toBeNull();
-    expect(result.current.incidentMetrics!.total).toBe(4);
+    expect(result.current.incidentMetrics!.total).toBe(6);
     expect(result.current.incidentMetrics!.openCount).toBe(1);
     expect(result.current.incidentStatusMetrics!.distribution.open).toBe(1);
     expect(result.current.incidentStatusMetrics!.distribution.investigating).toBe(1);
     expect(result.current.incidentStatusMetrics!.distribution.mitigated).toBe(1);
     expect(result.current.incidentStatusMetrics!.distribution.closed).toBe(1);
+    expect(result.current.incidentStatusMetrics!.distribution.suspended).toBe(1);
+    expect(result.current.incidentStatusMetrics!.distribution.emergencyAction).toBe(1);
   });
 
   it("should fetch model risk metrics with distribution", async () => {

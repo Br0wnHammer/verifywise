@@ -1,4 +1,4 @@
-import { translations, type Lang } from "./translations";
+import type { Lang } from "./translations";
 import { storageService } from "../infrastructure/storage";
 
 const TRANSLATABLE_ATTRS = ["placeholder", "title", "aria-label", "alt"];
@@ -75,15 +75,24 @@ if (typeof window !== "undefined") {
 
 const SUPPORTED: Lang[] = ["en", "de", "fr", "es"];
 
+// The de/fr/es dictionaries live in a separate async chunk and are only
+// fetched when a non-English language is active. English keys pass through,
+// so the default language needs no dictionary bytes on the critical path.
+const loadDictionary = async (lang: Lang): Promise<Record<string, string>> => {
+  if (lang === "en") return {};
+  const { translations } = await import("./translations");
+  return translations[lang] || {};
+};
+
 const getCurrentLang = (): Lang => {
   const stored = storageService.get("language", "en") as Lang;
   return SUPPORTED.includes(stored) ? stored : "en";
 };
 
-const setCurrentLang = (lang: Lang) => {
+const setCurrentLang = async (lang: Lang) => {
   storageService.set("language", lang);
   currentLang = lang;
-  dict = lang === "en" ? {} : translations[lang] || {};
+  dict = await loadDictionary(lang);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("vw:languagechange", { detail: { lang } }));
   }
@@ -177,31 +186,41 @@ const startObserver = () => {
 
 export const initDomTranslator = () => {
   if (typeof window === "undefined") return;
-  setCurrentLang(getCurrentLang());
 
   const boot = () => {
     translateAll();
     startObserver();
   };
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot, { once: true });
-  } else {
-    boot();
-  }
+  // Load the active language's dictionary before the first translation pass.
+  setCurrentLang(getCurrentLang()).then(() => {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot, { once: true });
+    } else {
+      boot();
+    }
+  });
 };
 
 export const setLanguage = (lang: Lang) => {
   const prev = currentLang;
-  setCurrentLang(lang);
   // If we're leaving a non-English language, the DOM already contains translated
-  // text that won't match our English-keyed dictionary. Reload to get fresh
-  // English source before applying the new target.
+  // text that won't match our English-keyed dictionary. Persist the choice and
+  // reload to get fresh English source before applying the new target.
   if (prev !== "en") {
+    storageService.set("language", lang);
     window.location.reload();
     return;
   }
-  translateAll();
+  setCurrentLang(lang).then(translateAll);
 };
 
 export const getLanguage = (): Lang => currentLang;
+
+// Synchronous lookup against the currently loaded dictionary, for non-DOM
+// consumers (customAxios error toasts, useTranslation). English keys pass
+// through, as do keys seen before the dictionary has finished loading.
+export const translateKey = (key: string): string => {
+  if (currentLang === "en") return key;
+  return dict[key] || key;
+};

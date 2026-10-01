@@ -23,7 +23,7 @@ export const invite = async (
     functionName: "invite",
     fileName: "vwmailer.ctrl.ts",
     userId: req.userId!,
-    organizationId: req.organizationId!,
+    organizationId,
   });
   logger.debug(`📧 Sending invitation email to ${to} for user ${name} ${surname || ""}`);
 
@@ -61,12 +61,14 @@ export const invite = async (
         fileName: "vwmailer.ctrl.ts",
         error: new Error(`${info.error.name}: ${info.error.message}`),
         userId: req.userId!,
-        organizationId: req.organizationId!,
+        organizationId,
       });
-      return res.status(206).json({
-        error: `${info.error.name}: ${info.error.message}`,
-        message: link,
-      });
+      return res.status(206).json(
+        STATUS_CODE[206]({
+          error: `${info.error.name}: ${info.error.message}`,
+          link,
+        }),
+      );
     } else {
       await logSuccess({
         eventType: "Create",
@@ -74,7 +76,7 @@ export const invite = async (
         functionName: "invite",
         fileName: "vwmailer.ctrl.ts",
         userId: req.userId!,
-        organizationId: req.organizationId!,
+        organizationId,
       });
       return res.status(200).json({ message: req.t!("Email sent successfully") });
     }
@@ -87,7 +89,7 @@ export const invite = async (
       fileName: "vwmailer.ctrl.ts",
       error: error as Error,
       userId: req.userId!,
-      organizationId: req.organizationId!,
+      organizationId,
     });
     return res.status(500).json(
       STATUS_CODE[500]({

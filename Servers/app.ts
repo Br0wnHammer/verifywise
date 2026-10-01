@@ -2,6 +2,7 @@ import express, { RequestHandler } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
+import { csrfProtection } from "./middleware/csrf.middleware";
 
 import assessmentRoutes from "./routes/assessment.route";
 import projectRoutes from "./routes/project.route";
@@ -17,7 +18,11 @@ import fileRoutes from "./routes/file.route";
 import mailRoutes from "./routes/vwmailer.route";
 import euRouter from "./routes/eu.route";
 import reportRoutes from "./routes/reporting.route";
+import reportTemplateRoutes from "./routes/reportTemplate.route";
+import scheduledReportRoutes from "./routes/scheduledReport.route";
+import reportRunRoutes from "./routes/reportRun.route";
 import frameworks from "./routes/frameworks.route";
+import frameworkImpl from "./routes/frameworkImpl.route";
 import organizationRoutes from "./routes/organization.route";
 import isoRoutes from "./routes/iso42001.route";
 import trainingRoutes from "./routes/trainingRegistar.route";
@@ -32,7 +37,13 @@ import modelInventoryHistoryRoutes from "./routes/modelInventoryHistory.route";
 import modelInventoryChangeHistoryRoutes from "./routes/modelInventoryChangeHistory.route";
 import mrmRoutes from "./routes/mrm.route";
 import mrmIngestionRoutes from "./routes/mrmIngestion.route";
-import datasetBulkUploadRoutes from "./routes/datasetBulkUpload.route";
+import datasetBulkUploadRoutes from "./extensions/dataset-bulk-upload/datasetBulkUpload.route";
+import riskImportRoutes from "./extensions/risk-import/riskImport.route";
+import slackExtensionRoutes from "./extensions/slack/slack.route";
+import mlflowExtensionRoutes from "./extensions/mlflow/mlflow.route";
+import azureAiFoundryExtensionRoutes from "./extensions/azure-ai-foundry/azureAiFoundry.route";
+import jiraAssetsExtensionRoutes from "./extensions/jira-assets/jiraAssets.route";
+import modelLifecycleExtensionRoutes from "./extensions/model-lifecycle/modelLifecycle.route";
 import datasetRoutes from "./routes/dataset.route";
 import riskHistoryRoutes from "./routes/riskHistory.route";
 import modelRiskRoutes from "./routes/modelRisk.route";
@@ -42,7 +53,7 @@ import autoDriverRoutes from "./routes/autoDriver.route";
 import taskRoutes from "./routes/task.route";
 import deadlineRoutes from "./routes/deadline.route";
 import slackWebhookRoutes from "./routes/slackWebhook.route";
-import pluginRoutes from "./routes/plugin.route";
+import extensionRoutes from "./routes/extension.route";
 import tokenRoutes from "./routes/tokens.route";
 import shareLinkRoutes from "./routes/shareLink.route";
 import automation from "./routes/automation.route.js";
@@ -98,6 +109,7 @@ import aiApprovalRoutes from "./routes/aiApproval.route";
 import aiApprovalRulesRoutes from "./routes/aiApprovalRules.route";
 import aiAppRoutes from "./routes/aiApp.route";
 import aiAuditRoutes from "./routes/aiAudit.route";
+import observabilityRouter from "./routes/observability.route";
 import featureSettingsRoutes from "./routes/featureSettings.route";
 import friaRoutes from "./routes/fria.route";
 import riskBenchmarkRoutes from "./routes/riskBenchmark.route";
@@ -108,10 +120,13 @@ import virtualKeyProxyRoutes from "./routes/virtualKeyProxy.route";
 import internalRoutes from "./routes/internal.route";
 import superAdminRoutes from "./routes/superAdmin.route";
 import { i18nMiddleware } from "./middleware/i18n.middleware";
+import { generalApiLimiter, healthCheckLimiter } from "./middleware/rateLimit.middleware";
 import { sequelize } from "./database/db";
 import redisClient from "./database/redis";
 import ssoConfigRoutes from "./routes/ssoConfig.route";
 import aiTrustIndexRoutes from "./routes/aiTrustIndex.route";
+import telemetryRoutes from "./routes/telemetry.route";
+import { requestMetricsMiddleware } from "./middleware/requestMetrics.middleware";
 
 const swaggerDoc = YAML.load("./swagger.yaml");
 
@@ -120,6 +135,10 @@ const DEFAULT_HOST = "localhost";
 export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Application {
   const app = express();
   const host = process.env.HOST || DEFAULT_HOST;
+
+  // Trust the first reverse proxy (nginx) so req.ip, req.secure and
+  // X-Forwarded-Proto are honored for rate limiting and cookie logic.
+  app.set("trust proxy", 1);
 
   app.use(
     cors({
@@ -144,7 +163,7 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
         }
       },
       credentials: true,
-      allowedHeaders: ["Authorization", "Content-Type", "X-Requested-With", "X-Organization-Id"],
+      allowedHeaders: ["Authorization", "Content-Type", "X-Requested-With", "X-CSRF-Token"],
     }),
   );
   app.use(helmet());
@@ -165,10 +184,15 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
     express.json({ limit: "10mb" })(req, res, next);
   });
   app.use(cookieParser());
+  // Double-submit-cookie CSRF protection for cookie-authenticated flows
+  // (refresh-token / logout). Bearer-only API clients pass through.
+  app.use(csrfProtection);
 
   app.use(i18nMiddleware);
 
-  app.get("/health", async (_req, res) => {
+  // Generous rate limiter for the health endpoint. Load-balancer probes are
+  // still allowed, but the endpoint is capped to prevent abuse.
+  app.get("/health", healthCheckLimiter, async (_req, res) => {
     const AI_GATEWAY_URL = process.env.AI_GATEWAY_URL || "http://localhost:8100";
     const checks: Record<string, { status: "ok" | "error"; error?: string }> = {};
 
@@ -208,9 +232,24 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
     res.status(allOk ? 200 : 503).json({ status: allOk ? "ok" : "degraded", checks });
   });
 
+  // Track every request: metrics + access log (shipped to the central
+  // observability stack when monitoring is enabled). Mounted after /health so
+  // health checks aren't counted, and before all /api routes.
+  app.use(requestMetricsMiddleware);
+
   if (preRoutesMiddleware) {
     preRoutesMiddleware.forEach((mw) => app.use(mw));
   }
+
+  // Webhook routes are mounted before the global rate limiter because they are
+  // signature-verified and have their own per-route controls.
+  app.use("/api/webhooks", webhookRoutes);
+
+  // Global API rate limiter (audit 4.5): a loose per-IP ceiling mounted
+  // ahead of every route mount. Stricter per-route limiters (auth, file
+  // ops, ingestion, ...) still apply on top. /health has its own generous
+  // per-IP limiter above.
+  app.use(generalApiLimiter);
 
   app.use("/api/users", userRoutes);
   app.use("/api/vendorRisks", vendorRiskRoutes);
@@ -227,6 +266,7 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   app.use("/api/mail", mailRoutes);
   app.use("/api/invitations", invitationRoutes);
   app.use("/api/frameworks", frameworks);
+  app.use("/api/frameworks", frameworkImpl);
   app.use("/api/eu-ai-act", euRouter); // **
   app.use("/api/organizations", organizationRoutes);
   app.use("/api/iso-42001", isoRoutes); // **
@@ -236,7 +276,23 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   app.use("/api/logger", loggerRoutes);
   app.use("/api/modelInventory", modelInventoryRoutes);
   app.use("/api/modelInventoryHistory", modelInventoryHistoryRoutes);
-  app.use("/api/dataset-bulk-upload", datasetBulkUploadRoutes);
+  // The generic /api/extensions catalog router MUST be mounted BEFORE the
+  // per-extension routers below. Express matches app.use() prefixes in
+  // registration order, and a per-extension mount (e.g. /api/extensions/slack)
+  // would otherwise swallow catalog requests like GET /api/extensions/slack
+  // and 403 via requireExtensionEnabled — even when the caller just wants
+  // the catalog detail. Generic routes here are /, /:key, /:key/enable,
+  // /:key/disable, /:key/configuration; none collide with per-extension
+  // sub-paths (which all use multi-segment paths like /oauth/workspaces,
+  // /models, /config, /import, /sync, /use-cases, etc.).
+  app.use("/api/extensions", extensionRoutes);
+  app.use("/api/extensions/dataset-bulk-upload", datasetBulkUploadRoutes);
+  app.use("/api/extensions/risk-import", riskImportRoutes);
+  app.use("/api/extensions/slack", slackExtensionRoutes);
+  app.use("/api/extensions/mlflow", mlflowExtensionRoutes);
+  app.use("/api/extensions/azure-ai-foundry", azureAiFoundryExtensionRoutes);
+  app.use("/api/extensions/jira-assets", jiraAssetsExtensionRoutes);
+  app.use("/api/extensions/model-lifecycle", modelLifecycleExtensionRoutes);
   app.use("/api/model-inventory-change-history", modelInventoryChangeHistoryRoutes);
   app.use("/api/mrm", mrmRoutes);
   // Token-authed machine ingestion surface, mounted on the same base path.
@@ -246,6 +302,9 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   app.use("/api/datasets", datasetRoutes);
   app.use("/api/riskHistory", riskHistoryRoutes);
   app.use("/api/modelRisks", modelRiskRoutes);
+  app.use("/api/reporting/templates", reportTemplateRoutes);
+  app.use("/api/reporting/scheduled-reports", scheduledReportRoutes);
+  app.use("/api/reporting/runs", reportRunRoutes);
   app.use("/api/reporting", reportRoutes);
   app.use("/api/dashboard", dashboardRoutes);
   app.use("/api/tiers", tiersRoutes);
@@ -258,7 +317,6 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   app.use("/api/policies", policyRoutes);
   app.use("/api/policies", policyFolderRoutes);
   app.use("/api/slackWebhooks", slackWebhookRoutes);
-  app.use("/api/plugins", pluginRoutes);
   app.use("/api/tokens", tokenRoutes);
   app.use("/api/shares", shareLinkRoutes);
   app.use("/api/file-manager", fileManagerRoutes);
@@ -275,6 +333,7 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   app.use("/api/ai-approval-rules", aiApprovalRulesRoutes);
   app.use("/api/ai-apps", aiAppRoutes);
   app.use("/api/ai-audit", aiAuditRoutes);
+  app.use("/api/observability", observabilityRouter);
   app.use("/api/advisor", advisorRouter);
   app.use("/api/policy-linked", policyLinkedObjects);
   app.use("/api/ai-incident-managements", aiIncidentRouter);
@@ -296,7 +355,6 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   app.use("/api/dataset-change-history", datasetChangeHistoryRoutes);
   app.use("/api/approval-workflows", approvalWorkflowRoutes);
   app.use("/api/approval-requests", approvalRequestRoutes);
-  app.use("/api/webhooks", webhookRoutes);
   app.use("/api/ai-detection", aiDetectionRoutes);
   app.use("/api/ai-detection/repositories", aiDetectionRepositoryRoutes);
   app.use("/api/integrations/github", githubIntegrationRoutes);
@@ -321,6 +379,7 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
 
   app.use("/api/super-admin", superAdminRoutes);
   app.use("/api/internal", internalRoutes);
+  app.use("/api/telemetry", telemetryRoutes);
   app.use("/v1", virtualKeyProxyRoutes());
   app.use("/api/ssoConfig", ssoConfigRoutes);
   app.use("/api/ai-trust-index", aiTrustIndexRoutes);

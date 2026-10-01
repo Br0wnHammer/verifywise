@@ -58,8 +58,7 @@ export async function githubWebhookController(req: Request, res: Response): Prom
 
     // 4. Extract repository info from payload
     const repoInfo = payload.repository as
-      | { owner?: { login?: string }; name?: string }
-      | undefined;
+      { owner?: { login?: string }; name?: string } | undefined;
     const owner = repoInfo?.owner?.login;
     const name = repoInfo?.name;
 
@@ -119,9 +118,11 @@ export async function githubWebhookController(req: Request, res: Response): Prom
 
     // Always return 200 to prevent GitHub from retrying on internal errors
     // Log the error server-side but don't expose details
-    return res.status(200).json({
-      triggered: false,
-      reason: "Internal processing error",
-    });
+    return res.status(200).json(
+      STATUS_CODE[200]({
+        triggered: false,
+        reason: "Internal processing error",
+      }),
+    );
   }
 }

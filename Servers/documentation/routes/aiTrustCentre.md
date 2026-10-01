@@ -124,18 +124,10 @@ All routes require JWT authentication middleware (`authenticateJWT`).
   "status": 200,
   "message": "AI Trust Centre overview retrieved successfully",
   "data": {
-    "intro": {
-      /* intro data */
-    },
-    "compliance_badges": {
-      /* compliance badges data */
-    },
-    "company_info": {
-      /* company info data */
-    },
-    "terms_and_contact": {
-      /* terms and contact data */
-    }
+    "intro": {/* intro data */},
+    "compliance_badges": {/* compliance badges data */},
+    "company_info": {/* company info data */},
+    "terms_and_contact": {/* terms and contact data */}
   }
 }
 ```

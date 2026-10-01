@@ -1,6 +1,7 @@
 import redisClient from "../database/redis";
 import { sequelize } from "../database/db";
 import { QueryTypes } from "sequelize";
+import logger from "../utils/logger/fileLogger";
 import { createNotificationQuery, createBulkNotificationsQuery } from "../utils/notification.utils";
 import {
   ICreateNotification,
@@ -41,6 +42,8 @@ const buildEntityUrl = (entityType: NotificationEntityType, entityId: number): s
       return `/project-view?projectId=${entityId}`;
     case NotificationEntityType.FILE:
       return `/file-manager?fileId=${entityId}`;
+    case NotificationEntityType.EVIDENCE:
+      return `/model-inventory/evidence-hub?evidenceId=${entityId}`;
     case NotificationEntityType.SHADOW_AI_TOOL:
       return `/shadow-ai/tools/${entityId}`;
     case NotificationEntityType.AI_GATEWAY:
@@ -77,7 +80,7 @@ export const sendInAppNotification = async (
       }),
     );
 
-    console.log(
+    logger.info(
       `📤 In-app notification sent to user ${notification.user_id}: ${notification.title}`,
     );
 
@@ -93,17 +96,21 @@ export const sendInAppNotification = async (
             emailConfig.template,
             emailConfig.variables,
           );
-          console.log(`📧 Email notification sent to ${user.email}`);
+          logger.info(`📧 Email notification sent to ${user.email}`);
         }
       } catch (emailError) {
-        console.error("Failed to send email notification:", emailError);
+        logger.error(
+          `Failed to send email notification: ${emailError instanceof Error ? emailError.message : String(emailError)}`,
+        );
         // Don't fail the whole notification if email fails
       }
     }
 
     return storedNotification;
   } catch (error) {
-    console.error("❌ Error sending in-app notification:", error);
+    logger.error(
+      `❌ Error sending in-app notification: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 };
@@ -134,7 +141,7 @@ export const sendBulkInAppNotifications = async (
       );
     }
 
-    console.log(`📤 Bulk notifications sent to ${bulk.user_ids.length} users: ${bulk.title}`);
+    logger.info(`📤 Bulk notifications sent to ${bulk.user_ids.length} users: ${bulk.title}`);
 
     // 3. Optionally send email notifications using existing NotificationService (with rate limiting)
     if (sendEmailNotification && emailConfig) {
@@ -151,14 +158,18 @@ export const sendBulkInAppNotifications = async (
             },
           );
         } catch (emailError) {
-          console.error(`Failed to send email to ${user.email}:`, emailError);
+          logger.error(
+            `Failed to send email to ${user.email}: ${emailError instanceof Error ? emailError.message : String(emailError)}`,
+          );
         }
       }
     }
 
     return storedNotifications;
   } catch (error) {
-    console.error("❌ Error sending bulk notifications:", error);
+    logger.error(
+      `❌ Error sending bulk notifications: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 };
@@ -434,7 +445,9 @@ async function buildEntityLinksHtml(
     try {
       url = await buildEntityUrlAsync(baseUrl, link.entity_type, link.entity_id, organizationId);
     } catch (error) {
-      console.error(`Failed to build URL for ${link.entity_type}:${link.entity_id}:`, error);
+      logger.error(
+        `Failed to build URL for ${link.entity_type}:${link.entity_id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
 
     const nameHtml = url
@@ -1208,6 +1221,59 @@ export const notifyRiskOfModelCandidates = async (
 };
 
 /**
+ * Notify a file uploader that their file is inside the 7-day pre-expiry
+ * window. Called by the daily fileExpirySweep for each row it matches; the
+ * sweep writes no state back, so a re-run on the same day sends again —
+ * the window itself is the dedup.
+ */
+export const notifyFileExpiring = async (
+  organizationId: number,
+  recipientId: number,
+  file: {
+    id: number;
+    name: string;
+    expiryDate: string;
+    daysRemaining: number;
+  },
+  baseUrl: string,
+): Promise<void> => {
+  const recipient = await getUserById(recipientId);
+
+  const daysRemainingLabel =
+    file.daysRemaining <= 0
+      ? "expires today"
+      : file.daysRemaining === 1
+        ? "1 day"
+        : `${file.daysRemaining} days`;
+
+  await sendInAppNotification(
+    organizationId,
+    {
+      user_id: recipientId,
+      type: NotificationType.FILE_EXPIRING,
+      title: "File expiring soon",
+      message: `File "${file.name}" expires on ${file.expiryDate} (${daysRemainingLabel})`,
+      entity_type: NotificationEntityType.FILE,
+      entity_id: file.id,
+      entity_name: file.name,
+      action_url: buildEntityUrl(NotificationEntityType.FILE, file.id),
+    },
+    true,
+    {
+      template: EMAIL_TEMPLATES.FILE_EXPIRING,
+      subject: `File expiring soon: ${file.name}`,
+      variables: {
+        recipient_name: recipient ? `${recipient.name}` : "there",
+        file_name: file.name,
+        expiry_date: file.expiryDate,
+        days_remaining: daysRemainingLabel,
+        file_url: `${baseUrl}${buildEntityUrl(NotificationEntityType.FILE, file.id)}`,
+      },
+    },
+  );
+};
+
+/**
  * Notify training assigned
  */
 export const notifyTrainingAssigned = async (
@@ -1300,13 +1366,7 @@ async function getUserEmails(
  * Role type for assignment notifications
  */
 export type AssignmentRoleType =
-  | "Owner"
-  | "Reviewer"
-  | "Approver"
-  | "Member"
-  | "Assignee"
-  | "Action Owner"
-  | "Risk Owner";
+  "Owner" | "Reviewer" | "Approver" | "Member" | "Assignee" | "Action Owner" | "Risk Owner";
 
 /**
  * Entity type labels for display in notifications
@@ -1481,7 +1541,7 @@ export const notifyUserAssigned = async (
   try {
     const assignee = await getUserById(assigneeId);
     if (!assignee) {
-      console.warn(`Cannot send assignment notification: user ${assigneeId} not found`);
+      logger.warn(`Cannot send assignment notification: user ${assigneeId} not found`);
       return;
     }
 
@@ -1528,11 +1588,18 @@ export const notifyUserAssigned = async (
       },
     );
 
-    console.log(
+    // The values are interpolated into the message here rather than passed as
+    // printf arguments: winston is configured without format.splat(), so a
+    // stray %s or %d in caller-supplied data (assigneeId reaches here from a
+    // request body) is printed literally instead of being treated as a
+    // format specifier.
+    logger.info(
       `📧 Assignment notification sent to user ${assigneeId} as ${assignment.roleType} for ${assignment.entityType} ${assignment.entityId}`,
     );
   } catch (error) {
-    console.error(`Failed to send assignment notification to user ${assigneeId}:`, error);
+    logger.error(
+      `Failed to send assignment notification to user ${assigneeId}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     // Don't rethrow - notifications should not break the main flow
   }
 };

@@ -108,7 +108,7 @@ function tagToVarName(tag: string): string {
     Notes: "note",
     Notifications: "notification",
     Organizations: "organization",
-    Plugins: "plugin",
+    Extensions: "extension",
     Policies: "policy",
     "Post-Market Monitoring": "postMarketMonitoring",
     "Project Risks": "projectRisk",
@@ -263,8 +263,7 @@ function main(): void {
 
   for (const [pathStr, methods] of Object.entries(doc.paths)) {
     const pathParams = (methods as Record<string, unknown>).parameters as
-      | SwaggerParameter[]
-      | undefined;
+      SwaggerParameter[] | undefined;
 
     for (const method of HTTP_METHODS) {
       const op = (methods as Record<string, SwaggerOperation>)[method];
