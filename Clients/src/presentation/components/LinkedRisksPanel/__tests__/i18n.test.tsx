@@ -487,3 +487,25 @@ describe("the word for Dismiss", () => {
     expect(tr(lang, "Dismissed")).toBe(status);
   });
 });
+
+describe("a panel rendered before its dictionary has loaded", () => {
+  // Dictionaries load lazily, so the app's first paint can come before them.
+  // The DOM translator catches plain text afterwards, but not text composed
+  // with t() — that only changes if the component re-renders.
+  it("re-renders text composed with t() once the dictionary arrives", async () => {
+    await setLanguage("en");
+    mockUseRiskLinks.mockReturnValue(
+      result([
+        link({
+          relatedRisk: { id: 9, entityType: "risk", name: null, riskLevel: null, ownerId: null },
+        }),
+      ]),
+    );
+
+    const loaded = setLanguage("de");
+    renderWithProviders(<LinkedRisksPanel riskId={42} />);
+    await loaded;
+
+    expect(await screen.findByText(tr("de", "Risk {id}", { id: 9 }))).toBeInTheDocument();
+  });
+});
