@@ -35,9 +35,7 @@ describe("risk_links_single_parent_idx", () => {
     // message text, because those are the two fields Task 4's
     // isSingleParentViolation reads. Matching the message instead would let the
     // controller and this test drift apart on a Sequelize error-format change.
-    await expect(
-      insertConfirmedInheritance(owner.orgId, child, parentB),
-    ).rejects.toMatchObject({
+    await expect(insertConfirmedInheritance(owner.orgId, child, parentB)).rejects.toMatchObject({
       original: { code: "23505", constraint: "risk_links_single_parent_idx" },
     });
   });
@@ -57,9 +55,7 @@ describe("risk_links_single_parent_idx", () => {
 
     // The index is partial on status = 'confirmed', so a dismissed row does not
     // occupy the slot. Without WHERE status = 'confirmed' this would throw.
-    await expect(
-      insertConfirmedInheritance(owner.orgId, child, parentB),
-    ).resolves.toBeDefined();
+    await expect(insertConfirmedInheritance(owner.orgId, child, parentB)).resolves.toBeDefined();
   });
 
   it("allows one parent to have many children (fan-out is unlimited)", async () => {
@@ -72,8 +68,6 @@ describe("risk_links_single_parent_idx", () => {
 
     // The index is on source_risk_id (the child) only — a second child under
     // the same parent is a different source id and must be allowed.
-    await expect(
-      insertConfirmedInheritance(owner.orgId, childB, parent),
-    ).resolves.toBeDefined();
+    await expect(insertConfirmedInheritance(owner.orgId, childB, parent)).resolves.toBeDefined();
   });
 });

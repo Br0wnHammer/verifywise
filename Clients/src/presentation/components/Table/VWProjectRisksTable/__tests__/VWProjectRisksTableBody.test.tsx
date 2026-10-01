@@ -319,9 +319,7 @@ describe("VWProjectRisksTableBody", () => {
     renderWithContext(<VWProjectRisksTableBody {...defaultProps} rows={rowsStale} />);
     const chip = screen.getByText("Evidence stale");
     expect(chip).toBeInTheDocument();
-    expect(chip.closest("[title]")?.getAttribute("title")).toBe(
-      new Date(staleAt).toLocaleString(),
-    );
+    expect(chip.closest("[title]")?.getAttribute("title")).toBe(new Date(staleAt).toLocaleString());
   });
 
   it("omits the Evidence stale chip when evidence_stale_at is null", () => {

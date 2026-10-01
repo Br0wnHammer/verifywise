@@ -152,7 +152,13 @@ describe("runEvidenceFreshnessSweep", () => {
 
     const summary = await runEvidenceFreshnessSweep(1, new Date("2026-09-09T05:00:00Z"));
 
-    expect(summary).toEqual({ organization_id: 1, stale: 1, downgraded: 0, cleared: 0, notified: 1 });
+    expect(summary).toEqual({
+      organization_id: 1,
+      stale: 1,
+      downgraded: 0,
+      cleared: 0,
+      notified: 1,
+    });
     expect(flags.get(key(1, 10))).not.toBeNull();
     expect(mockNotify).toHaveBeenCalledTimes(1);
     expect(mockNotify).toHaveBeenCalledWith(1, { id: 10, risk_name: "Risk 10", risk_owner: 5 });
@@ -166,7 +172,13 @@ describe("runEvidenceFreshnessSweep", () => {
     const second = await runEvidenceFreshnessSweep(1);
 
     expect(first).toEqual({ organization_id: 1, stale: 1, downgraded: 0, cleared: 0, notified: 1 });
-    expect(second).toEqual({ organization_id: 1, stale: 0, downgraded: 0, cleared: 0, notified: 0 });
+    expect(second).toEqual({
+      organization_id: 1,
+      stale: 0,
+      downgraded: 0,
+      cleared: 0,
+      notified: 0,
+    });
     expect(mockNotify).toHaveBeenCalledTimes(1);
   });
 
@@ -176,7 +188,13 @@ describe("runEvidenceFreshnessSweep", () => {
 
     const summary = await runEvidenceFreshnessSweep(1);
 
-    expect(summary).toEqual({ organization_id: 1, stale: 0, downgraded: 0, cleared: 1, notified: 0 });
+    expect(summary).toEqual({
+      organization_id: 1,
+      stale: 0,
+      downgraded: 0,
+      cleared: 1,
+      notified: 0,
+    });
     expect(flags.get(key(1, 10))).toBeNull();
     expect(mockNotify).not.toHaveBeenCalled();
   });
@@ -187,7 +205,13 @@ describe("runEvidenceFreshnessSweep", () => {
 
     const summary = await runEvidenceFreshnessSweep(1);
 
-    expect(summary).toEqual({ organization_id: 1, stale: 1, downgraded: 0, cleared: 0, notified: 0 });
+    expect(summary).toEqual({
+      organization_id: 1,
+      stale: 1,
+      downgraded: 0,
+      cleared: 0,
+      notified: 0,
+    });
     expect(flags.get(key(1, 10))).not.toBeNull();
     expect(mockNotify).not.toHaveBeenCalled();
   });
@@ -202,7 +226,13 @@ describe("runEvidenceFreshnessSweep", () => {
 
     const summary = await runEvidenceFreshnessSweep(1);
 
-    expect(summary).toEqual({ organization_id: 1, stale: 2, downgraded: 0, cleared: 0, notified: 1 });
+    expect(summary).toEqual({
+      organization_id: 1,
+      stale: 2,
+      downgraded: 0,
+      cleared: 0,
+      notified: 1,
+    });
     expect(mockNotify).toHaveBeenCalledTimes(2);
   });
 
@@ -215,7 +245,13 @@ describe("runEvidenceFreshnessSweep", () => {
     expect(first).toEqual({ organization_id: 1, stale: 1, downgraded: 0, cleared: 0, notified: 0 });
 
     const second = await runEvidenceFreshnessSweep(1);
-    expect(second).toEqual({ organization_id: 1, stale: 0, downgraded: 0, cleared: 0, notified: 1 });
+    expect(second).toEqual({
+      organization_id: 1,
+      stale: 0,
+      downgraded: 0,
+      cleared: 0,
+      notified: 1,
+    });
     expect(mockNotify).toHaveBeenCalledTimes(2);
   });
 

@@ -115,7 +115,10 @@ test("the coverage report separates gaps from unmappable risks and counts them h
     ["Coverage gaps", summary.gap],
     ["No framework yet", summary.no_framework],
   ] as const) {
-    const tile = page.locator("div").filter({ hasText: new RegExp(`^${label}${value}$`) }).last();
+    const tile = page
+      .locator("div")
+      .filter({ hasText: new RegExp(`^${label}${value}$`) })
+      .last();
     await expect(tile).toBeVisible();
   }
 
@@ -169,7 +172,9 @@ test("risk level chips pick up a real variant colour instead of falling through 
 test("the reports narrow without ever pushing the page sideways", async ({ page }) => {
   await openReports(page);
 
-  const coverageSection = page.locator(".MuiAccordion-root").filter({ hasText: "Control coverage" });
+  const coverageSection = page
+    .locator(".MuiAccordion-root")
+    .filter({ hasText: "Control coverage" });
   const duplicatesSection = page.locator(".MuiAccordion-root").filter({
     hasText: "Duplicate candidates",
   });
@@ -181,7 +186,8 @@ test("the reports narrow without ever pushing the page sideways", async ({ page 
       );
       const grid = [...sections.flatMap((s) => [...s.querySelectorAll("div")])].find(
         (el) =>
-          getComputedStyle(el).display === "grid" && (el.textContent || "").includes("Active risks"),
+          getComputedStyle(el).display === "grid" &&
+          (el.textContent || "").includes("Active risks"),
       );
       return {
         // A TableContainer scrolling on its own is the intended behaviour for a

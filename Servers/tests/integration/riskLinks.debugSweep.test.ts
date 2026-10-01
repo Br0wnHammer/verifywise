@@ -545,13 +545,11 @@ describe("cross-entity parents", () => {
 
     const childV = await createTestRisk(owner.orgId, {});
     const vendorRisk = await createTestVendorRisk(owner.orgId, {});
-    const v = await owner.request
-      .post(`${BASE}/`)
-      .send({
-        sourceRiskId: childV,
-        targetVendorRiskId: vendorRisk,
-        relationType: "inherits_from",
-      });
+    const v = await owner.request.post(`${BASE}/`).send({
+      sourceRiskId: childV,
+      targetVendorRiskId: vendorRisk,
+      relationType: "inherits_from",
+    });
     expect(v.status).toBe(201);
     expect((await readLink(v.body.data.id)).target_vendor_risk_id).toBe(vendorRisk);
   });
@@ -613,13 +611,11 @@ describe("cross-entity parents", () => {
     const { owner, attacker } = await seedTwoTenantContexts();
     const child = await createTestRisk(owner.orgId, {});
     const foreignModelRisk = await createTestModelRisk(attacker.orgId, {});
-    const res = await owner.request
-      .post(`${BASE}/`)
-      .send({
-        sourceRiskId: child,
-        targetModelRiskId: foreignModelRisk,
-        relationType: "inherits_from",
-      });
+    const res = await owner.request.post(`${BASE}/`).send({
+      sourceRiskId: child,
+      targetModelRiskId: foreignModelRisk,
+      relationType: "inherits_from",
+    });
     expect(res.status).toBe(404);
   });
 });
@@ -735,14 +731,12 @@ describe("malformed input", () => {
     ).toBe(400);
     expect(
       (
-        await owner.request
-          .post(`${BASE}/`)
-          .send({
-            sourceRiskId: a,
-            targetRiskId: b,
-            targetModelRiskId: mr,
-            relationType: "inherits_from",
-          })
+        await owner.request.post(`${BASE}/`).send({
+          sourceRiskId: a,
+          targetRiskId: b,
+          targetModelRiskId: mr,
+          relationType: "inherits_from",
+        })
       ).status,
     ).toBe(400);
     expect(

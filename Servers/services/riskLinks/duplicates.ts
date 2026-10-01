@@ -1,7 +1,4 @@
-import {
-  getDuplicateScanRowsQuery,
-  DuplicateScanRow,
-} from "../../utils/riskLink.utils";
+import { getDuplicateScanRowsQuery, DuplicateScanRow } from "../../utils/riskLink.utils";
 import logger from "../../utils/logger/fileLogger";
 
 /**
@@ -78,9 +75,7 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   return intersection / (a.size + b.size - intersection);
 }
 
-export async function findDuplicateCandidates(
-  organizationId: number,
-): Promise<DuplicateReport> {
+export async function findDuplicateCandidates(organizationId: number): Promise<DuplicateReport> {
   const rows = await getDuplicateScanRowsQuery(organizationId, MAX_DUPLICATE_SCAN);
   const tokenSets = rows.map(tokeniseRisk);
 
@@ -155,10 +150,7 @@ export async function findDuplicateCandidates(
       if (rowA.projects.some((project) => rowB.projects.includes(project))) {
         alsoShares.push("project");
       }
-      if (
-        rowA.ai_lifecycle_phase &&
-        rowA.ai_lifecycle_phase === rowB.ai_lifecycle_phase
-      ) {
+      if (rowA.ai_lifecycle_phase && rowA.ai_lifecycle_phase === rowB.ai_lifecycle_phase) {
         alsoShares.push(`lifecycle: ${rowA.ai_lifecycle_phase}`);
       }
       return {

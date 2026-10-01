@@ -14,10 +14,7 @@ import { calculateRiskLevel } from "../../utils/validations/vendorRiskValidation
  */
 
 export type VendorRiskSuggestionArchetype =
-  | "data_sensitivity"
-  | "business_criticality"
-  | "past_issues"
-  | "regulatory_exposure";
+  "data_sensitivity" | "business_criticality" | "past_issues" | "regulatory_exposure";
 
 export interface VendorRiskSuggestion {
   archetype: VendorRiskSuggestionArchetype;

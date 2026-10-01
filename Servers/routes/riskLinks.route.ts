@@ -19,7 +19,12 @@ import {
 
 // Declared before GET /:riskId is irrelevant (different verb), but kept first
 // so the backfill route is the obvious one in this file.
-router.post("/recompute", authenticateJWT, authorize(["Admin", "SuperAdmin"]), recomputeAllRiskLinks);
+router.post(
+  "/recompute",
+  authenticateJWT,
+  authorize(["Admin", "SuperAdmin"]),
+  recomputeAllRiskLinks,
+);
 router.post(
   "/suggest-hierarchy",
   authenticateJWT,
@@ -46,12 +51,7 @@ router.get(
   getDuplicateCandidates,
 );
 // Same param-route trap as /duplicates: /coverage must sit above /:riskId.
-router.get(
-  "/coverage",
-  authenticateJWT,
-  authorize(["Admin", "SuperAdmin"]),
-  getControlCoverage,
-);
+router.get("/coverage", authenticateJWT, authorize(["Admin", "SuperAdmin"]), getControlCoverage);
 router.get("/:riskId", authenticateJWT, getRiskLinks);
 router.get("/:riskId/shared-projects", authenticateJWT, getSharedProjects);
 // Role matrix: Admin full, Editor write, Reviewer approve (status), Auditor

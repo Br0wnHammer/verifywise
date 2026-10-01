@@ -4,11 +4,7 @@ import { QueryTypes } from "sequelize";
 import { cleanupDatabase } from "./helpers";
 import { sequelize } from "../../database/db";
 import { seedTwoTenantContexts } from "./tenant-isolation/tenantIsolation.harness";
-import {
-  createTestProject,
-  createTestRisk,
-  linkRiskToProject,
-} from "../factories";
+import { createTestProject, createTestRisk, linkRiskToProject } from "../factories";
 
 afterEach(async () => {
   await cleanupDatabase();
@@ -137,10 +133,7 @@ describe("GET /api/riskLinks/duplicates", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.candidates).toHaveLength(1);
-    const ids = [
-      res.body.data.candidates[0].risk_a.id,
-      res.body.data.candidates[0].risk_b.id,
-    ];
+    const ids = [res.body.data.candidates[0].risk_a.id, res.body.data.candidates[0].risk_b.id];
     expect(new Set(ids)).toEqual(new Set([aA, bA]));
   });
 

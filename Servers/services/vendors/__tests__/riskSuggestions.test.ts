@@ -1,7 +1,4 @@
-import {
-  getVendorRiskSuggestions,
-  VENDOR_SUGGESTION_SUPPRESS_THRESHOLD,
-} from "../riskSuggestions";
+import { getVendorRiskSuggestions, VENDOR_SUGGESTION_SUPPRESS_THRESHOLD } from "../riskSuggestions";
 import { getVendorByIdQuery } from "../../../utils/vendor.utils";
 import { getVendorRisksByVendorIdQuery } from "../../../utils/vendorRisk.utils";
 import { IVendor } from "../../../domain.layer/interfaces/i.vendor";
@@ -67,12 +64,7 @@ describe("getVendorRiskSuggestions", () => {
     expect(report!.questionnaire_complete).toBe(true);
     expect(report!.suggestions).toHaveLength(4);
     expect(report!.suggestions.map((s) => s.archetype).sort()).toEqual(
-      [
-        "business_criticality",
-        "data_sensitivity",
-        "past_issues",
-        "regulatory_exposure",
-      ].sort(),
+      ["business_criticality", "data_sensitivity", "past_issues", "regulatory_exposure"].sort(),
     );
   });
 

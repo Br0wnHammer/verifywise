@@ -128,7 +128,9 @@ describe("validateDismissReason", () => {
   });
 
   it("stores the note trimmed", () => {
-    expect(validateDismissReason("other", "  it is a duplicate of R-14  ", dismissingASuggestion)).toEqual({
+    expect(
+      validateDismissReason("other", "  it is a duplicate of R-14  ", dismissingASuggestion),
+    ).toEqual({
       ok: true,
       reason: "other",
       note: "it is a duplicate of R-14",
@@ -136,7 +138,9 @@ describe("validateDismissReason", () => {
   });
 
   it("allows a note alongside a non-other reason", () => {
-    expect(validateDismissReason("too_weak", "only one shared control", dismissingASuggestion)).toEqual({
+    expect(
+      validateDismissReason("too_weak", "only one shared control", dismissingASuggestion),
+    ).toEqual({
       ok: true,
       reason: "too_weak",
       note: "only one shared control",

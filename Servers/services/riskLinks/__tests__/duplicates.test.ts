@@ -33,14 +33,12 @@ describe("findDuplicateCandidates", () => {
       row({
         id: 1,
         risk_name: "Vendor assessment overdue",
-        risk_description:
-          "Vendor security assessments stay incomplete past the review deadline.",
+        risk_description: "Vendor security assessments stay incomplete past the review deadline.",
       }),
       row({
         id: 2,
         risk_name: "Late vendor security review",
-        risk_description:
-          "Vendor reviews miss the assessment deadline and stay incomplete.",
+        risk_description: "Vendor reviews miss the assessment deadline and stay incomplete.",
       }),
     ]);
 
@@ -123,14 +121,12 @@ describe("findDuplicateCandidates", () => {
       row({
         id: 30,
         risk_name: "Vendor assessment overdue",
-        risk_description:
-          "Vendor security assessments stay incomplete past the review deadline.",
+        risk_description: "Vendor security assessments stay incomplete past the review deadline.",
       }),
       row({
         id: 10,
         risk_name: "Late vendor security review",
-        risk_description:
-          "Vendor reviews miss the assessment deadline and stay incomplete.",
+        risk_description: "Vendor reviews miss the assessment deadline and stay incomplete.",
       }),
     ]);
 

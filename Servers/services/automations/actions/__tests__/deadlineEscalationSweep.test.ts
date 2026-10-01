@@ -107,17 +107,37 @@ describe("runDeadlineEscalationSweep", () => {
     expect(mockSlack).toHaveBeenCalledTimes(2); // owner + admin
     // The 7-day leg fired too (1 day out is within 7), under its own dedup row.
     expect(mockDedup).toHaveBeenCalledWith(
-      1, 5, "risk_deadline_due_soon", "risk", 31, DEADLINE_EMAIL_DAYS,
+      1,
+      5,
+      "risk_deadline_due_soon",
+      "risk",
+      31,
+      DEADLINE_EMAIL_DAYS,
     );
     expect(mockDedup).toHaveBeenCalledWith(
-      1, 5, "risk_deadline_due_soon", "risk", 31, DEADLINE_SLACK_DAYS,
+      1,
+      5,
+      "risk_deadline_due_soon",
+      "risk",
+      31,
+      DEADLINE_SLACK_DAYS,
     );
     expect(mockEmailRisk).toHaveBeenCalledWith(
-      1, 5, expect.objectContaining({ id: 31 }), DEADLINE_EMAIL_DAYS, BASE_URL, true,
+      1,
+      5,
+      expect.objectContaining({ id: 31 }),
+      DEADLINE_EMAIL_DAYS,
+      BASE_URL,
+      true,
     );
     // The 1-day leg still writes its in-app dedup record, without email.
     expect(mockEmailRisk).toHaveBeenCalledWith(
-      1, 5, expect.objectContaining({ id: 31 }), DEADLINE_SLACK_DAYS, BASE_URL, false,
+      1,
+      5,
+      expect.objectContaining({ id: 31 }),
+      DEADLINE_SLACK_DAYS,
+      BASE_URL,
+      false,
     );
     // Row seen by both legs; each leg notifies owner + admin. Slack delivered,
     // so the 1-day leg counts as slacked.
@@ -133,7 +153,12 @@ describe("runDeadlineEscalationSweep", () => {
 
     // The durable in-app notice is still written...
     expect(mockEmailRisk).toHaveBeenCalledWith(
-      1, 5, expect.objectContaining({ id: 31 }), DEADLINE_SLACK_DAYS, BASE_URL, false,
+      1,
+      5,
+      expect.objectContaining({ id: 31 }),
+      DEADLINE_SLACK_DAYS,
+      BASE_URL,
+      false,
     );
     // ...but nothing left the building, so the counter stays honest.
     expect(summary.slacked).toBe(0);
@@ -175,7 +200,12 @@ describe("runDeadlineEscalationSweep", () => {
 
     expect(mockEmailRisk).toHaveBeenCalledTimes(1);
     expect(mockEmailRisk).toHaveBeenCalledWith(
-      1, 9, expect.objectContaining({ id: 31 }), DEADLINE_EMAIL_DAYS, BASE_URL, true,
+      1,
+      9,
+      expect.objectContaining({ id: 31 }),
+      DEADLINE_EMAIL_DAYS,
+      BASE_URL,
+      true,
     );
     expect(summary).toEqual({ scanned: 1, emailed: 1, slacked: 0 });
   });

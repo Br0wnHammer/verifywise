@@ -87,8 +87,7 @@ export interface RiskLinkRow {
  * Undirected edges are stored smaller-id-first so a pair has exactly one row.
  * Enforced by the risk_links_canonical CHECK constraint.
  */
-export const canonicalPair = (a: number, b: number): [number, number] =>
-  a < b ? [a, b] : [b, a];
+export const canonicalPair = (a: number, b: number): [number, number] => (a < b ? [a, b] : [b, a]);
 
 /**
  * One undirected `related_to` edge. Lives here rather than beside

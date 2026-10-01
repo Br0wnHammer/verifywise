@@ -67,7 +67,9 @@ describe("filterProposedGroups", () => {
   // Rule 1. A hallucinated id is the failure mode that would write a link
   // between two risks the model was never shown.
   it("drops a group naming an id outside the component", () => {
-    expect(filterProposedGroups([group(1, [2, 99])], COMPONENT, [], new Set(), new Map())).toEqual([]);
+    expect(filterProposedGroups([group(1, [2, 99])], COMPONENT, [], new Set(), new Map())).toEqual(
+      [],
+    );
   });
 
   it("drops a group whose parent is outside the component", () => {
@@ -76,7 +78,9 @@ describe("filterProposedGroups", () => {
 
   // Rule 2.
   it("drops a group that makes a risk its own parent", () => {
-    expect(filterProposedGroups([group(1, [1, 2])], COMPONENT, [], new Set(), new Map())).toEqual([]);
+    expect(filterProposedGroups([group(1, [1, 2])], COMPONENT, [], new Set(), new Map())).toEqual(
+      [],
+    );
   });
 
   // Rule 3. Both halves: the same id twice as a child, and the same id as a
@@ -117,21 +121,23 @@ describe("filterProposedGroups", () => {
   // Rule 5, against confirmed edges.
   it("drops a child that already has a confirmed parent", () => {
     const blocking = [{ childRiskId: 2, parentRiskId: 5 }];
-    expect(filterProposedGroups([group(1, [2, 3])], COMPONENT, blocking, new Set(), new Map())).toEqual([
-      { childRiskId: 3, parentRiskId: 1 },
-    ]);
+    expect(
+      filterProposedGroups([group(1, [2, 3])], COMPONENT, blocking, new Set(), new Map()),
+    ).toEqual([{ childRiskId: 3, parentRiskId: 1 }]);
   });
 
   it("drops a group whose proposed parent is already someone's child", () => {
     const blocking = [{ childRiskId: 1, parentRiskId: 5 }];
-    expect(filterProposedGroups([group(1, [2])], COMPONENT, blocking, new Set(), new Map())).toEqual([]);
+    expect(
+      filterProposedGroups([group(1, [2])], COMPONENT, blocking, new Set(), new Map()),
+    ).toEqual([]);
   });
 
   it("drops a proposed child that already has children of its own", () => {
     const blocking = [{ childRiskId: 5, parentRiskId: 2 }];
-    expect(filterProposedGroups([group(1, [2, 3])], COMPONENT, blocking, new Set(), new Map())).toEqual([
-      { childRiskId: 3, parentRiskId: 1 },
-    ]);
+    expect(
+      filterProposedGroups([group(1, [2, 3])], COMPONENT, blocking, new Set(), new Map()),
+    ).toEqual([{ childRiskId: 3, parentRiskId: 1 }]);
   });
 
   // Rule 5 against a LIVE SUGGESTION, not a confirmed edge. This is the case
@@ -140,13 +146,21 @@ describe("filterProposedGroups", () => {
   // confirming both is impossible.
   it("drops a second candidate parent while an earlier suggestion is unanswered", () => {
     const blocking = [{ childRiskId: 2, parentRiskId: 5 }];
-    expect(filterProposedGroups([group(1, [2])], COMPONENT, blocking, new Set(), new Map())).toEqual([]);
+    expect(
+      filterProposedGroups([group(1, [2])], COMPONENT, blocking, new Set(), new Map()),
+    ).toEqual([]);
   });
 
   // Rule 5's accumulator. Rule 3 already stops this shape from one model
   // answer; the accumulator is what makes the guarantee hold regardless.
   it("keeps the batch self-consistent as it accepts edges", () => {
-    const kept = filterProposedGroups([group(1, [2]), group(4, [5])], COMPONENT, [], new Set(), new Map());
+    const kept = filterProposedGroups(
+      [group(1, [2]), group(4, [5])],
+      COMPONENT,
+      [],
+      new Set(),
+      new Map(),
+    );
     expect(kept).toHaveLength(2);
   });
 });
@@ -244,8 +258,8 @@ describe("filterProposedGroups cross-entity parents", () => {
 
   it("keeps a project-risk pair that only collides by number with a stored cross-entity one", () => {
     const existing = new Set([hierarchyPairKey(2, { id: 1, entityType: "vendor_risk" })]);
-    expect(
-      filterProposedGroups([group(1, [2])], COMPONENT, [], existing, new Map()),
-    ).toEqual([{ childRiskId: 2, parentRiskId: 1 }]);
+    expect(filterProposedGroups([group(1, [2])], COMPONENT, [], existing, new Map())).toEqual([
+      { childRiskId: 2, parentRiskId: 1 },
+    ]);
   });
 });

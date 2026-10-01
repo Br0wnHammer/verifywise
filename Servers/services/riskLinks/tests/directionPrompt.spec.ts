@@ -1,7 +1,4 @@
-import {
-  buildDirectionSystemPrompt,
-  buildDirectionUserPrompt,
-} from "../direction/prompts";
+import { buildDirectionSystemPrompt, buildDirectionUserPrompt } from "../direction/prompts";
 import { CrossEntityCandidate } from "../direction/candidates";
 
 const risks = [

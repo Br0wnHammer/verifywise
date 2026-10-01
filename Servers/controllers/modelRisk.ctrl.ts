@@ -162,8 +162,7 @@ export async function createNewModelRisk(req: Request, res: Response) {
         .then(async (candidateProjectIds) => {
           if (candidateProjectIds.length === 0) return;
           const modelName =
-            (await getModelInventoryNameQuery(modelId, req.organizationId!)) ??
-            `Model #${modelId}`;
+            (await getModelInventoryNameQuery(modelId, req.organizationId!)) ?? `Model #${modelId}`;
           await notifyModelRiskCandidates({
             organizationId: req.organizationId!,
             modelInventoryId: modelId,

@@ -72,9 +72,7 @@ export async function notifyModelRiskCandidates(input: {
   // per model risk, not per (risk, model) — a prior model-level notice must not
   // suppress them. Sorted once so the stored sent-record is stable.
   const triggerModelRiskIds =
-    modelRiskIds && modelRiskIds.length > 0
-      ? [...modelRiskIds].sort((a, b) => a - b)
-      : null;
+    modelRiskIds && modelRiskIds.length > 0 ? [...modelRiskIds].sort((a, b) => a - b) : null;
   for (const row of rows) {
     candidates += row.candidate_count;
     if (row.risk_owner == null) continue;

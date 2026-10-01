@@ -1,7 +1,4 @@
-import {
-  getSharedProjectCandidatesQuery,
-  HierarchyParent,
-} from "../../../utils/riskLink.utils";
+import { getSharedProjectCandidatesQuery, HierarchyParent } from "../../../utils/riskLink.utils";
 
 /** One vendor or model risk offered to the model as a possible parent. */
 export interface CrossEntityCandidate {

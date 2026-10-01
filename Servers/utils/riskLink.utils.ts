@@ -65,9 +65,7 @@ const toLinkRow = (row: any): RiskLinkRow => ({
  * risk_category is enum_projectrisks_risk_category[] — a custom enum array whose
  * OID node-pg has no parser for, so it is cast to text[] to guarantee a JS array.
  */
-export async function getRiskScoringRowsQuery(
-  organizationId: number,
-): Promise<RiskScoringRow[]> {
+export async function getRiskScoringRowsQuery(organizationId: number): Promise<RiskScoringRow[]> {
   const rows = await sequelize.query(
     `SELECT r.id,
             r.risk_category::text[] AS risk_category,
@@ -382,9 +380,7 @@ export async function getConfirmedHierarchyEdgesQuery(
  * that the model cannot name what it cannot see, but it inflates the size check
  * and can spend a whole call on a component with one real member.
  */
-export async function getRelatedPairsQuery(
-  organizationId: number,
-): Promise<RelatedPair[]> {
+export async function getRelatedPairsQuery(organizationId: number): Promise<RelatedPair[]> {
   const rows = await sequelize.query(
     `SELECT l.source_risk_id, l.target_risk_id
        FROM risk_links l

@@ -33,10 +33,7 @@ const PROVIDERS: LinkSignalProvider[] = [fieldOverlapProvider, structuralGraphPr
  * the suggestions that then fell below the threshold — a transient error would
  * silently delete real data. Stale edges are better than wrong ones.
  */
-export async function recomputeRiskLinks(
-  organizationId: number,
-  riskId: number,
-): Promise<void> {
+export async function recomputeRiskLinks(organizationId: number, riskId: number): Promise<void> {
   const rows = await getRiskScoringRowsQuery(organizationId);
   const subject = rows.find((row) => row.id === riskId);
   // Deleted, archived, or another org's risk. R7: leave its edges alone.
@@ -87,7 +84,13 @@ export async function recomputeRiskLinks(
     for (const keeper of keepers) {
       const [sourceRiskId, targetRiskId] = canonicalPair(riskId, keeper.targetRiskId);
       await upsertRiskLinkQuery(
-        { organizationId, sourceRiskId, targetRiskId, score: keeper.score, reasons: keeper.reasons },
+        {
+          organizationId,
+          sourceRiskId,
+          targetRiskId,
+          score: keeper.score,
+          reasons: keeper.reasons,
+        },
         transaction,
       );
     }

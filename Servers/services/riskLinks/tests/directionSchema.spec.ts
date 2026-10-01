@@ -29,9 +29,7 @@ describe("hierarchyOutputSchema", () => {
   });
 
   it("rejects an unknown key at the top level", () => {
-    expect(
-      hierarchyOutputSchema.safeParse({ groups: [], notes: "hello" }).success,
-    ).toBe(false);
+    expect(hierarchyOutputSchema.safeParse({ groups: [], notes: "hello" }).success).toBe(false);
   });
 
   it("rejects a group with no children", () => {
@@ -47,9 +45,9 @@ describe("hierarchyOutputSchema", () => {
   });
 
   it("rejects a reason too short to explain anything", () => {
-    expect(
-      hierarchyOutputSchema.safeParse({ groups: [group({ reason: "same" })] }).success,
-    ).toBe(false);
+    expect(hierarchyOutputSchema.safeParse({ groups: [group({ reason: "same" })] }).success).toBe(
+      false,
+    );
   });
 
   it("rejects a reason too long to sit in a chip", () => {

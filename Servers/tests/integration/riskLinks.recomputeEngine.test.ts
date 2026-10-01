@@ -15,8 +15,17 @@ import { QueryTypes } from "sequelize";
 import { cleanupDatabase } from "./helpers";
 import { sequelize } from "../../database/db";
 import { seedTwoTenantContexts } from "./tenant-isolation/tenantIsolation.harness";
-import { createTestRisk, createTestModelRisk, createTestProject, linkRiskToProject } from "../factories";
-import { recomputeRiskLinks, LINK_SCORE_THRESHOLD, MAX_LINKS_PER_RISK } from "../../services/riskLinks/recompute";
+import {
+  createTestRisk,
+  createTestModelRisk,
+  createTestProject,
+  linkRiskToProject,
+} from "../factories";
+import {
+  recomputeRiskLinks,
+  LINK_SCORE_THRESHOLD,
+  MAX_LINKS_PER_RISK,
+} from "../../services/riskLinks/recompute";
 
 afterEach(async () => {
   await cleanupDatabase();
@@ -100,7 +109,7 @@ describe("recomputeRiskLinks against Postgres", () => {
     expect(await links()).toEqual([]);
   });
 
-  it("treats an unmapped control (the form's literal \"0\") as nothing shared", async () => {
+  it('treats an unmapped control (the form\'s literal "0") as nothing shared', async () => {
     const { owner } = await seedTwoTenantContexts();
     const a = await createTestRisk(owner.orgId, { controls_mapping: "0", assessment_mapping: "0" });
     await createTestRisk(owner.orgId, { controls_mapping: "0", assessment_mapping: "0" });

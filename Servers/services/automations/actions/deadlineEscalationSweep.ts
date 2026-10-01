@@ -6,10 +6,7 @@ import {
   getDeadlineAdminIdsQuery,
   DeadlineEscalationRow,
 } from "../../../utils/deadline.utils";
-import {
-  notifyRiskDeadlineDueSoon,
-  notifyModelRiskDueSoon,
-} from "../../inAppNotification.service";
+import { notifyRiskDeadlineDueSoon, notifyModelRiskDueSoon } from "../../inAppNotification.service";
 import { sendDeadlineDueSoonSlackNotification } from "../../slack/deadlineDueSoonNotification";
 import {
   NotificationType,
@@ -202,10 +199,7 @@ export async function runDeadlineEscalationSweep(
     },
     {
       kind: "model_risk",
-      rows: await getModelRisksApproachingTargetDateQuery(
-        organizationId,
-        DEADLINE_EMAIL_DAYS,
-      ),
+      rows: await getModelRisksApproachingTargetDateQuery(organizationId, DEADLINE_EMAIL_DAYS),
       send: sendEmailLeg,
       count: "emailed",
     },
@@ -217,10 +211,7 @@ export async function runDeadlineEscalationSweep(
     },
     {
       kind: "model_risk",
-      rows: await getModelRisksApproachingTargetDateQuery(
-        organizationId,
-        DEADLINE_SLACK_DAYS,
-      ),
+      rows: await getModelRisksApproachingTargetDateQuery(organizationId, DEADLINE_SLACK_DAYS),
       send: sendSlackLeg,
       count: "slacked",
     },

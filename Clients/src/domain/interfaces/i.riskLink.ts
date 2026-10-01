@@ -60,11 +60,7 @@ export interface RiskLink {
 export type CreateRiskLinkInput = {
   sourceRiskId: number;
   relationType: RiskLinkRelationType;
-} & (
-  | { targetRiskId: number }
-  | { targetModelRiskId: number }
-  | { targetVendorRiskId: number }
-);
+} & ({ targetRiskId: number } | { targetModelRiskId: number } | { targetVendorRiskId: number });
 
 /**
  * A cross-entity parent candidate that shares at least one project with the

@@ -28,10 +28,7 @@ function toAPIError(error: any, fallback: string): APIError {
   return new APIError(error?.message || fallback, error?.status, error);
 }
 
-export async function getRiskLinks(
-  riskId: number,
-  status?: RiskLinkStatus,
-): Promise<RiskLink[]> {
+export async function getRiskLinks(riskId: number, status?: RiskLinkStatus): Promise<RiskLink[]> {
   try {
     const query = status ? `?status=${status}` : "";
     const response = await apiServices.get<{ message: string; data: RiskLink[] }>(

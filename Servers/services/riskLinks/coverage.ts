@@ -1,7 +1,4 @@
-import {
-  getCoverageScanRowsQuery,
-  CoverageScanRow,
-} from "../../utils/riskLink.utils";
+import { getCoverageScanRowsQuery, CoverageScanRow } from "../../utils/riskLink.utils";
 
 /**
  * F8 — Control coverage gap report.
@@ -62,9 +59,7 @@ function toGapRisk(row: CoverageScanRow): CoverageGapRisk {
   };
 }
 
-export async function findControlCoverage(
-  organizationId: number,
-): Promise<CoverageReport> {
+export async function findControlCoverage(organizationId: number): Promise<CoverageReport> {
   // Rows arrive pre-capped per state (worst-first) with honest per-state
   // totals; the lists are used verbatim and the summary from the totals.
   // `coverageState` below is the grouping authority — it must agree with the

@@ -37,7 +37,12 @@ describe("getSharedProjectCandidatesQuery", () => {
     const result = await getSharedProjectCandidatesQuery(owner.orgId, subject);
 
     expect(result).toEqual([
-      { entityType: "vendor_risk", id: vendorRisk, name: expect.any(String), projects: ["Fraud Detection"] },
+      {
+        entityType: "vendor_risk",
+        id: vendorRisk,
+        name: expect.any(String),
+        projects: ["Fraud Detection"],
+      },
     ]);
   });
 
@@ -75,7 +80,12 @@ describe("getSharedProjectCandidatesQuery", () => {
     const result = await getSharedProjectCandidatesQuery(owner.orgId, subject);
 
     expect(result).toEqual([
-      { entityType: "model_risk", id: modelRisk, name: expect.any(String), projects: ["Fraud Detection"] },
+      {
+        entityType: "model_risk",
+        id: modelRisk,
+        name: expect.any(String),
+        projects: ["Fraud Detection"],
+      },
     ]);
   });
 
@@ -98,7 +108,12 @@ describe("getSharedProjectCandidatesQuery", () => {
 
     // ORDER BY project_title puts "Fraud Detection" before "KYC".
     expect(result).toEqual([
-      { entityType: "vendor_risk", id: vendorRisk, name: expect.any(String), projects: ["Fraud Detection", "KYC"] },
+      {
+        entityType: "vendor_risk",
+        id: vendorRisk,
+        name: expect.any(String),
+        projects: ["Fraud Detection", "KYC"],
+      },
     ]);
   });
 
@@ -168,9 +183,9 @@ describe("getSharedProjectCandidatesQuery", () => {
     // a fresh model_risk and a fresh vendorrisk both start at 1. Finding by id
     // alone returns whichever came first, which is the exact bug C6's required
     // parent_entity_type exists to prevent.
-    expect(
-      candidates.find((c) => c.entityType === "model_risk" && c.id === modelRisk)?.name,
-    ).toBe("Fairness degradation in production");
+    expect(candidates.find((c) => c.entityType === "model_risk" && c.id === modelRisk)?.name).toBe(
+      "Fairness degradation in production",
+    );
     expect(
       candidates.find((c) => c.entityType === "vendor_risk" && c.id === vendorRisk)?.name,
     ).toBe("The vendor cannot evidence its own model validation.");
@@ -210,13 +225,16 @@ describe("GET /api/riskLinks/:riskId/shared-projects", () => {
     await linkVendorToProject(owner.orgId, vendor, project);
     const vendorRisk = await createTestVendorRisk(owner.orgId, { vendor_id: vendor });
 
-    const response = await request(owner.app).get(
-      `/api/riskLinks/${subject}/shared-projects`,
-    );
+    const response = await request(owner.app).get(`/api/riskLinks/${subject}/shared-projects`);
 
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual([
-      { entityType: "vendor_risk", id: vendorRisk, name: expect.any(String), projects: ["Fraud Detection"] },
+      {
+        entityType: "vendor_risk",
+        id: vendorRisk,
+        name: expect.any(String),
+        projects: ["Fraud Detection"],
+      },
     ]);
   });
 
@@ -224,9 +242,7 @@ describe("GET /api/riskLinks/:riskId/shared-projects", () => {
     const { owner } = await seedTwoTenantContexts();
     const subject = await createTestRisk(owner.orgId, {});
 
-    const response = await request(owner.app).get(
-      `/api/riskLinks/${subject}/shared-projects`,
-    );
+    const response = await request(owner.app).get(`/api/riskLinks/${subject}/shared-projects`);
 
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual([]);
@@ -243,9 +259,7 @@ describe("GET /api/riskLinks/:riskId/shared-projects", () => {
     await linkVendorToProject(attacker.orgId, attackerVendor, attackerProject);
     await createTestVendorRisk(attacker.orgId, { vendor_id: attackerVendor });
 
-    const response = await request(owner.app).get(
-      `/api/riskLinks/${attackerRisk}/shared-projects`,
-    );
+    const response = await request(owner.app).get(`/api/riskLinks/${attackerRisk}/shared-projects`);
 
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual([]);

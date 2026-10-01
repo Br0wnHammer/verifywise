@@ -107,7 +107,11 @@ describe("recomputeRiskLinks", () => {
     ]);
     await recomputeRiskLinks(1, 7);
     expect(mockUtils.updateRiskLinkScoreQuery).toHaveBeenCalledWith(
-      100, 1, 0, [], expect.anything(),
+      100,
+      1,
+      0,
+      [],
+      expect.anything(),
     );
     expect(mockUtils.deleteRiskLinksQuery).not.toHaveBeenCalled();
   });
@@ -133,12 +137,22 @@ describe("recomputeRiskLinks", () => {
       ...strong,
     ]);
     mockUtils.getIncidentLinksQuery.mockResolvedValue([
-      link({ id: 100, source_risk_id: 3, target_risk_id: 7, status: "suggested", source: "derived" }),
+      link({
+        id: 100,
+        source_risk_id: 3,
+        target_risk_id: 7,
+        status: "suggested",
+        source: "derived",
+      }),
     ]);
     await recomputeRiskLinks(1, 7);
     expect(mockUtils.deleteRiskLinksQuery).not.toHaveBeenCalled();
     expect(mockUtils.updateRiskLinkScoreQuery).toHaveBeenCalledWith(
-      100, 1, 3, expect.any(Array), expect.anything(),
+      100,
+      1,
+      3,
+      expect.any(Array),
+      expect.anything(),
     );
   });
 
@@ -156,7 +170,10 @@ describe("recomputeRiskLinks", () => {
 
   it("breaks ties on target risk id ascending, not on risk level", async () => {
     mockUtils.getRiskScoringRowsQuery.mockResolvedValue([
-      risk(7, CAT), risk(50, CAT), risk(3, CAT), risk(20, CAT),
+      risk(7, CAT),
+      risk(50, CAT),
+      risk(3, CAT),
+      risk(20, CAT),
     ]);
     await recomputeRiskLinks(1, 7);
     const order = mockUtils.upsertRiskLinkQuery.mock.calls.map(([input]) =>

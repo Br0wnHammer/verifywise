@@ -99,7 +99,12 @@ describe("EvidenceHub mapped risks", () => {
   it("round-trips the Mapped risks value through save", async () => {
     const onSuccess = vi.fn();
     renderWithProviders(
-      <NewEvidenceHub isOpen={true} setIsOpen={vi.fn()} onSuccess={onSuccess} initialData={initialData as any} />,
+      <NewEvidenceHub
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        onSuccess={onSuccess}
+        initialData={initialData as any}
+      />,
     );
 
     // Walk the wizard to step 3 ("Frameworks & models").

@@ -167,8 +167,8 @@ describe("GET /riskLinks (graph)", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.edges).toHaveLength(2);
     expect(res.body.data.nodes).toHaveLength(3);
-    expect(
-      (res.body.data.nodes as any[]).filter((n) => n.key === `risk:${parent}`),
-    ).toHaveLength(1);
+    expect((res.body.data.nodes as any[]).filter((n) => n.key === `risk:${parent}`)).toHaveLength(
+      1,
+    );
   });
 });

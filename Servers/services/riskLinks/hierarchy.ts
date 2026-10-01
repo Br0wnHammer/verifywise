@@ -35,12 +35,9 @@ export interface HierarchyEdge {
 }
 
 export type HierarchyViolation =
-  | "child_already_has_parent"
-  | "parent_is_a_child"
-  | "child_has_children";
+  "child_already_has_parent" | "parent_is_a_child" | "child_has_children";
 
-const parentKey = (e: HierarchyEdge): string =>
-  `${e.parentEntityType ?? "risk"}:${e.parentRiskId}`;
+const parentKey = (e: HierarchyEdge): string => `${e.parentEntityType ?? "risk"}:${e.parentRiskId}`;
 
 /**
  * @param proposed the edge about to become confirmed

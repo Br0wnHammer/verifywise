@@ -7,9 +7,7 @@ jest.mock("../../../utils/riskLink.utils", () => ({
 
 const mockQuery = getCoverageScanRowsQuery as jest.Mock;
 
-const row = (
-  overrides: Partial<CoverageScanRow> & { id: number },
-): CoverageScanRow => {
+const row = (overrides: Partial<CoverageScanRow> & { id: number }): CoverageScanRow => {
   const base: CoverageScanRow = {
     risk_name: "Risk",
     risk_owner: 5,

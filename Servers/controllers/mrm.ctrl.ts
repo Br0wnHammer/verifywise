@@ -449,8 +449,7 @@ export async function setModelRoles(req: Request, res: Response) {
     if (!a || !Object.values(MrmModelRole).includes(a.role)) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid role in assignments")));
     }
-    const userId =
-      a.user_id === null || a.user_id === undefined ? null : toId(a.user_id);
+    const userId = a.user_id === null || a.user_id === undefined ? null : toId(a.user_id);
     if (userId !== null && Number.isNaN(userId)) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid user id in assignments")));
     }

@@ -623,9 +623,7 @@ export async function updateModelInventoryById(req: Request, res: Response) {
 
     // F6: notify only for newly added projects. A plain field edit sends
     // projects: undefined, so the diff is empty and nothing fires.
-    const addedProjectIds = (projects || []).filter(
-      (id: number) => !projectIdsBefore.includes(id),
-    );
+    const addedProjectIds = (projects || []).filter((id: number) => !projectIdsBefore.includes(id));
     if (addedProjectIds.length > 0) {
       notifyModelRiskCandidates({
         organizationId: req.organizationId!,

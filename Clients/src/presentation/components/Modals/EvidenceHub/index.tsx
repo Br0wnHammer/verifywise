@@ -179,9 +179,7 @@ const NewEvidenceHub: FC<NewEvidenceHubProps> = ({
     try {
       const response = await getAllEntities({ routeUrl: "/projectRisks" });
       if (response?.data) {
-        setRiskOptions(
-          response.data.map((r: any) => ({ _id: r.id, name: r.risk_name })),
-        );
+        setRiskOptions(response.data.map((r: any) => ({ _id: r.id, name: r.risk_name })));
       }
     } catch (err) {
       console.error("Error fetching risks:", err);

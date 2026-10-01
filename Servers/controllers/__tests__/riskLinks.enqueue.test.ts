@@ -15,10 +15,7 @@ import * as path from "path";
  * the policy against the source instead: the enqueue appears in the create,
  * update and set_category paths, and nowhere near the delete path.
  */
-const source = fs.readFileSync(
-  path.join(__dirname, "..", "risks.ctrl.ts"),
-  "utf8",
-);
+const source = fs.readFileSync(path.join(__dirname, "..", "risks.ctrl.ts"), "utf8");
 
 const bodyOf = (fnName: string): string => {
   const start = source.indexOf(`export async function ${fnName}`);

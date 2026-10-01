@@ -29,9 +29,7 @@ describe("validateTwoLevel", () => {
   it("returns child_already_has_parent when rules 1 and 2 both apply", () => {
     // Order is load-bearing: without a fixed order the message would depend on
     // row ordering from the database.
-    expect(validateTwoLevel(edge(1, 2), [edge(1, 8), edge(2, 9)])).toBe(
-      "child_already_has_parent",
-    );
+    expect(validateTwoLevel(edge(1, 2), [edge(1, 8), edge(2, 9)])).toBe("child_already_has_parent");
   });
 
   it("allows a second child under the same parent (fan-out is unlimited)", () => {
@@ -82,9 +80,9 @@ describe("cross-entity parents (C4)", () => {
       { childRiskId: 41, parentRiskId: 3, parentEntityType: "vendor_risk" as const },
     ];
 
-    expect(
-      validateTwoLevel({ childRiskId: 41, parentRiskId: 9 }, confirmed),
-    ).toBe("child_already_has_parent");
+    expect(validateTwoLevel({ childRiskId: 41, parentRiskId: 9 }, confirmed)).toBe(
+      "child_already_has_parent",
+    );
   });
 
   it("treats the same cross-entity parent as a duplicate, not a violation", () => {

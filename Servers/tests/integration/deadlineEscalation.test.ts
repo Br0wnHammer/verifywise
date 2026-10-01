@@ -13,11 +13,7 @@ jest.mock("../../database/redis", () => ({
 }));
 
 import { QueryTypes } from "sequelize";
-import {
-  cleanupDatabase,
-  seedTwoOrgsAndUsers,
-  createTestUser,
-} from "./helpers";
+import { cleanupDatabase, seedTwoOrgsAndUsers, createTestUser } from "./helpers";
 import { sequelize } from "../../database/db";
 import { createTestRisk } from "../factories";
 import {
@@ -94,7 +90,10 @@ describe("deadline escalation sweep", () => {
       byUser.set(row.user_id, (byUser.get(row.user_id) ?? 0) + 1);
       expect(row.threshold).toBe("7");
     }
-    expect([...byUser.entries()].sort()).toEqual([[seed.userA, 1], [owner, 1]]);
+    expect([...byUser.entries()].sort()).toEqual([
+      [seed.userA, 1],
+      [owner, 1],
+    ]);
   });
 
   it("a second org's due risk never notifies org 1's users", async () => {

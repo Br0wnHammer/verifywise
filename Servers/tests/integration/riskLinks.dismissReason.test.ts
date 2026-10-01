@@ -38,7 +38,12 @@ describe("dismissal reasons across the undo round-trip", () => {
     const id = await seedSuggestion(owner.orgId, a, b);
 
     await updateRiskLinkStatusQuery(
-      id, owner.orgId, "dismissed", owner.userId, "not_related", "nothing in common",
+      id,
+      owner.orgId,
+      "dismissed",
+      owner.userId,
+      "not_related",
+      "nothing in common",
     );
     expect(await readDismissal(id)).toMatchObject({
       status: "dismissed",
@@ -89,7 +94,12 @@ describe("dismissal reasons across the undo round-trip", () => {
     const id = await seedSuggestion(owner.orgId, a, b);
 
     await updateRiskLinkStatusQuery(
-      id, owner.orgId, "dismissed", owner.userId, "not_related", null,
+      id,
+      owner.orgId,
+      "dismissed",
+      owner.userId,
+      "not_related",
+      null,
     );
 
     // Written to be discriminating on purpose. Asserting against a *pristine*
@@ -98,9 +108,7 @@ describe("dismissal reasons across the undo round-trip", () => {
     // key and the UPDATE would fail for the wrong reason. Here the attacker's
     // user is real and the transition is legal, so the only thing standing
     // between this call and a successful overwrite is the org guard.
-    await updateRiskLinkStatusQuery(
-      id, attacker.orgId, "confirmed", attacker.userId, null, null,
-    );
+    await updateRiskLinkStatusQuery(id, attacker.orgId, "confirmed", attacker.userId, null, null);
 
     expect(await readDismissal(id)).toMatchObject({
       status: "dismissed",

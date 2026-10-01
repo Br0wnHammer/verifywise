@@ -35,11 +35,7 @@ export async function runStaleInheritanceNotifySweep(
 
   for (const row of rows) {
     if (row.risk_owner == null) {
-      await markParentLevelNotifiedQuery(
-        organizationId,
-        row.link_id,
-        row.parent_changed_at,
-      );
+      await markParentLevelNotifiedQuery(organizationId, row.link_id, row.parent_changed_at);
       continue;
     }
     try {
@@ -48,11 +44,7 @@ export async function runStaleInheritanceNotifySweep(
         risk_name: row.child_name,
         risk_owner: row.risk_owner,
       });
-      await markParentLevelNotifiedQuery(
-        organizationId,
-        row.link_id,
-        row.parent_changed_at,
-      );
+      await markParentLevelNotifiedQuery(organizationId, row.link_id, row.parent_changed_at);
       notified += 1;
     } catch (error) {
       logger.error(

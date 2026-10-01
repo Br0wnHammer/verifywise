@@ -38,7 +38,14 @@ describe("riskLink.utils", () => {
 
   it("coerces the projects aggregate when pg hands back a string", async () => {
     mockQuery.mockResolvedValue([
-      { id: 1, risk_category: null, controls_mapping: null, assessment_mapping: null, ai_lifecycle_phase: null, projects: "[3,4]" },
+      {
+        id: 1,
+        risk_category: null,
+        controls_mapping: null,
+        assessment_mapping: null,
+        ai_lifecycle_phase: null,
+        projects: "[3,4]",
+      },
     ]);
     const rows = await getRiskScoringRowsQuery(7);
     expect(rows[0].projects).toEqual([3, 4]);
@@ -64,11 +71,20 @@ describe("riskLink.utils", () => {
   it("coerces the NUMERIC score to a number and reasons to an array", async () => {
     mockQuery.mockResolvedValue([
       {
-        id: 1, source_risk_id: 3, target_risk_id: 42, relation_type: "related_to",
-        status: "suggested", source: "derived", score: "5.000",
+        id: 1,
+        source_risk_id: 3,
+        target_risk_id: 42,
+        relation_type: "related_to",
+        status: "suggested",
+        source: "derived",
+        score: "5.000",
         reasons: '[{"signal":"shared_category","weight":3}]',
-        decided_at: null, last_computed_at: null,
-        related_id: 3, related_risk_name: "R", related_risk_level: "High risk", related_risk_owner: null,
+        decided_at: null,
+        last_computed_at: null,
+        related_id: 3,
+        related_risk_name: "R",
+        related_risk_level: "High risk",
+        related_risk_owner: null,
       },
     ]);
     const [link] = await getRiskLinksForRiskQuery(7, 42, ["suggested"]);

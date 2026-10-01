@@ -137,7 +137,10 @@ describe("URL-param ids", () => {
   it("still reviews the content named by a clean id", async () => {
     (markReviewedQuery as jest.Mock).mockResolvedValue({ id: 12 });
     const res = mockRes();
-    await reviewContent(mockReq({ params: { id: "12" }, body: { review_action: "approved" } }), res);
+    await reviewContent(
+      mockReq({ params: { id: "12" }, body: { review_action: "approved" } }),
+      res,
+    );
 
     expect(res.status).toHaveBeenCalledWith(200);
     expect(markReviewedQuery).toHaveBeenCalledWith(12, 1, expect.anything());

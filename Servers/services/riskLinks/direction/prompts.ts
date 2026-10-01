@@ -26,8 +26,8 @@ export function buildDirectionSystemPrompt(): string {
     "  appear in child_risk_ids.",
     "- A candidate parent may only take the risks listed beside it as children.",
     "  Sharing a project is the whole justification for the link.",
-    "- Say which table each parent comes from in parent_entity_type: \"risk\" for",
-    "  the risks above, or \"model_risk\" / \"vendor_risk\" for a candidate.",
+    '- Say which table each parent comes from in parent_entity_type: "risk" for',
+    '  the risks above, or "model_risk" / "vendor_risk" for a candidate.',
     "- If the cluster is a set of peers, return an empty list of groups. That is a",
     "  correct answer, not a failure. Do not manufacture a hierarchy to fill it.",
     "",
@@ -87,11 +87,7 @@ export function buildDirectionUserPrompt(
         .join("\n")
     : "- none";
 
-  const sections = [
-    "These risks are all related to each other:",
-    "",
-    described.join("\n"),
-  ];
+  const sections = ["These risks are all related to each other:", "", described.join("\n")];
 
   // Omitted entirely rather than rendered as "- none": a C2-only component's
   // prompt must stay exactly what it is today, or this change re-tunes grouping

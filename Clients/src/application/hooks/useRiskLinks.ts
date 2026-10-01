@@ -116,4 +116,3 @@ export function useSharedProjects(riskId: number, enabled: boolean) {
     enabled: enabled && Number.isFinite(riskId),
   });
 }
-

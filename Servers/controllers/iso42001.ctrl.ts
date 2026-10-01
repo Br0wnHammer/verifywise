@@ -1019,12 +1019,8 @@ export async function saveAnnexes(req: RequestWithFile, res: Response): Promise<
     // Notify owner, reviewer, approver if changed
     const annexEntityName = currentAnnexData.title || `Annex Category #${annexCategoryId}`;
     const newAnnexOwner = annexCategory.owner ? toId(annexCategory.owner) : null;
-    const newAnnexReviewer = annexCategory.reviewer
-      ? toId(annexCategory.reviewer)
-      : null;
-    const newAnnexApprover = annexCategory.approver
-      ? toId(annexCategory.approver)
-      : null;
+    const newAnnexReviewer = annexCategory.reviewer ? toId(annexCategory.reviewer) : null;
+    const newAnnexApprover = annexCategory.approver ? toId(annexCategory.approver) : null;
 
     if (newAnnexOwner) {
       notifyIso42001Assignment(

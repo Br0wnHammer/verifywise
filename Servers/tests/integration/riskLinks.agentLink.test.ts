@@ -78,9 +78,24 @@ describe("getHierarchyPairsQuery", () => {
     // The `untouched -> child` edge is in because it touches `child`, and it
     // must be: it is exactly what makes `child` ineligible as someone's child.
     expect(pairs).toHaveLength(3);
-    expect(pairs).toContainEqual({ childRiskId: child, parentRiskId: parent, parentEntityType: "risk", status: "suggested" });
-    expect(pairs).toContainEqual({ childRiskId: outsider, parentRiskId: parent, parentEntityType: "risk", status: "dismissed" });
-    expect(pairs).toContainEqual({ childRiskId: untouched, parentRiskId: child, parentEntityType: "risk", status: "confirmed" });
+    expect(pairs).toContainEqual({
+      childRiskId: child,
+      parentRiskId: parent,
+      parentEntityType: "risk",
+      status: "suggested",
+    });
+    expect(pairs).toContainEqual({
+      childRiskId: outsider,
+      parentRiskId: parent,
+      parentEntityType: "risk",
+      status: "dismissed",
+    });
+    expect(pairs).toContainEqual({
+      childRiskId: untouched,
+      parentRiskId: child,
+      parentEntityType: "risk",
+      status: "confirmed",
+    });
   });
 
   it("returns nothing for an empty id list", async () => {

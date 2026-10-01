@@ -10,9 +10,7 @@ jest.mock("../../services/userNotification/projectNotifications", () => ({
   ProjectRole: {},
 }));
 jest.mock("../../services/slack/slackNotificationService", () => ({
-  sendSlackNotification: jest
-    .fn()
-    .mockResolvedValue({ attempted: false, delivered: false }),
+  sendSlackNotification: jest.fn().mockResolvedValue({ attempted: false, delivered: false }),
 }));
 jest.mock("../../services/inAppNotification.service", () => ({
   sendInAppNotification: jest.fn().mockResolvedValue(undefined),

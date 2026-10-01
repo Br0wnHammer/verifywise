@@ -57,14 +57,7 @@ describe.each([
   it.each(["3abc", "3.9", "3e0", "+3", " 3x"])(
     "drops an owner of %p instead of assigning user 3",
     async (junk) => {
-      await update(
-        1,
-        { owner: junk, status: "In progress" } as any,
-        [],
-        [],
-        1,
-        {} as any,
-      );
+      await update(1, { owner: junk, status: "In progress" } as any, [], [], 1, {} as any);
 
       const { sql, replacements } = updateCall();
       expect(sql).not.toContain("owner");
