@@ -17,38 +17,30 @@
  * Owns its own fetch and loading/error/empty state, like the sibling sections.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Box,
   CircularProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Typography,
 } from "@mui/material";
 import { AlertCircle, ChevronDown, Info, ShieldCheck } from "lucide-react";
 import { EmptyState } from "../../../components/EmptyState";
 import Chip from "../../../components/Chip";
-import singleTheme from "../../../themes/v1SingleTheme";
 import { getControlCoverage } from "../../../../application/repository/riskLink.repository";
+import { useTranslation } from "../../../../application/hooks/useTranslation";
 import type { CoverageGapRisk, CoverageReport } from "../../../../domain/interfaces/i.riskLink";
 import { useOwnerName } from "../useOwnerName";
+import ReportTable, { type ReportColumn } from "../ReportTable";
 import {
   sectionSx,
+  summaryHeaderSx,
   summaryTitleSx,
+  summaryDescriptionSx,
   blockHeadingSx,
   captionSx,
-  tableSx,
-  tableHeadRowSx,
-  tableHeadCellSx,
-  tableBodyRowSx,
-  tableBodyCellSx,
   stateContainerSx,
   errorAlertSx,
   errorTextSx,
@@ -76,19 +68,41 @@ import {
 export function projectsText(
   projects: CoverageGapRisk["projects"],
   markFrameworks: boolean,
+  noFrameworkLabel = "no framework",
 ): string {
   if (projects.length === 0) return "—";
   return projects
     .map((project) =>
-      markFrameworks && !project.has_framework ? `${project.name} (no framework)` : project.name,
+      markFrameworks && !project.has_framework
+        ? `${project.name} (${noFrameworkLabel})`
+        : project.name,
     )
     .join(", ");
 }
 
+/**
+ * The server lists each state worst-first; the Level column sorts by the same
+ * severity order rather than alphabetically ("High" < "Low" < "Medium").
+ */
+const RISK_LEVEL_ORDER = [
+  "No risk",
+  "Very low risk",
+  "Low risk",
+  "Medium risk",
+  "High risk",
+  "Very high risk",
+];
+
+export function riskLevelRank(level: string | null): number | null {
+  if (level === null) return null;
+  const rank = RISK_LEVEL_ORDER.findIndex((l) => l.toLowerCase() === level.toLowerCase());
+  return rank === -1 ? null : rank;
+}
+
 /** Each list is capped server-side, so the heading says what is on screen. */
-export function listHeading(label: string, shown: number, total: number): string {
+export function listHeading(label: string, shown: number, total: number, of = "of"): string {
   return shown < total
-    ? `${label} (${shown.toLocaleString()} of ${total.toLocaleString()})`
+    ? `${label} (${shown.toLocaleString()} ${of} ${total.toLocaleString()})`
     : `${label} (${total.toLocaleString()})`;
 }
 
@@ -97,6 +111,7 @@ const ControlCoverage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const ownerName = useOwnerName();
+  const { t } = useTranslation();
 
   useEffect(() => {
     let mounted = true;
@@ -120,44 +135,70 @@ const ControlCoverage: React.FC = () => {
     };
   }, []);
 
-  const renderTable = (rows: CoverageGapRisk[], markFrameworks: boolean) => (
-    <TableContainer>
-      <Table sx={tableSx}>
-        <TableHead sx={{ backgroundColor: singleTheme.tableStyles.primary.header.backgroundColors }}>
-          <TableRow sx={tableHeadRowSx}>
-            <TableCell sx={tableHeadCellSx}>Risk</TableCell>
-            <TableCell sx={tableHeadCellSx}>Level</TableCell>
-            <TableCell sx={tableHeadCellSx}>Mitigation status</TableCell>
-            <TableCell sx={tableHeadCellSx}>Projects</TableCell>
-            <TableCell sx={tableHeadCellSx}>Assessment links</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.id} sx={tableBodyRowSx}>
-              <TableCell sx={tableBodyCellSx}>
-                <Typography sx={riskNameSx}>{row.risk_name}</Typography>
-                <Typography sx={riskMetaSx}>
-                  #{row.id} · {ownerName(row.risk_owner)}
-                </Typography>
-              </TableCell>
-              <TableCell sx={tableBodyCellSx}>
-                {row.risk_level ? <Chip label={row.risk_level} size="small" /> : "—"}
-              </TableCell>
-              <TableCell sx={tableBodyCellSx}>
-                {row.mitigation_status ? (
-                  <Chip label={row.mitigation_status} size="small" />
-                ) : (
-                  "—"
-                )}
-              </TableCell>
-              <TableCell sx={wrapCellSx}>{projectsText(row.projects, markFrameworks)}</TableCell>
-              <TableCell sx={numericCellSx}>{row.assessment_link_count}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
+  const [gapColumns, noFrameworkColumns] = useMemo(() => {
+    const columnsFor = (markFrameworks: boolean): ReportColumn<CoverageGapRisk>[] => [
+      {
+        id: "risk",
+        label: "Risk",
+        sortable: true,
+        sortValue: (row) => row.risk_name,
+        render: (row) => (
+          <>
+            <Typography sx={riskNameSx}>{row.risk_name}</Typography>
+            <Typography sx={riskMetaSx}>
+              #{row.id} · {ownerName(row.risk_owner)}
+            </Typography>
+          </>
+        ),
+      },
+      {
+        id: "level",
+        label: "Level",
+        sortable: true,
+        sortValue: (row) => riskLevelRank(row.risk_level),
+        render: (row) => (row.risk_level ? <Chip label={row.risk_level} size="small" /> : "—"),
+      },
+      {
+        id: "mitigationStatus",
+        label: "Mitigation status",
+        sortable: true,
+        sortValue: (row) => row.mitigation_status,
+        render: (row) =>
+          row.mitigation_status ? <Chip label={row.mitigation_status} size="small" /> : "—",
+      },
+      {
+        id: "projects",
+        label: "Projects",
+        sortable: true,
+        sortValue: (row) => projectsText(row.projects, markFrameworks, t("no framework")),
+        cellSx: wrapCellSx,
+        render: (row) => projectsText(row.projects, markFrameworks, t("no framework")),
+      },
+      {
+        id: "assessmentLinks",
+        label: "Assessment links",
+        sortable: true,
+        sortValue: (row) => row.assessment_link_count,
+        cellSx: numericCellSx,
+        render: (row) => row.assessment_link_count,
+      },
+    ];
+    return [columnsFor(true), columnsFor(false)];
+  }, [ownerName, t]);
+
+  const renderTable = (
+    rows: CoverageGapRisk[],
+    columns: ReportColumn<CoverageGapRisk>[],
+    storageKey: string,
+  ) => (
+    <ReportTable
+      columns={columns}
+      rows={rows}
+      getRowKey={(row) => row.id}
+      storageKey={storageKey}
+      defaultSortColumn="level"
+      entityLabel="risk"
+    />
   );
 
   const renderBody = () => {
@@ -235,26 +276,35 @@ const ControlCoverage: React.FC = () => {
             {gaps.length > 0 && (
               <>
                 <Typography sx={blockHeadingSx}>
-                  {listHeading("Coverage gaps", gaps.length, summary.gap)}
+                  {listHeading(t("Coverage gaps"), gaps.length, summary.gap, t("of"))}
                 </Typography>
                 <Typography sx={captionSx}>
                   These risks sit in a project that has a framework attached but are not linked to
                   any control. Assessment links are shown for context and do not count as coverage.
                 </Typography>
-                {renderTable(gaps, true)}
+                {renderTable(gaps, gapColumns, "risk-inheritance-coverage-gaps")}
               </>
             )}
 
             {noFramework.length > 0 && (
               <>
                 <Typography sx={blockHeadingSx}>
-                  {listHeading("No framework yet", noFramework.length, summary.no_framework)}
+                  {listHeading(
+                    t("No framework yet"),
+                    noFramework.length,
+                    summary.no_framework,
+                    t("of"),
+                  )}
                 </Typography>
                 <Typography sx={captionSx}>
                   None of these risks' projects has a framework attached, so there are no controls
                   to map to. Not a finding — attach a framework first.
                 </Typography>
-                {renderTable(noFramework, false)}
+                {renderTable(
+                  noFramework,
+                  noFrameworkColumns,
+                  "risk-inheritance-coverage-no-framework",
+                )}
               </>
             )}
           </>
@@ -266,7 +316,12 @@ const ControlCoverage: React.FC = () => {
   return (
     <Accordion defaultExpanded={false} sx={sectionSx}>
       <AccordionSummary expandIcon={<ChevronDown size={18} />}>
-        <Typography sx={summaryTitleSx}>Control coverage</Typography>
+        <Box sx={summaryHeaderSx}>
+          <Typography sx={summaryTitleSx}>Control coverage</Typography>
+          <Typography sx={summaryDescriptionSx}>
+            Which active risks are not mitigated by any control yet.
+          </Typography>
+        </Box>
       </AccordionSummary>
       <AccordionDetails sx={{ p: 8 }}>{renderBody()}</AccordionDetails>
     </Accordion>

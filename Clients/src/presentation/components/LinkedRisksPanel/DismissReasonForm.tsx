@@ -2,6 +2,8 @@ import { useState } from "react";
 import { FormControlLabel, Radio, RadioGroup, Stack } from "@mui/material";
 import { CustomizableButton } from "../button/customizable-button";
 import Field from "../Inputs/Field";
+import { useTranslation } from "../../../application/hooks/useTranslation";
+import { fill } from "../../../i18n/fill";
 import { DismissReason, RiskLink } from "../../../domain/interfaces/i.riskLink";
 
 /**
@@ -50,6 +52,7 @@ export default function DismissReasonForm({
   // chosen IS the skip path, and no reason is ever recorded by accident.
   const [reason, setReason] = useState<DismissReason | "">("");
   const [note, setNote] = useState("");
+  const { t } = useTranslation();
 
   const noteMissing = reason === "other" && note.trim() === "";
 
@@ -66,7 +69,9 @@ export default function DismissReasonForm({
         long list, and "Other" alone is not a distinguishable label.
       */}
       <RadioGroup
-        aria-label={`Why are you dismissing ${link.relatedRisk.name ?? `risk ${link.relatedRisk.id}`}?`}
+        aria-label={fill(t("Why are you dismissing {name}?"), {
+          name: link.relatedRisk.name ?? fill(t("risk {id}"), { id: link.relatedRisk.id }),
+        })}
         value={reason}
         onChange={(event) => setReason(event.target.value as DismissReason)}
       >

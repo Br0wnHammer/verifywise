@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import { renderWithProviders } from "../../../../test/renderWithProviders";
 import userEvent from "@testing-library/user-event";
 import { projectsText, listHeading } from "../ControlCoverage";
 import type { CoverageGapRisk, CoverageReport } from "../../../../domain/interfaces/i.riskLink";
@@ -68,7 +69,7 @@ describe("ControlCoverage rendering", () => {
   });
 
   const expand = async () => {
-    render(<ControlCoverage />);
+    renderWithProviders(<ControlCoverage />);
     await userEvent.click(await screen.findByText("Control coverage"));
   };
 

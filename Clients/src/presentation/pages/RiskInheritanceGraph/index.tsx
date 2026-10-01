@@ -28,15 +28,18 @@ import { Network, AlertTriangle } from "lucide-react";
 import { EmptyState } from "../../components/EmptyState";
 import { getRiskGraph } from "../../../application/repository/riskLink.repository";
 import { useIsAdmin } from "../../../application/hooks/useIsAdmin";
+import { useTranslation } from "../../../application/hooks/useTranslation";
 import { APIError } from "../../../application/tools/error";
 import type { RiskGraph } from "../../../domain/interfaces/i.riskLink";
 import RiskNode from "./RiskNode";
+import GraphGuide from "./GraphGuide";
 import type { RiskInheritanceNodeData } from "./types";
 import DismissalAnalytics from "./DismissalAnalytics";
 import DuplicateCandidates from "./DuplicateCandidates";
 import ControlCoverage from "./ControlCoverage";
 import { ENTITY_TYPE_COLORS, EDGE_LABELS } from "./types";
 import { layoutRiskGraph } from "./layout";
+import { fill } from "../../../i18n/fill";
 import {
   graphWrapperSx,
   pageContainerSx,
@@ -55,6 +58,9 @@ import {
 
 // Register custom node types
 const nodeTypes = { riskNode: RiskNode };
+
+// Drops the "React Flow" corner badge; the library is MIT, so hiding it is allowed.
+const proOptions = { hideAttribution: true };
 
 // Legend rows: line swatch + real text (never a background image). Style and
 // opacity mirror the edges themselves below, which take their stroke from
@@ -79,6 +85,7 @@ const DIMMED_EDGE_OPACITY = 0.08;
 
 const RiskInheritanceGraphInner: React.FC = () => {
   const theme = useTheme();
+  const { t } = useTranslation();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [loading, setLoading] = useState(true);
@@ -138,7 +145,7 @@ const RiskInheritanceGraphInner: React.FC = () => {
         type: "riskNode",
         position: layout.positions.get(node.key) ?? { x: 0, y: 0 },
         data: {
-          name: node.name ?? `Risk ${node.id}`,
+          name: node.name ?? fill(t("Risk {id}"), { id: node.id }),
           entityType: node.entityType,
           riskLevel: node.riskLevel,
           staleSince: staleByNode.get(node.key) ?? null,
@@ -188,7 +195,7 @@ const RiskInheritanceGraphInner: React.FC = () => {
         };
       }),
     );
-  }, [graph, layout, staleByNode, setNodes, setEdges, theme]);
+  }, [graph, layout, staleByNode, setNodes, setEdges, theme, t]);
 
   const { displayNodes, displayEdges } = useMemo(() => {
     if (!selectedKey) return { displayNodes: nodes, displayEdges: edges };
@@ -264,6 +271,7 @@ const RiskInheritanceGraphInner: React.FC = () => {
               onEdgesChange={onEdgesChange}
               onSelectionChange={handleSelectionChange}
               nodeTypes={nodeTypes}
+              proOptions={proOptions}
               fitView
               fitViewOptions={{ padding: 0.2 }}
               minZoom={0.1}
@@ -304,7 +312,10 @@ const RiskInheritanceGraphInner: React.FC = () => {
                   ))}
                   <Box sx={statsContainerSx}>
                     <Typography sx={statsTextSx}>
-                      {nodes.length} risks, {edges.length} links
+                      {fill(t("{risks} risks, {links} links"), {
+                        risks: nodes.length,
+                        links: edges.length,
+                      })}
                     </Typography>
                     <Typography sx={statsTextSx}>
                       {selectedKey
@@ -313,6 +324,10 @@ const RiskInheritanceGraphInner: React.FC = () => {
                     </Typography>
                   </Box>
                 </Stack>
+              </Panel>
+
+              <Panel position="top-right">
+                <GraphGuide />
               </Panel>
             </ReactFlow>
           </div>

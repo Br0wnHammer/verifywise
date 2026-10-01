@@ -144,7 +144,18 @@ describe("LinkRiskForm candidates", () => {
   });
 
   it("excludes a risk already related, for the Related to choice only", async () => {
-    const existing = [link({ relationType: "related_to", relatedRisk: { id: 9, entityType: "risk", name: "Model drift", riskLevel: null, ownerId: null } })];
+    const existing = [
+      link({
+        relationType: "related_to",
+        relatedRisk: {
+          id: 9,
+          entityType: "risk",
+          name: "Model drift",
+          riskLevel: null,
+          ownerId: null,
+        },
+      }),
+    ];
     wrap(<LinkRiskForm riskId={42} existingLinks={existing} onClose={vi.fn()} />);
     await waitFor(() => expect(mockGetAllProjectRisks).toHaveBeenCalled());
 
@@ -169,7 +180,13 @@ describe("LinkRiskForm candidates", () => {
         status: "suggested",
         relationType: "inherits_from",
         direction: "incoming",
-        relatedRisk: { id: 11, entityType: "risk", name: "Vendor outage", riskLevel: null, ownerId: null },
+        relatedRisk: {
+          id: 11,
+          entityType: "risk",
+          name: "Vendor outage",
+          riskLevel: null,
+          ownerId: null,
+        },
       }),
     ];
     wrap(<LinkRiskForm riskId={42} existingLinks={existing} onClose={vi.fn()} />);
@@ -189,8 +206,17 @@ describe("LinkRiskForm candidates", () => {
   // partner stays selectable on purpose — the 409 explains it (§6.4).
   it("keeps a risk selectable when its only link is dismissed", async () => {
     const existing = [
-      link({ status: "dismissed", relationType: "related_to",
-             relatedRisk: { id: 9, entityType: "risk", name: "Model drift", riskLevel: null, ownerId: null } }),
+      link({
+        status: "dismissed",
+        relationType: "related_to",
+        relatedRisk: {
+          id: 9,
+          entityType: "risk",
+          name: "Model drift",
+          riskLevel: null,
+          ownerId: null,
+        },
+      }),
     ];
     // The panel does not pass dismissed links down; simulate that by passing none.
     wrap(<LinkRiskForm riskId={42} existingLinks={[]} onClose={vi.fn()} />);
@@ -416,4 +442,3 @@ describe("LinkRiskForm shared-project ranking", () => {
     expect(options[1]).not.toHaveTextContent("Same project");
   });
 });
-

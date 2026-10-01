@@ -89,12 +89,42 @@ describe("LinkedRisksPanel grouping", () => {
   it("puts each relation and direction under its own heading", () => {
     mockUseRiskLinks.mockReturnValue(
       queryResult([
-        link({ id: 1, relationType: "inherits_from", direction: "outgoing",
-               relatedRisk: { id: 9, entityType: "risk", name: "Upstream risk", riskLevel: null, ownerId: null } }),
-        link({ id: 2, relationType: "inherits_from", direction: "incoming",
-               relatedRisk: { id: 10, entityType: "risk", name: "Downstream risk", riskLevel: null, ownerId: null } }),
-        link({ id: 3, relationType: "related_to", direction: "undirected",
-               relatedRisk: { id: 11, entityType: "risk", name: "Sibling risk", riskLevel: null, ownerId: null } }),
+        link({
+          id: 1,
+          relationType: "inherits_from",
+          direction: "outgoing",
+          relatedRisk: {
+            id: 9,
+            entityType: "risk",
+            name: "Upstream risk",
+            riskLevel: null,
+            ownerId: null,
+          },
+        }),
+        link({
+          id: 2,
+          relationType: "inherits_from",
+          direction: "incoming",
+          relatedRisk: {
+            id: 10,
+            entityType: "risk",
+            name: "Downstream risk",
+            riskLevel: null,
+            ownerId: null,
+          },
+        }),
+        link({
+          id: 3,
+          relationType: "related_to",
+          direction: "undirected",
+          relatedRisk: {
+            id: 11,
+            entityType: "risk",
+            name: "Sibling risk",
+            riskLevel: null,
+            ownerId: null,
+          },
+        }),
       ]),
     );
     render(<LinkedRisksPanel riskId={42} />);
@@ -123,8 +153,18 @@ describe("LinkedRisksPanel grouping", () => {
     mockUseRiskLinks.mockReturnValue(
       queryResult([
         link({ id: 1, source: "derived", score: 4.2 }),
-        link({ id: 2, source: "user", score: 0,
-               relatedRisk: { id: 10, entityType: "risk", name: "Hand-linked", riskLevel: null, ownerId: null } }),
+        link({
+          id: 2,
+          source: "user",
+          score: 0,
+          relatedRisk: {
+            id: 10,
+            entityType: "risk",
+            name: "Hand-linked",
+            riskLevel: null,
+            ownerId: null,
+          },
+        }),
       ]),
     );
     render(<LinkedRisksPanel riskId={42} />);
@@ -138,9 +178,7 @@ describe("LinkedRisksPanel grouping", () => {
 
   it("offers an admin the hierarchy pass even when links already exist", async () => {
     mockIsAdmin.mockReturnValue(true);
-    mockUseRiskLinks.mockReturnValue(
-      queryResult([link()]),
-    );
+    mockUseRiskLinks.mockReturnValue(queryResult([link()]));
 
     render(<LinkedRisksPanel riskId={42} />);
 
@@ -153,9 +191,7 @@ describe("LinkedRisksPanel grouping", () => {
 
   it("hides the hierarchy pass from a non-admin", () => {
     mockIsAdmin.mockReturnValue(false);
-    mockUseRiskLinks.mockReturnValue(
-      queryResult([link()]),
-    );
+    mockUseRiskLinks.mockReturnValue(queryResult([link()]));
 
     render(<LinkedRisksPanel riskId={42} />);
 
@@ -218,9 +254,7 @@ describe("LinkedRisksPanel actions", () => {
   // Restoring a user link to `suggested` achieves nothing — the recompute prune
   // requires source = 'derived' — and misdescribes it as a machine suggestion.
   it("offers Confirm but not Restore on a dismissed user link", () => {
-    mockUseRiskLinks.mockReturnValue(
-      queryResult([link({ status: "dismissed", source: "user" })]),
-    );
+    mockUseRiskLinks.mockReturnValue(queryResult([link({ status: "dismissed", source: "user" })]));
     render(<LinkedRisksPanel riskId={42} />);
 
     expect(screen.getByRole("button", { name: "Confirm" })).toBeInTheDocument();
@@ -248,9 +282,7 @@ describe("LinkedRisksPanel dismissed toggle", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Show dismissed" }));
 
-    await waitFor(() =>
-      expect(mockUseRiskLinks).toHaveBeenLastCalledWith(42, "dismissed", false),
-    );
+    await waitFor(() => expect(mockUseRiskLinks).toHaveBeenLastCalledWith(42, "dismissed", false));
     expect(screen.getByRole("button", { name: "Hide dismissed" })).toBeInTheDocument();
   });
 });
@@ -289,9 +321,7 @@ describe("LinkedRisksPanel empty state", () => {
     mockUseRiskLinks.mockReturnValue(queryResult([link()]));
     rerender(<LinkedRisksPanel riskId={42} />);
 
-    await waitFor(() =>
-      expect(screen.queryByText(/Scanning 4 risks/)).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText(/Scanning 4 risks/)).not.toBeInTheDocument());
     expect(mockUseRiskLinks).toHaveBeenLastCalledWith(42, undefined, false);
   });
 
@@ -387,7 +417,13 @@ describe("LinkedRisksPanel link form", () => {
         link({
           status: "dismissed",
           relationType: "related_to",
-          relatedRisk: { id: 9, entityType: "risk", name: "Model drift", riskLevel: null, ownerId: null },
+          relatedRisk: {
+            id: 9,
+            entityType: "risk",
+            name: "Model drift",
+            riskLevel: null,
+            ownerId: null,
+          },
         }),
       ]),
     );
@@ -450,7 +486,9 @@ describe("LinkedRisksPanel dismissal reasons", () => {
 
   it("offers the hierarchy vocabulary on an inherits_from row", async () => {
     mockUseRiskLinks.mockReturnValue(
-      queryResult([link({ status: "suggested", relationType: "inherits_from", direction: "outgoing" })]),
+      queryResult([
+        link({ status: "suggested", relationType: "inherits_from", direction: "outgoing" }),
+      ]),
     );
     render(
       <ThemeProvider theme={light}>
@@ -532,7 +570,11 @@ describe("LinkedRisksPanel dismissal reasons", () => {
     await userEvent.click(submit);
 
     expect(mockMutateStatus).toHaveBeenCalledWith(
-      { id: 7, status: "dismissed", dismissal: { dismissReason: "other", dismissNote: "covered by R-14" } },
+      {
+        id: 7,
+        status: "dismissed",
+        dismissal: { dismissReason: "other", dismissNote: "covered by R-14" },
+      },
       expect.anything(),
     );
   });
@@ -561,10 +603,30 @@ describe("LinkedRisksPanel dismissal reasons", () => {
   it("shows a stored reason in the dismissed view, and nothing when there is none", () => {
     mockUseRiskLinks.mockReturnValue(
       queryResult([
-        link({ id: 1, status: "dismissed", dismissReason: "not_related",
-               relatedRisk: { id: 9, entityType: "risk", name: "Model drift", riskLevel: null, ownerId: null } }),
-        link({ id: 2, status: "dismissed", dismissReason: null,
-               relatedRisk: { id: 10, entityType: "risk", name: "Data leak", riskLevel: null, ownerId: null } }),
+        link({
+          id: 1,
+          status: "dismissed",
+          dismissReason: "not_related",
+          relatedRisk: {
+            id: 9,
+            entityType: "risk",
+            name: "Model drift",
+            riskLevel: null,
+            ownerId: null,
+          },
+        }),
+        link({
+          id: 2,
+          status: "dismissed",
+          dismissReason: null,
+          relatedRisk: {
+            id: 10,
+            entityType: "risk",
+            name: "Data leak",
+            riskLevel: null,
+            ownerId: null,
+          },
+        }),
       ]),
     );
     render(

@@ -14,6 +14,8 @@ import Chip from "../../components/Chip";
 import { ENTITY_TYPE_LABELS } from "../../../domain/interfaces/i.riskLink";
 import { textStyles } from "../../themes/typography";
 import VWTooltip from "../../components/VWTooltip";
+import { useTranslation } from "../../../application/hooks/useTranslation";
+import { fill } from "../../../i18n/fill";
 import type { RiskInheritanceNodeData } from "./types";
 import { ENTITY_TYPE_COLORS } from "./types";
 
@@ -25,17 +27,24 @@ const truncateName = (name: string): string =>
 
 const RiskNode: React.FC<NodeProps> = ({ data, selected }) => {
   const theme = useTheme();
+  const { t } = useTranslation();
   const nodeData = data as unknown as RiskInheritanceNodeData;
   const color = ENTITY_TYPE_COLORS[nodeData.entityType];
   const typeLabel = ENTITY_TYPE_LABELS[nodeData.entityType];
+
+  // Assembled here, not left to the DOM translator: an aria-label is one
+  // attribute value made of several parts, so no single dictionary key matches it.
+  const ariaParts = [`${typeLabel ? `${t(typeLabel)}: ` : ""}${nodeData.name}`];
+  if (nodeData.riskLevel) {
+    ariaParts.push(fill(t("Risk level: {level}"), { level: t(nodeData.riskLevel) }));
+  }
+  if (nodeData.staleSince) ariaParts.push(t("Parent level changed."));
 
   return (
     <VWTooltip header={nodeData.name} content={nodeData.name} placement="top" maxWidth={300}>
       <Box
         tabIndex={0}
-        aria-label={`${typeLabel ? `${typeLabel}: ` : ""}${nodeData.name}${
-          nodeData.riskLevel ? `. Risk level: ${nodeData.riskLevel}` : ""
-        }${nodeData.staleSince ? ". Parent level changed." : ""}`}
+        aria-label={ariaParts.join(". ")}
         sx={{
           "bgcolor": "background.main",
           // Selected takes the interactive-card treatment: border to primary,

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderWithProviders } from "../../../../test/renderWithProviders";
 import userEvent from "@testing-library/user-event";
 import {
   rateText,
@@ -132,7 +133,7 @@ describe("DismissalAnalytics rendering", () => {
         ],
       }),
     );
-    render(<DismissalAnalytics />);
+    renderWithProviders(<DismissalAnalytics />);
 
     await userEvent.click(await screen.findByText("Dismissal analytics"));
 
@@ -145,7 +146,7 @@ describe("DismissalAnalytics rendering", () => {
 
   it("shows the empty state when nothing is decided yet", async () => {
     mockGetDismissalAnalytics.mockResolvedValue(payload());
-    render(<DismissalAnalytics />);
+    renderWithProviders(<DismissalAnalytics />);
 
     await userEvent.click(await screen.findByText("Dismissal analytics"));
 

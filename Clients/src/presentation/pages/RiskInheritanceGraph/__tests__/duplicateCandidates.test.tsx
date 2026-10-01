@@ -1,13 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderWithProviders } from "../../../../test/renderWithProviders";
 import userEvent from "@testing-library/user-event";
 import { summariseTerms, similarityPercent } from "../DuplicateCandidates";
 import type { DuplicateReport } from "../../../../domain/interfaces/i.riskLink";
 
 const mockGetDuplicateCandidates = vi.fn();
+const mockCreateRiskLink = vi.fn();
+const mockDeleteEntityById = vi.fn();
+const mockNavigate = vi.fn();
 
 vi.mock("../../../../application/repository/riskLink.repository", () => ({
   getDuplicateCandidates: (...args: unknown[]) => mockGetDuplicateCandidates(...args),
+  createRiskLink: (...args: unknown[]) => mockCreateRiskLink(...args),
+}));
+
+vi.mock("../../../../application/repository/entity.repository", () => ({
+  deleteEntityById: (...args: unknown[]) => mockDeleteEntityById(...args),
+}));
+
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useNavigate: () => mockNavigate,
 }));
 
 vi.mock("../../../../application/hooks/useUsers", () => ({
@@ -48,6 +62,7 @@ describe("DuplicateCandidates rendering", () => {
     organization_id: 1,
     scanned: 12,
     compared: 30,
+    matched: 0,
     truncated: false,
     candidates: [],
     ...overrides,
@@ -62,7 +77,7 @@ describe("DuplicateCandidates rendering", () => {
   };
 
   const expand = async () => {
-    render(<DuplicateCandidates />);
+    renderWithProviders(<DuplicateCandidates />);
     await userEvent.click(await screen.findByText("Duplicate candidates"));
   };
 
@@ -88,10 +103,31 @@ describe("DuplicateCandidates rendering", () => {
   });
 
   it("says the scan was capped rather than passing a sample off as the whole org", async () => {
-    mockGetDuplicateCandidates.mockResolvedValue(report({ truncated: true, candidates: [pair] }));
+    mockGetDuplicateCandidates.mockResolvedValue(
+      report({ truncated: true, matched: 80, candidates: [pair] }),
+    );
     await expand();
 
     expect(await screen.findByRole("status")).toHaveTextContent(/size limit/i);
+    expect(screen.queryByText(/closest of/)).not.toBeInTheDocument();
+  });
+
+  it("says a complete scan kept only the closest pairs, and how many matched", async () => {
+    mockGetDuplicateCandidates.mockResolvedValue(report({ matched: 1770, candidates: [pair] }));
+    await expand();
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Showing the 1 closest of 1,770 matching pairs.",
+    );
+    expect(screen.queryByText(/size limit/i)).not.toBeInTheDocument();
+  });
+
+  it("shows no notice when every matching pair is listed", async () => {
+    mockGetDuplicateCandidates.mockResolvedValue(report({ matched: 1, candidates: [pair] }));
+    await expand();
+
+    expect(await screen.findByText("Model drift unnoticed")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("reports no duplicates as a result, quoting how many pairs were compared", async () => {
@@ -114,5 +150,84 @@ describe("DuplicateCandidates rendering", () => {
     await expand();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+  });
+});
+
+describe("DuplicateCandidates row actions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const pair = {
+    risk_a: { id: 11, risk_name: "Model drift unnoticed", risk_owner: 7 },
+    risk_b: { id: 12, risk_name: "Model drift undetected", risk_owner: null },
+    similarity: 0.62,
+    shared_tokens: ["model", "drift"],
+    also_shares: ["project"],
+  };
+
+  const report = (candidates = [pair]): DuplicateReport => ({
+    organization_id: 1,
+    scanned: 12,
+    compared: 30,
+    matched: candidates.length,
+    truncated: false,
+    candidates,
+  });
+
+  const openActions = async () => {
+    renderWithProviders(<DuplicateCandidates />);
+    await userEvent.click(await screen.findByText("Duplicate candidates"));
+    await userEvent.click(await screen.findByRole("button", { name: "Duplicate pair actions" }));
+  };
+
+  it("opens either risk in Risk Management", async () => {
+    mockGetDuplicateCandidates.mockResolvedValue(report());
+    await openActions();
+
+    await userEvent.click(screen.getByRole("menuitem", { name: "Open risk #12" }));
+    expect(mockNavigate).toHaveBeenCalledWith("/risk-management?riskId=12");
+  });
+
+  it("links the pair as related", async () => {
+    mockGetDuplicateCandidates.mockResolvedValue(report());
+    mockCreateRiskLink.mockResolvedValue({ id: 99 });
+    await openActions();
+
+    await userEvent.click(screen.getByRole("menuitem", { name: "Link as related" }));
+    expect(mockCreateRiskLink).toHaveBeenCalledWith({
+      sourceRiskId: 11,
+      targetRiskId: 12,
+      relationType: "related_to",
+    });
+    expect(await screen.findByText(/now linked as related/)).toBeInTheDocument();
+  });
+
+  it("shows the server's reason when linking fails", async () => {
+    mockGetDuplicateCandidates.mockResolvedValue(report());
+    mockCreateRiskLink.mockRejectedValue(new Error("These risks are already linked"));
+    await openActions();
+
+    await userEvent.click(screen.getByRole("menuitem", { name: "Link as related" }));
+    expect(await screen.findByText("These risks are already linked")).toBeInTheDocument();
+  });
+
+  it("deletes one side only after confirmation, then reloads the report", async () => {
+    mockGetDuplicateCandidates.mockResolvedValueOnce(report()).mockResolvedValueOnce(report([]));
+    mockDeleteEntityById.mockResolvedValue({ status: 200 });
+    await openActions();
+
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete risk #12" }));
+    expect(mockDeleteEntityById).not.toHaveBeenCalled();
+    expect(screen.getByText(/stays\./)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete risk" }));
+    expect(mockDeleteEntityById).toHaveBeenNthCalledWith(1, { routeUrl: "/projectRisks/12" });
+    expect(mockDeleteEntityById).toHaveBeenNthCalledWith(2, {
+      routeUrl: "/policy-linked/risk/12/unlink-all",
+    });
+    expect(await screen.findByText('Deleted "Model drift undetected".')).toBeInTheDocument();
+    expect(mockGetDuplicateCandidates).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText(/No likely duplicates/)).toBeInTheDocument();
   });
 });

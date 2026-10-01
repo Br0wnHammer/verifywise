@@ -31,6 +31,21 @@ export const summaryTitleSx: SxProps<Theme> = {
   color: "text.primary",
 };
 
+/** Panel title and its one-line description on one row; wraps on narrow screens. */
+export const summaryHeaderSx: SxProps<Theme> = {
+  display: "flex",
+  alignItems: "baseline",
+  flexWrap: "wrap",
+  columnGap: 6, // 12px — title to description
+  rowGap: 2,
+};
+
+/** One-line explanation beside the panel title. 13 / 400 / text.secondary */
+export const summaryDescriptionSx: SxProps<Theme> = {
+  ...textStyles.body,
+  color: "text.secondary",
+};
+
 /** Nested heading under the panel. 14 / 600 */
 export const blockHeadingSx: SxProps<Theme> = {
   ...textStyles.subsectionTitle,

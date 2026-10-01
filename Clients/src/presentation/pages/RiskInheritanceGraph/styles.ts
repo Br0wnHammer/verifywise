@@ -94,6 +94,47 @@ export const legendTextSx: SxProps<Theme> = {
   color: "text.secondary",
 };
 
+/** Map key: one compact strip, same surface as the Link types card. */
+export const guidePanelSx: SxProps<Theme> = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5, // 10px between key items
+  py: 3, // 6px
+  px: 5, // 10px
+  bgcolor: "background.main",
+  borderRadius: "4px",
+  border: 1,
+  borderColor: "divider",
+  boxShadow: (theme) => theme.boxShadow,
+};
+
+export const guideIconSx: SxProps<Theme> = {
+  "display": "flex",
+  "color": "text.accent",
+  "cursor": "help",
+  "&:hover, &:focus-visible": { color: "text.secondary" },
+};
+
+export const guideItemSx: SxProps<Theme> = {
+  display: "flex",
+  alignItems: "center",
+  gap: 2, // 4px — swatch + label
+};
+
+export const guideTextSx: SxProps<Theme> = {
+  ...textStyles.bodySmall,
+  color: "text.secondary",
+};
+
+/** Node-type key: a small box drawn with the same 2px coloured border as the node. */
+export const nodeSwatchSx = (color: string): SxProps<Theme> => ({
+  width: 10,
+  height: 10,
+  flexShrink: 0,
+  border: `2px solid ${color}`,
+  borderRadius: "2px",
+});
+
 export const statsContainerSx: SxProps<Theme> = {
   pt: 4, // 8px
   borderTop: 1,

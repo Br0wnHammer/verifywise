@@ -8,6 +8,8 @@ import { getAllProjectRisks } from "../../../application/repository/projectRisk.
 import { getAllVendorRisks } from "../../../application/repository/vendorRisk.repository";
 import { getAllEntities } from "../../../application/repository/entity.repository";
 import { useCreateRiskLink, useSharedProjects } from "../../../application/hooks/useRiskLinks";
+import { useTranslation } from "../../../application/hooks/useTranslation";
+import { fill } from "../../../i18n/fill";
 import { CreateRiskLinkInput, RiskLink } from "../../../domain/interfaces/i.riskLink";
 
 interface LinkRiskFormProps {
@@ -45,6 +47,7 @@ export default function LinkRiskForm({ riskId, existingLinks, onClose }: LinkRis
   const [partner, setPartner] = useState<Candidate | null>(null);
   const [error, setError] = useState<string | null>(null);
   const createLink = useCreateRiskLink(riskId);
+  const { t } = useTranslation();
 
   /**
    * `direction: "outgoing"` means this risk is the source of the edge, and the
@@ -255,8 +258,11 @@ export default function LinkRiskForm({ riskId, existingLinks, onClose }: LinkRis
                     uppercase={false}
                     label={
                       shared.length > 1
-                        ? `Same project: ${shared[0]} +${shared.length - 1}`
-                        : `Same project: ${shared[0]}`
+                        ? fill(t("Same project: {name} +{count}"), {
+                            name: shared[0],
+                            count: shared.length - 1,
+                          })
+                        : fill(t("Same project: {name}"), { name: shared[0] })
                     }
                   />
                 )}

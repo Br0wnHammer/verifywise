@@ -18,34 +18,28 @@ import {
   AccordionSummary,
   Box,
   CircularProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Typography,
 } from "@mui/material";
 import { AlertCircle, BarChart, ChevronDown } from "lucide-react";
 import { EmptyState } from "../../../components/EmptyState";
-import singleTheme from "../../../themes/v1SingleTheme";
 import { getDismissalAnalytics } from "../../../../application/repository/riskLink.repository";
+import { useTranslation } from "../../../../application/hooks/useTranslation";
 import type {
   DismissalAnalytics as DismissalAnalyticsPayload,
   DismissReason,
   DismissalReasonRow,
+  DismissalSignalRow,
 } from "../../../../domain/interfaces/i.riskLink";
 import { DISMISS_REASON_LABELS } from "../../../components/LinkedRisksPanel/DismissReasonForm";
+import ReportTable, { type ReportColumn } from "../ReportTable";
+import { fill } from "../../../../i18n/fill";
 import {
   sectionSx,
+  summaryHeaderSx,
   summaryTitleSx,
+  summaryDescriptionSx,
   blockHeadingSx,
   captionSx,
-  tableSx,
-  tableHeadRowSx,
-  tableHeadCellSx,
-  tableBodyRowSx,
-  tableBodyCellSx,
   notesFrameSx,
   rateCellSx,
   barTrackSx,
@@ -131,7 +125,78 @@ export function groupReasons(rows: DismissalReasonRow[]): ReasonGroup[] {
   return [...groups.values()];
 }
 
+type ReasonRow = ReasonGroup["rows"][number];
+
+// Module-level: nothing in a cell depends on component state, so the column
+// arrays (and the comparator derived from them) never change identity.
+const SIGNAL_COLUMNS: ReportColumn<DismissalSignalRow>[] = [
+  {
+    id: "signal",
+    label: "Signal",
+    sortable: true,
+    sortValue: (row) => signalLabel(row.signal),
+    render: (row) => signalLabel(row.signal),
+  },
+  {
+    id: "decided",
+    label: "Decided",
+    sortable: true,
+    align: "right",
+    sortValue: (row) => row.decided,
+    render: (row) => row.decided,
+  },
+  {
+    id: "dismissed",
+    label: "Dismissed",
+    sortable: true,
+    align: "right",
+    sortValue: (row) => row.dismissed,
+    render: (row) => row.dismissed,
+  },
+  {
+    id: "rate",
+    label: "Dismiss rate",
+    sortable: true,
+    // decided === 0 renders a dash; it sorts with the unrated rows, not as 0%.
+    sortValue: (row) => (row.decided === 0 ? null : ratePercent(row.decided, row.dismissed)),
+    render: (row) => (
+      <Box sx={rateCellSx}>
+        <Box sx={barTrackSx} aria-hidden="true">
+          <Box sx={barFillSx(ratePercent(row.decided, row.dismissed))} />
+        </Box>
+        <span>{rateText(row.decided, row.dismissed)}</span>
+      </Box>
+    ),
+  },
+  {
+    id: "topReason",
+    label: "Top reason",
+    sortable: true,
+    sortValue: (row) => (row.topReason === null ? null : topReasonLabel(row.topReason)),
+    render: (row) => topReasonLabel(row.topReason),
+  },
+];
+
+const REASON_COLUMNS: ReportColumn<ReasonRow>[] = [
+  {
+    id: "reason",
+    label: "Reason",
+    sortable: true,
+    sortValue: (row) => row.label,
+    render: (row) => row.label,
+  },
+  {
+    id: "count",
+    label: "Count",
+    sortable: true,
+    align: "right",
+    sortValue: (row) => row.count,
+    render: (row) => row.count,
+  },
+];
+
 const DismissalAnalytics: React.FC = () => {
+  const { t } = useTranslation();
   const [data, setData] = useState<DismissalAnalyticsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -166,7 +231,12 @@ const DismissalAnalytics: React.FC = () => {
   return (
     <Accordion defaultExpanded={false} sx={sectionSx}>
       <AccordionSummary expandIcon={<ChevronDown size={18} />}>
-        <Typography sx={summaryTitleSx}>Dismissal analytics</Typography>
+        <Box sx={summaryHeaderSx}>
+          <Typography sx={summaryTitleSx}>Dismissal analytics</Typography>
+          <Typography sx={summaryDescriptionSx}>
+            Which suggested links people reject, and why, so the suggestions can be tuned.
+          </Typography>
+        </Box>
       </AccordionSummary>
       <AccordionDetails sx={{ p: 8 }}>
         {loading ? (
@@ -194,51 +264,14 @@ const DismissalAnalytics: React.FC = () => {
                   Signals are recomputed on every save, so they describe the pair today, not the
                   moment of the decision.
                 </Typography>
-                <TableContainer>
-                  <Table sx={tableSx}>
-                    <TableHead
-                      sx={{
-                        backgroundColor: singleTheme.tableStyles.primary.header.backgroundColors,
-                      }}
-                    >
-                      <TableRow sx={tableHeadRowSx}>
-                        <TableCell sx={tableHeadCellSx}>Signal</TableCell>
-                        <TableCell sx={tableHeadCellSx} align="right">
-                          Decided
-                        </TableCell>
-                        <TableCell sx={tableHeadCellSx} align="right">
-                          Dismissed
-                        </TableCell>
-                        <TableCell sx={tableHeadCellSx}>Dismiss rate</TableCell>
-                        <TableCell sx={tableHeadCellSx}>Top reason</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {data.signals.map((row) => (
-                        <TableRow key={row.signal} sx={tableBodyRowSx}>
-                          <TableCell sx={tableBodyCellSx}>{signalLabel(row.signal)}</TableCell>
-                          <TableCell sx={tableBodyCellSx} align="right">
-                            {row.decided}
-                          </TableCell>
-                          <TableCell sx={tableBodyCellSx} align="right">
-                            {row.dismissed}
-                          </TableCell>
-                          <TableCell sx={tableBodyCellSx}>
-                            <Box sx={rateCellSx}>
-                              <Box sx={barTrackSx} aria-hidden="true">
-                                <Box sx={barFillSx(ratePercent(row.decided, row.dismissed))} />
-                              </Box>
-                              <span>{rateText(row.decided, row.dismissed)}</span>
-                            </Box>
-                          </TableCell>
-                          <TableCell sx={tableBodyCellSx}>
-                            {topReasonLabel(row.topReason)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                <ReportTable
+                  columns={SIGNAL_COLUMNS}
+                  rows={data.signals}
+                  getRowKey={(row) => row.signal}
+                  storageKey="risk-inheritance-dismissal-signals"
+                  defaultSortColumn="dismissed"
+                  entityLabel="signal"
+                />
               </>
             )}
 
@@ -256,37 +289,25 @@ const DismissalAnalytics: React.FC = () => {
                     <Typography sx={groupHeaderSx}>
                       {/* Raw column values ("related_to", "agent") are not sentence case;
                           signalLabel is already the file's underscore-to-words helper. */}
-                      {signalLabel(group.relationType)} · {signalLabel(group.source)} —{" "}
-                      {group.dismissed} of {group.decided} dismissed (
-                      {rateText(group.decided, group.dismissed)})
+                      {fill(
+                        t("{relation} · {source} — {dismissed} of {decided} dismissed ({rate})"),
+                        {
+                          relation: t(signalLabel(group.relationType)),
+                          source: t(signalLabel(group.source)),
+                          dismissed: group.dismissed,
+                          decided: group.decided,
+                          rate: rateText(group.decided, group.dismissed),
+                        },
+                      )}
                     </Typography>
-                    <TableContainer>
-                      <Table sx={tableSx}>
-                        <TableHead
-                          sx={{
-                            backgroundColor:
-                              singleTheme.tableStyles.primary.header.backgroundColors,
-                          }}
-                        >
-                          <TableRow sx={tableHeadRowSx}>
-                            <TableCell sx={tableHeadCellSx}>Reason</TableCell>
-                            <TableCell sx={tableHeadCellSx} align="right">
-                              Count
-                            </TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {group.rows.map((row) => (
-                            <TableRow key={row.key} sx={tableBodyRowSx}>
-                              <TableCell sx={tableBodyCellSx}>{row.label}</TableCell>
-                              <TableCell sx={tableBodyCellSx} align="right">
-                                {row.count}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
+                    <ReportTable
+                      columns={REASON_COLUMNS}
+                      rows={group.rows}
+                      getRowKey={(row) => row.key}
+                      storageKey="risk-inheritance-dismissal-reasons"
+                      defaultSortColumn="count"
+                      entityLabel="reason"
+                    />
                   </Box>
                 ))}
               </>
@@ -301,8 +322,8 @@ const DismissalAnalytics: React.FC = () => {
                       <Typography sx={noteMetaSx}>
                         {[
                           note.sourceName,
-                          signalLabel(note.relationType),
-                          reasonLabel(note.dismissReason),
+                          t(signalLabel(note.relationType)),
+                          t(reasonLabel(note.dismissReason)),
                         ]
                           .filter(Boolean)
                           .join(" · ")}

@@ -13,6 +13,7 @@ import {
   useUpdateRiskLinkStatus,
 } from "../../../application/hooks/useRiskLinks";
 import { useIsAdmin } from "../../../application/hooks/useIsAdmin";
+import { useTranslation } from "../../../application/hooks/useTranslation";
 import {
   DismissReason,
   ENTITY_TYPE_LABELS,
@@ -21,6 +22,7 @@ import {
 } from "../../../domain/interfaces/i.riskLink";
 import LinkRiskForm from "./LinkRiskForm";
 import DismissReasonForm, { DISMISS_REASON_LABELS } from "./DismissReasonForm";
+import { fill } from "../../../i18n/fill";
 
 interface LinkedRisksPanelProps {
   riskId: number;
@@ -69,8 +71,39 @@ const humanise = (key: string) => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-const reasonLabel = (reason: RiskLink["reasons"][number]) =>
-  reason.detail ? `${humanise(reason.signal)}: ${reason.detail}` : humanise(reason.signal);
+type Translate = (key: string) => string;
+
+/**
+ * The engine stores a reason's detail as English text, so it is translated here
+ * rather than on the server (a background scan has no request language).
+ * Categories and phases come from the same fixed lists the risk form offers;
+ * the structural signal writes "2 EU AI Act controls, 1 ISO 42001 subclause".
+ * Anything else — a control mapping, an assessment answer — is the user's own
+ * text and stays as written.
+ */
+export function translateDetail(signal: string, detail: string, t: Translate): string {
+  switch (signal) {
+    case "shared_category":
+      return detail.split(", ").map(t).join(", ");
+    case "same_lifecycle_phase":
+      return t(detail);
+    case "shared_framework_element":
+      return detail
+        .split(", ")
+        .map((part) => {
+          const counted = /^(\d+) (.+)$/.exec(part);
+          return counted ? `${counted[1]} ${t(counted[2])}` : part;
+        })
+        .join(", ");
+    default:
+      return detail;
+  }
+}
+
+const reasonLabel = (reason: RiskLink["reasons"][number], t: Translate) =>
+  reason.detail
+    ? `${t(humanise(reason.signal))}: ${translateDetail(reason.signal, reason.detail, t)}`
+    : t(humanise(reason.signal));
 
 /**
  * Why the engine offered this link, as one tooltip line. Three bordered chips
@@ -80,10 +113,10 @@ const reasonLabel = (reason: RiskLink["reasons"][number]) =>
  * score is 0 by column default on a user link and on an agent link, and means
  * nothing on either — only the scoring engine produces a number worth showing.
  */
-const detailsFor = (link: RiskLink) =>
+const detailsFor = (link: RiskLink, t: Translate) =>
   [
-    ...(link.source === "derived" ? [`Score ${link.score}`] : []),
-    ...link.reasons.map(reasonLabel),
+    ...(link.source === "derived" ? [fill(t("Score {score}"), { score: link.score })] : []),
+    ...link.reasons.map((reason) => reasonLabel(reason, t)),
   ].join(" · ");
 
 /**
@@ -121,6 +154,7 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
   const [dismissing, setDismissing] = useState<RiskLink | null>(null);
   const [pending, setPending] = useState<PendingJob | null>(null);
   const isAdmin = useIsAdmin();
+  const { t } = useTranslation();
 
   const {
     data: links = [],
@@ -202,7 +236,11 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
     setNotice(null);
     recompute.mutate(undefined, {
       onSuccess: (result) => {
-        setNotice(`Scanning ${result.enqueued} risks. Links will appear as the scan completes.`);
+        setNotice(
+          fill(t("Scanning {count} risks. Links will appear as the scan completes."), {
+            count: result.enqueued,
+          }),
+        );
         watchForResult("Scan finished. No related risks found.", SCAN_WINDOW_MS);
       },
       onError: (error: any) => setNotice(error?.message || "Failed to start the scan"),
@@ -216,9 +254,16 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
         setNotice(
           result.enqueued === 0
             ? "No clusters of related risks to group yet. Run a scan for related risks first."
-            : `Grouping ${result.enqueued} clusters of related risks. Suggestions appear here as they finish.` +
+            : fill(
+                t(
+                  "Grouping {count} clusters of related risks. Suggestions appear here as they finish.",
+                ),
+                { count: result.enqueued },
+              ) +
                 (result.skipped > 0
-                  ? ` ${result.skipped} clusters were too large to group in one pass.`
+                  ? ` ${fill(t("{count} clusters were too large to group in one pass."), {
+                      count: result.skipped,
+                    })}`
                   : ""),
         );
         // Nothing was queued, so there is nothing to wait for. The grouping
@@ -342,7 +387,7 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
                 <Box key={link.id}>
                   <Stack direction="row" alignItems="center" spacing={4} flexWrap="wrap">
                     <Typography sx={{ ...textStyles.body, color: "text.secondary", flexGrow: 1 }}>
-                      {link.relatedRisk.name ?? `Risk ${link.relatedRisk.id}`}
+                      {link.relatedRisk.name ?? fill(t("Risk {id}"), { id: link.relatedRisk.id })}
                     </Typography>
                     {ENTITY_TYPE_LABELS[link.relatedRisk.entityType] && (
                       <Chip
@@ -399,16 +444,18 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
                         </CustomizableButton>
                       </>
                     )}
-                    {detailsFor(link) && (
-                      <Tooltip title={detailsFor(link)} arrow>
+                    {detailsFor(link, t) && (
+                      <Tooltip title={detailsFor(link, t)} arrow>
                         <CustomizableButton
                           iconOnly
                           size="small"
                           variant="text"
                           color="secondary"
-                          ariaLabel={`Why ${
-                            link.relatedRisk.name ?? `risk ${link.relatedRisk.id}`
-                          } is linked`}
+                          ariaLabel={fill(t("Why {name} is linked"), {
+                            name:
+                              link.relatedRisk.name ??
+                              fill(t("risk {id}"), { id: link.relatedRisk.id }),
+                          })}
                         >
                           <Info size={16} />
                         </CustomizableButton>

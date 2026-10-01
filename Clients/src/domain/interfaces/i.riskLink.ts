@@ -162,7 +162,9 @@ export interface DuplicateReport {
   organization_id: number;
   scanned: number;
   compared: number;
-  /** Set by any of three caps: pairs scored, results kept, or risks scanned. */
+  /** Pairs above the threshold; `candidates` keeps only the closest of them. */
+  matched: number;
+  /** The scan stopped early (risks read or pairs scored hit a cap), so it is a sample. */
   truncated: boolean;
   candidates: DuplicateCandidate[];
 }
