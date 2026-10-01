@@ -52,10 +52,39 @@
   border: none;
   width: 100%;
   font-size: 17px;
-  padding: 12px 16px;
+  padding: 12px 44px 12px 16px;
   outline: none;
   background: transparent;
   color: #000;
+}
+
+.command-close-button {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #999;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.command-close-button:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #666;
+}
+
+.command-close-button:focus-visible {
+  outline: 2px solid #007acc;
+  outline-offset: 1px;
 }
 
 .command-input::placeholder {
@@ -71,7 +100,7 @@
   bottom: 0;
   display: flex;
   align-items: center;
-  padding: 12px 16px;
+  padding: 12px 44px 12px 16px;
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
@@ -387,6 +416,15 @@
 
   .command-input-hint {
     color: #888;
+  }
+
+  .command-close-button {
+    color: #aaa;
+  }
+
+  .command-close-button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
   }
 
   .command-group [cmdk-group-heading] {
