@@ -9486,6 +9486,39 @@ export const risklinksEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/riskLinks/vendor-exposure',
+    summary: "Get Vendor Exposure",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/vendor-duplicates',
+    summary: "Get Vendor Duplicate Candidates",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/vendor-coverage',
+    summary: "Get Vendor Framework Coverage",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
     path: '/riskLinks/vendor-risks/{vendorRiskId}',
     summary: "Get Vendor Risk Links",
     requiresAuth: true,
@@ -9499,6 +9532,18 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/riskLinks/vendor-risks/{vendorRiskId}/shared-projects',
     summary: "Get Vendor Risk Shared Projects",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'POST',
+    path: '/riskLinks/vendor-risks/{vendorRiskId}/suggest-hierarchy',
+    summary: "Suggest Vendor Risk Hierarchy",
+    description: "Requires role: Admin or SuperAdmin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },

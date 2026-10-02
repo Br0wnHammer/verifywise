@@ -26,6 +26,11 @@ vi.mock("../../../../application/hooks/useRiskLinks", () => ({
   useUpdateVendorRiskLinkStatus: () => ({ mutate: vi.fn(), isPending: false }),
   useCreateVendorRiskLink: () => ({ mutate: vi.fn(), isPending: false }),
   useVendorRiskSharedProjects: () => ({ data: [{ id: 12, projects: ["Lending"] }] }),
+  useSuggestVendorRiskHierarchy: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+vi.mock("../../../../application/hooks/useIsAdmin", () => ({
+  useIsAdmin: () => true,
 }));
 
 vi.mock("../../../../application/repository/projectRisk.repository", () => ({
@@ -88,6 +93,7 @@ describe.each(LANGS)("vendor risk linked risks tab in %s", (lang) => {
       "Child risks",
       "When the level of this risk changes, each child is flagged for review.",
       "Link a project risk",
+      "Suggest children",
       "Show dismissed",
       "High risk",
       "Confirm",
@@ -110,7 +116,7 @@ describe.each(LANGS)("vendor risk linked risks tab in %s", (lang) => {
       await screen.findByText(
         tr(
           lang,
-          "Link a project risk that this vendor risk applies to. Suggestions from Suggest hierarchy appear here too.",
+          "Link a project risk that this vendor risk applies to. Suggestions from Suggest children appear here too.",
         ),
       ),
     ).toBeInTheDocument();

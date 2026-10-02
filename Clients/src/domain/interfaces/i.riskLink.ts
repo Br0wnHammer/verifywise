@@ -90,6 +90,8 @@ export interface RiskGraphNode {
   id: number;
   name: string | null;
   riskLevel: string | null;
+  /** Vendor risk nodes only: lets the page show one vendor's part of the map. */
+  vendor?: { id: number; name: string | null } | null;
 }
 
 /** Mirrors `getRiskGraph` in Servers/controllers/riskLinks.ctrl.ts. */
@@ -199,5 +201,71 @@ export interface CoverageReport {
   gaps: CoverageGapRisk[];
   /** Nothing to map to yet. Not a finding. */
   no_framework: CoverageGapRisk[];
+  truncated: boolean;
+}
+
+/** A project (use case), as the vendor reports name it. */
+export interface UseCaseRef {
+  id: number;
+  name: string;
+}
+
+/** Mirrors `VendorRiskExposure` in Servers/services/riskLinks/vendorReports.ts. */
+export interface VendorRiskExposure {
+  vendor_risk_id: number;
+  /** Confirmed children only. */
+  children: number;
+  suggested: number;
+  use_cases: UseCaseRef[];
+}
+
+export interface VendorExposureSummary {
+  vendor_id: number;
+  vendor_name: string | null;
+  vendor_risks: number;
+  linked_vendor_risks: number;
+  inheriting_risks: number;
+  suggested: number;
+  use_cases: UseCaseRef[];
+}
+
+export interface VendorExposureReport {
+  risks: VendorRiskExposure[];
+  /** Widest reach first. */
+  vendors: VendorExposureSummary[];
+}
+
+export interface VendorRiskRef {
+  id: number;
+  risk_description: string | null;
+  risk_level: string | null;
+  action_owner: number | null;
+}
+
+export interface VendorDuplicateCandidate {
+  vendor: { id: number; name: string | null };
+  risk_a: VendorRiskRef;
+  risk_b: VendorRiskRef;
+  similarity: number;
+  shared_tokens: string[];
+}
+
+export interface VendorDuplicateReport {
+  scanned: number;
+  compared: number;
+  matched: number;
+  truncated: boolean;
+  candidates: VendorDuplicateCandidate[];
+}
+
+export interface VendorCoverageRisk extends VendorRiskRef {
+  vendor: { id: number | null; name: string | null };
+  available_frameworks: string[];
+}
+
+export interface VendorCoverageReport {
+  summary: { total_active_risks: number; mapped: number; gap: number; no_framework: number };
+  gaps: VendorCoverageRisk[];
+  no_framework: VendorCoverageRisk[];
   truncated: boolean;
 }

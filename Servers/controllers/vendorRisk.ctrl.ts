@@ -21,6 +21,9 @@ import {
   recordMultipleFieldChanges,
 } from "../utils/vendorRiskChangeHistory.utils";
 import { notifyUserAssigned } from "../services/inAppNotification.service";
+import { notifyVendorRiskCandidates } from "../services/riskLinks/vendorCandidates";
+import { getVendorNoticeContextQuery } from "../utils/riskLink.utils";
+import logger from "../utils/logger/fileLogger";
 import { QueryTypes } from "sequelize";
 
 import { translateError } from "../utils/i18n.utils";
@@ -284,6 +287,26 @@ export async function createVendorRisk(req: Request, res: Response): Promise<any
       }
 
       await transaction.commit();
+
+      // A new vendor risk on a vendor with use cases is the most direct cause
+      // of new candidates: announce this vendor risk to the owners of project
+      // risks in those use cases. Fire-and-forget.
+      if (createdVendorRisk.vendor_id && createdVendorRisk.id) {
+        const vendorId = createdVendorRisk.vendor_id;
+        const vendorRiskId = createdVendorRisk.id;
+        getVendorNoticeContextQuery(req.organizationId!, vendorId)
+          .then(async (context) => {
+            if (!context || context.projectIds.length === 0) return;
+            await notifyVendorRiskCandidates({
+              organizationId: req.organizationId!,
+              vendorId,
+              vendorName: context.name,
+              projectIds: context.projectIds,
+              vendorRiskIds: [vendorRiskId],
+            });
+          })
+          .catch((err) => logger.error("Vendor risk candidate notice failed:", err));
+      }
 
       // Notify action_owner if assigned
       const actionOwnerId = createdVendorRisk.action_owner;

@@ -1220,6 +1220,63 @@ export const notifyRiskOfModelCandidates = async (
   }
 };
 
+// Named `notifyRiskOfVendorCandidates`, NOT `notifyVendorRiskCandidates`: the
+// latter is the orchestrating service in services/riskLinks/vendorCandidates.ts,
+// which calls this once per risk. Mirrors notifyRiskOfModelCandidates.
+export const notifyRiskOfVendorCandidates = async (
+  organizationId: number,
+  risk: { id: number; risk_name: string; risk_owner: number | null },
+  vendor: { id: number; name: string },
+  candidateCount: number,
+  vendorRiskIds: number[] = [],
+): Promise<boolean> => {
+  if (risk.risk_owner == null) return false;
+  const lang = await getUserLanguage(risk.risk_owner);
+  try {
+    await sendInAppNotification(
+      organizationId,
+      {
+        user_id: risk.risk_owner,
+        type: NotificationType.VENDOR_RISK_CANDIDATES,
+        title: translate(lang, "Vendor risks to review"),
+        message:
+          candidateCount === 1
+            ? translate(
+                lang,
+                'Risk "{riskName}" is in a use case served by "{vendorName}", which has 1 vendor risk it could inherit from. Review it from the Linked risks tab.',
+                { riskName: risk.risk_name, vendorName: vendor.name },
+              )
+            : translate(
+                lang,
+                'Risk "{riskName}" is in a use case served by "{vendorName}", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.',
+                { riskName: risk.risk_name, count: candidateCount, vendorName: vendor.name },
+              ),
+        entity_type: NotificationEntityType.RISK,
+        entity_id: risk.id,
+        entity_name: risk.risk_name,
+        action_url: buildEntityUrl(NotificationEntityType.RISK, risk.id),
+        // Sent-record keys, sorted for stable equality against the unique index.
+        metadata: {
+          vendor_id: vendor.id,
+          vendor_risk_ids: [...vendorRiskIds].sort((a, b) => a - b),
+        },
+      },
+      false,
+    );
+    return true;
+  } catch (error) {
+    // A concurrent trigger inserted the same notice first: a suppressed
+    // duplicate, not an error. Matched by name so another 23505 still throws.
+    const pg =
+      (error as { parent?: { code?: string; constraint?: string } })?.parent ??
+      (error as { original?: { code?: string; constraint?: string } })?.original;
+    if (pg?.code === "23505" && pg?.constraint === "notifications_vendor_risk_candidates_uniq") {
+      return false;
+    }
+    throw error;
+  }
+};
+
 /**
  * Notify a file uploader that their file is inside the 7-day pre-expiry
  * window. Called by the daily fileExpirySweep for each row it matches; the

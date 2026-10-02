@@ -34,6 +34,11 @@ import {
 import { findDuplicateCandidates } from "../services/riskLinks/duplicates";
 import { findControlCoverage } from "../services/riskLinks/coverage";
 import {
+  findVendorDuplicateCandidates,
+  findVendorExposure,
+  findVendorFrameworkCoverage,
+} from "../services/riskLinks/vendorReports";
+import {
   HierarchyViolation,
   ParentEntityType,
   validateTwoLevel,
@@ -263,6 +268,87 @@ export async function getRiskLinks(req: Request, res: Response): Promise<any> {
 }
 
 /**
+ * The three vendor risk insights share one shape: read-only, org-wide, and
+ * nothing in them that GET /api/vendorRisks/all does not already show any
+ * authenticated user, so unlike the project risk reports they are not
+ * admin-only.
+ */
+async function sendVendorReport<T>(
+  req: Request,
+  res: Response,
+  functionName: string,
+  label: string,
+  load: (organizationId: number) => Promise<T>,
+): Promise<any> {
+  logProcessing({
+    description: `starting ${functionName}`,
+    functionName,
+    fileName: FILE_NAME,
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+
+  try {
+    const report = await load(req.organizationId!);
+
+    logSuccess({
+      eventType: "Read",
+      description: `built the ${label}`,
+      functionName,
+      fileName: FILE_NAME,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+
+    return res.status(200).json(STATUS_CODE[200](report));
+  } catch (error) {
+    logFailure({
+      eventType: "Read",
+      description: `failed to build the ${label}`,
+      functionName,
+      fileName: FILE_NAME,
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/** How far each vendor risk reaches through the project risks inheriting from it. */
+export async function getVendorExposure(req: Request, res: Response): Promise<any> {
+  return sendVendorReport(
+    req,
+    res,
+    "getVendorExposure",
+    "vendor exposure report",
+    findVendorExposure,
+  );
+}
+
+/** Same-vendor risks that read like one risk entered twice. */
+export async function getVendorDuplicateCandidates(req: Request, res: Response): Promise<any> {
+  return sendVendorReport(
+    req,
+    res,
+    "getVendorDuplicateCandidates",
+    "vendor duplicate report",
+    findVendorDuplicateCandidates,
+  );
+}
+
+/** Vendor risks not mapped to a framework, split into gaps and nothing-to-map-to. */
+export async function getVendorFrameworkCoverage(req: Request, res: Response): Promise<any> {
+  return sendVendorReport(
+    req,
+    res,
+    "getVendorFrameworkCoverage",
+    "vendor framework coverage report",
+    findVendorFrameworkCoverage,
+  );
+}
+
+/**
  * The vendor risk's side of value-chain inheritance: the project risks that
  * inherit from it. Same status filter and response shape as getRiskLinks, so
  * the client renders both lists with one row component.
@@ -391,6 +477,8 @@ export async function getRiskGraph(req: Request, res: Response): Promise<any> {
         id: number;
         name: string | null;
         riskLevel: string | null;
+        /** Vendor risk nodes only; null everywhere else. */
+        vendor: { id: number; name: string | null } | null;
       }
     >();
     const addNode = (
@@ -398,14 +486,23 @@ export async function getRiskGraph(req: Request, res: Response): Promise<any> {
       id: number,
       name: string | null,
       riskLevel: string | null,
+      vendor: { id: number; name: string | null } | null = null,
     ) => {
       const key = `${entityType}:${id}`;
-      if (!nodes.has(key)) nodes.set(key, { key, entityType, id, name, riskLevel });
+      if (!nodes.has(key)) nodes.set(key, { key, entityType, id, name, riskLevel, vendor });
     };
 
     const edges = kept.map((row) => {
       addNode("risk", row.source_risk_id, row.source_name, row.source_level);
-      addNode(row.target_entity_type, row.target_id, row.target_name, row.target_level);
+      addNode(
+        row.target_entity_type,
+        row.target_id,
+        row.target_name,
+        row.target_level,
+        row.target_vendor_id != null
+          ? { id: row.target_vendor_id, name: row.target_vendor_name }
+          : null,
+      );
       return {
         id: row.id,
         sourceKey: `risk:${row.source_risk_id}`,
@@ -628,9 +725,32 @@ export async function getSharedProjects(req: Request, res: Response): Promise<an
  * so every component already has at least two members.
  */
 export async function suggestRiskHierarchy(req: Request, res: Response): Promise<any> {
+  return runHierarchyPass(req, res, "suggestRiskHierarchy");
+}
+
+/**
+ * The same pass, limited to the clusters a vendor risk could parent: those
+ * holding at least one project risk in a use case the vendor serves. The
+ * direction agent already offers vendor risks that share a project with the
+ * cluster, so scoping the clusters is all this needs to do.
+ */
+export async function suggestVendorRiskHierarchy(req: Request, res: Response): Promise<any> {
+  const vendorRiskId = toId(req.params.vendorRiskId);
+  if (isNaN(vendorRiskId)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid vendor risk ID")));
+  }
+  return runHierarchyPass(req, res, "suggestVendorRiskHierarchy", vendorRiskId);
+}
+
+async function runHierarchyPass(
+  req: Request,
+  res: Response,
+  functionName: string,
+  vendorRiskId?: number,
+): Promise<any> {
   logProcessing({
-    description: "starting suggestRiskHierarchy",
-    functionName: "suggestRiskHierarchy",
+    description: `starting ${functionName}`,
+    functionName,
     fileName: FILE_NAME,
     userId: req.userId!,
     organizationId: req.organizationId!,
@@ -654,7 +774,15 @@ export async function suggestRiskHierarchy(req: Request, res: Response): Promise
         );
     }
 
-    const components = connectedComponents(await getRelatedPairsQuery(req.organizationId!));
+    let components = connectedComponents(await getRelatedPairsQuery(req.organizationId!));
+    if (vendorRiskId !== undefined) {
+      const inScope = new Set(
+        (await getVendorRiskChildCandidatesQuery(req.organizationId!, vendorRiskId)).map(
+          (candidate) => candidate.id,
+        ),
+      );
+      components = components.filter((ids) => ids.some((id) => inScope.has(id)));
+    }
     const groupable = components.filter((ids) => ids.length <= MAX_COMPONENT_SIZE);
     const skipped = components.length - groupable.length;
 
@@ -663,7 +791,7 @@ export async function suggestRiskHierarchy(req: Request, res: Response): Promise
     logSuccess({
       eventType: "Create",
       description: `enqueued ${groupable.length} risk link direction jobs, skipped ${skipped} oversized components`,
-      functionName: "suggestRiskHierarchy",
+      functionName,
       fileName: FILE_NAME,
       userId: req.userId!,
       organizationId: req.organizationId!,
@@ -674,7 +802,7 @@ export async function suggestRiskHierarchy(req: Request, res: Response): Promise
     logFailure({
       eventType: "Create",
       description: "failed to enqueue risk link direction jobs",
-      functionName: "suggestRiskHierarchy",
+      functionName,
       fileName: FILE_NAME,
       error: error as Error,
       userId: req.userId!,

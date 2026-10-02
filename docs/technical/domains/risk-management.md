@@ -1,6 +1,6 @@
 # Risk Management Domain
 
-**Last Updated:** 2026-09-05
+**Last Updated:** 2026-10-02
 
 ## Overview
 
@@ -586,6 +586,26 @@ the same `POST /api/riskLinks`. That read endpoint never derives direction by
 comparing ids. `risks` and `vendorrisks` have separate sequences, so a child can
 carry the vendor risk's own id; every link on that list is `incoming` by
 construction.
+
+`POST /api/riskLinks/vendor-risks/:vendorRiskId/suggest-hierarchy` (Admin) runs
+the direction pass on a subset: only the connected components of related risks
+that contain a project risk in the vendor's use cases
+(`getVendorRiskChildCandidatesQuery`). The LLM-key check, the component size
+cap and the 202 `{ enqueued, skipped }` response are the same as the org-wide
+pass.
+
+Three read-only vendor reports sit beside F7 and F8, in
+`services/riskLinks/vendorReports.ts`: `GET /api/riskLinks/vendor-exposure`
+(confirmed children per vendor risk and per vendor, with use cases),
+`/vendor-duplicates` (F7's scorer, blocked by vendor) and `/vendor-coverage`
+(F8's three states over `frameworks_vendorrisks` and the frameworks on the
+vendor's use cases). The Vendors page shows them; see
+[Vendors](./vendors.md#vendor-risk-insights).
+
+The map (`GET /api/riskLinks`) carries `vendor: { id, name }` on vendor risk
+nodes, `null` elsewhere. The page uses it for a vendor filter, kept in the URL
+as `?vendor=ID`: it shows that vendor's risks, their `inherits_from` children
+and the links among those (`pages/RiskInheritanceGraph/vendorFilter.ts`).
 
 Since C6 the direction pass (`POST /api/riskLinks/suggest-hierarchy`) also
 proposes vendor and model risks as parents, when they share a project with a

@@ -57,16 +57,21 @@ export interface DuplicateReport {
  * would eat), de-duplicated into a Set.
  */
 export function tokeniseRisk(row: DuplicateScanRow): Set<string> {
-  const text = `${row.risk_name} ${row.risk_description ?? ""}`.toLowerCase();
+  return tokeniseText(`${row.risk_name} ${row.risk_description ?? ""}`);
+}
+
+/** The rule above on any text; the vendor risk report tokenises its own fields. */
+export function tokeniseText(text: string): Set<string> {
   return new Set(
     text
+      .toLowerCase()
       .replace(/[^a-z0-9 ]/g, " ")
       .split(/\s+/)
       .filter((token) => token.length > 2),
   );
 }
 
-function jaccard(a: Set<string>, b: Set<string>): number {
+export function jaccard(a: Set<string>, b: Set<string>): number {
   if (a.size === 0 || b.size === 0) return 0;
   let intersection = 0;
   for (const token of a) {

@@ -1,16 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
 import { Network } from "lucide-react";
 import { CustomizableButton } from "../button/customizable-button";
 import { EmptyState } from "../EmptyState";
 import { textStyles } from "../../themes/typography";
 import {
+  useSuggestVendorRiskHierarchy,
   useUpdateVendorRiskLinkStatus,
   useVendorRiskLinks,
 } from "../../../application/hooks/useRiskLinks";
+import { useIsAdmin } from "../../../application/hooks/useIsAdmin";
+import { useTranslation } from "../../../application/hooks/useTranslation";
+import { fill } from "../../../i18n/fill";
 import { DismissReason, RiskLink, RiskLinkStatus } from "../../../domain/interfaces/i.riskLink";
 import LinkChildRiskForm from "./LinkChildRiskForm";
 import LinkRow from "./LinkRow";
+import { fingerprint, GROUPING_WINDOW_MS, PendingJob, POLL_INTERVAL_MS } from "./polling";
 
 interface VendorRiskLinksPanelProps {
   vendorRiskId: number;
@@ -19,23 +24,84 @@ interface VendorRiskLinksPanelProps {
 /**
  * The vendor risk's side of value-chain inheritance: the project risks that
  * inherit from it. A vendor risk is only ever a parent, so there is one group
- * and one way to add to it. There is no scan here either — derived scoring
- * runs between project risks only, and vendor parents are suggested by the
- * hierarchy pass, which an administrator starts from a project risk's panel.
+ * and one way to add to it by hand. There is no scan — derived scoring runs
+ * between project risks only. Suggestions come from the hierarchy pass, which
+ * an administrator can run here for just this vendor risk's use cases.
  */
 export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPanelProps) {
   const [showDismissed, setShowDismissed] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<RiskLink | null>(null);
+  const [pending, setPending] = useState<PendingJob | null>(null);
+  const isAdmin = useIsAdmin();
+  const { t } = useTranslation();
 
   const {
     data: links = [],
     isLoading,
     isError,
     refetch,
-  } = useVendorRiskLinks(vendorRiskId, showDismissed ? "dismissed" : undefined);
+  } = useVendorRiskLinks(
+    vendorRiskId,
+    showDismissed ? "dismissed" : undefined,
+    pending ? POLL_INTERVAL_MS : false,
+  );
   const updateStatus = useUpdateVendorRiskLinkStatus(vendorRiskId);
+  const suggestChildren = useSuggestVendorRiskHierarchy(vendorRiskId);
+
+  // The same bounded wait as the project risk panel: stop when the worker's
+  // result lands, or say so when the window closes first.
+  useEffect(() => {
+    if (!pending || showDismissed !== pending.dismissedView) return;
+    if (fingerprint(links) === pending.before) return;
+    setNotice(null);
+    setPending(null);
+  }, [pending, links, showDismissed]);
+
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => {
+      setNotice(pending.timedOut);
+      setPending(null);
+    }, pending.window);
+    return () => clearTimeout(timer);
+  }, [pending]);
+
+  const handleSuggestChildren = () => {
+    setNotice(null);
+    suggestChildren.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result.enqueued === 0) {
+          setNotice(
+            "No clusters of related risks in the use cases of this vendor yet. Related risks are grouped once a scan has linked them.",
+          );
+          return;
+        }
+        setNotice(
+          fill(
+            t(
+              "Grouping {count} clusters of related risks. Suggestions appear here as they finish.",
+            ),
+            { count: result.enqueued },
+          ) +
+            (result.skipped > 0
+              ? ` ${fill(t("{count} clusters were too large to group in one pass."), {
+                  count: result.skipped,
+                })}`
+              : ""),
+        );
+        setPending({
+          before: fingerprint(links),
+          dismissedView: showDismissed,
+          timedOut: "Still grouping. Reopen this tab to check for new suggestions.",
+          window: GROUPING_WINDOW_MS,
+        });
+      },
+      onError: (error: any) =>
+        setNotice(error?.message || "Failed to start the hierarchy suggestions"),
+    });
+  };
 
   const onMutationError = (error: any) =>
     setNotice(
@@ -86,13 +152,26 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
   return (
     <Stack spacing={8} sx={{ py: 8 }}>
       <Stack direction="row" justifyContent="space-between">
-        <CustomizableButton
-          size="small"
-          variant="text"
-          onClick={() => setShowForm((open) => !open)}
-        >
-          {showForm ? "Cancel" : "Link a project risk"}
-        </CustomizableButton>
+        <Stack direction="row" spacing={4}>
+          <CustomizableButton
+            size="small"
+            variant="text"
+            onClick={() => setShowForm((open) => !open)}
+          >
+            {showForm ? "Cancel" : "Link a project risk"}
+          </CustomizableButton>
+          {isAdmin && (
+            <CustomizableButton
+              size="small"
+              variant="text"
+              color="secondary"
+              onClick={handleSuggestChildren}
+              isDisabled={suggestChildren.isPending || pending !== null}
+            >
+              Suggest children
+            </CustomizableButton>
+          )}
+        </Stack>
         <CustomizableButton
           size="small"
           variant="text"
@@ -124,7 +203,7 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
             showBorder={false}
           />
           <Typography sx={{ ...textStyles.caption, color: "text.accent" }}>
-            Link a project risk that this vendor risk applies to. Suggestions from Suggest hierarchy
+            Link a project risk that this vendor risk applies to. Suggestions from Suggest children
             appear here too.
           </Typography>
         </Stack>

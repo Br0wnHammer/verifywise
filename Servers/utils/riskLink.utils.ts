@@ -877,6 +877,9 @@ export interface RiskGraphEdgeRow {
   source_level: string | null;
   target_name: string | null;
   target_level: string | null;
+  /** Set only when the target is a vendor risk: lets the graph filter by vendor. */
+  target_vendor_id: number | null;
+  target_vendor_name: string | null;
 }
 
 /**
@@ -913,7 +916,9 @@ export async function getRiskGraphQuery(
               END
             ) AS target_name,
             COALESCE(tgt.risk_level_autocalculated::text, mr.risk_level::text, vr.risk_level)
-              AS target_level
+              AS target_level,
+            vr.vendor_id AS target_vendor_id,
+            vendor.vendor_name AS target_vendor_name
      FROM risk_links l
      JOIN risks src           ON src.id = l.source_risk_id
                              AND src.organization_id = :organizationId
@@ -927,6 +932,8 @@ export async function getRiskGraphQuery(
      LEFT JOIN vendorrisks vr ON vr.id = l.target_vendor_risk_id
                              AND vr.organization_id = :organizationId
                              AND vr.is_deleted = false
+     LEFT JOIN vendors vendor ON vendor.id = vr.vendor_id
+                             AND vendor.organization_id = :organizationId
      WHERE l.organization_id = :organizationId
        AND l.status IN (:statuses)
        AND COALESCE(tgt.id, mr.id, vr.id) IS NOT NULL
@@ -1319,6 +1326,128 @@ export async function getModelRiskCandidatesQuery(input: {
     risk_owner: row.risk_owner ?? null,
     candidate_count: toNumber(row.candidate_count),
   }));
+}
+
+export interface VendorRiskCandidateRow {
+  risk_id: number;
+  risk_name: string;
+  risk_owner: number | null;
+  candidate_count: number;
+}
+
+/**
+ * Project risks in the given use cases that could inherit from this vendor's
+ * risks: the vendor counterpart of getModelRiskCandidatesQuery, with one
+ * difference. A risk that cannot take a vendor parent is left out — one that
+ * already has a confirmed parent (single-parent rule) or has children of its
+ * own (two-level rule). Telling its owner to "review the suggested links"
+ * would point at a link the server will refuse.
+ */
+export async function getVendorRiskCandidatesQuery(input: {
+  organizationId: number;
+  vendorId: number;
+  projectIds: number[];
+  vendorRiskIds?: number[];
+  limit: number;
+}): Promise<VendorRiskCandidateRow[]> {
+  const { organizationId, vendorId, projectIds, vendorRiskIds, limit } = input;
+  if (projectIds.length === 0) return [];
+
+  const vendorRiskFilter =
+    vendorRiskIds && vendorRiskIds.length > 0 ? `AND vr.id IN (:vendorRiskIds)` : "";
+
+  // Same split as the model query: a use-case trigger announces the whole
+  // (risk, vendor) context, so an announced pair is suppressed in SQL before
+  // LIMIT; a vendor-risk-create trigger is checked per vendor risk in JS.
+  const announcedFilter =
+    vendorRiskIds && vendorRiskIds.length > 0
+      ? ""
+      : `AND NOT EXISTS (
+           SELECT 1
+             FROM notifications n
+            WHERE n.organization_id = :organizationId
+              AND n.user_id = r.risk_owner
+              AND n.type = 'vendor_risk_candidates'
+              AND n.entity_type = 'risk'
+              AND n.entity_id = r.id
+              AND n.metadata->>'vendor_id' = :vendorId::text
+         )`;
+
+  const rows = await sequelize.query(
+    `SELECT r.id                  AS risk_id,
+            r.risk_name           AS risk_name,
+            r.risk_owner          AS risk_owner,
+            COUNT(DISTINCT vr.id) AS candidate_count
+       FROM projects_risks pr
+       JOIN risks r
+         ON r.id = pr.risk_id
+        AND r.organization_id = :organizationId
+        AND r.is_deleted = false
+       JOIN vendors_projects vp
+         ON vp.project_id = pr.project_id
+        AND vp.organization_id = :organizationId
+        AND vp.vendor_id = :vendorId
+       JOIN vendorrisks vr
+         ON vr.vendor_id = vp.vendor_id
+        AND vr.organization_id = :organizationId
+        AND vr.is_deleted = false
+      WHERE pr.organization_id = :organizationId
+        AND pr.project_id IN (:projectIds)
+        ${vendorRiskFilter}
+        AND NOT EXISTS (
+              SELECT 1
+                FROM risk_links l
+               WHERE l.organization_id       = :organizationId
+                 AND l.source_risk_id        = r.id
+                 AND l.target_vendor_risk_id = vr.id
+            )
+        AND NOT EXISTS (
+              SELECT 1
+                FROM risk_links l
+               WHERE l.organization_id = :organizationId
+                 AND l.relation_type   = 'inherits_from'
+                 AND l.status          = 'confirmed'
+                 AND (l.source_risk_id = r.id OR l.target_risk_id = r.id)
+            )
+        ${announcedFilter}
+      GROUP BY r.id, r.risk_name, r.risk_owner
+      -- Ownerless rows last: they can never be notified.
+      ORDER BY (r.risk_owner IS NULL), r.id
+      LIMIT :limit`,
+    {
+      replacements: { organizationId, vendorId, projectIds, vendorRiskIds, limit },
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  return (rows as any[]).map((row) => ({
+    risk_id: row.risk_id,
+    risk_name: row.risk_name,
+    risk_owner: row.risk_owner ?? null,
+    candidate_count: toNumber(row.candidate_count),
+  }));
+}
+
+/** The use cases a vendor serves, and its name, for the candidate notices. */
+export async function getVendorNoticeContextQuery(
+  organizationId: number,
+  vendorId: number,
+): Promise<{ name: string; projectIds: number[] } | null> {
+  const rows = (await sequelize.query(
+    `SELECT v.vendor_name AS name,
+            COALESCE(ARRAY_AGG(vp.project_id) FILTER (WHERE vp.project_id IS NOT NULL), '{}')
+              AS project_ids
+       FROM vendors v
+       LEFT JOIN vendors_projects vp
+              ON vp.vendor_id = v.id
+             AND vp.organization_id = :organizationId
+      WHERE v.id = :vendorId
+        AND v.organization_id = :organizationId
+      GROUP BY v.vendor_name`,
+    { replacements: { organizationId, vendorId }, type: QueryTypes.SELECT },
+  )) as { name: string; project_ids: unknown[] }[];
+  if (rows.length === 0) return null;
+  return { name: rows[0].name, projectIds: (rows[0].project_ids ?? []).map(toNumber) };
 }
 
 /**

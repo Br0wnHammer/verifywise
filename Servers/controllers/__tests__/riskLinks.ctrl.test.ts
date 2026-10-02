@@ -761,6 +761,8 @@ describe("getRiskGraph", () => {
       id: 9,
       name: "Parent risk",
       riskLevel: "High risk",
+      // Only vendor risk nodes name a vendor.
+      vendor: null,
     });
   });
 

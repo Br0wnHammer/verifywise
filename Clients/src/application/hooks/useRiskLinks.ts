@@ -4,8 +4,12 @@ import {
   createRiskLink,
   getRiskLinks,
   getSharedProjects,
+  getVendorDuplicateCandidates,
+  getVendorExposure,
+  getVendorFrameworkCoverage,
   getVendorRiskLinks,
   getVendorRiskSharedProjects,
+  suggestVendorRiskHierarchy,
   recomputeRiskLinks,
   suggestRiskHierarchy,
   updateRiskLinkStatus,
@@ -16,6 +20,9 @@ import {
   RiskLink,
   RiskLinkStatus,
   SharedProjectCandidate,
+  VendorCoverageReport,
+  VendorDuplicateReport,
+  VendorExposureReport,
   VendorRiskChildCandidate,
 } from "../../domain/interfaces/i.riskLink";
 
@@ -122,12 +129,23 @@ export function useSharedProjects(riskId: number, enabled: boolean) {
 
 const vendorLinksKey = (vendorRiskId: number) => ["vendorRiskLinks", vendorRiskId] as const;
 
-/** The vendor risk's children. Same one-status-per-query rule as useRiskLinks. */
-export function useVendorRiskLinks(vendorRiskId: number, status?: RiskLinkStatus) {
+/** Prefix of the three vendor risk insight reports, for one-call invalidation. */
+export const VENDOR_INSIGHTS_KEY = ["vendorRiskInsights"] as const;
+
+/**
+ * The vendor risk's children. Same one-status-per-query rule as useRiskLinks,
+ * and the same bounded polling after a hierarchy pass is queued.
+ */
+export function useVendorRiskLinks(
+  vendorRiskId: number,
+  status?: RiskLinkStatus,
+  refetchInterval: number | false = false,
+) {
   return useQuery<RiskLink[]>({
     queryKey: [...vendorLinksKey(vendorRiskId), status ?? "default"],
     queryFn: () => getVendorRiskLinks(vendorRiskId, status),
     enabled: Number.isFinite(vendorRiskId),
+    refetchInterval,
   });
 }
 
@@ -142,6 +160,8 @@ function useInvalidateVendorLinks(vendorRiskId: number) {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: vendorLinksKey(vendorRiskId) }),
       queryClient.invalidateQueries({ queryKey: ["riskLinks"] }),
+      // A child added or removed changes the vendor's reach.
+      queryClient.invalidateQueries({ queryKey: VENDOR_INSIGHTS_KEY }),
     ]);
 }
 
@@ -175,5 +195,38 @@ export function useVendorRiskSharedProjects(vendorRiskId: number, enabled: boole
     queryKey: ["vendorRiskLinkSharedProjects", vendorRiskId],
     queryFn: () => getVendorRiskSharedProjects(vendorRiskId),
     enabled: enabled && Number.isFinite(vendorRiskId),
+  });
+}
+
+/** The vendor-scoped hierarchy pass. Settles into the same list invalidation. */
+export function useSuggestVendorRiskHierarchy(vendorRiskId: number) {
+  const invalidate = useInvalidateVendorLinks(vendorRiskId);
+  return useMutation({
+    mutationFn: () => suggestVendorRiskHierarchy(vendorRiskId),
+    onSettled: invalidate,
+  });
+}
+
+/** `enabled` lets the Vendors page skip the fetch while its Vendors tab is shown. */
+export function useVendorExposure(enabled = true) {
+  return useQuery<VendorExposureReport>({
+    queryKey: [...VENDOR_INSIGHTS_KEY, "exposure"],
+    queryFn: getVendorExposure,
+    enabled,
+  });
+}
+
+/** Mounted only inside an open insight section, so the scan waits until asked for. */
+export function useVendorDuplicateCandidates() {
+  return useQuery<VendorDuplicateReport>({
+    queryKey: [...VENDOR_INSIGHTS_KEY, "duplicates"],
+    queryFn: getVendorDuplicateCandidates,
+  });
+}
+
+export function useVendorFrameworkCoverage() {
+  return useQuery<VendorCoverageReport>({
+    queryKey: [...VENDOR_INSIGHTS_KEY, "coverage"],
+    queryFn: getVendorFrameworkCoverage,
   });
 }

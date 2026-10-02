@@ -10341,6 +10341,48 @@ paths:
         -
           bearerAuth: []
       description: 'Requires role: Admin or SuperAdmin'
+  /riskLinks/vendor-exposure:
+    get:
+      summary: 'Get Vendor Exposure'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorExposure
+      security:
+        -
+          bearerAuth: []
+  /riskLinks/vendor-duplicates:
+    get:
+      summary: 'Get Vendor Duplicate Candidates'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorDuplicateCandidates
+      security:
+        -
+          bearerAuth: []
+  /riskLinks/vendor-coverage:
+    get:
+      summary: 'Get Vendor Framework Coverage'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorFrameworkCoverage
+      security:
+        -
+          bearerAuth: []
   '/riskLinks/vendor-risks/{vendorRiskId}':
     get:
       summary: 'Get Vendor Risk Links'
@@ -10369,6 +10411,21 @@ paths:
       security:
         -
           bearerAuth: []
+  '/riskLinks/vendor-risks/{vendorRiskId}/suggest-hierarchy':
+    post:
+      summary: 'Suggest Vendor Risk Hierarchy'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: suggestVendorRiskHierarchy
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
   '/riskLinks/{riskId}':
     get:
       summary: 'Get Risk Links'

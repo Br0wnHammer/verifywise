@@ -16,6 +16,13 @@ import { useTranslation } from "../../../application/hooks/useTranslation";
 import { DismissReason, RiskLink, RiskLinkStatus } from "../../../domain/interfaces/i.riskLink";
 import LinkRiskForm from "./LinkRiskForm";
 import LinkRow from "./LinkRow";
+import {
+  fingerprint,
+  GROUPING_WINDOW_MS,
+  PendingJob,
+  POLL_INTERVAL_MS,
+  SCAN_WINDOW_MS,
+} from "./polling";
 import { fill } from "../../../i18n/fill";
 
 // Moved to LinkRow with the row that uses it; re-exported for existing callers.
@@ -38,34 +45,6 @@ const GROUPS: { title: string; match: (link: RiskLink) => boolean }[] = [
   },
   { title: "Relates to", match: (l) => l.relationType === "related_to" },
 ];
-
-/**
- * The scan and the hierarchy pass are queued, not done, when their request
- * returns. Poll the list for this long afterwards so the worker's result
- * actually reaches the screen, then stop and say what happened — an open-ended
- * poll and a notice that never settles are the same lie in different shapes.
- */
-const POLL_INTERVAL_MS = 2000;
-/** Scoring is SQL and answers in a second. */
-const SCAN_WINDOW_MS = 30000;
-/** Grouping is a model call. A reasoning model spends minutes on one cluster. */
-const GROUPING_WINDOW_MS = 180000;
-
-/** What "the worker changed something" looks like. Status and relation move
- *  without the count moving, which is exactly what a hierarchy pass does. */
-const fingerprint = (links: RiskLink[]) =>
-  links.map((l) => `${l.id}:${l.relationType}:${l.status}`).join("|");
-
-interface PendingJob {
-  /** The list as it stood when the job was queued. */
-  before: string;
-  /** Which view that fingerprint was taken from. */
-  dismissedView: boolean;
-  /** Shown when the window closes with the list unchanged. */
-  timedOut: string;
-  /** How long to watch. A scan and a model call are not the same wait. */
-  window: number;
-}
 
 export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
   const [showDismissed, setShowDismissed] = useState(false);

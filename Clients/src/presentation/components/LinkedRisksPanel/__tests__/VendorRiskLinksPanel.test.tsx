@@ -10,6 +10,8 @@ const mockUseVendorRiskLinks = vi.fn();
 const mockMutateStatus = vi.fn();
 const mockCreate = vi.fn();
 const mockUseShared = vi.fn();
+const mockSuggest = vi.fn();
+const mockIsAdmin = vi.fn();
 
 vi.mock("../../../../application/hooks/useRiskLinks", () => ({
   useVendorRiskLinks: (vendorRiskId: number, status?: string) =>
@@ -17,6 +19,11 @@ vi.mock("../../../../application/hooks/useRiskLinks", () => ({
   useUpdateVendorRiskLinkStatus: () => ({ mutate: mockMutateStatus, isPending: false }),
   useCreateVendorRiskLink: () => ({ mutate: mockCreate, isPending: false }),
   useVendorRiskSharedProjects: (...args: unknown[]) => mockUseShared(...args),
+  useSuggestVendorRiskHierarchy: () => ({ mutate: mockSuggest, isPending: false }),
+}));
+
+vi.mock("../../../../application/hooks/useIsAdmin", () => ({
+  useIsAdmin: () => mockIsAdmin(),
 }));
 
 const mockGetAllProjectRisks = vi.fn();
@@ -75,6 +82,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockUseShared.mockReturnValue({ data: [] });
   mockGetAllProjectRisks.mockResolvedValue({ data: [] });
+  mockIsAdmin.mockReturnValue(false);
 });
 
 describe("VendorRiskLinksPanel list", () => {
@@ -105,12 +113,13 @@ describe("VendorRiskLinksPanel list", () => {
     expect(
       screen.getByText("When the level of this risk changes, each child is flagged for review."),
     ).toBeInTheDocument();
-    // A vendor risk is never a child and never in a related_to pair, and the
-    // scan and the hierarchy pass both run from a project risk.
+    // A vendor risk is never a child and never in a related_to pair, and
+    // derived scoring runs between project risks only, so there is no scan.
     expect(screen.queryByText("Parent risk")).not.toBeInTheDocument();
     expect(screen.queryByText("Relates to")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /scan for related risks/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /suggest hierarchy/i })).toBeNull();
+    // Spends the org's LLM key, so admins only.
+    expect(screen.queryByRole("button", { name: "Suggest children" })).toBeNull();
   });
 
   // The warning is about the child. On the parent's side it would read as a
@@ -280,6 +289,61 @@ describe("VendorRiskLinksPanel link form", () => {
 
     expect(
       await screen.findByText("This risk already has a parent. Remove it first."),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("VendorRiskLinksPanel suggest children", () => {
+  it("runs the vendor-scoped hierarchy pass for an admin and says it is working", async () => {
+    mockIsAdmin.mockReturnValue(true);
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([child()]));
+    mockSuggest.mockImplementation((_vars, { onSuccess }) =>
+      onSuccess({ enqueued: 2, skipped: 1 }),
+    );
+    renderPanel();
+
+    await userEvent.click(screen.getByRole("button", { name: "Suggest children" }));
+
+    expect(mockSuggest).toHaveBeenCalled();
+    expect(
+      await screen.findByText(
+        "Grouping 2 clusters of related risks. Suggestions appear here as they finish. 1 clusters were too large to group in one pass.",
+      ),
+    ).toBeInTheDocument();
+    // Disabled while the pass is being watched, so it cannot be queued twice.
+    expect(screen.getByRole("button", { name: "Suggest children" })).toBeDisabled();
+  });
+
+  it("explains why nothing was queued", async () => {
+    mockIsAdmin.mockReturnValue(true);
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([]));
+    mockSuggest.mockImplementation((_vars, { onSuccess }) =>
+      onSuccess({ enqueued: 0, skipped: 0 }),
+    );
+    renderPanel();
+
+    await userEvent.click(screen.getByRole("button", { name: "Suggest children" }));
+
+    expect(
+      await screen.findByText(
+        "No clusters of related risks in the use cases of this vendor yet. Related risks are grouped once a scan has linked them.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Suggest children" })).not.toBeDisabled();
+  });
+
+  it("shows the server's message when the pass cannot start", async () => {
+    mockIsAdmin.mockReturnValue(true);
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([]));
+    mockSuggest.mockImplementation((_vars, { onError }) =>
+      onError({ message: "No LLM key is configured for this organization." }),
+    );
+    renderPanel();
+
+    await userEvent.click(screen.getByRole("button", { name: "Suggest children" }));
+
+    expect(
+      await screen.findByText("No LLM key is configured for this organization."),
     ).toBeInTheDocument();
   });
 });

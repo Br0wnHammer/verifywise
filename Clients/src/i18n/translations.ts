@@ -403,7 +403,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Filter mappings by governance domain": "[DE] Filter mappings by governance domain",
     "Framework axis": "[DE] Framework axis",
     "Framework containing the source control": "[DE] Framework containing the source control",
-    "Framework coverage": "[DE] Framework coverage",
+    "Framework coverage": "Rahmenwerksabdeckung",
     "Framework receiving the mapped control": "[DE] Framework receiving the mapped control",
     "Frameworks assigned to the current project": "[DE] Frameworks in current project",
     "Frameworks assigned to the selected project": "[DE] Frameworks assigned to project",
@@ -9147,6 +9147,7 @@ export const translations: Record<string, Record<string, string>> = {
       "Risiko gelöscht, konnte aber nicht aus einigen verknüpften Richtlinien entfernt werden.",
     'Deleted "{name}".': "„{name}“ wurde gelöscht.",
     "Pairs per page": "Paare pro Seite",
+    "Vendors per page": "Anbieter pro Seite",
     "Risks per page": "Risiken pro Seite",
     "Signals per page": "Signale pro Seite",
     "Reasons per page": "Gründe pro Seite",
@@ -9165,12 +9166,71 @@ export const translations: Record<string, Record<string, string>> = {
     "Links appear as risks are saved, or after an administrator runs a scan.":
       "Verknüpfungen erscheinen, wenn Risiken gespeichert werden oder nachdem ein Administrator einen Scan ausgeführt hat.",
     "Failed to load linked risks.": "Verknüpfte Risiken konnten nicht geladen werden.",
+    // Vendor risk insights, value-chain reach and the vendor filter on the map
+    "Link a project risk that this vendor risk applies to. Suggestions from Suggest children appear here too.":
+      "Verknüpfen Sie ein Projektrisiko, für das dieses Anbieterrisiko gilt. Vorschläge aus „Untergeordnete vorschlagen“ erscheinen ebenfalls hier.",
+    "Suggest children": "Untergeordnete vorschlagen",
+    "No clusters of related risks in the use cases of this vendor yet. Related risks are grouped once a scan has linked them.":
+      "In den Anwendungsfällen dieses Anbieters gibt es noch keine Gruppen verwandter Risiken. Verwandte Risiken werden gruppiert, sobald ein Scan sie verknüpft hat.",
+    "inherited by": "vererbt an",
+    "Inherited by": "Vererbt an",
+    "1 project risk": "1 Projektrisiko",
+    "{count} project risks": "{count} Projektrisiken",
+    "{count} suggested": "{count} vorgeschlagen",
+    "{likelihood} likelihood, {severity} severity: {count} risks":
+      "Wahrscheinlichkeit {likelihood}, Schweregrad {severity}: {count} Risiken",
+    "Filtering by heat map cell": "Gefiltert nach Heatmap-Zelle",
+    "The table now shows only vendor risks in the selected cell. Select the cell again to see all risks.":
+      "Die Tabelle zeigt jetzt nur Anbieterrisiken in der gewählten Zelle. Wählen Sie die Zelle erneut, um alle Risiken zu sehen.",
+    "Vendor risks by likelihood and severity. Select a cell to filter the table.":
+      "Anbieterrisiken nach Wahrscheinlichkeit und Schweregrad. Wählen Sie eine Zelle, um die Tabelle zu filtern.",
+    "Each cell counts vendor risks by likelihood and severity. Select a cell to filter the table below, and select it again to show every risk.":
+      "Jede Zelle zählt Anbieterrisiken nach Wahrscheinlichkeit und Schweregrad. Wählen Sie eine Zelle, um die Tabelle unten zu filtern, und wählen Sie sie erneut, um alle Risiken anzuzeigen.",
+    "Blast radius": "Wirkungsradius",
+    "How many project risks and use cases inherit from the risks of each vendor.":
+      "Wie viele Projektrisiken und Anwendungsfälle von den Risiken jedes Anbieters erben.",
+    "Vendor {id}": "Anbieter {id}",
+    "Vendor risk {id}": "Anbieterrisiko {id}",
+    "{linked} of {total}": "{linked} von {total}",
+    "Vendors with reach": "Anbieter mit Reichweite",
+    "Inheriting project risks": "Erbende Projektrisiken",
+    "Affected use cases": "Betroffene Anwendungsfälle",
+    "Vendor risks with children": "Anbieterrisiken mit untergeordneten Risiken",
+    "Vendor risks with no children": "Anbieterrisiken ohne untergeordnete Risiken",
+    "View on map": "Auf der Karte anzeigen",
+    "No vendor risks yet.": "Noch keine Anbieterrisiken.",
+    "No project risk inherits from a vendor risk yet. Open a vendor risk and link the project risks it applies to from its Linked risks tab.":
+      "Noch erbt kein Projektrisiko von einem Anbieterrisiko. Öffnen Sie ein Anbieterrisiko und verknüpfen Sie auf dessen Registerkarte „Verknüpfte Risiken“ die Projektrisiken, für die es gilt.",
+    "Duplicate vendor risks": "Doppelte Anbieterrisiken",
+    "Risks of the same vendor that look like one risk entered twice.":
+      "Risiken desselben Anbieters, die wie ein doppelt erfasstes Risiko aussehen.",
+    "{scanned} vendor risks scanned, {compared} pairs compared.":
+      "{scanned} Anbieterrisiken geprüft, {compared} Paare verglichen.",
+    "Only risks of the same vendor are compared: the same risk at two vendors is a pattern, not a duplicate.":
+      "Nur Risiken desselben Anbieters werden verglichen: Dasselbe Risiko bei zwei Anbietern ist ein Muster, kein Duplikat.",
+    "This scan hit its size limit, so the list below is a sample rather than every pair.":
+      "Dieser Scan hat seine Größenbegrenzung erreicht, daher ist die Liste unten eine Stichprobe und nicht jedes Paar.",
+    "No likely duplicates among vendor risks.":
+      "Keine wahrscheinlichen Duplikate unter den Anbieterrisiken.",
+    "Which vendor risks are not mapped to a framework yet.":
+      "Welche Anbieterrisiken noch keinem Rahmenwerk zugeordnet sind.",
+    "Active vendor risks": "Aktive Anbieterrisiken",
+    "Mapped to a framework": "Einem Rahmenwerk zugeordnet",
+    "Frameworks in its use cases": "Rahmenwerke in seinen Anwendungsfällen",
+    "Every active vendor risk is mapped to at least one framework.":
+      "Jedes aktive Anbieterrisiko ist mindestens einem Rahmenwerk zugeordnet.",
+    "The vendor serves a use case that has a framework attached, but these risks are not mapped to any framework. Map them from the risk itself.":
+      "Der Anbieter bedient einen Anwendungsfall mit zugeordnetem Rahmenwerk, aber diese Risiken sind keinem Rahmenwerk zugeordnet. Ordnen Sie sie direkt im Risiko zu.",
+    "None of the use cases these vendors serve has a framework attached, so there is nothing to map to. Not a finding: attach a framework to the use case first.":
+      "Keinem der Anwendungsfälle dieser Anbieter ist ein Rahmenwerk zugeordnet, daher gibt es nichts zuzuordnen. Kein Befund: Ordnen Sie dem Anwendungsfall zuerst ein Rahmenwerk zu.",
+    "All vendors": "Alle Anbieter",
+    "This vendor has no risks on the map yet.":
+      "Dieser Anbieter hat noch keine Risiken auf der Karte.",
+    "Show all vendors": "Alle Anbieter anzeigen",
     // Vendor risk Linked risks tab
     "Link a project risk": "Projektrisiko verknüpfen",
     "No project risks inherit from this vendor risk yet.":
       "Noch erben keine Projektrisiken von diesem Anbieterrisiko.",
-    "Link a project risk that this vendor risk applies to. Suggestions from Suggest hierarchy appear here too.":
-      "Verknüpfen Sie ein Projektrisiko, für das dieses Anbieterrisiko gilt. Vorschläge aus „Hierarchie vorschlagen“ erscheinen ebenfalls hier.",
     "When the level of this risk changes, each child is flagged for review.":
       "Ändert sich die Stufe dieses Risikos, wird jedes untergeordnete Risiko zur Prüfung markiert.",
     "A project risk can have only one parent, and a risk with child risks of its own cannot become a child.":
@@ -9915,7 +9975,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Filter mappings by governance domain": "[FR] Filter mappings by governance domain",
     "Framework axis": "[FR] Framework axis",
     "Framework containing the source control": "[FR] Framework containing the source control",
-    "Framework coverage": "[FR] Framework coverage",
+    "Framework coverage": "Couverture des référentiels",
     "Framework receiving the mapped control": "[FR] Framework receiving the mapped control",
     "Frameworks assigned to the current project": "[FR] Frameworks in current project",
     "Frameworks assigned to the selected project": "[FR] Frameworks assigned to project",
@@ -18608,6 +18668,7 @@ export const translations: Record<string, Record<string, string>> = {
       "Risque supprimé, mais impossible de le retirer de certaines politiques liées.",
     'Deleted "{name}".': "« {name} » a été supprimé.",
     "Pairs per page": "Paires par page",
+    "Vendors per page": "Fournisseurs par page",
     "Risks per page": "Risques par page",
     "Signals per page": "Signaux par page",
     "Reasons per page": "Raisons par page",
@@ -18626,12 +18687,71 @@ export const translations: Record<string, Record<string, string>> = {
     "Links appear as risks are saved, or after an administrator runs a scan.":
       "Les liens apparaissent à l'enregistrement des risques ou après qu'un administrateur a lancé une analyse.",
     "Failed to load linked risks.": "Impossible de charger les risques liés.",
+    // Vendor risk insights, value-chain reach and the vendor filter on the map
+    "Link a project risk that this vendor risk applies to. Suggestions from Suggest children appear here too.":
+      "Liez un risque de projet auquel ce risque fournisseur s'applique. Les suggestions de « Suggérer des risques enfants » apparaissent aussi ici.",
+    "Suggest children": "Suggérer des risques enfants",
+    "No clusters of related risks in the use cases of this vendor yet. Related risks are grouped once a scan has linked them.":
+      "Aucun groupe de risques connexes dans les cas d'usage de ce fournisseur pour l'instant. Les risques connexes sont regroupés une fois qu'une analyse les a liés.",
+    "inherited by": "hérité par",
+    "Inherited by": "Hérité par",
+    "1 project risk": "1 risque de projet",
+    "{count} project risks": "{count} risques de projet",
+    "{count} suggested": "{count} suggéré(s)",
+    "{likelihood} likelihood, {severity} severity: {count} risks":
+      "Probabilité {likelihood}, gravité {severity} : {count} risques",
+    "Filtering by heat map cell": "Filtrage par cellule de la carte thermique",
+    "The table now shows only vendor risks in the selected cell. Select the cell again to see all risks.":
+      "Le tableau n'affiche plus que les risques fournisseurs de la cellule sélectionnée. Sélectionnez à nouveau la cellule pour voir tous les risques.",
+    "Vendor risks by likelihood and severity. Select a cell to filter the table.":
+      "Risques fournisseurs par probabilité et gravité. Sélectionnez une cellule pour filtrer le tableau.",
+    "Each cell counts vendor risks by likelihood and severity. Select a cell to filter the table below, and select it again to show every risk.":
+      "Chaque cellule compte les risques fournisseurs par probabilité et gravité. Sélectionnez une cellule pour filtrer le tableau ci-dessous, puis sélectionnez-la à nouveau pour afficher tous les risques.",
+    "Blast radius": "Rayon d'impact",
+    "How many project risks and use cases inherit from the risks of each vendor.":
+      "Combien de risques de projet et de cas d'usage héritent des risques de chaque fournisseur.",
+    "Vendor {id}": "Fournisseur {id}",
+    "Vendor risk {id}": "Risque fournisseur {id}",
+    "{linked} of {total}": "{linked} sur {total}",
+    "Vendors with reach": "Fournisseurs avec portée",
+    "Inheriting project risks": "Risques de projet héritiers",
+    "Affected use cases": "Cas d'usage concernés",
+    "Vendor risks with children": "Risques fournisseurs avec enfants",
+    "Vendor risks with no children": "Risques fournisseurs sans enfants",
+    "View on map": "Voir sur la carte",
+    "No vendor risks yet.": "Aucun risque fournisseur pour l'instant.",
+    "No project risk inherits from a vendor risk yet. Open a vendor risk and link the project risks it applies to from its Linked risks tab.":
+      "Aucun risque de projet n'hérite encore d'un risque fournisseur. Ouvrez un risque fournisseur et liez les risques de projet auxquels il s'applique depuis son onglet « Risques liés ».",
+    "Duplicate vendor risks": "Risques fournisseurs en double",
+    "Risks of the same vendor that look like one risk entered twice.":
+      "Risques d'un même fournisseur qui ressemblent à un seul risque saisi deux fois.",
+    "{scanned} vendor risks scanned, {compared} pairs compared.":
+      "{scanned} risques fournisseurs analysés, {compared} paires comparées.",
+    "Only risks of the same vendor are compared: the same risk at two vendors is a pattern, not a duplicate.":
+      "Seuls les risques d'un même fournisseur sont comparés : le même risque chez deux fournisseurs est une tendance, pas un doublon.",
+    "This scan hit its size limit, so the list below is a sample rather than every pair.":
+      "Cette analyse a atteint sa limite de taille ; la liste ci-dessous est donc un échantillon et non l'ensemble des paires.",
+    "No likely duplicates among vendor risks.":
+      "Aucun doublon probable parmi les risques fournisseurs.",
+    "Which vendor risks are not mapped to a framework yet.":
+      "Quels risques fournisseurs ne sont pas encore associés à un référentiel.",
+    "Active vendor risks": "Risques fournisseurs actifs",
+    "Mapped to a framework": "Associés à un référentiel",
+    "Frameworks in its use cases": "Référentiels de ses cas d'usage",
+    "Every active vendor risk is mapped to at least one framework.":
+      "Chaque risque fournisseur actif est associé à au moins un référentiel.",
+    "The vendor serves a use case that has a framework attached, but these risks are not mapped to any framework. Map them from the risk itself.":
+      "Le fournisseur sert un cas d'usage auquel un référentiel est rattaché, mais ces risques ne sont associés à aucun référentiel. Associez-les depuis le risque lui-même.",
+    "None of the use cases these vendors serve has a framework attached, so there is nothing to map to. Not a finding: attach a framework to the use case first.":
+      "Aucun des cas d'usage servis par ces fournisseurs n'a de référentiel rattaché ; il n'y a donc rien à associer. Ce n'est pas un constat : rattachez d'abord un référentiel au cas d'usage.",
+    "All vendors": "Tous les fournisseurs",
+    "This vendor has no risks on the map yet.":
+      "Ce fournisseur n'a encore aucun risque sur la carte.",
+    "Show all vendors": "Afficher tous les fournisseurs",
     // Vendor risk Linked risks tab
     "Link a project risk": "Lier un risque de projet",
     "No project risks inherit from this vendor risk yet.":
       "Aucun risque de projet n'hérite encore de ce risque fournisseur.",
-    "Link a project risk that this vendor risk applies to. Suggestions from Suggest hierarchy appear here too.":
-      "Liez un risque de projet auquel ce risque fournisseur s'applique. Les suggestions de « Suggérer une hiérarchie » apparaissent aussi ici.",
     "When the level of this risk changes, each child is flagged for review.":
       "Lorsque le niveau de ce risque change, chaque risque enfant est signalé pour révision.",
     "A project risk can have only one parent, and a risk with child risks of its own cannot become a child.":
@@ -27986,6 +28106,7 @@ export const translations: Record<string, Record<string, string>> = {
       "Riesgo eliminado, pero no se pudo quitar de algunas políticas vinculadas.",
     'Deleted "{name}".': "«{name}» eliminado.",
     "Pairs per page": "Pares por página",
+    "Vendors per page": "Proveedores por página",
     "Risks per page": "Riesgos por página",
     "Signals per page": "Señales por página",
     "Reasons per page": "Motivos por página",
@@ -28004,12 +28125,71 @@ export const translations: Record<string, Record<string, string>> = {
     "Links appear as risks are saved, or after an administrator runs a scan.":
       "Los vínculos aparecen al guardar los riesgos o cuando un administrador ejecuta un análisis.",
     "Failed to load linked risks.": "No se pudieron cargar los riesgos vinculados.",
+    // Vendor risk insights, value-chain reach and the vendor filter on the map
+    "Link a project risk that this vendor risk applies to. Suggestions from Suggest children appear here too.":
+      "Vincule un riesgo de proyecto al que se aplique este riesgo del proveedor. Las sugerencias de «Sugerir riesgos dependientes» también aparecen aquí.",
+    "Suggest children": "Sugerir riesgos dependientes",
+    "No clusters of related risks in the use cases of this vendor yet. Related risks are grouped once a scan has linked them.":
+      "Todavía no hay grupos de riesgos relacionados en los casos de uso de este proveedor. Los riesgos relacionados se agrupan cuando un análisis los ha vinculado.",
+    "inherited by": "heredado por",
+    "Inherited by": "Heredado por",
+    "1 project risk": "1 riesgo de proyecto",
+    "{count} project risks": "{count} riesgos de proyecto",
+    "{count} suggested": "{count} sugeridos",
+    "{likelihood} likelihood, {severity} severity: {count} risks":
+      "Probabilidad {likelihood}, gravedad {severity}: {count} riesgos",
+    "Filtering by heat map cell": "Filtrando por celda del mapa de calor",
+    "The table now shows only vendor risks in the selected cell. Select the cell again to see all risks.":
+      "La tabla ahora muestra solo los riesgos del proveedor de la celda seleccionada. Seleccione la celda de nuevo para ver todos los riesgos.",
+    "Vendor risks by likelihood and severity. Select a cell to filter the table.":
+      "Riesgos del proveedor por probabilidad y gravedad. Seleccione una celda para filtrar la tabla.",
+    "Each cell counts vendor risks by likelihood and severity. Select a cell to filter the table below, and select it again to show every risk.":
+      "Cada celda cuenta los riesgos del proveedor por probabilidad y gravedad. Seleccione una celda para filtrar la tabla de abajo y selecciónela de nuevo para mostrar todos los riesgos.",
+    "Blast radius": "Radio de impacto",
+    "How many project risks and use cases inherit from the risks of each vendor.":
+      "Cuántos riesgos de proyecto y casos de uso heredan de los riesgos de cada proveedor.",
+    "Vendor {id}": "Proveedor {id}",
+    "Vendor risk {id}": "Riesgo del proveedor {id}",
+    "{linked} of {total}": "{linked} de {total}",
+    "Vendors with reach": "Proveedores con alcance",
+    "Inheriting project risks": "Riesgos de proyecto que heredan",
+    "Affected use cases": "Casos de uso afectados",
+    "Vendor risks with children": "Riesgos del proveedor con dependientes",
+    "Vendor risks with no children": "Riesgos del proveedor sin dependientes",
+    "View on map": "Ver en el mapa",
+    "No vendor risks yet.": "Todavía no hay riesgos del proveedor.",
+    "No project risk inherits from a vendor risk yet. Open a vendor risk and link the project risks it applies to from its Linked risks tab.":
+      "Ningún riesgo de proyecto hereda todavía de un riesgo del proveedor. Abra un riesgo del proveedor y vincule los riesgos de proyecto a los que se aplica desde su pestaña «Riesgos vinculados».",
+    "Duplicate vendor risks": "Riesgos del proveedor duplicados",
+    "Risks of the same vendor that look like one risk entered twice.":
+      "Riesgos del mismo proveedor que parecen un solo riesgo introducido dos veces.",
+    "{scanned} vendor risks scanned, {compared} pairs compared.":
+      "{scanned} riesgos del proveedor analizados, {compared} pares comparados.",
+    "Only risks of the same vendor are compared: the same risk at two vendors is a pattern, not a duplicate.":
+      "Solo se comparan riesgos del mismo proveedor: el mismo riesgo en dos proveedores es un patrón, no un duplicado.",
+    "This scan hit its size limit, so the list below is a sample rather than every pair.":
+      "Este análisis alcanzó su límite de tamaño, así que la lista de abajo es una muestra y no todos los pares.",
+    "No likely duplicates among vendor risks.":
+      "No hay duplicados probables entre los riesgos del proveedor.",
+    "Which vendor risks are not mapped to a framework yet.":
+      "Qué riesgos del proveedor aún no están asignados a un marco.",
+    "Active vendor risks": "Riesgos del proveedor activos",
+    "Mapped to a framework": "Asignados a un marco",
+    "Frameworks in its use cases": "Marcos en sus casos de uso",
+    "Every active vendor risk is mapped to at least one framework.":
+      "Cada riesgo del proveedor activo está asignado al menos a un marco.",
+    "The vendor serves a use case that has a framework attached, but these risks are not mapped to any framework. Map them from the risk itself.":
+      "El proveedor da servicio a un caso de uso con un marco asociado, pero estos riesgos no están asignados a ningún marco. Asígnelos desde el propio riesgo.",
+    "None of the use cases these vendors serve has a framework attached, so there is nothing to map to. Not a finding: attach a framework to the use case first.":
+      "Ninguno de los casos de uso que atienden estos proveedores tiene un marco asociado, así que no hay nada que asignar. No es un hallazgo: asocie primero un marco al caso de uso.",
+    "All vendors": "Todos los proveedores",
+    "This vendor has no risks on the map yet.":
+      "Este proveedor todavía no tiene riesgos en el mapa.",
+    "Show all vendors": "Mostrar todos los proveedores",
     // Vendor risk Linked risks tab
     "Link a project risk": "Vincular un riesgo del proyecto",
     "No project risks inherit from this vendor risk yet.":
       "Aún no hay riesgos del proyecto que hereden de este riesgo del proveedor.",
-    "Link a project risk that this vendor risk applies to. Suggestions from Suggest hierarchy appear here too.":
-      "Vincula un riesgo del proyecto al que se aplique este riesgo del proveedor. Las sugerencias de «Sugerir jerarquía» también aparecen aquí.",
     "When the level of this risk changes, each child is flagged for review.":
       "Cuando cambia el nivel de este riesgo, cada riesgo dependiente se marca para revisión.",
     "A project risk can have only one parent, and a risk with child risks of its own cannot become a child.":

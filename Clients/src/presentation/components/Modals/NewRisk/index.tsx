@@ -62,6 +62,8 @@ interface AddNewRiskProps {
   existingRisk?: ExistingRisk | null;
   onSuccess?: () => void;
   vendors: VendorModel[];
+  /** The tab an existing risk opens on, e.g. "linked-risks" from the table's reach link. */
+  initialTab?: "details" | "linked-risks";
 }
 
 const initialState: VendorRiskModalFormValues = {
@@ -98,6 +100,7 @@ const AddNewRisk: React.FC<AddNewRiskProps> = ({
   existingRisk,
   onSuccess = () => {},
   vendors,
+  initialTab,
 }) => {
   const { userRoleName } = useAuth();
   const isEditingDisabled = !allowedRoles.vendors.edit.includes(userRoleName);
@@ -199,8 +202,10 @@ const AddNewRisk: React.FC<AddNewRiskProps> = ({
       resetErrors();
       setSelectedFrameworks([]);
       setActiveTab("details");
+    } else if (existingRisk?.id && initialTab) {
+      setActiveTab(initialTab);
     }
-  }, [isOpen, resetErrors]);
+  }, [isOpen, resetErrors, existingRisk?.id, initialTab]);
 
   useEffect(() => {
     if (isOpen && !existingRisk) {

@@ -56,4 +56,33 @@ describe("NewRisk (AddNewRisk)", () => {
     // Links save on their own; a Save here would quietly re-save the details tab.
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
+
+  // The table's "Inherited by" count opens the risk straight on its links.
+  it("opens on the Linked risks tab when asked to", async () => {
+    renderWithProviders(
+      <AddNewRisk
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        vendors={[]}
+        existingRisk={existingRisk}
+        initialTab="linked-risks"
+      />,
+    );
+
+    expect(await screen.findByTestId("vendor-risk-links")).toHaveTextContent("7");
+    expect(screen.getByRole("tab", { name: /linked risks/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  // A new risk has no links yet, so the tab request falls back to the form.
+  it("ignores the Linked risks tab request for a risk being created", () => {
+    renderWithProviders(
+      <AddNewRisk isOpen={true} setIsOpen={vi.fn()} vendors={[]} initialTab="linked-risks" />,
+    );
+
+    expect(screen.queryByTestId("vendor-risk-links")).toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
 });

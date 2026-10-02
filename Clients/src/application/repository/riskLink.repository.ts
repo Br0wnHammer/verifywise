@@ -10,6 +10,9 @@ import {
   RiskLink,
   RiskLinkStatus,
   SharedProjectCandidate,
+  VendorCoverageReport,
+  VendorDuplicateReport,
+  VendorExposureReport,
   VendorRiskChildCandidate,
 } from "../../domain/interfaces/i.riskLink";
 
@@ -200,5 +203,53 @@ export async function getControlCoverage(): Promise<CoverageReport> {
     return extractData<CoverageReport>(response);
   } catch (error: any) {
     throw toAPIError(error, "Failed to fetch control coverage");
+  }
+}
+
+export async function getVendorExposure(): Promise<VendorExposureReport> {
+  try {
+    const response = await apiServices.get<{ message: string; data: VendorExposureReport }>(
+      "/riskLinks/vendor-exposure",
+    );
+    return extractData<VendorExposureReport>(response);
+  } catch (error: any) {
+    throw toAPIError(error, "Failed to fetch vendor exposure");
+  }
+}
+
+export async function getVendorDuplicateCandidates(): Promise<VendorDuplicateReport> {
+  try {
+    const response = await apiServices.get<{ message: string; data: VendorDuplicateReport }>(
+      "/riskLinks/vendor-duplicates",
+    );
+    return extractData<VendorDuplicateReport>(response);
+  } catch (error: any) {
+    throw toAPIError(error, "Failed to fetch vendor duplicate candidates");
+  }
+}
+
+export async function getVendorFrameworkCoverage(): Promise<VendorCoverageReport> {
+  try {
+    const response = await apiServices.get<{ message: string; data: VendorCoverageReport }>(
+      "/riskLinks/vendor-coverage",
+    );
+    return extractData<VendorCoverageReport>(response);
+  } catch (error: any) {
+    throw toAPIError(error, "Failed to fetch vendor framework coverage");
+  }
+}
+
+/** The hierarchy pass, limited to the clusters this vendor risk could parent. */
+export async function suggestVendorRiskHierarchy(
+  vendorRiskId: number,
+): Promise<{ enqueued: number; skipped: number }> {
+  try {
+    const response = await apiServices.post<{
+      message: string;
+      data: { enqueued: number; skipped: number };
+    }>(`/riskLinks/vendor-risks/${vendorRiskId}/suggest-hierarchy`, {});
+    return extractData<{ enqueued: number; skipped: number }>(response);
+  } catch (error: any) {
+    throw toAPIError(error, "Failed to start the hierarchy suggestions");
   }
 }

@@ -26,6 +26,7 @@ import "@xyflow/react/dist/style.css";
 import { Alert, Box, Typography, Stack, CircularProgress, useTheme } from "@mui/material";
 import { Network, AlertTriangle } from "lucide-react";
 import { EmptyState } from "../../components/EmptyState";
+import { CustomizableButton } from "../../components/button/customizable-button";
 import { getRiskGraph } from "../../../application/repository/riskLink.repository";
 import { useIsAdmin } from "../../../application/hooks/useIsAdmin";
 import { useTranslation } from "../../../application/hooks/useTranslation";
@@ -40,6 +41,9 @@ import ControlCoverage from "./ControlCoverage";
 import { ENTITY_TYPE_COLORS, EDGE_LABELS } from "./types";
 import { layoutRiskGraph } from "./layout";
 import { fill } from "../../../i18n/fill";
+import { useSearchParams } from "react-router";
+import Select from "../../components/Inputs/Select";
+import { vendorSubgraph, vendorsOnMap } from "./vendorFilter";
 import {
   graphWrapperSx,
   pageContainerSx,
@@ -93,6 +97,9 @@ const RiskInheritanceGraphInner: React.FC = () => {
   const [graph, setGraph] = useState<RiskGraph | null>(null);
   const [showTruncated, setShowTruncated] = useState(true);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // In the URL so the Vendors page can link straight to one vendor's part.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const vendorFilter = Number(searchParams.get("vendor")) || null;
 
   // ReactFlow owns selection, so clicking a node, clicking the canvas and
   // pressing Enter on a focused node all land here for free.
@@ -122,25 +129,55 @@ const RiskInheritanceGraphInner: React.FC = () => {
     };
   }, []);
 
-  const layout = useMemo(() => (graph ? layoutRiskGraph(graph) : null), [graph]);
+  // A vendor named in the URL stays selectable even with nothing on the map,
+  // so the select shows what is filtered instead of going blank.
+  const vendorItems = useMemo(() => {
+    const items = (graph ? vendorsOnMap(graph) : []).map((vendor) => ({
+      _id: vendor.id,
+      name: vendor.name ?? fill(t("Vendor {id}"), { id: vendor.id }),
+    }));
+    if (vendorFilter && !items.some((item) => item._id === vendorFilter)) {
+      items.push({ _id: vendorFilter, name: fill(t("Vendor {id}"), { id: vendorFilter }) });
+    }
+    return items;
+  }, [graph, vendorFilter, t]);
+  const shown = useMemo(
+    () => (graph && vendorFilter ? vendorSubgraph(graph, vendorFilter) : graph),
+    [graph, vendorFilter],
+  );
+
+  const setVendorFilter = (vendorId: number | null) => {
+    setSelectedKey(null);
+    setSearchParams(
+      (params) => {
+        const next = new URLSearchParams(params);
+        if (vendorId) next.set("vendor", String(vendorId));
+        else next.delete("vendor");
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const layout = useMemo(() => (shown ? layoutRiskGraph(shown) : null), [shown]);
 
   // A node is stale when any inherits_from edge pointing at it (as the child)
   // carries Feature 2's flag.
   const staleByNode = useMemo(() => {
     const stale = new Map<string, string>();
-    for (const edge of graph?.edges ?? []) {
+    for (const edge of shown?.edges ?? []) {
       if (edge.relationType === "inherits_from" && edge.parentLevelChangedAt) {
         stale.set(edge.sourceKey, edge.parentLevelChangedAt);
       }
     }
     return stale;
-  }, [graph]);
+  }, [shown]);
 
   useEffect(() => {
-    if (!graph || !layout) return;
+    if (!shown || !layout) return;
 
     setNodes(
-      graph.nodes.map((node) => ({
+      shown.nodes.map((node) => ({
         id: node.key,
         type: "riskNode",
         position: layout.positions.get(node.key) ?? { x: 0, y: 0 },
@@ -155,7 +192,7 @@ const RiskInheritanceGraphInner: React.FC = () => {
 
     const stroke = theme.palette.text.secondary;
     setEdges(
-      graph.edges.map((edge) => {
+      shown.edges.map((edge) => {
         if (edge.relationType === "related_to") {
           return {
             id: String(edge.id),
@@ -195,7 +232,7 @@ const RiskInheritanceGraphInner: React.FC = () => {
         };
       }),
     );
-  }, [graph, layout, staleByNode, setNodes, setEdges, theme, t]);
+  }, [shown, layout, staleByNode, setNodes, setEdges, theme, t]);
 
   const { displayNodes, displayEdges } = useMemo(() => {
     if (!selectedKey) return { displayNodes: nodes, displayEdges: edges };
@@ -253,6 +290,20 @@ const RiskInheritanceGraphInner: React.FC = () => {
         message="No risk links yet. Open a risk and run the link scan from its Linked risks panel."
         fillContainer
       />
+    );
+  } else if (!shown || shown.nodes.length === 0) {
+    // A vendor link from the Vendors page can name a vendor with nothing on the map.
+    graphArea = (
+      <Stack spacing={4} alignItems="center">
+        <EmptyState
+          icon={Network}
+          message="This vendor has no risks on the map yet."
+          showBorder={false}
+        />
+        <CustomizableButton size="small" variant="text" onClick={() => setVendorFilter(null)}>
+          Show all vendors
+        </CustomizableButton>
+      </Stack>
     );
   } else {
     graphArea = (
@@ -338,6 +389,21 @@ const RiskInheritanceGraphInner: React.FC = () => {
 
   return (
     <Box sx={pageContainerSx}>
+      {vendorItems.length > 0 && (
+        <Stack direction="row" spacing={4} alignItems="center">
+          <Typography sx={legendLabelSx}>Vendor</Typography>
+          <Select
+            id="risk-inheritance-vendor-filter"
+            ariaLabel="Vendor"
+            value={vendorFilter ?? "all"}
+            items={[{ _id: "all", name: "All vendors" }, ...vendorItems]}
+            onChange={(event) =>
+              setVendorFilter(event.target.value === "all" ? null : Number(event.target.value))
+            }
+            sx={{ width: "240px" }}
+          />
+        </Stack>
+      )}
       {graphArea}
       <DismissalAnalytics />
       <DuplicateCandidates />

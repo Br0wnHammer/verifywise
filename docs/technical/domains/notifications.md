@@ -139,6 +139,7 @@ Before delivering notifications:
 | Type | Trigger | Delivery |
 |------|---------|----------|
 | `model_risk_candidates` | Model gained a project, or a new model risk, leaving unseen shared-project candidates for a project risk | In-app |
+| `vendor_risk_candidates` | Vendor gained a use case, or a new vendor risk, leaving unseen candidate parents for a project risk in that use case | In-app |
 | `risk_deadline_due_soon` | Project risk deadline within 7 days (in-app + email) or 1 day (Slack) | In-app + Email / Slack |
 | `model_risk_due_soon` | Model risk target date within 7 days (in-app + email) or 1 day (Slack) | In-app + Email / Slack |
 

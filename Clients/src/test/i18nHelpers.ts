@@ -69,7 +69,11 @@ export const tr = (lang: Lang, key: string, values: Record<string, string | numb
  * from fragments in StandardTablePagination, which is the same on every table in
  * the app and has no translations anywhere. Not specific to any one screen.
  */
-const SHARED_PAGINATION = [/^Showing$/, /^Page \d+ of \d+$/, /^(risk|pair|signal|reason)s?$/];
+const SHARED_PAGINATION = [
+  /^Showing$/,
+  /^Page \d+ of \d+$/,
+  /^(risk|pair|signal|reason|vendor)s?$/,
+];
 
 /**
  * Fails on rendered text that is neither translated, expected nor fixture data.

@@ -116,7 +116,7 @@ describe("GET /riskLinks (graph)", () => {
       risk_name: "Fairness degradation",
       risk_level: "High",
     });
-    const vendor = await createTestVendor(owner.orgId, {});
+    const vendor = await createTestVendor(owner.orgId, { vendor_name: "Acme Cloud" });
     const vendorRisk = await createTestVendorRisk(owner.orgId, {
       vendor_id: vendor,
       risk_description: "The vendor cannot evidence its own model validation.",
@@ -151,7 +151,11 @@ describe("GET /riskLinks (graph)", () => {
       id: vendorRisk,
       name: "The vendor cannot evidence its own model validation.",
       riskLevel: "Critical",
+      // Lets the map show one vendor's part of it.
+      vendor: { id: vendor, name: "Acme Cloud" },
     });
+    expect(model.vendor).toBeNull();
+    expect(nodes.find((n) => n.key === `risk:${child}`).vendor).toBeNull();
   });
 
   it("dedupes nodes shared by two edges", async () => {

@@ -12,10 +12,14 @@ import {
   getRiskGraph,
   getRiskLinks,
   getSharedProjects,
+  getVendorDuplicateCandidates,
+  getVendorExposure,
+  getVendorFrameworkCoverage,
   getVendorRiskLinks,
   getVendorRiskSharedProjects,
   recomputeAllRiskLinks,
   suggestRiskHierarchy,
+  suggestVendorRiskHierarchy,
   updateRiskLinkStatus,
 } from "../controllers/riskLinks.ctrl";
 
@@ -54,6 +58,12 @@ router.get(
 );
 // Same param-route trap as /duplicates: /coverage must sit above /:riskId.
 router.get("/coverage", authenticateJWT, authorize(["Admin", "SuperAdmin"]), getControlCoverage);
+// Vendor risk insights. Single segments, so they must sit above /:riskId like
+// /duplicates and /coverage. Any authenticated user: they show nothing that
+// GET /api/vendorRisks/all does not.
+router.get("/vendor-exposure", authenticateJWT, getVendorExposure);
+router.get("/vendor-duplicates", authenticateJWT, getVendorDuplicateCandidates);
+router.get("/vendor-coverage", authenticateJWT, getVendorFrameworkCoverage);
 // A vendor risk's children. Two segments, so /:riskId cannot match it, but kept
 // above the param routes with the other literal prefixes. Readable by any
 // authenticated user, like GET /:riskId and GET /api/vendorRisks/:id.
@@ -62,6 +72,14 @@ router.get(
   "/vendor-risks/:vendorRiskId/shared-projects",
   authenticateJWT,
   getVendorRiskSharedProjects,
+);
+// The hierarchy pass scoped to one vendor risk. Admin-only like the org-wide
+// pass: it spends the org's LLM key.
+router.post(
+  "/vendor-risks/:vendorRiskId/suggest-hierarchy",
+  authenticateJWT,
+  authorize(["Admin", "SuperAdmin"]),
+  suggestVendorRiskHierarchy,
 );
 router.get("/:riskId", authenticateJWT, getRiskLinks);
 router.get("/:riskId/shared-projects", authenticateJWT, getSharedProjects);

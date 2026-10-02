@@ -287,15 +287,57 @@ only ever a parent, so the tab has one group ("Child risks") and one action:
 link a project risk as a child. The picker ranks the project risks in the
 vendor's projects first, with a "Same project" chip.
 
-Suggested children come from the hierarchy pass, which an Admin starts from a
-project risk's panel. They are confirmed or dismissed here with the same
-actions and dismissal reasons as on the project side. When the vendor risk's
-`risk_level` changes, each child is flagged "Parent level changed" on its own
-panel; the vendor tab does not show that flag.
+Suggested children come from the hierarchy pass. An Admin can start it from a
+project risk's panel, or from this tab with **Suggest children**
+(`POST /api/riskLinks/vendor-risks/:vendorRiskId/suggest-hierarchy`), which runs
+the same pass on only the clusters of related risks that contain a project risk
+in the vendor's use cases. The tab then polls for the results for a bounded
+window, like the project panel. Suggestions are confirmed or dismissed here with
+the same actions and dismissal reasons as on the project side. When the vendor
+risk's `risk_level` changes, each child is flagged "Parent level changed" on its
+own panel; the vendor tab does not show that flag.
 
 Reads use `GET /api/riskLinks/vendor-risks/:vendorRiskId` and
 `.../shared-projects`; writes go through the existing `POST /api/riskLinks` and
 `PATCH /api/riskLinks/:id`.
+
+### Vendor risk insights
+
+Above the vendor risks table, `pages/Vendors/VendorRiskInsights/` shows four
+collapsible sections. All start closed; which ones a viewer leaves open is kept
+in `localStorage` (`vendor-risk-insights-open`). The duplicate and coverage
+scans run only once their section is first opened.
+
+| Section | Source | What it shows |
+|---------|--------|---------------|
+| Heat map | the page's vendor risks | Likelihood × severity grid (`RiskHeatMap` in cell-select mode). Selecting a cell filters the table; selecting it again clears the filter. |
+| Blast radius | `GET /api/riskLinks/vendor-exposure` | Per vendor: vendor risks with children, distinct inheriting project risks, affected use cases, open suggestions. Admins get a "View on map" link to `/risk-inheritance?vendor=ID`. |
+| Duplicate vendor risks | `GET /api/riskLinks/vendor-duplicates` | Pairs of one vendor's risks that read alike (description + impact, F7's tokeniser and threshold). Never compares two vendors' risks. |
+| Framework coverage | `GET /api/riskLinks/vendor-coverage` | Mapped / gap / no framework, F8's three-state rule: a gap is an unmapped risk whose vendor serves a use case with a framework attached. |
+
+Exposure counts **confirmed** children only; suggestions are shown beside it.
+A child that inherits through two of one vendor's risks counts once for that
+vendor. The same report feeds the table's **Inherited by** column ("3 project
+risks", or "2 suggested" when nothing is confirmed yet). Its link opens the
+vendor risk on its Linked risks tab, and its tooltip names the use cases.
+Saving or deleting a vendor risk invalidates all three reports
+(`VENDOR_INSIGHTS_KEY`).
+
+### Candidate notices
+
+The vendor counterpart of the model risk notices
+(`services/riskLinks/vendorCandidates.ts`). The owner of a project risk hears
+once, as a `vendor_risk_candidates` in-app notification, that a vendor serving
+the risk's use case has vendor risks it could inherit from. It fires,
+fire-and-forget, when a vendor is created with use cases, when a vendor update
+adds use cases (only the added ones), and when a vendor risk is created on a
+vendor that already has use cases (that vendor risk only). Risks already linked
+to the vendor risk (any status), risks that already have a confirmed parent or
+confirmed children, and soft-deleted risks are left out. At most 25 risks are
+notified per trigger. Dedup is per (risk, vendor) for use-case triggers and per
+vendor risk id for create triggers, backed by the
+`notifications_vendor_risk_candidates_uniq` partial unique index. No link is
+written; the owner decides from the Linked risks tab.
 
 ## Vendor Risk Suggestions
 
@@ -370,9 +412,10 @@ All vendor changes are tracked:
 | Component | Purpose |
 |-----------|---------|
 | `AddNewVendor` | Create/edit vendor modal |
-| `AddNewRisk` | Create/edit risk modal (Risk details, Custom fields, Activity, Linked risks) |
-| `VendorRiskLinksPanel` | The Linked risks tab: project risks that inherit from this vendor risk |
-| `RiskTable` | Display vendor risks |
+| `AddNewRisk` | Create/edit risk modal (Risk details, Custom fields, Activity, Linked risks); `initialTab="linked-risks"` opens an existing risk on its links |
+| `VendorRiskLinksPanel` | The Linked risks tab: project risks that inherit from this vendor risk, plus Suggest children |
+| `VendorRiskInsights` | Heat map, blast radius, duplicate and coverage sections above the risks table |
+| `RiskTable` | Display vendor risks, including the Inherited by column |
 | `TableWithPlaceholder` | Main vendor list |
 | `GroupedTableView` | Grouped display |
 | `FilterBy` | Dynamic filtering |
@@ -385,6 +428,8 @@ All vendor changes are tracked:
 | `useDeleteVendor()` | Delete mutation |
 | `useVendorRisks()` | Fetch risks |
 | `useDeleteVendorRisk()` | Delete risk mutation |
+| `useVendorExposure()`, `useVendorDuplicateCandidates()`, `useVendorFrameworkCoverage()` | Vendor risk insight reports (`hooks/useRiskLinks.ts`) |
+| `useSuggestVendorRiskHierarchy(id)` | Suggest children on one vendor risk |
 
 ## Automation Triggers
 
@@ -424,12 +469,16 @@ Vendors with `is_demo=true`:
 | `utils/vendorRisk.utils.ts` | Risk queries |
 | `controllers/vendor.ctrl.ts` | Controller |
 | `routes/vendor.route.ts` | Routes |
+| `services/riskLinks/vendorReports.ts` | Exposure, duplicate and coverage reports |
+| `utils/vendorRiskReport.utils.ts` | Queries behind those reports |
+| `services/riskLinks/vendorCandidates.ts` | Vendor risk candidate notices |
 
 ### Frontend
 
 | File | Purpose |
 |------|---------|
 | `pages/Vendors/index.tsx` | Main page |
+| `pages/Vendors/VendorRiskInsights/` | Heat map, blast radius, duplicates, coverage |
 | `components/AddNewVendor/` | Vendor form |
 | `hooks/useVendors.ts` | Data hook |
 | `repository/vendor.repository.ts` | API calls |

@@ -147,6 +147,72 @@ export const getAnnouncedModelRiskIdsQuery = async (
 };
 
 /**
+ * Vendor counterpart of hasModelRiskCandidateNoticeQuery: has THIS user
+ * already been told that THIS risk could inherit from THIS vendor's risks?
+ * The notification row is the sent-record, keyed on metadata.vendor_id.
+ */
+export const hasVendorRiskCandidateNoticeQuery = async (
+  organizationId: number,
+  userId: number,
+  riskId: number,
+  vendorId: number,
+): Promise<boolean> => {
+  const rows = (await sequelize.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM notifications
+        WHERE organization_id = :organizationId
+          AND user_id = :userId
+          AND type = 'vendor_risk_candidates'
+          AND entity_type = 'risk'
+          AND entity_id = :riskId
+          AND metadata->>'vendor_id' = :vendorId::text
+     ) AS notified`,
+    {
+      replacements: { organizationId, userId, riskId, vendorId },
+      type: QueryTypes.SELECT,
+    },
+  )) as { notified: boolean }[];
+  return rows[0]?.notified === true;
+};
+
+/**
+ * Vendor risk ids already announced to THIS user for THIS risk and vendor, so
+ * a new vendor risk is announced even after a vendor-level notice went out.
+ * Compared in JS, like getAnnouncedModelRiskIdsQuery.
+ */
+export const getAnnouncedVendorRiskIdsQuery = async (
+  organizationId: number,
+  userId: number,
+  riskId: number,
+  vendorId: number,
+): Promise<number[]> => {
+  const rows = (await sequelize.query(
+    `SELECT metadata
+       FROM notifications
+      WHERE organization_id = :organizationId
+        AND user_id = :userId
+        AND type = 'vendor_risk_candidates'
+        AND entity_type = 'risk'
+        AND entity_id = :riskId
+        AND metadata->>'vendor_id' = :vendorId::text`,
+    {
+      replacements: { organizationId, userId, riskId, vendorId },
+      type: QueryTypes.SELECT,
+    },
+  )) as { metadata: unknown }[];
+  const announced = new Set<number>();
+  for (const row of rows) {
+    const list = ((row.metadata ?? {}) as Record<string, unknown>)["vendor_risk_ids"];
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        if (typeof item === "number" && Number.isInteger(item)) announced.add(item);
+      }
+    }
+  }
+  return [...announced];
+};
+
+/**
  * Create notifications for multiple users (bulk)
  */
 export const createBulkNotificationsQuery = async (

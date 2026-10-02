@@ -24,6 +24,8 @@ import {
 import { notifyUserAssigned } from "../services/inAppNotification.service";
 import { getVendorRiskSuggestions as getVendorRiskSuggestionsService } from "../services/vendors/riskSuggestions";
 import { triggerVendorOnboarding } from "../services/workflows/triggers";
+import { notifyVendorRiskCandidates } from "../services/riskLinks/vendorCandidates";
+import logger from "../utils/logger/fileLogger";
 import { QueryTypes } from "sequelize";
 
 import { translateError } from "../utils/i18n.utils";
@@ -309,6 +311,15 @@ export async function createVendor(req: Request, res: Response): Promise<any> {
         console.error("Failed to trigger vendor_onboarding workflow:", err),
       );
 
+      // A new vendor normally has no vendor risks yet, so this usually finds
+      // nothing. Fire-and-forget, like the model counterpart.
+      notifyVendorRiskCandidates({
+        organizationId: req.organizationId!,
+        vendorId: createdVendor.id!,
+        vendorName: createdVendor.vendor_name,
+        projectIds: vendorData.projects || [],
+      }).catch((err) => logger.error("Vendor risk candidate notice failed:", err));
+
       // Send assignment notifications (fire-and-forget)
       const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
       const assignerName = await getUserNameById(req.userId!);
@@ -514,6 +525,23 @@ export async function updateVendorById(req: Request, res: Response): Promise<any
         userId: req.userId!,
         organizationId: req.organizationId!,
       });
+
+      // Only use cases this update added. A plain field edit sends no
+      // projects, so the diff is empty and nothing fires.
+      const projectIdsBefore = (existingVendor.projects ?? []).map(Number);
+      const addedProjectIds = Array.isArray(updateData.projects)
+        ? (updateData.projects as unknown[])
+            .map(Number)
+            .filter((id) => Number.isInteger(id) && !projectIdsBefore.includes(id))
+        : [];
+      if (addedProjectIds.length > 0) {
+        notifyVendorRiskCandidates({
+          organizationId: req.organizationId!,
+          vendorId,
+          vendorName: vendor.vendor_name,
+          projectIds: addedProjectIds,
+        }).catch((err) => logger.error("Vendor risk candidate notice failed:", err));
+      }
 
       // Send assignment notifications for newly assigned users (fire-and-forget)
       const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
