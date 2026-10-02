@@ -1,4 +1,5 @@
 import { apiServices } from "../../infrastructure/api/networkServices";
+import type { ApiSuccessEnvelope } from "../../infrastructure/api/api.types";
 
 /** One entry of the permission catalog (key, module, description). */
 export interface PermissionCatalogEntry {
@@ -20,8 +21,11 @@ export interface RolePermissionInput {
 export async function getPermissionCatalog({ signal }: { signal?: AbortSignal } = {}): Promise<
   PermissionCatalogEntry[]
 > {
-  const response = await apiServices.get("/roles/permissions/catalog", { signal });
-  return response.data?.data ?? [];
+  const response = await apiServices.get<ApiSuccessEnvelope<PermissionCatalogEntry[]>>(
+    "/roles/permissions/catalog",
+    { signal },
+  );
+  return response.data.data;
 }
 
 /**
@@ -34,8 +38,11 @@ export async function getRolePermissions({
   roleId: number;
   signal?: AbortSignal;
 }): Promise<string[]> {
-  const response = await apiServices.get(`/roles/${roleId}/permissions`, { signal });
-  return response.data?.data ?? [];
+  const response = await apiServices.get<ApiSuccessEnvelope<string[]>>(
+    `/roles/${roleId}/permissions`,
+    { signal },
+  );
+  return response.data.data;
 }
 
 /**
@@ -59,6 +66,8 @@ export async function replaceRolePermissions({
 export async function getMyPermissions({ signal }: { signal?: AbortSignal } = {}): Promise<
   string[]
 > {
-  const response = await apiServices.get("/roles/my-permissions", { signal });
-  return response.data?.data ?? [];
+  const response = await apiServices.get<ApiSuccessEnvelope<string[]>>("/roles/my-permissions", {
+    signal,
+  });
+  return response.data.data;
 }
