@@ -9021,8 +9021,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Risk inheritance graph": "Risikovererbungsgraph",
     "Loading risk inheritance graph...": "Risikovererbungsgraph wird geladen...",
     "Failed to load the risk graph": "Der Risikograph konnte nicht geladen werden",
-    "No risk links yet. Run the link scan from a risk's Linked risks panel.":
-      "Noch keine Risikoverknüpfungen. Starten Sie den Verknüpfungs-Scan im Bereich „Verknüpfte Risiken“ eines Risikos.",
+    "No risk links yet. Open a risk and run the link scan from its Linked risks panel.":
+      "Noch keine Risikoverknüpfungen. Öffnen Sie ein Risiko und starten Sie den Verknüpfungs-Scan im Bereich „Verknüpfte Risiken“.",
     "Showing the first 500 links. Filter by status to narrow the graph.":
       "Es werden die ersten 500 Verknüpfungen angezeigt. Filtern Sie nach Status, um den Graphen einzugrenzen.",
     "Only admins can view the risk inheritance graph.":
@@ -18475,8 +18475,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Risk inheritance graph": "Graphe d'héritage des risques",
     "Loading risk inheritance graph...": "Chargement du graphe d'héritage des risques...",
     "Failed to load the risk graph": "Impossible de charger le graphe des risques",
-    "No risk links yet. Run the link scan from a risk's Linked risks panel.":
-      "Aucun lien de risque pour l'instant. Lancez l'analyse des liens depuis le panneau « Risques liés » d'un risque.",
+    "No risk links yet. Open a risk and run the link scan from its Linked risks panel.":
+      "Aucun lien de risque pour l'instant. Ouvrez un risque et lancez l'analyse des liens depuis son panneau « Risques liés ».",
     "Showing the first 500 links. Filter by status to narrow the graph.":
       "Affichage des 500 premiers liens. Filtrez par statut pour affiner le graphe.",
     "Only admins can view the risk inheritance graph.":
@@ -27843,8 +27843,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Risk inheritance graph": "Gráfico de herencia de riesgos",
     "Loading risk inheritance graph...": "Cargando el gráfico de herencia de riesgos...",
     "Failed to load the risk graph": "No se pudo cargar el gráfico de riesgos",
-    "No risk links yet. Run the link scan from a risk's Linked risks panel.":
-      "Aún no hay vínculos entre riesgos. Ejecuta el análisis de vínculos desde el panel «Riesgos vinculados» de un riesgo.",
+    "No risk links yet. Open a risk and run the link scan from its Linked risks panel.":
+      "Aún no hay vínculos entre riesgos. Abre un riesgo y ejecuta el análisis de vínculos desde su panel «Riesgos vinculados».",
     "Showing the first 500 links. Filter by status to narrow the graph.":
       "Se muestran los primeros 500 vínculos. Filtra por estado para acotar el gráfico.",
     "Only admins can view the risk inheritance graph.":

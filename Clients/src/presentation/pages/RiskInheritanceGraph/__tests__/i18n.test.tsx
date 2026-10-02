@@ -269,7 +269,10 @@ describe.each(LANGS)("risk inheritance in %s", (lang) => {
     const empty = renderWithProviders(<RiskInheritanceGraph />);
     expect(
       await screen.findByText(
-        tr(lang, "No risk links yet. Run the link scan from a risk's Linked risks panel."),
+        tr(
+          lang,
+          "No risk links yet. Open a risk and run the link scan from its Linked risks panel.",
+        ),
       ),
     ).toBeInTheDocument();
     empty.unmount();

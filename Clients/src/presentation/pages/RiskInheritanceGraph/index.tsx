@@ -250,7 +250,7 @@ const RiskInheritanceGraphInner: React.FC = () => {
     graphArea = (
       <EmptyState
         icon={Network}
-        message="No risk links yet. Run the link scan from a risk's Linked risks panel."
+        message="No risk links yet. Open a risk and run the link scan from its Linked risks panel."
         fillContainer
       />
     );
