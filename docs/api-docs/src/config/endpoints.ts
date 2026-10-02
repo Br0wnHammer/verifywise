@@ -9404,7 +9404,7 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/riskLinks/recompute',
     summary: "Recompute All Risk Links",
-    description: "Requires role: Admin",
+    description: "Requires role: Admin or SuperAdmin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -9416,7 +9416,7 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/riskLinks/suggest-hierarchy',
     summary: "Suggest Risk Hierarchy",
-    description: "Requires role: Admin",
+    description: "Requires role: Admin or SuperAdmin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -9428,7 +9428,7 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/riskLinks',
     summary: "Get Risk Graph",
-    description: "Requires role: Admin",
+    description: "Requires role: Admin or SuperAdmin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -9440,6 +9440,7 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/riskLinks',
     summary: "Create Risk Link",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -9451,7 +9452,7 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/riskLinks/dismissals',
     summary: "Get Dismissal Analytics",
-    description: "Requires role: Admin",
+    description: "Requires role: Admin or SuperAdmin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -9463,6 +9464,7 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/riskLinks/duplicates',
     summary: "Get Duplicate Candidates",
+    description: "Requires role: Admin or SuperAdmin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -9474,6 +9476,7 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/riskLinks/coverage',
     summary: "Get Control Coverage",
+    description: "Requires role: Admin or SuperAdmin",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -9507,6 +9510,7 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/riskLinks/{id}',
     summary: "Update Risk Link Status",
+    description: "Requires role: Admin or Editor or Reviewer",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -9518,6 +9522,7 @@ export const risklinksEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/riskLinks/{id}/acknowledge-parent-change',
     summary: "Acknowledge Parent Level Change",
+    description: "Requires role: Admin or Editor",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },

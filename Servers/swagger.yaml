@@ -10251,7 +10251,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires role: Admin'
+      description: 'Requires role: Admin or SuperAdmin'
   /riskLinks/suggest-hierarchy:
     post:
       summary: 'Suggest Risk Hierarchy'
@@ -10266,7 +10266,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires role: Admin'
+      description: 'Requires role: Admin or SuperAdmin'
   /riskLinks:
     post:
       summary: 'Create Risk Link'
@@ -10281,6 +10281,7 @@ paths:
       security:
         -
           bearerAuth: []
+      description: 'Requires role: Admin or Editor'
     get:
       summary: 'Get Risk Graph'
       responses:
@@ -10294,7 +10295,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires role: Admin'
+      description: 'Requires role: Admin or SuperAdmin'
   /riskLinks/dismissals:
     get:
       summary: 'Get Dismissal Analytics'
@@ -10309,7 +10310,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires role: Admin'
+      description: 'Requires role: Admin or SuperAdmin'
   /riskLinks/duplicates:
     get:
       summary: 'Get Duplicate Candidates'
@@ -10324,6 +10325,7 @@ paths:
       security:
         -
           bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
   /riskLinks/coverage:
     get:
       summary: 'Get Control Coverage'
@@ -10338,6 +10340,7 @@ paths:
       security:
         -
           bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
   '/riskLinks/{riskId}':
     get:
       summary: 'Get Risk Links'
@@ -10380,6 +10383,7 @@ paths:
       security:
         -
           bearerAuth: []
+      description: 'Requires role: Admin or Editor or Reviewer'
   '/riskLinks/{id}/acknowledge-parent-change':
     post:
       summary: 'Acknowledge Parent Level Change'
@@ -10394,6 +10398,7 @@ paths:
       security:
         -
           bearerAuth: []
+      description: 'Requires role: Admin or Editor'
   /roles:
     get:
       tags:
