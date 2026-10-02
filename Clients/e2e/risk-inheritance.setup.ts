@@ -1,7 +1,6 @@
-import { test as setup, expect } from "@playwright/test";
-import { execSync } from "child_process";
-import path from "path";
-import { fileURLToPath } from "url";
+import { test as setup } from "@playwright/test";
+import { loginAs } from "./helpers/auth.helper";
+import { seedAdminInOrg } from "./helpers/seedAdmin.helper";
 
 /**
  * Auth state for the risk-inheritance reports.
@@ -13,31 +12,22 @@ import { fileURLToPath } from "url";
  * already has risks in it.
  *
  * E2E_REPORT_ORG_ID picks that organization (default 1, the dev-bootstrap org).
- * seedE2EAdmin is idempotent: it returns the existing admin rather than
- * creating a second one.
+ * seedAdminInOrg is idempotent: it re-seeds the existing admin rather than
+ * creating a second one, and reads the password from the restricted file the
+ * seed script writes (it no longer prints it).
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const SERVERS_DIR = path.resolve(__dirname, "../../Servers");
-
-const ORG_ID = process.env.E2E_REPORT_ORG_ID || "1";
+const ORG_ID = Number(process.env.E2E_REPORT_ORG_ID || "1");
+// Its own user: global.setup.ts seeds the default e2e admin into its own org,
+// and the seed script returns an existing user by email wherever it lives.
+const REPORT_ADMIN_EMAIL =
+  process.env.E2E_REPORT_ADMIN_EMAIL || "e2e-risk-inheritance-admin@verifywise.local";
 export const REPORT_AUTH_STATE_PATH = "e2e/.auth/risk-inheritance-admin.json";
 
 setup("authenticate as an admin of an organization that has risks", async ({ page }) => {
-  const stdout = execSync(`npx ts-node scripts/seedE2EAdmin.ts ${ORG_ID}`, {
-    cwd: SERVERS_DIR,
-    encoding: "utf-8",
-    env: process.env,
-  });
-  const admin = JSON.parse(stdout.trim().split("\n").pop() || "{}");
+  const admin = seedAdminInOrg(ORG_ID, [`--email=${REPORT_ADMIN_EMAIL}`]);
 
-  await page.goto("/login");
-  await page.waitForLoadState("networkidle");
-  await page.getByPlaceholder("name.surname@companyname.com").fill(admin.email);
-  await page.getByPlaceholder("Enter your password").fill(admin.password);
-  await page.getByRole("button", { name: /sign in/i }).click();
-  await expect(page).toHaveURL(/\/(overview)?$/, { timeout: 15_000 });
+  await loginAs(page, admin.email, admin.password, /\/(overview)?$/);
 
   await page.context().storageState({ path: REPORT_AUTH_STATE_PATH });
 });
