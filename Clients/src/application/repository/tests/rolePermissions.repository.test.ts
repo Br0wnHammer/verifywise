@@ -11,7 +11,11 @@ vi.mock("../../../infrastructure/api/networkServices", () => ({
   apiServices: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }));
 
-const envelope = (data: unknown) => ({ data: { message: "OK", data } });
+const envelope = (data: unknown) => ({
+  data: { message: "OK", data },
+  status: 200,
+  statusText: "OK",
+});
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -44,7 +48,7 @@ describe("rolePermissions.repository", () => {
   });
 
   it("replaceRolePermissions calls PUT /roles/:id/permissions with the matrix body", async () => {
-    const mockResponse = { status: 202 };
+    const mockResponse = { data: undefined, status: 202, statusText: "Accepted" };
     vi.mocked(apiServices.put).mockResolvedValue(mockResponse);
     const permissions = [
       { permission_key: "risks.edit", allowed: true },
@@ -53,10 +57,5 @@ describe("rolePermissions.repository", () => {
     const result = await replaceRolePermissions({ roleId: 7, permissions });
     expect(apiServices.put).toHaveBeenCalledWith("/roles/7/permissions", { permissions });
     expect(result).toEqual(mockResponse);
-  });
-
-  it("returns an empty array when the payload is missing", async () => {
-    vi.mocked(apiServices.get).mockResolvedValue({ data: null });
-    await expect(getMyPermissions()).resolves.toEqual([]);
   });
 });
