@@ -41,13 +41,33 @@ const PARENT_SOURCES: { value: ParentSource; label: string }[] = [
   { value: "vendor_risk", label: "Vendor risk" },
 ];
 
+/** Why a candidate is ranked first: the projects it shares with this risk. */
+export function SameProjectChip({ projects }: { projects: string[] }) {
+  const { t } = useTranslation();
+  if (projects.length === 0) return null;
+  return (
+    <Chip
+      size="small"
+      variant="default"
+      uppercase={false}
+      label={
+        projects.length > 1
+          ? fill(t("Same project: {name} +{count}"), {
+              name: projects[0],
+              count: projects.length - 1,
+            })
+          : fill(t("Same project: {name}"), { name: projects[0] })
+      }
+    />
+  );
+}
+
 export default function LinkRiskForm({ riskId, existingLinks, onClose }: LinkRiskFormProps) {
   const [rawChoice, setRawChoice] = useState<Choice>("related_to");
   const [rawSource, setRawSource] = useState<ParentSource>("risk");
   const [partner, setPartner] = useState<Candidate | null>(null);
   const [error, setError] = useState<string | null>(null);
   const createLink = useCreateRiskLink(riskId);
-  const { t } = useTranslation();
 
   /**
    * `direction: "outgoing"` means this risk is the source of the edge, and the
@@ -251,21 +271,7 @@ export default function LinkRiskForm({ riskId, existingLinks, onClose }: LinkRis
                 sx={{ width: "100%", justifyContent: "space-between" }}
               >
                 <span>{option.risk_name}</span>
-                {shared && shared.length > 0 && (
-                  <Chip
-                    size="small"
-                    variant="default"
-                    uppercase={false}
-                    label={
-                      shared.length > 1
-                        ? fill(t("Same project: {name} +{count}"), {
-                            name: shared[0],
-                            count: shared.length - 1,
-                          })
-                        : fill(t("Same project: {name}"), { name: shared[0] })
-                    }
-                  />
-                )}
+                {shared && <SameProjectChip projects={shared} />}
               </Stack>
             </li>
           );

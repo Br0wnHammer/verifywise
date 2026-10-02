@@ -4,6 +4,8 @@ import {
   createRiskLink,
   getRiskLinks,
   getSharedProjects,
+  getVendorRiskLinks,
+  getVendorRiskSharedProjects,
   recomputeRiskLinks,
   suggestRiskHierarchy,
   updateRiskLinkStatus,
@@ -14,6 +16,7 @@ import {
   RiskLink,
   RiskLinkStatus,
   SharedProjectCandidate,
+  VendorRiskChildCandidate,
 } from "../../domain/interfaces/i.riskLink";
 
 const linksKey = (riskId: number) => ["riskLinks", riskId] as const;
@@ -114,5 +117,63 @@ export function useSharedProjects(riskId: number, enabled: boolean) {
     queryKey: ["riskLinkSharedProjects", riskId],
     queryFn: () => getSharedProjects(riskId),
     enabled: enabled && Number.isFinite(riskId),
+  });
+}
+
+const vendorLinksKey = (vendorRiskId: number) => ["vendorRiskLinks", vendorRiskId] as const;
+
+/** The vendor risk's children. Same one-status-per-query rule as useRiskLinks. */
+export function useVendorRiskLinks(vendorRiskId: number, status?: RiskLinkStatus) {
+  return useQuery<RiskLink[]>({
+    queryKey: [...vendorLinksKey(vendorRiskId), status ?? "default"],
+    queryFn: () => getVendorRiskLinks(vendorRiskId, status),
+    enabled: Number.isFinite(vendorRiskId),
+  });
+}
+
+/**
+ * A vendor-side change is also a change to the child's own list, and the panel
+ * does not know which project risk panels are cached — so every one of them is
+ * invalidated along with this vendor risk's list. Only mounted queries refetch.
+ */
+function useInvalidateVendorLinks(vendorRiskId: number) {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: vendorLinksKey(vendorRiskId) }),
+      queryClient.invalidateQueries({ queryKey: ["riskLinks"] }),
+    ]);
+}
+
+export function useCreateVendorRiskLink(vendorRiskId: number) {
+  const invalidate = useInvalidateVendorLinks(vendorRiskId);
+  return useMutation({
+    mutationFn: (input: CreateRiskLinkInput) => createRiskLink(input),
+    onSettled: invalidate,
+  });
+}
+
+export function useUpdateVendorRiskLinkStatus(vendorRiskId: number) {
+  const invalidate = useInvalidateVendorLinks(vendorRiskId);
+  return useMutation({
+    mutationFn: ({
+      id,
+      status,
+      dismissal,
+    }: {
+      id: number;
+      status: RiskLinkStatus;
+      dismissal?: { dismissReason: DismissReason; dismissNote?: string };
+    }) => updateRiskLinkStatus(id, status, dismissal),
+    onSettled: invalidate,
+  });
+}
+
+/** Ranking data for the vendor panel's picker; outside the link keys, as above. */
+export function useVendorRiskSharedProjects(vendorRiskId: number, enabled: boolean) {
+  return useQuery<VendorRiskChildCandidate[]>({
+    queryKey: ["vendorRiskLinkSharedProjects", vendorRiskId],
+    queryFn: () => getVendorRiskSharedProjects(vendorRiskId),
+    enabled: enabled && Number.isFinite(vendorRiskId),
   });
 }

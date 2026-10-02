@@ -45,6 +45,7 @@ import {
 } from "../../../../application/hooks/useVendorRiskMutations";
 import { useAuth } from "../../../../application/hooks/useAuth";
 import { HistorySidebar } from "../../Common/HistorySidebar";
+import VendorRiskLinksPanel from "../../LinkedRisksPanel/VendorRiskLinksPanel";
 import CustomFieldsSection, { type CustomFieldsSectionHandle } from "../../CustomFieldsSection";
 import { useRequiredCustomFieldsGate } from "../../CustomFieldsSection/RequiredCustomFieldsGate";
 import { useVendorRiskChangeHistory } from "../../../../application/hooks/useVendorRiskChangeHistory";
@@ -638,7 +639,8 @@ const AddNewRisk: React.FC<AddNewRiskProps> = ({
             ? "Update risk details including description, impact assessment, and mitigation plan."
             : "Document and assess a potential risk associated with your vendor. Provide details of the risk, its impact, and your mitigation plan."
         }
-        onSubmit={activeTab === "activity" ? undefined : handleSave}
+        // Neither tab edits the risk: links save on their own, and activity is read-only.
+        onSubmit={activeTab === "activity" || activeTab === "linked-risks" ? undefined : handleSave}
         submitButtonText="Save"
         isSubmitting={isSubmitting || isEditingDisabled || customFieldsGate.blocked}
         maxWidth="1000px"
@@ -652,6 +654,7 @@ const AddNewRisk: React.FC<AddNewRiskProps> = ({
                       { label: "Risk details", value: "details", icon: "ShieldAlert" },
                       { label: "Custom fields", value: "custom-fields", icon: "Settings" },
                       { label: "Activity", value: "activity", icon: "History" },
+                      { label: "Linked risks", value: "linked-risks", icon: "Network" },
                     ]
                   : [
                       { label: "Risk details", value: "details", icon: "ShieldAlert" },
@@ -678,6 +681,9 @@ const AddNewRisk: React.FC<AddNewRiskProps> = ({
               entityType="vendor_risk"
               entityId={existingRisk.id}
             />
+          )}
+          {activeTab === "linked-risks" && existingRisk?.id && (
+            <VendorRiskLinksPanel vendorRiskId={existingRisk.id} />
           )}
         </TabContext>
       </StandardModal>

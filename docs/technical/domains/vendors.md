@@ -277,6 +277,26 @@ Vendor risks support soft delete:
 - Risk hidden from default queries
 - Can be restored or permanently deleted
 
+### Linked risks
+
+A saved vendor risk has a **Linked risks** tab in its edit modal
+(`components/LinkedRisksPanel/VendorRiskLinksPanel.tsx`). It lists the project
+risks that inherit from the vendor risk — value-chain inheritance, described in
+[Risk Management](./risk-management.md#value-chain-inheritance). A vendor risk is
+only ever a parent, so the tab has one group ("Child risks") and one action:
+link a project risk as a child. The picker ranks the project risks in the
+vendor's projects first, with a "Same project" chip.
+
+Suggested children come from the hierarchy pass, which an Admin starts from a
+project risk's panel. They are confirmed or dismissed here with the same
+actions and dismissal reasons as on the project side. When the vendor risk's
+`risk_level` changes, each child is flagged "Parent level changed" on its own
+panel; the vendor tab does not show that flag.
+
+Reads use `GET /api/riskLinks/vendor-risks/:vendorRiskId` and
+`.../shared-projects`; writes go through the existing `POST /api/riskLinks` and
+`PATCH /api/riskLinks/:id`.
+
 ## Vendor Risk Suggestions
 
 `GET /vendors/:id/riskSuggestions` is a **read-only report**. For one vendor it reads the four
@@ -350,7 +370,8 @@ All vendor changes are tracked:
 | Component | Purpose |
 |-----------|---------|
 | `AddNewVendor` | Create/edit vendor modal |
-| `AddNewRisk` | Create/edit risk modal |
+| `AddNewRisk` | Create/edit risk modal (Risk details, Custom fields, Activity, Linked risks) |
+| `VendorRiskLinksPanel` | The Linked risks tab: project risks that inherit from this vendor risk |
 | `RiskTable` | Display vendor risks |
 | `TableWithPlaceholder` | Main vendor list |
 | `GroupedTableView` | Grouped display |

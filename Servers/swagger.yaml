@@ -10341,6 +10341,34 @@ paths:
         -
           bearerAuth: []
       description: 'Requires role: Admin or SuperAdmin'
+  '/riskLinks/vendor-risks/{vendorRiskId}':
+    get:
+      summary: 'Get Vendor Risk Links'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorRiskLinks
+      security:
+        -
+          bearerAuth: []
+  '/riskLinks/vendor-risks/{vendorRiskId}/shared-projects':
+    get:
+      summary: 'Get Vendor Risk Shared Projects'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorRiskSharedProjects
+      security:
+        -
+          bearerAuth: []
   '/riskLinks/{riskId}':
     get:
       summary: 'Get Risk Links'

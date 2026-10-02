@@ -72,6 +72,15 @@ export interface SharedProjectCandidate {
   projects: string[];
 }
 
+/**
+ * A project risk in one of the vendor's projects. Ranks the vendor panel's child
+ * picker; like SharedProjectCandidate, it never removes anyone from the list.
+ */
+export interface VendorRiskChildCandidate {
+  id: number;
+  projects: string[];
+}
+
 /** `${entityType}:${id}` — stable across the three risk tables, which share an id space. */
 export type RiskGraphNodeKey = string;
 

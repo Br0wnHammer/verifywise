@@ -9165,6 +9165,16 @@ export const translations: Record<string, Record<string, string>> = {
     "Links appear as risks are saved, or after an administrator runs a scan.":
       "Verknüpfungen erscheinen, wenn Risiken gespeichert werden oder nachdem ein Administrator einen Scan ausgeführt hat.",
     "Failed to load linked risks.": "Verknüpfte Risiken konnten nicht geladen werden.",
+    // Vendor risk Linked risks tab
+    "Link a project risk": "Projektrisiko verknüpfen",
+    "No project risks inherit from this vendor risk yet.":
+      "Noch erben keine Projektrisiken von diesem Anbieterrisiko.",
+    "Link a project risk that this vendor risk applies to. Suggestions from Suggest hierarchy appear here too.":
+      "Verknüpfen Sie ein Projektrisiko, für das dieses Anbieterrisiko gilt. Vorschläge aus „Hierarchie vorschlagen“ erscheinen ebenfalls hier.",
+    "When the level of this risk changes, each child is flagged for review.":
+      "Ändert sich die Stufe dieses Risikos, wird jedes untergeordnete Risiko zur Prüfung markiert.",
+    "A project risk can have only one parent, and a risk with child risks of its own cannot become a child.":
+      "Ein Projektrisiko kann nur ein übergeordnetes Risiko haben, und ein Risiko mit eigenen untergeordneten Risiken kann nicht selbst untergeordnet werden.",
     "Mark reviewed": "Als geprüft markieren",
     "One of these risks no longer exists": "Eines dieser Risiken existiert nicht mehr",
     "Failed to update the link": "Die Verknüpfung konnte nicht aktualisiert werden",
@@ -18616,6 +18626,16 @@ export const translations: Record<string, Record<string, string>> = {
     "Links appear as risks are saved, or after an administrator runs a scan.":
       "Les liens apparaissent à l'enregistrement des risques ou après qu'un administrateur a lancé une analyse.",
     "Failed to load linked risks.": "Impossible de charger les risques liés.",
+    // Vendor risk Linked risks tab
+    "Link a project risk": "Lier un risque de projet",
+    "No project risks inherit from this vendor risk yet.":
+      "Aucun risque de projet n'hérite encore de ce risque fournisseur.",
+    "Link a project risk that this vendor risk applies to. Suggestions from Suggest hierarchy appear here too.":
+      "Liez un risque de projet auquel ce risque fournisseur s'applique. Les suggestions de « Suggérer une hiérarchie » apparaissent aussi ici.",
+    "When the level of this risk changes, each child is flagged for review.":
+      "Lorsque le niveau de ce risque change, chaque risque enfant est signalé pour révision.",
+    "A project risk can have only one parent, and a risk with child risks of its own cannot become a child.":
+      "Un risque de projet ne peut avoir qu'un seul parent, et un risque qui a ses propres risques enfants ne peut pas devenir enfant.",
     "Mark reviewed": "Marquer comme examiné",
     "One of these risks no longer exists": "L'un de ces risques n'existe plus",
     "Failed to update the link": "Impossible de mettre à jour le lien",
@@ -27984,6 +28004,16 @@ export const translations: Record<string, Record<string, string>> = {
     "Links appear as risks are saved, or after an administrator runs a scan.":
       "Los vínculos aparecen al guardar los riesgos o cuando un administrador ejecuta un análisis.",
     "Failed to load linked risks.": "No se pudieron cargar los riesgos vinculados.",
+    // Vendor risk Linked risks tab
+    "Link a project risk": "Vincular un riesgo del proyecto",
+    "No project risks inherit from this vendor risk yet.":
+      "Aún no hay riesgos del proyecto que hereden de este riesgo del proveedor.",
+    "Link a project risk that this vendor risk applies to. Suggestions from Suggest hierarchy appear here too.":
+      "Vincula un riesgo del proyecto al que se aplique este riesgo del proveedor. Las sugerencias de «Sugerir jerarquía» también aparecen aquí.",
+    "When the level of this risk changes, each child is flagged for review.":
+      "Cuando cambia el nivel de este riesgo, cada riesgo dependiente se marca para revisión.",
+    "A project risk can have only one parent, and a risk with child risks of its own cannot become a child.":
+      "Un riesgo del proyecto solo puede tener un riesgo principal, y un riesgo con riesgos dependientes propios no puede convertirse en dependiente.",
     "Mark reviewed": "Marcar como revisado",
     "One of these risks no longer exists": "Uno de estos riesgos ya no existe",
     "Failed to update the link": "No se pudo actualizar el vínculo",

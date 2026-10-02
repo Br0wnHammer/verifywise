@@ -768,6 +768,99 @@ export async function getRiskLinksForRiskQuery(
   }));
 }
 
+/**
+ * The vendor side of value-chain inheritance: every project risk that inherits
+ * from one vendor risk. A vendor risk is only ever a parent (the child column
+ * is always a project risk), so every row here is an `inherits_from` edge and
+ * the related risk is the child.
+ *
+ * Same R7 rule as getRiskLinksForRiskQuery: a soft-deleted child drops out of
+ * the list, and a soft-deleted subject returns nothing.
+ */
+export async function getRiskLinksForVendorRiskQuery(
+  organizationId: number,
+  vendorRiskId: number,
+  statuses: RiskLinkStatus[],
+): Promise<RiskLinkWithRelated[]> {
+  const rows = await sequelize.query(
+    `SELECT l.*,
+            child.id AS related_id,
+            'risk' AS related_entity_type,
+            child.risk_name AS related_risk_name,
+            child.risk_level_autocalculated::text AS related_risk_level,
+            child.risk_owner AS related_risk_owner
+       FROM risk_links l
+       JOIN risks child
+         ON child.id = l.source_risk_id
+        AND child.organization_id = :organizationId
+        AND child.is_deleted = false
+       JOIN vendorrisks subject
+         ON subject.id = l.target_vendor_risk_id
+        AND subject.organization_id = :organizationId
+        AND subject.is_deleted = false
+      WHERE l.organization_id = :organizationId
+        AND l.target_vendor_risk_id = :vendorRiskId
+        AND l.status IN (:statuses)
+      ORDER BY l.score DESC, child.id ASC`,
+    { replacements: { organizationId, vendorRiskId, statuses }, type: QueryTypes.SELECT },
+  );
+
+  return (rows as any[]).map((row) => ({
+    ...toLinkRow(row),
+    related_id: row.related_id,
+    related_entity_type: row.related_entity_type,
+    related_risk_name: row.related_risk_name ?? null,
+    related_risk_level: row.related_risk_level ?? null,
+    related_risk_owner: row.related_risk_owner ?? null,
+  }));
+}
+
+/** A project risk that sits in a project the vendor is attached to. */
+export interface VendorRiskChildCandidate {
+  id: number;
+  projects: string[];
+}
+
+/**
+ * Ranking data for the vendor panel's link picker: the project risks in the
+ * projects this vendor serves, with those project titles. The mirror of
+ * getSharedProjectCandidatesQuery, which ranks vendor parents for a project
+ * risk over the same `vendors_projects` join.
+ */
+export async function getVendorRiskChildCandidatesQuery(
+  organizationId: number,
+  vendorRiskId: number,
+): Promise<VendorRiskChildCandidate[]> {
+  const rows = await sequelize.query(
+    `SELECT DISTINCT child.id AS id, p.project_title AS project_title
+       FROM vendorrisks vr
+       JOIN vendors_projects vp
+         ON vp.vendor_id = vr.vendor_id
+        AND vp.organization_id = :organizationId
+       JOIN projects_risks pr
+         ON pr.project_id = vp.project_id
+        AND pr.organization_id = :organizationId
+       JOIN risks child
+         ON child.id = pr.risk_id
+        AND child.organization_id = :organizationId
+        AND child.is_deleted = false
+       JOIN projects p ON p.id = vp.project_id
+      WHERE vr.id = :vendorRiskId
+        AND vr.organization_id = :organizationId
+        AND vr.is_deleted = false
+      ORDER BY child.id, p.project_title`,
+    { replacements: { organizationId, vendorRiskId }, type: QueryTypes.SELECT },
+  );
+
+  const grouped = new Map<number, VendorRiskChildCandidate>();
+  for (const row of rows as { id: number; project_title: string }[]) {
+    const entry = grouped.get(row.id);
+    if (entry) entry.projects.push(row.project_title);
+    else grouped.set(row.id, { id: row.id, projects: [row.project_title] });
+  }
+  return [...grouped.values()];
+}
+
 /** Hard ceiling on edges returned to the graph page. */
 export const RISK_GRAPH_EDGE_CAP = 500;
 

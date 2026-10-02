@@ -579,6 +579,14 @@ are created either as confirmed user links or as agent suggestions and appear
 in the project risk's Parent risk
 group with a label identifying the model or vendor parent.
 
+The vendor side has its own panel: the vendor risk modal's **Linked risks**
+tab lists the project risks that inherit from it
+(`GET /api/riskLinks/vendor-risks/:vendorRiskId`) and links new children through
+the same `POST /api/riskLinks`. That read endpoint never derives direction by
+comparing ids. `risks` and `vendorrisks` have separate sequences, so a child can
+carry the vendor risk's own id; every link on that list is `incoming` by
+construction.
+
 Since C6 the direction pass (`POST /api/riskLinks/suggest-hierarchy`) also
 proposes vendor and model risks as parents, when they share a project with a
 risk in the cluster. They arrive as `suggested` / `agent` rows and are
@@ -669,6 +677,8 @@ risk from silently ending up with no links.
 | POST | `/api/riskLinks/suggest-hierarchy` | Admin | Queue one direction-agent pass per connected component. |
 | GET | `/api/riskLinks/duplicates` | any authenticated | Duplicate candidate report. Ranked pairs with reasons; writes nothing. |
 | GET | `/api/riskLinks/coverage` | any authenticated | Control coverage gap report. Three states; writes nothing. |
+| GET | `/api/riskLinks/vendor-risks/:vendorRiskId` | any authenticated | The project risks that inherit from a vendor risk, in the same shape as `GET /:riskId` with every link `incoming`. Same `?status=` filter. |
+| GET | `/api/riskLinks/vendor-risks/:vendorRiskId/shared-projects` | any authenticated | Project risks in the vendor's projects with those project titles. Ranks the vendor panel's picker; removes nobody from it. |
 
 There is no delete endpoint: a hard delete would be recreated by the next
 recompute, so dismissal is the durable way to remove a link.

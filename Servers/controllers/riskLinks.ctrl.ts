@@ -23,7 +23,9 @@ import {
   getRiskGraphQuery,
   getRiskLinkByIdQuery,
   getRiskLinksForRiskQuery,
+  getRiskLinksForVendorRiskQuery,
   getSharedProjectCandidatesQuery,
+  getVendorRiskChildCandidatesQuery,
   RISK_GRAPH_EDGE_CAP,
   HierarchyParent,
   RiskLinkWithRelated,
@@ -89,8 +91,12 @@ const hierarchyParentFromLink = (link: {
 /**
  * Rewrite a stored edge from the caller's point of view. The store is canonical
  * (smaller id first); the caller only cares which risk is the *other* one.
+ *
+ * `riskId` is null when the subject is a vendor risk. That subject is never the
+ * child, so every inheritance edge is incoming — and comparing its id against
+ * `source_risk_id` would be wrong, since the two tables have separate sequences.
  */
-const toResponse = (link: RiskLinkWithRelated, riskId: number) => ({
+const toResponse = (link: RiskLinkWithRelated, riskId: number | null) => ({
   id: link.id,
   status: link.status,
   source: link.source,
@@ -247,6 +253,100 @@ export async function getRiskLinks(req: Request, res: Response): Promise<any> {
       eventType: "Read",
       description: "failed to fetch risk links",
       functionName: "getRiskLinks",
+      fileName: FILE_NAME,
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * The vendor risk's side of value-chain inheritance: the project risks that
+ * inherit from it. Same status filter and response shape as getRiskLinks, so
+ * the client renders both lists with one row component.
+ */
+export async function getVendorRiskLinks(req: Request, res: Response): Promise<any> {
+  logProcessing({
+    description: "starting getVendorRiskLinks",
+    functionName: "getVendorRiskLinks",
+    fileName: FILE_NAME,
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+
+  try {
+    const vendorRiskId = toId(req.params.vendorRiskId);
+    if (isNaN(vendorRiskId)) {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid vendor risk ID")));
+    }
+
+    const requested = req.query.status;
+    if (requested !== undefined && !isRiskLinkStatus(requested)) {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid status filter")));
+    }
+    const statuses = requested ? [requested] : DEFAULT_STATUSES;
+
+    const links = await getRiskLinksForVendorRiskQuery(req.organizationId!, vendorRiskId, statuses);
+
+    logSuccess({
+      eventType: "Read",
+      description: `fetched ${links.length} links for vendor risk ${vendorRiskId}`,
+      functionName: "getVendorRiskLinks",
+      fileName: FILE_NAME,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+
+    return res.status(200).json(STATUS_CODE[200](links.map((link) => toResponse(link, null))));
+  } catch (error) {
+    logFailure({
+      eventType: "Read",
+      description: "failed to fetch vendor risk links",
+      functionName: "getVendorRiskLinks",
+      fileName: FILE_NAME,
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/** Project risks in the vendor's projects, for ranking the vendor panel's picker. */
+export async function getVendorRiskSharedProjects(req: Request, res: Response): Promise<any> {
+  logProcessing({
+    description: "starting getVendorRiskSharedProjects",
+    functionName: "getVendorRiskSharedProjects",
+    fileName: FILE_NAME,
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+
+  try {
+    const vendorRiskId = toId(req.params.vendorRiskId);
+    if (isNaN(vendorRiskId)) {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid vendor risk ID")));
+    }
+
+    const candidates = await getVendorRiskChildCandidatesQuery(req.organizationId!, vendorRiskId);
+
+    logSuccess({
+      eventType: "Read",
+      description: `fetched ${candidates.length} child candidates for vendor risk ${vendorRiskId}`,
+      functionName: "getVendorRiskSharedProjects",
+      fileName: FILE_NAME,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+
+    return res.status(200).json(STATUS_CODE[200](candidates));
+  } catch (error) {
+    logFailure({
+      eventType: "Read",
+      description: "failed to fetch vendor risk child candidates",
+      functionName: "getVendorRiskSharedProjects",
       fileName: FILE_NAME,
       error: error as Error,
       userId: req.userId!,

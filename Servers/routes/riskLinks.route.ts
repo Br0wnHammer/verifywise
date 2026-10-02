@@ -12,6 +12,8 @@ import {
   getRiskGraph,
   getRiskLinks,
   getSharedProjects,
+  getVendorRiskLinks,
+  getVendorRiskSharedProjects,
   recomputeAllRiskLinks,
   suggestRiskHierarchy,
   updateRiskLinkStatus,
@@ -52,6 +54,15 @@ router.get(
 );
 // Same param-route trap as /duplicates: /coverage must sit above /:riskId.
 router.get("/coverage", authenticateJWT, authorize(["Admin", "SuperAdmin"]), getControlCoverage);
+// A vendor risk's children. Two segments, so /:riskId cannot match it, but kept
+// above the param routes with the other literal prefixes. Readable by any
+// authenticated user, like GET /:riskId and GET /api/vendorRisks/:id.
+router.get("/vendor-risks/:vendorRiskId", authenticateJWT, getVendorRiskLinks);
+router.get(
+  "/vendor-risks/:vendorRiskId/shared-projects",
+  authenticateJWT,
+  getVendorRiskSharedProjects,
+);
 router.get("/:riskId", authenticateJWT, getRiskLinks);
 router.get("/:riskId/shared-projects", authenticateJWT, getSharedProjects);
 // Role matrix: Admin full, Editor write, Reviewer approve (status), Auditor

@@ -10,6 +10,7 @@ import {
   RiskLink,
   RiskLinkStatus,
   SharedProjectCandidate,
+  VendorRiskChildCandidate,
 } from "../../domain/interfaces/i.riskLink";
 
 function extractData<T>(response: { data: { data: T } }): T {
@@ -37,6 +38,36 @@ export async function getRiskLinks(riskId: number, status?: RiskLinkStatus): Pro
     return extractData<RiskLink[]>(response);
   } catch (error: any) {
     throw toAPIError(error, "Failed to fetch linked risks");
+  }
+}
+
+/** The project risks that inherit from one vendor risk. Same shape as getRiskLinks. */
+export async function getVendorRiskLinks(
+  vendorRiskId: number,
+  status?: RiskLinkStatus,
+): Promise<RiskLink[]> {
+  try {
+    const query = status ? `?status=${status}` : "";
+    const response = await apiServices.get<{ message: string; data: RiskLink[] }>(
+      `/riskLinks/vendor-risks/${vendorRiskId}${query}`,
+    );
+    return extractData<RiskLink[]>(response);
+  } catch (error: any) {
+    throw toAPIError(error, "Failed to fetch linked risks");
+  }
+}
+
+export async function getVendorRiskSharedProjects(
+  vendorRiskId: number,
+): Promise<VendorRiskChildCandidate[]> {
+  try {
+    const response = await apiServices.get<{
+      message: string;
+      data: VendorRiskChildCandidate[];
+    }>(`/riskLinks/vendor-risks/${vendorRiskId}/shared-projects`);
+    return extractData<VendorRiskChildCandidate[]>(response);
+  } catch (error: any) {
+    throw toAPIError(error, "Failed to fetch shared projects");
   }
 }
 
