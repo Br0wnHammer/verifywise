@@ -50,13 +50,25 @@ async function openReports(page: Page) {
   expect(duplicatesResponse.status()).toBe(200);
   expect(coverageResponse.status()).toBe(200);
 
-  await page.getByText("Duplicate candidates").click();
-  await page.getByText("Control coverage").click();
+  // Exact: the sections' empty states and hints mention both phrases too.
+  await page.getByText("Duplicate candidates", { exact: true }).click();
+  await page.getByText("Control coverage", { exact: true }).click();
 
   return {
     duplicates: (await duplicatesResponse.json()).data as DuplicateReport,
     coverage: (await coverageResponse.json()).data as CoverageReport,
   };
+}
+
+/**
+ * Rows of the coverage section only. A gap risk that is also half of a
+ * duplicate pair has its name in the duplicate table too, which comes first.
+ */
+function coverageRows(page: Page) {
+  return page
+    .locator(".MuiAccordion-root")
+    .filter({ has: page.getByText("Control coverage", { exact: true }) })
+    .getByRole("row");
 }
 
 test("the duplicate report renders the real scan, score and evidence", async ({ page }) => {
@@ -139,7 +151,7 @@ test("the coverage report separates gaps from unmappable risks and counts them h
     (g) => g.projects.some((p) => p.has_framework) && g.projects.some((p) => !p.has_framework),
   );
   if (mixed) {
-    const row = page.getByRole("row").filter({ hasText: mixed.risk_name }).first();
+    const row = coverageRows(page).filter({ hasText: mixed.risk_name }).first();
     const bare = mixed.projects.find((p) => !p.has_framework)!;
     await expect(row).toContainText(`${bare.name} (no framework)`);
   }
@@ -152,7 +164,7 @@ test("risk level chips pick up a real variant colour instead of falling through 
   const levelled = coverage.gaps.find((g) => g.risk_level);
   test.skip(!levelled, "No gap row carries a risk level");
 
-  const row = page.getByRole("row").filter({ hasText: levelled!.risk_name }).first();
+  const row = coverageRows(page).filter({ hasText: levelled!.risk_name }).first();
   const chip = row.getByText(levelled!.risk_level!, { exact: true }).first();
   await expect(chip).toBeVisible();
 
