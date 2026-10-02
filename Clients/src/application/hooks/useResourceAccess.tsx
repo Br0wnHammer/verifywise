@@ -56,10 +56,9 @@ export function useResourceAccess() {
 
   const canAccess = useCallback(
     (resource: keyof typeof allowedRoles | string, action: string): boolean => {
-      const allowed =
-        allowedRoles[resource as keyof typeof allowedRoles]?.[
-          action as keyof (typeof allowedRoles)[keyof typeof allowedRoles]
-        ];
+      const allowed = (allowedRoles as Record<string, Record<string, string[]>>)[resource]?.[
+        action
+      ];
       if (!allowed) return false;
 
       // SuperAdmin is not a roles-table row; keep it on the static matrix.
