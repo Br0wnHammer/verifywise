@@ -26748,10 +26748,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Edit role": "Editar rol",
     "Delete role": "Eliminar rol",
     "What is this role for?": "¿Para qué sirve este rol?",
-    "You don't have permission to manage roles.":
-      "No tienes permiso para administrar roles.",
-    "Manage custom roles and their permissions":
-      "Administrar roles personalizados y sus permisos",
+    "You don't have permission to manage roles.": "No tienes permiso para administrar roles.",
+    "Manage custom roles and their permissions": "Administrar roles personalizados y sus permisos",
 
     "Configure Microsoft Entra ID single sign-on":
       "Configura el inicio de sesión único de Microsoft Entra ID",
