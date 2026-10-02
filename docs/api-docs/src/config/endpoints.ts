@@ -9541,6 +9541,18 @@ export const risklinksEndpoints: Endpoint[] = [
   },
   {
     method: 'POST',
+    path: '/riskLinks/vendor-risks/recompute',
+    summary: "Recompute All Vendor Risk Links",
+    description: "Requires role: Admin or SuperAdmin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'POST',
     path: '/riskLinks/vendor-risks/{vendorRiskId}/suggest-hierarchy',
     summary: "Suggest Vendor Risk Hierarchy",
     description: "Requires role: Admin or SuperAdmin",

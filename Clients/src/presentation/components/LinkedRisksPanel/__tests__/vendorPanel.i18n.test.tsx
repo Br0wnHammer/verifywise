@@ -11,6 +11,7 @@ import { renderWithProviders } from "../../../../test/renderWithProviders";
 import {
   LANGS,
   expectNoUntranslatedText,
+  plain,
   resetAudit,
   setLanguage,
   tr,
@@ -27,6 +28,7 @@ vi.mock("../../../../application/hooks/useRiskLinks", () => ({
   useCreateVendorRiskLink: () => ({ mutate: vi.fn(), isPending: false }),
   useVendorRiskSharedProjects: () => ({ data: [{ id: 12, projects: ["Lending"] }] }),
   useSuggestVendorRiskHierarchy: () => ({ mutate: vi.fn(), isPending: false }),
+  useRecomputeVendorRiskLinks: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("../../../../application/hooks/useIsAdmin", () => ({
@@ -37,10 +39,24 @@ vi.mock("../../../../application/repository/projectRisk.repository", () => ({
   getAllProjectRisks: (...args: unknown[]) => mockGetAllProjectRisks(...args),
 }));
 
+vi.mock("../../../../application/repository/vendorRisk.repository", () => ({
+  getAllVendorRisks: async () => ({
+    data: [{ risk_id: 20, risk_description: "Other vendor risk", vendor_name: "Globex" }],
+  }),
+}));
+
 import VendorRiskLinksPanel from "../VendorRiskLinksPanel";
 
 /** Names the fixtures put on screen; the user's own data is never translated. */
-const FIXTURES = new Set(["Loan model bias", "Shared risk", "Lending"]);
+const FIXTURES = new Set([
+  "Loan model bias",
+  "Shared risk",
+  "Lending",
+  "Customer records exposed",
+  "Acme Cloud",
+  "Other vendor risk",
+  "Globex",
+]);
 
 const child = (overrides: Partial<RiskLink> = {}): RiskLink => ({
   id: 1,
@@ -109,17 +125,14 @@ describe.each(LANGS)("vendor risk linked risks tab in %s", (lang) => {
     mockUseVendorRiskLinks.mockReturnValue(result([]));
     renderWithProviders(<VendorRiskLinksPanel vendorRiskId={7} />);
 
-    expect(
-      await screen.findByText(tr(lang, "No project risks inherit from this vendor risk yet.")),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText(
-        tr(
-          lang,
-          "Link a project risk that this vendor risk applies to. Suggestions from Suggest children appear here too.",
-        ),
-      ),
-    ).toBeInTheDocument();
+    for (const key of [
+      "No linked risks yet.",
+      "Link a project risk that this vendor risk applies to, or relate another vendor risk. Suggestions appear here too.",
+      "Scan for related vendor risks",
+      "Relate a vendor risk",
+    ]) {
+      expect((await screen.findAllByText(tr(lang, key))).length).toBeGreaterThan(0);
+    }
 
     expectNoUntranslatedText(lang, FIXTURES);
   });
@@ -145,6 +158,76 @@ describe.each(LANGS)("vendor risk linked risks tab in %s", (lang) => {
     expect(
       await within(listbox).findByText(tr(lang, "Same project: {name}", { name: "Lending" })),
     ).toBeInTheDocument();
+
+    expectNoUntranslatedText(lang, FIXTURES);
+  });
+
+  it("translates the related group, its caption and the signal labels", async () => {
+    mockUseVendorRiskLinks.mockReturnValue(
+      result([
+        child({
+          id: 50,
+          source: "derived",
+          relationType: "related_to",
+          score: 6,
+          reasons: [
+            { signal: "similar_wording", weight: 3, detail: "customer, exposed, records" },
+            { signal: "same_vendor", weight: 1 },
+            { signal: "shared_framework", weight: 1, detail: "EU AI Act" },
+            { signal: "shared_use_case", weight: 1, detail: "Lending" },
+          ],
+          relatedRisk: {
+            id: 12,
+            entityType: "vendor_risk",
+            name: "Customer records exposed",
+            riskLevel: null,
+            ownerId: null,
+            vendorName: "Acme Cloud",
+          },
+        }),
+      ]),
+    );
+    renderWithProviders(<VendorRiskLinksPanel vendorRiskId={7} />);
+
+    for (const key of [
+      "Related vendor risks",
+      "Vendor risks that describe the same exposure, at this vendor or another one.",
+    ]) {
+      expect(await screen.findByText(tr(lang, key))).toBeInTheDocument();
+    }
+
+    // The tooltip title is also the button's accessible name (see i18n.test.tsx).
+    // Wording, framework and use case details are the user's own text.
+    const details = plain(
+      [
+        tr(lang, "Score {score}", { score: 6 }),
+        `${tr(lang, "Similar wording")}: customer, exposed, records`,
+        tr(lang, "Same vendor"),
+        `${tr(lang, "Shared framework")}: EU AI Act`,
+        `${tr(lang, "Shared use case")}: Lending`,
+      ].join(" · "),
+    );
+    expect(await screen.findByLabelText(details)).toBeInTheDocument();
+
+    expectNoUntranslatedText(lang, FIXTURES);
+  });
+
+  it("translates the relate form and its hint", async () => {
+    mockUseVendorRiskLinks.mockReturnValue(result([]));
+    renderWithProviders(<VendorRiskLinksPanel vendorRiskId={7} />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: tr(lang, "Relate a vendor risk") }),
+    );
+    expect(
+      await screen.findByText(
+        tr(
+          lang,
+          "Related vendor risks describe the same exposure, at this vendor or another one. Neither inherits from the other.",
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(tr(lang, "Search vendor risks"))).toBeInTheDocument();
 
     expectNoUntranslatedText(lang, FIXTURES);
   });

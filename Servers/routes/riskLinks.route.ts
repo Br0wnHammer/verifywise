@@ -18,6 +18,7 @@ import {
   getVendorRiskLinks,
   getVendorRiskSharedProjects,
   recomputeAllRiskLinks,
+  recomputeAllVendorRiskLinks,
   suggestRiskHierarchy,
   suggestVendorRiskHierarchy,
   updateRiskLinkStatus,
@@ -72,6 +73,14 @@ router.get(
   "/vendor-risks/:vendorRiskId/shared-projects",
   authenticateJWT,
   getVendorRiskSharedProjects,
+);
+// Backfill of related vendor risks, admin-only like /recompute. Two literal
+// segments, so neither /vendor-risks/:vendorRiskId (GET) nor /:id matches it.
+router.post(
+  "/vendor-risks/recompute",
+  authenticateJWT,
+  authorize(["Admin", "SuperAdmin"]),
+  recomputeAllVendorRiskLinks,
 );
 // The hierarchy pass scoped to one vendor risk. Admin-only like the org-wide
 // pass: it spends the org's LLM key.

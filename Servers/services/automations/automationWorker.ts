@@ -29,6 +29,7 @@ import { runEvidenceFreshnessSweepAllOrgs } from "./actions/evidenceFreshnessSwe
 import { runDeadlineEscalationSweepAllOrgs } from "./actions/deadlineEscalationSweep";
 import { runStaleInheritanceNotifySweepAllOrgs } from "./actions/staleInheritanceNotifySweep";
 import { recomputeRiskLinks } from "../riskLinks/recompute";
+import { recomputeVendorRiskLinks } from "../riskLinks/vendorRelated";
 import { suggestDirectionForComponent } from "../riskLinks/direction/direction.service";
 import { runFileExpirySweepAllOrgs } from "./actions/fileExpirySweep";
 // AI Gateway budget/risk jobs — call AIGateway HTTP endpoints via internal API
@@ -701,6 +702,12 @@ export const createAutomationWorker = () => {
             riskId: number;
           };
           await recomputeRiskLinks(organizationId, riskId);
+        } else if (name === "vendor_risk_link_recompute") {
+          const { organizationId, vendorRiskId } = job.data as {
+            organizationId: number;
+            vendorRiskId: number;
+          };
+          await recomputeVendorRiskLinks(organizationId, vendorRiskId);
         } else if (name === "risk_link_direction") {
           const { organizationId, riskIds } = job.data as {
             organizationId: number;

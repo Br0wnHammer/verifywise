@@ -5,6 +5,7 @@ import { CustomizableButton } from "../button/customizable-button";
 import { EmptyState } from "../EmptyState";
 import { textStyles } from "../../themes/typography";
 import {
+  useRecomputeVendorRiskLinks,
   useSuggestVendorRiskHierarchy,
   useUpdateVendorRiskLinkStatus,
   useVendorRiskLinks,
@@ -14,23 +15,43 @@ import { useTranslation } from "../../../application/hooks/useTranslation";
 import { fill } from "../../../i18n/fill";
 import { DismissReason, RiskLink, RiskLinkStatus } from "../../../domain/interfaces/i.riskLink";
 import LinkChildRiskForm from "./LinkChildRiskForm";
+import RelateVendorRiskForm from "./RelateVendorRiskForm";
 import LinkRow from "./LinkRow";
-import { fingerprint, GROUPING_WINDOW_MS, PendingJob, POLL_INTERVAL_MS } from "./polling";
+import {
+  fingerprint,
+  GROUPING_WINDOW_MS,
+  PendingJob,
+  POLL_INTERVAL_MS,
+  SCAN_WINDOW_MS,
+} from "./polling";
 
 interface VendorRiskLinksPanelProps {
   vendorRiskId: number;
 }
 
+const GROUPS: { title: string; caption: string; match: (link: RiskLink) => boolean }[] = [
+  {
+    title: "Child risks",
+    caption: "When the level of this risk changes, each child is flagged for review.",
+    match: (l) => l.relationType === "inherits_from",
+  },
+  {
+    title: "Related vendor risks",
+    caption: "Vendor risks that describe the same exposure, at this vendor or another one.",
+    match: (l) => l.relationType === "related_to",
+  },
+];
+
 /**
- * The vendor risk's side of value-chain inheritance: the project risks that
- * inherit from it. A vendor risk is only ever a parent, so there is one group
- * and one way to add to it by hand. There is no scan — derived scoring runs
- * between project risks only. Suggestions come from the hierarchy pass, which
- * an administrator can run here for just this vendor risk's use cases.
+ * Everything linked to one vendor risk. Two kinds of link, one group each:
+ * the project risks that inherit from it (a vendor risk is only ever a parent)
+ * and the vendor risks related to it. Children come from the hierarchy pass
+ * or by hand; related vendor risks are scored as vendor risks are saved, or by
+ * an administrator's scan, or by hand.
  */
 export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPanelProps) {
   const [showDismissed, setShowDismissed] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<"child" | "related" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<RiskLink | null>(null);
   const [pending, setPending] = useState<PendingJob | null>(null);
@@ -47,8 +68,9 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
     showDismissed ? "dismissed" : undefined,
     pending ? POLL_INTERVAL_MS : false,
   );
-  const updateStatus = useUpdateVendorRiskLinkStatus(vendorRiskId);
+  const updateStatus = useUpdateVendorRiskLinkStatus();
   const suggestChildren = useSuggestVendorRiskHierarchy(vendorRiskId);
+  const scan = useRecomputeVendorRiskLinks();
 
   // The same bounded wait as the project risk panel: stop when the worker's
   // result lands, or say so when the window closes first.
@@ -67,6 +89,12 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
     }, pending.window);
     return () => clearTimeout(timer);
   }, [pending]);
+
+  const watchForResult = (timedOut: string, window: number) =>
+    setPending({ before: fingerprint(links), dismissedView: showDismissed, timedOut, window });
+
+  const toggleForm = (which: "child" | "related") =>
+    setForm((open) => (open === which ? null : which));
 
   const handleSuggestChildren = () => {
     setNotice(null);
@@ -91,15 +119,31 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
                 })}`
               : ""),
         );
-        setPending({
-          before: fingerprint(links),
-          dismissedView: showDismissed,
-          timedOut: "Still grouping. Reopen this tab to check for new suggestions.",
-          window: GROUPING_WINDOW_MS,
-        });
+        watchForResult(
+          "Still grouping. Reopen this tab to check for new suggestions.",
+          GROUPING_WINDOW_MS,
+        );
       },
       onError: (error: any) =>
         setNotice(error?.message || "Failed to start the hierarchy suggestions"),
+    });
+  };
+
+  const handleScan = () => {
+    setNotice(null);
+    scan.mutate(undefined, {
+      onSuccess: (result) => {
+        setNotice(
+          fill(
+            t(
+              "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.",
+            ),
+            { count: result.enqueued },
+          ),
+        );
+        watchForResult("Scan finished. No related vendor risks found.", SCAN_WINDOW_MS);
+      },
+      onError: (error: any) => setNotice(error?.message || "Failed to start the scan"),
     });
   };
 
@@ -111,7 +155,7 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
     );
 
   // Same rule as the project risk panel: dismissing a suggestion asks why,
-  // un-linking a confirmed child does not.
+  // un-linking a confirmed link does not.
   const handleAction = (link: RiskLink, next: RiskLinkStatus) => {
     setNotice(null);
     if (next === "dismissed" && link.status === "suggested") {
@@ -149,16 +193,18 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
     );
   }
 
+  // Dismissed rows are not the active list the forms exclude; see LinkedRisksPanel.
+  const activeLinks = showDismissed ? [] : links;
+
   return (
     <Stack spacing={8} sx={{ py: 8 }}>
       <Stack direction="row" justifyContent="space-between">
         <Stack direction="row" spacing={4}>
-          <CustomizableButton
-            size="small"
-            variant="text"
-            onClick={() => setShowForm((open) => !open)}
-          >
-            {showForm ? "Cancel" : "Link a project risk"}
+          <CustomizableButton size="small" variant="text" onClick={() => toggleForm("child")}>
+            {form === "child" ? "Cancel" : "Link a project risk"}
+          </CustomizableButton>
+          <CustomizableButton size="small" variant="text" onClick={() => toggleForm("related")}>
+            {form === "related" ? "Cancel" : "Relate a vendor risk"}
           </CustomizableButton>
           {isAdmin && (
             <CustomizableButton
@@ -182,12 +228,18 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
         </CustomizableButton>
       </Stack>
 
-      {/* Dismissed rows are not the active list the form excludes; see LinkedRisksPanel. */}
-      {showForm && (
+      {form === "child" && (
         <LinkChildRiskForm
           vendorRiskId={vendorRiskId}
-          existingLinks={showDismissed ? [] : links}
-          onClose={() => setShowForm(false)}
+          existingLinks={activeLinks}
+          onClose={() => setForm(null)}
+        />
+      )}
+      {form === "related" && (
+        <RelateVendorRiskForm
+          vendorRiskId={vendorRiskId}
+          existingLinks={activeLinks}
+          onClose={() => setForm(null)}
         />
       )}
 
@@ -197,41 +249,56 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
 
       {!isLoading && links.length === 0 && (
         <Stack spacing={4} alignItems="center">
-          <EmptyState
-            icon={Network}
-            message="No project risks inherit from this vendor risk yet."
-            showBorder={false}
-          />
+          <EmptyState icon={Network} message="No linked risks yet." showBorder={false} />
           <Typography sx={{ ...textStyles.caption, color: "text.accent" }}>
-            Link a project risk that this vendor risk applies to. Suggestions from Suggest children
-            appear here too.
+            Link a project risk that this vendor risk applies to, or relate another vendor risk.
+            Suggestions appear here too.
           </Typography>
+          {isAdmin ? (
+            <CustomizableButton
+              size="small"
+              variant="text"
+              onClick={handleScan}
+              isDisabled={scan.isPending || pending !== null}
+            >
+              Scan for related vendor risks
+            </CustomizableButton>
+          ) : (
+            <Typography sx={{ ...textStyles.caption, color: "text.accent" }}>
+              Related vendor risks appear as vendor risks are saved, or after an administrator runs
+              a scan.
+            </Typography>
+          )}
         </Stack>
       )}
 
-      {links.length > 0 && (
-        <Box>
-          <Typography sx={{ ...textStyles.subsectionTitle, color: "text.primary", mb: 2 }}>
-            Child risks
-          </Typography>
-          <Typography sx={{ ...textStyles.caption, color: "text.accent", mb: 4 }}>
-            When the level of this risk changes, each child is flagged for review.
-          </Typography>
-          <Stack spacing={4}>
-            {links.map((link) => (
-              <LinkRow
-                key={link.id}
-                link={link}
-                dismissing={dismissing?.id === link.id}
-                statusPending={updateStatus.isPending}
-                onAction={handleAction}
-                onSubmitDismissal={(dismissal) => submitDismissal(link, dismissal)}
-                onCancelDismissal={() => setDismissing(null)}
-              />
-            ))}
-          </Stack>
-        </Box>
-      )}
+      {GROUPS.map(({ title, caption, match }) => {
+        const group = links.filter(match);
+        if (group.length === 0) return null;
+        return (
+          <Box key={title}>
+            <Typography sx={{ ...textStyles.subsectionTitle, color: "text.primary", mb: 2 }}>
+              {title}
+            </Typography>
+            <Typography sx={{ ...textStyles.caption, color: "text.accent", mb: 4 }}>
+              {caption}
+            </Typography>
+            <Stack spacing={4}>
+              {group.map((link) => (
+                <LinkRow
+                  key={link.id}
+                  link={link}
+                  dismissing={dismissing?.id === link.id}
+                  statusPending={updateStatus.isPending}
+                  onAction={handleAction}
+                  onSubmitDismissal={(dismissal) => submitDismissal(link, dismissal)}
+                  onCancelDismissal={() => setDismissing(null)}
+                />
+              ))}
+            </Stack>
+          </Box>
+        );
+      })}
     </Stack>
   );
 }

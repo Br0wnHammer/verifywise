@@ -64,7 +64,13 @@ export const RISK_LINK_STATUSES: RiskLinkStatus[] = ["suggested", "confirmed", "
 export interface RiskLinkRow {
   id: number;
   organization_id: number;
-  source_risk_id: number;
+  /** Null only on a vendor risk pair — see `source_vendor_risk_id`. */
+  source_risk_id: number | null;
+  /**
+   * Set only on a `related_to` pair of two vendor risks, stored smaller id
+   * first with the larger in `target_vendor_risk_id` (risk_links_vendor_pair).
+   */
+  source_vendor_risk_id: number | null;
   /** Null when the parent lives in another table — see the two columns below. */
   target_risk_id: number | null;
   target_model_risk_id: number | null;

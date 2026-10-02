@@ -11,6 +11,7 @@ import {
   getVendorRiskSharedProjects,
   suggestVendorRiskHierarchy,
   recomputeRiskLinks,
+  recomputeVendorRiskLinks,
   suggestRiskHierarchy,
   updateRiskLinkStatus,
 } from "../repository/riskLink.repository";
@@ -150,31 +151,32 @@ export function useVendorRiskLinks(
 }
 
 /**
- * A vendor-side change is also a change to the child's own list, and the panel
- * does not know which project risk panels are cached — so every one of them is
- * invalidated along with this vendor risk's list. Only mounted queries refetch.
+ * A vendor-side change is also a change to the other end's list: the child's
+ * own list for an inheritance link, the other vendor risk's for a related pair.
+ * The panel does not know which of those are cached, so every risk and vendor
+ * risk list is invalidated. Only mounted queries refetch.
  */
-function useInvalidateVendorLinks(vendorRiskId: number) {
+function useInvalidateVendorLinks() {
   const queryClient = useQueryClient();
   return () =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: vendorLinksKey(vendorRiskId) }),
+      queryClient.invalidateQueries({ queryKey: ["vendorRiskLinks"] }),
       queryClient.invalidateQueries({ queryKey: ["riskLinks"] }),
       // A child added or removed changes the vendor's reach.
       queryClient.invalidateQueries({ queryKey: VENDOR_INSIGHTS_KEY }),
     ]);
 }
 
-export function useCreateVendorRiskLink(vendorRiskId: number) {
-  const invalidate = useInvalidateVendorLinks(vendorRiskId);
+export function useCreateVendorRiskLink() {
+  const invalidate = useInvalidateVendorLinks();
   return useMutation({
     mutationFn: (input: CreateRiskLinkInput) => createRiskLink(input),
     onSettled: invalidate,
   });
 }
 
-export function useUpdateVendorRiskLinkStatus(vendorRiskId: number) {
-  const invalidate = useInvalidateVendorLinks(vendorRiskId);
+export function useUpdateVendorRiskLinkStatus() {
+  const invalidate = useInvalidateVendorLinks();
   return useMutation({
     mutationFn: ({
       id,
@@ -185,6 +187,15 @@ export function useUpdateVendorRiskLinkStatus(vendorRiskId: number) {
       status: RiskLinkStatus;
       dismissal?: { dismissReason: DismissReason; dismissNote?: string };
     }) => updateRiskLinkStatus(id, status, dismissal),
+    onSettled: invalidate,
+  });
+}
+
+/** The org-wide related vendor risk scan, as useRecomputeRiskLinks is for risks. */
+export function useRecomputeVendorRiskLinks() {
+  const invalidate = useInvalidateVendorLinks();
+  return useMutation({
+    mutationFn: () => recomputeVendorRiskLinks(),
     onSettled: invalidate,
   });
 }
@@ -200,7 +211,7 @@ export function useVendorRiskSharedProjects(vendorRiskId: number, enabled: boole
 
 /** The vendor-scoped hierarchy pass. Settles into the same list invalidation. */
 export function useSuggestVendorRiskHierarchy(vendorRiskId: number) {
-  const invalidate = useInvalidateVendorLinks(vendorRiskId);
+  const invalidate = useInvalidateVendorLinks();
   return useMutation({
     mutationFn: () => suggestVendorRiskHierarchy(vendorRiskId),
     onSettled: invalidate,

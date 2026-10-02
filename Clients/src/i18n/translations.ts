@@ -9167,8 +9167,6 @@ export const translations: Record<string, Record<string, string>> = {
       "Verknüpfungen erscheinen, wenn Risiken gespeichert werden oder nachdem ein Administrator einen Scan ausgeführt hat.",
     "Failed to load linked risks.": "Verknüpfte Risiken konnten nicht geladen werden.",
     // Vendor risk insights, value-chain reach and the vendor filter on the map
-    "Link a project risk that this vendor risk applies to. Suggestions from Suggest children appear here too.":
-      "Verknüpfen Sie ein Projektrisiko, für das dieses Anbieterrisiko gilt. Vorschläge aus „Untergeordnete vorschlagen“ erscheinen ebenfalls hier.",
     "Suggest children": "Untergeordnete vorschlagen",
     "No clusters of related risks in the use cases of this vendor yet. Related risks are grouped once a scan has linked them.":
       "In den Anwendungsfällen dieses Anbieters gibt es noch keine Gruppen verwandter Risiken. Verwandte Risiken werden gruppiert, sobald ein Scan sie verknüpft hat.",
@@ -9229,8 +9227,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Show all vendors": "Alle Anbieter anzeigen",
     // Vendor risk Linked risks tab
     "Link a project risk": "Projektrisiko verknüpfen",
-    "No project risks inherit from this vendor risk yet.":
-      "Noch erben keine Projektrisiken von diesem Anbieterrisiko.",
     "When the level of this risk changes, each child is flagged for review.":
       "Ändert sich die Stufe dieses Risikos, wird jedes untergeordnete Risiko zur Prüfung markiert.",
     "A project risk can have only one parent, and a risk with child risks of its own cannot become a child.":
@@ -9267,6 +9263,27 @@ export const translations: Record<string, Record<string, string>> = {
     "Untitled model risk": "Unbenanntes Modellrisiko",
     "Same project: {name}": "Gleiches Projekt: {name}",
     "Same project: {name} +{count}": "Gleiches Projekt: {name} +{count}",
+    // Related vendor risks
+    "Related vendor risks": "Verwandte Anbieterrisiken",
+    "Vendor risks that describe the same exposure, at this vendor or another one.":
+      "Anbieterrisiken, die dieselbe Gefährdung beschreiben, bei diesem oder einem anderen Anbieter.",
+    "Relate a vendor risk": "Verwandtes Anbieterrisiko verknüpfen",
+    "Link a project risk that this vendor risk applies to, or relate another vendor risk. Suggestions appear here too.":
+      "Verknüpfen Sie ein Projektrisiko, für das dieses Anbieterrisiko gilt, oder ein verwandtes Anbieterrisiko. Vorschläge erscheinen ebenfalls hier.",
+    "Scan for related vendor risks": "Nach verwandten Anbieterrisiken suchen",
+    "Related vendor risks appear as vendor risks are saved, or after an administrator runs a scan.":
+      "Verwandte Anbieterrisiken erscheinen, sobald Anbieterrisiken gespeichert werden oder ein Administrator einen Scan ausführt.",
+    "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
+      "{count} Anbieterrisiken werden gescannt. Verwandte Anbieterrisiken erscheinen hier, sobald der Scan abgeschlossen ist.",
+    "Scan finished. No related vendor risks found.":
+      "Scan abgeschlossen. Keine verwandten Anbieterrisiken gefunden.",
+    "Search vendor risks": "Anbieterrisiken suchen",
+    "Related vendor risks describe the same exposure, at this vendor or another one. Neither inherits from the other.":
+      "Verwandte Anbieterrisiken beschreiben dieselbe Gefährdung, bei diesem oder einem anderen Anbieter. Keines erbt vom anderen.",
+    "Similar wording": "Ähnliche Formulierung",
+    "Same vendor": "Gleicher Anbieter",
+    "Shared framework": "Gemeinsames Rahmenwerk",
+    "Shared use case": "Gemeinsamer Anwendungsfall",
     "Why are you dismissing {name}?": "Warum verwerfen Sie {name}?",
     "What happened?": "Was ist passiert?",
     "Failed to fetch linked risks": "Verknüpfte Risiken konnten nicht abgerufen werden",
@@ -18688,8 +18705,6 @@ export const translations: Record<string, Record<string, string>> = {
       "Les liens apparaissent à l'enregistrement des risques ou après qu'un administrateur a lancé une analyse.",
     "Failed to load linked risks.": "Impossible de charger les risques liés.",
     // Vendor risk insights, value-chain reach and the vendor filter on the map
-    "Link a project risk that this vendor risk applies to. Suggestions from Suggest children appear here too.":
-      "Liez un risque de projet auquel ce risque fournisseur s'applique. Les suggestions de « Suggérer des risques enfants » apparaissent aussi ici.",
     "Suggest children": "Suggérer des risques enfants",
     "No clusters of related risks in the use cases of this vendor yet. Related risks are grouped once a scan has linked them.":
       "Aucun groupe de risques connexes dans les cas d'usage de ce fournisseur pour l'instant. Les risques connexes sont regroupés une fois qu'une analyse les a liés.",
@@ -18750,8 +18765,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Show all vendors": "Afficher tous les fournisseurs",
     // Vendor risk Linked risks tab
     "Link a project risk": "Lier un risque de projet",
-    "No project risks inherit from this vendor risk yet.":
-      "Aucun risque de projet n'hérite encore de ce risque fournisseur.",
     "When the level of this risk changes, each child is flagged for review.":
       "Lorsque le niveau de ce risque change, chaque risque enfant est signalé pour révision.",
     "A project risk can have only one parent, and a risk with child risks of its own cannot become a child.":
@@ -18787,6 +18800,27 @@ export const translations: Record<string, Record<string, string>> = {
     "Untitled model risk": "Risque de modèle sans titre",
     "Same project: {name}": "Même projet : {name}",
     "Same project: {name} +{count}": "Même projet : {name} +{count}",
+    // Related vendor risks
+    "Related vendor risks": "Risques fournisseurs connexes",
+    "Vendor risks that describe the same exposure, at this vendor or another one.":
+      "Risques fournisseurs qui décrivent la même exposition, chez ce fournisseur ou un autre.",
+    "Relate a vendor risk": "Lier un risque fournisseur connexe",
+    "Link a project risk that this vendor risk applies to, or relate another vendor risk. Suggestions appear here too.":
+      "Liez un risque de projet auquel ce risque fournisseur s'applique, ou un autre risque fournisseur connexe. Les suggestions apparaissent également ici.",
+    "Scan for related vendor risks": "Rechercher des risques fournisseurs connexes",
+    "Related vendor risks appear as vendor risks are saved, or after an administrator runs a scan.":
+      "Les risques fournisseurs connexes apparaissent à l'enregistrement des risques fournisseurs, ou après une analyse lancée par un administrateur.",
+    "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
+      "Analyse de {count} risques fournisseurs en cours. Les risques fournisseurs connexes apparaîtront ici à la fin de l'analyse.",
+    "Scan finished. No related vendor risks found.":
+      "Analyse terminée. Aucun risque fournisseur connexe trouvé.",
+    "Search vendor risks": "Rechercher des risques fournisseurs",
+    "Related vendor risks describe the same exposure, at this vendor or another one. Neither inherits from the other.":
+      "Des risques fournisseurs connexes décrivent la même exposition, chez ce fournisseur ou un autre. Aucun n'hérite de l'autre.",
+    "Similar wording": "Formulation similaire",
+    "Same vendor": "Même fournisseur",
+    "Shared framework": "Cadre commun",
+    "Shared use case": "Cas d'usage commun",
     "Why are you dismissing {name}?": "Pourquoi rejetez-vous {name} ?",
     "What happened?": "Que s'est-il passé ?",
     "Failed to fetch linked risks": "Impossible de récupérer les risques liés",
@@ -28126,8 +28160,6 @@ export const translations: Record<string, Record<string, string>> = {
       "Los vínculos aparecen al guardar los riesgos o cuando un administrador ejecuta un análisis.",
     "Failed to load linked risks.": "No se pudieron cargar los riesgos vinculados.",
     // Vendor risk insights, value-chain reach and the vendor filter on the map
-    "Link a project risk that this vendor risk applies to. Suggestions from Suggest children appear here too.":
-      "Vincule un riesgo de proyecto al que se aplique este riesgo del proveedor. Las sugerencias de «Sugerir riesgos dependientes» también aparecen aquí.",
     "Suggest children": "Sugerir riesgos dependientes",
     "No clusters of related risks in the use cases of this vendor yet. Related risks are grouped once a scan has linked them.":
       "Todavía no hay grupos de riesgos relacionados en los casos de uso de este proveedor. Los riesgos relacionados se agrupan cuando un análisis los ha vinculado.",
@@ -28188,8 +28220,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Show all vendors": "Mostrar todos los proveedores",
     // Vendor risk Linked risks tab
     "Link a project risk": "Vincular un riesgo del proyecto",
-    "No project risks inherit from this vendor risk yet.":
-      "Aún no hay riesgos del proyecto que hereden de este riesgo del proveedor.",
     "When the level of this risk changes, each child is flagged for review.":
       "Cuando cambia el nivel de este riesgo, cada riesgo dependiente se marca para revisión.",
     "A project risk can have only one parent, and a risk with child risks of its own cannot become a child.":
@@ -28226,6 +28256,27 @@ export const translations: Record<string, Record<string, string>> = {
     "Untitled model risk": "Riesgo del modelo sin título",
     "Same project: {name}": "Mismo proyecto: {name}",
     "Same project: {name} +{count}": "Mismo proyecto: {name} +{count}",
+    // Related vendor risks
+    "Related vendor risks": "Riesgos de proveedor relacionados",
+    "Vendor risks that describe the same exposure, at this vendor or another one.":
+      "Riesgos de proveedor que describen la misma exposición, en este proveedor o en otro.",
+    "Relate a vendor risk": "Relacionar un riesgo de proveedor",
+    "Link a project risk that this vendor risk applies to, or relate another vendor risk. Suggestions appear here too.":
+      "Vincula un riesgo de proyecto al que se aplica este riesgo de proveedor, o relaciona otro riesgo de proveedor. Las sugerencias también aparecen aquí.",
+    "Scan for related vendor risks": "Buscar riesgos de proveedor relacionados",
+    "Related vendor risks appear as vendor risks are saved, or after an administrator runs a scan.":
+      "Los riesgos de proveedor relacionados aparecen al guardar los riesgos de proveedor, o después de que un administrador ejecute un análisis.",
+    "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
+      "Analizando {count} riesgos de proveedor. Los riesgos de proveedor relacionados aparecerán aquí cuando termine el análisis.",
+    "Scan finished. No related vendor risks found.":
+      "Análisis finalizado. No se encontraron riesgos de proveedor relacionados.",
+    "Search vendor risks": "Buscar riesgos de proveedor",
+    "Related vendor risks describe the same exposure, at this vendor or another one. Neither inherits from the other.":
+      "Los riesgos de proveedor relacionados describen la misma exposición, en este proveedor o en otro. Ninguno hereda del otro.",
+    "Similar wording": "Redacción similar",
+    "Same vendor": "Mismo proveedor",
+    "Shared framework": "Marco compartido",
+    "Shared use case": "Caso de uso compartido",
     "Why are you dismissing {name}?": "¿Por qué descartas {name}?",
     "What happened?": "¿Qué ocurrió?",
     "Failed to fetch linked risks": "No se pudieron obtener los riesgos vinculados",

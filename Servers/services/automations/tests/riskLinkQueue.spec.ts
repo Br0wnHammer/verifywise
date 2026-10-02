@@ -10,7 +10,7 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
   default: { error: jest.fn(), info: jest.fn(), warn: jest.fn() },
 }));
 
-import { enqueueRiskLinkRecompute } from "../automationProducer";
+import { enqueueRiskLinkRecompute, enqueueVendorRiskLinkRecompute } from "../automationProducer";
 
 describe("enqueueRiskLinkRecompute", () => {
   beforeEach(() => mockAdd.mockReset());
@@ -45,5 +45,24 @@ describe("enqueueRiskLinkRecompute", () => {
     const options = mockAdd.mock.calls[0][2];
     expect(options.attempts).toBe(3);
     expect(options.backoff).toEqual({ type: "exponential", delay: 1000 });
+  });
+});
+
+describe("enqueueVendorRiskLinkRecompute", () => {
+  beforeEach(() => mockAdd.mockReset());
+
+  it("enqueues its own job name, deduped per vendor risk, with the same lifecycle", async () => {
+    await enqueueVendorRiskLinkRecompute(7, 42);
+    const [name, data, options] = mockAdd.mock.calls[0];
+    expect(name).toBe("vendor_risk_link_recompute");
+    expect(data).toEqual({ organizationId: 7, vendorRiskId: 42 });
+    // Its own namespace: vendor risk 42 and project risk 42 are different rows.
+    expect(options.jobId).toBe("vendor-risk-link:7:42");
+    expect(options).toMatchObject({
+      removeOnComplete: true,
+      removeOnFail: true,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 1000 },
+    });
   });
 });

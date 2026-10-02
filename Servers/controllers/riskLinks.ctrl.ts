@@ -5,7 +5,13 @@ import { logFailure, logProcessing, logSuccess } from "../utils/logger/logHelper
 import {
   enqueueRiskLinkDirection,
   enqueueRiskLinkRecompute,
+  enqueueVendorRiskLinkRecompute,
 } from "../services/automations/automationProducer";
+import {
+  createUserVendorRiskLinkQuery,
+  getActiveVendorRiskIdsQuery,
+  getLiveVendorRiskIdsQuery,
+} from "../utils/vendorRiskLink.utils";
 import { getLLMKeysQuery } from "../utils/llmKey.utils";
 import {
   connectedComponents,
@@ -128,6 +134,8 @@ const toResponse = (link: RiskLinkWithRelated, riskId: number | null) => ({
     name: link.related_risk_name,
     riskLevel: link.related_risk_level,
     ownerId: link.related_risk_owner,
+    // Only the vendor panel's read sets it, so other responses keep their shape.
+    ...(link.related_vendor_name !== undefined && { vendorName: link.related_vendor_name }),
   },
 });
 
@@ -493,7 +501,15 @@ export async function getRiskGraph(req: Request, res: Response): Promise<any> {
     };
 
     const edges = kept.map((row) => {
-      addNode("risk", row.source_risk_id, row.source_name, row.source_level);
+      addNode(
+        row.source_entity_type,
+        row.source_id,
+        row.source_name,
+        row.source_level,
+        row.source_vendor_id != null
+          ? { id: row.source_vendor_id, name: row.source_vendor_name }
+          : null,
+      );
       addNode(
         row.target_entity_type,
         row.target_id,
@@ -505,7 +521,7 @@ export async function getRiskGraph(req: Request, res: Response): Promise<any> {
       );
       return {
         id: row.id,
-        sourceKey: `risk:${row.source_risk_id}`,
+        sourceKey: `${row.source_entity_type}:${row.source_id}`,
         targetKey: `${row.target_entity_type}:${row.target_id}`,
         relationType: row.relation_type,
         status: row.status,
@@ -864,7 +880,13 @@ export async function updateRiskLinkStatus(req: Request, res: Response): Promise
     // end state as a fresh POST — so it runs the same rule. Placed after the
     // transition guard: confirmed -> confirmed is already a 400, so this row is
     // never itself in the confirmed set it is checked against.
-    if (next === "confirmed" && link.relation_type === "inherits_from") {
+    // An inheritance edge always has a project-risk child (risk_links_vendor_pair
+    // keeps vendor-sourced rows to related_to), so the null check only narrows.
+    if (
+      next === "confirmed" &&
+      link.relation_type === "inherits_from" &&
+      link.source_risk_id != null
+    ) {
       const parent = hierarchyParentFromLink(link);
       const violation = validateTwoLevel(
         {
@@ -989,6 +1011,10 @@ export async function createRiskLink(req: Request, res: Response): Promise<any> 
   });
 
   try {
+    if (req.body?.sourceVendorRiskId !== undefined && req.body?.sourceVendorRiskId !== null) {
+      return await createVendorRiskPair(req, res);
+    }
+
     const sourceRiskId = toId(req.body?.sourceRiskId);
     const relationType = req.body?.relationType;
 
@@ -1106,6 +1132,73 @@ export async function createRiskLink(req: Request, res: Response): Promise<any> 
 }
 
 /**
+ * Two vendor risks related by hand. The only shape a vendor-sourced row may
+ * take is a `related_to` pair (risk_links_vendor_pair): vendor risks never
+ * inherit from each other, because the child of an inheritance edge is always
+ * a project risk. Stored smaller id first, like a project risk pair.
+ */
+async function createVendorRiskPair(req: Request, res: Response): Promise<any> {
+  const sourceVendorRiskId = toId(req.body?.sourceVendorRiskId);
+  const targetVendorRiskId = toId(req.body?.targetVendorRiskId);
+  const otherTarget =
+    (req.body?.targetRiskId ?? req.body?.targetModelRiskId ?? req.body?.sourceRiskId) != null;
+  if (isNaN(sourceVendorRiskId) || isNaN(targetVendorRiskId) || otherTarget) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid link payload")));
+  }
+  if (req.body?.relationType !== "related_to") {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400](req.t!("Only related links are supported between vendor risks.")));
+  }
+  if (sourceVendorRiskId === targetVendorRiskId) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("A risk cannot link to itself")));
+  }
+
+  const live = await getLiveVendorRiskIdsQuery(
+    [sourceVendorRiskId, targetVendorRiskId],
+    req.organizationId!,
+  );
+  if (live.length !== 2) {
+    return res.status(404).json(STATUS_CODE[404](req.t!("Risk not found")));
+  }
+
+  const [first, second] = canonicalPair(sourceVendorRiskId, targetVendorRiskId);
+  const id = await createUserVendorRiskLinkQuery({
+    organizationId: req.organizationId!,
+    sourceVendorRiskId: first,
+    targetVendorRiskId: second,
+    userId: req.userId!,
+  });
+  if (id === null) {
+    return res
+      .status(409)
+      .json(
+        STATUS_CODE[409](
+          req.t!(
+            'These risks are already linked. If the link was dismissed, use "Show dismissed" to restore it.',
+          ),
+        ),
+      );
+  }
+
+  logSuccess({
+    eventType: "Create",
+    description: `related vendor risk ${first} to ${second}`,
+    functionName: "createRiskLink",
+    fileName: FILE_NAME,
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+
+  return res.status(201).json(
+    STATUS_CODE[201]({
+      id,
+      relatedRisk: { id: targetVendorRiskId, entityType: "vendor_risk" },
+    }),
+  );
+}
+
+/**
  * Backfill. The table starts empty and only fills as risks are saved, so an org
  * needs one full pass before the feature shows anything. Fan out one job per
  * risk rather than one big job: the jobs dedup, retry, and progress
@@ -1141,6 +1234,50 @@ export async function recomputeAllRiskLinks(req: Request, res: Response): Promis
       eventType: "Create",
       description: "failed to enqueue risk link recompute",
       functionName: "recomputeAllRiskLinks",
+      fileName: FILE_NAME,
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Backfill for related vendor risks: one job per active vendor risk, as the
+ * project risk backfill above does. Vendor risks are rescored on every save
+ * from then on.
+ */
+export async function recomputeAllVendorRiskLinks(req: Request, res: Response): Promise<any> {
+  logProcessing({
+    description: "starting recomputeAllVendorRiskLinks",
+    functionName: "recomputeAllVendorRiskLinks",
+    fileName: FILE_NAME,
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+
+  try {
+    const vendorRiskIds = await getActiveVendorRiskIdsQuery(req.organizationId!);
+    await Promise.all(
+      vendorRiskIds.map((id) => enqueueVendorRiskLinkRecompute(req.organizationId!, id)),
+    );
+
+    logSuccess({
+      eventType: "Create",
+      description: `enqueued ${vendorRiskIds.length} vendor risk link recompute jobs`,
+      functionName: "recomputeAllVendorRiskLinks",
+      fileName: FILE_NAME,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+
+    return res.status(202).json(STATUS_CODE[202]({ enqueued: vendorRiskIds.length }));
+  } catch (error) {
+    logFailure({
+      eventType: "Create",
+      description: "failed to enqueue vendor risk link recompute",
+      functionName: "recomputeAllVendorRiskLinks",
       fileName: FILE_NAME,
       error: error as Error,
       userId: req.userId!,

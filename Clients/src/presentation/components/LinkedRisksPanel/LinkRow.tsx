@@ -128,6 +128,15 @@ export default function LinkRow({
         <Typography sx={{ ...textStyles.body, color: "text.secondary", flexGrow: 1 }}>
           {link.relatedRisk.name ?? fill(t("Risk {id}"), { id: link.relatedRisk.id })}
         </Typography>
+        {/* A related vendor risk's vendor: which supplier carries the same exposure. */}
+        {link.relatedRisk.vendorName && (
+          <Chip
+            size="small"
+            variant="default"
+            uppercase={false}
+            label={link.relatedRisk.vendorName}
+          />
+        )}
         {ENTITY_TYPE_LABELS[link.relatedRisk.entityType] && (
           <Chip
             size="small"

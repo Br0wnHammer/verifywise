@@ -100,6 +100,27 @@ describe("vendorSubgraph", () => {
     expect(shown.edges).toHaveLength(1);
   });
 
+  it("pulls in a vendor risk related to one of the vendor's, but not its children", () => {
+    const related: RiskGraph = {
+      ...graph,
+      edges: [...graph.edges, edge("vendor_risk:11", "vendor_risk:20", "related_to")],
+    };
+
+    const shown = vendorSubgraph(related, acme.id);
+
+    expect(shown.nodes.map((n) => n.key)).toContain("vendor_risk:20");
+    expect(shown.nodes.map((n) => n.key)).not.toContain("risk:200");
+    expect(shown.edges.map((e) => `${e.sourceKey}>${e.targetKey}`)).toContain(
+      "vendor_risk:11>vendor_risk:20",
+    );
+    // The same pair, seen from the other vendor.
+    expect(
+      vendorSubgraph(related, zeta.id)
+        .nodes.map((n) => n.key)
+        .sort(),
+    ).toEqual(["risk:200", "vendor_risk:11", "vendor_risk:20"].sort());
+  });
+
   it("is empty for a vendor with nothing on the map, and keeps the truncated flag", () => {
     const shown = vendorSubgraph({ ...graph, truncated: true }, 99);
 

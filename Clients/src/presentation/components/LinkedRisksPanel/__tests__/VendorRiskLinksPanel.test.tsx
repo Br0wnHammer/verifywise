@@ -12,6 +12,7 @@ const mockCreate = vi.fn();
 const mockUseShared = vi.fn();
 const mockSuggest = vi.fn();
 const mockIsAdmin = vi.fn();
+const mockScan = vi.fn();
 
 vi.mock("../../../../application/hooks/useRiskLinks", () => ({
   useVendorRiskLinks: (vendorRiskId: number, status?: string) =>
@@ -20,6 +21,7 @@ vi.mock("../../../../application/hooks/useRiskLinks", () => ({
   useCreateVendorRiskLink: () => ({ mutate: mockCreate, isPending: false }),
   useVendorRiskSharedProjects: (...args: unknown[]) => mockUseShared(...args),
   useSuggestVendorRiskHierarchy: () => ({ mutate: mockSuggest, isPending: false }),
+  useRecomputeVendorRiskLinks: () => ({ mutate: mockScan, isPending: false }),
 }));
 
 vi.mock("../../../../application/hooks/useIsAdmin", () => ({
@@ -30,6 +32,12 @@ const mockGetAllProjectRisks = vi.fn();
 
 vi.mock("../../../../application/repository/projectRisk.repository", () => ({
   getAllProjectRisks: (...args: unknown[]) => mockGetAllProjectRisks(...args),
+}));
+
+const mockGetAllVendorRisks = vi.fn();
+
+vi.mock("../../../../application/repository/vendorRisk.repository", () => ({
+  getAllVendorRisks: (...args: unknown[]) => mockGetAllVendorRisks(...args),
 }));
 
 import VendorRiskLinksPanel from "../VendorRiskLinksPanel";
@@ -82,6 +90,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockUseShared.mockReturnValue({ data: [] });
   mockGetAllProjectRisks.mockResolvedValue({ data: [] });
+  mockGetAllVendorRisks.mockResolvedValue({ data: [] });
   mockIsAdmin.mockReturnValue(false);
 });
 
@@ -113,11 +122,10 @@ describe("VendorRiskLinksPanel list", () => {
     expect(
       screen.getByText("When the level of this risk changes, each child is flagged for review."),
     ).toBeInTheDocument();
-    // A vendor risk is never a child and never in a related_to pair, and
-    // derived scoring runs between project risks only, so there is no scan.
+    // A vendor risk is never a child, and with no related pair there is no
+    // related group either.
     expect(screen.queryByText("Parent risk")).not.toBeInTheDocument();
-    expect(screen.queryByText("Relates to")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /scan for related risks/i })).toBeNull();
+    expect(screen.queryByText("Related vendor risks")).not.toBeInTheDocument();
     // Spends the org's LLM key, so admins only.
     expect(screen.queryByRole("button", { name: "Suggest children" })).toBeNull();
   });
@@ -134,13 +142,22 @@ describe("VendorRiskLinksPanel list", () => {
     expect(screen.queryByRole("button", { name: "Mark reviewed" })).toBeNull();
   });
 
-  it("explains the empty list", () => {
+  it("explains the empty list, and who can scan", () => {
     mockUseVendorRiskLinks.mockReturnValue(queryResult([]));
     renderPanel();
 
+    expect(screen.getByText("No linked risks yet.")).toBeInTheDocument();
     expect(
-      screen.getByText("No project risks inherit from this vendor risk yet."),
+      screen.getByText(
+        "Link a project risk that this vendor risk applies to, or relate another vendor risk. Suggestions appear here too.",
+      ),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Related vendor risks appear as vendor risks are saved, or after an administrator runs a scan.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Scan for related vendor risks" })).toBeNull();
     expect(screen.queryByText("Child risks")).not.toBeInTheDocument();
   });
 
@@ -345,5 +362,165 @@ describe("VendorRiskLinksPanel suggest children", () => {
     expect(
       await screen.findByText("No LLM key is configured for this organization."),
     ).toBeInTheDocument();
+  });
+});
+
+const related = (overrides: Partial<RiskLink> = {}): RiskLink =>
+  child({
+    id: 50,
+    status: "suggested",
+    source: "derived",
+    relationType: "related_to",
+    score: 4,
+    reasons: [
+      { signal: "similar_wording", weight: 3, detail: "customer, exposed, records" },
+      { signal: "same_vendor", weight: 1 },
+    ],
+    direction: "outgoing",
+    relatedRisk: {
+      id: 12,
+      entityType: "vendor_risk",
+      name: "Customer records exposed",
+      riskLevel: "High risk",
+      ownerId: null,
+      vendorName: "Acme Cloud",
+    },
+    ...overrides,
+  });
+
+describe("VendorRiskLinksPanel related vendor risks", () => {
+  it("groups related vendor risks apart from children, with their vendor", () => {
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([child(), related()]));
+    renderPanel();
+
+    expect(screen.getByText("Child risks")).toBeInTheDocument();
+    expect(screen.getByText("Related vendor risks")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Vendor risks that describe the same exposure, at this vendor or another one.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Customer records exposed")).toBeInTheDocument();
+    expect(screen.getByText("Acme Cloud")).toBeInTheDocument();
+  });
+
+  it("asks why before dismissing a related suggestion, offering the related reasons", async () => {
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([related()]));
+    renderPanel();
+
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await userEvent.click(screen.getByRole("radio", { name: "These aren't actually related" }));
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(mockMutateStatus).toHaveBeenCalledWith(
+      { id: 50, status: "dismissed", dismissal: { dismissReason: "not_related" } },
+      expect.anything(),
+    );
+  });
+
+  it("lets an admin scan from the empty list and says what it queued", async () => {
+    mockIsAdmin.mockReturnValue(true);
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([]));
+    mockScan.mockImplementation((_vars, { onSuccess }) => onSuccess({ enqueued: 3 }));
+    renderPanel();
+
+    await userEvent.click(screen.getByRole("button", { name: "Scan for related vendor risks" }));
+
+    expect(mockScan).toHaveBeenCalled();
+    expect(
+      await screen.findByText(
+        "Scanning 3 vendor risks. Related vendor risks appear here as the scan completes.",
+      ),
+    ).toBeInTheDocument();
+    // Watched until the result lands, so it cannot be queued twice.
+    expect(screen.getByRole("button", { name: "Scan for related vendor risks" })).toBeDisabled();
+  });
+
+  it("shows the server's message when the scan cannot start", async () => {
+    mockIsAdmin.mockReturnValue(true);
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([]));
+    mockScan.mockImplementation((_vars, { onError }) => onError({ message: "Forbidden" }));
+    renderPanel();
+
+    await userEvent.click(screen.getByRole("button", { name: "Scan for related vendor risks" }));
+
+    expect(await screen.findByText("Forbidden")).toBeInTheDocument();
+  });
+});
+
+describe("VendorRiskLinksPanel relate form", () => {
+  const vendorRiskRows = [
+    // One row per (vendor risk, use case): the picker shows each risk once.
+    { risk_id: VENDOR_RISK_ID, risk_description: "This risk", vendor_id: 1, vendor_name: "Acme" },
+    { risk_id: 20, risk_description: "Other vendor risk", vendor_id: 2, vendor_name: "Globex" },
+    { risk_id: 21, risk_description: "Same vendor risk", vendor_id: 1, vendor_name: "Acme" },
+    { risk_id: 21, risk_description: "Same vendor risk", vendor_id: 1, vendor_name: "Acme" },
+    { risk_id: 12, risk_description: "Already related", vendor_id: 2, vendor_name: "Globex" },
+    { risk_id: 22, risk_description: "", vendor_id: 3, vendor_name: null },
+  ];
+
+  const openPicker = async () => {
+    await userEvent.click(screen.getByRole("button", { name: "Relate a vendor risk" }));
+    await userEvent.click(screen.getByPlaceholderText("Search vendor risks"));
+    return screen.findByRole("listbox");
+  };
+
+  it("lists this vendor's risks first, once each, without itself or current pairs", async () => {
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([related()]));
+    mockGetAllVendorRisks.mockResolvedValue({ data: vendorRiskRows });
+    renderPanel();
+
+    const listbox = await openPicker();
+    const options = await within(listbox).findAllByRole("option");
+
+    expect(mockGetAllVendorRisks).toHaveBeenCalledWith({ filter: "active" });
+    expect(options.map((o) => o.textContent)).toEqual([
+      "Same vendor riskAcme",
+      "Other vendor riskGlobex",
+      "Vendor risk 22",
+    ]);
+  });
+
+  it("relates the chosen vendor risk to this one", async () => {
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([]));
+    mockGetAllVendorRisks.mockResolvedValue({ data: vendorRiskRows });
+    mockCreate.mockImplementation((_input, { onSuccess }) => onSuccess());
+    renderPanel();
+
+    const listbox = await openPicker();
+    await userEvent.click(await within(listbox).findByText("Other vendor risk"));
+    await userEvent.click(screen.getByRole("button", { name: "Link" }));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      { sourceVendorRiskId: VENDOR_RISK_ID, targetVendorRiskId: 20, relationType: "related_to" },
+      expect.anything(),
+    );
+    // The form closes once the pair exists.
+    expect(screen.queryByPlaceholderText("Search vendor risks")).toBeNull();
+  });
+
+  it("shows why the server refused the pair", async () => {
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([]));
+    mockGetAllVendorRisks.mockResolvedValue({ data: vendorRiskRows });
+    mockCreate.mockImplementation((_input, { onError }) => onError({ status: 404 }));
+    renderPanel();
+
+    const listbox = await openPicker();
+    await userEvent.click(await within(listbox).findByText("Other vendor risk"));
+    await userEvent.click(screen.getByRole("button", { name: "Link" }));
+
+    expect(await screen.findByText("One of these risks no longer exists")).toBeInTheDocument();
+  });
+
+  it("opens one form at a time", async () => {
+    mockUseVendorRiskLinks.mockReturnValue(queryResult([]));
+    renderPanel();
+
+    await userEvent.click(screen.getByRole("button", { name: "Link a project risk" }));
+    await userEvent.click(screen.getByRole("button", { name: "Relate a vendor risk" }));
+
+    expect(screen.getByPlaceholderText("Search vendor risks")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search risks")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Cancel" }).length).toBeGreaterThan(0);
   });
 });

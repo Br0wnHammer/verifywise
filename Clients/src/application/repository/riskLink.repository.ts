@@ -130,6 +130,19 @@ export async function recomputeRiskLinks(): Promise<{ enqueued: number }> {
   }
 }
 
+/** Queues a rescore of every active vendor risk's related vendor risks. */
+export async function recomputeVendorRiskLinks(): Promise<{ enqueued: number }> {
+  try {
+    const response = await apiServices.post<{
+      message: string;
+      data: { enqueued: number };
+    }>("/riskLinks/vendor-risks/recompute", {});
+    return extractData<{ enqueued: number }>(response);
+  } catch (error: any) {
+    throw toAPIError(error, "Failed to start the scan");
+  }
+}
+
 /**
  * Starts a direction pass over every cluster of related risks in the org.
  * `skipped` counts clusters too large for one model call.

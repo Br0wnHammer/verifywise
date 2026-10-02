@@ -50,17 +50,22 @@ export interface RiskLink {
     name: string | null;
     riskLevel: string | null;
     ownerId: number | null;
+    /** The related vendor risk's vendor, on the vendor risk panel only. */
+    vendorName?: string | null;
   };
 }
 
 /**
  * For `inherits_from`, `sourceRiskId` is the risk that inherits. The client never
- * canonicalises — the server does, and only for `related_to`.
+ * canonicalises — the server does, and only for `related_to`. Two vendor risks
+ * can only be related, never inherit from each other.
  */
-export type CreateRiskLinkInput = {
-  sourceRiskId: number;
-  relationType: RiskLinkRelationType;
-} & ({ targetRiskId: number } | { targetModelRiskId: number } | { targetVendorRiskId: number });
+export type CreateRiskLinkInput =
+  | ({
+      sourceRiskId: number;
+      relationType: RiskLinkRelationType;
+    } & ({ targetRiskId: number } | { targetModelRiskId: number } | { targetVendorRiskId: number }))
+  | { sourceVendorRiskId: number; targetVendorRiskId: number; relationType: "related_to" };
 
 /**
  * A cross-entity parent candidate that shares at least one project with the

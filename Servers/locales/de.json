@@ -800,5 +800,6 @@
   "Your role changed to project admin on {projectName}": "Ihre Rolle für {projectName} wurde auf Projektadministrator geändert",
   "Vendor risks to review": "Anbieterrisiken zur Prüfung",
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has 1 vendor risk it could inherit from. Review it from the Linked risks tab.": "Das Risiko „{riskName}“ gehört zu einem Anwendungsfall, den „{vendorName}“ bedient. Dieser Anbieter hat 1 Anbieterrisiko, von dem es erben könnte. Prüfen Sie es im Tab „Verknüpfte Risiken“.",
-  "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.": "Das Risiko „{riskName}“ gehört zu einem Anwendungsfall, den „{vendorName}“ bedient. Dieser Anbieter hat {count} Anbieterrisiken, von denen es erben könnte. Prüfen Sie sie im Tab „Verknüpfte Risiken“."
+  "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.": "Das Risiko „{riskName}“ gehört zu einem Anwendungsfall, den „{vendorName}“ bedient. Dieser Anbieter hat {count} Anbieterrisiken, von denen es erben könnte. Prüfen Sie sie im Tab „Verknüpfte Risiken“.",
+  "Only related links are supported between vendor risks.": "Zwischen Anbieterrisiken werden nur verwandte Verknüpfungen unterstützt."
 }

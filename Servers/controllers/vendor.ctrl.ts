@@ -25,6 +25,8 @@ import { notifyUserAssigned } from "../services/inAppNotification.service";
 import { getVendorRiskSuggestions as getVendorRiskSuggestionsService } from "../services/vendors/riskSuggestions";
 import { triggerVendorOnboarding } from "../services/workflows/triggers";
 import { notifyVendorRiskCandidates } from "../services/riskLinks/vendorCandidates";
+import { enqueueVendorRiskLinkRecompute } from "../services/automations/automationProducer";
+import { getActiveVendorRiskIdsQuery } from "../utils/vendorRiskLink.utils";
 import logger from "../utils/logger/fileLogger";
 import { QueryTypes } from "sequelize";
 
@@ -541,6 +543,21 @@ export async function updateVendorById(req: Request, res: Response): Promise<any
           vendorName: vendor.vendor_name,
           projectIds: addedProjectIds,
         }).catch((err) => logger.error("Vendor risk candidate notice failed:", err));
+      }
+
+      // Use cases shared with another vendor feed the related vendor risk
+      // score, so a change in either direction rescores this vendor's risks.
+      const removedProjectIds = Array.isArray(updateData.projects)
+        ? projectIdsBefore.filter(
+            (id) => !(updateData.projects as unknown[]).map(Number).includes(id),
+          )
+        : [];
+      if (addedProjectIds.length > 0 || removedProjectIds.length > 0) {
+        getActiveVendorRiskIdsQuery(req.organizationId!, vendorId)
+          .then((ids) =>
+            Promise.all(ids.map((id) => enqueueVendorRiskLinkRecompute(req.organizationId!, id))),
+          )
+          .catch((err) => logger.error("Vendor risk link recompute enqueue failed:", err));
       }
 
       // Send assignment notifications for newly assigned users (fire-and-forget)

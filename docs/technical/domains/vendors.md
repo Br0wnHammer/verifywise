@@ -280,12 +280,18 @@ Vendor risks support soft delete:
 ### Linked risks
 
 A saved vendor risk has a **Linked risks** tab in its edit modal
-(`components/LinkedRisksPanel/VendorRiskLinksPanel.tsx`). It lists the project
-risks that inherit from the vendor risk — value-chain inheritance, described in
-[Risk Management](./risk-management.md#value-chain-inheritance). A vendor risk is
-only ever a parent, so the tab has one group ("Child risks") and one action:
-link a project risk as a child. The picker ranks the project risks in the
-vendor's projects first, with a "Same project" chip.
+(`components/LinkedRisksPanel/VendorRiskLinksPanel.tsx`). It has two groups:
+
+- **Child risks**: the project risks that inherit from the vendor risk —
+  value-chain inheritance, described in
+  [Risk Management](./risk-management.md#value-chain-inheritance). A vendor
+  risk is only ever a parent. **Link a project risk** opens a picker that ranks
+  the project risks in the vendor's projects first, with a "Same project" chip.
+- **Related vendor risks**: other vendor risks that describe the same
+  exposure, at this vendor or another one (`related_to`, see
+  [Related vendor risks](#related-vendor-risks)). Each row carries the other
+  vendor risk's vendor as a chip. **Relate a vendor risk** opens a picker over
+  all active vendor risks, this vendor's first.
 
 Suggested children come from the hierarchy pass. An Admin can start it from a
 project risk's panel, or from this tab with **Suggest children**
@@ -293,13 +299,57 @@ project risk's panel, or from this tab with **Suggest children**
 the same pass on only the clusters of related risks that contain a project risk
 in the vendor's use cases. The tab then polls for the results for a bounded
 window, like the project panel. Suggestions are confirmed or dismissed here with
-the same actions and dismissal reasons as on the project side. When the vendor
-risk's `risk_level` changes, each child is flagged "Parent level changed" on its
-own panel; the vendor tab does not show that flag.
+the same actions and dismissal reasons as on the project side (inheritance
+reasons for a child, related reasons for a related vendor risk). When the
+vendor risk's `risk_level` changes, each child is flagged "Parent level
+changed" on its own panel; the vendor tab does not show that flag.
 
-Reads use `GET /api/riskLinks/vendor-risks/:vendorRiskId` and
+Reads use `GET /api/riskLinks/vendor-risks/:vendorRiskId` (both groups; a
+related row's `relatedRisk.vendorName` is only set here) and
 `.../shared-projects`; writes go through the existing `POST /api/riskLinks` and
 `PATCH /api/riskLinks/:id`.
+
+### Related vendor risks
+
+Two vendor risks can be related, never parent and child. The row is a
+`risk_links` row with `source_vendor_risk_id` and `target_vendor_risk_id` set,
+`relation_type = 'related_to'`, and the smaller id as the source, so a pair has
+exactly one row (see [Risk Management](./risk-management.md#vendor-risk-pairs)
+for the constraints).
+
+Scoring (`services/riskLinks/vendorRelated.ts`) needs similar wording first:
+Jaccard over description + impact words, stopwords dropped, at least two
+shared words. Without it nothing else counts.
+
+| Signal | Weight | Rule |
+|--------|--------|------|
+| `similar_wording` | 3 or 2 | Jaccard ≥ 0.3 scores 3, ≥ 0.15 scores 2; detail names up to 6 shared words |
+| `same_vendor` | 1 | Both risks belong to one vendor (a risk with no vendor never matches) |
+| `shared_framework` | 1 | Both are mapped to a common framework; detail names them |
+| `shared_use_case` | 1 | Two different vendors serve a common use case; detail names them |
+
+A pair at `LINK_SCORE_THRESHOLD` (3) or above is suggested, at most
+`MAX_LINKS_PER_RISK` (20) per vendor risk. Recompute only prunes derived
+suggestions that fell below the threshold; a confirmed or dismissed pair keeps
+its status and only has its score refreshed.
+
+Recompute runs on the `vendor_risk_link_recompute` BullMQ job (jobId
+`vendor-risk-link:{org}:{vendorRiskId}`), enqueued after a vendor risk is
+created or updated, and for every active risk of a vendor whose use cases were
+added or removed. Existing organisations are backfilled with **Scan for related
+vendor risks** on an empty Linked risks tab, or directly:
+`POST /api/riskLinks/vendor-risks/recompute` (Admin, SuperAdmin), which
+enqueues one job per active vendor risk and returns `{ enqueued }`.
+
+`POST /api/riskLinks` creates a pair by hand with
+`{ sourceVendorRiskId, targetVendorRiskId, relationType: "related_to" }`. Any
+other relation type is a 400, a self pair is a 400, a missing or deleted vendor
+risk is a 404, and an existing pair (in either order) is a 409.
+
+The map draws a pair as a dashed related edge between the two vendor risk
+nodes. Filtering the map to a vendor keeps vendor risks related to its own,
+but not their children. The exposure report and the inheritance rules ignore
+pairs: they read `inherits_from` only.
 
 ### Vendor risk insights
 
@@ -413,7 +463,8 @@ All vendor changes are tracked:
 |-----------|---------|
 | `AddNewVendor` | Create/edit vendor modal |
 | `AddNewRisk` | Create/edit risk modal (Risk details, Custom fields, Activity, Linked risks); `initialTab="linked-risks"` opens an existing risk on its links |
-| `VendorRiskLinksPanel` | The Linked risks tab: project risks that inherit from this vendor risk, plus Suggest children |
+| `VendorRiskLinksPanel` | The Linked risks tab: child project risks and related vendor risks, plus Suggest children and the related scan |
+| `RelateVendorRiskForm` | Picker that relates another vendor risk to this one |
 | `VendorRiskInsights` | Heat map, blast radius, duplicate and coverage sections above the risks table |
 | `RiskTable` | Display vendor risks, including the Inherited by column |
 | `TableWithPlaceholder` | Main vendor list |
@@ -430,6 +481,7 @@ All vendor changes are tracked:
 | `useDeleteVendorRisk()` | Delete risk mutation |
 | `useVendorExposure()`, `useVendorDuplicateCandidates()`, `useVendorFrameworkCoverage()` | Vendor risk insight reports (`hooks/useRiskLinks.ts`) |
 | `useSuggestVendorRiskHierarchy(id)` | Suggest children on one vendor risk |
+| `useRecomputeVendorRiskLinks()` | Scan every vendor risk for related vendor risks (Admin) |
 
 ## Automation Triggers
 
@@ -472,6 +524,8 @@ Vendors with `is_demo=true`:
 | `services/riskLinks/vendorReports.ts` | Exposure, duplicate and coverage reports |
 | `utils/vendorRiskReport.utils.ts` | Queries behind those reports |
 | `services/riskLinks/vendorCandidates.ts` | Vendor risk candidate notices |
+| `services/riskLinks/vendorRelated.ts` | Related vendor risk scoring and recompute |
+| `utils/vendorRiskLink.utils.ts` | Queries behind related vendor risk pairs |
 
 ### Frontend
 

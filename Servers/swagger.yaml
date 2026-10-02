@@ -10411,6 +10411,21 @@ paths:
       security:
         -
           bearerAuth: []
+  /riskLinks/vendor-risks/recompute:
+    post:
+      summary: 'Recompute All Vendor Risk Links'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: recomputeAllVendorRiskLinks
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
   '/riskLinks/vendor-risks/{vendorRiskId}/suggest-hierarchy':
     post:
       summary: 'Suggest Vendor Risk Hierarchy'

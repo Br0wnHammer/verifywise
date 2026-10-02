@@ -36,7 +36,7 @@ export default function LinkChildRiskForm({
 }: LinkChildRiskFormProps) {
   const [child, setChild] = useState<Candidate | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const createLink = useCreateVendorRiskLink(vendorRiskId);
+  const createLink = useCreateVendorRiskLink();
 
   // Same query and key as LinkRiskForm, so the two pickers share one cache.
   const { data: candidates = [] } = useQuery<Candidate[]>({

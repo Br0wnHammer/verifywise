@@ -51,6 +51,25 @@ export async function enqueueRiskLinkRecompute(organizationId: number, riskId: n
 }
 
 /**
+ * The vendor risk counterpart of enqueueRiskLinkRecompute: rebuild the
+ * `related_to` suggestions between one vendor risk and the others. Same jobId
+ * collapsing, removal on settle and deadlock retry, for the same reasons.
+ */
+export async function enqueueVendorRiskLinkRecompute(organizationId: number, vendorRiskId: number) {
+  return automationQueue.add(
+    "vendor_risk_link_recompute",
+    { organizationId, vendorRiskId },
+    {
+      jobId: `vendor-risk-link:${organizationId}:${vendorRiskId}`,
+      removeOnComplete: true,
+      removeOnFail: true,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 1000 },
+    },
+  );
+}
+
+/**
  * One direction pass over one connected component.
  *
  * The jobId is derived from the component's smallest id, which is stable

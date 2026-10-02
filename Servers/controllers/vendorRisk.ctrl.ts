@@ -22,6 +22,7 @@ import {
 } from "../utils/vendorRiskChangeHistory.utils";
 import { notifyUserAssigned } from "../services/inAppNotification.service";
 import { notifyVendorRiskCandidates } from "../services/riskLinks/vendorCandidates";
+import { enqueueVendorRiskLinkRecompute } from "../services/automations/automationProducer";
 import { getVendorNoticeContextQuery } from "../utils/riskLink.utils";
 import logger from "../utils/logger/fileLogger";
 import { QueryTypes } from "sequelize";
@@ -288,6 +289,14 @@ export async function createVendorRisk(req: Request, res: Response): Promise<any
 
       await transaction.commit();
 
+      // Related vendor risks are suggested in the background, like project
+      // risk links on save. Fire-and-forget: a queue outage must not fail the save.
+      if (createdVendorRisk.id) {
+        enqueueVendorRiskLinkRecompute(req.organizationId!, createdVendorRisk.id).catch((err) =>
+          logger.error("Vendor risk link recompute enqueue failed:", err),
+        );
+      }
+
       // A new vendor risk on a vendor with use cases is the most direct cause
       // of new candidates: announce this vendor risk to the owners of project
       // risks in those use cases. Fire-and-forget.
@@ -471,6 +480,11 @@ export async function updateVendorRiskById(req: Request, res: Response): Promise
       }
 
       await transaction.commit();
+
+      // Wording, vendor or frameworks may have changed: rescore its pairs.
+      enqueueVendorRiskLinkRecompute(req.organizationId!, vendorRiskId).catch((err) =>
+        logger.error("Vendor risk link recompute enqueue failed:", err),
+      );
 
       // Notify action_owner if changed to a new user
       const oldActionOwner = (existingVendorRisk as any).action_owner;

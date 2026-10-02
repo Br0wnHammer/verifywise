@@ -59,6 +59,7 @@ export async function getVendorExposureRowsQuery(
           AND child.is_deleted = false
         WHERE l.organization_id = :organizationId
           AND l.target_vendor_risk_id IS NOT NULL
+          AND l.relation_type = 'inherits_from'
           AND l.status IN ('confirmed', 'suggested')
      )
      SELECT vr.id AS vendor_risk_id,

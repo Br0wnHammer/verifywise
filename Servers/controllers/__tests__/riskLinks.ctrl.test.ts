@@ -730,7 +730,8 @@ describe("getRiskGraph", () => {
     status: "confirmed",
     score: 0,
     parent_level_changed_at: null,
-    source_risk_id: 3,
+    source_entity_type: "risk",
+    source_id: 3,
     target_entity_type: "risk",
     target_id: 9,
     source_name: "Child risk",
@@ -742,8 +743,8 @@ describe("getRiskGraph", () => {
 
   it("defaults to suggested and confirmed and dedupes shared nodes", async () => {
     mockUtils.getRiskGraphQuery.mockResolvedValue([
-      row({ id: 1, source_risk_id: 3 }),
-      row({ id: 2, source_risk_id: 4, status: "suggested" }),
+      row({ id: 1, source_id: 3 }),
+      row({ id: 2, source_id: 4, status: "suggested" }),
     ]);
     const r = res();
     await getRiskGraph(req() as any, r as any);
@@ -764,6 +765,34 @@ describe("getRiskGraph", () => {
       // Only vendor risk nodes name a vendor.
       vendor: null,
     });
+  });
+
+  it("keys a vendor risk pair by its vendor risk source, with both vendors", async () => {
+    mockUtils.getRiskGraphQuery.mockResolvedValue([
+      row({
+        relation_type: "related_to",
+        source_entity_type: "vendor_risk",
+        source_id: 3,
+        source_vendor_id: 10,
+        source_vendor_name: "Acme",
+        target_entity_type: "vendor_risk",
+        target_id: 9,
+        target_vendor_id: 11,
+        target_vendor_name: "Zeta",
+      }),
+    ]);
+    const r = res();
+    await getRiskGraph(req() as any, r as any);
+
+    const payload = r.json.mock.calls[0][0].data;
+    expect(payload.edges[0]).toMatchObject({
+      sourceKey: "vendor_risk:3",
+      targetKey: "vendor_risk:9",
+    });
+    expect(payload.nodes).toEqual([
+      expect.objectContaining({ key: "vendor_risk:3", vendor: { id: 10, name: "Acme" } }),
+      expect.objectContaining({ key: "vendor_risk:9", vendor: { id: 11, name: "Zeta" } }),
+    ]);
   });
 
   it("honours ?status=confirmed", async () => {

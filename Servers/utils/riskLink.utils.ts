@@ -43,7 +43,8 @@ export interface HierarchyParent {
 const toLinkRow = (row: any): RiskLinkRow => ({
   id: row.id,
   organization_id: row.organization_id,
-  source_risk_id: row.source_risk_id,
+  source_risk_id: row.source_risk_id ?? null,
+  source_vendor_risk_id: row.source_vendor_risk_id ?? null,
   target_risk_id: row.target_risk_id ?? null,
   target_model_risk_id: row.target_model_risk_id ?? null,
   target_vendor_risk_id: row.target_vendor_risk_id ?? null,
@@ -695,6 +696,8 @@ export interface RiskLinkWithRelated extends RiskLinkRow {
   related_risk_name: string | null;
   related_risk_level: string | null;
   related_risk_owner: number | null;
+  /** Set only when the related risk is a vendor risk on the vendor panel. */
+  related_vendor_name?: string | null;
 }
 
 /**
@@ -769,12 +772,11 @@ export async function getRiskLinksForRiskQuery(
 }
 
 /**
- * The vendor side of value-chain inheritance: every project risk that inherits
- * from one vendor risk. A vendor risk is only ever a parent (the child column
- * is always a project risk), so every row here is an `inherits_from` edge and
- * the related risk is the child.
+ * Everything linked to one vendor risk: the project risks that inherit from it
+ * (`inherits_from`, the vendor risk is the parent) and the vendor risks related
+ * to it (`related_to` pairs stored with `source_vendor_risk_id`).
  *
- * Same R7 rule as getRiskLinksForRiskQuery: a soft-deleted child drops out of
+ * Same R7 rule as getRiskLinksForRiskQuery: a soft-deleted partner drops out of
  * the list, and a soft-deleted subject returns nothing.
  */
 export async function getRiskLinksForVendorRiskQuery(
@@ -788,7 +790,8 @@ export async function getRiskLinksForVendorRiskQuery(
             'risk' AS related_entity_type,
             child.risk_name AS related_risk_name,
             child.risk_level_autocalculated::text AS related_risk_level,
-            child.risk_owner AS related_risk_owner
+            child.risk_owner AS related_risk_owner,
+            NULL::text AS related_vendor_name
        FROM risk_links l
        JOIN risks child
          ON child.id = l.source_risk_id
@@ -800,8 +803,38 @@ export async function getRiskLinksForVendorRiskQuery(
         AND subject.is_deleted = false
       WHERE l.organization_id = :organizationId
         AND l.target_vendor_risk_id = :vendorRiskId
+        AND l.relation_type = 'inherits_from'
         AND l.status IN (:statuses)
-      ORDER BY l.score DESC, child.id ASC`,
+
+     UNION ALL
+
+     SELECT l.*,
+            other.id AS related_id,
+            'vendor_risk' AS related_entity_type,
+            COALESCE(NULLIF(LEFT(other.risk_description, 80), ''), 'Untitled vendor risk')
+              AS related_risk_name,
+            other.risk_level AS related_risk_level,
+            other.action_owner AS related_risk_owner,
+            vendor.vendor_name AS related_vendor_name
+       FROM risk_links l
+       JOIN vendorrisks other
+         ON other.id = CASE WHEN l.source_vendor_risk_id = :vendorRiskId
+                            THEN l.target_vendor_risk_id ELSE l.source_vendor_risk_id END
+        AND other.organization_id = :organizationId
+        AND other.is_deleted = false
+       LEFT JOIN vendors vendor
+         ON vendor.id = other.vendor_id
+        AND vendor.organization_id = :organizationId
+       JOIN vendorrisks subject
+         ON subject.id = :vendorRiskId
+        AND subject.organization_id = :organizationId
+        AND subject.is_deleted = false
+      WHERE l.organization_id = :organizationId
+        AND l.source_vendor_risk_id IS NOT NULL
+        AND (l.source_vendor_risk_id = :vendorRiskId OR l.target_vendor_risk_id = :vendorRiskId)
+        AND l.status IN (:statuses)
+
+      ORDER BY score DESC, related_entity_type, related_id`,
     { replacements: { organizationId, vendorRiskId, statuses }, type: QueryTypes.SELECT },
   );
 
@@ -812,6 +845,7 @@ export async function getRiskLinksForVendorRiskQuery(
     related_risk_name: row.related_risk_name ?? null,
     related_risk_level: row.related_risk_level ?? null,
     related_risk_owner: row.related_risk_owner ?? null,
+    related_vendor_name: row.related_vendor_name ?? null,
   }));
 }
 
@@ -870,14 +904,18 @@ export interface RiskGraphEdgeRow {
   status: RiskLinkStatus;
   score: number;
   parent_level_changed_at: string | null;
-  source_risk_id: number;
+  /** "vendor_risk" only on a related_to pair of two vendor risks. */
+  source_entity_type: "risk" | "vendor_risk";
+  source_id: number;
   target_entity_type: ParentEntityType;
   target_id: number;
   source_name: string | null;
   source_level: string | null;
   target_name: string | null;
   target_level: string | null;
-  /** Set only when the target is a vendor risk: lets the graph filter by vendor. */
+  /** Set only when that end is a vendor risk: lets the graph filter by vendor. */
+  source_vendor_id: number | null;
+  source_vendor_name: string | null;
   target_vendor_id: number | null;
   target_vendor_name: string | null;
 }
@@ -897,15 +935,23 @@ export async function getRiskGraphQuery(
 ): Promise<RiskGraphEdgeRow[]> {
   const rows = await sequelize.query(
     `SELECT l.id, l.relation_type, l.status, l.score, l.parent_level_changed_at,
-            l.source_risk_id,
+            CASE WHEN l.source_vendor_risk_id IS NOT NULL THEN 'vendor_risk' ELSE 'risk' END
+              AS source_entity_type,
+            COALESCE(l.source_vendor_risk_id, l.source_risk_id) AS source_id,
             CASE
               WHEN l.target_model_risk_id  IS NOT NULL THEN 'model_risk'
               WHEN l.target_vendor_risk_id IS NOT NULL THEN 'vendor_risk'
               ELSE 'risk'
             END AS target_entity_type,
             COALESCE(l.target_model_risk_id, l.target_vendor_risk_id, l.target_risk_id) AS target_id,
-            src.risk_name AS source_name,
-            src.risk_level_autocalculated::text AS source_level,
+            COALESCE(
+              src.risk_name,
+              NULLIF(LEFT(svr.risk_description, 80), ''),
+              CASE WHEN l.source_vendor_risk_id IS NOT NULL THEN 'Untitled vendor risk' END
+            ) AS source_name,
+            COALESCE(src.risk_level_autocalculated::text, svr.risk_level) AS source_level,
+            svr.vendor_id AS source_vendor_id,
+            svendor.vendor_name AS source_vendor_name,
             COALESCE(
               tgt.risk_name,
               NULLIF(mr.risk_name, ''),
@@ -920,9 +966,14 @@ export async function getRiskGraphQuery(
             vr.vendor_id AS target_vendor_id,
             vendor.vendor_name AS target_vendor_name
      FROM risk_links l
-     JOIN risks src           ON src.id = l.source_risk_id
+     LEFT JOIN risks src      ON src.id = l.source_risk_id
                              AND src.organization_id = :organizationId
                              AND src.is_deleted = false
+     LEFT JOIN vendorrisks svr ON svr.id = l.source_vendor_risk_id
+                             AND svr.organization_id = :organizationId
+                             AND svr.is_deleted = false
+     LEFT JOIN vendors svendor ON svendor.id = svr.vendor_id
+                             AND svendor.organization_id = :organizationId
      LEFT JOIN risks tgt      ON tgt.id = l.target_risk_id
                              AND tgt.organization_id = :organizationId
                              AND tgt.is_deleted = false
@@ -936,6 +987,7 @@ export async function getRiskGraphQuery(
                              AND vendor.organization_id = :organizationId
      WHERE l.organization_id = :organizationId
        AND l.status IN (:statuses)
+       AND COALESCE(src.id, svr.id) IS NOT NULL
        AND COALESCE(tgt.id, mr.id, vr.id) IS NOT NULL
      ORDER BY l.relation_type, l.id
      LIMIT :limit`,
@@ -946,7 +998,12 @@ export async function getRiskGraphQuery(
   );
   // `score` is numeric(6,3) and pg hands it back as a string. This file's own
   // rule (see `toNumber` at the top) is that nothing leaves here uncoerced.
-  return (rows as any[]).map((row) => ({ ...row, score: toNumber(row.score) }));
+  return (rows as any[]).map((row) => ({
+    ...row,
+    source_id: toNumber(row.source_id),
+    target_id: toNumber(row.target_id),
+    score: toNumber(row.score),
+  }));
 }
 
 export interface DismissalSignalRow {
@@ -985,6 +1042,8 @@ export interface DismissalAnalytics {
 /**
  * Three plain aggregates over decided links, for tuning the suggester: which
  * engine signal humans throw away, why, and what they wrote about it.
+ * Vendor risk pairs count like any other link: their source is a vendor risk,
+ * so each query takes whichever source end is live.
  *
  * Deliberately three queries, not one CTE: each reads risk_links once and a
  * seq scan is the correct plan at this row count (see the dismiss-reason
@@ -1001,13 +1060,17 @@ export async function getDismissalAnalyticsQuery(
             mode() WITHIN GROUP (ORDER BY COALESCE(l.dismiss_reason, 'none'))
               FILTER (WHERE l.status = 'dismissed')   AS top_reason
      FROM risk_links l
-     JOIN risks src ON src.id = l.source_risk_id
-                   AND src.organization_id = :organizationId
-                   AND src.is_deleted = false
+     LEFT JOIN risks src ON src.id = l.source_risk_id
+                        AND src.organization_id = :organizationId
+                        AND src.is_deleted = false
+     LEFT JOIN vendorrisks svr ON svr.id = l.source_vendor_risk_id
+                              AND svr.organization_id = :organizationId
+                              AND svr.is_deleted = false
      CROSS JOIN LATERAL jsonb_array_elements(
        CASE WHEN jsonb_typeof(l.reasons) = 'array' THEN l.reasons ELSE '[]'::jsonb END
      ) AS e(obj)
       WHERE l.organization_id = :organizationId
+        AND COALESCE(src.id, svr.id) IS NOT NULL
         AND l.status IN ('confirmed', 'dismissed')
         AND l.source IN ('derived', 'agent')
         AND e.obj->>'signal' IS NOT NULL
@@ -1019,10 +1082,14 @@ export async function getDismissalAnalyticsQuery(
   const reasonRows = (await sequelize.query(
     `SELECT l.relation_type, l.source, l.status, l.dismiss_reason, COUNT(*)::int AS count
      FROM risk_links l
-     JOIN risks src ON src.id = l.source_risk_id
-                   AND src.organization_id = :organizationId
-                   AND src.is_deleted = false
+     LEFT JOIN risks src ON src.id = l.source_risk_id
+                        AND src.organization_id = :organizationId
+                        AND src.is_deleted = false
+     LEFT JOIN vendorrisks svr ON svr.id = l.source_vendor_risk_id
+                              AND svr.organization_id = :organizationId
+                              AND svr.is_deleted = false
       WHERE l.organization_id = :organizationId
+        AND COALESCE(src.id, svr.id) IS NOT NULL
         AND l.status IN ('confirmed', 'dismissed')
         AND l.source IN ('derived', 'agent')
       GROUP BY 1, 2, 3, 4
@@ -1032,12 +1099,17 @@ export async function getDismissalAnalyticsQuery(
 
   const noteRows = (await sequelize.query(
     `SELECT l.id, l.relation_type, l.source, l.dismiss_reason, l.dismiss_note,
-            l.decided_at, src.risk_name AS source_name
+            l.decided_at,
+            COALESCE(src.risk_name, NULLIF(LEFT(svr.risk_description, 80), '')) AS source_name
      FROM risk_links l
-     JOIN risks src ON src.id = l.source_risk_id
-                   AND src.organization_id = :organizationId
-                   AND src.is_deleted = false
+     LEFT JOIN risks src ON src.id = l.source_risk_id
+                        AND src.organization_id = :organizationId
+                        AND src.is_deleted = false
+     LEFT JOIN vendorrisks svr ON svr.id = l.source_vendor_risk_id
+                              AND svr.organization_id = :organizationId
+                              AND svr.is_deleted = false
      WHERE l.organization_id = :organizationId
+       AND COALESCE(src.id, svr.id) IS NOT NULL
        AND l.status = 'dismissed'
        AND l.dismiss_note IS NOT NULL
        AND l.dismiss_note <> ''

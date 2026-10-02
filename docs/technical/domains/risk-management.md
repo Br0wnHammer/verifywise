@@ -604,8 +604,42 @@ vendor's use cases). The Vendors page shows them; see
 
 The map (`GET /api/riskLinks`) carries `vendor: { id, name }` on vendor risk
 nodes, `null` elsewhere. The page uses it for a vendor filter, kept in the URL
-as `?vendor=ID`: it shows that vendor's risks, their `inherits_from` children
-and the links among those (`pages/RiskInheritanceGraph/vendorFilter.ts`).
+as `?vendor=ID`: it shows that vendor's risks, their `inherits_from` children,
+the vendor risks related to them and the links among those
+(`pages/RiskInheritanceGraph/vendorFilter.ts`).
+
+### Vendor risk pairs
+
+Two vendor risks can be related (`related_to`), never parent and child. Such a
+row has no project risk at all, so `source_risk_id` is nullable and a second
+source column, `source_vendor_risk_id` (FK `vendorrisks`, `ON DELETE CASCADE`),
+holds the smaller vendor risk id, with the larger in `target_vendor_risk_id`
+(migration `20261002152922-risk-links-vendor-related.js`). The constraints:
+
+| Constraint | Rule |
+|------------|------|
+| `risk_links_one_source` | Exactly one of `source_risk_id`, `source_vendor_risk_id` |
+| `risk_links_vendor_pair` | A vendor source is only `related_to`, has a vendor target, and `source_vendor_risk_id < target_vendor_risk_id` |
+| `risk_links_cross_entity_inherits` | A non-risk target is `inherits_from`, unless the source is a vendor risk |
+| `risk_links_unique_vendor_pair` | Unique `(source_vendor_risk_id, target_vendor_risk_id, relation_type)` where the vendor source is set |
+
+`inherits_from`, the one-parent index and the stale-parent trigger only ever
+see a project risk source, so none of them changed. Every project risk read
+joins `risks` on the source or filters `inherits_from`, so vendor pairs never
+appear there, even when a project risk shares a vendor risk's id. The readers
+that do include them are the vendor panel, the map (an edge keyed
+`vendor_risk:{id}` on both ends; `RiskGraphEdgeRow` carries
+`source_entity_type`) and dismissal analytics (which names a vendor source by
+its description). The vendor exposure report reads `inherits_from` only.
+
+Scoring and recompute live in `services/riskLinks/vendorRelated.ts`, with their
+own `vendor_risk_link_recompute` job, separate from the project risk
+providers: similar wording is required, then same vendor, shared framework and
+a use case shared across vendors each add 1. The threshold and the per-risk
+cap are the project ones. `POST /api/riskLinks/vendor-risks/recompute` (Admin)
+enqueues every active vendor risk as a backfill. See
+[Vendors](./vendors.md#related-vendor-risks) for the signals, triggers and the
+manual `POST /api/riskLinks` payload.
 
 Since C6 the direction pass (`POST /api/riskLinks/suggest-hierarchy`) also
 proposes vendor and model risks as parents, when they share a project with a

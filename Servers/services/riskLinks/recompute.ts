@@ -101,8 +101,10 @@ export async function recomputeRiskLinks(organizationId: number, riskId: number)
     for (const existing of incident) {
       // C4 cross-entity inheritance is manual-only and has no project-risk
       // target column. Recompute owns related_to suggestions, so leave these
-      // rows and their human decision untouched.
-      if (existing.target_risk_id == null) continue;
+      // rows and their human decision untouched. A vendor risk pair never
+      // reaches here (the incident query matches project-risk columns only);
+      // the source check is for the type, not a live case.
+      if (existing.target_risk_id == null || existing.source_risk_id == null) continue;
 
       const otherId =
         existing.source_risk_id === riskId ? existing.target_risk_id : existing.source_risk_id;

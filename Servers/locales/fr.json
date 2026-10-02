@@ -800,5 +800,6 @@
   "Your role changed to project admin on {projectName}": "Votre rôle a été modifié en administrateur du projet sur {projectName}",
   "Vendor risks to review": "Risques fournisseurs à examiner",
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has 1 vendor risk it could inherit from. Review it from the Linked risks tab.": "Le risque « {riskName} » fait partie d'un cas d'usage servi par « {vendorName} », qui a 1 risque fournisseur dont il pourrait hériter. Examinez-le depuis l'onglet « Risques liés ».",
-  "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.": "Le risque « {riskName} » fait partie d'un cas d'usage servi par « {vendorName} », qui a {count} risques fournisseurs dont il pourrait hériter. Examinez-les depuis l'onglet « Risques liés »."
+  "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.": "Le risque « {riskName} » fait partie d'un cas d'usage servi par « {vendorName} », qui a {count} risques fournisseurs dont il pourrait hériter. Examinez-les depuis l'onglet « Risques liés ».",
+  "Only related links are supported between vendor risks.": "Seuls les liens connexes sont pris en charge entre les risques fournisseurs."
 }

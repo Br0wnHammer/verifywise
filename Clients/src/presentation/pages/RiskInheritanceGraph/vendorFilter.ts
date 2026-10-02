@@ -16,11 +16,16 @@ export function vendorsOnMap(graph: RiskGraph): VendorOption[] {
 
 /**
  * One vendor's part of the map: its vendor risks, the project risks that
- * inherit from them, and any link among those. A child's links to risks
- * outside that set are left out; selecting the child on the full map shows
+ * inherit from them, the vendor risks related to them (at this vendor or
+ * another one, which is the point of relating them), and any link among
+ * those. A child's links to risks outside that set, and a related vendor
+ * risk's own children, are left out; selecting the node on the full map shows
  * them.
  */
 export function vendorSubgraph(graph: RiskGraph, vendorId: number): RiskGraph {
+  const vendorRiskKeys = new Set(
+    graph.nodes.filter((node) => node.entityType === "vendor_risk").map((node) => node.key),
+  );
   const vendorKeys = new Set(
     graph.nodes
       .filter((node) => node.entityType === "vendor_risk" && node.vendor?.id === vendorId)
@@ -31,6 +36,16 @@ export function vendorSubgraph(graph: RiskGraph, vendorId: number): RiskGraph {
     // inherits_from: source is the child, target the parent.
     if (edge.relationType === "inherits_from" && vendorKeys.has(edge.targetKey)) {
       kept.add(edge.sourceKey);
+    }
+    // related_to between two vendor risks: either end may be this vendor's.
+    if (
+      edge.relationType === "related_to" &&
+      vendorRiskKeys.has(edge.sourceKey) &&
+      vendorRiskKeys.has(edge.targetKey) &&
+      (vendorKeys.has(edge.sourceKey) || vendorKeys.has(edge.targetKey))
+    ) {
+      kept.add(edge.sourceKey);
+      kept.add(edge.targetKey);
     }
   }
   return {
