@@ -18,6 +18,7 @@
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../database/db";
 import { TaskStatus } from "../domain.layer/enums/task-status.enum";
+import { ModelRiskStatus } from "../domain.layer/enums/model-risk-status.enum";
 
 export interface TasksDeadlineSummaryOptions {
   userId: number;
@@ -116,7 +117,27 @@ export async function getTasksDeadlineSummaryQuery({
  * Range, not exact-day equality: a missed run catches up the next night
  * instead of dropping the notice forever. Overdue rows are included on
  * purpose — more urgent, not less, and the per-recipient dedup makes it safe.
+ *
+ * Two filters keep the scan to deadlines someone can still act on:
+ *  - closed items are skipped: risks whose mitigation is Completed or
+ *    Canceled, model risks that are Resolved or Accepted. A finished
+ *    mitigation has no deadline left to miss.
+ *  - overdue rows are only looked back DEADLINE_OVERDUE_LOOKBACK_DAYS. That is
+ *    long enough for a missed run (or a week of worker downtime) to catch up,
+ *    but stops the first run after a deploy — and any deadline entered already
+ *    long past — from notifying owner + every admin about every historical
+ *    deadline in the org. A recurring overdue nag is a separate feature (F9 §8).
  */
+export const DEADLINE_OVERDUE_LOOKBACK_DAYS = 7;
+
+/** mitigation_status values that close a project risk (enum_projectrisks_mitigation_status). */
+export const CLOSED_RISK_MITIGATION_STATUSES = ["Completed", "Canceled"];
+
+/** model_risks.status values that close a model risk. */
+export const CLOSED_MODEL_RISK_STATUSES: string[] = [
+  ModelRiskStatus.RESOLVED,
+  ModelRiskStatus.ACCEPTED,
+];
 export interface DeadlineEscalationRow {
   entity_id: number;
   entity_name: string;
@@ -139,9 +160,16 @@ export async function getRisksApproachingDeadlineQuery(
         AND is_deleted = false
         AND deadline IS NOT NULL
         AND deadline <= NOW() + (:thresholdDays || ' days')::interval
+        AND deadline >= NOW() - (:lookbackDays || ' days')::interval
+        AND (mitigation_status IS NULL OR mitigation_status::text NOT IN (:closedStatuses))
       ORDER BY id ASC`,
     {
-      replacements: { organizationId, thresholdDays },
+      replacements: {
+        organizationId,
+        thresholdDays,
+        lookbackDays: DEADLINE_OVERDUE_LOOKBACK_DAYS,
+        closedStatuses: CLOSED_RISK_MITIGATION_STATUSES,
+      },
       type: QueryTypes.SELECT,
     },
   )) as any[];
@@ -175,9 +203,16 @@ export async function getModelRisksApproachingTargetDateQuery(
         -- silently pushed a row exactly 7 days out past the boundary.
         -- The app writes this column as naive UTC, so anchor to naive UTC.
         AND target_date <= (NOW() AT TIME ZONE 'UTC') + (:thresholdDays || ' days')::interval
+        AND target_date >= (NOW() AT TIME ZONE 'UTC') - (:lookbackDays || ' days')::interval
+        AND (status IS NULL OR status::text NOT IN (:closedStatuses))
       ORDER BY id ASC`,
     {
-      replacements: { organizationId, thresholdDays },
+      replacements: {
+        organizationId,
+        thresholdDays,
+        lookbackDays: DEADLINE_OVERDUE_LOOKBACK_DAYS,
+        closedStatuses: CLOSED_MODEL_RISK_STATUSES,
+      },
       type: QueryTypes.SELECT,
     },
   )) as any[];
@@ -191,11 +226,22 @@ export async function getModelRisksApproachingTargetDateQuery(
 }
 
 /**
+ * The deadline a notice was sent for, as stored in notifications.metadata.deadline.
+ * Day granularity (UTC calendar date) so a time-of-day wobble on the same
+ * deadline never re-arms a notice, while moving the deadline to another day does.
+ */
+export function deadlineNoticeKey(deadline: Date): string {
+  return deadline.toISOString().slice(0, 10);
+}
+
+/**
  * Per-recipient sent-record for the deadline sweep: has THIS user already got
- * THIS notice (type + entity + threshold)? The `threshold_days` clause is what
- * lets the 7-day and 1-day notices coexist on the same risk — without it the
- * 1-day notice would never fire. A write that fails leaves no record, so the
- * next night retries exactly that recipient.
+ * THIS notice (type + entity + threshold + deadline)? The `threshold_days`
+ * clause is what lets the 7-day and 1-day notices coexist on the same risk —
+ * without it the 1-day notice would never fire. The `deadline` clause re-arms
+ * both notices when the deadline is rescheduled: a notice sent for the old
+ * date does not count for the new one. A write that fails leaves no record, so
+ * the next night retries exactly that recipient.
  */
 export async function hasDeadlineNoticeQuery(
   organizationId: number,
@@ -204,6 +250,7 @@ export async function hasDeadlineNoticeQuery(
   entityType: string,
   entityId: number,
   thresholdDays: number,
+  deadline: Date,
 ): Promise<boolean> {
   const rows = (await sequelize.query(
     `SELECT EXISTS (
@@ -214,6 +261,7 @@ export async function hasDeadlineNoticeQuery(
           AND entity_type = :entityType
           AND entity_id = :entityId
           AND metadata->>'threshold_days' = :thresholdDays::text
+          AND metadata->>'deadline' = :deadlineKey
      ) AS notified`,
     {
       replacements: {
@@ -223,6 +271,7 @@ export async function hasDeadlineNoticeQuery(
         entityType,
         entityId,
         thresholdDays,
+        deadlineKey: deadlineNoticeKey(deadline),
       },
       type: QueryTypes.SELECT,
     },

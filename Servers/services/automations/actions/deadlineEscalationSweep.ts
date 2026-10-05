@@ -21,8 +21,10 @@ import logger from "../../../utils/logger/fileLogger";
  * an in-app notification plus an email; 1 day out they get Slack. Range
  * queries (not exact-day equality) so a missed run catches up the next night.
  *
- * Dedup is per recipient per entity per threshold, checked immediately before
- * each write via the notifications table itself (metadata.threshold_days).
+ * Dedup is per recipient per entity per threshold per deadline, checked
+ * immediately before each write via the notifications table itself
+ * (metadata.threshold_days + metadata.deadline) — so rescheduling a deadline
+ * re-arms both notices for the new date.
  * A failed write leaves no record, so the next night retries exactly that
  * recipient. Every recipient's write sits in its own try/catch — one failure
  * never aborts the row, the org, or the run.
@@ -80,6 +82,7 @@ async function sendEmailLeg(
     entityTypeFor(kind),
     row.entity_id,
     DEADLINE_EMAIL_DAYS,
+    row.deadline,
   );
   if (already) return 0;
   if (kind === "risk") {
@@ -130,6 +133,7 @@ async function sendSlackLeg(
     entityTypeFor(kind),
     row.entity_id,
     DEADLINE_SLACK_DAYS,
+    row.deadline,
   );
   if (already) return 0;
   const entityKind = kind === "risk" ? "Risk" : "Model risk";

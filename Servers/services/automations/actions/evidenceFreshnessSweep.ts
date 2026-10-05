@@ -7,6 +7,7 @@ import {
 } from "../../../utils/evidenceHub.utils";
 import { notifyEvidenceStale } from "../../inAppNotification.service";
 import { recordSnapshotIfChanged } from "../../../utils/history/riskHistory.utils";
+import { getFieldLabel, recordEntityChange } from "../../../utils/changeHistory.base.utils";
 import logger from "../../../utils/logger/fileLogger";
 
 /**
@@ -51,44 +52,68 @@ export async function runEvidenceFreshnessSweep(
 ): Promise<EvidenceFreshnessSweepSummary> {
   const staleRiskIds = await getStaleEvidenceRiskIdsQuery(organizationId, now);
 
-  // Flag: only rows not already flagged. Skipped entirely when empty —
-  // id IN () is a syntax error in Postgres.
+  // Flag, downgrade and history in ONE transaction. Later runs skip rows whose
+  // flag is already set, so a crash between the flag and the downgrade would
+  // otherwise leave a risk 'Completed' with stale evidence forever; with the
+  // transaction a failure rolls the flag back and the next run retries it.
+  // Skipped entirely when empty — id IN () is a syntax error in Postgres.
   let flagged: FlaggedRiskRow[] = [];
-  if (staleRiskIds.length > 0) {
-    const [flaggedRows] = (await sequelize.query(
-      `UPDATE risks
-          SET evidence_stale_at = :now
-        WHERE organization_id = :organizationId
-          AND is_deleted = false
-          AND id IN (:staleRiskIds)
-          AND evidence_stale_at IS NULL
-       RETURNING id, risk_name, risk_owner`,
-      { replacements: { organizationId, staleRiskIds, now } },
-    )) as [FlaggedRiskRow[], number];
-    flagged = flaggedRows;
-  }
-
-  // Downgrade the freshly flagged rows that still claim 'Completed'. Separate
-  // UPDATE rather than a CASE in the one above: RETURNING hands back the NEW
-  // value, so an exact count of what changed is only available this way. No
-  // is_deleted filter needed — these ids came out of the UPDATE that applied it.
   let downgraded: { id: number }[] = [];
-  if (flagged.length > 0) {
-    const [downgradedRows] = (await sequelize.query(
-      `UPDATE risks
-          SET mitigation_status = 'Requires review'
-        WHERE organization_id = :organizationId
-          AND id IN (:flaggedIds)
-          AND mitigation_status = 'Completed'
-       RETURNING id`,
-      {
-        replacements: {
-          organizationId,
-          flaggedIds: flagged.map((risk) => risk.id),
+  if (staleRiskIds.length > 0) {
+    await sequelize.transaction(async (transaction) => {
+      const [flaggedRows] = (await sequelize.query(
+        `UPDATE risks
+            SET evidence_stale_at = :now
+          WHERE organization_id = :organizationId
+            AND is_deleted = false
+            AND id IN (:staleRiskIds)
+            AND evidence_stale_at IS NULL
+         RETURNING id, risk_name, risk_owner`,
+        { replacements: { organizationId, staleRiskIds, now }, transaction },
+      )) as [FlaggedRiskRow[], number];
+      if (flaggedRows.length === 0) return;
+
+      // Downgrade the freshly flagged rows that still claim 'Completed'.
+      // Separate UPDATE rather than a CASE in the one above: RETURNING hands
+      // back the NEW value, so an exact list of what changed is only available
+      // this way. No is_deleted filter needed — these ids came out of the
+      // UPDATE that applied it.
+      const [downgradedRows] = (await sequelize.query(
+        `UPDATE risks
+            SET mitigation_status = 'Requires review'
+          WHERE organization_id = :organizationId
+            AND id IN (:flaggedIds)
+            AND mitigation_status = 'Completed'
+         RETURNING id`,
+        {
+          replacements: {
+            organizationId,
+            flaggedIds: flaggedRows.map((risk) => risk.id),
+          },
+          transaction,
         },
-      },
-    )) as [{ id: number }[], number];
-    downgraded = downgradedRows;
+      )) as [{ id: number }[], number];
+
+      // The raw UPDATE bypasses the risk controller, so record the status
+      // change in the risk's change history ourselves. Actor is null: no user
+      // made this change, an unattended job did.
+      for (const { id } of downgradedRows) {
+        await recordEntityChange(
+          "risk",
+          id,
+          "updated",
+          null,
+          organizationId,
+          getFieldLabel("risk", "mitigation_status"),
+          "Completed",
+          "Requires review",
+          transaction,
+        );
+      }
+
+      flagged = flaggedRows;
+      downgraded = downgradedRows;
+    });
   }
 
   // Clear: only flagged rows that no longer qualify. Without the NOT IN

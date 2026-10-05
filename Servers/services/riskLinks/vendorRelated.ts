@@ -8,7 +8,7 @@ import {
   VendorRiskScoringRow,
 } from "../../utils/vendorRiskLink.utils";
 import { jaccard, tokeniseText } from "./duplicates";
-import { LINK_SCORE_THRESHOLD, MAX_LINKS_PER_RISK } from "./recompute";
+import { isRecomputeOwnedLink, LINK_SCORE_THRESHOLD, MAX_LINKS_PER_RISK } from "./recompute";
 import { canonicalPair, LinkSignal } from "./types";
 
 /**
@@ -188,6 +188,8 @@ export async function recomputeVendorRiskLinks(
     );
     const pruneIds: number[] = [];
     for (const existing of incident) {
+      // A user-made vendor pair keeps its own (empty) reasons and score.
+      if (!isRecomputeOwnedLink(existing)) continue;
       const otherId =
         existing.source_vendor_risk_id === vendorRiskId
           ? existing.target_vendor_risk_id!
@@ -199,11 +201,7 @@ export async function recomputeVendorRiskLinks(
 
       // Same rule as the project engine: the cap gates creation, never
       // deletion, and only an undecided derived row may be removed.
-      if (
-        existing.source === "derived" &&
-        existing.status === "suggested" &&
-        score < LINK_SCORE_THRESHOLD
-      ) {
+      if (existing.status === "suggested" && score < LINK_SCORE_THRESHOLD) {
         pruneIds.push(existing.id);
         continue;
       }

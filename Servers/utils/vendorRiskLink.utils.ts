@@ -163,7 +163,8 @@ export interface UpsertVendorRiskLinkInput {
 /**
  * Create a derived suggestion for a vendor pair, or refresh its score. Like
  * upsertRiskLinkQuery, ON CONFLICT never touches status or source, so a human
- * decision survives every recompute.
+ * decision survives every recompute. It refreshes only a derived row, never a
+ * user-made pair's score or reasons.
  */
 export async function upsertVendorRiskLinkQuery(
   input: UpsertVendorRiskLinkInput,
@@ -181,7 +182,8 @@ export async function upsertVendorRiskLinkQuery(
                    reasons = EXCLUDED.reasons,
                    last_computed_at = NOW(),
                    updated_at = NOW()
-     WHERE risk_links.organization_id = EXCLUDED.organization_id`,
+     WHERE risk_links.organization_id = EXCLUDED.organization_id
+       AND risk_links.source = 'derived'`,
     {
       replacements: {
         organizationId: input.organizationId,

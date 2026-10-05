@@ -113,6 +113,7 @@ describe("runDeadlineEscalationSweep", () => {
       "risk",
       31,
       DEADLINE_EMAIL_DAYS,
+      row.deadline,
     );
     expect(mockDedup).toHaveBeenCalledWith(
       1,
@@ -121,6 +122,7 @@ describe("runDeadlineEscalationSweep", () => {
       "risk",
       31,
       DEADLINE_SLACK_DAYS,
+      row.deadline,
     );
     expect(mockEmailRisk).toHaveBeenCalledWith(
       1,
@@ -189,6 +191,40 @@ describe("runDeadlineEscalationSweep", () => {
     const emailCalls = mockEmailRisk.mock.calls.filter((c) => c[3] === DEADLINE_EMAIL_DAYS);
     expect(emailCalls).toHaveLength(2); // owner + admin, one notice each
     expect(summary.emailed).toBe(2);
+  });
+
+  it("a rescheduled deadline → dedup is asked about the NEW deadline, so the notice re-arms", async () => {
+    const oldDeadline = new Date(Date.now() + 2 * DAY);
+    const newDeadline = new Date(Date.now() + 6 * DAY);
+    mockRisks.mockImplementation(async (_org: number, days: number) =>
+      days === DEADLINE_EMAIL_DAYS ? [riskRow({ deadline: newDeadline })] : [],
+    );
+    // Sent-records exist only for the old deadline.
+    mockDedup.mockImplementation(
+      async (_o: number, _u: number, _t: string, _e: string, _id: number, _th: number, d: Date) =>
+        d.getTime() === oldDeadline.getTime(),
+    );
+
+    const summary = await runDeadlineEscalationSweep(1);
+
+    expect(mockDedup).toHaveBeenCalledWith(
+      1,
+      5,
+      "risk_deadline_due_soon",
+      "risk",
+      31,
+      DEADLINE_EMAIL_DAYS,
+      newDeadline,
+    );
+    expect(mockEmailRisk).toHaveBeenCalledWith(
+      1,
+      5,
+      { id: 31, name: "Risk R", deadline: newDeadline },
+      DEADLINE_EMAIL_DAYS,
+      BASE_URL,
+      true,
+    );
+    expect(summary.emailed).toBe(2); // owner + admin, re-notified for the new date
   });
 
   it("owner null → admins still notified, no crash", async () => {

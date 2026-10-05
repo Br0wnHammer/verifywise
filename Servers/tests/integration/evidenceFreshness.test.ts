@@ -318,6 +318,28 @@ describe("evidence freshness sweep", () => {
     });
     expect(await readStatus(completed)).toBe("Requires review");
     expect(await readStatus(inProgress)).toBe("In Progress");
+
+    // The downgrade is recorded in the risk's change history, actor null
+    // (unattended job); the untouched risk gets no entry.
+    const history = (await sequelize.query(
+      `SELECT project_risk_id, action, field_name, old_value, new_value, changed_by_user_id
+         FROM project_risk_change_history
+        WHERE organization_id = :orgId AND project_risk_id IN (:ids)`,
+      {
+        replacements: { orgId: owner.orgId, ids: [completed, inProgress] },
+        type: QueryTypes.SELECT,
+      },
+    )) as Record<string, unknown>[];
+    expect(history).toEqual([
+      {
+        project_risk_id: completed,
+        action: "updated",
+        field_name: "Mitigation status",
+        old_value: "Completed",
+        new_value: "Requires review",
+        changed_by_user_id: null,
+      },
+    ]);
   });
 
   it("clearing the flag does not restore 'Completed'", async () => {

@@ -209,6 +209,8 @@ export interface UpsertRiskLinkInput {
  *
  * ON CONFLICT deliberately touches neither status nor source: a confirmed or
  * dismissed edge keeps the human's decision across every recompute (R1, R3).
+ * And it updates only a row recompute wrote (source = 'derived'): a user-made
+ * related_to link on the same pair keeps its own score and reasons.
  */
 export async function upsertRiskLinkQuery(
   input: UpsertRiskLinkInput,
@@ -225,7 +227,8 @@ export async function upsertRiskLinkQuery(
                    reasons = EXCLUDED.reasons,
                    last_computed_at = NOW(),
                    updated_at = NOW()
-     WHERE risk_links.organization_id = EXCLUDED.organization_id`,
+     WHERE risk_links.organization_id = EXCLUDED.organization_id
+       AND risk_links.source = 'derived'`,
     {
       replacements: {
         organizationId: input.organizationId,
@@ -1309,6 +1312,10 @@ export async function updateRiskLinkStatusQuery(
  * `model_inventories_projects_frameworks` (with and without framework_id); a
  * naive COUNT(*) would double-count. `risk_owner` is selected but not filtered
  * — an ownerless risk is a real candidate, it just cannot be notified.
+ *
+ * A risk that cannot take a model-risk parent is left out — one that already
+ * has a confirmed parent (single-parent rule) or has children of its own
+ * (two-level rule) — exactly as getVendorRiskCandidatesQuery does.
  */
 export interface ModelRiskCandidateRow {
   risk_id: number;
@@ -1379,6 +1386,18 @@ export async function getModelRiskCandidatesQuery(input: {
                WHERE l.organization_id      = :organizationId
                  AND l.source_risk_id       = r.id
                  AND l.target_model_risk_id = mr.id
+            )
+        -- Two-level rule (services/riskLinks/hierarchy.ts): a risk that already
+        -- has a confirmed parent, or has children of its own, cannot take a
+        -- model-risk parent, so suggesting one points at a link the server
+        -- refuses with a 409. Same predicate as getVendorRiskCandidatesQuery.
+        AND NOT EXISTS (
+              SELECT 1
+                FROM risk_links l
+               WHERE l.organization_id = :organizationId
+                 AND l.relation_type   = 'inherits_from'
+                 AND l.status          = 'confirmed'
+                 AND (l.source_risk_id = r.id OR l.target_risk_id = r.id)
             )
         ${announcedFilter}
       GROUP BY r.id, r.risk_name, r.risk_owner

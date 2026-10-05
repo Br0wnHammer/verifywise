@@ -12,7 +12,11 @@ import {
   getStructuralNeighboursQuery,
   getConfirmedHierarchyEdgesQuery,
   getSharedProjectCandidatesQuery,
+  getModelRiskCandidatesQuery,
+  getVendorRiskCandidatesQuery,
+  upsertRiskLinkQuery,
 } from "../riskLink.utils";
+import { upsertVendorRiskLinkQuery } from "../vendorRiskLink.utils";
 
 const mockQuery = sequelize.query as jest.Mock;
 
@@ -29,6 +33,23 @@ describe("riskLink.utils", () => {
     expect(sql).toContain("r.is_deleted = false");
     expect(options.replacements).toEqual({ organizationId: 7 });
     expect(options.type).toBe(QueryTypes.SELECT);
+  });
+
+  // Recompute owns derived rows only; a user-made related_to on the same pair
+  // must keep its own score and reasons.
+  it("refreshes only a derived row on conflict", async () => {
+    await upsertRiskLinkQuery(
+      { organizationId: 1, sourceRiskId: 3, targetRiskId: 7, score: 4, reasons: [] },
+      {} as any,
+    );
+    await upsertVendorRiskLinkQuery(
+      { organizationId: 1, sourceVendorRiskId: 3, targetVendorRiskId: 7, score: 4, reasons: [] },
+      {} as any,
+    );
+    for (const [sql] of mockQuery.mock.calls) {
+      expect(sql).toMatch(/DO UPDATE SET[\s\S]*WHERE[\s\S]*risk_links\.source = 'derived'/);
+    }
+    expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 
   it("casts risk_category to text[] so pg returns a JS array", async () => {
@@ -173,5 +194,44 @@ describe("riskLink.utils", () => {
   it("keeps DISTINCT on the model branch so one model is not repeated per framework", async () => {
     await getSharedProjectCandidatesQuery(3, 99);
     expect(mockQuery.mock.calls[0][0]).toContain("SELECT DISTINCT 'model_risk'");
+  });
+
+  describe("candidate queries respect the two-level rule", () => {
+    // The NOT EXISTS over confirmed inherits_from edges touching r: as child
+    // (source_risk_id, "already has a parent") or as parent (target_risk_id,
+    // "has children"). Either makes createRiskLink answer 409.
+    const hierarchyBlock = (sql: string): string | undefined =>
+      sql.match(
+        /AND NOT EXISTS \([^()]*relation_type\s*= 'inherits_from'[^()]*\([^()]*\)\s*\)/,
+      )?.[0];
+
+    const modelInput = { organizationId: 3, modelInventoryId: 8, projectIds: [5], limit: 50 };
+
+    it("leaves out model-risk candidates that already have a parent or have children", async () => {
+      await getModelRiskCandidatesQuery(modelInput);
+      const block = hierarchyBlock(mockQuery.mock.calls[0][0]);
+      expect(block).toBeDefined();
+      expect(block).toContain("l.organization_id = :organizationId");
+      expect(block).toContain("l.status          = 'confirmed'");
+      expect(block).toContain("l.source_risk_id = r.id OR l.target_risk_id = r.id");
+    });
+
+    it("keeps the hierarchy filter on the model-risk-create path too", async () => {
+      await getModelRiskCandidatesQuery({ ...modelInput, modelRiskIds: [21] });
+      expect(hierarchyBlock(mockQuery.mock.calls[0][0])).toBeDefined();
+    });
+
+    it("uses the same predicate as the vendor query", async () => {
+      await getModelRiskCandidatesQuery(modelInput);
+      await getVendorRiskCandidatesQuery({
+        organizationId: 3,
+        vendorId: 8,
+        projectIds: [5],
+        limit: 50,
+      });
+      const modelBlock = hierarchyBlock(mockQuery.mock.calls[0][0]);
+      expect(modelBlock).toBeDefined();
+      expect(modelBlock).toBe(hierarchyBlock(mockQuery.mock.calls[1][0]));
+    });
   });
 });

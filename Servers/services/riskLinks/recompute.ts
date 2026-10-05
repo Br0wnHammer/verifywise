@@ -9,7 +9,7 @@ import {
 } from "../../utils/riskLink.utils";
 import { fieldOverlapProvider } from "./providers/fieldOverlap";
 import { structuralGraphProvider } from "./providers/structuralGraph";
-import { canonicalPair, LinkCandidate, LinkSignalProvider } from "./types";
+import { canonicalPair, LinkCandidate, LinkSignalProvider, RiskLinkRow } from "./types";
 
 /** A pair scoring below this is not worth suggesting. */
 export const LINK_SCORE_THRESHOLD = 3;
@@ -19,6 +19,20 @@ export const MAX_LINKS_PER_RISK = 20;
 
 /** A2b appends the embedding provider here. */
 const PROVIDERS: LinkSignalProvider[] = [fieldOverlapProvider, structuralGraphProvider];
+
+/**
+ * Whether recompute owns this edge: a machine-scored `related_to` suggestion.
+ *
+ * Everything else carries reasons recompute did not write and must not touch:
+ * an `inherits_from` edge proposed by the direction agent holds the agent's
+ * justification (a `hierarchy` / `cross_entity_hierarchy` signal, which the
+ * dismissal analytics count), and a `user` row records a human's own link.
+ * Rescoring either would overwrite those reasons with the `related_to` score.
+ * A `derived` row a human has since confirmed or dismissed is still owned:
+ * its reasons are machine reasons, and only its status is the human's.
+ */
+export const isRecomputeOwnedLink = (link: Pick<RiskLinkRow, "relation_type" | "source">) =>
+  link.relation_type === "related_to" && link.source === "derived";
 
 /**
  * Rebuild the stored edges for one risk.
@@ -105,6 +119,8 @@ export async function recomputeRiskLinks(organizationId: number, riskId: number)
       // reaches here (the incident query matches project-risk columns only);
       // the source check is for the type, not a live case.
       if (existing.target_risk_id == null || existing.source_risk_id == null) continue;
+      // Same-table inheritance and user-made links: not ours to rescore or prune.
+      if (!isRecomputeOwnedLink(existing)) continue;
 
       const otherId =
         existing.source_risk_id === riskId ? existing.target_risk_id : existing.source_risk_id;
@@ -117,17 +133,14 @@ export async function recomputeRiskLinks(organizationId: number, riskId: number)
       // Prune only what fell below the threshold. The cap gates creation, never
       // deletion: score is symmetric but top-N membership is not, so pruning on
       // the cap would let two risks fight over the same edge on every save.
-      const prunable =
-        existing.source === "derived" &&
-        existing.status === "suggested" &&
-        score < LINK_SCORE_THRESHOLD;
+      const prunable = existing.status === "suggested" && score < LINK_SCORE_THRESHOLD;
 
       if (prunable) {
         pruneIds.push(existing.id);
         continue;
       }
 
-      // A decided edge, or one the cap excluded. Keep the row, tell the truth
+      // A decided derived edge, or one the cap excluded. Keep the row, tell the truth
       // about its score.
       await updateRiskLinkScoreQuery(
         existing.id,

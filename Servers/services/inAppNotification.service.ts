@@ -15,6 +15,7 @@ import { notificationService } from "./notificationService";
 import { EMAIL_TEMPLATES } from "../constants/emailTemplates";
 import { translate, type SupportedLang } from "../utils/i18n.utils";
 import { getUserLanguage } from "../utils/userPreference.utils";
+import { deadlineNoticeKey } from "../utils/deadline.utils";
 
 /**
  * Build a frontend-compatible URL for a given entity type and id.
@@ -934,7 +935,8 @@ const deadlineDateText = (deadline: Date, lang: SupportedLang = "en"): string =>
  * Notify one recipient that a project risk's deadline is approaching.
  * In-app + email (email skippable via sendEmail=false for legs that only need
  * the in-app row as their dedup record). The in-app row's metadata carries
- * threshold_days — without it the notice would re-send every night forever.
+ * threshold_days and the deadline it was sent for — without them the notice
+ * would re-send every night forever, or never re-arm after a reschedule.
  */
 export const notifyRiskDeadlineDueSoon = async (
   organizationId: number,
@@ -963,7 +965,7 @@ export const notifyRiskDeadlineDueSoon = async (
       entity_id: risk.id,
       entity_name: risk.name,
       action_url: buildEntityUrl(NotificationEntityType.RISK, risk.id),
-      metadata: { threshold_days: thresholdDays },
+      metadata: { threshold_days: thresholdDays, deadline: deadlineNoticeKey(risk.deadline) },
     },
     sendEmail,
     sendEmail
@@ -1024,7 +1026,10 @@ export const notifyModelRiskDueSoon = async (
       entity_id: modelRisk.id,
       entity_name: modelRisk.name,
       action_url: modelPath,
-      metadata: { threshold_days: thresholdDays },
+      metadata: {
+        threshold_days: thresholdDays,
+        deadline: deadlineNoticeKey(modelRisk.deadline),
+      },
     },
     sendEmail,
     sendEmail

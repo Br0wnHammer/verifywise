@@ -15,7 +15,8 @@ jest.mock("../../database/redis", () => ({
 import { QueryTypes } from "sequelize";
 import { cleanupDatabase, seedTwoOrgsAndUsers, createTestUser } from "./helpers";
 import { sequelize } from "../../database/db";
-import { createTestRisk } from "../factories";
+import { createTestRisk, createTestModelRisk } from "../factories";
+import { DEADLINE_OVERDUE_LOOKBACK_DAYS } from "../../utils/deadline.utils";
 import {
   runDeadlineEscalationSweep,
   runDeadlineEscalationSweepAllOrgs,
@@ -107,6 +108,63 @@ describe("deadline escalation sweep", () => {
     const rowsB = await noticeRows(seed.orgB);
     expect(rowsB).toHaveLength(1);
     expect(rowsB[0]).toMatchObject({ user_id: seed.userB, entity_id: riskB });
+  });
+
+  it("Completed / Canceled risks and Resolved / Accepted model risks are never escalated", async () => {
+    const seed = await seedTwoOrgsAndUsers();
+    for (const status of ["Completed", "Canceled"]) {
+      const risk = await createTestRisk(seed.orgA, { risk_owner: seed.userA });
+      await setDeadlineDaysOut(risk, 1);
+      await sequelize.query(`UPDATE risks SET mitigation_status = :status WHERE id = :risk`, {
+        replacements: { status, risk },
+      });
+    }
+    for (const status of ["Resolved", "Accepted"]) {
+      const modelRisk = await createTestModelRisk(seed.orgA, { owner: seed.userA });
+      await sequelize.query(
+        `UPDATE model_risks
+            SET status = :status,
+                target_date = (NOW() AT TIME ZONE 'UTC') + INTERVAL '1 day'
+          WHERE id = :modelRisk`,
+        { replacements: { status, modelRisk } },
+      );
+    }
+
+    const summary = await runDeadlineEscalationSweep(seed.orgA);
+
+    expect(summary).toEqual({ scanned: 0, emailed: 0, slacked: 0 });
+    expect(await noticeRows(seed.orgA)).toHaveLength(0);
+  });
+
+  it("a long-past deadline does not flood; a recently overdue one still notifies", async () => {
+    const seed = await seedTwoOrgsAndUsers();
+    const stale = await createTestRisk(seed.orgA, { risk_owner: seed.userA });
+    await setDeadlineDaysOut(stale, -(DEADLINE_OVERDUE_LOOKBACK_DAYS + 30));
+    const recent = await createTestRisk(seed.orgA, { risk_owner: seed.userA });
+    await setDeadlineDaysOut(recent, -3);
+
+    await runDeadlineEscalationSweep(seed.orgA);
+
+    const rows = await noticeRows(seed.orgA);
+    expect(rows.every((row) => row.entity_id === recent)).toBe(true);
+    expect(rows.map((row) => row.threshold).sort()).toEqual(["1", "7"]);
+  });
+
+  it("a rescheduled deadline escalates again; an unchanged one does not", async () => {
+    const seed = await seedTwoOrgsAndUsers();
+    const risk = await createTestRisk(seed.orgA, { risk_owner: seed.userA });
+    await setDeadlineDaysOut(risk, 7);
+
+    await runDeadlineEscalationSweep(seed.orgA);
+    expect(await runDeadlineEscalationSweep(seed.orgA)).toMatchObject({ emailed: 0 });
+
+    // Pushed back by two days: the old 7-day notice does not cover the new date.
+    await setDeadlineDaysOut(risk, 5);
+    const afterReschedule = await runDeadlineEscalationSweep(seed.orgA);
+
+    expect(afterReschedule).toMatchObject({ emailed: 1 });
+    const rows = await noticeRows(seed.orgA);
+    expect(rows.filter((row) => row.threshold === "7")).toHaveLength(2);
   });
 
   it("a risk 30 days out produces no row", async () => {

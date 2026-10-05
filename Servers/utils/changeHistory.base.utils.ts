@@ -42,7 +42,8 @@ function escapePgName(ident: string): string {
  * @param entityType - The type of entity being changed
  * @param entityId - The ID of the entity being changed
  * @param action - The action being performed ('created', 'updated', 'deleted')
- * @param changedByUserId - ID of the user making the change
+ * @param changedByUserId - ID of the user making the change, or null for an
+ *   unattended system job (the column is nullable; no user acted)
  * @param organizationId - Organization ID for tenant isolation
  * @param fieldName - Optional name of the field being changed
  * @param oldValue - Optional previous value of the field
@@ -53,7 +54,7 @@ export const recordEntityChange = async (
   entityType: EntityType,
   entityId: number,
   action: "created" | "updated" | "deleted",
-  changedByUserId: number,
+  changedByUserId: number | null,
   organizationId: number,
   fieldName?: string,
   oldValue?: string,

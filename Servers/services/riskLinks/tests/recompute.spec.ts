@@ -229,6 +229,48 @@ describe("recomputeRiskLinks", () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
+  // Recompute owns derived related_to rows only. An agent's inherits_from row
+  // carries its own justification, which the dismissal analytics count.
+  it("leaves agent inherits_from and user rows untouched while refreshing and pruning its own", async () => {
+    mockUtils.getRiskScoringRowsQuery.mockResolvedValue([risk(7), risk(3), risk(9), risk(12)]);
+    const agentReasons = [{ signal: "hierarchy", detail: "Org-wide privacy risk" }] as any;
+    mockUtils.getIncidentLinksQuery.mockResolvedValue([
+      // Child 7 inherits from 3, proposed by the direction agent.
+      link({
+        id: 200,
+        source_risk_id: 7,
+        target_risk_id: 3,
+        relation_type: "inherits_from",
+        status: "suggested",
+        source: "agent",
+        score: 0,
+        reasons: agentReasons,
+      }),
+      // A confirmed inheritance a human drew by hand.
+      link({
+        id: 201,
+        source_risk_id: 7,
+        target_risk_id: 12,
+        relation_type: "inherits_from",
+        status: "confirmed",
+        source: "user",
+      }),
+      // A manual related_to link.
+      link({ id: 202, source_risk_id: 7, target_risk_id: 9, status: "confirmed", source: "user" }),
+      // Recompute's own rows: one to prune, one decided and refreshed.
+      link({ id: 100, source_risk_id: 3, target_risk_id: 7, status: "suggested", score: 3 }),
+      link({ id: 101, source_risk_id: 7, target_risk_id: 12, status: "confirmed", score: 4 }),
+    ]);
+
+    await recomputeRiskLinks(1, 7);
+
+    const updatedIds = mockUtils.updateRiskLinkScoreQuery.mock.calls.map(([id]) => id);
+    expect(updatedIds).toEqual([101]);
+    expect(mockUtils.deleteRiskLinksQuery).toHaveBeenCalledWith([100], 1, expect.anything());
+    expect(agentReasons).toEqual([{ signal: "hierarchy", detail: "Org-wide privacy risk" }]);
+    expect(commit).toHaveBeenCalled();
+  });
+
   it("exports the spec's threshold and cap", () => {
     expect(LINK_SCORE_THRESHOLD).toBe(3);
     expect(MAX_LINKS_PER_RISK).toBe(20);

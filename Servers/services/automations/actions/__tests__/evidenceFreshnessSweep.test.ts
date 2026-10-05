@@ -11,6 +11,7 @@ import { notifyEvidenceStale } from "../../../inAppNotification.service";
 import { sequelize } from "../../../../database/db";
 import { getAllOrganizationsQuery } from "../../../../utils/organization.utils";
 import { recordSnapshotIfChanged } from "../../../../utils/history/riskHistory.utils";
+import { recordEntityChange } from "../../../../utils/changeHistory.base.utils";
 
 const mockUnnotifiedImpl = jest.fn();
 const mockMarkNotifiedImpl = jest.fn();
@@ -23,8 +24,14 @@ jest.mock("../../../../utils/evidenceHub.utils", () => ({
 jest.mock("../../../inAppNotification.service", () => ({
   notifyEvidenceStale: jest.fn(),
 }));
+const mockTransactionToken = { id: "tx" };
 jest.mock("../../../../database/db", () => ({
-  sequelize: { query: jest.fn() },
+  sequelize: { query: jest.fn(), transaction: jest.fn() },
+}));
+jest.mock("../../../../utils/changeHistory.base.utils", () => ({
+  recordEntityChange: jest.fn(),
+  getFieldLabel: (_entity: string, field: string) =>
+    field === "mitigation_status" ? "Mitigation status" : field,
 }));
 jest.mock("../../../../utils/organization.utils", () => ({
   getAllOrganizationsQuery: jest.fn(),
@@ -44,6 +51,8 @@ const mockNotify = notifyEvidenceStale as jest.Mock;
 const mockQuery = sequelize.query as jest.Mock;
 const mockOrgs = getAllOrganizationsQuery as jest.Mock;
 const mockSnapshot = recordSnapshotIfChanged as jest.Mock;
+const mockRecordChange = recordEntityChange as jest.Mock;
+const mockTransaction = sequelize.transaction as jest.Mock;
 
 // In-memory risks table keyed by `${orgId}:${riskId}`, simulating exactly what
 // the sweep's WHERE clauses do: the flag UPDATE only touches rows whose flag
@@ -120,6 +129,22 @@ beforeEach(() => {
   resetState();
   mockNotify.mockResolvedValue(undefined);
   mockSnapshot.mockResolvedValue(null);
+  mockRecordChange.mockResolvedValue(undefined);
+  // Managed transaction: snapshot the in-memory table, run the callback, and
+  // restore the snapshot if it throws — what Postgres does on ROLLBACK.
+  mockTransaction.mockImplementation(async (cb: (t: unknown) => Promise<unknown>) => {
+    const savedFlags = new Map(flags);
+    const savedStatuses = new Map(statuses);
+    try {
+      return await cb(mockTransactionToken);
+    } catch (error) {
+      flags.clear();
+      savedFlags.forEach((v, k) => flags.set(k, v));
+      statuses.clear();
+      savedStatuses.forEach((v, k) => statuses.set(k, v));
+      throw error;
+    }
+  });
   // Flagged rows whose current flag the owner has not been told about yet.
   mockUnnotified.mockImplementation(async (org: number) => {
     const out = [];
@@ -272,6 +297,71 @@ describe("runEvidenceFreshnessSweep", () => {
     expect(statuses.get(key(1, 10))).toBe("Requires review");
     expect(statuses.get(key(1, 11))).toBe("In Progress");
     expect(mockSnapshot).toHaveBeenCalledWith("mitigation_status", 1);
+  });
+
+  it("records the downgrade in the risk's change history with a null (system) actor", async () => {
+    seedRisk(1, 10, 5, null, "Completed");
+    seedRisk(1, 11, 6, null, "In Progress");
+    mockStale.mockResolvedValue([10, 11]);
+
+    await runEvidenceFreshnessSweep(1);
+
+    expect(mockRecordChange).toHaveBeenCalledTimes(1);
+    expect(mockRecordChange).toHaveBeenCalledWith(
+      "risk",
+      10,
+      "updated",
+      null,
+      1,
+      "Mitigation status",
+      "Completed",
+      "Requires review",
+      mockTransactionToken,
+    );
+  });
+
+  it("runs the flag, the downgrade and the history write in one transaction", async () => {
+    seedRisk(1, 10, 5, null, "Completed");
+    mockStale.mockResolvedValue([10]);
+
+    await runEvidenceFreshnessSweep(1);
+
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    const txCalls = mockQuery.mock.calls.filter(
+      ([sql]: [string]) =>
+        sql.includes("evidence_stale_at = :now") ||
+        sql.includes("mitigation_status = 'Requires review'"),
+    );
+    expect(txCalls).toHaveLength(2);
+    for (const [, opts] of txCalls) {
+      expect(opts.transaction).toBe(mockTransactionToken);
+      expect(opts.replacements.organizationId).toBe(1);
+    }
+  });
+
+  it("a failing history write rolls back the flag and the downgrade, so the next run retries", async () => {
+    seedRisk(1, 10, 5, null, "Completed");
+    mockStale.mockResolvedValue([10]);
+    mockRecordChange.mockRejectedValueOnce(new Error("history write boom"));
+
+    await expect(runEvidenceFreshnessSweep(1)).rejects.toThrow("history write boom");
+    expect(flags.get(key(1, 10))).toBeNull();
+    expect(statuses.get(key(1, 10))).toBe("Completed");
+
+    const retry = await runEvidenceFreshnessSweep(1);
+    expect(retry.stale).toBe(1);
+    expect(retry.downgraded).toBe(1);
+    expect(statuses.get(key(1, 10))).toBe("Requires review");
+    expect(mockRecordChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens no transaction when nothing is stale", async () => {
+    mockStale.mockResolvedValue([]);
+
+    await runEvidenceFreshnessSweep(1);
+
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockRecordChange).not.toHaveBeenCalled();
   });
 
   it("clearing the flag does not restore 'Completed'", async () => {
