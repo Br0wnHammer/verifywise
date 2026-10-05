@@ -74,7 +74,8 @@ describe("recordEntityFieldChangeBulk", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, opts] = mockQuery.mock.calls[0];
     expect(sql).toContain("unnest(ARRAY[:entity_ids]::int[])");
-    expect(sql).toContain("NULL, NOW()");
+    expect(sql).toContain("NULL, true, NOW()");
+    expect(sql).toContain("changed_by_system");
     expect(opts.transaction).toBe(tx);
     expect(opts.replacements).toMatchObject({
       organization_id: 1,

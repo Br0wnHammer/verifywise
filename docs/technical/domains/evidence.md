@@ -340,8 +340,9 @@ its `expiry_date` or untouched for 90 days by setting
 `mitigation_status = 'Completed'` is knocked down to `'Requires review'` —
 stale evidence contradicts a completed mitigation, and `'Completed'` is the
 only status that claim is made from. The flag, the downgrade and the risk
-change-history entry for it (`recordEntityFieldChangeBulk`, actor `NULL`
-because no user made the change) commit in one transaction, so a crash can't
+change-history entry for it (`recordEntityFieldChangeBulk`: actor `NULL` and
+`changed_by_system = true`, so the history panel shows "System" rather than
+"Deleted User") commit in one transaction, so a crash can't
 leave a risk flagged but still `'Completed'`; the matching audit-ledger
 entries are appended only after the commit. Clearing the flag deliberately
 does not restore the status: re-attesting a mitigation as complete is a human

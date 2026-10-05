@@ -149,7 +149,11 @@ export const recordMultipleFieldChanges = async (
 
 /**
  * Record the same field change on many entities of one type in a single
- * INSERT, for unattended jobs that touch many rows at once (null actor).
+ * INSERT, for unattended jobs that touch many rows at once. Rows carry a null
+ * actor and changed_by_system = true, so the history panel shows "System"
+ * rather than mistaking them for a deleted user's change. The entity's table
+ * must have the changed_by_system column (migration
+ * 20261005130617-change-history-changed-by-system; not the ai_gateway_* tables).
  *
  * Audit ledger entries are appended one at a time after the transaction
  * commits: one per row would otherwise open that many concurrent ledger
@@ -172,8 +176,8 @@ export const recordEntityFieldChangeBulk = async (
 
   await sequelize.query(
     `INSERT INTO ${tableName}
-     (organization_id, ${foreignKey}, action, field_name, old_value, new_value, changed_by_user_id, changed_at)
-     SELECT :organization_id, entity_id, 'updated', :field_name, :old_value, :new_value, NULL, NOW()
+     (organization_id, ${foreignKey}, action, field_name, old_value, new_value, changed_by_user_id, changed_by_system, changed_at)
+     SELECT :organization_id, entity_id, 'updated', :field_name, :old_value, :new_value, NULL, true, NOW()
        FROM unnest(ARRAY[:entity_ids]::int[]) AS entity_id`,
     {
       replacements: {
