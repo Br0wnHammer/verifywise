@@ -233,11 +233,13 @@ describe("LinkedRisksPanel actions", () => {
     expect(screen.queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
   });
 
-  it("offers only Dismiss on a confirmed link", () => {
+  it("marks a confirmed link and offers only Remove link", () => {
     mockUseRiskLinks.mockReturnValue(queryResult([link({ status: "confirmed" })]));
     render(<LinkedRisksPanel riskId={42} />);
 
-    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    expect(screen.getByText("Confirmed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove link" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument();
   });
 
@@ -265,7 +267,7 @@ describe("LinkedRisksPanel actions", () => {
     mockUseRiskLinks.mockReturnValue(queryResult([link({ id: 55, status: "confirmed" })]));
     render(<LinkedRisksPanel riskId={42} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove link" }));
 
     expect(mockMutateStatus).toHaveBeenCalledWith(
       { id: 55, status: "dismissed" },
@@ -591,7 +593,7 @@ describe("LinkedRisksPanel dismissal reasons", () => {
       </ThemeProvider>,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove link" }));
 
     expect(screen.queryByLabelText("These aren't actually related")).not.toBeInTheDocument();
     expect(mockMutateStatus).toHaveBeenCalledWith(

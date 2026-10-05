@@ -12,6 +12,7 @@ import {
 } from "../../../domain/interfaces/i.riskLink";
 import DismissReasonForm, { DISMISS_REASON_LABELS } from "./DismissReasonForm";
 import { fill } from "../../../i18n/fill";
+import { signalLabel } from "./signalLabel";
 
 /**
  * Mirrors ALLOWED_TRANSITIONS in Servers/controllers/riskLinks.ctrl.ts rather
@@ -26,8 +27,10 @@ const actionsFor = (link: RiskLink): { label: string; next: RiskLinkStatus }[] =
       { label: "Dismiss", next: "dismissed" },
     ];
   }
+  // Same transition as dismissing a suggestion, but on a link someone already
+  // accepted it reads as taking the link away, not rejecting an idea.
   if (link.status === "confirmed") {
-    return [{ label: "Dismiss", next: "dismissed" }];
+    return [{ label: "Remove link", next: "dismissed" }];
   }
   return link.source === "derived"
     ? [
@@ -35,11 +38,6 @@ const actionsFor = (link: RiskLink): { label: string; next: RiskLinkStatus }[] =
         { label: "Confirm", next: "confirmed" },
       ]
     : [{ label: "Confirm", next: "confirmed" }];
-};
-
-const humanise = (key: string) => {
-  const words = key.replace(/_/g, " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
 type Translate = (key: string) => string;
@@ -73,8 +71,8 @@ export function translateDetail(signal: string, detail: string, t: Translate): s
 
 const reasonLabel = (reason: RiskLink["reasons"][number], t: Translate) =>
   reason.detail
-    ? `${t(humanise(reason.signal))}: ${translateDetail(reason.signal, reason.detail, t)}`
-    : t(humanise(reason.signal));
+    ? `${t(signalLabel(reason.signal))}: ${translateDetail(reason.signal, reason.detail, t)}`
+    : t(signalLabel(reason.signal));
 
 /**
  * Why the engine offered this link, as one tooltip line. Three bordered chips
@@ -146,6 +144,10 @@ export default function LinkRow({
           />
         )}
         {link.relatedRisk.riskLevel && <Chip size="small" label={link.relatedRisk.riskLevel} />}
+        {/* A suggestion carries Confirm; without this an accepted link looked like one. */}
+        {link.status === "confirmed" && (
+          <Chip size="small" variant="success" uppercase={false} label="Confirmed" />
+        )}
         {/*
           Only in the dismissed view, since it is null everywhere
           else. The note rides along as the tooltip rather than

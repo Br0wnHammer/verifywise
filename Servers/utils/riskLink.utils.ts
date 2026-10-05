@@ -1184,6 +1184,66 @@ export async function getRiskLinkByIdQuery(
   return row ? toLinkRow(row) : null;
 }
 
+/** One end of a link, named the way the Linked risks panel names it. */
+export interface RiskLinkEndpoint {
+  entityType: ParentEntityType;
+  id: number;
+  name: string;
+}
+
+/**
+ * Both ends of a link, for writing history on each. `source` is the child of an
+ * `inherits_from` edge and the smaller id of a `related_to` pair. An end that
+ * is soft-deleted or outside the org comes back null.
+ */
+export async function getRiskLinkEndpointsQuery(
+  organizationId: number,
+  link: RiskLinkRow,
+): Promise<{ source: RiskLinkEndpoint | null; target: RiskLinkEndpoint | null }> {
+  const rows = (await sequelize.query(
+    `SELECT 'risk' AS entity_type, id, risk_name AS name
+       FROM risks
+      WHERE id IN (:riskIds) AND organization_id = :organizationId AND is_deleted = false
+     UNION ALL
+     SELECT 'model_risk', id, COALESCE(NULLIF(risk_name, ''), 'Untitled model risk')
+       FROM model_risks
+      WHERE id = :modelRiskId AND organization_id = :organizationId AND is_deleted = false
+     UNION ALL
+     SELECT 'vendor_risk', id, COALESCE(NULLIF(LEFT(risk_description, 80), ''), 'Untitled vendor risk')
+       FROM vendorrisks
+      WHERE id IN (:vendorRiskIds) AND organization_id = :organizationId AND is_deleted = false`,
+    {
+      replacements: {
+        organizationId,
+        // -1 keeps `IN (...)` valid when an end is not in that table.
+        riskIds: [link.source_risk_id, link.target_risk_id].filter((v) => v != null).concat(-1),
+        modelRiskId: link.target_model_risk_id ?? -1,
+        vendorRiskIds: [link.source_vendor_risk_id, link.target_vendor_risk_id]
+          .filter((v) => v != null)
+          .concat(-1),
+      },
+      type: QueryTypes.SELECT,
+    },
+  )) as Array<{ entity_type: ParentEntityType; id: number; name: string }>;
+
+  const find = (entityType: ParentEntityType, id: number | null): RiskLinkEndpoint | null => {
+    const row =
+      id == null ? undefined : rows.find((r) => r.entity_type === entityType && r.id === id);
+    return row ? { entityType, id: row.id, name: row.name } : null;
+  };
+
+  return {
+    source:
+      link.source_risk_id != null
+        ? find("risk", link.source_risk_id)
+        : find("vendor_risk", link.source_vendor_risk_id),
+    target:
+      find("risk", link.target_risk_id) ??
+      find("model_risk", link.target_model_risk_id) ??
+      find("vendor_risk", link.target_vendor_risk_id),
+  };
+}
+
 /**
  * One vendor or model risk that shares at least one project with a given
  * project risk. C5 is a ranking hint for the link picker: nothing here is

@@ -27,6 +27,14 @@ import {
   VendorRiskChildCandidate,
 } from "../../domain/interfaces/i.riskLink";
 
+/**
+ * The app default retries a failed mutation once. Every call here either
+ * changes a link or enqueues a background job, and the failures they return
+ * are answers (a 400 for "no LLM key", a 409 for a hierarchy rule), so a retry
+ * only sends the request twice.
+ */
+const NO_RETRY = false;
+
 const linksKey = (riskId: number) => ["riskLinks", riskId] as const;
 
 /**
@@ -53,14 +61,25 @@ export function useRiskLinks(
 }
 
 /** onSettled, not onSuccess: a 404 means the list on screen is stale too. */
+/**
+ * A link decision is written to the history of the risk at each end, and the
+ * other end may be a model or vendor risk, so every history view is refreshed.
+ */
+const CHANGE_HISTORY_KEY = ["changeHistory"];
+
 function useInvalidateLinks(riskId: number) {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: linksKey(riskId) });
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: linksKey(riskId) }),
+      queryClient.invalidateQueries({ queryKey: CHANGE_HISTORY_KEY }),
+    ]);
 }
 
 export function useCreateRiskLink(riskId: number) {
   const invalidate = useInvalidateLinks(riskId);
   return useMutation({
+    retry: NO_RETRY,
     mutationFn: (input: CreateRiskLinkInput) => createRiskLink(input),
     onSettled: invalidate,
   });
@@ -69,6 +88,7 @@ export function useCreateRiskLink(riskId: number) {
 export function useUpdateRiskLinkStatus(riskId: number) {
   const invalidate = useInvalidateLinks(riskId);
   return useMutation({
+    retry: NO_RETRY,
     mutationFn: ({
       id,
       status,
@@ -87,6 +107,7 @@ export function useUpdateRiskLinkStatus(riskId: number) {
 export function useAcknowledgeParentLevelChange(riskId: number) {
   const invalidate = useInvalidateLinks(riskId);
   return useMutation({
+    retry: NO_RETRY,
     mutationFn: (id: number) => acknowledgeParentLevelChange(id),
     onSettled: invalidate,
   });
@@ -95,6 +116,7 @@ export function useAcknowledgeParentLevelChange(riskId: number) {
 export function useRecomputeRiskLinks(riskId: number) {
   const invalidate = useInvalidateLinks(riskId);
   return useMutation({
+    retry: NO_RETRY,
     mutationFn: () => recomputeRiskLinks(),
     onSettled: invalidate,
   });
@@ -108,6 +130,7 @@ export function useRecomputeRiskLinks(riskId: number) {
 export function useSuggestRiskHierarchy(riskId: number) {
   const invalidate = useInvalidateLinks(riskId);
   return useMutation({
+    retry: NO_RETRY,
     mutationFn: () => suggestRiskHierarchy(),
     onSettled: invalidate,
   });
@@ -164,12 +187,14 @@ function useInvalidateVendorLinks() {
       queryClient.invalidateQueries({ queryKey: ["riskLinks"] }),
       // A child added or removed changes the vendor's reach.
       queryClient.invalidateQueries({ queryKey: VENDOR_INSIGHTS_KEY }),
+      queryClient.invalidateQueries({ queryKey: CHANGE_HISTORY_KEY }),
     ]);
 }
 
 export function useCreateVendorRiskLink() {
   const invalidate = useInvalidateVendorLinks();
   return useMutation({
+    retry: NO_RETRY,
     mutationFn: (input: CreateRiskLinkInput) => createRiskLink(input),
     onSettled: invalidate,
   });
@@ -178,6 +203,7 @@ export function useCreateVendorRiskLink() {
 export function useUpdateVendorRiskLinkStatus() {
   const invalidate = useInvalidateVendorLinks();
   return useMutation({
+    retry: NO_RETRY,
     mutationFn: ({
       id,
       status,
@@ -195,6 +221,7 @@ export function useUpdateVendorRiskLinkStatus() {
 export function useRecomputeVendorRiskLinks() {
   const invalidate = useInvalidateVendorLinks();
   return useMutation({
+    retry: NO_RETRY,
     mutationFn: () => recomputeVendorRiskLinks(),
     onSettled: invalidate,
   });
@@ -213,6 +240,7 @@ export function useVendorRiskSharedProjects(vendorRiskId: number, enabled: boole
 export function useSuggestVendorRiskHierarchy(vendorRiskId: number) {
   const invalidate = useInvalidateVendorLinks();
   return useMutation({
+    retry: NO_RETRY,
     mutationFn: () => suggestVendorRiskHierarchy(vendorRiskId),
     onSettled: invalidate,
   });

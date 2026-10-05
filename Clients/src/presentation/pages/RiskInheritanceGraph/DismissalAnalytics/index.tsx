@@ -52,13 +52,7 @@ import {
   errorAlertSx,
   errorTextSx,
 } from "./styles";
-
-/** Human label for a machine signal key. Derived, never hardcoded: providers
- * emit keys no static map knows about. */
-export const signalLabel = (signal: string): string => {
-  const spaced = signal.replace(/_/g, " ");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-};
+import { signalLabel } from "../../../components/LinkedRisksPanel/signalLabel";
 
 /** Three cases, not two: mode() returns SQL NULL for a signal with decided
  * links but zero dismissals — the healthiest row in the table. */

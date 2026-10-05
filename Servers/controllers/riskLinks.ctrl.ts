@@ -28,15 +28,19 @@ import {
   getRelatedPairsQuery,
   getRiskGraphQuery,
   getRiskLinkByIdQuery,
+  getRiskLinkEndpointsQuery,
   getRiskLinksForRiskQuery,
   getRiskLinksForVendorRiskQuery,
   getSharedProjectCandidatesQuery,
   getVendorRiskChildCandidatesQuery,
   RISK_GRAPH_EDGE_CAP,
   HierarchyParent,
+  RiskLinkEndpoint,
   RiskLinkWithRelated,
   updateRiskLinkStatusQuery,
 } from "../utils/riskLink.utils";
+import { recordEntityChange } from "../utils/changeHistory.base.utils";
+import logger from "../utils/logger/fileLogger";
 import { findDuplicateCandidates } from "../services/riskLinks/duplicates";
 import { findControlCoverage } from "../services/riskLinks/coverage";
 import {
@@ -55,6 +59,7 @@ import {
   canonicalPair,
   RISK_LINK_STATUSES,
   RiskLinkRelationType,
+  RiskLinkRow,
   RiskLinkStatus,
 } from "../services/riskLinks/types";
 
@@ -81,6 +86,61 @@ const RELATION_TYPES: RiskLinkRelationType[] = ["related_to", "inherits_from"];
 
 const isRelationType = (value: unknown): value is RiskLinkRelationType =>
   typeof value === "string" && (RELATION_TYPES as string[]).includes(value);
+
+const STATUS_LABELS: Record<RiskLinkStatus, string> = {
+  suggested: "Suggested",
+  confirmed: "Confirmed",
+  dismissed: "Dismissed",
+};
+
+/** How the link reads from one end, e.g. "Inherits from X" on the child. */
+const describeLinkFrom = (
+  link: RiskLinkRow,
+  viewer: "source" | "target",
+  other: RiskLinkEndpoint,
+): string => {
+  if (link.relation_type === "inherits_from") {
+    return viewer === "source" ? `Inherits from ${other.name}` : `Inherited by ${other.name}`;
+  }
+  return `Relates to ${other.name}`;
+};
+
+/**
+ * A person confirmed, dismissed, restored or created a link: note it in the
+ * history of the risk at each end, so the Activity tab shows who decided.
+ * `from` is null for a new link. The link change has already been saved, so a
+ * history failure is logged, never returned to the caller.
+ */
+const recordLinkHistory = async (
+  req: Request,
+  link: RiskLinkRow,
+  from: RiskLinkStatus | null,
+  to: RiskLinkStatus,
+): Promise<void> => {
+  try {
+    const { source, target } = await getRiskLinkEndpointsQuery(req.organizationId!, link);
+    if (!source || !target) return;
+    const ends: Array<[RiskLinkEndpoint, "source" | "target", RiskLinkEndpoint]> = [
+      [source, "source", target],
+      [target, "target", source],
+    ];
+    for (const [end, viewer, other] of ends) {
+      const description = describeLinkFrom(link, viewer, other);
+      await recordEntityChange(
+        end.entityType,
+        end.id,
+        "updated",
+        req.userId!,
+        req.organizationId!,
+        "Linked risk",
+        from === null ? "-" : `${STATUS_LABELS[from]}: ${description}`,
+        `${STATUS_LABELS[to]}: ${description}`,
+      );
+    }
+  } catch (error) {
+    logger.error(`[riskLinks] failed to record history for link ${link.id}: ${error}`);
+  }
+};
 
 const hierarchyParentFromLink = (link: {
   target_risk_id: number | null;
@@ -912,6 +972,7 @@ export async function updateRiskLinkStatus(req: Request, res: Response): Promise
       dismissal.reason,
       dismissal.note,
     );
+    await recordLinkHistory(req, link, link.status, next);
 
     logSuccess({
       eventType: "Update",
@@ -1095,6 +1156,9 @@ export async function createRiskLink(req: Request, res: Response): Promise<any> 
         );
     }
 
+    const created = await getRiskLinkByIdQuery(id, req.organizationId!);
+    if (created) await recordLinkHistory(req, created, null, created.status);
+
     logSuccess({
       eventType: "Create",
       description: `linked risk ${storedSource} to ${storedTarget} as ${relationType}`,
@@ -1180,6 +1244,9 @@ async function createVendorRiskPair(req: Request, res: Response): Promise<any> {
         ),
       );
   }
+
+  const created = await getRiskLinkByIdQuery(id, req.organizationId!);
+  if (created) await recordLinkHistory(req, created, null, created.status);
 
   logSuccess({
     eventType: "Create",

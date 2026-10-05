@@ -2,6 +2,10 @@ jest.mock("../../utils/riskLink.utils");
 jest.mock("../../services/automations/automationProducer", () => ({
   enqueueRiskLinkRecompute: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock("../../utils/changeHistory.base.utils", () => ({
+  recordEntityChange: jest.fn(),
+}));
+jest.mock("../../utils/logger/fileLogger", () => ({ error: jest.fn() }));
 jest.mock("../../utils/logger/logHelper", () => ({
   logProcessing: jest.fn(),
   logSuccess: jest.fn(),
@@ -20,6 +24,7 @@ jest.mock("../../utils/statusCode.utils", () => ({
 }));
 
 import * as utils from "../../utils/riskLink.utils";
+import { recordEntityChange } from "../../utils/changeHistory.base.utils";
 import { enqueueRiskLinkRecompute } from "../../services/automations/automationProducer";
 import { getTranslator, type SupportedLang } from "../../utils/i18n.utils";
 import {
@@ -1033,5 +1038,121 @@ describe("every message the controller sends has a German and French translation
   it.each(["de", "fr"])("translates them in %s (none left as the English key)", (lang) => {
     const dict = dictionary(lang);
     expect(keys.filter((key) => dict[key] === key)).toEqual([]);
+  });
+});
+
+describe("link history", () => {
+  const link = {
+    id: 100,
+    organization_id: 7,
+    source_risk_id: 3,
+    source_vendor_risk_id: null,
+    target_risk_id: null,
+    target_model_risk_id: 42,
+    target_vendor_risk_id: null,
+    relation_type: "inherits_from" as const,
+    status: "suggested" as const,
+    source: "derived" as const,
+    score: 5,
+    reasons: [],
+    decided_at: null,
+    last_computed_at: null,
+    dismiss_reason: null,
+    dismiss_note: null,
+    parent_level_changed_at: null,
+  };
+  const ends = {
+    source: { entityType: "risk" as const, id: 3, name: "Bias in screening" },
+    target: { entityType: "model_risk" as const, id: 42, name: "Model drift" },
+  };
+  const mockRecord = recordEntityChange as jest.Mock;
+
+  it("notes a confirmation on the risk at each end, worded from that end", async () => {
+    mockUtils.getRiskLinkByIdQuery.mockResolvedValue(link);
+    mockUtils.getConfirmedHierarchyEdgesQuery.mockResolvedValue([]);
+    mockUtils.getRiskLinkEndpointsQuery.mockResolvedValue(ends);
+    const r = res();
+    await updateRiskLinkStatus(
+      req({ params: { id: "100" }, body: { status: "confirmed" } }) as any,
+      r as any,
+    );
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(mockRecord).toHaveBeenCalledTimes(2);
+    expect(mockRecord).toHaveBeenCalledWith(
+      "risk",
+      3,
+      "updated",
+      5,
+      7,
+      "Linked risk",
+      "Suggested: Inherits from Model drift",
+      "Confirmed: Inherits from Model drift",
+    );
+    expect(mockRecord).toHaveBeenCalledWith(
+      "model_risk",
+      42,
+      "updated",
+      5,
+      7,
+      "Linked risk",
+      "Suggested: Inherited by Bias in screening",
+      "Confirmed: Inherited by Bias in screening",
+    );
+  });
+
+  it("still answers 200 when writing history fails", async () => {
+    mockUtils.getRiskLinkByIdQuery.mockResolvedValue({ ...link, status: "confirmed" as const });
+    mockUtils.getRiskLinkEndpointsQuery.mockResolvedValue(ends);
+    mockRecord.mockRejectedValue(new Error("history table missing"));
+    const r = res();
+    await updateRiskLinkStatus(
+      req({ params: { id: "100" }, body: { status: "dismissed" } }) as any,
+      r as any,
+    );
+    expect(mockUtils.updateRiskLinkStatusQuery).toHaveBeenCalled();
+    expect(r.status).toHaveBeenCalledWith(200);
+  });
+
+  it("notes a new user link with no previous value", async () => {
+    mockUtils.getLiveRiskIdsQuery.mockResolvedValue([4, 9]);
+    mockUtils.createUserRiskLinkQuery.mockResolvedValue(77);
+    mockUtils.getRiskLinkByIdQuery.mockResolvedValue({
+      ...link,
+      id: 77,
+      source_risk_id: 4,
+      target_risk_id: 9,
+      target_model_risk_id: null,
+      relation_type: "related_to" as const,
+      status: "confirmed" as const,
+      source: "user" as const,
+    });
+    mockUtils.getRiskLinkEndpointsQuery.mockResolvedValue({
+      source: { entityType: "risk", id: 4, name: "Data leakage" },
+      target: { entityType: "risk", id: 9, name: "Prompt injection" },
+    });
+    await createRiskLink(
+      req({ body: { sourceRiskId: 4, targetRiskId: 9, relationType: "related_to" } }) as any,
+      res() as any,
+    );
+    expect(mockRecord).toHaveBeenCalledWith(
+      "risk",
+      4,
+      "updated",
+      5,
+      7,
+      "Linked risk",
+      "-",
+      "Confirmed: Relates to Prompt injection",
+    );
+    expect(mockRecord).toHaveBeenCalledWith(
+      "risk",
+      9,
+      "updated",
+      5,
+      7,
+      "Linked risk",
+      "-",
+      "Confirmed: Relates to Data leakage",
+    );
   });
 });

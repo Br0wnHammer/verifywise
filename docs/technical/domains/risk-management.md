@@ -1,6 +1,6 @@
 # Risk Management Domain
 
-**Last Updated:** 2026-10-02
+**Last Updated:** 2026-10-05
 
 ## Overview
 
@@ -754,6 +754,16 @@ Dismissing a *suggested* link also captures an optional structured reason
 relation type. Dismissing a *confirmed* link records nothing on purpose: that
 is a human un-linking a pair they already accepted, not feedback about a
 suggestion, and mixing the two would skew every rate in the file.
+
+**History.** Every human link decision (confirm, dismiss, restore, and creating
+a link by hand) writes a "Linked risk" row to the change history of the risk at
+*each* end: project, model or vendor risk. The value is worded from that end
+("Suggested: Inherits from X" → "Confirmed: Inherits from X" on the child,
+"Inherited by Y" on the parent). The write happens after the link is saved and
+a failure is only logged (`recordLinkHistory` in `riskLinks.ctrl.ts`). Link
+mutations on the client invalidate every `changeHistory` query, so an open
+Activity tab refreshes. Background recomputes write no history; nobody decided
+anything.
 
 Design: `docs/superpowers/specs/2026-08-11-risk-inheritance-design.md`
 

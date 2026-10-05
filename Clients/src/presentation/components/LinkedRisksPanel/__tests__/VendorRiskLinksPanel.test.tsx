@@ -223,7 +223,7 @@ describe("VendorRiskLinksPanel decisions", () => {
     mockUseVendorRiskLinks.mockReturnValue(queryResult([child({ id: 33 })]));
     renderPanel();
 
-    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove link" }));
 
     expect(mockMutateStatus).toHaveBeenCalledWith(
       { id: 33, status: "dismissed" },

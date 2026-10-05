@@ -202,10 +202,13 @@ describe.each(LANGS)("linked risks panel in %s", (lang) => {
       "Low risk",
       "No risk",
       "Confirm",
+      "Confirmed",
     ]) {
       expect((await screen.findAllByText(tr(lang, key))).length).toBeGreaterThan(0);
     }
-    expect((await screen.findAllByText(tr(lang, "Dismiss"))).length).toBe(3);
+    // The suggestion offers Dismiss; the two confirmed links offer Remove link.
+    expect((await screen.findAllByText(tr(lang, "Dismiss"))).length).toBe(1);
+    expect((await screen.findAllByText(tr(lang, "Remove link"))).length).toBe(2);
     // A link whose risk has no name falls back to a translated "Risk {id}".
     expect(await screen.findByText(tr(lang, "Risk {id}", { id: 9 }))).toBeInTheDocument();
 
@@ -217,7 +220,7 @@ describe.each(LANGS)("linked risks panel in %s", (lang) => {
         `${tr(lang, "Shared category")}: ${tr(lang, "Operational risk")}, ${tr(lang, "Legal risk")}`,
         `${tr(lang, "Shared framework element")}: 2 ${tr(lang, "EU AI Act controls")}, 1 ${tr(lang, "ISO 42001 subclause")}`,
         `${tr(lang, "Same lifecycle phase")}: ${tr(lang, "Problem definition & planning")}`,
-        `${tr(lang, "Shared control")}: AC-17 remote access`,
+        `${tr(lang, "Shared control mapping")}: AC-17 remote access`,
         tr(lang, "Shared project"),
       ].join(" · "),
     );

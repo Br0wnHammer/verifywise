@@ -5,11 +5,11 @@ import userEvent from "@testing-library/user-event";
 import {
   rateText,
   ratePercent,
-  signalLabel,
   topReasonLabel,
   reasonLabel,
   groupReasons,
 } from "../DismissalAnalytics";
+import { signalLabel } from "../../../components/LinkedRisksPanel/signalLabel";
 import type { DismissalAnalytics as DismissalAnalyticsPayload } from "../../../../domain/interfaces/i.riskLink";
 
 const mockGetDismissalAnalytics = vi.fn();
@@ -40,6 +40,7 @@ describe("dismissal analytics helpers", () => {
   it("renders an unknown signal key readably instead of blank", () => {
     expect(signalLabel("future_provider_x")).toBe("Future provider x");
     expect(signalLabel("shared_category")).toBe("Shared category");
+    expect(signalLabel("shared_assessment")).toBe("Shared assessment mapping");
   });
 
   it("pools group denominators without crossing relation or source", () => {
