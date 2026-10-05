@@ -54,6 +54,7 @@ import {
   useSortedRows,
   SortableTableHead,
 } from "./constants";
+import { pageOfLabel } from "../../components/Table/pageOfLabel";
 
 const ROWS_PER_PAGE = 20;
 
@@ -616,7 +617,7 @@ export default function AIToolsPage() {
                   ActionsComponent={(props) => <TablePaginationActions {...props} />}
                   labelRowsPerPage=""
                   labelDisplayedRows={({ page: p, count }) =>
-                    `Page ${p + 1} of ${Math.max(0, Math.ceil(count / ROWS_PER_PAGE))}`
+                    pageOfLabel(p + 1, Math.max(0, Math.ceil(count / ROWS_PER_PAGE)))
                   }
                   slotProps={{
                     select: {

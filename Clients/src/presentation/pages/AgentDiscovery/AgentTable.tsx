@@ -45,6 +45,7 @@ import {
 } from "./style";
 import { AgentTableProps } from "src/domain/interfaces/i.agentDiscovery";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
+import { pageOfLabel } from "../../components/Table/pageOfLabel";
 
 const cellStyle = singleTheme.tableStyles.primary.body.cell;
 
@@ -388,7 +389,7 @@ const AgentTable: React.FC<AgentTableProps> = ({
               ActionsComponent={(props) => <TablePaginationActions {...props} />}
               labelRowsPerPage="Rows per page"
               labelDisplayedRows={({ page, count }) =>
-                `Page ${page + 1} of ${Math.max(0, Math.ceil(count / rowsPerPage))}`
+                pageOfLabel(page + 1, Math.max(0, Math.ceil(count / rowsPerPage)))
               }
               slotProps={{
                 select: {

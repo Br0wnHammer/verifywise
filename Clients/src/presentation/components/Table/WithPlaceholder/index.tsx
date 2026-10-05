@@ -43,6 +43,7 @@ import VendorLogo from "../../VendorLogo";
 import { text } from "../../../themes/palette";
 import { useCustomFieldDefinitions } from "../../../../application/hooks/useCustomFields";
 import { formatCustomFieldValue } from "../../CustomFieldsSection/formatCustomFieldValue";
+import { pageOfLabel } from "../pageOfLabel";
 
 const VENDORS_ROWS_PER_PAGE_KEY = "verifywise_vendors_rows_per_page";
 const VENDORS_SORTING_KEY = "verifywise_vendors_sorting";
@@ -636,7 +637,7 @@ const TableWithPlaceholder: React.FC<ITableWithPlaceholderProps> = ({
                     ActionsComponent={(props) => <TablePaginationActions {...props} />}
                     labelRowsPerPage="Rows per page"
                     labelDisplayedRows={({ page, count }) =>
-                      `Page ${page + 1} of ${Math.max(0, Math.ceil(count / rowsPerPage))}`
+                      pageOfLabel(page + 1, Math.max(0, Math.ceil(count / rowsPerPage)))
                     }
                     slotProps={{
                       select: {

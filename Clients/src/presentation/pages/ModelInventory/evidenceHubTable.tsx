@@ -50,6 +50,7 @@ import { palette } from "../../themes/palette";
 import { EvidenceHubTableProps } from "../../../domain/interfaces/i.modelInventory";
 import { earliestFileExpiry } from "../../../application/utils/fileExpiry";
 import { FileExpiryChip } from "../../components/FileExpiryChip";
+import { pageOfLabel } from "../../components/Table/pageOfLabel";
 
 dayjs.extend(utc);
 
@@ -646,7 +647,7 @@ const EvidenceHubTable: React.FC<EvidenceHubTableProps> = ({
                   ActionsComponent={(props) => <TablePaginationActions {...props} />}
                   labelRowsPerPage="Rows per page"
                   labelDisplayedRows={({ page, count }) =>
-                    `Page ${page + 1} of ${Math.max(0, Math.ceil(count / rowsPerPage))}`
+                    pageOfLabel(page + 1, Math.max(0, Math.ceil(count / rowsPerPage)))
                   }
                   slotProps={{
                     select: {

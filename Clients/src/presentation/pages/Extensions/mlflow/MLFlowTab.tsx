@@ -42,6 +42,7 @@ import {
 } from "../theme";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
+import { pageOfLabel } from "../../../components/Table/pageOfLabel";
 
 const SelectorVertical = (props: any) => <ChevronsUpDown size={16} {...props} />;
 
@@ -703,7 +704,7 @@ export default function MLFlowTab() {
                             onRowsPerPageChange={handleRowsPerPageChange}
                             labelRowsPerPage="Rows per page"
                             labelDisplayedRows={({ page, count }) =>
-                              `Page ${page + 1} of ${Math.max(1, Math.ceil(count / rowsPerPage))}`
+                              pageOfLabel(page + 1, Math.max(1, Math.ceil(count / rowsPerPage)))
                             }
                             slotProps={{ select: { IconComponent: SelectorVertical } }}
                             sx={{ fontSize: typography.sizes.md }}
