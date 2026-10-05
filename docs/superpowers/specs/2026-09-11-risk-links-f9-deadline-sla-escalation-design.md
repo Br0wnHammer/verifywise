@@ -222,7 +222,7 @@ This matters because the sweep's recipients are the real `risk_owner` values on 
 
 ## 10. Seed
 
-`Servers/seed_risk_deadlines_demo.sql`.
+`Servers/scripts/seeds/sql/seed_risk_deadlines_demo.sql`.
 
 **Relative dates only** — `NOW() + INTERVAL '7 days'`, never a literal date. This feature is entirely about distance from today; absolute dates go stale the day after they are written.
 

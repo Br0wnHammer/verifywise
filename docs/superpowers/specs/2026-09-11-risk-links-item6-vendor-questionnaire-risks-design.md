@@ -381,11 +381,11 @@ CI job `api-docs-drift` fails if the regenerated files are not included.
 
 ---
 
-## 9. Seed — `Servers/seed_vendor_questionnaire_demo.sql`
+## 9. Seed — `Servers/scripts/seeds/sql/seed_vendor_questionnaire_demo.sql`
 
 ### 9.1 The id-block hazard
 
-`Servers/seed_risk_links_demo.sql` clean-slate deletes the **whole** vendor ranges:
+`Servers/scripts/seeds/sql/seed_risk_links_demo.sql` clean-slate deletes the **whole** vendor ranges:
 
 ```sql
 DELETE FROM vendorrisks      WHERE id BETWEEN 9400 AND 9499;

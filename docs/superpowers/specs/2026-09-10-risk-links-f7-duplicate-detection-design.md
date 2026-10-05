@@ -315,7 +315,7 @@ Swagger and the endpoint registry are generated, never hand-edited:
 ## 6. Seed data
 
 The detector has nothing to prove itself against — the dev org has zero
-duplicates by construction. Add `Servers/seed_risk_duplicates_demo.sql`
+duplicates by construction. Add `Servers/scripts/seeds/sql/seed_risk_duplicates_demo.sql`
 alongside the existing `seed_risk_links_demo.sql`:
 
 - two obvious duplicates (same meaning, different wording, same category)
