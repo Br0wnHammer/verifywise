@@ -36,11 +36,12 @@ import {
   RISK_GRAPH_EDGE_CAP,
   HierarchyParent,
   RiskLinkEndpoint,
+  RiskLinkEnds,
   RiskLinkWithRelated,
   updateRiskLinkStatusQuery,
 } from "../utils/riskLink.utils";
 import { recordEntityChange } from "../utils/changeHistory.base.utils";
-import logger from "../utils/logger/fileLogger";
+import { sequelize } from "../database/db";
 import { findDuplicateCandidates } from "../services/riskLinks/duplicates";
 import { findControlCoverage } from "../services/riskLinks/coverage";
 import {
@@ -59,7 +60,6 @@ import {
   canonicalPair,
   RISK_LINK_STATUSES,
   RiskLinkRelationType,
-  RiskLinkRow,
   RiskLinkStatus,
 } from "../services/riskLinks/types";
 
@@ -93,9 +93,12 @@ const STATUS_LABELS: Record<RiskLinkStatus, string> = {
   dismissed: "Dismissed",
 };
 
+/** What the history note needs to know about a link. */
+type HistoryLink = RiskLinkEnds & { id: number; relation_type: RiskLinkRelationType };
+
 /** How the link reads from one end, e.g. "Inherits from X" on the child. */
 const describeLinkFrom = (
-  link: RiskLinkRow,
+  link: HistoryLink,
   viewer: "source" | "target",
   other: RiskLinkEndpoint,
 ): string => {
@@ -108,12 +111,13 @@ const describeLinkFrom = (
 /**
  * A person confirmed, dismissed, restored or created a link: note it in the
  * history of the risk at each end, so the Activity tab shows who decided.
- * `from` is null for a new link. The link change has already been saved, so a
- * history failure is logged, never returned to the caller.
+ * `from` is null for a new link. Both ends are written in one transaction, so
+ * neither side has a note the other lacks. The link change has already been
+ * saved, so a history failure is logged, never returned to the caller.
  */
 const recordLinkHistory = async (
   req: Request,
-  link: RiskLinkRow,
+  link: HistoryLink,
   from: RiskLinkStatus | null,
   to: RiskLinkStatus,
 ): Promise<void> => {
@@ -124,21 +128,32 @@ const recordLinkHistory = async (
       [source, "source", target],
       [target, "target", source],
     ];
-    for (const [end, viewer, other] of ends) {
-      const description = describeLinkFrom(link, viewer, other);
-      await recordEntityChange(
-        end.entityType,
-        end.id,
-        "updated",
-        req.userId!,
-        req.organizationId!,
-        "Linked risk",
-        from === null ? "-" : `${STATUS_LABELS[from]}: ${description}`,
-        `${STATUS_LABELS[to]}: ${description}`,
-      );
-    }
+    await sequelize.transaction(async (transaction) => {
+      for (const [end, viewer, other] of ends) {
+        const description = describeLinkFrom(link, viewer, other);
+        await recordEntityChange(
+          end.entityType,
+          end.id,
+          "updated",
+          req.userId!,
+          req.organizationId!,
+          "Linked risk",
+          from === null ? "-" : `${STATUS_LABELS[from]}: ${description}`,
+          `${STATUS_LABELS[to]}: ${description}`,
+          transaction,
+        );
+      }
+    });
   } catch (error) {
-    logger.error(`[riskLinks] failed to record history for link ${link.id}: ${error}`);
+    logFailure({
+      eventType: "Update",
+      description: `failed to record history for risk link ${link.id}`,
+      functionName: "recordLinkHistory",
+      fileName: FILE_NAME,
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
   }
 };
 
@@ -964,14 +979,26 @@ export async function updateRiskLinkStatus(req: Request, res: Response): Promise
     // The undo back to `suggested` erases the decision so a later recompute may
     // prune the edge normally again.
     const decidedByUserId = next === "suggested" ? null : req.userId!;
-    await updateRiskLinkStatusQuery(
+    const updated = await updateRiskLinkStatusQuery(
       id,
       req.organizationId!,
       next,
       decidedByUserId,
       dismissal.reason,
       dismissal.note,
+      link.status,
     );
+    if (!updated) {
+      // A recompute pruned the suggestion, or someone else decided it, after
+      // it was read. Nothing changed, so there is nothing to put in history.
+      return res
+        .status(409)
+        .json(
+          STATUS_CODE[409](
+            req.t!("This link changed while you were deciding. Reload and try again."),
+          ),
+        );
+    }
     await recordLinkHistory(req, link, link.status, next);
 
     logSuccess({
@@ -1156,8 +1183,23 @@ export async function createRiskLink(req: Request, res: Response): Promise<any> 
         );
     }
 
-    const created = await getRiskLinkByIdQuery(id, req.organizationId!);
-    if (created) await recordLinkHistory(req, created, null, created.status);
+    // createUserRiskLinkQuery always inserts a confirmed link.
+    await recordLinkHistory(
+      req,
+      {
+        id,
+        relation_type: relationType,
+        source_risk_id: storedSource,
+        source_vendor_risk_id: null,
+        target_risk_id: storedTargetParent.entityType === "risk" ? storedTargetParent.id : null,
+        target_model_risk_id:
+          storedTargetParent.entityType === "model_risk" ? storedTargetParent.id : null,
+        target_vendor_risk_id:
+          storedTargetParent.entityType === "vendor_risk" ? storedTargetParent.id : null,
+      },
+      null,
+      "confirmed",
+    );
 
     logSuccess({
       eventType: "Create",
@@ -1245,8 +1287,21 @@ async function createVendorRiskPair(req: Request, res: Response): Promise<any> {
       );
   }
 
-  const created = await getRiskLinkByIdQuery(id, req.organizationId!);
-  if (created) await recordLinkHistory(req, created, null, created.status);
+  // createUserVendorRiskLinkQuery always inserts a confirmed related_to pair.
+  await recordLinkHistory(
+    req,
+    {
+      id,
+      relation_type: "related_to",
+      source_risk_id: null,
+      source_vendor_risk_id: first,
+      target_risk_id: null,
+      target_model_risk_id: null,
+      target_vendor_risk_id: second,
+    },
+    null,
+    "confirmed",
+  );
 
   logSuccess({
     eventType: "Create",

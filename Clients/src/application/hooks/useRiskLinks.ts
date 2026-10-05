@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   acknowledgeParentLevelChange,
   createRiskLink,
@@ -60,20 +60,23 @@ export function useRiskLinks(
   });
 }
 
-/** onSettled, not onSuccess: a 404 means the list on screen is stale too. */
 /**
  * A link decision is written to the history of the risk at each end, and the
- * other end may be a model or vendor risk, so every history view is refreshed.
+ * other end may be a model or vendor risk, so every history view is marked
+ * stale. Not awaited: only mounted views refetch, and the mutation should not
+ * stay pending until they have.
  */
-const CHANGE_HISTORY_KEY = ["changeHistory"];
+const refreshChangeHistory = (queryClient: QueryClient) => {
+  void queryClient.invalidateQueries({ queryKey: ["changeHistory"] });
+};
 
+/** onSettled, not onSuccess: a 404 means the list on screen is stale too. */
 function useInvalidateLinks(riskId: number) {
   const queryClient = useQueryClient();
-  return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: linksKey(riskId) }),
-      queryClient.invalidateQueries({ queryKey: CHANGE_HISTORY_KEY }),
-    ]);
+  return () => {
+    refreshChangeHistory(queryClient);
+    return queryClient.invalidateQueries({ queryKey: linksKey(riskId) });
+  };
 }
 
 export function useCreateRiskLink(riskId: number) {
@@ -181,14 +184,15 @@ export function useVendorRiskLinks(
  */
 function useInvalidateVendorLinks() {
   const queryClient = useQueryClient();
-  return () =>
-    Promise.all([
+  return () => {
+    refreshChangeHistory(queryClient);
+    return Promise.all([
       queryClient.invalidateQueries({ queryKey: ["vendorRiskLinks"] }),
       queryClient.invalidateQueries({ queryKey: ["riskLinks"] }),
       // A child added or removed changes the vendor's reach.
       queryClient.invalidateQueries({ queryKey: VENDOR_INSIGHTS_KEY }),
-      queryClient.invalidateQueries({ queryKey: CHANGE_HISTORY_KEY }),
     ]);
+  };
 }
 
 export function useCreateVendorRiskLink() {

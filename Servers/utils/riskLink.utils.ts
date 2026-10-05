@@ -1196,12 +1196,21 @@ export interface RiskLinkEndpoint {
  * `inherits_from` edge and the smaller id of a `related_to` pair. An end that
  * is soft-deleted or outside the org comes back null.
  */
+export type RiskLinkEnds = Pick<
+  RiskLinkRow,
+  | "source_risk_id"
+  | "source_vendor_risk_id"
+  | "target_risk_id"
+  | "target_model_risk_id"
+  | "target_vendor_risk_id"
+>;
+
 export async function getRiskLinkEndpointsQuery(
   organizationId: number,
-  link: RiskLinkRow,
+  link: RiskLinkEnds,
 ): Promise<{ source: RiskLinkEndpoint | null; target: RiskLinkEndpoint | null }> {
   const rows = (await sequelize.query(
-    `SELECT 'risk' AS entity_type, id, risk_name AS name
+    `SELECT 'risk' AS entity_type, id, COALESCE(NULLIF(risk_name, ''), 'Risk ' || id) AS name
        FROM risks
       WHERE id IN (:riskIds) AND organization_id = :organizationId AND is_deleted = false
      UNION ALL
@@ -1361,8 +1370,14 @@ export async function updateRiskLinkStatusQuery(
   decidedByUserId: number | null,
   dismissReason: DismissReason | null,
   dismissNote: string | null,
-): Promise<void> {
-  await sequelize.query(
+  /**
+   * The status the caller read. When given, the row changes only if it still
+   * has that status, so a link pruned or decided by someone else in between is
+   * left alone and the caller learns of it from the `false` result.
+   */
+  fromStatus?: RiskLinkStatus,
+): Promise<boolean> {
+  const rows = await sequelize.query(
     `UPDATE risk_links
      SET status = :status,
          decided_by_user_id = :decidedByUserId,
@@ -1370,7 +1385,9 @@ export async function updateRiskLinkStatusQuery(
          dismiss_reason = :dismissReason,
          dismiss_note = :dismissNote,
          updated_at = NOW()
-     WHERE id = :id AND organization_id = :organizationId`,
+     WHERE id = :id AND organization_id = :organizationId
+       AND (CAST(:fromStatus AS text) IS NULL OR CAST(status AS text) = :fromStatus)
+     RETURNING id`,
     {
       replacements: {
         id,
@@ -1379,10 +1396,12 @@ export async function updateRiskLinkStatusQuery(
         decidedByUserId,
         dismissReason,
         dismissNote,
+        fromStatus: fromStatus ?? null,
       },
-      type: QueryTypes.UPDATE,
+      type: QueryTypes.SELECT,
     },
   );
+  return rows.length > 0;
 }
 
 /**

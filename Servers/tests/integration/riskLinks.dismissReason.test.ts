@@ -116,3 +116,39 @@ describe("dismissal reasons across the undo round-trip", () => {
     });
   });
 });
+
+describe("the status guard", () => {
+  it("changes the row only while it still has the status the caller read", async () => {
+    const { owner } = await seedTwoTenantContexts();
+    const a = await createTestRisk(owner.orgId, {});
+    const b = await createTestRisk(owner.orgId, {});
+    const id = await seedSuggestion(owner.orgId, a, b);
+
+    // Someone else already decided it: a caller that read `dismissed` loses.
+    expect(
+      await updateRiskLinkStatusQuery(
+        id,
+        owner.orgId,
+        "confirmed",
+        owner.userId,
+        null,
+        null,
+        "dismissed",
+      ),
+    ).toBe(false);
+    expect(await readDismissal(id)).toMatchObject({ status: "suggested" });
+
+    expect(
+      await updateRiskLinkStatusQuery(
+        id,
+        owner.orgId,
+        "confirmed",
+        owner.userId,
+        null,
+        null,
+        "suggested",
+      ),
+    ).toBe(true);
+    expect(await readDismissal(id)).toMatchObject({ status: "confirmed" });
+  });
+});

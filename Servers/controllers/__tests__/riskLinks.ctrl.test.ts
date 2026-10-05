@@ -5,7 +5,7 @@ jest.mock("../../services/automations/automationProducer", () => ({
 jest.mock("../../utils/changeHistory.base.utils", () => ({
   recordEntityChange: jest.fn(),
 }));
-jest.mock("../../utils/logger/fileLogger", () => ({ error: jest.fn() }));
+jest.mock("../../database/db", () => ({ sequelize: { transaction: jest.fn() } }));
 jest.mock("../../utils/logger/logHelper", () => ({
   logProcessing: jest.fn(),
   logSuccess: jest.fn(),
@@ -25,6 +25,7 @@ jest.mock("../../utils/statusCode.utils", () => ({
 
 import * as utils from "../../utils/riskLink.utils";
 import { recordEntityChange } from "../../utils/changeHistory.base.utils";
+import { sequelize } from "../../database/db";
 import { enqueueRiskLinkRecompute } from "../../services/automations/automationProducer";
 import { getTranslator, type SupportedLang } from "../../utils/i18n.utils";
 import {
@@ -165,6 +166,8 @@ describe("getRiskLinks", () => {
 });
 
 describe("updateRiskLinkStatus", () => {
+  beforeEach(() => mockUtils.updateRiskLinkStatusQuery.mockResolvedValue(true));
+
   const suggested = {
     id: 100,
     organization_id: 7,
@@ -247,6 +250,7 @@ describe("updateRiskLinkStatus", () => {
       5,
       null,
       null,
+      "suggested",
     );
     expect(r.status).toHaveBeenCalledWith(200);
   });
@@ -303,6 +307,7 @@ describe("updateRiskLinkStatus", () => {
       5,
       null,
       null,
+      "suggested",
     );
     expect(r.status).toHaveBeenCalledWith(200);
   });
@@ -320,6 +325,7 @@ describe("updateRiskLinkStatus", () => {
       null,
       null,
       null,
+      "dismissed",
     );
   });
 
@@ -371,6 +377,7 @@ describe("updateRiskLinkStatus", () => {
       5,
       "wrong_direction",
       null,
+      "suggested",
     );
     expect(r.status).toHaveBeenCalledWith(200);
   });
@@ -391,6 +398,7 @@ describe("updateRiskLinkStatus", () => {
       5,
       "other",
       "see R-14",
+      "suggested",
     );
   });
 
@@ -451,6 +459,7 @@ describe("updateRiskLinkStatus", () => {
       5,
       null,
       null,
+      "confirmed",
     );
   });
 
@@ -1042,6 +1051,12 @@ describe("every message the controller sends has a German and French translation
 });
 
 describe("link history", () => {
+  beforeEach(() => {
+    mockUtils.updateRiskLinkStatusQuery.mockResolvedValue(true);
+    // Both ends are written in one transaction; "tx" stands in for it.
+    (sequelize.transaction as jest.Mock).mockImplementation(async (fn: any) => fn("tx"));
+  });
+
   const link = {
     id: 100,
     organization_id: 7,
@@ -1087,6 +1102,7 @@ describe("link history", () => {
       "Linked risk",
       "Suggested: Inherits from Model drift",
       "Confirmed: Inherits from Model drift",
+      "tx",
     );
     expect(mockRecord).toHaveBeenCalledWith(
       "model_risk",
@@ -1097,7 +1113,21 @@ describe("link history", () => {
       "Linked risk",
       "Suggested: Inherited by Bias in screening",
       "Confirmed: Inherited by Bias in screening",
+      "tx",
     );
+  });
+
+  it("409s and writes no history when the link changed after it was read", async () => {
+    mockUtils.getRiskLinkByIdQuery.mockResolvedValue(link);
+    mockUtils.getConfirmedHierarchyEdgesQuery.mockResolvedValue([]);
+    mockUtils.updateRiskLinkStatusQuery.mockResolvedValue(false);
+    const r = res();
+    await updateRiskLinkStatus(
+      req({ params: { id: "100" }, body: { status: "confirmed" } }) as any,
+      r as any,
+    );
+    expect(r.status).toHaveBeenCalledWith(409);
+    expect(mockRecord).not.toHaveBeenCalled();
   });
 
   it("still answers 200 when writing history fails", async () => {
@@ -1143,6 +1173,7 @@ describe("link history", () => {
       "Linked risk",
       "-",
       "Confirmed: Relates to Prompt injection",
+      "tx",
     );
     expect(mockRecord).toHaveBeenCalledWith(
       "risk",
@@ -1153,6 +1184,7 @@ describe("link history", () => {
       "Linked risk",
       "-",
       "Confirmed: Relates to Data leakage",
+      "tx",
     );
   });
 });
