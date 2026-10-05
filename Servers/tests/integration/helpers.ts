@@ -128,6 +128,9 @@ export async function cleanupDatabase(): Promise<void> {
           (4, 'Auditor', 'Auditor with access to compliance and security audits.')
         ON CONFLICT (id) DO NOTHING`,
       );
+      // Advance the id sequence past the re-seeded ids — TRUNCATE RESTART
+      // IDENTITY reset it to 1, and explicit inserts do not move it.
+      await sequelize.query(`SELECT setval(pg_get_serial_sequence('roles', 'id'), 4, true)`);
       return;
     } catch (err: any) {
       if (err?.code === "40P01" && attempt < 2) {
