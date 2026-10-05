@@ -66,6 +66,21 @@ module.exports = {
         { transaction },
       );
 
+      // The base migration seeds roles with explicit ids 1-4 without advancing
+      // the id sequence, so the first custom-role INSERT would collide with
+      // the seeded rows. Align the sequence with the actual max id (covers
+      // any prior seed state; idempotent).
+      await queryInterface.sequelize.query(
+        `
+        SELECT setval(
+          pg_get_serial_sequence('verifywise.roles', 'id'),
+          (SELECT COALESCE(MAX(id), 1) FROM verifywise.roles),
+          true
+        );
+      `,
+        { transaction },
+      );
+
       await transaction.commit();
     } catch (error) {
       await transaction.rollback();
