@@ -117,6 +117,17 @@ export async function cleanupDatabase(): Promise<void> {
           organizations
         RESTART IDENTITY CASCADE`,
       );
+      // Re-seed the built-in roles: truncating `organizations` cascades into
+      // `roles` via roles.organization_id (issue #4588), and the seeds depend
+      // on the fixed built-in role ids 1-4 from the base migration.
+      await sequelize.query(
+        `INSERT INTO roles (id, name, description) VALUES
+          (1, 'Admin', 'Administrator with full access to the system.'),
+          (2, 'Reviewer', 'Reviewer with access to review compliance and reports.'),
+          (3, 'Editor', 'Editor with permission to modify and update project details.'),
+          (4, 'Auditor', 'Auditor with access to compliance and security audits.')
+        ON CONFLICT (id) DO NOTHING`,
+      );
       return;
     } catch (err: any) {
       if (err?.code === "40P01" && attempt < 2) {
