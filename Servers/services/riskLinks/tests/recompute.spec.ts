@@ -49,7 +49,7 @@ const CAT = { risk_category: ["Strategic risk"] };
 beforeEach(() => {
   jest.resetAllMocks();
   (sequelize.transaction as jest.Mock).mockResolvedValue({ commit, rollback });
-  mockUtils.getIncidentLinksQuery.mockResolvedValue([]);
+  mockUtils.getRecomputeOwnedLinksQuery.mockResolvedValue([]);
   // Registering tier 1 makes this a dependency of every test in this file: the
   // automock returns undefined, and a provider that throws now aborts the run.
   mockUtils.getStructuralNeighboursQuery.mockResolvedValue([]);
@@ -88,7 +88,7 @@ describe("recomputeRiskLinks", () => {
       risk(7, { ...CAT, ai_lifecycle_phase: "Deployment" }),
       risk(3, { ...CAT, ai_lifecycle_phase: "Deployment" }),
     ]);
-    mockUtils.getIncidentLinksQuery.mockResolvedValue([
+    mockUtils.getRecomputeOwnedLinksQuery.mockResolvedValue([
       link({ id: 100, status: "dismissed", score: 3 }),
     ]);
     await recomputeRiskLinks(1, 7);
@@ -102,7 +102,7 @@ describe("recomputeRiskLinks", () => {
 
   it("never prunes a confirmed edge, and zeroes its score honestly (R3, R2)", async () => {
     mockUtils.getRiskScoringRowsQuery.mockResolvedValue([risk(7), risk(3)]);
-    mockUtils.getIncidentLinksQuery.mockResolvedValue([
+    mockUtils.getRecomputeOwnedLinksQuery.mockResolvedValue([
       link({ id: 100, status: "confirmed", score: 5 }),
     ]);
     await recomputeRiskLinks(1, 7);
@@ -118,7 +118,7 @@ describe("recomputeRiskLinks", () => {
 
   it("prunes a derived suggestion that fell below the threshold", async () => {
     mockUtils.getRiskScoringRowsQuery.mockResolvedValue([risk(7), risk(3)]);
-    mockUtils.getIncidentLinksQuery.mockResolvedValue([
+    mockUtils.getRecomputeOwnedLinksQuery.mockResolvedValue([
       link({ id: 100, status: "suggested", source: "derived", score: 3 }),
     ]);
     await recomputeRiskLinks(1, 7);
@@ -136,7 +136,7 @@ describe("recomputeRiskLinks", () => {
       risk(3, CAT),
       ...strong,
     ]);
-    mockUtils.getIncidentLinksQuery.mockResolvedValue([
+    mockUtils.getRecomputeOwnedLinksQuery.mockResolvedValue([
       link({
         id: 100,
         source_risk_id: 3,
@@ -184,7 +184,7 @@ describe("recomputeRiskLinks", () => {
 
   it("aborts the run and rethrows when a provider throws", async () => {
     mockUtils.getRiskScoringRowsQuery.mockResolvedValue([risk(7, CAT), risk(3, CAT)]);
-    mockUtils.getIncidentLinksQuery.mockResolvedValue([link({ id: 100 })]);
+    mockUtils.getRecomputeOwnedLinksQuery.mockResolvedValue([link({ id: 100 })]);
     const provider = require("../providers/fieldOverlap");
     const spy = jest
       .spyOn(provider.fieldOverlapProvider, "score")
@@ -205,7 +205,7 @@ describe("recomputeRiskLinks", () => {
   // pair's tier-1 points and prune the suggestions that fell below the threshold.
   it("aborts even though the other provider succeeded", async () => {
     mockUtils.getRiskScoringRowsQuery.mockResolvedValue([risk(7, CAT), risk(3, CAT)]);
-    mockUtils.getIncidentLinksQuery.mockResolvedValue([link({ id: 100 })]);
+    mockUtils.getRecomputeOwnedLinksQuery.mockResolvedValue([link({ id: 100 })]);
     const provider = require("../providers/structuralGraph");
     const spy = jest
       .spyOn(provider.structuralGraphProvider, "score")
@@ -234,7 +234,7 @@ describe("recomputeRiskLinks", () => {
   it("leaves agent inherits_from and user rows untouched while refreshing and pruning its own", async () => {
     mockUtils.getRiskScoringRowsQuery.mockResolvedValue([risk(7), risk(3), risk(9), risk(12)]);
     const agentReasons = [{ signal: "hierarchy", detail: "Org-wide privacy risk" }] as any;
-    mockUtils.getIncidentLinksQuery.mockResolvedValue([
+    mockUtils.getRecomputeOwnedLinksQuery.mockResolvedValue([
       // Child 7 inherits from 3, proposed by the direction agent.
       link({
         id: 200,

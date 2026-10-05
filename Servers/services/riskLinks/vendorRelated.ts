@@ -2,7 +2,7 @@ import { sequelize } from "../../database/db";
 import logger from "../../utils/logger/fileLogger";
 import { deleteRiskLinksQuery, updateRiskLinkScoreQuery } from "../../utils/riskLink.utils";
 import {
-  getVendorRiskIncidentLinksQuery,
+  getRecomputeOwnedVendorLinksQuery,
   getVendorRiskScoringRowsQuery,
   upsertVendorRiskLinkQuery,
   VendorRiskScoringRow,
@@ -181,14 +181,15 @@ export async function recomputeVendorRiskLinks(
       );
     }
 
-    const incident = await getVendorRiskIncidentLinksQuery(
+    const incident = await getRecomputeOwnedVendorLinksQuery(
       organizationId,
       vendorRiskId,
       transaction,
     );
     const pruneIds: number[] = [];
     for (const existing of incident) {
-      // A user-made vendor pair keeps its own (empty) reasons and score.
+      // The query returns only derived pairs; this is a backstop so a user-made
+      // vendor pair always keeps its own (empty) reasons and score.
       if (!isRecomputeOwnedLink(existing)) continue;
       const otherId =
         existing.source_vendor_risk_id === vendorRiskId

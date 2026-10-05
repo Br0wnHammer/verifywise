@@ -176,8 +176,31 @@ export async function getStructuralNeighboursQuery(
   }));
 }
 
-/** Every stored edge touching this risk, in either direction, any status. */
-export async function getIncidentLinksQuery(
+/**
+ * Two-level rule (services/riskLinks/hierarchy.ts) as a SQL predicate over a
+ * project risk aliased `r`: excludes a risk that already has a confirmed
+ * parent (`child_already_has_parent`) or has confirmed children
+ * (`child_has_children`), so a candidate list never offers a parent link the
+ * server would reject with 409. Shared by the model- and vendor-risk candidate
+ * queries; change it here, and in hierarchy.ts, together.
+ */
+export const CANNOT_TAKE_PARENT_SQL = `AND NOT EXISTS (
+              SELECT 1
+                FROM risk_links l
+               WHERE l.organization_id = :organizationId
+                 AND l.relation_type   = 'inherits_from'
+                 AND l.status          = 'confirmed'
+                 AND (l.source_risk_id = r.id OR l.target_risk_id = r.id)
+            )`;
+
+/**
+ * The edges recompute owns that touch this risk, either direction, any status:
+ * machine-scored `related_to` rows (`source = 'derived'`). Agent and user rows,
+ * and every `inherits_from` row, are never returned, so recompute cannot
+ * rescore, re-reason or prune them. Keep this filter in SQL: it is the only
+ * guarantee a future caller cannot forget.
+ */
+export async function getRecomputeOwnedLinksQuery(
   organizationId: number,
   riskId: number,
   transaction?: Transaction,
@@ -185,6 +208,8 @@ export async function getIncidentLinksQuery(
   const rows = await sequelize.query(
     `SELECT * FROM risk_links
      WHERE organization_id = :organizationId
+       AND relation_type = 'related_to'
+       AND source = 'derived'
        AND (source_risk_id = :riskId OR target_risk_id = :riskId)`,
     {
       replacements: { organizationId, riskId },
@@ -1387,18 +1412,7 @@ export async function getModelRiskCandidatesQuery(input: {
                  AND l.source_risk_id       = r.id
                  AND l.target_model_risk_id = mr.id
             )
-        -- Two-level rule (services/riskLinks/hierarchy.ts): a risk that already
-        -- has a confirmed parent, or has children of its own, cannot take a
-        -- model-risk parent, so suggesting one points at a link the server
-        -- refuses with a 409. Same predicate as getVendorRiskCandidatesQuery.
-        AND NOT EXISTS (
-              SELECT 1
-                FROM risk_links l
-               WHERE l.organization_id = :organizationId
-                 AND l.relation_type   = 'inherits_from'
-                 AND l.status          = 'confirmed'
-                 AND (l.source_risk_id = r.id OR l.target_risk_id = r.id)
-            )
+        ${CANNOT_TAKE_PARENT_SQL}
         ${announcedFilter}
       GROUP BY r.id, r.risk_name, r.risk_owner
       -- Ownerless rows last: they can never be notified, so they must not
@@ -1492,14 +1506,7 @@ export async function getVendorRiskCandidatesQuery(input: {
                  AND l.source_risk_id        = r.id
                  AND l.target_vendor_risk_id = vr.id
             )
-        AND NOT EXISTS (
-              SELECT 1
-                FROM risk_links l
-               WHERE l.organization_id = :organizationId
-                 AND l.relation_type   = 'inherits_from'
-                 AND l.status          = 'confirmed'
-                 AND (l.source_risk_id = r.id OR l.target_risk_id = r.id)
-            )
+        ${CANNOT_TAKE_PARENT_SQL}
         ${announcedFilter}
       GROUP BY r.id, r.risk_name, r.risk_owner
       -- Ownerless rows last: they can never be notified.

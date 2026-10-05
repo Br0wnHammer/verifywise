@@ -2,7 +2,7 @@ import { sequelize } from "../../database/db";
 import logger from "../../utils/logger/fileLogger";
 import {
   deleteRiskLinksQuery,
-  getIncidentLinksQuery,
+  getRecomputeOwnedLinksQuery,
   getRiskScoringRowsQuery,
   updateRiskLinkScoreQuery,
   upsertRiskLinkQuery,
@@ -109,17 +109,14 @@ export async function recomputeRiskLinks(organizationId: number, riskId: number)
       );
     }
 
-    const incident = await getIncidentLinksQuery(organizationId, riskId, transaction);
+    const incident = await getRecomputeOwnedLinksQuery(organizationId, riskId, transaction);
     const pruneIds: number[] = [];
 
     for (const existing of incident) {
-      // C4 cross-entity inheritance is manual-only and has no project-risk
-      // target column. Recompute owns related_to suggestions, so leave these
-      // rows and their human decision untouched. A vendor risk pair never
-      // reaches here (the incident query matches project-risk columns only);
-      // the source check is for the type, not a live case.
+      // The query already returns only derived related_to rows, so cross-entity
+      // (null target), agent, user and inherits_from rows never reach here. The
+      // null check narrows the type; the ownership check is a cheap backstop.
       if (existing.target_risk_id == null || existing.source_risk_id == null) continue;
-      // Same-table inheritance and user-made links: not ours to rescore or prune.
       if (!isRecomputeOwnedLink(existing)) continue;
 
       const otherId =

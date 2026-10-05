@@ -146,16 +146,31 @@ Before delivering notifications:
 #### Deadline escalation dedup
 
 The nightly deadline sweep notifies the owner plus every org admin, so the
-sent-record is per recipient per entity per threshold: `organization_id`,
-`user_id`, `type`, `entity_type`, `entity_id` plus
-`metadata->>'threshold_days'`. The threshold clause is what lets the 7-day and
-1-day notices coexist on the same risk. A failed write leaves no record, so
-the next night retries exactly that recipient.
+sent-record is per recipient per entity per threshold per deadline:
+`organization_id`, `user_id`, `type`, `entity_type`, `entity_id` plus
+`metadata->>'threshold_days'` and `metadata->>'deadline'`. The threshold clause
+is what lets the 7-day and 1-day notices coexist on the same risk. The deadline
+clause (the exact stored deadline, `deadlineNoticeKey` in
+`utils/deadline.utils.ts`) re-arms both notices when the deadline is
+rescheduled: a notice sent for the old deadline does not count for the new
+one. A failed write leaves no record, so the next night retries exactly that
+recipient.
 
-The one thing that re-arms a notice is a user deleting the notification
-themselves — the dedup row is the notification row, so deleting it looks
-exactly like "never sent". There is no scheduled purge (both bulk-delete
-helpers in `utils/notification.utils.ts` have no callers).
+What the sweep scans (`getRisksApproachingDeadlineQuery`,
+`getModelRisksApproachingTargetDateQuery`):
+
+- Closed items are skipped: project risks whose `mitigation_status` is
+  `Completed` or `Canceled`, model risks whose `status` is `Resolved` or
+  `Accepted`.
+- Overdue deadlines are only looked back `DEADLINE_OVERDUE_LOOKBACK_DAYS`
+  (7). That covers a missed run or a week of worker downtime, and stops the
+  first run after a deploy from notifying about every deadline that ever
+  passed. A recurring overdue reminder would be a separate feature.
+
+Apart from a reschedule, the only thing that re-arms a notice is a user
+deleting the notification themselves — the dedup row is the notification row,
+so deleting it looks exactly like "never sent". There is no scheduled purge
+(both bulk-delete helpers in `utils/notification.utils.ts` have no callers).
 
 ### Slack Routing Categories
 

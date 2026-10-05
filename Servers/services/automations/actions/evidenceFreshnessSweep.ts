@@ -7,7 +7,10 @@ import {
 } from "../../../utils/evidenceHub.utils";
 import { notifyEvidenceStale } from "../../inAppNotification.service";
 import { recordSnapshotIfChanged } from "../../../utils/history/riskHistory.utils";
-import { getFieldLabel, recordEntityChange } from "../../../utils/changeHistory.base.utils";
+import {
+  getFieldLabel,
+  recordEntityFieldChangeBulk,
+} from "../../../utils/changeHistory.base.utils";
 import logger from "../../../utils/logger/fileLogger";
 
 /**
@@ -95,21 +98,18 @@ export async function runEvidenceFreshnessSweep(
       )) as [{ id: number }[], number];
 
       // The raw UPDATE bypasses the risk controller, so record the status
-      // change in the risk's change history ourselves. Actor is null: no user
-      // made this change, an unattended job did.
-      for (const { id } of downgradedRows) {
-        await recordEntityChange(
-          "risk",
-          id,
-          "updated",
-          null,
-          organizationId,
-          getFieldLabel("risk", "mitigation_status"),
-          "Completed",
-          "Requires review",
-          transaction,
-        );
-      }
+      // change in the risk's change history ourselves, in one INSERT. Actor is
+      // null: no user made this change, an unattended job did. Ledger entries
+      // follow after commit, so a rollback leaves no audit record behind.
+      await recordEntityFieldChangeBulk(
+        "risk",
+        downgradedRows.map(({ id }) => id),
+        organizationId,
+        getFieldLabel("risk", "mitigation_status"),
+        "Completed",
+        "Requires review",
+        transaction,
+      );
 
       flagged = flaggedRows;
       downgraded = downgradedRows;

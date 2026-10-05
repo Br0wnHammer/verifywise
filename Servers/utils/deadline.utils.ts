@@ -227,11 +227,14 @@ export async function getModelRisksApproachingTargetDateQuery(
 
 /**
  * The deadline a notice was sent for, as stored in notifications.metadata.deadline.
- * Day granularity (UTC calendar date) so a time-of-day wobble on the same
- * deadline never re-arms a notice, while moving the deadline to another day does.
+ * The exact stored instant: an unchanged deadline always yields the same key,
+ * and any reschedule (date or time) re-arms the notices. A calendar-day key
+ * would be wrong here: the UI stores a local date-time, so the UTC day of the
+ * same local date can differ, and naive model_risks.target_date values are
+ * read in the process timezone.
  */
 export function deadlineNoticeKey(deadline: Date): string {
-  return deadline.toISOString().slice(0, 10);
+  return deadline.toISOString();
 }
 
 /**

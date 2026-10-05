@@ -113,8 +113,12 @@ export async function getLiveVendorRiskIdsQuery(
   return (rows as { id: number }[]).map((row) => toNumber(row.id));
 }
 
-/** Every vendor pair touching this vendor risk, either end, any status. */
-export async function getVendorRiskIncidentLinksQuery(
+/**
+ * The vendor pairs recompute owns that touch this vendor risk, either end, any
+ * status: machine-scored `related_to` rows (`source = 'derived'`). User-made
+ * pairs are never returned, so recompute cannot rescore or prune them.
+ */
+export async function getRecomputeOwnedVendorLinksQuery(
   organizationId: number,
   vendorRiskId: number,
   transaction?: Transaction,
@@ -122,6 +126,8 @@ export async function getVendorRiskIncidentLinksQuery(
   const rows = await sequelize.query(
     `SELECT * FROM risk_links
       WHERE organization_id = :organizationId
+        AND relation_type = 'related_to'
+        AND source = 'derived'
         AND source_vendor_risk_id IS NOT NULL
         AND (source_vendor_risk_id = :vendorRiskId OR target_vendor_risk_id = :vendorRiskId)`,
     {

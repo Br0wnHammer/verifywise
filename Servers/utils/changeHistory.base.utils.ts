@@ -85,18 +85,29 @@ export const recordEntityChange = async (
       },
     );
 
-    // Append to tamper-proof audit ledger (fire-and-forget)
-    appendToAuditLedger({
-      organizationId,
-      entryType: "change_history",
-      userId: changedByUserId,
-      entityType,
-      entityId,
-      action,
-      fieldName: fieldName || null,
-      oldValue: oldValue || null,
-      newValue: newValue || null,
-    }).catch((err) => logger.error(`[audit_ledger] write failed: ${err}`));
+    // Append to tamper-proof audit ledger (fire-and-forget). The ledger writes
+    // on its own connection, so inside a transaction it must wait for the
+    // commit: an append-only entry for a change that later rolls back can
+    // never be removed.
+    const appendLedger = () =>
+      appendToAuditLedger({
+        organizationId,
+        entryType: "change_history",
+        userId: changedByUserId,
+        entityType,
+        entityId,
+        action,
+        fieldName: fieldName || null,
+        oldValue: oldValue || null,
+        newValue: newValue || null,
+      }).catch((err) => logger.error(`[audit_ledger] write failed: ${err}`));
+    if (transaction) {
+      transaction.afterCommit(() => {
+        appendLedger();
+      });
+    } else {
+      appendLedger();
+    }
   } catch (error) {
     logger.error(`Error recording ${entityType} change: ${error}`);
     throw error;
@@ -134,6 +145,65 @@ export const recordMultipleFieldChanges = async (
       transaction,
     );
   }
+};
+
+/**
+ * Record the same field change on many entities of one type in a single
+ * INSERT, for unattended jobs that touch many rows at once (null actor).
+ *
+ * Audit ledger entries are appended one at a time after the transaction
+ * commits: one per row would otherwise open that many concurrent ledger
+ * transactions, all queued on the same per-org advisory lock and each holding
+ * a pool connection.
+ */
+export const recordEntityFieldChangeBulk = async (
+  entityType: EntityType,
+  entityIds: number[],
+  organizationId: number,
+  fieldName: string,
+  oldValue: string,
+  newValue: string,
+  transaction: Transaction,
+): Promise<void> => {
+  if (entityIds.length === 0) return;
+  const config = getEntityConfig(entityType);
+  const tableName = escapePgName(config.tableName);
+  const foreignKey = escapePgName(config.foreignKeyField);
+
+  await sequelize.query(
+    `INSERT INTO ${tableName}
+     (organization_id, ${foreignKey}, action, field_name, old_value, new_value, changed_by_user_id, changed_at)
+     SELECT :organization_id, entity_id, 'updated', :field_name, :old_value, :new_value, NULL, NOW()
+       FROM unnest(ARRAY[:entity_ids]::int[]) AS entity_id`,
+    {
+      replacements: {
+        organization_id: organizationId,
+        entity_ids: entityIds,
+        field_name: fieldName,
+        old_value: oldValue,
+        new_value: newValue,
+      },
+      transaction,
+    },
+  );
+
+  transaction.afterCommit(() => {
+    void (async () => {
+      for (const entityId of entityIds) {
+        await appendToAuditLedger({
+          organizationId,
+          entryType: "change_history",
+          userId: null,
+          entityType,
+          entityId,
+          action: "updated",
+          fieldName,
+          oldValue,
+          newValue,
+        }).catch((err) => logger.error(`[audit_ledger] write failed: ${err}`));
+      }
+    })();
+  });
 };
 
 /**

@@ -11,7 +11,7 @@ import { notifyEvidenceStale } from "../../../inAppNotification.service";
 import { sequelize } from "../../../../database/db";
 import { getAllOrganizationsQuery } from "../../../../utils/organization.utils";
 import { recordSnapshotIfChanged } from "../../../../utils/history/riskHistory.utils";
-import { recordEntityChange } from "../../../../utils/changeHistory.base.utils";
+import { recordEntityFieldChangeBulk } from "../../../../utils/changeHistory.base.utils";
 
 const mockUnnotifiedImpl = jest.fn();
 const mockMarkNotifiedImpl = jest.fn();
@@ -29,7 +29,7 @@ jest.mock("../../../../database/db", () => ({
   sequelize: { query: jest.fn(), transaction: jest.fn() },
 }));
 jest.mock("../../../../utils/changeHistory.base.utils", () => ({
-  recordEntityChange: jest.fn(),
+  recordEntityFieldChangeBulk: jest.fn(),
   getFieldLabel: (_entity: string, field: string) =>
     field === "mitigation_status" ? "Mitigation status" : field,
 }));
@@ -51,7 +51,7 @@ const mockNotify = notifyEvidenceStale as jest.Mock;
 const mockQuery = sequelize.query as jest.Mock;
 const mockOrgs = getAllOrganizationsQuery as jest.Mock;
 const mockSnapshot = recordSnapshotIfChanged as jest.Mock;
-const mockRecordChange = recordEntityChange as jest.Mock;
+const mockRecordChange = recordEntityFieldChangeBulk as jest.Mock;
 const mockTransaction = sequelize.transaction as jest.Mock;
 
 // In-memory risks table keyed by `${orgId}:${riskId}`, simulating exactly what
@@ -307,11 +307,10 @@ describe("runEvidenceFreshnessSweep", () => {
     await runEvidenceFreshnessSweep(1);
 
     expect(mockRecordChange).toHaveBeenCalledTimes(1);
+    // Only the downgraded risk (10) is recorded; 11 was flagged but not Completed.
     expect(mockRecordChange).toHaveBeenCalledWith(
       "risk",
-      10,
-      "updated",
-      null,
+      [10],
       1,
       "Mitigation status",
       "Completed",

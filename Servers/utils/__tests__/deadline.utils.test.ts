@@ -77,18 +77,23 @@ describe("hasDeadlineNoticeQuery", () => {
     const { sql, replacements } = lastCall();
     expect(notified).toBe(false);
     expect(sql).toContain("metadata->>'deadline' = :deadlineKey");
-    expect(replacements.deadlineKey).toBe("2026-11-20");
+    expect(replacements.deadlineKey).toBe("2026-11-20T15:00:00.000Z");
     expect(replacements.thresholdDays).toBe(7);
   });
 });
 
 describe("deadlineNoticeKey", () => {
-  it("is the UTC calendar date: same day collides, a different day does not", () => {
-    expect(deadlineNoticeKey(new Date("2026-11-20T01:00:00Z"))).toBe(
-      deadlineNoticeKey(new Date("2026-11-20T23:00:00Z")),
+  it("is stable for an unchanged deadline and changes on any reschedule", () => {
+    expect(deadlineNoticeKey(new Date("2026-11-20T15:00:00Z"))).toBe(
+      deadlineNoticeKey(new Date("2026-11-20T15:00:00.000Z")),
     );
     expect(deadlineNoticeKey(new Date("2026-11-20T12:00:00Z"))).not.toBe(
       deadlineNoticeKey(new Date("2026-11-21T12:00:00Z")),
+    );
+    // Same local date, different time crossing UTC midnight: still a distinct key,
+    // and no false match with another deadline that shares a UTC day.
+    expect(deadlineNoticeKey(new Date("2026-10-11T00:30:00Z"))).not.toBe(
+      deadlineNoticeKey(new Date("2026-10-11T23:00:00Z")),
     );
   });
 });

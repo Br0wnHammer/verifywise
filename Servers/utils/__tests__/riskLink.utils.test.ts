@@ -8,7 +8,7 @@ import { sequelize } from "../../database/db";
 import {
   getRiskLinksForRiskQuery,
   getRiskScoringRowsQuery,
-  getIncidentLinksQuery,
+  getRecomputeOwnedLinksQuery,
   getStructuralNeighboursQuery,
   getConfirmedHierarchyEdgesQuery,
   getSharedProjectCandidatesQuery,
@@ -73,10 +73,13 @@ describe("riskLink.utils", () => {
   });
 
   it("scopes incident links to the org and to both endpoints", async () => {
-    await getIncidentLinksQuery(7, 42);
+    await getRecomputeOwnedLinksQuery(7, 42);
     const [sql, options] = mockQuery.mock.calls[0];
     expect(sql).toContain("organization_id = :organizationId");
     expect(sql).toContain("source_risk_id = :riskId OR target_risk_id = :riskId");
+    // Ownership lives in SQL so no caller can see agent/user or inherits_from rows.
+    expect(sql).toContain("relation_type = 'related_to'");
+    expect(sql).toContain("source = 'derived'");
     expect(options.replacements).toEqual({ organizationId: 7, riskId: 42 });
   });
 

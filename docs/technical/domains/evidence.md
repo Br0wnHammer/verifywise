@@ -339,8 +339,13 @@ its `expiry_date` or untouched for 90 days by setting
 (`evidence_stale`). A freshly flagged risk still sitting at
 `mitigation_status = 'Completed'` is knocked down to `'Requires review'` —
 stale evidence contradicts a completed mitigation, and `'Completed'` is the
-only status that claim is made from. Clearing the flag deliberately does not
-restore it: re-attesting a mitigation as complete is a human act. The sweep
+only status that claim is made from. The flag, the downgrade and the risk
+change-history entry for it (`recordEntityFieldChangeBulk`, actor `NULL`
+because no user made the change) commit in one transaction, so a crash can't
+leave a risk flagged but still `'Completed'`; the matching audit-ledger
+entries are appended only after the commit. Clearing the flag deliberately
+does not restore the status: re-attesting a mitigation as complete is a human
+act. The sweep
 owns both the set and the clear, and its summary
 (`{ organization_id, stale, downgraded, cleared, notified }`) is the response
 body of `POST /api/evidenceHub/freshness-sweep`.
