@@ -27,6 +27,7 @@ import {
 } from "../../../../application/utils/paginationStorage";
 import { IEventsTableProps } from "../../../types/interfaces/i.table";
 import { status } from "../../../themes/palette";
+import { pageOfLabel } from "../pageOfLabel";
 
 const EVENTS_TABLE_SORTING_KEY = "verifywise_events_table_sorting";
 
@@ -431,7 +432,7 @@ const EventsTable: React.FC<IEventsTableProps> = ({
                 ActionsComponent={(props) => <TablePaginationActions {...props} />}
                 labelRowsPerPage="Rows per page"
                 labelDisplayedRows={({ page, count }) =>
-                  `Page ${page + 1} of ${Math.max(0, Math.ceil(count / rowsPerPage))}`
+                  pageOfLabel(page + 1, Math.max(0, Math.ceil(count / rowsPerPage)))
                 }
                 slotProps={{
                   select: {

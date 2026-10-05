@@ -43,6 +43,7 @@ import { text } from "../../themes/palette";
 import useUsers from "../../../application/hooks/useUsers";
 import { useCustomFieldDefinitions } from "../../../application/hooks/useCustomFields";
 import { formatCustomFieldValue } from "../CustomFieldsSection/formatCustomFieldValue";
+import { pageOfLabel } from "../Table/pageOfLabel";
 
 const SelectorVertical = (props: React.SVGAttributes<SVGSVGElement>) => (
   <ChevronsUpDown size={16} {...props} />
@@ -622,7 +623,7 @@ const ProjectTableView: React.FC<IProjectTableViewProps> = ({
                   ActionsComponent={(props) => <TablePaginationActions {...props} />}
                   labelRowsPerPage="Use cases per page"
                   labelDisplayedRows={({ page, count }) =>
-                    `Page ${page + 1} of ${Math.max(0, Math.ceil(count / rowsPerPage))}`
+                    pageOfLabel(page + 1, Math.max(0, Math.ceil(count / rowsPerPage)))
                   }
                   slotProps={{
                     select: {

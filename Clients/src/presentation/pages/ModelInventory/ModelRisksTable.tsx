@@ -32,6 +32,7 @@ import { ModelRisksTableProps } from "../../../domain/interfaces/i.modelInventor
 import { palette } from "../../themes/palette";
 import { useCustomFieldDefinitions } from "../../../application/hooks/useCustomFields";
 import { formatCustomFieldValue } from "../../components/CustomFieldsSection/formatCustomFieldValue";
+import { pageOfLabel } from "../../components/Table/pageOfLabel";
 
 // LocalStorage key for sorting
 const MODEL_RISKS_SORTING_KEY = "verifywise_model_risks_sorting";
@@ -555,7 +556,7 @@ const ModelRisksTable: React.FC<ModelRisksTableProps> = ({
                 ActionsComponent={(props) => <TablePaginationActions {...props} />}
                 labelRowsPerPage="Rows per page"
                 labelDisplayedRows={({ page, count }) =>
-                  `Page ${page + 1} of ${Math.max(0, Math.ceil(count / rowsPerPage))}`
+                  pageOfLabel(page + 1, Math.max(0, Math.ceil(count / rowsPerPage)))
                 }
                 slotProps={{
                   select: {
