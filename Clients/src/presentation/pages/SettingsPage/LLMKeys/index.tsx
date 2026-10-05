@@ -9,6 +9,7 @@ import {
   Link,
 } from "@mui/material";
 import { useState, useCallback, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router";
 import { CustomizableButton } from "../../../components/button/customizable-button";
 import {
   Plus as PlusIcon,
@@ -37,6 +38,7 @@ import {
   getLLMKeys,
 } from "../../../../application/repository/llmKeys.repository";
 import { getModelsForProvider, getRecommendedModel } from "../../../utils/providers";
+import { LLM_KEY_ADD_PARAM } from "../../../../application/constants/llmKeyDeepLink";
 
 // Import provider logos
 import anthropicLogo from "../../../assets/icons/anthropic_logo.svg";
@@ -70,7 +72,10 @@ const LLMKeys = () => {
   };
   const { userRoleName } = useAuth();
   const theme = useTheme();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isDisabled = !allowedRoles.llmKeys?.manage?.includes(userRoleName);
+  const openFromDeepLink = !isDisabled && searchParams.get(LLM_KEY_ADD_PARAM) === "1";
+  const [dismissedDeepLink, setDismissedDeepLink] = useState(false);
 
   const [keys, setKeys] = useState<LLMKeysModel[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -109,6 +114,14 @@ const LLMKeys = () => {
   useEffect(() => {
     fetchLLMKeys();
   }, [fetchLLMKeys]);
+
+  const clearDeepLink = useCallback(() => {
+    setDismissedDeepLink(true);
+    if (searchParams.get(LLM_KEY_ADD_PARAM) !== "1") return;
+    const next = new URLSearchParams(searchParams);
+    next.delete(LLM_KEY_ADD_PARAM);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (alert) {
@@ -257,6 +270,7 @@ const LLMKeys = () => {
       setIsLoading(false);
       setIsCreateModalOpen(false);
       setIsEditModalOpen(false);
+      clearDeepLink();
       setFormData(initialFormData);
       setIsCustomModel(false);
       setCustomModelName("");
@@ -269,6 +283,7 @@ const LLMKeys = () => {
     initialFormData,
     isCustomProvider,
     getCustomHeadersFromRows,
+    clearDeepLink,
   ]);
 
   const handleEditKey = useCallback(async () => {
@@ -334,11 +349,12 @@ const LLMKeys = () => {
   const handleCloseCreateModal = useCallback(() => {
     setIsCreateModalOpen(false);
     setIsEditModalOpen(false);
+    clearDeepLink();
     setFormData(initialFormData);
     setIsCustomModel(false);
     setCustomModelName("");
     setHeaderRows([]);
-  }, []);
+  }, [clearDeepLink]);
 
   const handleEditButtonClick = useCallback((data: LLMKeysModel) => {
     setKeyToEdit(data.id.toString());
@@ -377,6 +393,8 @@ const LLMKeys = () => {
   const handleFormChange = (name: string, value: string) => {
     setFormData({ ...formData, [name]: value });
   };
+
+  const isAddingKey = isCreateModalOpen || (openFromDeepLink && !dismissedDeepLink);
 
   return (
     <Stack sx={{ mt: 3, width: "100%" }}>
@@ -593,16 +611,16 @@ const LLMKeys = () => {
 
       {/* Create Key Modal */}
       <StandardModal
-        isOpen={isCreateModalOpen || isEditModalOpen}
+        isOpen={isAddingKey || isEditModalOpen}
         onClose={handleCloseCreateModal}
-        title={isCreateModalOpen ? "Add API key" : "Edit API key"}
+        title={isAddingKey ? "Add API key" : "Edit API key"}
         description={
-          isCreateModalOpen
+          isAddingKey
             ? "Connect your LLM provider to enable VerifyWise Advisor."
             : "Update your API key details below."
         }
-        onSubmit={isCreateModalOpen ? handleCreateKey : handleEditKey}
-        submitButtonText={isLoading ? "Saving..." : isCreateModalOpen ? "Add key" : "Save changes"}
+        onSubmit={isAddingKey ? handleCreateKey : handleEditKey}
+        submitButtonText={isLoading ? "Saving..." : isAddingKey ? "Add key" : "Save changes"}
         isSubmitting={isCreateButtonDisabled}
         maxWidth="600px"
       >

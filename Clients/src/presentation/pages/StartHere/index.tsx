@@ -22,9 +22,13 @@ import {
   ArrowRight,
   Play,
   Sparkles,
+  Key,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { useAuth } from "../../../application/hooks/useAuth";
+import useHasLLMKeys from "../../../application/hooks/useHasLLMKeys";
+import allowedRoles from "../../../application/constants/permissions";
+import { LLM_KEY_CREATE_PATH } from "../../../application/constants/llmKeyDeepLink";
 import { useProjects } from "../../../application/hooks/useProjects";
 import useUsers from "../../../application/hooks/useUsers";
 import { getAllProjectRisks } from "../../../application/repository/projectRisk.repository";
@@ -35,7 +39,8 @@ import { WelcomeVideoPlayer } from "../../components/FeatureVideos/WelcomeVideo"
 import { VideoPlayerModal } from "../../components/FeatureVideos/player/VideoPlayerModal";
 import { buildExploreConfig } from "../../components/FeatureVideos/shared/buildExploreConfig";
 import { EXPLORE_VIDEO_DATA } from "../../components/FeatureVideos/exploreVideos";
-import { background, brand } from "../../themes/palette";
+import { background, border, brand } from "../../themes/palette";
+import { fontSize } from "../../themes/typography";
 
 // ── Keyframe animations ──
 const fadeInUp = keyframes`
@@ -289,6 +294,71 @@ const PROGRESS_STEPS: ProgressStep[] = [
 ];
 
 /** Read cached progress from storage to avoid flicker on load */
+const LlmKeyHint = ({ isAdmin, onConfigure }: { isAdmin: boolean; onConfigure: () => void }) => {
+  const theme = useTheme();
+
+  return (
+    <Box
+      role="status"
+      aria-label="LLM API key"
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        p: "12px 16px",
+        borderRadius: "4px",
+        border: `1px solid ${border.dark}`,
+        backgroundColor: background.accent,
+      }}
+    >
+      <Box
+        sx={{
+          width: 32,
+          height: 32,
+          borderRadius: "8px",
+          backgroundColor: brand.primaryLight,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Key size={16} color={brand.primary} />
+      </Box>
+      <Typography
+        sx={{ fontSize: fontSize.base, color: theme.palette.text.secondary, lineHeight: 1.5 }}
+      >
+        {isAdmin ? (
+          <>
+            Configure an LLM API key so Advisor, reporting, and LLM evals can run.{" "}
+            <Box
+              component="button"
+              type="button"
+              onClick={onConfigure}
+              sx={{
+                "background": "none",
+                "border": "none",
+                "padding": 0,
+                "font": "inherit",
+                "fontSize": fontSize.base,
+                "color": brand.primary,
+                "cursor": "pointer",
+                "textDecoration": "underline",
+                "&:hover": { textDecoration: "none" },
+              }}
+            >
+              Go to settings
+            </Box>
+            .
+          </>
+        ) : (
+          "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator."
+        )}
+      </Typography>
+    </Box>
+  );
+};
+
 const getCachedProgress = (): boolean[] => {
   const parsed = storageService.get("startHereProgress", []);
   if (Array.isArray(parsed) && parsed.length === PROGRESS_STEPS.length) {
@@ -301,7 +371,9 @@ const StartHere = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const exploreScrollRef = useRef<HTMLDivElement>(null);
-  const { userToken, userId } = useAuth();
+  const { userToken, userId, userRoleName } = useAuth();
+  const hasLLMKeys = useHasLLMKeys();
+  const canManageLLMKeys = allowedRoles.llmKeys.manage.includes(userRoleName);
   const { users } = useUsers();
   const { data: projects } = useProjects();
   const [hasRisks, setHasRisks] = useState(() => getCachedProgress()[4]);
@@ -467,6 +539,15 @@ const StartHere = () => {
             Here is an overview of your AI governance journey
           </Typography>
         </Box>
+
+        {hasLLMKeys === false && (
+          <Box sx={{ animation: `${fadeInUp} 0.5s ease-out 0.05s both` }}>
+            <LlmKeyHint
+              isAdmin={canManageLLMKeys}
+              onConfigure={() => navigate(LLM_KEY_CREATE_PATH)}
+            />
+          </Box>
+        )}
 
         {/* Row 1: Getting started */}
         <Box sx={{ animation: `${fadeInUp} 0.5s ease-out 0.1s both` }}>

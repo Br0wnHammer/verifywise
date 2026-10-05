@@ -178,4 +178,16 @@ describe("LLMKeys", () => {
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument());
     expect(screen.getByText("Create new LLM key").closest("button")).toBeDisabled();
   });
+
+  it("opens the create form when the addKey query is present", async () => {
+    renderWithProviders(<LLMKeys />, { route: "/settings/apikeys?addKey=1" });
+    expect(await screen.findByRole("heading", { name: "Add API key" })).toBeInTheDocument();
+  });
+
+  it("does not open the create form from the deep link for non-admins", async () => {
+    mockUserRoleName = "Editor";
+    renderWithProviders(<LLMKeys />, { route: "/settings/apikeys?addKey=1" });
+    await waitFor(() => expect(screen.getByText("No LLM keys yet")).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "Add API key" })).not.toBeInTheDocument();
+  });
 });

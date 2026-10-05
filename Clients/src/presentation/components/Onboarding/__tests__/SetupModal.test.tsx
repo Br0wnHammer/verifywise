@@ -2,6 +2,8 @@ import { screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import SetupModal from "../SetupModal";
+import { postAutoDrivers } from "../../../../application/repository/entity.repository";
+import { updateOnboardingStatus } from "../../../../application/repository/organization.repository";
 
 vi.mock("../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({ organizationId: 1 }),
@@ -103,5 +105,28 @@ describe("SetupModal", () => {
     renderWithProviders(<SetupModal onComplete={vi.fn()} onSkip={vi.fn()} />);
     expect(screen.getByText("Explore with sample projects and controls")).toBeInTheDocument();
     expect(screen.getByText("Begin with a clean dashboard")).toBeInTheDocument();
+  });
+
+  it("renders an optional LLM key card", () => {
+    renderWithProviders(<SetupModal onComplete={vi.fn()} onSkip={vi.fn()} />);
+    expect(screen.getByText("Add an LLM key")).toBeInTheDocument();
+    expect(
+      screen.getByText("Optional. Advisor, reporting, and LLM evals need an API key."),
+    ).toBeInTheDocument();
+  });
+
+  it("completes setup and deep-links to the LLM key form", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onComplete = vi.fn();
+    renderWithProviders(<SetupModal onComplete={onComplete} onSkip={vi.fn()} />);
+    await user.click(screen.getByText("Add an LLM key"));
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(updateOnboardingStatus).toHaveBeenCalledWith(1);
+    expect(postAutoDrivers).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledWith({
+      destination: "/settings/apikeys?addKey=1",
+    });
   });
 });
