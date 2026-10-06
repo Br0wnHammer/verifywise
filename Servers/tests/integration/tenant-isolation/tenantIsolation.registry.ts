@@ -65,6 +65,14 @@ export const tenantIsolationRegistry: IsolationEntity[] = [
     tables: ["users"],
     baseRoute: "/api/users",
   },
+  // Custom organization roles and their permission matrix (issue #4588):
+  // hand-written role-permissions.isolation.test.ts.
+  {
+    name: "role-permissions",
+    tables: ["role_permissions", "roles"],
+    baseRoute: "/api/roles",
+    testFile: "role-permissions.isolation.test.ts",
+  },
   // The risks controller answers "not found" and an empty list with 204.
   crudEntity("risks", "/api/projectRisks", ["risks", "projects_risks"], riskFixture, {
     updateVerb: "PUT",

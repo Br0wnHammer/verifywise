@@ -30,6 +30,12 @@
       "package": "image-size",
       "title": "image-size: JXL and HEIF parsers allow denial of service through infinite loops",
       "justification": "The advisory affects all published versions of image-size. The library is only used transitively by @mastra/memory for parsing image metadata, and the application does not pass untrusted image data to it directly. We will revisit once a patched version is released."
+    },
+    {
+      "id": "ghsa-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "title": "braces: Stack-exhaustion DoS through deeply nested patterns",
+      "justification": "No patched 3.x release exists; braces@3.0.3 is the latest 3.x and micromatch@4 (a runtime dependency of http-proxy-middleware) requires ^3.0.3, so the 4.x fix line cannot be taken without breaking dependency constraints. The application does not feed user-controlled input to brace pattern expansion, so practical DoS exposure is limited. The exception will be removed once micromatch accepts a patched braces or a compatible patched 3.x is published."
     }
   ]
 }

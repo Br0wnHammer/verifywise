@@ -11,7 +11,10 @@ export const queryClient = new QueryClient({
       refetchOnReconnect: true, // Refetch when internet reconnects
     },
     mutations: {
-      retry: 1, // Retry failed mutations only once
+      // Never retry. A failed mutation is usually an answer (400, 409) that
+      // fails the same way twice, and on a lost response the first request may
+      // already have been saved, so a retry can create or send things twice.
+      retry: false,
     },
   },
 });
