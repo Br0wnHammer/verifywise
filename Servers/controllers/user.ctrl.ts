@@ -72,6 +72,7 @@ import {
 import { sendSlackNotification } from "../services/slack/slackNotificationService";
 import { SlackNotificationRoutingType } from "../domain.layer/enums/slack.enum";
 import { getRoleByIdQuery } from "../utils/role.utils";
+import { getRoleInfoById } from "../utils/roleMap";
 import { uploadFile } from "../utils/fileUpload.utils";
 import { markInvitationAcceptedQuery } from "../utils/invitation.utils";
 import { ConfidentialClientApplication } from "@azure/msal-node";
@@ -1157,18 +1158,27 @@ async function updateUserById(req: Request, res: Response) {
         .json(STATUS_CODE[403](req.t!("Forbidden: Only admins can change user roles")));
     }
 
-    // Validate that the requested role actually exists.
+    // The requested role must exist and be assignable in the caller's
+    // organization: a built-in role (organization_id NULL) or one of this
+    // organization's own custom roles. Another organization's custom role
+    // and SuperAdmin (granted only through the super_admins mapping) are
+    // refused. All three cases get the same response so the endpoint does
+    // not reveal which role ids exist in other organizations.
     if (roleId !== undefined && roleId !== user.role_id) {
-      const targetRole = await getRoleByIdQuery(roleId);
-      if (!targetRole) {
+      const targetRole = await getRoleInfoById(roleId);
+      const isAssignable =
+        !!targetRole &&
+        targetRole.name !== "SuperAdmin" &&
+        (targetRole.organizationId === null || targetRole.organizationId === req.organizationId);
+      if (!isAssignable) {
         logStructured(
           "error",
-          `invalid role ID ${roleId} requested for user ID ${id}`,
+          `unassignable role ID ${roleId} requested for user ID ${id}`,
           "updateUserById",
           "user.ctrl.ts",
         );
         await transaction.rollback();
-        return res.status(400).json(STATUS_CODE[400](req.t!("Invalid role ID")));
+        return res.status(400).json(STATUS_CODE[400](req.t!("Unknown role")));
       }
     }
 
