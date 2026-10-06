@@ -40,7 +40,7 @@ import {
 } from "../../../../application/repository/llmKeys.repository";
 import { getModelsForProvider, getRecommendedModel } from "../../../utils/providers";
 import { LLM_KEY_ADD_PARAM } from "../../../../application/constants/llmKeyDeepLink";
-import { LLM_KEY_STATUS_QUERY_KEY } from "../../../../application/hooks/useLLMKeyStatus";
+import { setLLMKeyStatusFromKeys } from "../../../../application/hooks/useLLMKeyStatus";
 
 // Import provider logos
 import anthropicLogo from "../../../assets/icons/anthropic_logo.svg";
@@ -72,7 +72,7 @@ const LLMKeys = () => {
     key: "",
     model: "",
   };
-  const { userRoleName } = useAuth();
+  const { userRoleName, organizationId } = useAuth();
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const isDisabled = !allowedRoles.llmKeys?.manage?.includes(userRoleName);
@@ -104,13 +104,16 @@ const LLMKeys = () => {
       if (response && response.data && response.data.data) {
         const llmKeyModel = response.data.data.map((item: any) => LLMKeysModel.createNewKey(item));
         setKeys(llmKeyModel);
+        // Start here, the Advisor, reporting and file summaries read whether a
+        // key exists; update that from this list instead of asking again.
+        setLLMKeyStatusFromKeys(queryClient, organizationId, llmKeyModel);
       }
     } catch (_error) {
       showAlert("error", "Error", "Failed to fetch LLM Keys");
     } finally {
       setIsLoading(false);
     }
-  }, [showAlert]);
+  }, [showAlert, queryClient, organizationId]);
 
   useEffect(() => {
     fetchLLMKeys();
@@ -126,13 +129,6 @@ const LLMKeys = () => {
     next.delete(LLM_KEY_ADD_PARAM);
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, isDisabled]);
-
-  // Other screens read whether a key exists (Start here, reporting, file
-  // summaries); refresh that shared status with the list.
-  const refreshKeys = useCallback(() => {
-    fetchLLMKeys();
-    queryClient.invalidateQueries({ queryKey: LLM_KEY_STATUS_QUERY_KEY });
-  }, [fetchLLMKeys, queryClient]);
 
   useEffect(() => {
     if (alert) {
@@ -271,7 +267,7 @@ const LLMKeys = () => {
       const response = await createLLMKey({ body });
       if (response && response.data) {
         showAlert("success", "Success", "API key added successfully");
-        refreshKeys();
+        fetchLLMKeys();
       }
     } catch (error: any) {
       const errorMessage =
@@ -310,7 +306,7 @@ const LLMKeys = () => {
       const response = await editLLMKey({ id: keyToEdit, body });
       if (response && response.data) {
         showAlert("success", "Success", "API key updated successfully");
-        refreshKeys();
+        fetchLLMKeys();
       }
     } catch (error: any) {
       const errorMessage =
@@ -343,7 +339,7 @@ const LLMKeys = () => {
       const response = await deleteLLMKey(keyToDelete.id.toString());
       if (response && response.data) {
         showAlert("success", "Success", "LLM Key deleted successfully");
-        refreshKeys();
+        fetchLLMKeys();
       }
     } catch (_error) {
       showAlert("error", "Error", "Failed to delete LLM Key");

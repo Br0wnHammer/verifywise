@@ -1,20 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+let mockOrganizationId = 1;
+vi.mock("../useAuth", () => ({
+  useAuth: () => ({ organizationId: mockOrganizationId }),
+}));
 
 vi.mock("../../repository/llmKeys.repository", () => ({
   getLLMKeyStatus: vi.fn(),
 }));
 
-import { useLLMKeyStatus } from "../useLLMKeyStatus";
+import { useLLMKeyStatus, setLLMKeyStatusFromKeys } from "../useLLMKeyStatus";
 import { getLLMKeyStatus } from "../../repository/llmKeys.repository";
 
 const mockGetStatus = vi.mocked(getLLMKeyStatus);
 
-// A fresh client per hook, so no test reads another's cached status.
-const render = () => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+// A fresh client per hook unless a test shares one on purpose.
+const render = (client: QueryClient = newClient()) => {
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children);
   return renderHook(() => useLLMKeyStatus(), { wrapper });
@@ -23,6 +29,7 @@ const render = () => {
 describe("useLLMKeyStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockOrganizationId = 1;
   });
 
   it("fetches and returns LLM key status", async () => {
@@ -81,5 +88,53 @@ describe("useLLMKeyStatus", () => {
     const { result } = render();
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.hasKeys).toBe(true);
+  });
+
+  it("drops the cached answer when a refetch fails", async () => {
+    const client = newClient();
+    mockGetStatus.mockResolvedValueOnce({ hasKeys: true, keyCount: 1, providers: ["OpenAI"] });
+    const { result } = render(client);
+    await waitFor(() => expect(result.current.data?.hasKeys).toBe(true));
+
+    // The last key was deleted, then the status request failed.
+    mockGetStatus.mockRejectedValueOnce(new Error("Network error"));
+    await act(() => client.refetchQueries());
+
+    await waitFor(() => expect(result.current.error).toBe("Network error"));
+    expect(result.current.data).toBeNull();
+    expect(result.current.hasKeys).toBe(false);
+  });
+
+  it("keeps each organization's status separate", async () => {
+    const client = newClient();
+    mockGetStatus.mockResolvedValueOnce({ hasKeys: true, keyCount: 1, providers: ["OpenAI"] });
+    const first = render(client);
+    await waitFor(() => expect(first.result.current.data?.hasKeys).toBe(true));
+    first.unmount();
+
+    // Another org signs in on the same tab: it must not see the first org's answer.
+    mockOrganizationId = 2;
+    mockGetStatus.mockReturnValueOnce(new Promise(() => {}));
+    const second = render(client);
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.data).toBeNull();
+  });
+
+  it("setLLMKeyStatusFromKeys writes the status the server would return", () => {
+    const client = newClient();
+    setLLMKeyStatusFromKeys(client, 1, [
+      { name: "OpenAI" },
+      { name: "OpenAI" },
+      { name: "Anthropic" },
+    ]);
+    // A background refresh may follow; the written status is shown at once.
+    mockGetStatus.mockReturnValue(new Promise(() => {}));
+    const { result } = render(client);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.data).toEqual({
+      hasKeys: true,
+      keyCount: 3,
+      providers: ["OpenAI", "Anthropic"],
+    });
   });
 });

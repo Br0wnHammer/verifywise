@@ -27,8 +27,7 @@ import {
 import confetti from "canvas-confetti";
 import { useAuth } from "../../../application/hooks/useAuth";
 import { useLLMKeyStatus } from "../../../application/hooks/useLLMKeyStatus";
-import allowedRoles from "../../../application/constants/permissions";
-import { LLM_KEY_CREATE_PATH } from "../../../application/constants/llmKeyDeepLink";
+import LLMKeyRequiredNotice from "../../components/LLMKeyRequiredNotice";
 import { useProjects } from "../../../application/hooks/useProjects";
 import useUsers from "../../../application/hooks/useUsers";
 import { getAllProjectRisks } from "../../../application/repository/projectRisk.repository";
@@ -40,7 +39,6 @@ import { VideoPlayerModal } from "../../components/FeatureVideos/player/VideoPla
 import { buildExploreConfig } from "../../components/FeatureVideos/shared/buildExploreConfig";
 import { EXPLORE_VIDEO_DATA } from "../../components/FeatureVideos/exploreVideos";
 import { background, border, brand } from "../../themes/palette";
-import { fontSize } from "../../themes/typography";
 
 // ── Keyframe animations ──
 const fadeInUp = keyframes`
@@ -293,71 +291,6 @@ const PROGRESS_STEPS: ProgressStep[] = [
   { label: "Complete a risk assessment", path: "/risk-management" },
 ];
 
-const LlmKeyHint = ({ isAdmin, onConfigure }: { isAdmin: boolean; onConfigure: () => void }) => {
-  const theme = useTheme();
-
-  return (
-    <Box
-      role="status"
-      aria-label="LLM API key"
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        p: "12px 16px",
-        borderRadius: "4px",
-        border: `1px solid ${border.dark}`,
-        backgroundColor: background.accent,
-      }}
-    >
-      <Box
-        sx={{
-          width: 32,
-          height: 32,
-          borderRadius: "4px",
-          backgroundColor: brand.primaryLight,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Key size={16} color={brand.primary} />
-      </Box>
-      <Typography
-        sx={{ fontSize: fontSize.base, color: theme.palette.text.secondary, lineHeight: 1.5 }}
-      >
-        {isAdmin ? (
-          <>
-            Configure an LLM API key so Advisor, reporting, and LLM evals can run.{" "}
-            <Box
-              component="button"
-              type="button"
-              onClick={onConfigure}
-              sx={{
-                "background": "none",
-                "border": "none",
-                "padding": 0,
-                "font": "inherit",
-                "fontSize": fontSize.base,
-                "color": brand.primary,
-                "cursor": "pointer",
-                "textDecoration": "underline",
-                "&:hover": { textDecoration: "none" },
-              }}
-            >
-              Go to settings
-            </Box>
-            .
-          </>
-        ) : (
-          "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator."
-        )}
-      </Typography>
-    </Box>
-  );
-};
-
 /** Read cached progress from storage to avoid flicker on load */
 const getCachedProgress = (): boolean[] => {
   const parsed = storageService.get("startHereProgress", []);
@@ -371,11 +304,10 @@ const StartHere = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const exploreScrollRef = useRef<HTMLDivElement>(null);
-  const { userToken, userId, userRoleName } = useAuth();
+  const { userToken, userId } = useAuth();
   const { data: llmKeyStatus, loading: llmKeyLoading, error: llmKeyError } = useLLMKeyStatus();
   // Only when the status is known: not while loading, and not on an error.
   const missingLLMKey = !llmKeyLoading && !llmKeyError && llmKeyStatus?.hasKeys === false;
-  const canManageLLMKeys = allowedRoles.llmKeys.manage.includes(userRoleName);
   const { users } = useUsers();
   const { data: projects } = useProjects();
   const [hasRisks, setHasRisks] = useState(() => getCachedProgress()[4]);
@@ -544,9 +476,17 @@ const StartHere = () => {
 
         {missingLLMKey && (
           <Box sx={{ animation: `${fadeInUp} 0.5s ease-out 0.05s both` }}>
-            <LlmKeyHint
-              isAdmin={canManageLLMKeys}
-              onConfigure={() => navigate(LLM_KEY_CREATE_PATH)}
+            <LLMKeyRequiredNotice
+              adminMessage="Configure an LLM API key so Advisor, reporting, and LLM evals can run."
+              memberMessage="Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator."
+              icon={<Key size={16} color={brand.primary} />}
+              iconBackground={brand.primaryLight}
+              sx={{
+                p: "12px 16px",
+                borderRadius: "4px",
+                border: `1px solid ${border.dark}`,
+                backgroundColor: background.accent,
+              }}
             />
           </Box>
         )}

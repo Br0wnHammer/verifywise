@@ -1,8 +1,9 @@
-import { FC, useEffect, useState } from "react";
+import { FC, useEffect, useRef, useState } from "react";
 import { Maximize2, Minimize2, X } from "lucide-react";
 import { colors, typography, spacing, border } from "./styles/theme";
 import { getLLMKeys } from "../../../application/repository/llmKeys.repository";
 import { LLMKeysModel } from "../../../domain/models/Common/llmKeys/llmKeys.model";
+import { useLLMKeyStatus } from "../../../application/hooks/useLLMKeyStatus";
 
 interface AdvisorHeaderProps {
   onClose: () => void;
@@ -23,6 +24,22 @@ const AdvisorHeader: FC<AdvisorHeaderProps> = ({
 }) => {
   const [llmKeys, setLLMKeys] = useState<LLMKeysModel[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // This header needs the full key list (for its selector), not just the
+  // shared status. Reload the list when that status changes, e.g. after a key
+  // is added from Start here, so the Advisor unlocks without a remount.
+  const { data: keyStatus } = useLLMKeyStatus();
+  const keySignature = keyStatus ? `${keyStatus.keyCount}:${keyStatus.providers.join(",")}` : null;
+  const lastKeySignature = useRef<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  useEffect(() => {
+    if (keySignature === null) return;
+    // The first status to arrive matches the list fetched on mount.
+    if (lastKeySignature.current !== null && lastKeySignature.current !== keySignature) {
+      setReloadToken((token) => token + 1);
+    }
+    lastKeySignature.current = keySignature;
+  }, [keySignature]);
 
   useEffect(() => {
     const fetchLLMKeys = async () => {
@@ -52,7 +69,7 @@ const AdvisorHeader: FC<AdvisorHeaderProps> = ({
 
     onLLMKeysLoaded?.(false, true);
     fetchLLMKeys();
-  }, [selectedLLMKeyId, onLLMKeyChange, onLLMKeysLoaded]);
+  }, [selectedLLMKeyId, onLLMKeyChange, onLLMKeysLoaded, reloadToken]);
 
   const handleKeyChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const keyId = parseInt(event.target.value);
