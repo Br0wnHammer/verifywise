@@ -5,7 +5,7 @@ Detects API errors that are unrecoverable (won't succeed on retry)
 and should stop the experiment early to avoid wasting time.
 """
 
-from typing import Tuple, Optional
+from typing import List, Optional, Tuple
 
 # Fatal error patterns that won't recover - experiment should stop
 # Format: (pattern_to_match, error_code, user_friendly_message)
@@ -245,3 +245,33 @@ class FatalErrorTracker:
             return f"Fatal error: {self.last_error_message[:200]}"
         else:
             return "Unknown fatal error"
+
+
+NO_RESPONSES_MESSAGE = "No responses generated"
+MAX_FIRST_ERROR_CHARS = 300
+
+
+def build_no_responses_message(total_prompts: int, errors: List[str]) -> str:
+    """
+    Build the failure reason for a run in which no prompt produced a response.
+
+    Each failed prompt already has its own error log; this summarises them so
+    the experiment's error_message says why the run failed, not only that it did.
+
+    Args:
+        total_prompts: Number of prompts the run attempted
+        errors: Per-prompt error messages, in the order they occurred
+
+    Returns:
+        "No responses generated: <failed>/<total> prompts failed. First error: <error>",
+        or the bare "No responses generated" when no error was recorded.
+    """
+    first_error = next((" ".join(e.split()) for e in errors if e and e.strip()), None)
+    if first_error is None:
+        return NO_RESPONSES_MESSAGE
+    if len(first_error) > MAX_FIRST_ERROR_CHARS:
+        first_error = first_error[:MAX_FIRST_ERROR_CHARS] + "…"
+    return (
+        f"{NO_RESPONSES_MESSAGE}: {len(errors)}/{total_prompts} prompts failed. "
+        f"First error: {first_error}"
+    )

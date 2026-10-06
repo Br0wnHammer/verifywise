@@ -558,3 +558,51 @@ async def test_upsert_judge_scorer_noop_without_judge_model(
     )
     list_mock.assert_not_called()
     create_mock.assert_not_called()
+
+
+# --------------------------------------------------------------------------- #
+# Failure reason when no prompt produced a response                            #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_no_responses_failure_reason_includes_first_error(
+    inline_prompts_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _capture_runner_init(monkeypatch)
+    _patch_run_eval_dependencies(monkeypatch)
+
+    from deepeval_engine import model_runner as mr_module
+    from crud import evaluation_logs as crud_module
+
+    calls = {"n": 0}
+
+    def failing_generate(self, *a, **kw):
+        calls["n"] += 1
+        raise RuntimeError(f"Unexpected provider reply for sample {calls['n']}")
+
+    monkeypatch.setattr(mr_module.ModelRunner, "generate", failing_generate)
+
+    from utils.run_evaluation import run_evaluation
+
+    result = await run_evaluation(
+        db=mock_db_session,
+        experiment_id="exp-no-responses",
+        config=dict(inline_prompts_config),
+        organization_id=1,
+    )
+
+    expected = (
+        "No responses generated: 2/2 prompts failed. "
+        "First error: Unexpected provider reply for sample 1"
+    )
+    assert result == {"error": expected}
+    failed_calls = [
+        c
+        for c in crud_module.update_experiment_status.call_args_list
+        if c.kwargs.get("status") == "failed"
+    ]
+    assert failed_calls, "experiment was not marked failed"
+    assert failed_calls[-1].kwargs["error_message"] == expected
