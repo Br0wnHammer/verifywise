@@ -119,7 +119,11 @@ describe("registerJWT middleware", () => {
       email: "user@test.com",
     } as any);
     mockCheckPendingInvitation.mockResolvedValue(false);
-    const req = createMockReq("revoked", { roleId: 1, organizationId: 1 }) as Request;
+    const req = createMockReq("revoked", {
+      roleId: 1,
+      organizationId: 1,
+      email: "user@test.com",
+    }) as Request;
     const res = createMockRes();
 
     await registerJWT(req, res as Response, next);
@@ -136,13 +140,62 @@ describe("registerJWT middleware", () => {
       email: "user@test.com",
     } as any);
     mockCheckPendingInvitation.mockResolvedValue(true);
-    const req = createMockReq("valid", { roleId: 1, organizationId: 1 }) as Request;
+    const req = createMockReq("valid", {
+      roleId: 1,
+      organizationId: 1,
+      email: "user@test.com",
+    }) as Request;
     const res = createMockRes();
 
     await registerJWT(req, res as Response, next);
 
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it("should return 403 when the request's email is not the invited one", async () => {
+    mockGetTokenPayload.mockReturnValue({
+      roleId: 1,
+      organizationId: 1,
+      expire: Date.now() + 3600000,
+      email: "user@test.com",
+    } as any);
+    mockCheckPendingInvitation.mockResolvedValue(true);
+    const req = createMockReq("valid", {
+      roleId: 1,
+      organizationId: 1,
+      email: "someone-else@test.com",
+    }) as Request;
+    const res = createMockRes();
+
+    await registerJWT(req, res as Response, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Forbidden",
+      data: "This invitation was sent to a different email address.",
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("accepts the invited email regardless of case and surrounding spaces", async () => {
+    mockGetTokenPayload.mockReturnValue({
+      roleId: 1,
+      organizationId: 1,
+      expire: Date.now() + 3600000,
+      email: "User@Test.com",
+    } as any);
+    mockCheckPendingInvitation.mockResolvedValue(true);
+    const req = createMockReq("valid", {
+      roleId: 1,
+      organizationId: 1,
+      email: " user@test.com ",
+    }) as Request;
+    const res = createMockRes();
+
+    await registerJWT(req, res as Response, next);
+
+    expect(next).toHaveBeenCalled();
   });
 
   it("should return 500 on unexpected error", async () => {

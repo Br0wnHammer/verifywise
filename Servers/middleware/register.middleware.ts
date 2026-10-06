@@ -11,7 +11,7 @@ const registerJWT = async (
 ): Promise<void | Response> => {
   // Extract Bearer token from Authorization header
   const token = req.headers.authorization?.split(" ")[1];
-  const { roleId, organizationId } = req.body;
+  const { roleId, organizationId, email } = req.body;
 
   if (!token) {
     return res.status(400).json(
@@ -52,6 +52,19 @@ const registerJWT = async (
     ) {
       console.error("❌ Registration validation failed");
       return res.status(403).json(STATUS_CODE[403](req.t!("Role or Organization mismatch")));
+    }
+
+    // The account is created from the request's email, so it must be the
+    // invited one. The form shows it read-only, but a crafted request could
+    // otherwise use one invite link to register any address.
+    const normalise = (value: unknown) =>
+      String(value ?? "")
+        .trim()
+        .toLowerCase();
+    if (!decoded.email || normalise(email) !== normalise(decoded.email)) {
+      return res
+        .status(403)
+        .json(STATUS_CODE[403](req.t!("This invitation was sent to a different email address.")));
     }
 
     // Check if invitation is still pending (not revoked)

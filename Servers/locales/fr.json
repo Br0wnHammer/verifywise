@@ -802,5 +802,6 @@
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has 1 vendor risk it could inherit from. Review it from the Linked risks tab.": "Le risque « {riskName} » fait partie d'un cas d'usage servi par « {vendorName} », qui a 1 risque fournisseur dont il pourrait hériter. Examinez-le depuis l'onglet « Risques liés ».",
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.": "Le risque « {riskName} » fait partie d'un cas d'usage servi par « {vendorName} », qui a {count} risques fournisseurs dont il pourrait hériter. Examinez-les depuis l'onglet « Risques liés ».",
   "Only related links are supported between vendor risks.": "Seuls les liens connexes sont pris en charge entre les risques fournisseurs.",
-  "This link changed while you were deciding. Reload and try again.": "Ce lien a été modifié pendant votre décision. Rechargez et réessayez."
+  "This link changed while you were deciding. Reload and try again.": "Ce lien a été modifié pendant votre décision. Rechargez et réessayez.",
+  "This invitation was sent to a different email address.": "Cette invitation a été envoyée à une autre adresse e-mail."
 }
