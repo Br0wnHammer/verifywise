@@ -287,7 +287,7 @@ const LLMKeys = () => {
       setHeaderRows([]);
     }
   }, [
-    fetchLLMKeys,
+    refreshKeys,
     formData,
     showAlert,
     initialFormData,
@@ -326,7 +326,7 @@ const LLMKeys = () => {
       setHeaderRows([]);
     }
   }, [
-    fetchLLMKeys,
+    refreshKeys,
     formData,
     showAlert,
     keyToEdit,
@@ -353,7 +353,7 @@ const LLMKeys = () => {
       setIsDeleteModalOpen(false);
       setKeyToDelete(null);
     }
-  }, [keyToDelete]);
+  }, [keyToDelete, refreshKeys]);
 
   const handleCloseCreateModal = useCallback(() => {
     setIsCreateModalOpen(false);

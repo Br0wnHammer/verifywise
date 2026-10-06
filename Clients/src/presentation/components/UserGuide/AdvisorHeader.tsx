@@ -3,6 +3,7 @@ import { Maximize2, Minimize2, X } from "lucide-react";
 import { colors, typography, spacing, border } from "./styles/theme";
 import { LLMKeysModel } from "../../../domain/models/Common/llmKeys/llmKeys.model";
 import { useLLMKeys } from "../../../application/hooks/useLLMKeys";
+import { useAuth } from "../../../application/hooks/useAuth";
 
 /** Stable empty list, so effects do not re-run on every render while loading. */
 const NO_KEYS: LLMKeysModel[] = [];
@@ -26,7 +27,10 @@ const AdvisorHeader: FC<AdvisorHeaderProps> = ({
 }) => {
   // The shared, cached key list: the keys page invalidates it after a change,
   // so adding a key from Start here unlocks the Advisor without a remount.
-  const { data: fetchedKeys, isPending: loading, isError } = useLLMKeys();
+  const { organizationId } = useAuth();
+  const { data: fetchedKeys, isPending } = useLLMKeys();
+  // Without an organization the query never runs: settled, with no keys.
+  const loading = organizationId != null && isPending;
   const llmKeys = fetchedKeys ?? NO_KEYS;
 
   useEffect(() => {
@@ -34,8 +38,10 @@ const AdvisorHeader: FC<AdvisorHeaderProps> = ({
       onLLMKeysLoaded?.(false, true);
       return;
     }
+    // A failed refetch keeps the cached list, which the dropdown still shows,
+    // so report from that list. Only no list at all means no keys.
     const keys = fetchedKeys ?? NO_KEYS;
-    onLLMKeysLoaded?.(!isError && keys.length > 0, false);
+    onLLMKeysLoaded?.(keys.length > 0, false);
 
     // Auto-select the first key if none is selected or the saved one is gone.
     if (keys.length > 0 && onLLMKeyChange) {
@@ -44,7 +50,7 @@ const AdvisorHeader: FC<AdvisorHeaderProps> = ({
         onLLMKeyChange(keys[0].id);
       }
     }
-  }, [fetchedKeys, loading, isError, selectedLLMKeyId, onLLMKeyChange, onLLMKeysLoaded]);
+  }, [fetchedKeys, loading, selectedLLMKeyId, onLLMKeyChange, onLLMKeysLoaded]);
 
   const handleKeyChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const keyId = parseInt(event.target.value);

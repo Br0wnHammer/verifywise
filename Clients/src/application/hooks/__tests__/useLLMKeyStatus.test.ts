@@ -90,17 +90,27 @@ describe("useLLMKeyStatus", () => {
     expect(result.current.hasKeys).toBe(true);
   });
 
-  it("drops the cached answer when a refetch fails", async () => {
+  it("keeps the last known answer when a refetch fails", async () => {
     const client = newClient();
     mockGetStatus.mockResolvedValueOnce({ hasKeys: true, keyCount: 1, providers: ["OpenAI"] });
     const { result } = render(client);
     await waitFor(() => expect(result.current.data?.hasKeys).toBe(true));
 
-    // The last key was deleted, then the status request failed.
+    // A transient failure must not flip a known status to "no keys".
     mockGetStatus.mockRejectedValueOnce(new Error("Network error"));
     await act(() => client.refetchQueries());
 
     await waitFor(() => expect(result.current.error).toBe("Network error"));
+    expect(result.current.data).toEqual({ hasKeys: true, keyCount: 1, providers: ["OpenAI"] });
+    expect(result.current.hasKeys).toBe(true);
+  });
+
+  it("reports no keys when the first load fails", async () => {
+    mockGetStatus.mockRejectedValueOnce(new Error("Network error"));
+    const { result } = render();
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("Network error");
     expect(result.current.data).toBeNull();
     expect(result.current.hasKeys).toBe(false);
   });
@@ -120,12 +130,14 @@ describe("useLLMKeyStatus", () => {
     expect(second.result.current.data).toBeNull();
   });
 
-  it("does not ask for a status before there is an organization", () => {
+  it("settles on no keys when there is no organization", () => {
     mockOrganizationId = null;
     const { result } = render();
     expect(mockGetStatus).not.toHaveBeenCalled();
-    // Optimistic, like any other pending state.
-    expect(result.current.loading).toBe(true);
-    expect(result.current.hasKeys).toBe(true);
+    // Nothing to ask about: settled, not pending.
+    expect(result.current.loading).toBe(false);
+    expect(result.current.data).toBeNull();
+    expect(result.current.error).toBeNull();
+    expect(result.current.hasKeys).toBe(false);
   });
 });

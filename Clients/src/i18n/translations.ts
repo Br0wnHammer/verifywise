@@ -2229,6 +2229,10 @@ export const translations: Record<string, Record<string, string>> = {
       "Konfigurieren Sie einen LLM-API-Schlüssel, damit KI-Berater, Berichte und LLM-Bewertungen funktionieren.",
     "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.":
       "KI-Berater, Berichte und LLM-Bewertungen benötigen einen LLM-API-Schlüssel. Wenden Sie sich an Ihren Administrator.",
+    "Configure an LLM API key to send messages.":
+      "Konfigurieren Sie einen LLM-API-Schlüssel, um Nachrichten zu senden.",
+    "Sending messages requires an LLM API key. Contact your administrator.":
+      "Zum Senden von Nachrichten ist ein LLM-API-Schlüssel erforderlich. Wenden Sie sich an Ihren Administrator.",
     "LLM Arena": "LLM-Arena",
     "LLM provider": "LLM-Anbieter",
     "LLM providers": "LLM-Anbieter",
@@ -11644,6 +11648,10 @@ export const translations: Record<string, Record<string, string>> = {
       "Configurez une clé API LLM pour que le conseiller IA, les rapports et les évaluations LLM puissent fonctionner.",
     "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.":
       "Le conseiller IA, les rapports et les évaluations LLM ont besoin d'une clé API LLM. Contactez votre administrateur.",
+    "Configure an LLM API key to send messages.":
+      "Configurez une clé API LLM pour envoyer des messages.",
+    "Sending messages requires an LLM API key. Contact your administrator.":
+      "L'envoi de messages nécessite une clé API LLM. Contactez votre administrateur.",
     "LLM Arena": "Arène LLM",
     "LLM provider": "Fournisseur LLM",
     "LLM providers": "Fournisseurs LLM",
@@ -20289,6 +20297,10 @@ export const translations: Record<string, Record<string, string>> = {
       "Configure una clave de API de LLM para que el asesor de IA, los informes y las evaluaciones de LLM puedan funcionar.",
     "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.":
       "El asesor de IA, los informes y las evaluaciones de LLM necesitan una clave de API de LLM. Póngase en contacto con su administrador.",
+    "Configure an LLM API key to send messages.":
+      "Configure una clave de API de LLM para enviar mensajes.",
+    "Sending messages requires an LLM API key. Contact your administrator.":
+      "Para enviar mensajes se necesita una clave de API de LLM. Póngase en contacto con su administrador.",
     "LLM Arena": "LLM Arena",
     "LLM provider": "Proveedor de LLM",
     "LLM providers": "Proveedores de LLM",
