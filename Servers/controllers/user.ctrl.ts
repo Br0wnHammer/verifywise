@@ -505,14 +505,10 @@ async function createNewUser(req: Request, res: Response) {
     const user = (await createNewUserQuery(userModel, transaction)) as UserModel;
 
     if (user) {
+      // In the same transaction: a link works once, so if the invitation
+      // cannot be marked accepted the user is not created either.
+      await markInvitationAcceptedQuery(organizationId, email, transaction);
       await transaction.commit();
-
-      // Mark any pending invitation as accepted (fire-and-forget)
-      try {
-        await markInvitationAcceptedQuery(organizationId, email);
-      } catch (_) {
-        // Non-critical — don't block user creation
-      }
 
       logStructured("successful", `user created: ${email}`, "createNewUser", "user.ctrl.ts");
       await logEvent("Create", `User created: ${email}`, req.userId!, req.organizationId!);

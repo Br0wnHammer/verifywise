@@ -209,6 +209,8 @@ import {
   deleteUserProfilePhotoQuery,
 } from "../../utils/user.utils";
 import { getRoleByIdQuery } from "../../utils/role.utils";
+import { markInvitationAcceptedQuery } from "../../utils/invitation.utils";
+import { sequelize } from "../../database/db";
 import {
   getPreferencesByUserQuery,
   createNewUserPreferencesQuery,
@@ -369,6 +371,56 @@ describe("user.ctrl", () => {
       const res = createRes();
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(201);
+    });
+    it("marks the invitation accepted inside the user's transaction, before commit", async () => {
+      // A link works once: the user and the accepted invitation commit together.
+      mockGetByEmail.mockResolvedValue(null as any);
+      mockCreate.mockResolvedValue(mockUser(buildUser()) as any);
+      const tx: any = await (sequelize.transaction as any)();
+      const mockMark = markInvitationAcceptedQuery as jest.Mock;
+      const req = createReq({
+        body: {
+          name: "A",
+          surname: "B",
+          email: "a@b.com",
+          password: "pass",
+          roleId: 1,
+          organizationId: 1,
+        },
+      });
+      const res = createRes();
+      await createNewUser(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockMark).toHaveBeenCalledWith(1, "a@b.com", tx);
+      expect(mockMark.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.commit.mock.invocationCallOrder.at(-1),
+      );
+    });
+    it("rolls back the user when the invitation cannot be marked accepted", async () => {
+      mockGetByEmail.mockResolvedValue(null as any);
+      mockCreate.mockResolvedValue(mockUser(buildUser()) as any);
+      const tx: any = await (sequelize.transaction as any)();
+      tx.commit.mockClear();
+      (markInvitationAcceptedQuery as jest.Mock).mockRejectedValueOnce(
+        new Error("db down") as never,
+      );
+      const req = createReq({
+        body: {
+          name: "A",
+          surname: "B",
+          email: "a@b.com",
+          password: "pass",
+          roleId: 1,
+          organizationId: 1,
+        },
+      });
+      const res = createRes();
+      await createNewUser(req, res);
+
+      expect(tx.rollback).toHaveBeenCalled();
+      expect(tx.commit).not.toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalledWith(201);
     });
     it("should return 409 when user already exists", async () => {
       mockGetByEmail.mockResolvedValue(mockUser(buildUser()) as any);

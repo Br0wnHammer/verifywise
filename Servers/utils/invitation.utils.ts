@@ -122,17 +122,19 @@ export const revokeInvitationQuery = async (
 };
 
 /**
- * Mark invitation as accepted when user registers via invite link.
+ * Mark invitation as accepted when user registers via invite link. Pass the
+ * user-creation transaction so the user and the used-up link commit together.
  */
 export const markInvitationAcceptedQuery = async (
   organizationId: number,
   email: string,
+  transaction?: Transaction,
 ): Promise<void> => {
   await sequelize.query(
     `UPDATE invitations
      SET status = 'accepted', updated_at = CURRENT_TIMESTAMP
      WHERE organization_id = :organizationId AND email = :email AND status = 'pending'`,
-    { replacements: { organizationId, email } },
+    { replacements: { organizationId, email }, transaction },
   );
 };
 
@@ -159,6 +161,7 @@ export const updateInvitationExpiryQuery = async (
 export const getPendingInvitationQuery = async (
   organizationId: number,
   email: string,
+  transaction?: Transaction,
 ): Promise<{ id: number; role_id: number; expires_at_ms: number } | null> => {
   const result = (await sequelize.query(
     `SELECT id, role_id, ROUND(EXTRACT(EPOCH FROM expires_at) * 1000) AS expires_at_ms
@@ -166,7 +169,7 @@ export const getPendingInvitationQuery = async (
      WHERE organization_id = :organizationId AND email = :email AND status = 'pending'
      ORDER BY id DESC
      LIMIT 1`,
-    { replacements: { organizationId, email } },
+    { replacements: { organizationId, email }, transaction },
   )) as [{ id: number; role_id: number; expires_at_ms: string | number }[], number];
 
   const row = result[0][0];

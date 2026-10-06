@@ -32,8 +32,10 @@ const registerJWT = async (
         }),
       );
 
-    // Check token expiration
-    if (decoded.expire < Date.now())
+    // Check token expiration. A missing or non-numeric expiry would compare
+    // as NaN and pass this check and the link match below, so refuse it.
+    const expire = Number(decoded.expire);
+    if (!Number.isFinite(expire) || expire < Date.now())
       return res.status(406).json(
         STATUS_CODE[406]({
           message: req.t!(
@@ -99,7 +101,7 @@ const registerJWT = async (
     const LINK_MATCH_TOLERANCE_MS = 60 * 1000;
     if (
       Number(invitation.role_id) !== Number(decoded.roleId) ||
-      Math.abs(invitation.expires_at_ms - Number(decoded.expire)) > LINK_MATCH_TOLERANCE_MS
+      Math.abs(invitation.expires_at_ms - expire) > LINK_MATCH_TOLERANCE_MS
     ) {
       return res
         .status(403)

@@ -359,7 +359,15 @@ const TeamManagement: React.FC = (): JSX.Element => {
       if (response.status === 200) {
         showAlert("success", "Success", "Invitation resent successfully.");
       } else if (response.status === 206) {
-        showAlert("info", "Info", "Email service unavailable. A fallback link was generated.");
+        // Resending replaced the invitee's link, so hand the admin the new one.
+        const link = (response.data as { data?: { link?: string } } | undefined)?.data?.link;
+        showAlert(
+          "info",
+          "Info",
+          link
+            ? `Email service unavailable. Links sent earlier no longer work. Share this one with the invitee: ${link}`
+            : "Email service unavailable. A fallback link was generated.",
+        );
       } else {
         showAlert("error", "Error", "Failed to resend invitation.");
       }

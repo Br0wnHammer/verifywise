@@ -249,18 +249,22 @@ describe("TeamManagement", () => {
     });
   });
 
-  it("shows fallback info when resend returns 206", async () => {
+  it("shows the new link when resend returns 206", async () => {
+    // Resending replaces the invitee's link, so when the email fails the
+    // admin must get the new one to share.
     mockInvitations = [buildInvitation()];
-    mockResendInvitation.mockResolvedValue({ status: 206 });
+    mockResendInvitation.mockResolvedValue({
+      status: 206,
+      data: { data: { error: "SMTP down", link: "http://new-link" } },
+    });
     const user = userEvent.setup();
     renderWithProviders(<TeamManagement />);
 
     await user.click(screen.getByTitle("Resend invitation"));
     await waitFor(() => {
-      expect(
-        screen.getByText("Email service unavailable. A fallback link was generated."),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Links sent earlier no longer work/)).toBeInTheDocument();
     });
+    expect(screen.getByText("http://new-link")).toBeInTheDocument();
   });
 
   it("revokes an invitation", async () => {

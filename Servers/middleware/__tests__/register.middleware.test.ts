@@ -97,6 +97,28 @@ describe("registerJWT middleware", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it.each([[undefined], ["soon"], [null]])(
+    "should return 406 when the token's expiry is %p",
+    async (expire) => {
+      // Without a numeric expiry both the expiry and the link-match checks
+      // compare against NaN and pass.
+      mockGetTokenPayload.mockReturnValue({
+        roleId: 1,
+        organizationId: 1,
+        expire,
+        email: "user@test.com",
+      } as any);
+      mockGetPendingInvitation.mockResolvedValue(pendingInvitation(Date.now() + 3600000));
+      const req = createMockReq("no-expiry", { roleId: 1, organizationId: 1 }) as Request;
+      const res = createMockRes();
+
+      await registerJWT(req, res as Response, next);
+
+      expect(res.status).toHaveBeenCalledWith(406);
+      expect(next).not.toHaveBeenCalled();
+    },
+  );
+
   it("should return 403 when role or organization mismatch", async () => {
     mockGetTokenPayload.mockReturnValue({
       roleId: 2,
