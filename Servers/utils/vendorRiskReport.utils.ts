@@ -1,5 +1,6 @@
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../database/db";
+import { toJsonArray, toNumber } from "./pgRow.utils";
 
 /**
  * Reads behind the vendor risk insights on the Vendors page: exposure (blast
@@ -7,23 +8,6 @@ import { sequelize } from "../database/db";
  * read-only and org-scoped, and all three hide soft-deleted vendor risks and
  * soft-deleted children — the same R7 rule the risk link reads follow.
  */
-
-const toNumber = (value: unknown): number =>
-  typeof value === "number" ? value : Number(value ?? 0);
-
-/** pg can hand JSONB_AGG back as a string; never let one cross this file. */
-const toJsonArray = <T>(value: unknown): T[] => {
-  if (Array.isArray(value)) return value as T[];
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? (parsed as T[]) : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-};
 
 export interface UseCaseRef {
   id: number;

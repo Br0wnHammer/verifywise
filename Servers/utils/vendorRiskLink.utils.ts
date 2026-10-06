@@ -2,6 +2,7 @@ import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../database/db";
 import { LinkSignal, RiskLinkRow, RiskLinkStatus } from "../services/riskLinks/types";
 import { UseCaseRef } from "./vendorRiskReport.utils";
+import { toJsonArray, toNumber } from "./pgRow.utils";
 
 /**
  * Queries behind `related_to` links between two vendor risks. These rows set
@@ -10,22 +11,6 @@ import { UseCaseRef } from "./vendorRiskReport.utils";
  * selects on `source_vendor_risk_id`, so none of them can see a project-risk
  * row, and none of the project-risk queries can see these.
  */
-
-const toNumber = (value: unknown): number =>
-  typeof value === "number" ? value : Number(value ?? 0);
-
-const toJsonArray = <T>(value: unknown): T[] => {
-  if (Array.isArray(value)) return value as T[];
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? (parsed as T[]) : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-};
 
 /** What the vendor pair scorer reads about one vendor risk. */
 export interface VendorRiskScoringRow {

@@ -12,28 +12,13 @@ import {
 } from "../services/riskLinks/types";
 import { HierarchyEdge, ParentEntityType } from "../services/riskLinks/hierarchy";
 import { DismissReason } from "../services/riskLinks/dismissReason";
+import { toJsonArray, toNumber } from "./pgRow.utils";
 
 /**
  * pg hands NUMERIC back as a string and can hand JSONB / JSON_AGG output back
  * as a string too. Everything crossing this boundary is coerced here so no
  * caller ever compares a number to "5.000".
  */
-const toNumber = (value: unknown): number =>
-  typeof value === "number" ? value : Number(value ?? 0);
-
-const toJsonArray = <T>(value: unknown): T[] => {
-  if (Array.isArray(value)) return value as T[];
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? (parsed as T[]) : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-};
-
 /** Which parent the caller is proposing, and which table it lives in. */
 export interface HierarchyParent {
   id: number;

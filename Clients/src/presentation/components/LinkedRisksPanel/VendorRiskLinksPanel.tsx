@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
 import { Network } from "lucide-react";
 import { CustomizableButton } from "../button/customizable-button";
@@ -17,13 +17,8 @@ import { DismissReason, RiskLink, RiskLinkStatus } from "../../../domain/interfa
 import LinkChildRiskForm from "./LinkChildRiskForm";
 import RelateVendorRiskForm from "./RelateVendorRiskForm";
 import LinkRow from "./LinkRow";
-import {
-  fingerprint,
-  GROUPING_WINDOW_MS,
-  PendingJob,
-  POLL_INTERVAL_MS,
-  SCAN_WINDOW_MS,
-} from "./polling";
+import { GROUPING_WINDOW_MS, SCAN_WINDOW_MS } from "./polling";
+import { useWatchedLinks } from "./useWatchedLinks";
 
 interface VendorRiskLinksPanelProps {
   vendorRiskId: number;
@@ -54,44 +49,18 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
   const [form, setForm] = useState<"child" | "related" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<RiskLink | null>(null);
-  const [pending, setPending] = useState<PendingJob | null>(null);
   const isAdmin = useIsAdmin();
   const { t } = useTranslation();
 
-  const {
-    data: links = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useVendorRiskLinks(
+  const { links, isLoading, isError, refetch, isWatching, watchForResult } = useWatchedLinks(
+    useVendorRiskLinks,
     vendorRiskId,
-    showDismissed ? "dismissed" : undefined,
-    pending ? POLL_INTERVAL_MS : false,
+    showDismissed,
+    setNotice,
   );
   const updateStatus = useUpdateVendorRiskLinkStatus();
   const suggestChildren = useSuggestVendorRiskHierarchy(vendorRiskId);
   const scan = useRecomputeVendorRiskLinks();
-
-  // The same bounded wait as the project risk panel: stop when the worker's
-  // result lands, or say so when the window closes first.
-  useEffect(() => {
-    if (!pending || showDismissed !== pending.dismissedView) return;
-    if (fingerprint(links) === pending.before) return;
-    setNotice(null);
-    setPending(null);
-  }, [pending, links, showDismissed]);
-
-  useEffect(() => {
-    if (!pending) return;
-    const timer = setTimeout(() => {
-      setNotice(pending.timedOut);
-      setPending(null);
-    }, pending.window);
-    return () => clearTimeout(timer);
-  }, [pending]);
-
-  const watchForResult = (timedOut: string, window: number) =>
-    setPending({ before: fingerprint(links), dismissedView: showDismissed, timedOut, window });
 
   const toggleForm = (which: "child" | "related") =>
     setForm((open) => (open === which ? null : which));
@@ -212,7 +181,7 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
               variant="text"
               color="secondary"
               onClick={handleSuggestChildren}
-              isDisabled={suggestChildren.isPending || pending !== null}
+              isDisabled={suggestChildren.isPending || isWatching}
             >
               Suggest children
             </CustomizableButton>
@@ -259,7 +228,7 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
               size="small"
               variant="text"
               onClick={handleScan}
-              isDisabled={scan.isPending || pending !== null}
+              isDisabled={scan.isPending || isWatching}
             >
               Scan for related vendor risks
             </CustomizableButton>

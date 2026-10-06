@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
 import { Network } from "lucide-react";
 import { CustomizableButton } from "../button/customizable-button";
@@ -16,13 +16,8 @@ import { useTranslation } from "../../../application/hooks/useTranslation";
 import { DismissReason, RiskLink, RiskLinkStatus } from "../../../domain/interfaces/i.riskLink";
 import LinkRiskForm from "./LinkRiskForm";
 import LinkRow from "./LinkRow";
-import {
-  fingerprint,
-  GROUPING_WINDOW_MS,
-  PendingJob,
-  POLL_INTERVAL_MS,
-  SCAN_WINDOW_MS,
-} from "./polling";
+import { GROUPING_WINDOW_MS, SCAN_WINDOW_MS } from "./polling";
+import { useWatchedLinks } from "./useWatchedLinks";
 import { fill } from "../../../i18n/fill";
 
 // Moved to LinkRow with the row that uses it; re-exported for existing callers.
@@ -51,44 +46,19 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<RiskLink | null>(null);
-  const [pending, setPending] = useState<PendingJob | null>(null);
   const isAdmin = useIsAdmin();
   const { t } = useTranslation();
 
-  const {
-    data: links = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useRiskLinks(
+  const { links, isLoading, isError, refetch, isWatching, watchForResult } = useWatchedLinks(
+    useRiskLinks,
     riskId,
-    showDismissed ? "dismissed" : undefined,
-    pending ? POLL_INTERVAL_MS : false,
+    showDismissed,
+    setNotice,
   );
   const updateStatus = useUpdateRiskLinkStatus(riskId);
   const acknowledge = useAcknowledgeParentLevelChange(riskId);
   const recompute = useRecomputeRiskLinks(riskId);
   const suggestHierarchy = useSuggestRiskHierarchy(riskId);
-
-  // The worker landed: drop the notice, the links themselves are the answer.
-  // Skipped while the dismissed view is open, since the fingerprint was taken
-  // from the other list and any difference would be the toggle, not the job.
-  useEffect(() => {
-    if (!pending || showDismissed !== pending.dismissedView) return;
-    if (fingerprint(links) === pending.before) return;
-    setNotice(null);
-    setPending(null);
-  }, [pending, links, showDismissed]);
-
-  // Or it did not, within the window we promised to watch.
-  useEffect(() => {
-    if (!pending) return;
-    const timer = setTimeout(() => {
-      setNotice(pending.timedOut);
-      setPending(null);
-    }, pending.window);
-    return () => clearTimeout(timer);
-  }, [pending]);
 
   const onMutationError = (error: any) =>
     setNotice(
@@ -127,9 +97,6 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
     setNotice(null);
     acknowledge.mutate(link.id, { onError: onMutationError });
   };
-
-  const watchForResult = (timedOut: string, window: number) =>
-    setPending({ before: fingerprint(links), dismissedView: showDismissed, timedOut, window });
 
   const handleScan = () => {
     setNotice(null);
@@ -217,7 +184,7 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
               variant="text"
               color="secondary"
               onClick={handleSuggestHierarchy}
-              isDisabled={suggestHierarchy.isPending || pending !== null}
+              isDisabled={suggestHierarchy.isPending || isWatching}
             >
               Suggest hierarchy
             </CustomizableButton>
@@ -261,7 +228,7 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
               size="small"
               variant="text"
               onClick={handleScan}
-              isDisabled={recompute.isPending || pending !== null}
+              isDisabled={recompute.isPending || isWatching}
             >
               Scan for related risks
             </CustomizableButton>
