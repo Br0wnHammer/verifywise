@@ -27,8 +27,17 @@ vi.mock("../../../../application/hooks/useAuth", () => ({
   }),
 }));
 
-vi.mock("../../../../application/hooks/useHasLLMKeys", () => ({
-  default: () => mockHasLLMKeys,
+// null stands for "status not known yet" (loading).
+vi.mock("../../../../application/hooks/useLLMKeyStatus", () => ({
+  useLLMKeyStatus: () =>
+    mockHasLLMKeys === null
+      ? { data: null, loading: true, error: null, hasKeys: true }
+      : {
+          data: { hasKeys: mockHasLLMKeys },
+          loading: false,
+          error: null,
+          hasKeys: mockHasLLMKeys,
+        },
 }));
 
 vi.mock("../../../../application/hooks/useProjects", () => ({

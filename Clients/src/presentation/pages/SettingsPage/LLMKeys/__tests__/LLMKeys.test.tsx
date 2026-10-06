@@ -1,9 +1,13 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLocation } from "react-router";
 import { renderWithProviders } from "../../../../../test/renderWithProviders";
 import { LLMKeysModel } from "../../../../../domain/models/Common/llmKeys/llmKeys.model";
 
 let mockUserRoleName = "Admin";
+
+/** Shows the current query string, so a test can see the deep link removed. */
+const SearchProbe = () => <span data-testid="search">{useLocation().search}</span>;
 vi.mock("../../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({ userRoleName: mockUserRoleName }),
 }));
@@ -189,5 +193,39 @@ describe("LLMKeys", () => {
     renderWithProviders(<LLMKeys />, { route: "/settings/apikeys?addKey=1" });
     await waitFor(() => expect(screen.getByText("No LLM keys yet")).toBeInTheDocument());
     expect(screen.queryByRole("heading", { name: "Add API key" })).not.toBeInTheDocument();
+  });
+
+  it("removes the addKey flag from the URL once the form is open", async () => {
+    renderWithProviders(
+      <>
+        <LLMKeys />
+        <SearchProbe />
+      </>,
+      { route: "/settings/apikeys?addKey=1" },
+    );
+    expect(await screen.findByRole("heading", { name: "Add API key" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^$/));
+  });
+
+  it("removes the addKey flag for non-admins too", async () => {
+    mockUserRoleName = "Editor";
+    renderWithProviders(
+      <>
+        <LLMKeys />
+        <SearchProbe />
+      </>,
+      { route: "/settings/apikeys?addKey=1" },
+    );
+    await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^$/));
+  });
+
+  it("stays closed after the deep-linked form is cancelled", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<LLMKeys />, { route: "/settings/apikeys?addKey=1" });
+    await screen.findByRole("heading", { name: "Add API key" });
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Add API key" })).not.toBeInTheDocument(),
+    );
   });
 });

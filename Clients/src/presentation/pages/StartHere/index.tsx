@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { useAuth } from "../../../application/hooks/useAuth";
-import useHasLLMKeys from "../../../application/hooks/useHasLLMKeys";
+import { useLLMKeyStatus } from "../../../application/hooks/useLLMKeyStatus";
 import allowedRoles from "../../../application/constants/permissions";
 import { LLM_KEY_CREATE_PATH } from "../../../application/constants/llmKeyDeepLink";
 import { useProjects } from "../../../application/hooks/useProjects";
@@ -314,7 +314,7 @@ const LlmKeyHint = ({ isAdmin, onConfigure }: { isAdmin: boolean; onConfigure: (
         sx={{
           width: 32,
           height: 32,
-          borderRadius: "8px",
+          borderRadius: "4px",
           backgroundColor: brand.primaryLight,
           display: "flex",
           alignItems: "center",
@@ -372,7 +372,9 @@ const StartHere = () => {
   const navigate = useNavigate();
   const exploreScrollRef = useRef<HTMLDivElement>(null);
   const { userToken, userId, userRoleName } = useAuth();
-  const hasLLMKeys = useHasLLMKeys();
+  const { data: llmKeyStatus, loading: llmKeyLoading, error: llmKeyError } = useLLMKeyStatus();
+  // Only when the status is known: not while loading, and not on an error.
+  const missingLLMKey = !llmKeyLoading && !llmKeyError && llmKeyStatus?.hasKeys === false;
   const canManageLLMKeys = allowedRoles.llmKeys.manage.includes(userRoleName);
   const { users } = useUsers();
   const { data: projects } = useProjects();
@@ -540,7 +542,7 @@ const StartHere = () => {
           </Typography>
         </Box>
 
-        {hasLLMKeys === false && (
+        {missingLLMKey && (
           <Box sx={{ animation: `${fadeInUp} 0.5s ease-out 0.05s both` }}>
             <LlmKeyHint
               isAdmin={canManageLLMKeys}
