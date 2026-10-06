@@ -1,5 +1,5 @@
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
-import { BUILTIN_ROLE_PERMISSIONS } from "../../config/rolePermissions.config";
+import { ALL_PERMISSION_KEYS, BUILTIN_ROLE_PERMISSIONS } from "../../config/rolePermissions.config";
 
 jest.mock("../../utils/inviteEmail.utils", () => ({
   sendInviteEmail: jest.fn(),
@@ -9,6 +9,7 @@ jest.mock("../../utils/invitation.utils", () => ({
 }));
 jest.mock("../../utils/roleMap", () => ({
   getRoleInfoById: jest.fn(),
+  getRoleByName: jest.fn(),
 }));
 jest.mock("../../utils/rolePermissions.utils", () => ({
   getEffectivePermissions: jest.fn(),
@@ -22,12 +23,13 @@ jest.mock("../../utils/logger/logHelper", () => ({
 import { invite } from "../vwmailer.ctrl";
 import { sendInviteEmail } from "../../utils/inviteEmail.utils";
 import { createInvitationQuery } from "../../utils/invitation.utils";
-import { getRoleInfoById } from "../../utils/roleMap";
+import { getRoleInfoById, getRoleByName } from "../../utils/roleMap";
 import { getEffectivePermissions } from "../../utils/rolePermissions.utils";
 
 const mockSend = sendInviteEmail as jest.MockedFunction<typeof sendInviteEmail>;
 const mockCreate = createInvitationQuery as jest.MockedFunction<typeof createInvitationQuery>;
 const mockGetRole = getRoleInfoById as jest.MockedFunction<typeof getRoleInfoById>;
+const mockGetRoleByName = getRoleByName as jest.MockedFunction<typeof getRoleByName>;
 const mockPermissions = getEffectivePermissions as jest.MockedFunction<
   typeof getEffectivePermissions
 >;
@@ -38,11 +40,18 @@ const ROLES: Record<number, { id: number; name: string; organizationId: number |
   4: { id: 4, name: "Auditor", organizationId: null },
   5: { id: 5, name: "SuperAdmin", organizationId: null },
   50: { id: 50, name: "Team lead", organizationId: 42 },
+  51: { id: 51, name: "Viewer", organizationId: 42 },
+  52: { id: 52, name: "Everything", organizationId: 42 },
   60: { id: 60, name: "Other org role", organizationId: 7 },
 };
 
-// "Team lead": a custom role that may invite, with reader access otherwise.
-const TEAM_LEAD = new Set<string>([...BUILTIN_ROLE_PERMISSIONS.Auditor, "invitation.super"]);
+// Custom roles. "Team lead" may invite, with reader access otherwise;
+// "Viewer" holds part of that; "Everything" holds every permission key.
+const CUSTOM_PERMISSIONS: Record<string, Set<string>> = {
+  "Team lead": new Set<string>([...BUILTIN_ROLE_PERMISSIONS.Auditor, "invitation.super"]),
+  Viewer: new Set<string>([...BUILTIN_ROLE_PERMISSIONS.Auditor].slice(0, 3)),
+  Everything: new Set<string>(ALL_PERMISSION_KEYS),
+};
 
 function createReq(overrides: Record<string, unknown> = {}): any {
   return {
@@ -74,8 +83,12 @@ describe("vwmailer.ctrl invite", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetRole.mockImplementation(async (id: number) => ROLES[id]);
-    mockPermissions.mockImplementation(async (_org, roleName: string) =>
-      roleName === "Team lead" ? TEAM_LEAD : (BUILTIN_ROLE_PERMISSIONS[roleName] ?? new Set()),
+    mockGetRoleByName.mockImplementation(async (_org, name: string) =>
+      Object.values(ROLES).find((r) => r.name === name),
+    );
+    mockPermissions.mockImplementation(
+      async (_org, roleName: string) =>
+        CUSTOM_PERMISSIONS[roleName] ?? BUILTIN_ROLE_PERMISSIONS[roleName] ?? new Set(),
     );
     mockSend.mockResolvedValue({
       link: "http://x/user-reg?token=t",
@@ -166,11 +179,29 @@ describe("vwmailer.ctrl invite", () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
 
-  it("lets an inviter grant a role within their own access", async () => {
+  it("lets a custom inviting role grant a custom role within its access", async () => {
+    const res = createRes();
+    await invite(createReq({ role: "Team lead" }), res, body({ roleId: 51 }));
+
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("refuses a built-in role to a custom inviting role", async () => {
+    // Built-in roles carry powers checked by role name, outside the
+    // permission matrix, so only an Admin may grant them.
     const res = createRes();
     await invite(createReq({ role: "Team lead" }), res, body({ roleId: 4 }));
 
-    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("refuses Admin to a custom role that holds every permission", async () => {
+    const res = createRes();
+    await invite(createReq({ role: "Everything" }), res, body({ roleId: 1 }));
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(mockSend).not.toHaveBeenCalled();
   });
 
   it("returns 500 without sending when the role lookup fails", async () => {

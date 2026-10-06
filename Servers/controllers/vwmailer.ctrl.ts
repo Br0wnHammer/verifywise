@@ -4,14 +4,16 @@ import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper
 import logger from "../utils/logger/fileLogger";
 import { createInvitationQuery } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
-import { getRoleInfoById } from "../utils/roleMap";
+import { getRoleByName, getRoleInfoById } from "../utils/roleMap";
 import { getEffectivePermissions } from "../utils/rolePermissions.utils";
 
 /**
  * Why the inviter may not grant this role, or null if they may. The role must
- * exist, be a built-in or this organization's own, and carry no permission
- * the inviter lacks, so an invite never grants more access than the
- * inviter's own role.
+ * exist and be a built-in or this organization's own. Only an Admin grants a
+ * built-in role: built-ins carry powers checked by role name, outside the
+ * permission matrix. Any other inviter grants only custom roles with no
+ * permission the inviter lacks. Either way an invite never grants more access
+ * than the inviter's own role.
  */
 async function roleRefusal(
   organizationId: number,
@@ -26,6 +28,12 @@ async function roleRefusal(
     (role.organizationId !== null && role.organizationId !== organizationId)
   ) {
     return { status: 400, message: "Unknown role" };
+  }
+  const inviter = await getRoleByName(organizationId, inviterRole);
+  const inviterIsAdmin = inviter?.organizationId === null && inviter.name === "Admin";
+  if (inviterIsAdmin) return null;
+  if (role.organizationId === null) {
+    return { status: 403, message: "You cannot invite a user with more access than your own" };
   }
   const [granted, held] = await Promise.all([
     getEffectivePermissions(organizationId, role.name),
@@ -61,29 +69,6 @@ export const invite = async (
   if (!Number.isInteger(roleId) || roleId <= 0) {
     return res.status(400).json(STATUS_CODE[400](req.t!("Unknown role")));
   }
-  try {
-    const refusal = await roleRefusal(organizationId, req.role!, roleId);
-    if (refusal) {
-      return res.status(refusal.status).json(STATUS_CODE[refusal.status](req.t!(refusal.message)));
-    }
-  } catch (error) {
-    await logFailure({
-      eventType: "Create",
-      description: `Failed to check the role for an invitation to ${to}`,
-      functionName: "invite",
-      fileName: "vwmailer.ctrl.ts",
-      error: error as Error,
-      userId: req.userId!,
-      organizationId,
-    });
-    return res.status(500).json(
-      STATUS_CODE[500]({
-        error: req.t!("Failed to send email"),
-        details: (error as Error).message,
-      }),
-    );
-  }
-
   logProcessing({
     description: `starting invite email for user: ${to}`,
     functionName: "invite",
@@ -94,6 +79,11 @@ export const invite = async (
   logger.debug(`📧 Sending invitation email to ${to} for user ${name} ${surname || ""}`);
 
   try {
+    const refusal = await roleRefusal(organizationId, req.role!, roleId);
+    if (refusal) {
+      return res.status(refusal.status).json(STATUS_CODE[refusal.status](req.t!(refusal.message)));
+    }
+
     const { link, expiresAt, info } = await sendInviteEmail({
       email: to,
       name,

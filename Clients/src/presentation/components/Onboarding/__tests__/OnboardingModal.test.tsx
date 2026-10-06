@@ -4,11 +4,6 @@ import { renderWithProviders } from "../../../../test/renderWithProviders";
 import OnboardingModal from "../OnboardingModal";
 
 let mockCurrentStep = 0;
-let mockUserRoleName = "Admin";
-
-vi.mock("../../../../application/hooks/useAuth", () => ({
-  useAuth: () => ({ userRoleName: mockUserRoleName }),
-}));
 
 const mockSetCurrentStep = vi.fn();
 const mockCompleteStep = vi.fn();
@@ -136,23 +131,6 @@ describe("OnboardingModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCurrentStep = 0;
-    mockUserRoleName = "Admin";
-  });
-
-  // Steps: welcome, preferences, use cases, frameworks, invite, completion.
-  it("shows the invite step to a role that manages the team", () => {
-    mockCurrentStep = 4;
-    renderWithProviders(<OnboardingModal onComplete={vi.fn()} onSkip={vi.fn()} />);
-    expect(screen.getByTestId("invite-team-step")).toBeInTheDocument();
-  });
-
-  it("skips the invite step for a role that cannot invite", () => {
-    // The server refuses their invites, so the step would only fail.
-    mockUserRoleName = "Editor";
-    mockCurrentStep = 4;
-    renderWithProviders(<OnboardingModal onComplete={vi.fn()} onSkip={vi.fn()} />);
-    expect(screen.queryByTestId("invite-team-step")).not.toBeInTheDocument();
-    expect(screen.getByTestId("completion-step")).toBeInTheDocument();
   });
 
   it("renders the welcome step by default", () => {

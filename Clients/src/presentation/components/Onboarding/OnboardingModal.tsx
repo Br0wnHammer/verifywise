@@ -2,8 +2,6 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { Box, Stack } from "@mui/material";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useOnboarding } from "../../../application/hooks/useOnboarding";
-import { useAuth } from "../../../application/hooks/useAuth";
-import allowedRoles from "../../../application/constants/permissions";
 import { ONBOARDING_STEPS } from "./onboardingConstants";
 import ProgressDots from "./ProgressDots";
 import SkipConfirmation from "./SkipConfirmation";
@@ -38,10 +36,6 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
     completeOnboarding,
   } = useOnboarding();
 
-  // Only roles that manage the team may invite; the server refuses the rest.
-  const { userRoleName } = useAuth();
-  const canInviteTeam = allowedRoles.projects.editTeamMembers.includes(userRoleName);
-
   const [showSkipConfirmation, setShowSkipConfirmation] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
@@ -51,7 +45,6 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
       // Skip sample project creation on revisit or for invited users
       if (isRevisit && step.id === 8) return false;
       if (isInvitedUser && step.id === 8) return false;
-      if (step.componentName === "InviteTeamStep" && !canInviteTeam) return false;
 
       // Filter based on admin/user role
       if (isAdmin) {
@@ -60,7 +53,7 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({
         return step.showForUser;
       }
     });
-  }, [isAdmin, isInvitedUser, isRevisit, canInviteTeam]);
+  }, [isAdmin, isInvitedUser, isRevisit]);
 
   const currentStepIndex = state.currentStep;
   const currentStepConfig = availableSteps[currentStepIndex];

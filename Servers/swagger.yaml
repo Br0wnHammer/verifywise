@@ -10883,7 +10883,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires the invitation.super permission (Admin by default). The invite always goes to the caller''s organization; an organizationId in the body is ignored. The role must be a built-in or the organization''s own role, with no permission the caller lacks.'
+      description: 'Requires the invitation.super permission (Admin by default). The invite always goes to the caller''s organization; an organizationId in the body is ignored, and a SuperAdmin without an organization uses /super-admin/organizations/{id}/invite. Only an Admin may grant a built-in role; other inviting roles may grant only the organization''s custom roles with no permission they lack.'
       requestBody:
         content:
           application/json:
