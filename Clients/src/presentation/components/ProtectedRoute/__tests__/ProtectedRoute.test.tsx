@@ -116,6 +116,23 @@ describe("ProtectedRoute", () => {
     expect(queryClient.getQueryData(["projects"])).toBeUndefined();
   });
 
+  it("clears the session when the server rejects the token with 400", async () => {
+    // The auth middleware answers 400 for "Token not found" and "Invalid token".
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    server.use(
+      http.get("/api/users/:id", () =>
+        HttpResponse.json({ message: "Bad Request", data: "Invalid token" }, { status: 400 }),
+      ),
+    );
+
+    const { store } = renderProtected({ route: "/", authToken: TEST_AUTH_TOKEN });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("login-page")).toBeInTheDocument();
+    });
+    expect(store.getState().auth.authToken).toBe("");
+  });
+
   it("keeps the session when token validation fails for a server error", async () => {
     // A 5xx or a network failure says nothing about the token: signing the
     // user out and wiping the cache for it would be wrong.

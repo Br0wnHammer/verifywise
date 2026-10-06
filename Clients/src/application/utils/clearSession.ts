@@ -1,6 +1,7 @@
 import type { Dispatch } from "@reduxjs/toolkit";
 import { clearAuthState, setAuthToken } from "../redux/auth/authSlice";
 import { resetQueryCache } from "../config/queryClient";
+import { persistor } from "../redux/store";
 
 /**
  * Ends the local session: clears the auth state, then every cached server
@@ -13,6 +14,23 @@ import { resetQueryCache } from "../config/queryClient";
 export const clearSession = (dispatch: Dispatch) => {
   dispatch(clearAuthState());
   resetQueryCache();
+};
+
+/**
+ * Ends the session and loads /login as a new page: manual logout and every
+ * forced logout. The full load (not a client-side navigate) means app-level
+ * providers (the Advisor conversation, VerifyWise context) start empty, and
+ * the cleared auth is flushed to storage first so the reload restores it, not
+ * the old token.
+ */
+export const endSessionAndReload = async (dispatch: Dispatch) => {
+  clearSession(dispatch);
+  try {
+    await persistor.flush();
+  } catch {
+    // Best-effort: the reload still goes ahead.
+  }
+  window.location.assign("/login");
 };
 
 /**

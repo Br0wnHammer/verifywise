@@ -212,14 +212,8 @@ const Login: React.FC = () => {
           const token = response.data.data.token;
           const isSuperAdminFlag = response.data.data.isSuperAdmin || false;
 
-          if (values.rememberMe) {
-            const expirationDate = Date.now() + 30 * 24 * 60 * 60 * 1000;
-            startSession(dispatch, token);
-            dispatch(setExpiration(expirationDate));
-          } else {
-            startSession(dispatch, token);
-            dispatch(setExpiration(null));
-          }
+          startSession(dispatch, token);
+          dispatch(setExpiration(values.rememberMe ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null));
 
           dispatch(setIsSuperAdmin(isSuperAdminFlag));
 

@@ -10,8 +10,11 @@ import { getAllEntities } from "../../../application/repository/entity.repositor
 import { extractUserToken } from "../../../application/tools/extractToken";
 import { IProtectedRouteProps } from "../../types/widget.types";
 
-/** Responses that mean the token itself is no good (406: refresh failed). */
-const AUTH_FAILURE_STATUSES = [401, 403, 406];
+/**
+ * Responses that mean the token itself is no good. The auth middleware
+ * answers 400 for a missing or malformed token; 406 is a failed refresh.
+ */
+const AUTH_FAILURE_STATUSES = [400, 401, 403, 406];
 
 const ProtectedRoute = ({
   Component,

@@ -22,10 +22,10 @@
  */
 
 import axios, { AxiosError } from "axios";
-import { persistor, store } from "../../application/redux/store";
+import { store } from "../../application/redux/store";
 import { ENV_VARs } from "../../../env.vars";
 import { setAuthToken } from "../../application/redux/auth/authSlice";
-import { clearSession } from "../../application/utils/clearSession";
+import { endSessionAndReload } from "../../application/utils/clearSession";
 import { storageService } from "../storage";
 import { AlertProps } from "../../presentation/types/alert.types";
 import { translateKey } from "../../i18n/domTranslator";
@@ -37,20 +37,29 @@ import type {
   RetriableRequestConfig,
 } from "./api.types";
 
-// Several requests can fail with the same 403 at once: alert and log out once.
+/** Refresh answers that mean the session cannot be renewed. */
+const SESSION_ENDED_STATUSES = [400, 401, 403, 406];
+
+// Several requests can fail at once: end the session (and alert) once.
 let isLoggingOut = false;
 
+/**
+ * True if this caller should end the session: none is ending yet, and there
+ * is still a token. Responses that land after the session was cleared (the
+ * page is reloading) are ignored.
+ */
+const claimLogout = () => {
+  if (isLoggingOut || !store.getState()?.auth?.authToken) return false;
+  isLoggingOut = true;
+  return true;
+};
+
 const performLogout = async () => {
-  clearSession(store.dispatch);
-  // Write the cleared auth to storage before the reload, or the old token
-  // could be restored from it.
   try {
-    await persistor.flush();
-  } catch {
-    // Best-effort: the reload still goes ahead.
+    await endSessionAndReload(store.dispatch);
+  } finally {
+    isLoggingOut = false;
   }
-  window.location.href = "/login";
-  isLoggingOut = false;
 };
 
 // Create a global callback for showing alerts
@@ -230,8 +239,7 @@ CustomAxios.interceptors.response.use(
       (errorDetail === "User does not belong to this organization" ||
         errorDetail === "Not allowed to access")
     ) {
-      if (!isLoggingOut) {
-        isLoggingOut = true;
+      if (claimLogout()) {
         if (showAlertCallback) {
           showAlertCallback({
             variant: "info",
@@ -308,9 +316,11 @@ CustomAxios.interceptors.response.use(
         }
       } catch (refreshError: unknown) {
         processQueue(refreshError, null);
-        // If refresh token request fails with 406, redirect to login
-        if (axios.isAxiosError(refreshError) && refreshError.response?.status === 406) {
-          clearSession(store.dispatch);
+        // The refresh token is expired, revoked or missing: end the session.
+        // A 5xx or network failure leaves it for the next request to retry.
+        const status = axios.isAxiosError(refreshError) ? refreshError.response?.status : undefined;
+        if (status !== undefined && SESSION_ENDED_STATUSES.includes(status) && claimLogout()) {
+          void performLogout();
         }
         return Promise.reject(refreshError);
       } finally {

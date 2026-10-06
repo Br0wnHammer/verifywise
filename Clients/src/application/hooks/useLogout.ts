@@ -1,6 +1,5 @@
 import { useDispatch } from "react-redux";
-import { clearSession } from "../utils/clearSession";
-import { persistor } from "../redux/store";
+import { endSessionAndReload } from "../utils/clearSession";
 import { apiServices } from "../../infrastructure/api/networkServices";
 
 /**
@@ -24,20 +23,8 @@ const useLogout = () => {
       // Intentionally ignored — local state is cleared regardless.
     }
 
-    // Clear the auth state and the query cache
-    clearSession(dispatch);
-
-    // Write the cleared auth to storage before the reload, or the old token
-    // could be restored from it.
-    try {
-      await persistor.flush();
-    } catch {
-      // Best-effort: the reload still goes ahead.
-    }
-
-    // A full page load, not a client-side navigate: app-level providers (the
-    // Advisor conversation, VerifyWise context) start empty for the next user.
-    window.location.assign("/login");
+    // Clear the auth state and the query cache, then load the login page.
+    await endSessionAndReload(dispatch);
   };
 
   return logout;

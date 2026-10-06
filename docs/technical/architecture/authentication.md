@@ -744,14 +744,18 @@ first so anything that refetches afterwards has no token to send.
 |------|-------|
 | Manual logout (sidebar, profile deletion) | `useLogout` (`application/hooks/useLogout.ts`) |
 | 403 org mismatch / not allowed | `performLogout` (`infrastructure/api/customAxios.ts`), once for concurrent 403s |
-| Refresh token rejected with 406 | response interceptor (`infrastructure/api/customAxios.ts`) |
-| Stored token rejected on load (401, 403 or 406 only) | `ProtectedRoute` |
+| Refresh rejected (400, 401, 403 or 406) | response interceptor (`infrastructure/api/customAxios.ts`) |
+| Stored token rejected on load (400, 401, 403 or 406 only) | `ProtectedRoute` |
 | Opening a registration page | `RegisterAdmin`, `RegisterMultiTenant` |
 
-Manual and forced logouts then flush redux-persist and do a full page load of
-`/login` (not a client-side navigate), so app-level providers start empty and
-the cleared auth is what storage restores. `ProtectedRoute` keeps the session
-on a 5xx or network error, which says nothing about the token.
+Manual logout, the 403 logout and a rejected refresh go through
+`endSessionAndReload` (same file): it clears the session, flushes
+redux-persist, then does a full page load of `/login` (not a client-side
+navigate), so app-level providers start empty and the cleared auth is what
+storage restores. Concurrent failures end the session once, and responses
+that arrive after it was cleared are ignored. `ProtectedRoute` and the
+refresh keep the session on a 5xx or network error, which says nothing about
+the token.
 
 Do not dispatch `clearAuthState()` directly for a logout; call `clearSession`.
 
