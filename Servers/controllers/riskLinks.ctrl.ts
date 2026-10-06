@@ -4,8 +4,8 @@ import { translateError } from "../utils/i18n.utils";
 import { logFailure, logProcessing, logSuccess } from "../utils/logger/logHelper";
 import {
   enqueueRiskLinkDirection,
-  enqueueRiskLinkRecompute,
-  enqueueVendorRiskLinkRecompute,
+  enqueueRiskLinkRecomputeBatch,
+  enqueueVendorRiskLinkRecomputeBatch,
 } from "../services/automations/automationProducer";
 import {
   createUserVendorRiskLinkQuery,
@@ -1337,13 +1337,17 @@ export async function recomputeAllRiskLinks(req: Request, res: Response): Promis
 
   try {
     const riskIds = await getActiveRiskIdsQuery(req.organizationId!);
-    await Promise.all(
-      riskIds.map((riskId) => enqueueRiskLinkRecompute(req.organizationId!, riskId)),
-    );
+    // The panel that started the scan is watching one risk; do it first so its
+    // answer does not wait behind the rest of the org.
+    const firstRiskId = toId(req.body?.firstRiskId);
+    const ordered = riskIds.includes(firstRiskId)
+      ? [firstRiskId, ...riskIds.filter((id) => id !== firstRiskId)]
+      : riskIds;
+    await enqueueRiskLinkRecomputeBatch(req.organizationId!, ordered, "all");
 
     logSuccess({
       eventType: "Create",
-      description: `enqueued ${riskIds.length} risk link recompute jobs`,
+      description: `enqueued a risk link recompute batch of ${riskIds.length} risks`,
       functionName: "recomputeAllRiskLinks",
       fileName: FILE_NAME,
       userId: req.userId!,
@@ -1381,13 +1385,11 @@ export async function recomputeAllVendorRiskLinks(req: Request, res: Response): 
 
   try {
     const vendorRiskIds = await getActiveVendorRiskIdsQuery(req.organizationId!);
-    await Promise.all(
-      vendorRiskIds.map((id) => enqueueVendorRiskLinkRecompute(req.organizationId!, id)),
-    );
+    await enqueueVendorRiskLinkRecomputeBatch(req.organizationId!, vendorRiskIds, "all");
 
     logSuccess({
       eventType: "Create",
-      description: `enqueued ${vendorRiskIds.length} vendor risk link recompute jobs`,
+      description: `enqueued a vendor risk link recompute batch of ${vendorRiskIds.length} vendor risks`,
       functionName: "recomputeAllVendorRiskLinks",
       fileName: FILE_NAME,
       userId: req.userId!,

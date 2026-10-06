@@ -9,7 +9,13 @@ import {
 } from "../../utils/riskLink.utils";
 import { fieldOverlapProvider } from "./providers/fieldOverlap";
 import { structuralGraphProvider } from "./providers/structuralGraph";
-import { canonicalPair, LinkCandidate, LinkSignalProvider, RiskLinkRow } from "./types";
+import {
+  canonicalPair,
+  LinkCandidate,
+  LinkSignalProvider,
+  RiskLinkRow,
+  RiskScoringRow,
+} from "./types";
 
 /** A pair scoring below this is not worth suggesting. */
 export const LINK_SCORE_THRESHOLD = 3;
@@ -47,8 +53,13 @@ export const isRecomputeOwnedLink = (link: Pick<RiskLinkRow, "relation_type" | "
  * the suggestions that then fell below the threshold — a transient error would
  * silently delete real data. Stale edges are better than wrong ones.
  */
-export async function recomputeRiskLinks(organizationId: number, riskId: number): Promise<void> {
-  const rows = await getRiskScoringRowsQuery(organizationId);
+export async function recomputeRiskLinks(
+  organizationId: number,
+  riskId: number,
+  /** The org's scoring rows, when a batch has already read them. */
+  preloadedRows?: RiskScoringRow[],
+): Promise<void> {
+  const rows = preloadedRows ?? (await getRiskScoringRowsQuery(organizationId));
   const subject = rows.find((row) => row.id === riskId);
   // Deleted, archived, or another org's risk. R7: leave its edges alone.
   if (!subject) return;
@@ -157,4 +168,34 @@ export async function recomputeRiskLinks(organizationId: number, riskId: number)
     await transaction.rollback();
     throw error;
   }
+}
+
+/**
+ * Recompute many risks with one read of the org's scoring rows. One job per
+ * risk re-read every active risk in the org for each of them, so a full scan
+ * cost N whole-org reads. The rows are risk fields, which recomputing links
+ * does not change, so one read serves the whole batch.
+ *
+ * Runs the risks one at a time, which also rules out the deadlocks concurrent
+ * per-risk jobs could hit. A risk that fails is logged and returned rather than
+ * failing the batch, so the caller can retry it on its own.
+ */
+export async function recomputeRiskLinksBatch(
+  organizationId: number,
+  riskIds: number[],
+): Promise<number[]> {
+  const rows = await getRiskScoringRowsQuery(organizationId);
+  const failed: number[] = [];
+  for (const riskId of riskIds) {
+    try {
+      await recomputeRiskLinks(organizationId, riskId, rows);
+    } catch (error) {
+      logger.error(
+        `[riskLinks] batch recompute failed for risk ${riskId} (org ${organizationId})`,
+        error,
+      );
+      failed.push(riskId);
+    }
+  }
+  return failed;
 }

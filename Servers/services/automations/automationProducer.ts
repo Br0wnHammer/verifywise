@@ -70,6 +70,47 @@ export async function enqueueVendorRiskLinkRecompute(organizationId: number, ven
 }
 
 /**
+ * One job for many risks: the scan for related risks and other bulk rescoring.
+ * The batch reads the org's scoring rows once instead of once per risk (see
+ * recomputeRiskLinksBatch). `key` names the batch so a second identical
+ * request while one is queued collapses into it, as the per-risk jobId does.
+ * No retry of its own: a risk that fails is re-queued as a per-risk job, which
+ * has one.
+ */
+export async function enqueueRiskLinkRecomputeBatch(
+  organizationId: number,
+  riskIds: number[],
+  key: string,
+) {
+  return automationQueue.add(
+    "risk_link_recompute_batch",
+    { organizationId, riskIds },
+    {
+      jobId: `risk-link-batch:${organizationId}:${key}`,
+      removeOnComplete: true,
+      removeOnFail: true,
+    },
+  );
+}
+
+/** The vendor risk counterpart of enqueueRiskLinkRecomputeBatch. */
+export async function enqueueVendorRiskLinkRecomputeBatch(
+  organizationId: number,
+  vendorRiskIds: number[],
+  key: string,
+) {
+  return automationQueue.add(
+    "vendor_risk_link_recompute_batch",
+    { organizationId, vendorRiskIds },
+    {
+      jobId: `vendor-risk-link-batch:${organizationId}:${key}`,
+      removeOnComplete: true,
+      removeOnFail: true,
+    },
+  );
+}
+
+/**
  * One direction pass over one connected component.
  *
  * The jobId is derived from the component's smallest id, which is stable

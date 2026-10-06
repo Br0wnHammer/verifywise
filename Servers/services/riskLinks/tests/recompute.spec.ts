@@ -9,7 +9,12 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
 
 import { sequelize } from "../../../database/db";
 import * as utils from "../../../utils/riskLink.utils";
-import { recomputeRiskLinks, LINK_SCORE_THRESHOLD, MAX_LINKS_PER_RISK } from "../recompute";
+import {
+  recomputeRiskLinks,
+  recomputeRiskLinksBatch,
+  LINK_SCORE_THRESHOLD,
+  MAX_LINKS_PER_RISK,
+} from "../recompute";
 import { RiskLinkRow, RiskScoringRow } from "../types";
 
 const mockUtils = utils as jest.Mocked<typeof utils>;
@@ -289,5 +294,28 @@ describe("recomputeRiskLinks", () => {
 
     expect(mockUtils.upsertRiskLinkQuery).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe("recomputeRiskLinksBatch", () => {
+  it("reads the org's scoring rows once for the whole batch", async () => {
+    mockUtils.getRiskScoringRowsQuery.mockResolvedValue([risk(3, CAT), risk(7, CAT), risk(9, CAT)]);
+    const failed = await recomputeRiskLinksBatch(1, [3, 7, 9]);
+    expect(failed).toEqual([]);
+    expect(mockUtils.getRiskScoringRowsQuery).toHaveBeenCalledTimes(1);
+    // Every risk was still rescored: one transaction each.
+    expect(commit).toHaveBeenCalledTimes(3);
+  });
+
+  it("carries on past a risk that fails and reports it for retry", async () => {
+    mockUtils.getRiskScoringRowsQuery.mockResolvedValue([risk(3, CAT), risk(7, CAT), risk(9, CAT)]);
+    // The first risk's ownership read fails; the other two must still run.
+    mockUtils.getRecomputeOwnedLinksQuery
+      .mockRejectedValueOnce(new Error("deadlock detected"))
+      .mockResolvedValue([]);
+    const failed = await recomputeRiskLinksBatch(1, [3, 7, 9]);
+    expect(failed).toEqual([3]);
+    expect(rollback).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledTimes(2);
   });
 });

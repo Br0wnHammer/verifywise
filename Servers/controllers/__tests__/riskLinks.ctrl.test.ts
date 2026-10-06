@@ -1,6 +1,6 @@
 jest.mock("../../utils/riskLink.utils");
 jest.mock("../../services/automations/automationProducer", () => ({
-  enqueueRiskLinkRecompute: jest.fn().mockResolvedValue(undefined),
+  enqueueRiskLinkRecomputeBatch: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("../../utils/changeHistory.base.utils", () => ({
   recordEntityChange: jest.fn(),
@@ -26,7 +26,7 @@ jest.mock("../../utils/statusCode.utils", () => ({
 import * as utils from "../../utils/riskLink.utils";
 import { recordEntityChange } from "../../utils/changeHistory.base.utils";
 import { sequelize } from "../../database/db";
-import { enqueueRiskLinkRecompute } from "../../services/automations/automationProducer";
+import { enqueueRiskLinkRecomputeBatch } from "../../services/automations/automationProducer";
 import { getTranslator, type SupportedLang } from "../../utils/i18n.utils";
 import {
   getDismissalAnalytics,
@@ -498,14 +498,26 @@ describe("updateRiskLinkStatus", () => {
 });
 
 describe("recomputeAllRiskLinks", () => {
-  it("enqueues one job per active risk and answers 202", async () => {
+  it("enqueues one batch for every active risk and answers 202", async () => {
     mockUtils.getActiveRiskIdsQuery.mockResolvedValue([3, 7, 42]);
     const r = res();
     await recomputeAllRiskLinks(req() as any, r as any);
-    expect(enqueueRiskLinkRecompute).toHaveBeenCalledTimes(3);
-    expect(enqueueRiskLinkRecompute).toHaveBeenCalledWith(7, 42);
+    expect(enqueueRiskLinkRecomputeBatch).toHaveBeenCalledTimes(1);
+    expect(enqueueRiskLinkRecomputeBatch).toHaveBeenCalledWith(7, [3, 7, 42], "all");
     expect(r.status).toHaveBeenCalledWith(202);
     expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ data: { enqueued: 3 } }));
+  });
+
+  it("scores the risk whose panel started the scan first", async () => {
+    mockUtils.getActiveRiskIdsQuery.mockResolvedValue([3, 7, 42]);
+    await recomputeAllRiskLinks(req({ body: { firstRiskId: 42 } }) as any, res() as any);
+    expect(enqueueRiskLinkRecomputeBatch).toHaveBeenCalledWith(7, [42, 3, 7], "all");
+  });
+
+  it("ignores a firstRiskId that is not an active risk in the org", async () => {
+    mockUtils.getActiveRiskIdsQuery.mockResolvedValue([3, 7]);
+    await recomputeAllRiskLinks(req({ body: { firstRiskId: 999 } }) as any, res() as any);
+    expect(enqueueRiskLinkRecomputeBatch).toHaveBeenCalledWith(7, [3, 7], "all");
   });
 });
 

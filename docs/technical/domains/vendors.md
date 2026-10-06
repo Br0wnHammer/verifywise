@@ -335,11 +335,15 @@ its status and only has its score refreshed.
 
 Recompute runs on the `vendor_risk_link_recompute` BullMQ job (jobId
 `vendor-risk-link:{org}:{vendorRiskId}`), enqueued after a vendor risk is
-created or updated, and for every active risk of a vendor whose use cases were
-added or removed. Existing organisations are backfilled with **Scan for related
-vendor risks** on an empty Linked risks tab, or directly:
+created or updated. When a vendor's use cases are added or removed, its active
+risks are rescored in one `vendor_risk_link_recompute_batch` job (jobId
+`vendor-risk-link-batch:{org}:vendor-{vendorId}`) that reads the org's vendor
+risk scoring rows once. Existing organisations are backfilled with **Scan for
+related vendor risks** on an empty Linked risks tab, or directly:
 `POST /api/riskLinks/vendor-risks/recompute` (Admin, SuperAdmin), which
-enqueues one job per active vendor risk and returns `{ enqueued }`.
+enqueues one batch for every active vendor risk and returns `{ enqueued }`
+(the number of vendor risks). A vendor risk that fails inside a batch is
+re-queued as its own `vendor_risk_link_recompute` job.
 
 `POST /api/riskLinks` creates a pair by hand with
 `{ sourceVendorRiskId, targetVendorRiskId, relationType: "related_to" }`. Any

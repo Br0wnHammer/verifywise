@@ -26,7 +26,7 @@ import { notifyUserAssigned } from "../services/inAppNotification.service";
 import { getVendorRiskSuggestions as getVendorRiskSuggestionsService } from "../services/vendors/riskSuggestions";
 import { triggerVendorOnboarding } from "../services/workflows/triggers";
 import { notifyVendorRiskCandidates } from "../services/riskLinks/vendorCandidates";
-import { enqueueVendorRiskLinkRecompute } from "../services/automations/automationProducer";
+import { enqueueVendorRiskLinkRecomputeBatch } from "../services/automations/automationProducer";
 import { getActiveVendorRiskIdsQuery } from "../utils/vendorRiskLink.utils";
 import logger from "../utils/logger/fileLogger";
 import { QueryTypes } from "sequelize";
@@ -559,7 +559,7 @@ export async function updateVendorById(req: Request, res: Response): Promise<any
       if (addedProjectIds.length > 0 || removedProjectIds.length > 0) {
         getActiveVendorRiskIdsQuery(req.organizationId!, vendorId)
           .then((ids) =>
-            Promise.all(ids.map((id) => enqueueVendorRiskLinkRecompute(req.organizationId!, id))),
+            enqueueVendorRiskLinkRecomputeBatch(req.organizationId!, ids, `vendor-${vendorId}`),
           )
           .catch((err) => logger.error("Vendor risk link recompute enqueue failed:", err));
       }

@@ -154,8 +154,10 @@ export function planVendorRiskLinks(
 export async function recomputeVendorRiskLinks(
   organizationId: number,
   vendorRiskId: number,
+  /** The org's vendor risk scoring rows, when a batch has already read them. */
+  preloadedRows?: VendorRiskScoringRow[],
 ): Promise<void> {
-  const rows = await getVendorRiskScoringRowsQuery(organizationId);
+  const rows = preloadedRows ?? (await getVendorRiskScoringRowsQuery(organizationId));
   const subject = rows.find((row) => row.id === vendorRiskId);
   if (!subject) return;
 
@@ -227,4 +229,29 @@ export async function recomputeVendorRiskLinks(
     );
     throw error;
   }
+}
+
+/**
+ * The vendor risk counterpart of recomputeRiskLinksBatch: one read of the
+ * org's vendor risk scoring rows for the whole batch, risks one at a time, and
+ * the ids that failed returned for the caller to retry on their own.
+ */
+export async function recomputeVendorRiskLinksBatch(
+  organizationId: number,
+  vendorRiskIds: number[],
+): Promise<number[]> {
+  const rows = await getVendorRiskScoringRowsQuery(organizationId);
+  const failed: number[] = [];
+  for (const vendorRiskId of vendorRiskIds) {
+    try {
+      await recomputeVendorRiskLinks(organizationId, vendorRiskId, rows);
+    } catch (error) {
+      logger.error(
+        `[riskLinks] batch recompute failed for vendor risk ${vendorRiskId} (org ${organizationId})`,
+        error,
+      );
+      failed.push(vendorRiskId);
+    }
+  }
+  return failed;
 }

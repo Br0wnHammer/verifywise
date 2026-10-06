@@ -1,6 +1,6 @@
 # Risk Management Domain
 
-**Last Updated:** 2026-10-05
+**Last Updated:** 2026-10-06
 
 ## Overview
 
@@ -706,8 +706,13 @@ the same edge on alternating saves. `confirmed` edges are never pruned, and a
 risk is created, after it is updated, and after a bulk `set_category`.
 Deleting a risk does *not* trigger a recompute: `risks` is soft-deleted, edges
 survive, and the read path filters soft-deleted risks on both endpoints.
-`POST /api/riskLinks/recompute` (Admin) fans out one job per active risk and is
-required at least once per org, since the table starts empty.
+`POST /api/riskLinks/recompute` (Admin) is required at least once per org,
+since the table starts empty. It enqueues one `risk_link_recompute_batch` job
+(jobId `risk-link-batch:<org>:all`) for every active risk, which reads the org's
+scoring rows once and recomputes the risks one at a time; one job per risk read
+the whole org N times. An optional `firstRiskId` in the body (the panel sends
+its own risk) is scored first. A risk that fails inside the batch is re-queued
+as its own `risk_link_recompute` job with the retry below.
 
 The job carries `jobId: risk-link:<org>:<risk>` so a burst of saves collapses
 into one run, plus `removeOnComplete` and `removeOnFail` — a retained job of

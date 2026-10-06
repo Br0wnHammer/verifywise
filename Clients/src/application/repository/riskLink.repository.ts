@@ -118,12 +118,13 @@ export async function acknowledgeParentLevelChange(id: number): Promise<{ id: nu
   }
 }
 
-export async function recomputeRiskLinks(): Promise<{ enqueued: number }> {
+/** `firstRiskId`: the risk whose panel started the scan, scored first. */
+export async function recomputeRiskLinks(firstRiskId?: number): Promise<{ enqueued: number }> {
   try {
     const response = await apiServices.post<{
       message: string;
       data: { enqueued: number };
-    }>("/riskLinks/recompute", {});
+    }>("/riskLinks/recompute", firstRiskId === undefined ? {} : { firstRiskId });
     return extractData<{ enqueued: number }>(response);
   } catch (error: any) {
     throw toAPIError(error, "Failed to start the scan");

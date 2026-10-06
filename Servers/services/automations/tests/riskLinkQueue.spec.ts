@@ -10,7 +10,12 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
   default: { error: jest.fn(), info: jest.fn(), warn: jest.fn() },
 }));
 
-import { enqueueRiskLinkRecompute, enqueueVendorRiskLinkRecompute } from "../automationProducer";
+import {
+  enqueueRiskLinkRecompute,
+  enqueueRiskLinkRecomputeBatch,
+  enqueueVendorRiskLinkRecompute,
+  enqueueVendorRiskLinkRecomputeBatch,
+} from "../automationProducer";
 
 describe("enqueueRiskLinkRecompute", () => {
   beforeEach(() => mockAdd.mockReset());
@@ -64,5 +69,29 @@ describe("enqueueVendorRiskLinkRecompute", () => {
       attempts: 3,
       backoff: { type: "exponential", delay: 1000 },
     });
+  });
+});
+
+describe("recompute batches", () => {
+  beforeEach(() => mockAdd.mockReset());
+
+  it("enqueues one project risk batch, keyed so a repeat request collapses", async () => {
+    await enqueueRiskLinkRecomputeBatch(7, [42, 3], "all");
+    const [name, data, options] = mockAdd.mock.calls[0];
+    expect(name).toBe("risk_link_recompute_batch");
+    expect(data).toEqual({ organizationId: 7, riskIds: [42, 3] });
+    expect(options.jobId).toBe("risk-link-batch:7:all");
+    expect(options.removeOnComplete).toBe(true);
+    expect(options.removeOnFail).toBe(true);
+    // Failed risks are re-queued as per-risk jobs, which carry the retry.
+    expect(options.attempts).toBeUndefined();
+  });
+
+  it("enqueues one vendor risk batch in its own namespace", async () => {
+    await enqueueVendorRiskLinkRecomputeBatch(7, [5, 6], "vendor-12");
+    const [name, data, options] = mockAdd.mock.calls[0];
+    expect(name).toBe("vendor_risk_link_recompute_batch");
+    expect(data).toEqual({ organizationId: 7, vendorRiskIds: [5, 6] });
+    expect(options.jobId).toBe("vendor-risk-link-batch:7:vendor-12");
   });
 });

@@ -108,7 +108,7 @@ export function useAcknowledgeParentLevelChange(riskId: number) {
 export function useRecomputeRiskLinks(riskId: number) {
   const invalidate = useInvalidateLinks(riskId);
   return useMutation({
-    mutationFn: () => recomputeRiskLinks(),
+    mutationFn: () => recomputeRiskLinks(riskId),
     onSettled: invalidate,
   });
 }
