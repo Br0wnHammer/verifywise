@@ -36,11 +36,10 @@ import {
   createLLMKey,
   deleteLLMKey,
   editLLMKey,
-  getLLMKeys,
 } from "../../../../application/repository/llmKeys.repository";
 import { getModelsForProvider, getRecommendedModel } from "../../../utils/providers";
 import { LLM_KEY_ADD_PARAM } from "../../../../application/constants/llmKeyDeepLink";
-import { invalidateLLMKeyQueries } from "../../../../application/hooks/useLLMKeys";
+import { invalidateLLMKeyQueries, useLLMKeys } from "../../../../application/hooks/useLLMKeys";
 
 // Import provider logos
 import anthropicLogo from "../../../assets/icons/anthropic_logo.svg";
@@ -61,6 +60,9 @@ interface AlertState {
   isToast?: boolean;
 }
 
+/** Stable empty list, so memos and effects do not re-run while loading. */
+const NO_KEYS: LLMKeysModel[] = [];
+
 interface HeaderRow {
   key: string;
   value: string;
@@ -72,13 +74,22 @@ const LLMKeys = () => {
     key: "",
     model: "",
   };
-  const { userRoleName } = useAuth();
+  const { userRoleName, organizationId } = useAuth();
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const isDisabled = !allowedRoles.llmKeys?.manage?.includes(userRoleName);
   const queryClient = useQueryClient();
 
-  const [keys, setKeys] = useState<LLMKeysModel[]>([]);
+  // The shared, cached key list that Start here and the Advisor also read.
+  const {
+    data: fetchedKeys,
+    isPending: isKeysPending,
+    isError: isKeysError,
+    errorUpdatedAt: keysErrorUpdatedAt,
+  } = useLLMKeys();
+  const keys = fetchedKeys ?? NO_KEYS;
+  // Without an organization the query never runs: nothing to wait for.
+  const isKeysLoading = organizationId != null && isKeysPending;
   const [isLoading, setIsLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -97,31 +108,16 @@ const LLMKeys = () => {
     setAlert({ variant, title, body, isToast: false });
   }, []);
 
-  const fetchLLMKeys = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const response = await getLLMKeys();
-      if (response && response.data && response.data.data) {
-        const llmKeyModel = response.data.data.map((item: any) => LLMKeysModel.createNewKey(item));
-        setKeys(llmKeyModel);
-      }
-    } catch (_error) {
-      showAlert("error", "Error", "Failed to fetch LLM Keys");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [showAlert]);
-
+  // One alert per failed load or refetch.
   useEffect(() => {
-    fetchLLMKeys();
-  }, [fetchLLMKeys]);
+    if (isKeysError) showAlert("error", "Error", "Failed to fetch LLM Keys");
+  }, [isKeysError, keysErrorUpdatedAt, showAlert]);
 
-  // After a change: this page's list, plus the shared key list and status that
+  // After a change: refetch the shared key list and status that this page,
   // Start here, the Advisor, reporting and file summaries read.
   const refreshKeys = useCallback(() => {
-    fetchLLMKeys();
     invalidateLLMKeyQueries(queryClient);
-  }, [fetchLLMKeys, queryClient]);
+  }, [queryClient]);
 
   // ?addKey=1 (Start here's "Go to settings") opens the add form once, then
   // leaves the URL so a refresh or Back does not reopen it. Every arrival
@@ -447,7 +443,7 @@ const LLMKeys = () => {
           )}
         </Box>
 
-        {isLoading && keys.length === 0 ? (
+        {(isKeysLoading || isLoading) && keys.length === 0 ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
             <CircularProgress />
           </Box>

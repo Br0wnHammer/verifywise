@@ -157,7 +157,7 @@ describe("StartHere", () => {
     renderWithProviders(<StartHere />);
 
     expect(
-      screen.getByText("Configure an LLM API key so Advisor, reporting, and LLM evals can run.", {
+      screen.getByText("Configure an LLM API key so Advisor and reporting can run.", {
         exact: false,
       }),
     ).toBeInTheDocument();
@@ -171,9 +171,7 @@ describe("StartHere", () => {
     renderWithProviders(<StartHere />);
 
     expect(
-      screen.getByText(
-        "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.",
-      ),
+      screen.getByText("Advisor and reporting need an LLM API key. Contact your administrator."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Go to settings" })).not.toBeInTheDocument();
   });

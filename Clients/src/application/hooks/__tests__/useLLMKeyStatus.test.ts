@@ -115,6 +115,48 @@ describe("useLLMKeyStatus", () => {
     expect(result.current.hasKeys).toBe(false);
   });
 
+  it("is loading while the mount's refetch of a stale cached answer runs", () => {
+    const client = newClient();
+    client.setQueryData(["llmKeyStatus", 1], { hasKeys: false, keyCount: 0, providers: [] });
+    mockGetStatus.mockReturnValue(new Promise(() => {})); // refetch never resolves
+
+    const { result } = render(client);
+
+    // A stale "no keys" must not read as settled while it is being re-checked.
+    expect(mockGetStatus).toHaveBeenCalledTimes(1);
+    expect(result.current.loading).toBe(true);
+    expect(result.current.hasKeys).toBe(true);
+  });
+
+  it("is settled on fresh cached data that needs no refetch", () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    client.setQueryData(["llmKeyStatus", 1], { hasKeys: false, keyCount: 0, providers: [] });
+
+    const { result } = render(client);
+
+    expect(mockGetStatus).not.toHaveBeenCalled();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.hasKeys).toBe(false);
+  });
+
+  it("stays settled while a later invalidation refetches", async () => {
+    const client = newClient();
+    mockGetStatus.mockResolvedValueOnce({ hasKeys: false, keyCount: 0, providers: [] });
+    const { result } = render(client);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    mockGetStatus.mockReturnValueOnce(new Promise(() => {}));
+    act(() => {
+      void client.invalidateQueries({ queryKey: ["llmKeyStatus"] });
+    });
+
+    await waitFor(() => expect(mockGetStatus).toHaveBeenCalledTimes(2));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.hasKeys).toBe(false);
+  });
+
   it("keeps each organization's status separate", async () => {
     const client = newClient();
     mockGetStatus.mockResolvedValueOnce({ hasKeys: true, keyCount: 1, providers: ["OpenAI"] });

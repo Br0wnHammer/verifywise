@@ -20,7 +20,6 @@ export function useLLMKeys() {
       return response.data.data?.map((key: LLMKeysModel) => new LLMKeysModel(key)) ?? [];
     },
     enabled: organizationId != null,
-    retry: false,
   });
 }
 

@@ -477,8 +477,8 @@ const StartHere = () => {
         {missingLLMKey && (
           <Box sx={{ animation: `${fadeInUp} 0.5s ease-out 0.05s both` }}>
             <LLMKeyRequiredNotice
-              adminMessage="Configure an LLM API key so Advisor, reporting, and LLM evals can run."
-              memberMessage="Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator."
+              adminMessage="Configure an LLM API key so Advisor and reporting can run."
+              memberMessage="Advisor and reporting need an LLM API key. Contact your administrator."
               icon={<Key size={16} color={brand.primary} />}
               iconBackground={brand.primaryLight}
               sx={{

@@ -466,7 +466,7 @@ For each page/screen the following subsections describe: routes, user-facing fea
 |-----------|-------|
 | Routes | `/start-here` |
 | Component | `Clients/src/presentation/pages/StartHere/index.tsx` |
-| Features | Personalized greeting, onboarding progress ring, getting-started cards (welcome video, quick start, dashboard guide, installation), explore VerifyWise carousel with feature videos, shortcut icons, expert contact cards, resources/what's-new sidebar. When the organization has no LLM key, admins see a configure-a-key hint and other roles see a prompt to contact their administrator. |
+| Features | Personalized greeting, onboarding progress ring, getting-started cards (welcome video, quick start, dashboard guide, installation), explore VerifyWise carousel with feature videos, shortcut icons, expert contact cards, resources/what's-new sidebar. When the organization has no LLM key (Advisor and reporting need one), admins see a configure-a-key hint and other roles see a prompt to contact their administrator. |
 | Access | Main sidebar → Start here; onboarding completion redirect. |
 | e2e tests | `Clients/e2e/start-here.spec.ts`, `Clients/e2e/onboarding.spec.ts` |
 | Backend domain | `/api/projectRisks`, `/api/users/:id`, `/api/projects`, `/api/llm-keys/status` |

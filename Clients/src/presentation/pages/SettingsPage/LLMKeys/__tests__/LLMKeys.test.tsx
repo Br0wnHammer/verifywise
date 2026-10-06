@@ -9,7 +9,7 @@ let mockUserRoleName = "Admin";
 /** Shows the current query string, so a test can see the deep link removed. */
 const SearchProbe = () => <span data-testid="search">{useLocation().search}</span>;
 vi.mock("../../../../../application/hooks/useAuth", () => ({
-  useAuth: () => ({ userRoleName: mockUserRoleName }),
+  useAuth: () => ({ userRoleName: mockUserRoleName, organizationId: 1 }),
 }));
 
 const mockGetLLMKeys = vi.fn();
