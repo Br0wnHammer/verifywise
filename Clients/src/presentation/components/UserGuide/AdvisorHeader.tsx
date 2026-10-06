@@ -1,9 +1,11 @@
-import { FC, useEffect, useRef, useState } from "react";
+import { FC, useEffect } from "react";
 import { Maximize2, Minimize2, X } from "lucide-react";
 import { colors, typography, spacing, border } from "./styles/theme";
-import { getLLMKeys } from "../../../application/repository/llmKeys.repository";
 import { LLMKeysModel } from "../../../domain/models/Common/llmKeys/llmKeys.model";
-import { useLLMKeyStatus } from "../../../application/hooks/useLLMKeyStatus";
+import { useLLMKeys } from "../../../application/hooks/useLLMKeys";
+
+/** Stable empty list, so effects do not re-run on every render while loading. */
+const NO_KEYS: LLMKeysModel[] = [];
 
 interface AdvisorHeaderProps {
   onClose: () => void;
@@ -22,54 +24,27 @@ const AdvisorHeader: FC<AdvisorHeaderProps> = ({
   isEnlarged = false,
   onToggleEnlarge,
 }) => {
-  const [llmKeys, setLLMKeys] = useState<LLMKeysModel[]>([]);
-  const [loading, setLoading] = useState(true);
+  // The shared, cached key list: the keys page invalidates it after a change,
+  // so adding a key from Start here unlocks the Advisor without a remount.
+  const { data: fetchedKeys, isPending: loading, isError } = useLLMKeys();
+  const llmKeys = fetchedKeys ?? NO_KEYS;
 
-  // This header needs the full key list (for its selector), not just the
-  // shared status. Reload the list when that status changes, e.g. after a key
-  // is added from Start here, so the Advisor unlocks without a remount.
-  const { data: keyStatus } = useLLMKeyStatus();
-  const keySignature = keyStatus ? `${keyStatus.keyCount}:${keyStatus.providers.join(",")}` : null;
-  const lastKeySignature = useRef<string | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
   useEffect(() => {
-    if (keySignature === null) return;
-    // The first status to arrive matches the list fetched on mount.
-    if (lastKeySignature.current !== null && lastKeySignature.current !== keySignature) {
-      setReloadToken((token) => token + 1);
+    if (loading) {
+      onLLMKeysLoaded?.(false, true);
+      return;
     }
-    lastKeySignature.current = keySignature;
-  }, [keySignature]);
+    const keys = fetchedKeys ?? NO_KEYS;
+    onLLMKeysLoaded?.(!isError && keys.length > 0, false);
 
-  useEffect(() => {
-    const fetchLLMKeys = async () => {
-      try {
-        const response = await getLLMKeys();
-        const keys = response.data.data?.map((key: LLMKeysModel) => new LLMKeysModel(key)) || [];
-        setLLMKeys(keys);
-
-        // Notify parent about keys status
-        onLLMKeysLoaded?.(keys.length > 0, false);
-
-        // Auto-select first key if none selected or if saved key is not in the list
-        if (keys.length > 0 && onLLMKeyChange) {
-          const savedKeyExists =
-            selectedLLMKeyId && keys.some((k: LLMKeysModel) => k.id === selectedLLMKeyId);
-          if (!savedKeyExists) {
-            onLLMKeyChange(keys[0].id);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch LLM keys:", error);
-        onLLMKeysLoaded?.(false, false);
-      } finally {
-        setLoading(false);
+    // Auto-select the first key if none is selected or the saved one is gone.
+    if (keys.length > 0 && onLLMKeyChange) {
+      const savedKeyExists = selectedLLMKeyId && keys.some((k) => k.id === selectedLLMKeyId);
+      if (!savedKeyExists) {
+        onLLMKeyChange(keys[0].id);
       }
-    };
-
-    onLLMKeysLoaded?.(false, true);
-    fetchLLMKeys();
-  }, [selectedLLMKeyId, onLLMKeyChange, onLLMKeysLoaded, reloadToken]);
+    }
+  }, [fetchedKeys, loading, isError, selectedLLMKeyId, onLLMKeyChange, onLLMKeysLoaded]);
 
   const handleKeyChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const keyId = parseInt(event.target.value);

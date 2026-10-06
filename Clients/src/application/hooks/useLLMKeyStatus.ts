@@ -1,45 +1,25 @@
-import { useQuery, type QueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { getLLMKeyStatus, LLMKeyStatus } from "../repository/llmKeys.repository";
 import { useAuth } from "./useAuth";
 
-/** Prefix for every org's status entry. */
+/** Prefix for every org's status entry; see invalidateLLMKeyQueries. */
 export const LLM_KEY_STATUS_QUERY_KEY = ["llmKeyStatus"] as const;
 
 /**
- * Scoped to the organization: the query cache outlives a logout, so a shared
- * key would show one org's status to the next user who signs in.
- */
-const statusKey = (organizationId: number | null | undefined) =>
-  [...LLM_KEY_STATUS_QUERY_KEY, organizationId ?? null] as const;
-
-/**
- * Write the status from a key list the caller has just fetched, the same way
- * GET /llm-keys/status computes it, instead of requesting it again.
- */
-export const setLLMKeyStatusFromKeys = (
-  queryClient: QueryClient,
-  organizationId: number | null | undefined,
-  keys: { name: string }[],
-) => {
-  queryClient.setQueryData<LLMKeyStatus>(statusKey(organizationId), {
-    hasKeys: keys.length > 0,
-    keyCount: keys.length,
-    providers: [...new Set(keys.map((key) => key.name))],
-  });
-};
-
-/**
  * Whether the organization has an LLM API key. One cached query per org,
- * shared by its callers, so the keys page's update reaches them all.
+ * shared by its callers. Scoped to the org because the query cache outlives a
+ * logout, so a shared key would show one org's status to the next user.
  *
- * `hasKeys` is optimistically true while loading, so callers that gate an
- * action on it do not flash a "no key" state.
+ * `hasKeys` is optimistically true while loading (and before there is an
+ * organization to ask about), so callers that gate an action on it do not
+ * flash a "no key" state.
  */
 export function useLLMKeyStatus() {
   const { organizationId } = useAuth();
   const query = useQuery<LLMKeyStatus>({
-    queryKey: statusKey(organizationId),
+    queryKey: [...LLM_KEY_STATUS_QUERY_KEY, organizationId ?? null],
     queryFn: getLLMKeyStatus,
+    enabled: organizationId != null,
     retry: false,
   });
 

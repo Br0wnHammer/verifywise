@@ -141,13 +141,13 @@ describe("StartHere", () => {
   it("hides the LLM key hint when the organization already has a key", () => {
     mockHasLLMKeys = true;
     renderWithProviders(<StartHere />);
-    expect(screen.queryByRole("status", { name: "LLM API key" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/LLM API key/)).not.toBeInTheDocument();
   });
 
   it("hides the LLM key hint while key status is still unknown", () => {
     mockHasLLMKeys = null;
     renderWithProviders(<StartHere />);
-    expect(screen.queryByRole("status", { name: "LLM API key" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/LLM API key/)).not.toBeInTheDocument();
   });
 
   it("lets an admin open the LLM key form when no key is configured", async () => {
@@ -156,9 +156,11 @@ describe("StartHere", () => {
     const user = userEvent.setup();
     renderWithProviders(<StartHere />);
 
-    expect(screen.getByRole("status", { name: "LLM API key" })).toHaveTextContent(
-      "Configure an LLM API key so Advisor, reporting, and LLM evals can run.",
-    );
+    expect(
+      screen.getByText("Configure an LLM API key so Advisor, reporting, and LLM evals can run.", {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Go to settings" }));
     expect(mockNavigate).toHaveBeenCalledWith("/settings/apikeys?addKey=1");
   });
@@ -168,9 +170,11 @@ describe("StartHere", () => {
     mockUserRoleName = "Editor";
     renderWithProviders(<StartHere />);
 
-    expect(screen.getByRole("status", { name: "LLM API key" })).toHaveTextContent(
-      "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.",
-    );
+    expect(
+      screen.getByText(
+        "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Go to settings" })).not.toBeInTheDocument();
   });
 });

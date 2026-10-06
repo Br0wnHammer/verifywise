@@ -37,7 +37,6 @@ const LLMKeyRequiredNotice = ({
   return (
     <Box
       role="status"
-      aria-label="LLM API key"
       sx={[
         { display: "flex", alignItems: "center", gap: "12px" },
         ...(Array.isArray(sx) ? sx : [sx]),

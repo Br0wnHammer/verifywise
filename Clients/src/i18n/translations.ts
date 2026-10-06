@@ -2225,7 +2225,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Linked Operational Objects": "Verknüpfte operative Objekte",
     "Linked Policies Objects": "Verknüpfte Richtlinien-Objekte",
     "Linked risk": "Verknüpftes Risiko",
-    "LLM API key": "LLM-API-Schlüssel",
     "Configure an LLM API key so Advisor, reporting, and LLM evals can run.":
       "Konfigurieren Sie einen LLM-API-Schlüssel, damit KI-Berater, Berichte und LLM-Bewertungen funktionieren.",
     "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.":
@@ -11641,7 +11640,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Linked Operational Objects": "Objets opérationnels liés",
     "Linked Policies Objects": "Objets de politiques liés",
     "Linked risk": "Risque lié",
-    "LLM API key": "Clé API LLM",
     "Configure an LLM API key so Advisor, reporting, and LLM evals can run.":
       "Configurez une clé API LLM pour que le conseiller IA, les rapports et les évaluations LLM puissent fonctionner.",
     "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.":
@@ -20287,7 +20285,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Linked Operational Objects": "Objetos operativos vinculados",
     "Linked Policies Objects": "Objetos de políticas vinculados",
     "Linked risk": "Riesgo vinculado",
-    "LLM API key": "Clave de API de LLM",
     "Configure an LLM API key so Advisor, reporting, and LLM evals can run.":
       "Configure una clave de API de LLM para que el asesor de IA, los informes y las evaluaciones de LLM puedan funcionar.",
     "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.":

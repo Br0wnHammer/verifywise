@@ -40,7 +40,7 @@ import {
 } from "../../../../application/repository/llmKeys.repository";
 import { getModelsForProvider, getRecommendedModel } from "../../../utils/providers";
 import { LLM_KEY_ADD_PARAM } from "../../../../application/constants/llmKeyDeepLink";
-import { setLLMKeyStatusFromKeys } from "../../../../application/hooks/useLLMKeyStatus";
+import { invalidateLLMKeyQueries } from "../../../../application/hooks/useLLMKeys";
 
 // Import provider logos
 import anthropicLogo from "../../../assets/icons/anthropic_logo.svg";
@@ -72,7 +72,7 @@ const LLMKeys = () => {
     key: "",
     model: "",
   };
-  const { userRoleName, organizationId } = useAuth();
+  const { userRoleName } = useAuth();
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const isDisabled = !allowedRoles.llmKeys?.manage?.includes(userRoleName);
@@ -104,20 +104,24 @@ const LLMKeys = () => {
       if (response && response.data && response.data.data) {
         const llmKeyModel = response.data.data.map((item: any) => LLMKeysModel.createNewKey(item));
         setKeys(llmKeyModel);
-        // Start here, the Advisor, reporting and file summaries read whether a
-        // key exists; update that from this list instead of asking again.
-        setLLMKeyStatusFromKeys(queryClient, organizationId, llmKeyModel);
       }
     } catch (_error) {
       showAlert("error", "Error", "Failed to fetch LLM Keys");
     } finally {
       setIsLoading(false);
     }
-  }, [showAlert, queryClient, organizationId]);
+  }, [showAlert]);
 
   useEffect(() => {
     fetchLLMKeys();
   }, [fetchLLMKeys]);
+
+  // After a change: this page's list, plus the shared key list and status that
+  // Start here, the Advisor, reporting and file summaries read.
+  const refreshKeys = useCallback(() => {
+    fetchLLMKeys();
+    invalidateLLMKeyQueries(queryClient);
+  }, [fetchLLMKeys, queryClient]);
 
   // ?addKey=1 (Start here's "Go to settings") opens the add form once, then
   // leaves the URL so a refresh or Back does not reopen it. Every arrival
@@ -267,7 +271,7 @@ const LLMKeys = () => {
       const response = await createLLMKey({ body });
       if (response && response.data) {
         showAlert("success", "Success", "API key added successfully");
-        fetchLLMKeys();
+        refreshKeys();
       }
     } catch (error: any) {
       const errorMessage =
@@ -306,7 +310,7 @@ const LLMKeys = () => {
       const response = await editLLMKey({ id: keyToEdit, body });
       if (response && response.data) {
         showAlert("success", "Success", "API key updated successfully");
-        fetchLLMKeys();
+        refreshKeys();
       }
     } catch (error: any) {
       const errorMessage =
@@ -339,7 +343,7 @@ const LLMKeys = () => {
       const response = await deleteLLMKey(keyToDelete.id.toString());
       if (response && response.data) {
         showAlert("success", "Success", "LLM Key deleted successfully");
-        fetchLLMKeys();
+        refreshKeys();
       }
     } catch (_error) {
       showAlert("error", "Error", "Failed to delete LLM Key");

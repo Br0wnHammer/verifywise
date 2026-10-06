@@ -33,9 +33,7 @@ describe("LLMKeyRequiredNotice", () => {
   it("links admins straight to the add-key form", async () => {
     const user = userEvent.setup();
     renderNotice();
-    expect(screen.getByRole("status", { name: "LLM API key" })).toHaveTextContent(
-      "Configure a key.",
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("Configure a key.");
     await user.click(screen.getByRole("button", { name: "Go to settings" }));
     expect(mockNavigate).toHaveBeenCalledWith("/settings/apikeys?addKey=1");
   });
@@ -43,9 +41,7 @@ describe("LLMKeyRequiredNotice", () => {
   it("tells other roles to ask an administrator, with no link", () => {
     mockUserRoleName = "Editor";
     renderNotice();
-    expect(screen.getByRole("status", { name: "LLM API key" })).toHaveTextContent(
-      "Ask your administrator.",
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("Ask your administrator.");
     expect(screen.queryByRole("button", { name: "Go to settings" })).not.toBeInTheDocument();
   });
 });

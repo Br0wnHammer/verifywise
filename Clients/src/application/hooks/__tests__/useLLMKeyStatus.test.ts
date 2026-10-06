@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-let mockOrganizationId = 1;
+let mockOrganizationId: number | null = 1;
 vi.mock("../useAuth", () => ({
   useAuth: () => ({ organizationId: mockOrganizationId }),
 }));
@@ -12,7 +12,7 @@ vi.mock("../../repository/llmKeys.repository", () => ({
   getLLMKeyStatus: vi.fn(),
 }));
 
-import { useLLMKeyStatus, setLLMKeyStatusFromKeys } from "../useLLMKeyStatus";
+import { useLLMKeyStatus } from "../useLLMKeyStatus";
 import { getLLMKeyStatus } from "../../repository/llmKeys.repository";
 
 const mockGetStatus = vi.mocked(getLLMKeyStatus);
@@ -120,21 +120,12 @@ describe("useLLMKeyStatus", () => {
     expect(second.result.current.data).toBeNull();
   });
 
-  it("setLLMKeyStatusFromKeys writes the status the server would return", () => {
-    const client = newClient();
-    setLLMKeyStatusFromKeys(client, 1, [
-      { name: "OpenAI" },
-      { name: "OpenAI" },
-      { name: "Anthropic" },
-    ]);
-    // A background refresh may follow; the written status is shown at once.
-    mockGetStatus.mockReturnValue(new Promise(() => {}));
-    const { result } = render(client);
-    expect(result.current.loading).toBe(false);
-    expect(result.current.data).toEqual({
-      hasKeys: true,
-      keyCount: 3,
-      providers: ["OpenAI", "Anthropic"],
-    });
+  it("does not ask for a status before there is an organization", () => {
+    mockOrganizationId = null;
+    const { result } = render();
+    expect(mockGetStatus).not.toHaveBeenCalled();
+    // Optimistic, like any other pending state.
+    expect(result.current.loading).toBe(true);
+    expect(result.current.hasKeys).toBe(true);
   });
 });
