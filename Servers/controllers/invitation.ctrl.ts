@@ -7,6 +7,7 @@ import {
   updateInvitationExpiryQuery,
 } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
+import { INVITATION_LIFETIME_MS } from "../utils/jwt.utils";
 
 /**
  * GET /api/invitations
@@ -66,16 +67,21 @@ export const resendInvitation = async (req: Request, res: Response): Promise<Res
       return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
     }
 
-    const { link, expiresAt, info } = await sendInviteEmail({
+    // Save the new expiry first, then email a link signed for it: a link
+    // only registers while it matches the row. If the save fails nothing is
+    // sent and the invitee's current link keeps working.
+    const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
+    await updateInvitationExpiryQuery(organizationId, id, expiresAt);
+
+    const { link, info } = await sendInviteEmail({
       email: invitation.email,
       name: invitation.name,
       surname: invitation.surname,
       roleId: invitation.role_id,
       organizationId: organizationId,
       lang: req.lang,
+      expiresAt,
     });
-
-    await updateInvitationExpiryQuery(organizationId, id, expiresAt);
 
     if (info.error) {
       return res.status(206).json(

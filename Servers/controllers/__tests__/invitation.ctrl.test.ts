@@ -169,7 +169,6 @@ describe("invitation.ctrl", () => {
       } as any);
       mockSendEmail.mockResolvedValue({
         link: "link",
-        expiresAt: "date",
         info: {},
       } as any);
       mockUpdateExpiry.mockResolvedValue(undefined);
@@ -179,6 +178,10 @@ describe("invitation.ctrl", () => {
       await resendInvitation(req, res);
 
       expect(mockGetById).toHaveBeenCalledWith(1, 1);
+      // The new expiry is saved first, and the link is signed for it.
+      const savedExpiry = mockUpdateExpiry.mock.calls[0][2];
+      expect(savedExpiry).toBeInstanceOf(Date);
+      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, savedExpiry);
       expect(mockSendEmail).toHaveBeenCalledWith({
         email: "a@b.com",
         name: "A",
@@ -186,8 +189,11 @@ describe("invitation.ctrl", () => {
         roleId: 1,
         organizationId: 1,
         lang: "en",
+        expiresAt: savedExpiry,
       });
-      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, "date");
+      expect(mockUpdateExpiry.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSendEmail.mock.invocationCallOrder[0],
+      );
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         message: "Invitation resent successfully",
@@ -203,7 +209,6 @@ describe("invitation.ctrl", () => {
       } as any);
       mockSendEmail.mockResolvedValue({
         link: "link",
-        expiresAt: "date",
         info: { error: { name: "SendError", message: "fail" } },
       } as any);
       mockUpdateExpiry.mockResolvedValue(undefined);
@@ -213,6 +218,10 @@ describe("invitation.ctrl", () => {
       await resendInvitation(req, res);
 
       expect(mockGetById).toHaveBeenCalledWith(1, 1);
+      // The new expiry is saved first, and the link is signed for it.
+      const savedExpiry = mockUpdateExpiry.mock.calls[0][2];
+      expect(savedExpiry).toBeInstanceOf(Date);
+      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, savedExpiry);
       expect(mockSendEmail).toHaveBeenCalledWith({
         email: "a@b.com",
         name: "A",
@@ -220,8 +229,11 @@ describe("invitation.ctrl", () => {
         roleId: 1,
         organizationId: 1,
         lang: "en",
+        expiresAt: savedExpiry,
       });
-      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, "date");
+      expect(mockUpdateExpiry.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSendEmail.mock.invocationCallOrder[0],
+      );
       expect(res.status).toHaveBeenCalledWith(206);
       expect(res.json).toHaveBeenCalledWith({
         message: "Partial Content",
@@ -230,6 +242,25 @@ describe("invitation.ctrl", () => {
           link: "link",
         },
       });
+    });
+
+    it("sends nothing when the new expiry cannot be saved", async () => {
+      // An emailed link only registers while it matches the row; a link for
+      // an unsaved expiry would be dead on arrival.
+      mockGetById.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      } as any);
+      mockUpdateExpiry.mockRejectedValue(new Error("db down"));
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await resendInvitation(req, res);
+
+      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(500);
     });
 
     it("should return 400 for invalid ID", async () => {

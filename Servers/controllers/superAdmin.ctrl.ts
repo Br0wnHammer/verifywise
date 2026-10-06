@@ -150,7 +150,8 @@ export async function createOrgWithUser(req: Request, res: Response) {
 
   const transaction = await sequelize.transaction();
   let orgId: number | undefined;
-  let invitationExpiresAt: Date | undefined;
+  // Invite mode stores this on the row and signs the emailed link for it.
+  const invitationExpiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
 
   try {
     const orgModel = await OrganizationModel.createNewOrganization(orgName.trim(), logo);
@@ -170,7 +171,6 @@ export async function createOrgWithUser(req: Request, res: Response) {
         transaction,
       );
     } else {
-      invitationExpiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
       await createInvitationQuery(
         orgId,
         user.email,

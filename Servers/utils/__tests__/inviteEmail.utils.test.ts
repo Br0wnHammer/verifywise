@@ -2,7 +2,6 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 
 jest.mock("../jwt.utils", () => ({
   generateInviteTokenUntil: jest.fn().mockReturnValue("mock-token-123"),
-  INVITATION_LIFETIME_MS: 2592000000,
 }));
 
 jest.mock("../../config/constants", () => ({ frontEndUrl: "https://app.example.com" }));
@@ -33,6 +32,7 @@ describe("inviteEmail.utils", () => {
     surname: "Doe",
     roleId: 2,
     organizationId: 10,
+    expiresAt: new Date("2026-11-05T12:00:00Z"),
   };
 
   beforeEach(() => {
@@ -58,16 +58,9 @@ describe("inviteEmail.utils", () => {
         email: "user@example.com",
         organizationId: 10,
       });
-      // One instant for the link and the returned (stored) expiry.
-      expect(expiresAt).toEqual(result.expiresAt);
-    });
-
-    it("should use a caller's expiresAt for both the link and the result", async () => {
-      const expiresAt = new Date("2026-11-05T12:00:00Z");
-      const result = await sendInviteEmail({ ...params, expiresAt });
-
-      expect(mockGenerateInviteToken.mock.calls[0][1]).toEqual(expiresAt);
-      expect(result.expiresAt).toEqual(expiresAt);
+      // The link expires at the stored invitations.expires_at.
+      expect(expiresAt).toEqual(params.expiresAt);
+      expect(result.link).toContain("mock-token-123");
     });
 
     it("should call sendEmail with correct args", async () => {
@@ -84,19 +77,6 @@ describe("inviteEmail.utils", () => {
         name: "John",
         link: "https://app.example.com/user-reg?token=mock-token-123",
       });
-    });
-
-    it("should return expiresAt 30 days from now", async () => {
-      const before = Date.now();
-      const result = await sendInviteEmail(params);
-      const after = Date.now();
-
-      // A literal 30 days: the mocked constant could not catch a wrong value.
-      const expectedExpires = before + 30 * 24 * 3600 * 1000;
-      expect(result.expiresAt.getTime()).toBeGreaterThanOrEqual(expectedExpires - 1000);
-      expect(result.expiresAt.getTime()).toBeLessThanOrEqual(
-        expectedExpires + (after - before) + 1000,
-      );
     });
 
     it("should handle sendEmail failure gracefully", async () => {

@@ -506,8 +506,21 @@ async function createNewUser(req: Request, res: Response) {
 
     if (user) {
       // In the same transaction: a link works once, so if the invitation
-      // cannot be marked accepted the user is not created either.
-      await markInvitationAcceptedQuery(organizationId, email, transaction);
+      // cannot be marked accepted the user is not created either. No pending
+      // row means it was revoked (or used) after the link was checked.
+      const accepted = await markInvitationAcceptedQuery(organizationId, email, transaction);
+      if (accepted === 0) {
+        await transaction.rollback();
+        return res
+          .status(403)
+          .json(
+            STATUS_CODE[403](
+              req.t!(
+                "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it.",
+              ),
+            ),
+          );
+      }
       await transaction.commit();
 
       logStructured("successful", `user created: ${email}`, "createNewUser", "user.ctrl.ts");

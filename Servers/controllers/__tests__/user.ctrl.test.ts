@@ -108,7 +108,7 @@ jest.mock("../../utils/role.utils", () => ({
   getRoleByIdQuery: jest.fn().mockResolvedValue({ name: "Admin" }),
 }));
 jest.mock("../../utils/invitation.utils", () => ({
-  markInvitationAcceptedQuery: jest.fn().mockResolvedValue(undefined),
+  markInvitationAcceptedQuery: jest.fn().mockResolvedValue(1),
 }));
 jest.mock("../../utils/userPreference.utils", () => ({
   getPreferencesByUserQuery: jest.fn(),
@@ -421,6 +421,31 @@ describe("user.ctrl", () => {
       expect(tx.rollback).toHaveBeenCalled();
       expect(tx.commit).not.toHaveBeenCalled();
       expect(res.status).not.toHaveBeenCalledWith(201);
+    });
+    it("refuses and rolls back when the invitation was revoked before acceptance", async () => {
+      // The middleware saw a pending invitation, then an admin revoked it:
+      // marking it accepted matches no row, so the link no longer counts.
+      mockGetByEmail.mockResolvedValue(null as any);
+      mockCreate.mockResolvedValue(mockUser(buildUser()) as any);
+      const tx: any = await (sequelize.transaction as any)();
+      tx.commit.mockClear();
+      (markInvitationAcceptedQuery as jest.Mock).mockResolvedValueOnce(0 as never);
+      const req = createReq({
+        body: {
+          name: "A",
+          surname: "B",
+          email: "a@b.com",
+          password: "pass",
+          roleId: 1,
+          organizationId: 1,
+        },
+      });
+      const res = createRes();
+      await createNewUser(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(tx.rollback).toHaveBeenCalled();
+      expect(tx.commit).not.toHaveBeenCalled();
     });
     it("should return 409 when user already exists", async () => {
       mockGetByEmail.mockResolvedValue(mockUser(buildUser()) as any);

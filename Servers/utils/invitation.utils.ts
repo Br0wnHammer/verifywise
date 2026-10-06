@@ -1,4 +1,4 @@
-import { Transaction } from "sequelize";
+import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../database/db";
 
 interface InvitationRow {
@@ -124,18 +124,22 @@ export const revokeInvitationQuery = async (
 /**
  * Mark invitation as accepted when user registers via invite link. Pass the
  * user-creation transaction so the user and the used-up link commit together.
+ * Returns how many pending invitations were marked; 0 means it was revoked
+ * or already used in the meantime.
  */
 export const markInvitationAcceptedQuery = async (
   organizationId: number,
   email: string,
   transaction?: Transaction,
-): Promise<void> => {
-  await sequelize.query(
+): Promise<number> => {
+  const rows = await sequelize.query(
     `UPDATE invitations
      SET status = 'accepted', updated_at = CURRENT_TIMESTAMP
-     WHERE organization_id = :organizationId AND email = :email AND status = 'pending'`,
-    { replacements: { organizationId, email }, transaction },
+     WHERE organization_id = :organizationId AND email = :email AND status = 'pending'
+     RETURNING id`,
+    { replacements: { organizationId, email }, transaction, type: QueryTypes.SELECT },
   );
+  return rows.length;
 };
 
 /**

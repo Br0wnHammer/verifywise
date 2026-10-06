@@ -7,6 +7,7 @@ import { seedTwoTenantContexts } from "./tenant-isolation/tenantIsolation.harnes
 import {
   createInvitationQuery,
   getPendingInvitationQuery,
+  markInvitationAcceptedQuery,
   updateInvitationExpiryQuery,
 } from "../../utils/invitation.utils";
 
@@ -86,5 +87,24 @@ describe("getPendingInvitationQuery", () => {
       (await getPendingInvitationQuery(owner.orgId, "invitee@example.com"))!.expires_at_ms,
     ).toBe(resent.getTime());
     expect(await getPendingInvitationQuery(attacker.orgId, "invitee@example.com")).toBeNull();
+  });
+});
+
+describe("markInvitationAcceptedQuery", () => {
+  it("counts the pending invitation it marks, and none the second time", async () => {
+    const { owner } = await seedTwoTenantContexts();
+    await createInvitationQuery(
+      owner.orgId,
+      "invitee@example.com",
+      "In",
+      "Vitee",
+      3,
+      owner.userId,
+      new Date("2026-11-05T12:00:00.000Z"),
+    );
+
+    expect(await markInvitationAcceptedQuery(owner.orgId, "invitee@example.com")).toBe(1);
+    expect(await markInvitationAcceptedQuery(owner.orgId, "invitee@example.com")).toBe(0);
+    expect(await getPendingInvitationQuery(owner.orgId, "invitee@example.com")).toBeNull();
   });
 });
