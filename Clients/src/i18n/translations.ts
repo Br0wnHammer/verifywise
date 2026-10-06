@@ -2226,6 +2226,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Linked Policies Objects": "Verknüpfte Richtlinien-Objekte",
     "Linked risk": "Verknüpftes Risiko",
     "LLM API key": "LLM-API-Schlüssel",
+    "Configure an LLM API key so Advisor, reporting, and LLM evals can run.":
+      "Konfigurieren Sie einen LLM-API-Schlüssel, damit KI-Berater, Berichte und LLM-Bewertungen funktionieren.",
+    "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.":
+      "KI-Berater, Berichte und LLM-Bewertungen benötigen einen LLM-API-Schlüssel. Wenden Sie sich an Ihren Administrator.",
     "LLM Arena": "LLM-Arena",
     "LLM provider": "LLM-Anbieter",
     "LLM providers": "LLM-Anbieter",
@@ -11638,6 +11642,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Linked Policies Objects": "Objets de politiques liés",
     "Linked risk": "Risque lié",
     "LLM API key": "Clé API LLM",
+    "Configure an LLM API key so Advisor, reporting, and LLM evals can run.":
+      "Configurez une clé API LLM pour que le conseiller IA, les rapports et les évaluations LLM puissent fonctionner.",
+    "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.":
+      "Le conseiller IA, les rapports et les évaluations LLM ont besoin d'une clé API LLM. Contactez votre administrateur.",
     "LLM Arena": "Arène LLM",
     "LLM provider": "Fournisseur LLM",
     "LLM providers": "Fournisseurs LLM",
@@ -20280,6 +20288,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Linked Policies Objects": "Objetos de políticas vinculados",
     "Linked risk": "Riesgo vinculado",
     "LLM API key": "Clave de API de LLM",
+    "Configure an LLM API key so Advisor, reporting, and LLM evals can run.":
+      "Configure una clave de API de LLM para que el asesor de IA, los informes y las evaluaciones de LLM puedan funcionar.",
+    "Advisor, reporting, and LLM evals need an LLM API key. Contact your administrator.":
+      "El asesor de IA, los informes y las evaluaciones de LLM necesitan una clave de API de LLM. Póngase en contacto con su administrador.",
     "LLM Arena": "LLM Arena",
     "LLM provider": "Proveedor de LLM",
     "LLM providers": "Proveedores de LLM",

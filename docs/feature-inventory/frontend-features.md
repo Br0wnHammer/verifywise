@@ -32,7 +32,7 @@ Key `App.tsx` details:
 - **Global providers:** Redux `Provider` + `PersistGate`, `VerifyWiseContext`, `ExtensionsProvider`, `UserGuideSidebarProvider`, `SmartPromptProvider`, `AdvisorConversationProvider`, and five module-specific sidebar contexts (`Evals`, `AIDetection`, `ShadowAI`, `AIGateway`, `AITrustIndex`).
 - **Theme:** `ConditionalThemeWrapper` applies the MUI `light` theme to all routes except `/aiTrustCentre/*` public pages.
 - **Sidebars hidden on:** auth routes (`/login`, `/admin-reg`, `/user-reg`, `/register`, `/forgot-password`, `/reset-password`, `/set-new-password`, `/reset-password-continue`) and public routes (`/use-case-form-intake`, `/intake/*`, `/shared/*`, `/aiTrustCentre/*`).
-- **Onboarding:** `SetupModal` is shown on `/` or `/start-here` when the org creator's onboarding is incomplete. It offers demo data, a blank start, or an optional LLM key that opens the key form at `/settings/apikeys?addKey=1`.
+- **Onboarding:** `SetupModal` is shown on `/` or `/start-here` when the org creator's onboarding is incomplete. It offers demo data or a blank start.
 - **Command palette:** Always-mounted; toggled via `useCommandPalette` (`Ctrl/Cmd + K`).
 - **User guide sidebar:** Rendered inside `AdvisorConversationProvider` on non-auth, non-public pages.
 

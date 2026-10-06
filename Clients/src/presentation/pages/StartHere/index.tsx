@@ -293,7 +293,6 @@ const PROGRESS_STEPS: ProgressStep[] = [
   { label: "Complete a risk assessment", path: "/risk-management" },
 ];
 
-/** Read cached progress from storage to avoid flicker on load */
 const LlmKeyHint = ({ isAdmin, onConfigure }: { isAdmin: boolean; onConfigure: () => void }) => {
   const theme = useTheme();
 
@@ -359,6 +358,7 @@ const LlmKeyHint = ({ isAdmin, onConfigure }: { isAdmin: boolean; onConfigure: (
   );
 };
 
+/** Read cached progress from storage to avoid flicker on load */
 const getCachedProgress = (): boolean[] => {
   const parsed = storageService.get("startHereProgress", []);
   if (Array.isArray(parsed) && parsed.length === PROGRESS_STEPS.length) {
