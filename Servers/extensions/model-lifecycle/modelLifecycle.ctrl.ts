@@ -34,7 +34,9 @@ export function orderedIdsFrom(req: Request): number[] | undefined {
 function invalidOrderedIds(res: Response) {
   return res
     .status(400)
-    .json(STATUS_CODE[400](`orderedIds must be an array of at most ${MAX_ORDERED_IDS} integer ids`));
+    .json(
+      STATUS_CODE[400](`orderedIds must be an array of at most ${MAX_ORDERED_IDS} integer ids`),
+    );
 }
 
 function fail(res: Response, error: unknown, req: Request, where: string) {
