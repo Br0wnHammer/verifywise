@@ -5,7 +5,7 @@ import { Request, Response } from "express";
 // actual invitation token and move the clock, so they exercise the
 // middleware's own expiry rule.
 jest.mock("../../utils/invitation.utils", () => ({
-  checkPendingInvitationQuery: jest.fn(),
+  getPendingInvitationQuery: jest.fn(),
 }));
 jest.mock("../../utils/roleMap", () => ({
   hasRoleId: jest.fn(),
@@ -15,7 +15,7 @@ jest.mock("../../utils/roleMap", () => ({
 
 import registerJWT from "../register.middleware";
 import { generateInviteToken } from "../../utils/jwt.utils";
-import { checkPendingInvitationQuery } from "../../utils/invitation.utils";
+import { getPendingInvitationQuery } from "../../utils/invitation.utils";
 import { hasRoleId } from "../../utils/roleMap";
 
 const invite = { name: "Ada", roleId: 1, organizationId: 1, email: "ada@test.com" };
@@ -53,7 +53,12 @@ describe("registerJWT invitation lifetime", () => {
 
   beforeEach(() => {
     (hasRoleId as jest.Mock<any>).mockResolvedValue(true);
-    (checkPendingInvitationQuery as jest.Mock<any>).mockResolvedValue(true);
+    // The current invitation, stored with the same expiry the link was signed for.
+    (getPendingInvitationQuery as jest.Mock<any>).mockResolvedValue({
+      id: 1,
+      role_id: 1,
+      expires_at_ms: sentAt + 30 * day,
+    });
   });
 
   afterEach(() => {

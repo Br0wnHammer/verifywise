@@ -33,11 +33,14 @@ copy states the duration.
   for invitation lifetime. It is its own value, not an alias of
   `THIRTY_DAYS_MS`, which also sets refresh and API token lifetimes.
 - `generateInviteToken` defaults to it (password reset keeps passing 1 hour).
-- `sendInviteEmail` fixes `expiresAt` once, before signing the token and before
-  the SMTP round trip, and signs the token for exactly that instant. The
-  super-admin invite, which writes its row before the link exists, updates
-  `expires_at` from the `expiresAt` that `sendInviteEmail` returns. So the link
-  and the stored expiry are the same instant.
+- Tokens are signed against an absolute expiry (`signTokenUntil`): the custom
+  `expire` claim and the standard `exp` claim come from one timestamp. This
+  applies to every token type; lifetimes are unchanged.
+- `sendInviteEmail` fixes `expiresAt` once, before the SMTP round trip, and
+  signs the link to expire at exactly that instant (`generateInviteTokenUntil`).
+  A caller that has already stored the invitation row (the super-admin invite)
+  passes its `expires_at` in. So the link and the stored expiry are the same
+  instant.
 - Remove `ONE_WEEK_MS` (no other users).
 
 Boundary: the token is valid while `now <= expire`; the Team page shows
@@ -53,9 +56,36 @@ middleware now rejects a request whose email (trimmed, case-insensitive) is
 not the invited one, with 403 "This invitation was sent to a different email
 address."
 
-Not in this change: invite links are not single-use, and resending or
-re-inviting does not cancel earlier links. Closing that needs the
-one-time-token store password reset uses; tracked separately.
+After the checks pass, the controller receives the token's own email, role and
+organization, so the account is created exactly as invited and the invitation
+can be marked accepted.
+
+## Only the current link works (security)
+
+Before, the pending check matched only organization and email. After a revoke
+and re-invite with another role, or a resend, the earlier link still registered,
+with the role it was first sent with. A 30-day lifetime would have kept such
+links usable much longer.
+
+Registration now requires the pending invitation for that email to be the one
+the link was issued for: its `role_id` must equal the link's role, and its
+`expires_at` must equal the link's `expire`. Because each link is signed to
+expire exactly at its invitation's `expires_at`:
+
+- a resend writes a new `expires_at`, so earlier links match nothing;
+- a revoke and re-invite creates a new row with a new expiry, so the old link
+  (and its old role) fails;
+- registering marks the invitation accepted, so a link works once.
+
+Rejected links get 403 "This invitation link is no longer valid…". A 60-second
+tolerance keeps links sent before this change usable: those were signed a few
+seconds before their row was written. The cost is that two resends less than a
+minute apart both work until one is used.
+
+This uses only the org-scoped `invitations` table. An alternative using the
+global `one_time_tokens` store was dropped: that table has no organization, so
+cancelling links "for an email" would have cancelled other organizations'
+invitations to the same address.
 
 ## Existing invitations
 

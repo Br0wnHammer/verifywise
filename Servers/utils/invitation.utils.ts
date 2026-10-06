@@ -153,19 +153,24 @@ export const updateInvitationExpiryQuery = async (
 };
 
 /**
- * Check if a pending invitation exists for the given email.
- * Used during registration to verify the invitation wasn't revoked.
+ * The pending invitation for an email, with its expiry as epoch ms. The
+ * column is TIMESTAMP (no zone) holding UTC, which EXTRACT(EPOCH) reads as UTC.
  */
-export const checkPendingInvitationQuery = async (
+export const getPendingInvitationQuery = async (
   organizationId: number,
   email: string,
-): Promise<boolean> => {
+): Promise<{ id: number; role_id: number; expires_at_ms: number } | null> => {
   const result = (await sequelize.query(
-    `SELECT id FROM invitations
+    `SELECT id, role_id, ROUND(EXTRACT(EPOCH FROM expires_at) * 1000) AS expires_at_ms
+     FROM invitations
      WHERE organization_id = :organizationId AND email = :email AND status = 'pending'
+     ORDER BY id DESC
      LIMIT 1`,
     { replacements: { organizationId, email } },
-  )) as [InvitationRow[], number];
+  )) as [{ id: number; role_id: number; expires_at_ms: string | number }[], number];
 
-  return result[0].length > 0;
+  const row = result[0][0];
+  return row
+    ? { id: row.id, role_id: row.role_id, expires_at_ms: Number(row.expires_at_ms) }
+    : null;
 };
