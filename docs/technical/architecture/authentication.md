@@ -743,11 +743,28 @@ first so anything that refetches afterwards has no token to send.
 | Path | Where |
 |------|-------|
 | Manual logout (sidebar, profile deletion) | `useLogout` (`application/hooks/useLogout.ts`) |
-| 403 org mismatch / not allowed | `performLogout` (`infrastructure/api/customAxios.ts`) |
+| 403 org mismatch / not allowed | `performLogout` (`infrastructure/api/customAxios.ts`), once for concurrent 403s |
 | Refresh token rejected with 406 | response interceptor (`infrastructure/api/customAxios.ts`) |
-| Stored token fails validation on load | `ProtectedRoute` |
+| Stored token rejected on load (401, 403 or 406 only) | `ProtectedRoute` |
+| Opening a registration page | `RegisterAdmin`, `RegisterMultiTenant` |
+
+Manual and forced logouts then flush redux-persist and do a full page load of
+`/login` (not a client-side navigate), so app-level providers start empty and
+the cleared auth is what storage restores. `ProtectedRoute` keeps the session
+on a 5xx or network error, which says nothing about the token.
 
 Do not dispatch `clearAuthState()` directly for a logout; call `clearSession`.
+
+### Starting a session
+
+Every sign-in path stores its token through `startSession(dispatch, token)`
+(same file), which empties the React Query cache before dispatching
+`setAuthToken`. A tab whose earlier session was never logged out (an expired
+session, or another user signing in) shows nothing cached from it. Callers:
+password login (`Login`), Microsoft sign-in (`MicrosoftSignIn`,
+`MicrosoftCallback`) and the sign-in after creating an organization
+(`RegisterMultiTenant`). A token refresh keeps the same user and calls
+`setAuthToken` directly.
 
 ## Security Features Summary
 

@@ -1,7 +1,7 @@
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "../../redux/auth/authSlice";
 import { queryClient } from "../../config/queryClient";
-import { clearSession } from "../clearSession";
+import { clearSession, startSession } from "../clearSession";
 
 function createStore() {
   return configureStore({
@@ -51,5 +51,31 @@ describe("clearSession", () => {
     clearSession(store.dispatch);
 
     expect(tokenWhenCleared).toBe("");
+  });
+});
+
+describe("startSession", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    queryClient.clear();
+  });
+
+  it("empties the cache, then stores the new token", () => {
+    // A tab that never logged out (expired session, another user signing in)
+    // must not show the previous session's cached data to the new user.
+    const store = createStore();
+    queryClient.setQueryData(["projects"], [{ id: 1, name: "Previous user's project" }]);
+    let tokenWhenCleared: string | undefined;
+    const clear = queryClient.clear.bind(queryClient);
+    vi.spyOn(queryClient, "clear").mockImplementation(() => {
+      tokenWhenCleared = store.getState().auth.authToken;
+      clear();
+    });
+
+    startSession(store.dispatch, "new-token");
+
+    expect(tokenWhenCleared).toBe("some-token");
+    expect(store.getState().auth.authToken).toBe("new-token");
+    expect(queryClient.getQueryData(["projects"])).toBeUndefined();
   });
 });

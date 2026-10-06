@@ -1,6 +1,6 @@
 import { useDispatch } from "react-redux";
-import { useNavigate } from "react-router";
 import { clearSession } from "../utils/clearSession";
+import { persistor } from "../redux/store";
 import { apiServices } from "../../infrastructure/api/networkServices";
 
 /**
@@ -10,11 +10,10 @@ import { apiServices } from "../../infrastructure/api/networkServices";
  */
 const useLogout = () => {
   const dispatch = useDispatch();
-  const navigate = useNavigate();
 
   /**
    * Handles logging out the user
-   * Clears the authentication state and query cache, then navigates to the login page
+   * Clears the authentication state and query cache, then loads the login page
    */
   const logout = async () => {
     // Revoke the refresh token server-side and clear the cookie.
@@ -28,8 +27,17 @@ const useLogout = () => {
     // Clear the auth state and the query cache
     clearSession(dispatch);
 
-    // Navigate to the login page
-    navigate("/login");
+    // Write the cleared auth to storage before the reload, or the old token
+    // could be restored from it.
+    try {
+      await persistor.flush();
+    } catch {
+      // Best-effort: the reload still goes ahead.
+    }
+
+    // A full page load, not a client-side navigate: app-level providers (the
+    // Advisor conversation, VerifyWise context) start empty for the next user.
+    window.location.assign("/login");
   };
 
   return logout;

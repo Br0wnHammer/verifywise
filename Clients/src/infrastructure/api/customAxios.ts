@@ -22,7 +22,7 @@
  */
 
 import axios, { AxiosError } from "axios";
-import { store } from "../../application/redux/store";
+import { persistor, store } from "../../application/redux/store";
 import { ENV_VARs } from "../../../env.vars";
 import { setAuthToken } from "../../application/redux/auth/authSlice";
 import { clearSession } from "../../application/utils/clearSession";
@@ -37,9 +37,20 @@ import type {
   RetriableRequestConfig,
 } from "./api.types";
 
-const performLogout = () => {
+// Several requests can fail with the same 403 at once: alert and log out once.
+let isLoggingOut = false;
+
+const performLogout = async () => {
   clearSession(store.dispatch);
+  // Write the cleared auth to storage before the reload, or the old token
+  // could be restored from it.
+  try {
+    await persistor.flush();
+  } catch {
+    // Best-effort: the reload still goes ahead.
+  }
   window.location.href = "/login";
+  isLoggingOut = false;
 };
 
 // Create a global callback for showing alerts
@@ -219,16 +230,19 @@ CustomAxios.interceptors.response.use(
       (errorDetail === "User does not belong to this organization" ||
         errorDetail === "Not allowed to access")
     ) {
-      if (showAlertCallback) {
-        showAlertCallback({
-          variant: "info",
-          title: "Access Denied",
-          body: "Please login again to continue.",
-        });
+      if (!isLoggingOut) {
+        isLoggingOut = true;
+        if (showAlertCallback) {
+          showAlertCallback({
+            variant: "info",
+            title: "Access Denied",
+            body: "Please login again to continue.",
+          });
+        }
+        setTimeout(() => {
+          void performLogout();
+        }, 1000);
       }
-      setTimeout(() => {
-        performLogout();
-      }, 1000);
       return Promise.reject(new Error(errorDetail || "Forbidden"));
     }
 
@@ -267,18 +281,12 @@ CustomAxios.interceptors.response.use(
       if (isRefreshing) {
         return new Promise<string | null>((resolve, reject) => {
           failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return CustomAxios(originalRequest);
-          })
-          .catch((err: unknown) => {
-            // If refresh token fails, redirect to login
-            if (axios.isAxiosError(err) && err.response?.status === 406) {
-              clearSession(store.dispatch);
-            }
-            return Promise.reject(err);
-          });
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return CustomAxios(originalRequest);
+        });
+        // A failed refresh rejects the queue; the request that ran the
+        // refresh has already cleared the session.
       }
 
       originalRequest._retry = true;

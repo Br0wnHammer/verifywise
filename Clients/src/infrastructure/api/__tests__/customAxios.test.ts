@@ -9,6 +9,7 @@ vi.mock("../../../application/redux/store", () => ({
     getState: vi.fn(),
     dispatch: vi.fn(),
   },
+  persistor: { flush: vi.fn(() => Promise.resolve()) },
 }));
 
 vi.mock("../../../application/redux/auth/authSlice", () => ({
@@ -204,7 +205,14 @@ describe("customAxios", () => {
     });
 
     it("matches the 403 org-mismatch logout flow on the envelope `data` detail", async () => {
-      vi.useFakeTimers(); // keep the scheduled performLogout from firing
+      vi.useFakeTimers();
+      // performLogout assigns window.location.href, which jsdom cannot navigate.
+      const originalLocation = window.location;
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: { href: "" },
+      });
       const callback = vi.fn();
       setShowAlertCallback(callback);
 
@@ -223,7 +231,14 @@ describe("customAxios", () => {
         title: "Access Denied",
         body: "Please login again to continue.",
       });
+      // Let the scheduled logout finish, so the next test starts logged in.
+      await vi.runAllTimersAsync();
       vi.useRealTimers();
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: originalLocation,
+      });
     });
 
     // Hooks that abort in-flight requests on cleanup (the assessment hooks do)
@@ -297,11 +312,35 @@ describe("customAxios", () => {
       // Nothing is cleared until the scheduled logout runs.
       expect(queryClient.getQueryData(["projects"])).toBeDefined();
 
-      vi.advanceTimersByTime(1000);
+      await vi.advanceTimersByTimeAsync(1000);
 
       expect(mockStore.dispatch).toHaveBeenCalledWith({ type: "auth/clearAuthState" });
       expect(queryClient.getQueryData(["projects"])).toBeUndefined();
       expect(window.location.href).toBe("/login");
+    });
+
+    it("logs out once when several requests fail with the 403 at the same time", async () => {
+      vi.useFakeTimers();
+      const alert = vi.fn();
+      setShowAlertCallback(alert);
+      const error = () => ({
+        config: { url: "/test", headers: {} },
+        response: {
+          status: 403,
+          data: { message: "Forbidden", data: "User does not belong to this organization" },
+        },
+        message: "Forbidden",
+      });
+
+      await Promise.allSettled([rejected(error()), rejected(error()), rejected(error())]);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(alert).toHaveBeenCalledTimes(1);
+      const logouts = mockStore.dispatch.mock.calls.filter(
+        ([action]: any[]) => action?.type === "auth/clearAuthState",
+      );
+      expect(logouts).toHaveLength(1);
+      setShowAlertCallback(null as any);
     });
 
     it("clears auth and the cache when the token refresh is rejected with 406", async () => {

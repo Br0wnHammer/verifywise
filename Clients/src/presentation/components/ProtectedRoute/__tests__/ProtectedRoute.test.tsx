@@ -59,6 +59,11 @@ describe("ProtectedRoute", () => {
   });
 
   afterEach(() => {
+    // The query cache is a module singleton shared across tests.
+    queryClient.clear();
+  });
+
+  afterEach(() => {
     vi.restoreAllMocks();
   });
 
@@ -109,5 +114,29 @@ describe("ProtectedRoute", () => {
     });
     expect(store.getState().auth.authToken).toBe("");
     expect(queryClient.getQueryData(["projects"])).toBeUndefined();
+  });
+
+  it("keeps the session when token validation fails for a server error", async () => {
+    // A 5xx or a network failure says nothing about the token: signing the
+    // user out and wiping the cache for it would be wrong.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    server.use(
+      http.get("/api/users/:id", () =>
+        HttpResponse.json({ message: "Internal Server Error" }, { status: 500 }),
+      ),
+    );
+    queryClient.setQueryData(["projects"], [{ id: 1, name: "This user's project" }]);
+
+    const { store } = renderProtected({ route: "/", authToken: TEST_AUTH_TOKEN });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard")).toBeInTheDocument();
+    });
+    // Let the validation settle before checking nothing was cleared.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(store.getState().auth.authToken).toBe(TEST_AUTH_TOKEN);
+    expect(queryClient.getQueryData(["projects"])).toEqual([
+      { id: 1, name: "This user's project" },
+    ]);
   });
 });
