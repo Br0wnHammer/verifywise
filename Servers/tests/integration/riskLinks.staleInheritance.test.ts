@@ -9,6 +9,7 @@ import { createTestRisk, createTestModelRisk, createTestVendorRisk } from "../fa
 import { runEvidenceFreshnessSweep } from "../../services/automations/actions/evidenceFreshnessSweep";
 import { runStaleInheritanceNotifySweep } from "../../services/automations/actions/staleInheritanceNotifySweep";
 import {
+  acknowledgeParentLevelChangeQuery,
   getUnnotifiedStaleChildrenQuery,
   markParentLevelNotifiedQuery,
 } from "../../utils/riskLink.utils";
@@ -295,6 +296,22 @@ describe("stale-inheritance flag", () => {
     // Already reviewed: still a success, not a 404.
     const second = await owner.request.post(`/api/riskLinks/${linkId}/acknowledge-parent-change`);
     expect(second.status).toBe(200);
+  });
+
+  it("reports whether acknowledging cleared a flag", async () => {
+    const { owner } = await seedTwoTenantContexts();
+    const child = await createTestRisk(owner.orgId, {});
+    const parent = await createTestRisk(owner.orgId, {});
+    await linkProjectParent(owner.orgId, child, parent);
+    await sequelize.query(
+      `UPDATE risks SET risk_level_autocalculated = 'High risk' WHERE id = :parent`,
+      { replacements: { parent } },
+    );
+    const linkId = await linkIdFor(child, parent);
+
+    expect(await acknowledgeParentLevelChangeQuery(owner.orgId, linkId)).toBe(true);
+    // Nothing left to clear the second time.
+    expect(await acknowledgeParentLevelChangeQuery(owner.orgId, linkId)).toBe(false);
   });
 
   it("404s acknowledging a link that does not exist in the org", async () => {

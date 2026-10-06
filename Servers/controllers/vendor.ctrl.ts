@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 
 import { STATUS_CODE } from "../utils/statusCode.utils";
+import { toId } from "../utils/validations/validation.utils";
 import {
   createNewVendorQuery,
   deleteVendorByIdQuery,
@@ -193,7 +194,10 @@ export async function getVendorByProjectId(req: Request, res: Response): Promise
  * minus the ones it already has. Writes nothing and opens no transaction.
  */
 export async function getVendorRiskSuggestions(req: Request, res: Response): Promise<any> {
-  const vendorId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+  const vendorId = toId(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+  if (isNaN(vendorId) || vendorId <= 0) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid vendor ID")));
+  }
 
   logProcessing({
     description: `starting getVendorRiskSuggestions for ID ${vendorId}`,

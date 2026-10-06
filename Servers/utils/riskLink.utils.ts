@@ -1868,17 +1868,20 @@ export async function acknowledgeParentLevelChangeQuery(
   organizationId: number,
   linkId: number,
 ): Promise<boolean> {
-  const [, affected] = (await sequelize.query(
+  // RETURNING, not the UPDATE's metadata: on Postgres that is the driver's
+  // result object, not a row count, so counting it always gave false.
+  const rows = await sequelize.query(
     `UPDATE risk_links
         SET parent_level_changed_at = NULL,
             parent_level_notified_at = NULL,
             updated_at = NOW()
       WHERE id = :linkId
         AND organization_id = :organizationId
-        AND parent_level_changed_at IS NOT NULL`,
-    { replacements: { organizationId, linkId } },
-  )) as [unknown, number];
-  return toNumber(affected) > 0;
+        AND parent_level_changed_at IS NOT NULL
+      RETURNING id`,
+    { replacements: { organizationId, linkId }, type: QueryTypes.SELECT },
+  );
+  return rows.length > 0;
 }
 
 /**
