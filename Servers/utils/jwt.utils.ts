@@ -119,26 +119,38 @@ const THIRTY_DAYS_MS = 1 * 3600 * 1000 * 24 * 30;
 const INVITATION_LIFETIME_MS = 30 * 24 * 3600 * 1000;
 
 /**
- * Internal helper to generate JWT tokens with configurable expiration and secret
+ * Internal helper: signs a JWT that expires at an absolute time (ms since
+ * epoch). The custom `expire` claim and the standard `exp` claim both come
+ * from that one value.
  */
-const signToken = (payload: object, expiresInMs: number, secret: string): string | undefined => {
+const signTokenUntil = (
+  payload: object,
+  expireAtMs: number,
+  secret: string,
+): string | undefined => {
   try {
     return Jwt.sign(
       {
         ...payload,
-        expire: Date.now() + expiresInMs,
+        expire: expireAtMs,
+        // Standard exp claim: any spec-compliant verifier now rejects expired
+        // tokens even if it only checks the signature (defense in depth on
+        // top of the custom `expire` checks in our middleware).
+        exp: Math.floor(expireAtMs / 1000),
       },
       secret,
-      // Standard exp claim: any spec-compliant verifier now rejects expired
-      // tokens even if it only checks the signature (defense in depth on
-      // top of the custom `expire` checks in our middleware).
-      { expiresIn: Math.floor(expiresInMs / 1000) },
     );
   } catch (error) {
     console.error(error);
     return undefined;
   }
 };
+
+/**
+ * Internal helper to generate JWT tokens with configurable expiration and secret
+ */
+const signToken = (payload: object, expiresInMs: number, secret: string): string | undefined =>
+  signTokenUntil(payload, Date.now() + expiresInMs, secret);
 
 /**
  * Generates a short-lived JWT access token (1 hour)
@@ -154,6 +166,14 @@ const generateToken = (payload: object) => {
  */
 const generateInviteToken = (payload: object, expiresInMs: number = INVITATION_LIFETIME_MS) => {
   return signToken(payload, expiresInMs, process.env.JWT_SECRET as string);
+};
+
+/**
+ * An invitation token that expires exactly at `expiresAt`, so the link and the
+ * stored invitations.expires_at are one instant.
+ */
+const generateInviteTokenUntil = (payload: object, expiresAt: Date) => {
+  return signTokenUntil(payload, expiresAt.getTime(), process.env.JWT_SECRET as string);
 };
 
 /**
@@ -189,6 +209,7 @@ export {
   getTokenPayload,
   generateToken,
   generateInviteToken,
+  generateInviteTokenUntil,
   getRefreshTokenPayload,
   generateRefreshToken,
   generateApiToken,

@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-import { generateInviteToken, INVITATION_LIFETIME_MS } from "./jwt.utils";
+import { generateInviteTokenUntil, INVITATION_LIFETIME_MS } from "./jwt.utils";
 import { frontEndUrl } from "../config/constants";
 import { sendEmail } from "../services/emailService";
 import { translate } from "./i18n.utils";
@@ -18,6 +18,11 @@ interface InviteEmailParams {
    * user record yet, so the inviter's locale stays the right default.
    */
   lang?: string;
+  /**
+   * When the link expires. Defaults to the invitation lifetime from now; a
+   * caller that has already stored the invitation row passes its expires_at.
+   */
+  expiresAt?: Date;
 }
 
 interface InviteEmailResult {
@@ -33,10 +38,10 @@ interface InviteEmailResult {
 export const sendInviteEmail = async (params: InviteEmailParams): Promise<InviteEmailResult> => {
   const { email, name, surname, roleId, organizationId, lang } = params;
 
-  // Fixed once, before signing and before the SMTP round trip, so the link's
-  // expiry and the stored invitations.expires_at are the same instant.
-  const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
-  const token = generateInviteToken(
+  // One instant for the link and the stored invitations.expires_at, fixed
+  // before the SMTP round trip.
+  const expiresAt = params.expiresAt ?? new Date(Date.now() + INVITATION_LIFETIME_MS);
+  const token = generateInviteTokenUntil(
     {
       name,
       surname,
@@ -44,7 +49,7 @@ export const sendInviteEmail = async (params: InviteEmailParams): Promise<Invite
       email,
       organizationId,
     },
-    expiresAt.getTime() - Date.now(),
+    expiresAt,
   ) as string;
 
   const link = `${frontEndUrl}/user-reg?${new URLSearchParams({

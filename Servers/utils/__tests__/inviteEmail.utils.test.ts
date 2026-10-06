@@ -1,7 +1,7 @@
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 
 jest.mock("../jwt.utils", () => ({
-  generateInviteToken: jest.fn().mockReturnValue("mock-token-123"),
+  generateInviteTokenUntil: jest.fn().mockReturnValue("mock-token-123"),
   INVITATION_LIFETIME_MS: 2592000000,
 }));
 
@@ -16,12 +16,12 @@ jest.mock("fs/promises", () => ({
 }));
 
 import fs from "fs/promises";
-import { generateInviteToken } from "../jwt.utils";
+import { generateInviteTokenUntil } from "../jwt.utils";
 import { sendEmail } from "../../services/emailService";
 import { sendInviteEmail } from "../inviteEmail.utils";
 
-const mockGenerateInviteToken = generateInviteToken as jest.MockedFunction<
-  typeof generateInviteToken
+const mockGenerateInviteToken = generateInviteTokenUntil as jest.MockedFunction<
+  typeof generateInviteTokenUntil
 >;
 const mockSendEmail = sendEmail as jest.MockedFunction<typeof sendEmail>;
 const mockReadFile = fs.readFile as jest.MockedFunction<typeof fs.readFile>;
@@ -46,21 +46,28 @@ describe("inviteEmail.utils", () => {
       expect(result.link).toBe("https://app.example.com/user-reg?token=mock-token-123");
     });
 
-    it("should call generateInviteToken with correct payload", async () => {
-      await sendInviteEmail(params);
+    it("should sign the link with the invitee payload, expiring at expiresAt", async () => {
+      const result = await sendInviteEmail(params);
 
-      expect(mockGenerateInviteToken).toHaveBeenCalledWith(expect.any(Object), expect.any(Number));
-      // The link's lifetime is what is left of the 30 days fixed for expiresAt.
-      const lifetimeMs = mockGenerateInviteToken.mock.calls[0][1] as number;
-      expect(lifetimeMs).toBeLessThanOrEqual(30 * 24 * 3600 * 1000);
-      expect(lifetimeMs).toBeGreaterThan(30 * 24 * 3600 * 1000 - 1000);
-      expect(mockGenerateInviteToken.mock.calls[0][0]).toMatchObject({
+      expect(mockGenerateInviteToken).toHaveBeenCalledTimes(1);
+      const [payload, expiresAt] = mockGenerateInviteToken.mock.calls[0];
+      expect(payload).toMatchObject({
         name: "John",
         surname: "Doe",
         roleId: 2,
         email: "user@example.com",
         organizationId: 10,
       });
+      // One instant for the link and the returned (stored) expiry.
+      expect(expiresAt).toEqual(result.expiresAt);
+    });
+
+    it("should use a caller's expiresAt for both the link and the result", async () => {
+      const expiresAt = new Date("2026-11-05T12:00:00Z");
+      const result = await sendInviteEmail({ ...params, expiresAt });
+
+      expect(mockGenerateInviteToken.mock.calls[0][1]).toEqual(expiresAt);
+      expect(result.expiresAt).toEqual(expiresAt);
     });
 
     it("should call sendEmail with correct args", async () => {
