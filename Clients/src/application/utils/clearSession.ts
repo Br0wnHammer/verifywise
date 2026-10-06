@@ -9,7 +9,10 @@ import { persistor } from "../redux/store";
  * in the same tab. Every logout path (manual or forced) goes through here.
  *
  * Auth is cleared first so that anything refetching after the cache is
- * emptied has no token to send.
+ * emptied has no token to send. Clearing also cancels in-flight fetches
+ * (React Query destroys each removed query), so their results are dropped;
+ * the axios interceptor skips the error toasts those requests would raise
+ * once the session is gone.
  */
 export const clearSession = (dispatch: Dispatch) => {
   dispatch(clearAuthState());

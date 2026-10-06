@@ -52,6 +52,22 @@ describe("clearSession", () => {
 
     expect(tokenWhenCleared).toBe("");
   });
+
+  it("drops the result of a fetch that was in flight when the session was cleared", async () => {
+    const store = createStore();
+    let resolveFetch: (value: string[]) => void = () => {};
+    const fetching = queryClient.fetchQuery({
+      queryKey: ["projects"],
+      queryFn: () => new Promise<string[]>((resolve) => (resolveFetch = resolve)),
+    });
+
+    clearSession(store.dispatch);
+    resolveFetch(["Previous user's project"]);
+    await fetching.catch(() => undefined);
+
+    expect(queryClient.getQueryData(["projects"])).toBeUndefined();
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  });
 });
 
 describe("startSession", () => {

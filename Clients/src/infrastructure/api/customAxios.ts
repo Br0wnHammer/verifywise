@@ -102,6 +102,41 @@ const getEnvelopeErrorMessage = (data: ApiErrorEnvelope): string | undefined => 
 // see duplicate notifications.
 const ENDPOINTS_WITH_CUSTOM_ERROR_UI = ["/users/login"];
 
+// Endpoints authorized by the token in an emailed link (invitation, password
+// reset), which the page sends itself, not by the session token.
+const LINK_TOKEN_ENDPOINTS = ["/users/reset-password", "/users/register"];
+
+const isLinkTokenEndpoint = (url: string | undefined) =>
+  LINK_TOKEN_ENDPOINTS.some((path) => url?.includes(path) ?? false);
+
+// The auth middleware's answer to a request sent without a token, as the
+// server translates it (en, de, fr).
+const TOKEN_NOT_FOUND_DETAILS = ["Token not found", "Token nicht gefunden", "Jeton introuvable"];
+
+/**
+ * True for a failure that only says the session is over, once it has been
+ * cleared (logout, forced logout): a request sent with the old session token
+ * that lands afterwards, or a query refetching after the cache was emptied,
+ * which goes out with no token and gets the auth middleware's "Token not
+ * found". These are not shown, and do not try to refresh the token. Errors
+ * from requests sent while signed out (login, registration, password reset)
+ * are not affected.
+ */
+const isAfterSessionCleared = (
+  error: AxiosError,
+  request: RetriableRequestConfig | undefined,
+  detail: string | undefined,
+) => {
+  if (store.getState()?.auth?.authToken) return false;
+  if (request?._sentWithSession) return true;
+  return (
+    error.response?.status === 400 &&
+    !isLinkTokenEndpoint(request?.url) &&
+    detail !== undefined &&
+    TOKEN_NOT_FOUND_DETAILS.includes(detail)
+  );
+};
+
 // Show a translated error toast for server or network failures, and for 4xx
 // client errors using the backend's message from the { message, data }
 // envelope. 404 is excluded: callers deliberately handle it as empty state.
@@ -179,11 +214,9 @@ CustomAxios.interceptors.request.use(
     // Add authorization token
     const state = store.getState();
     const token = state.auth.authToken;
-    if (
-      token &&
-      !(config.url?.includes("/users/reset-password") || config.url?.includes("/users/register"))
-    ) {
+    if (token && !isLinkTokenEndpoint(config.url)) {
       config.headers.Authorization = `Bearer ${token}`;
+      (config as RetriableRequestConfig)._sentWithSession = true;
     }
 
     const lang = storageService.get("language", "en");
@@ -267,6 +300,11 @@ CustomAxios.interceptors.response.use(
           body: "Too many requests in a short time. Please wait a moment and refresh the page.",
         });
       }
+      return Promise.reject(error);
+    }
+
+    // The session was cleared after this request went out: no refresh, no toast.
+    if (isAfterSessionCleared(error, originalRequest, errorDetail)) {
       return Promise.reject(error);
     }
 

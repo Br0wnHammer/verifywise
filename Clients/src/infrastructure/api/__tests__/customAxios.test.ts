@@ -427,4 +427,118 @@ describe("customAxios", () => {
       expect(queryClient.getQueryData(["projects"])).toBeDefined();
     });
   });
+
+  describe("after the session was cleared", () => {
+    const rejected = (CustomAxios.interceptors.response as any).handlers[0].rejected;
+    const requestFulfilled = (CustomAxios.interceptors.request as any).handlers[0].fulfilled;
+    const loggedOut = () => mockStore.getState.mockReturnValue({ auth: { authToken: "" } } as any);
+    // The auth middleware's answer to a request without a token.
+    const tokenNotFound = (detail = "Token not found") => ({
+      config: { url: "/projects", headers: {} },
+      response: { status: 400, data: { message: "Bad Request", data: { message: detail } } },
+      message: "Request failed with status code 400",
+    });
+
+    it.each(["Token not found", "Token nicht gefunden", "Jeton introuvable"])(
+      "shows no toast for the auth middleware's '%s' when there is no token",
+      async (detail) => {
+        // A query refetching as the cache is cleared on logout goes out with no token.
+        loggedOut();
+        const callback = vi.fn();
+        setShowAlertCallback(callback);
+        const error = tokenNotFound(detail);
+
+        await expect(rejected(error)).rejects.toBe(error);
+        expect(callback).not.toHaveBeenCalled();
+      },
+    );
+
+    it("still shows the 'Token not found' toast while signed in", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+      const error = tokenNotFound();
+
+      await expect(rejected(error)).rejects.toBe(error);
+      expect(callback).toHaveBeenCalledWith({
+        variant: "error",
+        title: "Error",
+        body: "Token not found",
+      });
+    });
+
+    it("still shows other 4xx errors when there is no token (public pages)", async () => {
+      loggedOut();
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+      const error = {
+        config: { url: "/users/forgot-password", headers: {} },
+        response: { status: 400, data: { message: "Bad Request", data: "Email is required" } },
+        message: "Bad Request",
+      };
+
+      await expect(rejected(error)).rejects.toBe(error);
+      expect(callback).toHaveBeenCalledWith({
+        variant: "error",
+        title: "Error",
+        body: "Email is required",
+      });
+    });
+
+    it.each(["/users/register", "/users/reset-password"])(
+      "still shows 'Token not found' from %s, which checks its own link token",
+      async (url) => {
+        loggedOut();
+        const callback = vi.fn();
+        setShowAlertCallback(callback);
+        const error = { ...tokenNotFound(), config: { url, headers: {} } };
+
+        await expect(rejected(error)).rejects.toBe(error);
+        expect(callback).toHaveBeenCalled();
+      },
+    );
+
+    it("shows no toast for a request sent with the session token that fails after logout", async () => {
+      const config = await requestFulfilled({ headers: {} as any, url: "/projects" });
+      loggedOut();
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+      const error = {
+        config,
+        response: { status: 500, data: { message: "Internal Server Error" } },
+        message: "Internal Server Error",
+      };
+
+      await expect(rejected(error)).rejects.toBe(error);
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("does not refresh the token for a 406 that lands after logout", async () => {
+      const config = await requestFulfilled({ headers: {} as any, url: "/projects" });
+      loggedOut();
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+      const postSpy = vi.spyOn(CustomAxios, "post");
+      const error = {
+        config,
+        response: { status: 406, data: { message: "Not Acceptable" } },
+        message: "Not Acceptable",
+      };
+
+      await expect(rejected(error)).rejects.toBe(error);
+      expect(postSpy).not.toHaveBeenCalled();
+      expect(callback).not.toHaveBeenCalled();
+      postSpy.mockRestore();
+    });
+
+    it("still shows errors for requests sent while signed out", async () => {
+      loggedOut();
+      const config = await requestFulfilled({ headers: {} as any, url: "/users/check/exists" });
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+      const error = { config, response: undefined, request: {}, message: "Network Error" };
+
+      await expect(rejected(error)).rejects.toBe(error);
+      expect(callback).toHaveBeenCalled();
+    });
+  });
 });

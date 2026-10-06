@@ -757,6 +757,14 @@ that arrive after it was cleared are ignored. `ProtectedRoute` and the
 refresh keep the session on a 5xx or network error, which says nothing about
 the token.
 
+Mounted queries can refetch once the cache is cleared, with no token, and
+requests sent before the clear can still land. Once the store holds no token,
+the axios response interceptor drops these quietly, with no toast and no token
+refresh: any failure of a request that carried the session token, and the auth
+middleware's `400 "Token not found"` (en/de/fr) from anything else except the
+invitation and password-reset endpoints. Errors from requests made while signed
+out (login, registration, password reset) still show.
+
 Do not dispatch `clearAuthState()` directly for a logout; call `clearSession`.
 
 ### Starting a session
