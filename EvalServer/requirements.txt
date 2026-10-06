@@ -21,7 +21,7 @@ eval_type_backport==0.4.0
 fastapi==0.141.1
 filelock==4.0.3
 frozenlist==1.8.0
-fsspec==2025.10.0
+fsspec==2026.6.0
 google-api-core==2.34.0
 google-api-python-client==2.186.0
 google-auth==2.57.1
@@ -49,7 +49,7 @@ MarkupSafe==3.0.3
 mdurl==0.1.2
 mistralai==2.10.1
 mpmath==1.3.0
-multidict==6.7.1
+multidict==6.9.1
 narwhals==2.10.2
 nest-asyncio==1.6.0
 networkx==3.4.2
