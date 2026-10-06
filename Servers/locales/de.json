@@ -452,6 +452,8 @@
   "No valid fields provided for update": "Keine gültigen Felder zur Aktualisierung angegeben",
   "No valid fields to update": "Keine gültigen Felder zu aktualisieren",
   "Not allowed to access": "Zugriff nicht erlaubt",
+  "Unknown role": "Unbekannte Rolle",
+  "You cannot invite a user with more access than your own": "Sie können keinen Benutzer mit mehr Zugriffsrechten als Ihren eigenen einladen",
   "Not Found": "Nicht gefunden",
   "Note content cannot be empty": "Notizinhalt darf nicht leer sein",
   "Note content cannot be empty after processing": "Notizinhalt darf nach der Verarbeitung nicht leer sein",

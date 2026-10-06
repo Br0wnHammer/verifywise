@@ -452,6 +452,8 @@
   "No valid fields provided for update": "Aucun champ valide fourni pour la mise à jour",
   "No valid fields to update": "Aucun champ valide à mettre à jour",
   "Not allowed to access": "Accès non autorisé",
+  "Unknown role": "Rôle inconnu",
+  "You cannot invite a user with more access than your own": "Vous ne pouvez pas inviter un utilisateur disposant de plus d'accès que vous",
   "Not Found": "Introuvable",
   "Note content cannot be empty": "Le contenu de la note ne peut pas être vide",
   "Note content cannot be empty after processing": "Le contenu de la note ne peut pas être vide après traitement",

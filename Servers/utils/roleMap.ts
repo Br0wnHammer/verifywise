@@ -89,6 +89,15 @@ export async function getRoleNameById(id: number): Promise<string | undefined> {
 }
 
 /**
+ * Resolve a role id to the role, with its organization (null for built-ins).
+ * Returns undefined if the id doesn't exist.
+ */
+export async function getRoleInfoById(id: number): Promise<RoleInfo | undefined> {
+  const map = await getRoleMap();
+  return map.byId.get(id);
+}
+
+/**
  * True if the given role id exists in the roles table.
  */
 export async function hasRoleId(id: number): Promise<boolean> {

@@ -2706,11 +2706,14 @@ export const emailEndpoints: Endpoint[] = [
   {
     method: 'POST',
     path: '/mail/invite',
-    summary: "Invite Limiter",
+    summary: "Invite a user to the caller's organization (Admin by default)",
     requiresAuth: true,
     responses: [
-      { status: 201, description: "Created successfully" },
+      { status: 200, description: "Invitation email sent" },
+      { status: 206, description: "Invitation saved but the email failed; the response carries the link" },
+      { status: 400, description: "Unknown or invalid role" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Missing permission, or the role grants more access than the caller has" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Mail",

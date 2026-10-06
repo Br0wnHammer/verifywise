@@ -452,6 +452,8 @@
   "No valid fields provided for update": "No valid fields provided for update",
   "No valid fields to update": "No valid fields to update",
   "Not allowed to access": "Not allowed to access",
+  "Unknown role": "Unknown role",
+  "You cannot invite a user with more access than your own": "You cannot invite a user with more access than your own",
   "Not Found": "Not Found",
   "Note content cannot be empty": "Note content cannot be empty",
   "Note content cannot be empty after processing": "Note content cannot be empty after processing",
