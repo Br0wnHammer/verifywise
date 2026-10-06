@@ -42,7 +42,7 @@ describe("biasAuditService", () => {
     expect(result.name).toBe("Gender Bias");
   });
 
-  it("runAudit sends FormData", async () => {
+  it("runAudit returns the audit id and status", async () => {
     server.use(
       http.post("/api/deepeval/bias-audits/run", () =>
         HttpResponse.json({ auditId: "a1", status: "running" }),
@@ -92,7 +92,7 @@ describe("biasAuditService", () => {
 
   // downloadReport skipped — MSW XHR interceptor does not support responseType: "blob" in Node.js
 
-  it("parseHeaders sends file and returns headers", async () => {
+  it("parseHeaders returns the column headers", async () => {
     server.use(
       http.post("/api/deepeval/bias-audits/parse-headers", () =>
         HttpResponse.json({ headers: ["name", "age", "hired"] }),
