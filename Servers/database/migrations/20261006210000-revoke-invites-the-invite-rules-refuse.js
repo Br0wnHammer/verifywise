@@ -6,20 +6,23 @@
  * Before the fix, POST /api/mail/invite only required a login and took the
  * organization and role from the request body, so any logged-in user could
  * invite anyone, as any role, into any organization. Such an invitation's
- * link still registers until it expires. This removes the pending ones the
- * rules now refuse (revoking an invitation deletes its pending row, as
- * revokeInvitationQuery does):
+ * link still registers while its pending row exists. This deletes every
+ * pending invitation the rules do not allow (deleting the pending row is what
+ * revoking does, see revokeInvitationQuery). A pending invitation is kept
+ * only if:
  *
- * - the inviter is not a member of the invitation's organization, unless the
- *   inviter is a super admin (super-admin invites come from outside the org);
- * - the role does not exist, is SuperAdmin, or is another organization's
- *   custom role;
- * - the role is a built-in one and the inviter is not that organization's
- *   Admin (only an Admin grants built-in roles), unless a super admin.
+ * - a super admin sent it (super-admin invites come from outside the org); or
+ * - the inviter is a member of the invitation's organization, the role exists,
+ *   is not SuperAdmin and is a built-in or this organization's own role, and
+ *   either
+ *   - the inviter is the built-in Admin, or
+ *   - the inviter's role is this organization's custom role holding
+ *     invitation.super, the invited role is one of its custom roles, and the
+ *     invited role has no permission the inviter's role lacks.
  *
  * Accepted invitations are left alone: they are history, not live links.
- * Legitimate pending invites a rule catches (for example from an Admin who
- * has since been demoted) can simply be sent again. Not reversible.
+ * A legitimate pending invite this catches (for example from an Admin who has
+ * since been demoted) can be sent again. Not reversible.
  */
 module.exports = {
   async up(queryInterface) {
@@ -29,31 +32,45 @@ module.exports = {
         AND NOT EXISTS (
           SELECT 1 FROM verifywise.super_admins s WHERE s.user_id = i.invited_by
         )
-        AND (
-          NOT EXISTS (
-            SELECT 1 FROM verifywise.users u
-            WHERE u.id = i.invited_by AND u.organization_id = i.organization_id
-          )
-          OR NOT EXISTS (
-            SELECT 1 FROM verifywise.roles r
-            WHERE r.id = i.role_id
-              AND r.name <> 'SuperAdmin'
-              AND (r.organization_id IS NULL OR r.organization_id = i.organization_id)
-          )
-          OR (
-            EXISTS (
-              SELECT 1 FROM verifywise.roles r
-              WHERE r.id = i.role_id AND r.organization_id IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM verifywise.users u
+          JOIN verifywise.roles inviter_role ON inviter_role.id = u.role_id
+          JOIN verifywise.roles invited_role ON invited_role.id = i.role_id
+          WHERE u.id = i.invited_by
+            AND u.organization_id = i.organization_id
+            AND invited_role.name <> 'SuperAdmin'
+            AND (
+              invited_role.organization_id IS NULL
+              OR invited_role.organization_id = i.organization_id
             )
-            AND NOT EXISTS (
-              SELECT 1 FROM verifywise.users u
-              JOIN verifywise.roles ur ON ur.id = u.role_id
-              WHERE u.id = i.invited_by
-                AND u.organization_id = i.organization_id
-                AND ur.name = 'Admin'
-                AND ur.organization_id IS NULL
+            AND (
+              (inviter_role.organization_id IS NULL AND inviter_role.name = 'Admin')
+              OR (
+                inviter_role.organization_id = i.organization_id
+                AND invited_role.organization_id = i.organization_id
+                AND EXISTS (
+                  SELECT 1 FROM verifywise.role_permissions p
+                  WHERE p.organization_id = i.organization_id
+                    AND p.role_id = inviter_role.id
+                    AND p.permission_key = 'invitation.super'
+                    AND p.allowed
+                )
+                AND NOT EXISTS (
+                  SELECT 1 FROM verifywise.role_permissions granted
+                  WHERE granted.organization_id = i.organization_id
+                    AND granted.role_id = invited_role.id
+                    AND granted.allowed
+                    AND NOT EXISTS (
+                      SELECT 1 FROM verifywise.role_permissions held
+                      WHERE held.organization_id = i.organization_id
+                        AND held.role_id = inviter_role.id
+                        AND held.permission_key = granted.permission_key
+                        AND held.allowed
+                    )
+                )
+              )
             )
-          )
         )
       RETURNING i.id, i.organization_id
     `);

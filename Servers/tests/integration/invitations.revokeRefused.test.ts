@@ -91,4 +91,42 @@ describe("migration: revoke invitations the invite rules refuse", () => {
 
     expect(await pendingEmails(orgA)).toEqual([]);
   });
+
+  it("keeps custom-role invites only from a custom role allowed to invite, within its access", async () => {
+    const suffix = Date.now();
+    const orgA = await createTestOrganization(`Org A ${suffix}`);
+    const customRole = async (name: string, permissions: string[]) => {
+      const [{ id }] = await sequelize.query<{ id: number }>(
+        `INSERT INTO roles (name, description, organization_id, created_at)
+         VALUES (:name, 'Custom', :orgA, NOW()) RETURNING id`,
+        { replacements: { name: `${name} ${suffix}`, orgA }, type: QueryTypes.SELECT },
+      );
+      for (const key of permissions) {
+        await sequelize.query(
+          `INSERT INTO role_permissions (organization_id, role_id, permission_key, allowed)
+           VALUES (:orgA, :id, :key, TRUE)`,
+          { replacements: { orgA, id, key } },
+        );
+      }
+      return id;
+    };
+    const teamLead = await customRole("Team lead", ["invitation.super", "risk.read", "task.read"]);
+    const noInvite = await customRole("No invite", ["risk.read", "task.read"]);
+    const viewer = await customRole("Viewer", ["risk.read"]);
+    const bigger = await customRole("Bigger", ["risk.read", "risk.edit"]);
+
+    const lead = await createTestUser(orgA, teamLead, `lead-${suffix}@test.com`, "Password123!");
+    const plain = await createTestUser(orgA, noInvite, `plain-${suffix}@test.com`, "Password123!");
+    const editor = await createTestUser(orgA, 3, `editor-${suffix}@test.com`, "Password123!");
+
+    await invite(orgA, "kept-lead-grants-viewer@x.com", viewer, lead);
+    await invite(orgA, "revoked-lead-grants-bigger@x.com", bigger, lead);
+    await invite(orgA, "revoked-lead-grants-builtin@x.com", 4, lead);
+    await invite(orgA, "revoked-no-invite-permission@x.com", viewer, plain);
+    await invite(orgA, "revoked-editor-grants-custom@x.com", viewer, editor);
+
+    await migration.up({ sequelize });
+
+    expect(await pendingEmails(orgA)).toEqual(["kept-lead-grants-viewer@x.com"]);
+  });
 });
