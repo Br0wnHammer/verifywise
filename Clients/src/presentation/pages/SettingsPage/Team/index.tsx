@@ -53,6 +53,12 @@ interface AlertState {
 }
 import Alert from "../../../components/Alert";
 import { pageOfLabel } from "../../../components/Table/pageOfLabel";
+import InviteLinkModal from "./InviteLinkModal";
+
+interface FallbackLinkState {
+  link: string;
+  message: string;
+}
 
 // Constants for roles
 
@@ -91,6 +97,9 @@ const TeamManagement: React.FC = (): JSX.Element => {
   const { roles, loading: rolesLoading } = useRoles();
 
   const [alert, setAlert] = useState<AlertState | null>(null);
+  // Fallback invite link shown when the email could not be sent. It lives in a
+  // modal rather than the auto-closing toast so the admin can copy it.
+  const [fallbackLink, setFallbackLink] = useState<FallbackLinkState | null>(null);
 
   const showAlert = useCallback((variant: AlertState["variant"], title: string, body: string) => {
     setAlert({ variant, title, body, isToast: false });
@@ -361,13 +370,15 @@ const TeamManagement: React.FC = (): JSX.Element => {
       } else if (response.status === 206) {
         // Resending replaced the invitee's link, so hand the admin the new one.
         const link = (response.data as { data?: { link?: string } } | undefined)?.data?.link;
-        showAlert(
-          "info",
-          "Info",
-          link
-            ? `Email service unavailable. Links sent earlier no longer work. Share this one with the invitee: ${link}`
-            : "Email service unavailable. A fallback link was generated.",
-        );
+        if (link) {
+          setFallbackLink({
+            link,
+            message:
+              "The email service is unavailable, so the invitation could not be resent. Links sent earlier no longer work. Share this link with the invitee instead.",
+          });
+        } else {
+          showAlert("info", "Info", "Email service unavailable. A fallback link was generated.");
+        }
       } else {
         showAlert("error", "Error", "Failed to resend invitation.");
       }
@@ -410,12 +421,13 @@ const TeamManagement: React.FC = (): JSX.Element => {
         "Success",
         `Invitation sent to ${email}. Please ask them to check their email and follow the link to create an account.`,
       );
+    } else if (status === 206 && link) {
+      setFallbackLink({
+        link,
+        message: `The invitation for ${email} was created, but the email could not be sent. Share this link with them so they can create an account.`,
+      });
     } else if (status === 206) {
-      showAlert(
-        "info",
-        "Info",
-        `Invitation sent to ${email}. Please use this link: ${link} to create an account.`,
-      );
+      showAlert("info", "Info", "Email service unavailable. A fallback link was generated.");
     } else {
       showAlert("error", "Error", `Failed to send invitation to ${email}. Please try again.`);
     }
@@ -875,6 +887,14 @@ const TeamManagement: React.FC = (): JSX.Element => {
           isOpen={inviteUserModalOpen}
           setIsOpen={setInviteUserModalOpen}
           onSendInvite={handleInvitation}
+        />
+      )}
+      {fallbackLink && (
+        <InviteLinkModal
+          isOpen
+          onClose={() => setFallbackLink(null)}
+          link={fallbackLink.link}
+          message={fallbackLink.message}
         />
       )}
     </Stack>

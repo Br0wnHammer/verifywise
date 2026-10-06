@@ -1727,6 +1727,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Connect your GitHub repositories": "GitHub-Repositories verbinden",
     "Copy key": "Schlüssel kopieren",
     "Copy link": "Link kopieren",
+    "Copied": "Kopiert",
+    "Could not copy the link. Select it and copy it manually.":
+      "Der Link konnte nicht kopiert werden. Markieren Sie ihn und kopieren Sie ihn manuell.",
+    "Invitation link": "Einladungslink",
+    "Share the invitation link": "Einladungslink teilen",
+    "The email service is unavailable, so the invitation could not be resent. Links sent earlier no longer work. Share this link with the invitee instead.":
+      "Der E-Mail-Dienst ist nicht verfügbar, daher konnte die Einladung nicht erneut gesendet werden. Zuvor gesendete Links funktionieren nicht mehr. Teilen Sie stattdessen diesen Link mit der eingeladenen Person.",
+    "The invitation email could not be sent": "Die Einladungs-E-Mail konnte nicht gesendet werden",
     "Copy response": "Antwort kopieren",
     "Copy the key below. It will not be shown again.":
       "Kopieren Sie den Schlüssel unten. Er wird nicht erneut angezeigt.",
@@ -11518,6 +11526,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Connect your GitHub repositories": "Connectez vos dépôts GitHub",
     "Copy key": "Copier la clé",
     "Copy link": "Copier le lien",
+    "Copied": "Copié",
+    "Could not copy the link. Select it and copy it manually.":
+      "Impossible de copier le lien. Sélectionnez-le et copiez-le manuellement.",
+    "Invitation link": "Lien d'invitation",
+    "Share the invitation link": "Partager le lien d'invitation",
+    "The email service is unavailable, so the invitation could not be resent. Links sent earlier no longer work. Share this link with the invitee instead.":
+      "Le service de messagerie est indisponible, l'invitation n'a donc pas pu être renvoyée. Les liens envoyés précédemment ne fonctionnent plus. Partagez plutôt ce lien avec la personne invitée.",
+    "The invitation email could not be sent": "L'e-mail d'invitation n'a pas pu être envoyé",
     "Copy response": "Copier la réponse",
     "Copy the key below. It will not be shown again.":
       "Copiez la clé ci-dessous. Elle ne sera plus affichée.",
@@ -20515,6 +20531,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Connect your GitHub repositories": "Conecte sus repositorios de GitHub",
     "Copy key": "Copiar clave",
     "Copy link": "Copiar enlace",
+    "Copied": "Copiado",
+    "Could not copy the link. Select it and copy it manually.":
+      "No se pudo copiar el enlace. Selecciónelo y cópielo manualmente.",
+    "Invitation link": "Enlace de invitación",
+    "Share the invitation link": "Compartir el enlace de invitación",
+    "The email service is unavailable, so the invitation could not be resent. Links sent earlier no longer work. Share this link with the invitee instead.":
+      "El servicio de correo electrónico no está disponible, por lo que no se pudo reenviar la invitación. Los enlaces enviados anteriormente ya no funcionan. Comparta este enlace con la persona invitada.",
+    "The invitation email could not be sent":
+      "No se pudo enviar el correo electrónico de invitación",
     "Copy response": "Copiar respuesta",
     "Copy the key below. It won": "Copie la clave de abajo. No se",
     "Copy to my datasets?": "¿Copiar a mis conjuntos de datos?",

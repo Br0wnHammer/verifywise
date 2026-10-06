@@ -1,4 +1,4 @@
-import { screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { screen, waitFor, fireEvent, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../../../../../test/renderWithProviders";
 
@@ -249,9 +249,10 @@ describe("TeamManagement", () => {
     });
   });
 
-  it("shows the new link when resend returns 206", async () => {
+  it("shows the new link in a persistent modal when resend returns 206", async () => {
     // Resending replaces the invitee's link, so when the email fails the
-    // admin must get the new one to share.
+    // admin must get the new one to share. A toast that auto-closes cannot
+    // be copied from, so the link lives in a modal until dismissed.
     mockInvitations = [buildInvitation()];
     mockResendInvitation.mockResolvedValue({
       status: 206,
@@ -261,10 +262,103 @@ describe("TeamManagement", () => {
     renderWithProviders(<TeamManagement />);
 
     await user.click(screen.getByTitle("Resend invitation"));
-    await waitFor(() => {
-      expect(screen.getByText(/Links sent earlier no longer work/)).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Links sent earlier no longer work/)).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue("http://new-link")).toBeInTheDocument();
+  });
+
+  it("keeps the resend fallback modal open past the toast timeout", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mockInvitations = [buildInvitation()];
+      mockResendInvitation.mockResolvedValue({
+        status: 206,
+        data: { data: { link: "http://new-link" } },
+      });
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderWithProviders(<TeamManagement />);
+
+      await user.click(screen.getByTitle("Resend invitation"));
+      await screen.findByRole("dialog");
+      await act(async () => {
+        vi.advanceTimersByTime(10000);
+      });
+      expect(screen.getByDisplayValue("http://new-link")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("copies the fallback link and shows a copied state", async () => {
+    mockInvitations = [buildInvitation()];
+    mockResendInvitation.mockResolvedValue({
+      status: 206,
+      data: { data: { link: "http://new-link" } },
     });
-    expect(screen.getByText("http://new-link")).toBeInTheDocument();
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    renderWithProviders(<TeamManagement />);
+
+    await user.click(screen.getByTitle("Resend invitation"));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Copy link" }));
+    expect(writeText).toHaveBeenCalledWith("http://new-link");
+    expect(await within(dialog).findByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
+  it("tells the admin to copy manually when the clipboard is unavailable", async () => {
+    mockInvitations = [buildInvitation()];
+    mockResendInvitation.mockResolvedValue({
+      status: 206,
+      data: { data: { link: "http://new-link" } },
+    });
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+      configurable: true,
+    });
+    renderWithProviders(<TeamManagement />);
+
+    await user.click(screen.getByTitle("Resend invitation"));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Copy link" }));
+    expect(await within(dialog).findByText(/Could not copy the link/)).toBeInTheDocument();
+  });
+
+  it("closes the fallback link modal with Done", async () => {
+    mockInvitations = [buildInvitation()];
+    mockResendInvitation.mockResolvedValue({
+      status: 206,
+      data: { data: { link: "http://new-link" } },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<TeamManagement />);
+
+    await user.click(screen.getByTitle("Resend invitation"));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue("http://new-link")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the generic message when resend returns 206 without a link", async () => {
+    mockInvitations = [buildInvitation()];
+    mockResendInvitation.mockResolvedValue({ status: 206, data: { data: {} } });
+    const user = userEvent.setup();
+    renderWithProviders(<TeamManagement />);
+
+    await user.click(screen.getByTitle("Resend invitation"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Email service unavailable. A fallback link was generated."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("revokes an invitation", async () => {
@@ -296,16 +390,16 @@ describe("TeamManagement", () => {
     expect(mockRefreshInvitations).toHaveBeenCalled();
   });
 
-  it("shows the fallback-link message for a 206 invite response", async () => {
+  it("shows the fallback link in a modal for a 206 invite response", async () => {
     const user = userEvent.setup();
     renderWithProviders(<TeamManagement />);
 
     await user.click(screen.getByText("Invite team member"));
     await user.click(screen.getByText("send-fallback"));
-    await waitFor(() => {
-      expect(screen.getByText(/Please use this link:/)).toBeInTheDocument();
-    });
-    expect(screen.getByText("http://fallback-link")).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/new@user.com/)).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue("http://fallback-link")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Links sent earlier no longer work/)).not.toBeInTheDocument();
   });
 
   it("shows an error message when invite fails", async () => {
