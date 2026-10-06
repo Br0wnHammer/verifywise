@@ -12,6 +12,7 @@ import { getMonitoringConfig, upsertMonitoringConfig } from "../utils/monitoring
 import { getMcpServerStatus, installMcpServer, uninstallMcpServer } from "../utils/mcpServer.utils";
 import {
   createInvitationQuery,
+  updateInvitationExpiryQuery,
   getInvitationsByOrganizationQuery,
 } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
@@ -151,6 +152,7 @@ export async function createOrgWithUser(req: Request, res: Response) {
   const transaction = await sequelize.transaction();
   let orgId: number | undefined;
   let invitationExpiresAt: Date | undefined;
+  let invitationId: number | undefined;
 
   try {
     const orgModel = await OrganizationModel.createNewOrganization(orgName.trim(), logo);
@@ -171,7 +173,7 @@ export async function createOrgWithUser(req: Request, res: Response) {
       );
     } else {
       invitationExpiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
-      await createInvitationQuery(
+      const invitation = await createInvitationQuery(
         orgId,
         user.email,
         user.name,
@@ -181,6 +183,7 @@ export async function createOrgWithUser(req: Request, res: Response) {
         invitationExpiresAt,
         transaction,
       );
+      invitationId = invitation.id;
     }
 
     await transaction.commit();
@@ -199,7 +202,7 @@ export async function createOrgWithUser(req: Request, res: Response) {
 
   if (mode === "invite") {
     try {
-      const { link, info } = await sendInviteEmail({
+      const { link, expiresAt, info } = await sendInviteEmail({
         email: user.email,
         name: user.name,
         surname: user.surname ?? "",
@@ -207,6 +210,11 @@ export async function createOrgWithUser(req: Request, res: Response) {
         organizationId: orgId,
         lang: req.lang,
       });
+      // The row was written before the link existed; give it the link's expiry
+      // so the Team page's Pending/Expired matches the link that was sent.
+      if (orgId !== undefined && invitationId !== undefined) {
+        await updateInvitationExpiryQuery(orgId, invitationId, expiresAt);
+      }
       if (info.error) {
         return res.status(206).json(
           STATUS_CODE[206]({

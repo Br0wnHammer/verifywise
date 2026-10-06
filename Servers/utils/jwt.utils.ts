@@ -112,8 +112,11 @@ const getRefreshTokenPayload = (token: any): any => {
 // Token expiration constants
 const ONE_HOUR_MS = 1 * 3600 * 1000;
 const THIRTY_DAYS_MS = 1 * 3600 * 1000 * 24 * 30;
-/** How long an invitation link (and its stored expires_at) stays valid. */
-const INVITATION_LIFETIME_MS = THIRTY_DAYS_MS;
+/**
+ * How long an invitation link (and its stored expires_at) stays valid. Its own
+ * value, not THIRTY_DAYS_MS: that also sets refresh and API token lifetimes.
+ */
+const INVITATION_LIFETIME_MS = 30 * 24 * 3600 * 1000;
 
 /**
  * Internal helper to generate JWT tokens with configurable expiration and secret

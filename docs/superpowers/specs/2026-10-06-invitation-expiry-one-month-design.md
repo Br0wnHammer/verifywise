@@ -29,17 +29,33 @@ copy states the duration.
 
 ## Design
 
-- Add `INVITATION_LIFETIME_MS = THIRTY_DAYS_MS` in `jwt.utils.ts`, the single
-  source for invitation lifetime.
+- Add `INVITATION_LIFETIME_MS` (30 days) in `jwt.utils.ts`, the single source
+  for invitation lifetime. It is its own value, not an alias of
+  `THIRTY_DAYS_MS`, which also sets refresh and API token lifetimes.
 - `generateInviteToken` defaults to it (password reset keeps passing 1 hour).
-- `sendInviteEmail` and the super-admin invite set `expires_at` from it, so the
-  link and the stored expiry agree.
+- `sendInviteEmail` fixes `expiresAt` once, before signing the token and before
+  the SMTP round trip, and signs the token for exactly that instant. The
+  super-admin invite, which writes its row before the link exists, updates
+  `expires_at` from the `expiresAt` that `sendInviteEmail` returns. So the link
+  and the stored expiry are the same instant.
 - Remove `ONE_WEEK_MS` (no other users).
 
 Boundary: the token is valid while `now <= expire`; the Team page shows
-"Expired" once `expires_at <= now`. The two are computed from the same
-constant at send time, so they differ by at most the milliseconds between
-the two `Date.now()` calls.
+"Expired" once `expires_at <= now`.
+
+## Registration email check (security)
+
+A longer-lived link raised an existing gap: `register.middleware.ts` checked
+the token's role and organization but not its email, while the account is
+created from the email in the request. The form shows the email read-only, but
+a crafted request could use one invite link to register any address. The
+middleware now rejects a request whose email (trimmed, case-insensitive) is
+not the invited one, with 403 "This invitation was sent to a different email
+address."
+
+Not in this change: invite links are not single-use, and resending or
+re-inviting does not cancel earlier links. Closing that needs the
+one-time-token store password reset uses; tracked separately.
 
 ## Existing invitations
 

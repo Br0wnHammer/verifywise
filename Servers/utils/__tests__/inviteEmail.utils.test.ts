@@ -16,7 +16,7 @@ jest.mock("fs/promises", () => ({
 }));
 
 import fs from "fs/promises";
-import { generateInviteToken, INVITATION_LIFETIME_MS } from "../jwt.utils";
+import { generateInviteToken } from "../jwt.utils";
 import { sendEmail } from "../../services/emailService";
 import { sendInviteEmail } from "../inviteEmail.utils";
 
@@ -49,7 +49,11 @@ describe("inviteEmail.utils", () => {
     it("should call generateInviteToken with correct payload", async () => {
       await sendInviteEmail(params);
 
-      expect(mockGenerateInviteToken).toHaveBeenCalledWith(expect.any(Object));
+      expect(mockGenerateInviteToken).toHaveBeenCalledWith(expect.any(Object), expect.any(Number));
+      // The link's lifetime is what is left of the 30 days fixed for expiresAt.
+      const lifetimeMs = mockGenerateInviteToken.mock.calls[0][1] as number;
+      expect(lifetimeMs).toBeLessThanOrEqual(30 * 24 * 3600 * 1000);
+      expect(lifetimeMs).toBeGreaterThan(30 * 24 * 3600 * 1000 - 1000);
       expect(mockGenerateInviteToken.mock.calls[0][0]).toMatchObject({
         name: "John",
         surname: "Doe",
@@ -80,7 +84,8 @@ describe("inviteEmail.utils", () => {
       const result = await sendInviteEmail(params);
       const after = Date.now();
 
-      const expectedExpires = before + INVITATION_LIFETIME_MS;
+      // A literal 30 days: the mocked constant could not catch a wrong value.
+      const expectedExpires = before + 30 * 24 * 3600 * 1000;
       expect(result.expiresAt.getTime()).toBeGreaterThanOrEqual(expectedExpires - 1000);
       expect(result.expiresAt.getTime()).toBeLessThanOrEqual(
         expectedExpires + (after - before) + 1000,

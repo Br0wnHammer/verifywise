@@ -33,13 +33,19 @@ interface InviteEmailResult {
 export const sendInviteEmail = async (params: InviteEmailParams): Promise<InviteEmailResult> => {
   const { email, name, surname, roleId, organizationId, lang } = params;
 
-  const token = generateInviteToken({
-    name,
-    surname,
-    roleId,
-    email,
-    organizationId,
-  }) as string;
+  // Fixed once, before signing and before the SMTP round trip, so the link's
+  // expiry and the stored invitations.expires_at are the same instant.
+  const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
+  const token = generateInviteToken(
+    {
+      name,
+      surname,
+      roleId,
+      email,
+      organizationId,
+    },
+    expiresAt.getTime() - Date.now(),
+  ) as string;
 
   const link = `${frontEndUrl}/user-reg?${new URLSearchParams({
     token,
@@ -53,8 +59,6 @@ export const sendInviteEmail = async (params: InviteEmailParams): Promise<Invite
     name,
     link,
   });
-
-  const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
 
   return { link, expiresAt, info };
 };
