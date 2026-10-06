@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router";
 import authReducer from "../../redux/auth/authSlice";
 import uiReducer from "../../redux/ui/uiSlice";
 import fileReducer from "../../redux/file/fileSlice";
+import { queryClient } from "../../config/queryClient";
 import useLogout from "../useLogout";
 import React from "react";
 
@@ -48,6 +49,10 @@ describe("useLogout", () => {
     mockNavigate.mockClear();
   });
 
+  afterEach(() => {
+    queryClient.clear();
+  });
+
   it("should clear auth state and navigate to /login", async () => {
     const { Wrapper, store } = createWrapper();
 
@@ -65,5 +70,19 @@ describe("useLogout", () => {
 
     // Should navigate to login
     expect(mockNavigate).toHaveBeenCalledWith("/login");
+  });
+
+  it("should clear the query cache so the next user sees no cached data", async () => {
+    const { Wrapper } = createWrapper();
+    queryClient.setQueryData(["projects"], [{ id: 1, name: "Previous user's project" }]);
+
+    const { result } = renderHook(() => useLogout(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(queryClient.getQueryData(["projects"])).toBeUndefined();
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
   });
 });

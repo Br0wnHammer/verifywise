@@ -24,7 +24,8 @@
 import axios, { AxiosError } from "axios";
 import { store } from "../../application/redux/store";
 import { ENV_VARs } from "../../../env.vars";
-import { clearAuthState, setAuthToken } from "../../application/redux/auth/authSlice";
+import { setAuthToken } from "../../application/redux/auth/authSlice";
+import { clearSession } from "../../application/utils/clearSession";
 import { storageService } from "../storage";
 import { AlertProps } from "../../presentation/types/alert.types";
 import { translateKey } from "../../i18n/domTranslator";
@@ -37,7 +38,7 @@ import type {
 } from "./api.types";
 
 const performLogout = () => {
-  store.dispatch(clearAuthState());
+  clearSession(store.dispatch);
   window.location.href = "/login";
 };
 
@@ -274,7 +275,7 @@ CustomAxios.interceptors.response.use(
           .catch((err: unknown) => {
             // If refresh token fails, redirect to login
             if (axios.isAxiosError(err) && err.response?.status === 406) {
-              store.dispatch(setAuthToken(""));
+              clearSession(store.dispatch);
             }
             return Promise.reject(err);
           });
@@ -301,7 +302,7 @@ CustomAxios.interceptors.response.use(
         processQueue(refreshError, null);
         // If refresh token request fails with 406, redirect to login
         if (axios.isAxiosError(refreshError) && refreshError.response?.status === 406) {
-          store.dispatch(setAuthToken(""));
+          clearSession(store.dispatch);
         }
         return Promise.reject(refreshError);
       } finally {

@@ -24,6 +24,7 @@ vi.mock("../../../i18n/domTranslator", () => ({
 import { CanceledError, type AxiosError } from "axios";
 import CustomAxios, { showAlert, setShowAlertCallback } from "../customAxios";
 import { store } from "../../../application/redux/store";
+import { queryClient } from "../../../application/config/queryClient";
 import { translateKey } from "../../../i18n/domTranslator";
 
 const mockStore = vi.mocked(store);
@@ -252,6 +253,88 @@ describe("customAxios", () => {
 
       await expect(rejected(error)).rejects.toEqual(error);
       expect(callback).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("forced logout clears the query cache", () => {
+    const rejected = (CustomAxios.interceptors.response as any).handlers[0].rejected;
+    const originalLocation = window.location;
+
+    beforeEach(() => {
+      queryClient.setQueryData(["projects"], [{ id: 1, name: "Previous user's project" }]);
+      // performLogout assigns window.location.href, which jsdom cannot navigate.
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: { href: "" },
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      queryClient.clear();
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: originalLocation,
+      });
+    });
+
+    it("clears auth and the cache when a 403 org mismatch logs the user out", async () => {
+      vi.useFakeTimers();
+
+      const error = {
+        config: { url: "/test", headers: {} },
+        response: {
+          status: 403,
+          data: { message: "Forbidden", data: "User does not belong to this organization" },
+        },
+        message: "Forbidden",
+      };
+
+      await expect(rejected(error)).rejects.toThrow("User does not belong to this organization");
+      // Nothing is cleared until the scheduled logout runs.
+      expect(queryClient.getQueryData(["projects"])).toBeDefined();
+
+      vi.advanceTimersByTime(1000);
+
+      expect(mockStore.dispatch).toHaveBeenCalledWith({ type: "auth/clearAuthState" });
+      expect(queryClient.getQueryData(["projects"])).toBeUndefined();
+      expect(window.location.href).toBe("/login");
+    });
+
+    it("clears auth and the cache when the token refresh is rejected with 406", async () => {
+      const refreshError = { isAxiosError: true, response: { status: 406 }, message: "Expired" };
+      const postSpy = vi.spyOn(CustomAxios, "post").mockRejectedValueOnce(refreshError);
+
+      const error = {
+        config: { url: "/test", headers: {} },
+        response: { status: 406, data: { message: "Not Acceptable" } },
+        message: "Not Acceptable",
+      };
+
+      await expect(rejected(error)).rejects.toBe(refreshError);
+
+      expect(postSpy).toHaveBeenCalledWith("/users/refresh-token", {}, { withCredentials: true });
+      expect(mockStore.dispatch).toHaveBeenCalledWith({ type: "auth/clearAuthState" });
+      expect(queryClient.getQueryData(["projects"])).toBeUndefined();
+    });
+
+    it("keeps the cache when the token refresh fails for another reason", async () => {
+      const refreshError = { isAxiosError: true, response: { status: 500 }, message: "Boom" };
+      vi.spyOn(CustomAxios, "post").mockRejectedValueOnce(refreshError);
+
+      const error = {
+        config: { url: "/test", headers: {} },
+        response: { status: 406, data: { message: "Not Acceptable" } },
+        message: "Not Acceptable",
+      };
+
+      await expect(rejected(error)).rejects.toBe(refreshError);
+
+      expect(mockStore.dispatch).not.toHaveBeenCalled();
+      expect(queryClient.getQueryData(["projects"])).toBeDefined();
     });
   });
 });

@@ -2,7 +2,8 @@ import { useSelector } from "react-redux";
 import { Navigate, useLocation } from "react-router";
 import { useEffect, useState, useRef } from "react";
 import { useDispatch } from "react-redux";
-import { setUserExists, clearAuthState } from "../../../application/redux/auth/authSlice";
+import { setUserExists } from "../../../application/redux/auth/authSlice";
+import { clearSession } from "../../../application/utils/clearSession";
 import { getAllEntities } from "../../../application/repository/entity.repository";
 import { extractUserToken } from "../../../application/tools/extractToken";
 import { IProtectedRouteProps } from "../../types/widget.types";
@@ -54,7 +55,7 @@ const ProtectedRoute = ({
             });
           } catch (tokenError) {
             console.warn("Token validation failed, clearing auth state:", tokenError);
-            dispatch(clearAuthState());
+            clearSession(dispatch);
             hasValidatedRef.current = false;
             return; // Exit early since token is invalid
           }

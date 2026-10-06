@@ -732,6 +732,23 @@ api.interceptors.response.use(
 );
 ```
 
+### Ending a session
+
+Every logout path ends the session through `clearSession(dispatch)`
+(`Clients/src/application/utils/clearSession.ts`), which dispatches
+`clearAuthState()` and then clears the React Query cache, so no server data
+from one session is shown to the next user in the same tab. Auth is cleared
+first so anything that refetches afterwards has no token to send.
+
+| Path | Where |
+|------|-------|
+| Manual logout (sidebar, profile deletion) | `useLogout` (`application/hooks/useLogout.ts`) |
+| 403 org mismatch / not allowed | `performLogout` (`infrastructure/api/customAxios.ts`) |
+| Refresh token rejected with 406 | response interceptor (`infrastructure/api/customAxios.ts`) |
+| Stored token fails validation on load | `ProtectedRoute` |
+
+Do not dispatch `clearAuthState()` directly for a logout; call `clearSession`.
+
 ## Security Features Summary
 
 | Feature | Implementation |

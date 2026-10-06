@@ -1,5 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
 import { Route, Routes } from "react-router";
+import { http, HttpResponse } from "msw/http";
+import { server } from "../../../../test/mocks/server";
+import { queryClient } from "../../../../application/config/queryClient";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import ProtectedRoute from "../index";
 
@@ -89,5 +92,22 @@ describe("ProtectedRoute", () => {
     await waitFor(() => {
       expect(screen.getByTestId("vendors")).toBeInTheDocument();
     });
+  });
+
+  it("clears auth and the query cache when the stored token fails validation", async () => {
+    server.use(
+      http.get("/api/users/:id", () =>
+        HttpResponse.json({ message: "Unauthorized", data: "Invalid token" }, { status: 401 }),
+      ),
+    );
+    queryClient.setQueryData(["projects"], [{ id: 1, name: "Previous user's project" }]);
+
+    const { store } = renderProtected({ route: "/", authToken: TEST_AUTH_TOKEN });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("login-page")).toBeInTheDocument();
+    });
+    expect(store.getState().auth.authToken).toBe("");
+    expect(queryClient.getQueryData(["projects"])).toBeUndefined();
   });
 });
