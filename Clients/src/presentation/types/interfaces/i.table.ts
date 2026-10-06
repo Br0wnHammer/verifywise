@@ -70,6 +70,8 @@ export interface IExperimentRow {
   linkedModel?: number | null;
   date?: string;
   status: "In Progress" | "Completed" | "Failed" | "Pending" | "Running" | "Available";
+  /** Why a failed experiment failed (shown as a tooltip on failed rows) */
+  errorMessage?: string;
 }
 
 export interface IExperimentTableBodyProps {
