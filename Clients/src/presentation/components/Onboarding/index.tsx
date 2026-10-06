@@ -1,4 +1,3 @@
 export { default as OnboardingModal } from "./OnboardingModal";
 export { default as SetupModal } from "./SetupModal";
-export type { SetupCompleteOptions } from "./SetupModal";
 export { useOnboarding } from "../../../application/hooks/useOnboarding";

@@ -35,11 +35,7 @@ import { CommandPalette } from "./presentation/components/CommandPalette";
 import CommandPaletteErrorBoundary from "./presentation/components/CommandPalette/ErrorBoundary";
 import useCommandPalette from "./application/hooks/useCommandPalette";
 import useUserPreferences from "./application/hooks/useUserPreferences";
-import {
-  SetupModal,
-  useOnboarding,
-  type SetupCompleteOptions,
-} from "./presentation/components/Onboarding";
+import { SetupModal, useOnboarding } from "./presentation/components/Onboarding";
 import { lazyRoute } from "./application/utils/lazyRoute";
 import {
   UserGuideSidebarProvider,
@@ -158,13 +154,10 @@ function App() {
     [token, userId, isOnboardingLoading, state.isComplete, isOnboardingRoute],
   );
 
-  const handleOnboardingDone = useCallback(
-    (options?: SetupCompleteOptions) => {
-      completeOnboarding();
-      navigate(options?.destination ?? "/start-here");
-    },
-    [completeOnboarding, navigate],
-  );
+  const handleOnboardingDone = useCallback(() => {
+    completeOnboarding();
+    navigate("/start-here");
+  }, [completeOnboarding, navigate]);
 
   useEffect(() => {
     setShowAlertCallback((alertProps: AlertProps) => {

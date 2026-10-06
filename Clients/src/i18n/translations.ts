@@ -1593,7 +1593,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Add a reason for this decision...": "Grund für diese Entscheidung angeben...",
     "Add a repository first": "Zuerst ein Repository hinzufügen",
     "Add an API key": "API-Schlüssel hinzufügen",
-    "Add an LLM key": "LLM-Schlüssel hinzufügen",
     "Add approval notes": "Genehmigungsnotizen hinzufügen",
     "Add choice score": "Auswahlbewertung hinzufügen",
     "Add content filter rule": "Inhaltsfilterregel hinzufügen",
@@ -2297,8 +2296,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Optional input": "Optionale Eingabe",
     "Optional system prompt prepended to all requests":
       "Optionaler System-Prompt, der allen Anfragen vorangestellt wird",
-    "Optional. Advisor, reporting, and LLM evals need an API key.":
-      "Optional. KI-Berater, Berichte und LLM-Bewertungen benötigen einen API-Schlüssel.",
     "Options": "Optionen",
     "Or search for any model...": "Oder nach einem beliebigen Modell suchen...",
     "Organisation name": "Organisationsname",
@@ -11031,7 +11028,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Add a reason for this decision...": "Ajouter un motif pour cette décision...",
     "Add a repository first": "Ajoutez d'abord un dépôt",
     "Add an API key": "Ajouter une clé API",
-    "Add an LLM key": "Ajouter une clé LLM",
     "Add approval notes": "Ajouter des notes d'approbation",
     "Add choice score": "Ajouter un score de choix",
     "Add content filter rule": "Ajouter une règle de filtre de contenu",
@@ -11713,8 +11709,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Optional input": "Entrée optionnelle",
     "Optional system prompt prepended to all requests":
       "Prompt système optionnel ajouté au début de chaque requête",
-    "Optional. Advisor, reporting, and LLM evals need an API key.":
-      "Optionnel. Le conseiller IA, les rapports et les évaluations LLM ont besoin d'une clé API.",
     "Options": "Options",
     "Or search for any model...": "Ou rechercher un modèle...",
     "Organisation name": "Nom de l'organisation",
@@ -19675,7 +19669,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Add a reason for this decision...": "Añadir un motivo para esta decisión...",
     "Add a repository first": "Añada primero un repositorio",
     "Add an API key": "Añadir una clave de API",
-    "Add an LLM key": "Añadir una clave de LLM",
     "Add approval notes": "Añadir notas de aprobación",
     "Add choice score": "Añadir puntuación de opción",
     "Add content filter rule": "Añadir regla de filtro de contenido",
@@ -20347,8 +20340,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Optional field": "Campo opcional",
     "Optional friendly name": "Nombre descriptivo opcional",
     "Optional input": "Entrada opcional",
-    "Optional. Advisor, reporting, and LLM evals need an API key.":
-      "Opcional. El asesor de IA, los informes y las evaluaciones de LLM necesitan una clave de API.",
     "Options": "Opciones",
     "Or search for any model...": "O busca cualquier modelo...",
     "Organisation name": "Nombre de la organización",
