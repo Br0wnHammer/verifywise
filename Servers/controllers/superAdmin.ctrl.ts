@@ -15,7 +15,7 @@ import {
   getInvitationsByOrganizationQuery,
 } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
-import { ONE_WEEK_MS } from "../utils/jwt.utils";
+import { INVITATION_LIFETIME_MS } from "../utils/jwt.utils";
 import {
   ConflictException,
   ValidationException,
@@ -170,7 +170,7 @@ export async function createOrgWithUser(req: Request, res: Response) {
         transaction,
       );
     } else {
-      invitationExpiresAt = new Date(Date.now() + ONE_WEEK_MS);
+      invitationExpiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
       await createInvitationQuery(
         orgId,
         user.email,

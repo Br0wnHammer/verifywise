@@ -2,7 +2,7 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 
 jest.mock("../jwt.utils", () => ({
   generateInviteToken: jest.fn().mockReturnValue("mock-token-123"),
-  ONE_WEEK_MS: 604800000,
+  INVITATION_LIFETIME_MS: 2592000000,
 }));
 
 jest.mock("../../config/constants", () => ({ frontEndUrl: "https://app.example.com" }));
@@ -16,7 +16,7 @@ jest.mock("fs/promises", () => ({
 }));
 
 import fs from "fs/promises";
-import { generateInviteToken, ONE_WEEK_MS } from "../jwt.utils";
+import { generateInviteToken, INVITATION_LIFETIME_MS } from "../jwt.utils";
 import { sendEmail } from "../../services/emailService";
 import { sendInviteEmail } from "../inviteEmail.utils";
 
@@ -75,12 +75,12 @@ describe("inviteEmail.utils", () => {
       });
     });
 
-    it("should return expiresAt ~1 week from now", async () => {
+    it("should return expiresAt 30 days from now", async () => {
       const before = Date.now();
       const result = await sendInviteEmail(params);
       const after = Date.now();
 
-      const expectedExpires = before + ONE_WEEK_MS;
+      const expectedExpires = before + INVITATION_LIFETIME_MS;
       expect(result.expiresAt.getTime()).toBeGreaterThanOrEqual(expectedExpires - 1000);
       expect(result.expiresAt.getTime()).toBeLessThanOrEqual(
         expectedExpires + (after - before) + 1000,

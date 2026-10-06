@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-import { generateInviteToken, ONE_WEEK_MS } from "./jwt.utils";
+import { generateInviteToken, INVITATION_LIFETIME_MS } from "./jwt.utils";
 import { frontEndUrl } from "../config/constants";
 import { sendEmail } from "../services/emailService";
 import { translate } from "./i18n.utils";
@@ -54,7 +54,7 @@ export const sendInviteEmail = async (params: InviteEmailParams): Promise<Invite
     link,
   });
 
-  const expiresAt = new Date(Date.now() + ONE_WEEK_MS);
+  const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
 
   return { link, expiresAt, info };
 };

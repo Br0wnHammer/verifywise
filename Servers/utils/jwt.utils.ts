@@ -111,8 +111,9 @@ const getRefreshTokenPayload = (token: any): any => {
 
 // Token expiration constants
 const ONE_HOUR_MS = 1 * 3600 * 1000;
-const ONE_WEEK_MS = 7 * 24 * 3600 * 1000;
 const THIRTY_DAYS_MS = 1 * 3600 * 1000 * 24 * 30;
+/** How long an invitation link (and its stored expires_at) stays valid. */
+const INVITATION_LIFETIME_MS = THIRTY_DAYS_MS;
 
 /**
  * Internal helper to generate JWT tokens with configurable expiration and secret
@@ -145,10 +146,10 @@ const generateToken = (payload: object) => {
 
 /**
  * Generates a JWT token for invitation and password-reset emails.
- * Defaults to 1 week (invitations); pass a shorter lifetime for
- * password-reset links.
+ * Defaults to the invitation lifetime (30 days); password-reset links pass
+ * their own, shorter lifetime.
  */
-const generateInviteToken = (payload: object, expiresInMs: number = ONE_WEEK_MS) => {
+const generateInviteToken = (payload: object, expiresInMs: number = INVITATION_LIFETIME_MS) => {
   return signToken(payload, expiresInMs, process.env.JWT_SECRET as string);
 };
 
@@ -188,7 +189,7 @@ export {
   getRefreshTokenPayload,
   generateRefreshToken,
   generateApiToken,
-  ONE_WEEK_MS,
+  INVITATION_LIFETIME_MS,
   ONE_HOUR_MS,
   THIRTY_DAYS_MS,
 };

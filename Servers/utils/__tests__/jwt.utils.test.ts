@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "@jest/globals";
+import { describe, it, expect, beforeAll, afterEach, jest } from "@jest/globals";
 import {
   getTokenPayload,
   generateToken,
@@ -6,6 +6,8 @@ import {
   getRefreshTokenPayload,
   generateRefreshToken,
   generateApiToken,
+  INVITATION_LIFETIME_MS,
+  ONE_HOUR_MS,
 } from "../jwt.utils";
 
 // Set up required env vars for testing
@@ -72,13 +74,57 @@ describe("jwt.utils", () => {
   });
 
   describe("generateInviteToken", () => {
-    it("should generate a token with ~1 week expiration", () => {
+    it("should default to a 30-day invitation lifetime", () => {
       const before = Date.now();
       const token = generateInviteToken(testPayload);
+      const after = Date.now();
       const decoded = getTokenPayload(token!);
 
-      const oneWeekMs = 7 * 24 * 3600 * 1000;
-      expect(decoded.expire).toBeGreaterThanOrEqual(before + oneWeekMs - 100);
+      const thirtyDaysMs = 30 * 24 * 3600 * 1000;
+      expect(INVITATION_LIFETIME_MS).toBe(thirtyDaysMs);
+      expect(decoded.expire).toBeGreaterThanOrEqual(before + thirtyDaysMs);
+      expect(decoded.expire).toBeLessThanOrEqual(after + thirtyDaysMs);
+    });
+
+    it("should keep an explicit lifetime (password reset passes one hour)", () => {
+      const before = Date.now();
+      const token = generateInviteToken(testPayload, ONE_HOUR_MS);
+      const after = Date.now();
+      const decoded = getTokenPayload(token!);
+
+      expect(decoded.expire).toBeGreaterThanOrEqual(before + ONE_HOUR_MS);
+      expect(decoded.expire).toBeLessThanOrEqual(after + ONE_HOUR_MS);
+    });
+  });
+
+  // register.middleware rejects an invitation once `expire < Date.now()`
+  // (406 "This invitation link is expired"). Sign a real invitation token,
+  // then move the clock.
+  describe("invitation lifetime", () => {
+    const sentAt = new Date("2026-10-06T12:00:00Z").getTime();
+    const day = 24 * 3600 * 1000;
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const inviteSentAndOpenedAfter = (days: number) => {
+      jest.useFakeTimers({ now: sentAt });
+      const token = generateInviteToken(testPayload)!;
+      jest.setSystemTime(sentAt + days * day);
+      return getTokenPayload(token);
+    };
+
+    it("is still valid 29 days after it was sent", () => {
+      const decoded = inviteSentAndOpenedAfter(29);
+      expect(decoded).not.toBeNull();
+      expect(decoded.expire < Date.now()).toBe(false);
+    });
+
+    it("has expired 31 days after it was sent", () => {
+      const decoded = inviteSentAndOpenedAfter(31);
+      expect(decoded).not.toBeNull();
+      expect(decoded.expire < Date.now()).toBe(true);
     });
   });
 
