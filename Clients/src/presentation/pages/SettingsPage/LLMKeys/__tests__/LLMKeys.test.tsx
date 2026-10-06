@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import { QueryClient } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { useLocation } from "react-router";
 import { renderWithProviders } from "../../../../../test/renderWithProviders";
@@ -86,6 +87,24 @@ describe("LLMKeys", () => {
     await waitFor(() => {
       expect(screen.getByText("Failed to fetch LLM Keys")).toBeInTheDocument();
     });
+  });
+
+  it("shows no error when a cached list whose refetch failed reloads on mount", async () => {
+    // A list loaded elsewhere (e.g. the Advisor), then a refetch failed: the
+    // cache holds the list with status "error", which it keeps while it
+    // refetches on this page's mount.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(["llmKeys", 1], [buildKey()]);
+    await queryClient
+      .fetchQuery({ queryKey: ["llmKeys", 1], queryFn: () => Promise.reject(new Error("blip")) })
+      .catch(() => undefined);
+    expect(queryClient.getQueryState(["llmKeys", 1])?.status).toBe("error");
+
+    mockGetLLMKeys.mockResolvedValue({ data: { data: [buildKey()] } });
+    renderWithProviders(<LLMKeys />, { queryClient });
+
+    await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument());
+    expect(screen.queryByText("Failed to fetch LLM Keys")).not.toBeInTheDocument();
   });
 
   it("opens the add-key modal and creates a key using a custom endpoint", async () => {

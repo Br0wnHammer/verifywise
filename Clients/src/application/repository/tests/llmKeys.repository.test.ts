@@ -338,6 +338,16 @@ describe("Test LLM Keys Repository", () => {
       expect(result.providers).toEqual([]);
     });
 
+    it("should read a response without a data envelope as no keys", async () => {
+      // React Query rejects undefined query data, which would turn an empty
+      // answer into a failed load.
+      vi.mocked(apiServices.get).mockResolvedValue({ data: {}, status: 200, statusText: "OK" });
+
+      const result = await getLLMKeyStatus();
+
+      expect(result).toEqual({ hasKeys: false, keyCount: 0, providers: [] });
+    });
+
     it("should throw an error if the API call fails", async () => {
       const mockError = {
         response: { status: 500, data: { message: "Internal Server Error" } },

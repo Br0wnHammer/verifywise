@@ -60,9 +60,6 @@ interface AlertState {
   isToast?: boolean;
 }
 
-/** Stable empty list, so memos and effects do not re-run while loading. */
-const NO_KEYS: LLMKeysModel[] = [];
-
 interface HeaderRow {
   key: string;
   value: string;
@@ -74,7 +71,7 @@ const LLMKeys = () => {
     key: "",
     model: "",
   };
-  const { userRoleName, organizationId } = useAuth();
+  const { userRoleName } = useAuth();
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const isDisabled = !allowedRoles.llmKeys?.manage?.includes(userRoleName);
@@ -82,14 +79,12 @@ const LLMKeys = () => {
 
   // The shared, cached key list that Start here and the Advisor also read.
   const {
-    data: fetchedKeys,
-    isPending: isKeysPending,
+    keys,
+    loading: isKeysLoading,
+    isFetching: isKeysFetching,
     isError: isKeysError,
     errorUpdatedAt: keysErrorUpdatedAt,
   } = useLLMKeys();
-  const keys = fetchedKeys ?? NO_KEYS;
-  // Without an organization the query never runs: nothing to wait for.
-  const isKeysLoading = organizationId != null && isKeysPending;
   const [isLoading, setIsLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -108,10 +103,11 @@ const LLMKeys = () => {
     setAlert({ variant, title, body, isToast: false });
   }, []);
 
-  // One alert per failed load or refetch.
+  // One alert per failed load or refetch. A query cached in error keeps that
+  // status while it refetches, so wait for the fetch to settle first.
   useEffect(() => {
-    if (isKeysError) showAlert("error", "Error", "Failed to fetch LLM Keys");
-  }, [isKeysError, keysErrorUpdatedAt, showAlert]);
+    if (isKeysError && !isKeysFetching) showAlert("error", "Error", "Failed to fetch LLM Keys");
+  }, [isKeysError, isKeysFetching, keysErrorUpdatedAt, showAlert]);
 
   // After a change: refetch the shared key list and status that this page,
   // Start here, the Advisor, reporting and file summaries read.

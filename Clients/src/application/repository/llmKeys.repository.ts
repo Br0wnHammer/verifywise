@@ -38,7 +38,10 @@ export interface LLMKeyStatus {
   providers: string[];
 }
 
+const NO_KEY_STATUS: LLMKeyStatus = { hasKeys: false, keyCount: 0, providers: [] };
+
 export async function getLLMKeyStatus(): Promise<LLMKeyStatus> {
   const response = await apiServices.get("/llm-keys/status");
-  return (response.data as any).data as LLMKeyStatus;
+  // Never undefined: React Query treats undefined data as a failed load.
+  return ((response.data as any)?.data as LLMKeyStatus | undefined) ?? NO_KEY_STATUS;
 }

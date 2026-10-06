@@ -3,8 +3,9 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+let mockOrganizationId: number | null = 1;
 vi.mock("../useAuth", () => ({
-  useAuth: () => ({ organizationId: 1 }),
+  useAuth: () => ({ organizationId: mockOrganizationId }),
 }));
 
 vi.mock("../../repository/llmKeys.repository", () => ({
@@ -24,11 +25,72 @@ const keysResponse = (names: string[]) =>
     data: { data: names.map((name, i) => ({ id: i + 1, name, model: "m", key: "***" })) },
   }) as any;
 
+const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const renderKeys = (client: QueryClient) =>
+  renderHook(() => useLLMKeys(), {
+    wrapper: ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children),
+  });
+
 describe("useLLMKeys", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOrganizationId = 1;
+  });
+
+  it("is loading until the first list arrives, then returns it", async () => {
+    mockGetKeys.mockResolvedValueOnce(keysResponse(["OpenAI"]));
+    const { result } = renderKeys(newClient());
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.keys).toEqual([]);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.keys.map((k) => k.name)).toEqual(["OpenAI"]);
+  });
+
+  it("is loading while the mount's refetch of a stale cached list runs", () => {
+    const client = newClient();
+    client.setQueryData(["llmKeys", 1], []);
+    mockGetKeys.mockReturnValue(new Promise(() => {})); // refetch never resolves
+
+    const { result } = renderKeys(client);
+
+    // A stale empty list must not read as "no keys" while it is re-checked.
+    expect(mockGetKeys).toHaveBeenCalledTimes(1);
+    expect(result.current.loading).toBe(true);
+  });
+
+  it("stays settled while a later invalidation refetches", async () => {
+    const client = newClient();
+    mockGetKeys.mockResolvedValueOnce(keysResponse(["OpenAI"]));
+    const { result } = renderKeys(client);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    mockGetKeys.mockReturnValueOnce(new Promise(() => {}));
+    act(() => {
+      void client.invalidateQueries({ queryKey: ["llmKeys"] });
+    });
+
+    await waitFor(() => expect(mockGetKeys).toHaveBeenCalledTimes(2));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.keys).toHaveLength(1);
+  });
+
+  it("is settled with no keys and no request without an organization", () => {
+    mockOrganizationId = null;
+    const { result, rerender } = renderKeys(newClient());
+    const first = result.current.keys;
+    rerender();
+
+    expect(mockGetKeys).not.toHaveBeenCalled();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.keys).toEqual([]);
+    // Stable, so effects that depend on the list do not re-run every render.
+    expect(result.current.keys).toBe(first);
+  });
 
   it("refetches the key list and the status after invalidateLLMKeyQueries", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = newClient();
     const wrapper = ({ children }: { children: ReactNode }) =>
       createElement(QueryClientProvider, { client }, children);
 
@@ -37,7 +99,7 @@ describe("useLLMKeys", () => {
     const { result } = renderHook(() => ({ keys: useLLMKeys(), status: useLLMKeyStatus() }), {
       wrapper,
     });
-    await waitFor(() => expect(result.current.keys.data).toEqual([]));
+    await waitFor(() => expect(result.current.keys.keys).toEqual([]));
     await waitFor(() => expect(result.current.status.hasKeys).toBe(false));
 
     // A key was added on the keys page.
@@ -45,7 +107,7 @@ describe("useLLMKeys", () => {
     mockGetStatus.mockResolvedValueOnce({ hasKeys: true, keyCount: 1, providers: ["OpenAI"] });
     await act(() => invalidateLLMKeyQueries(client));
 
-    await waitFor(() => expect(result.current.keys.data).toHaveLength(1));
+    await waitFor(() => expect(result.current.keys.keys).toHaveLength(1));
     expect(result.current.status.hasKeys).toBe(true);
   });
 });
