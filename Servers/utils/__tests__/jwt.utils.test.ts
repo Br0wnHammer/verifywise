@@ -3,6 +3,7 @@ import {
   getTokenPayload,
   generateToken,
   generateInviteToken,
+  generateInviteTokenUntil,
   getRefreshTokenPayload,
   generateRefreshToken,
   generateApiToken,
@@ -74,16 +75,12 @@ describe("jwt.utils", () => {
   });
 
   describe("generateInviteToken", () => {
-    it("should default to a 30-day invitation lifetime", () => {
-      const before = Date.now();
-      const token = generateInviteToken(testPayload);
-      const after = Date.now();
-      const decoded = getTokenPayload(token!);
+    it("invitation links last 30 days and expire at the given instant", () => {
+      expect(INVITATION_LIFETIME_MS).toBe(30 * 24 * 3600 * 1000);
+      const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
+      const decoded = getTokenPayload(generateInviteTokenUntil(testPayload, expiresAt)!);
 
-      const thirtyDaysMs = 30 * 24 * 3600 * 1000;
-      expect(INVITATION_LIFETIME_MS).toBe(thirtyDaysMs);
-      expect(decoded.expire).toBeGreaterThanOrEqual(before + thirtyDaysMs);
-      expect(decoded.expire).toBeLessThanOrEqual(after + thirtyDaysMs);
+      expect(decoded.expire).toBe(expiresAt.getTime());
     });
 
     it("should keep an explicit lifetime (password reset passes one hour)", () => {

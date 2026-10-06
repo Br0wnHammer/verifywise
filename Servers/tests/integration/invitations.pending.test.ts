@@ -1,6 +1,8 @@
 jest.setTimeout(60000);
 
 import { cleanupDatabase } from "./helpers";
+import { QueryTypes } from "sequelize";
+import { sequelize } from "../../database/db";
 import { seedTwoTenantContexts } from "./tenant-isolation/tenantIsolation.harness";
 import {
   createInvitationQuery,
@@ -34,6 +36,35 @@ describe("getPendingInvitationQuery", () => {
     expect(invitation).not.toBeNull();
     expect(invitation!.role_id).toBe(3);
     expect(invitation!.expires_at_ms).toBe(expiresAt.getTime());
+  });
+
+  it("round-trips the same instant in a non-UTC session time zone", async () => {
+    const { owner } = await seedTwoTenantContexts();
+    const expiresAt = new Date("2026-11-05T13:14:15.678Z");
+
+    // SET LOCAL needs one connection, so write and read in one transaction.
+    const expiresAtMs = await sequelize.transaction(async (transaction) => {
+      await sequelize.query("SET LOCAL TIME ZONE 'America/Toronto'", { transaction });
+      await createInvitationQuery(
+        owner.orgId,
+        "invitee@example.com",
+        "In",
+        "Vitee",
+        3,
+        owner.userId,
+        expiresAt,
+        transaction,
+      );
+      const [zone] = (await sequelize.query("SELECT current_setting('TimeZone') AS tz", {
+        transaction,
+        type: QueryTypes.SELECT,
+      })) as { tz: string }[];
+      expect(zone.tz).toBe("America/Toronto");
+      return (await getPendingInvitationQuery(owner.orgId, "invitee@example.com", transaction))!
+        .expires_at_ms;
+    });
+
+    expect(expiresAtMs).toBe(expiresAt.getTime());
   });
 
   it("follows a resend's new expiry and ignores other organizations", async () => {

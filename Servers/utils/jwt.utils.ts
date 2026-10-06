@@ -160,11 +160,11 @@ const generateToken = (payload: object) => {
 };
 
 /**
- * Generates a JWT token for invitation and password-reset emails.
- * Defaults to the invitation lifetime (30 days); password-reset links pass
- * their own, shorter lifetime.
+ * Generates a JWT token that lives `expiresInMs`. Used for password-reset
+ * links (one hour). Invitations use generateInviteTokenUntil, so the link
+ * expires at its stored invitations.expires_at.
  */
-const generateInviteToken = (payload: object, expiresInMs: number = INVITATION_LIFETIME_MS) => {
+const generateInviteToken = (payload: object, expiresInMs: number) => {
   return signToken(payload, expiresInMs, process.env.JWT_SECRET as string);
 };
 

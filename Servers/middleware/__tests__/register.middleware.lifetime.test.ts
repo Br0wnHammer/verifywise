@@ -14,7 +14,7 @@ jest.mock("../../utils/roleMap", () => ({
 }));
 
 import registerJWT from "../register.middleware";
-import { generateInviteToken } from "../../utils/jwt.utils";
+import { generateInviteTokenUntil, INVITATION_LIFETIME_MS } from "../../utils/jwt.utils";
 import { getPendingInvitationQuery } from "../../utils/invitation.utils";
 import { hasRoleId } from "../../utils/roleMap";
 
@@ -32,7 +32,8 @@ const createRes = () => {
 /** Send an invitation, then try to register with it `days` later. */
 const registerAfter = async (days: number) => {
   jest.useFakeTimers({ now: sentAt });
-  const token = generateInviteToken(invite)!;
+  // Signed as sendInviteEmail signs it: for the invitation's stored expiry.
+  const token = generateInviteTokenUntil(invite, new Date(sentAt + INVITATION_LIFETIME_MS))!;
   jest.setSystemTime(sentAt + days * day);
 
   const req = {
