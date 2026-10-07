@@ -27,7 +27,7 @@ const mockCan = roleHasPermission as unknown as jest.Mock;
 const customKey = {
   id: 1,
   name: "Custom",
-  url: "https://user:token@proxy.example.com/v1?api-key=sk-live-1",
+  url: "https://user:token@proxy.example.com/v1/sk-live-path-key/chat?api-key=sk-live-1#frag",
   model: "m",
   custom_headers: { Authorization: "Bearer sk-secret" },
 };
@@ -82,14 +82,17 @@ describe("llmKey.ctrl reads", () => {
     const res = createRes();
     await getLLMKeys(req("Auditor"), res);
 
-    expect(returned(res)[0].url).toBe("https://proxy.example.com/v1");
+    // Only the origin: a key can also sit in the path or fragment.
+    expect(returned(res)[0].url).toBe("https://proxy.example.com");
   });
 
   it("keeps the full URL for a role that manages keys", async () => {
     const res = createRes();
     await getLLMKeys(req("Admin"), res);
 
-    expect(returned(res)[0].url).toBe("https://user:token@proxy.example.com/v1?api-key=sk-live-1");
+    expect(returned(res)[0].url).toBe(
+      "https://user:token@proxy.example.com/v1/sk-live-path-key/chat?api-key=sk-live-1#frag",
+    );
   });
 
   it("still lists keys, without credentials, when the permission lookup fails", async () => {
@@ -100,6 +103,6 @@ describe("llmKey.ctrl reads", () => {
 
     expect(res.status).toHaveBeenCalledWith(200);
     expect(returned(res)[0].custom_headers).toBeNull();
-    expect(returned(res)[0].url).toBe("https://proxy.example.com/v1");
+    expect(returned(res)[0].url).toBe("https://proxy.example.com");
   });
 });

@@ -20,15 +20,15 @@ import { translateError } from "../utils/i18n.utils";
 import { roleHasPermission } from "../utils/rolePermissions.utils";
 const fileName = "llmKey.ctrl.ts";
 
-/** A provider URL without credentials (user:password@, query string). */
-const withoutUrlCredentials = (url: string | null | undefined): string | null | undefined => {
+/**
+ * Only the scheme and host of a provider URL. A credential can sit in the
+ * user info, query string, path or fragment, and readers without
+ * llmKeys.admin only need to see which endpoint is used.
+ */
+const urlOrigin = (url: string | null | undefined): string | null | undefined => {
   if (!url) return url;
   try {
-    const parsed = new URL(url);
-    parsed.username = "";
-    parsed.password = "";
-    parsed.search = "";
-    return parsed.toString().replace(/\/$/, url.endsWith("/") ? "/" : "");
+    return new URL(url).origin;
   } catch {
     return null;
   }
@@ -36,7 +36,7 @@ const withoutUrlCredentials = (url: string | null | undefined): string | null | 
 
 /**
  * A Custom provider's credentials usually sit in its headers, and sometimes
- * in its URL (user:token@, ?api-key=), so only roles that manage keys
+ * in its URL (user:token@, ?api-key=, a path segment), so only roles that manage keys
  * (llmKeys.admin) see them. Everyone else gets the rest of the row: the
  * Advisor, reporting and Start here only need to know a key exists and which
  * provider/model it is. If the permission lookup fails, credentials are
@@ -56,7 +56,7 @@ const hideCredentialsUnlessManager = async <
   }
   return canManage
     ? keys
-    : keys.map((key) => ({ ...key, custom_headers: null, url: withoutUrlCredentials(key.url) }));
+    : keys.map((key) => ({ ...key, custom_headers: null, url: urlOrigin(key.url) }));
 };
 
 /**
