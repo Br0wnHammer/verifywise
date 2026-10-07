@@ -460,12 +460,19 @@ CREATE INDEX idx_automation_execution_logs_triggered_at
 
 ### Seeded Triggers
 
-| Key | Label | Event Name | Description |
-|-----|-------|------------|-------------|
-| `vendor_added` | Vendor Added | vendor.added | New vendor created |
-| `model_added` | Model Added | model.added | New model added |
-| `vendor_review_date_approaching` | Vendor Review Date Approaching | vendor.review_date_approaching | Review date within threshold |
-| `scheduled_report` | Scheduled Report | report.scheduled | Scheduled report generation |
+26 triggers are seeded in `Servers/database/migrations/20260226234301-public-schema-tables.js`:
+
+| Key pattern | Entities | Event name | Description |
+|-------------|----------|------------|-------------|
+| `<entity>_added` | vendor, model, project, task, risk, training, policy, incident | `<entity>.added` | New record created |
+| `<entity>_updated` | same 8 entities | `<entity>.updated` | Record updated |
+| `<entity>_deleted` | same 8 entities | `<entity>.deleted` | Record deleted |
+| `vendor_review_date_approaching` | vendor | `vendor.review_date_approaching` | Review date within threshold |
+| `scheduled_report` | — | `report.scheduled` | Scheduled report generation |
+
+### Seeded Actions
+
+One action is seeded and linked to every trigger: `send_email` (Send Email). Automations have no condition filters; an enabled automation runs its action on every event of its trigger type.
 
 ## API Routes
 

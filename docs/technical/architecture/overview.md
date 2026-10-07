@@ -258,7 +258,7 @@ Clients/src/
 - Permission checks in middleware and controllers
 
 ### Data Protection
-- AES-256-CBC encryption for sensitive data
+- AES-256-GCM encryption for sensitive data (decryption still accepts legacy AES-256-CBC values)
 - Tenant isolation prevents cross-tenant data access
 - Rate limiting on API endpoints
 - Input validation with express-validator

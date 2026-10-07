@@ -241,18 +241,18 @@ mlflow_integrations
 
 ### Sync Process
 
-1. Hourly sync via BullMQ (cron: `0 * * * *`)
-2. Check organization MLFlow config
-3. Verify last test was successful
-4. Fetch models from tracking server
-5. Update local MLFlow model records
-6. Record sync status
+Sync is manual. No scheduler runs it.
 
-### Retry Strategy
+1. A user clicks **Sync** on the Model Inventory → MLFlow tab (`POST /api/extensions/mlflow/sync`; requires sign-in and the MLflow extension to be enabled)
+2. Load the organization's MLflow extension config
+3. Fetch experiments, then search runs in chunks (`/api/2.0/mlflow/runs/search`)
+4. Transform runs into model records, de-duplicating on model name + lifecycle stage (latest training end wins)
+5. Upsert into `mlflow_model_records` (`ON CONFLICT (organization_id, model_name, version)`)
+6. Return the sync status (`success`, or `failed: <reason>`, including when MLflow returns no runs)
 
-- Max 3 retries
-- Exponential backoff (1s, 2s, 4s)
-- Soft error handling per organization
+### Error Handling
+
+- No automatic retries. A failed sync returns its error and the tab keeps showing the last synced records.
 
 ### MLFlow Model Record
 
