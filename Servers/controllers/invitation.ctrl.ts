@@ -7,6 +7,7 @@ import {
   updateInvitationExpiryQuery,
 } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
+import { inviteRoleRefusal } from "../utils/inviteRole.utils";
 
 /**
  * GET /api/invitations
@@ -64,6 +65,18 @@ export const resendInvitation = async (req: Request, res: Response): Promise<Res
     const invitation = await getInvitationByIdQuery(organizationId, id);
     if (!invitation) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
+    }
+
+    // A resend re-issues a working link, so the caller must be allowed to
+    // grant the invitation's role, as when inviting.
+    const refusal = await inviteRoleRefusal(organizationId, req.role!, invitation.role_id);
+    if (refusal === "unknown_role") {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Unknown role")));
+    }
+    if (refusal === "exceeds_access") {
+      return res
+        .status(403)
+        .json(STATUS_CODE[403](req.t!("You cannot invite a user with more access than your own")));
     }
 
     const { link, expiresAt, info } = await sendInviteEmail({

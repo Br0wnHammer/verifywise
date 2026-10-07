@@ -12,6 +12,10 @@ jest.mock("../../utils/inviteEmail.utils", () => ({
   sendInviteEmail: jest.fn(),
 }));
 
+jest.mock("../../utils/inviteRole.utils", () => ({
+  inviteRoleRefusal: jest.fn(),
+}));
+
 // Import controller AFTER mocks
 import { getInvitations, revokeInvitation, resendInvitation } from "../invitation.ctrl";
 import {
@@ -21,6 +25,7 @@ import {
   updateInvitationExpiryQuery,
 } from "../../utils/invitation.utils";
 import { sendInviteEmail } from "../../utils/inviteEmail.utils";
+import { inviteRoleRefusal } from "../../utils/inviteRole.utils";
 
 const mockGetAll = getInvitationsByTenantQuery as jest.MockedFunction<
   typeof getInvitationsByTenantQuery
@@ -31,6 +36,7 @@ const mockUpdateExpiry = updateInvitationExpiryQuery as jest.MockedFunction<
   typeof updateInvitationExpiryQuery
 >;
 const mockSendEmail = sendInviteEmail as jest.MockedFunction<typeof sendInviteEmail>;
+const mockRoleRefusal = inviteRoleRefusal as jest.MockedFunction<typeof inviteRoleRefusal>;
 
 function createReq(overrides?: Partial<Request>): any {
   return {
@@ -56,6 +62,7 @@ function createRes(): any {
 describe("invitation.ctrl", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRoleRefusal.mockResolvedValue(null);
   });
   afterEach(() => {
     jest.restoreAllMocks();
@@ -230,6 +237,27 @@ describe("invitation.ctrl", () => {
           link: "link",
         },
       });
+    });
+
+    it("refuses to resend an invitation whose role the caller may not grant", async () => {
+      // Resending re-issues a working link; a custom role allowed to invite
+      // must not re-issue an Admin invitation and register through it.
+      mockGetById.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      } as any);
+      mockRoleRefusal.mockResolvedValue("exceeds_access");
+      const req = createReq({ params: { id: "1" }, role: "Team lead" });
+      const res = createRes();
+
+      await resendInvitation(req, res);
+
+      expect(mockRoleRefusal).toHaveBeenCalledWith(1, "Team lead", 1);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(mockUpdateExpiry).not.toHaveBeenCalled();
     });
 
     it("should return 400 for invalid ID", async () => {

@@ -4,48 +4,7 @@ import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper
 import logger from "../utils/logger/fileLogger";
 import { createInvitationQuery } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
-import { getRoleByName, getRoleInfoById } from "../utils/roleMap";
-import { getEffectivePermissions } from "../utils/rolePermissions.utils";
-
-/**
- * Why the inviter may not grant this role, or null if they may. The role must
- * exist and be a built-in or this organization's own. Only an Admin grants a
- * built-in role: built-ins carry powers checked by role name, outside the
- * permission matrix. Any other inviter grants only custom roles with no
- * permission the inviter lacks. Either way an invite never grants more access
- * than the inviter's own role.
- */
-async function roleRefusal(
-  organizationId: number,
-  inviterRole: string,
-  roleId: number,
-): Promise<{ status: 400 | 403; message: string } | null> {
-  const role = await getRoleInfoById(roleId);
-  // SuperAdmin is granted through the super_admins mapping, never an invite.
-  if (
-    !role ||
-    role.name === "SuperAdmin" ||
-    (role.organizationId !== null && role.organizationId !== organizationId)
-  ) {
-    return { status: 400, message: "Unknown role" };
-  }
-  const inviter = await getRoleByName(organizationId, inviterRole);
-  const inviterIsAdmin = inviter?.organizationId === null && inviter.name === "Admin";
-  if (inviterIsAdmin) return null;
-  if (role.organizationId === null) {
-    return { status: 403, message: "You cannot invite a user with more access than your own" };
-  }
-  const [granted, held] = await Promise.all([
-    getEffectivePermissions(organizationId, role.name),
-    getEffectivePermissions(organizationId, inviterRole),
-  ]);
-  for (const permission of granted) {
-    if (!held.has(permission)) {
-      return { status: 403, message: "You cannot invite a user with more access than your own" };
-    }
-  }
-  return null;
-}
+import { inviteRoleRefusal } from "../utils/inviteRole.utils";
 
 export const invite = async (
   req: Request,
@@ -55,12 +14,18 @@ export const invite = async (
     name: string;
     surname?: string;
     roleId: number | string;
-    /** Ignored: an invite always goes to the inviter's own organization. */
+    /** Ignored: an invite goes to the inviter's own organization. */
     organizationId?: number | string;
   },
+  /**
+   * Set only by trusted internal callers (the super-admin route, which has
+   * already checked the caller is a super admin): invite into this
+   * organization, without the inviter's role ceiling. Never from the body.
+   */
+  trusted?: { organizationId: number },
 ) => {
   const { to, name, surname } = body;
-  const organizationId = req.organizationId;
+  const organizationId = trusted ? trusted.organizationId : req.organizationId;
   if (organizationId == null) {
     return res.status(403).json(STATUS_CODE[403](req.t!("Not allowed to access")));
   }
@@ -79,9 +44,14 @@ export const invite = async (
   logger.debug(`📧 Sending invitation email to ${to} for user ${name} ${surname || ""}`);
 
   try {
-    const refusal = await roleRefusal(organizationId, req.role!, roleId);
-    if (refusal) {
-      return res.status(refusal.status).json(STATUS_CODE[refusal.status](req.t!(refusal.message)));
+    const refusal = await inviteRoleRefusal(organizationId, trusted ? null : req.role!, roleId);
+    if (refusal === "unknown_role") {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Unknown role")));
+    }
+    if (refusal === "exceeds_access") {
+      return res
+        .status(403)
+        .json(STATUS_CODE[403](req.t!("You cannot invite a user with more access than your own")));
     }
 
     const { link, expiresAt, info } = await sendInviteEmail({

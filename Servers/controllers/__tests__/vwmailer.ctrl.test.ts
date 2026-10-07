@@ -212,4 +212,39 @@ describe("vwmailer.ctrl invite", () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(mockSend).not.toHaveBeenCalled();
   });
+
+  describe("trusted organization (super-admin invite)", () => {
+    // A super admin has no organization of their own; the super-admin route
+    // passes the target organization explicitly.
+    const superAdminReq = () => createReq({ organizationId: undefined, role: "SuperAdmin" });
+
+    it("invites into the given organization, without the inviter's ceiling", async () => {
+      const res = createRes();
+      await invite(superAdminReq(), res, body({ roleId: 1, organizationId: 7 }), {
+        organizationId: 42,
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 42, roleId: 1 }),
+      );
+      expect(mockCreate.mock.calls[0][0]).toBe(42);
+    });
+
+    it("accepts the given organization's custom role", async () => {
+      const res = createRes();
+      await invite(superAdminReq(), res, body({ roleId: 50 }), { organizationId: 42 });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("still refuses another organization's role and SuperAdmin", async () => {
+      for (const roleId of [60, 5]) {
+        const res = createRes();
+        await invite(superAdminReq(), res, body({ roleId }), { organizationId: 42 });
+        expect(res.status).toHaveBeenCalledWith(400);
+      }
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+  });
 });

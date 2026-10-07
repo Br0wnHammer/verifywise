@@ -403,13 +403,9 @@ export async function inviteUserToOrg(req: Request, res: Response) {
     return res.status(409).json(STATUS_CODE[409](req.t!("A user with this email already exists")));
   }
 
-  return invite(req, res, {
-    to: email,
-    name,
-    surname,
-    roleId,
-    organizationId: orgId,
-  });
+  // The organization comes from the route, passed as trusted: invite()
+  // ignores an organization in the body.
+  return invite(req, res, { to: email, name, surname, roleId }, { organizationId: orgId });
 }
 
 /**
