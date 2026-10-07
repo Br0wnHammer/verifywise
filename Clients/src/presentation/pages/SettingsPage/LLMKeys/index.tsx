@@ -111,9 +111,9 @@ const LLMKeys = () => {
 
   // After a change: refetch the shared key list and status that this page,
   // Start here, the Advisor, reporting and file summaries read.
-  const refreshKeys = useCallback(() => {
-    invalidateLLMKeyQueries(queryClient);
-  }, [queryClient]);
+  // Awaited by the handlers, so their spinner covers the refetch and the
+  // empty state does not flash before the new list arrives.
+  const refreshKeys = useCallback(() => invalidateLLMKeyQueries(queryClient), [queryClient]);
 
   // ?addKey=1 (Start here's "Go to settings") opens the add form once, then
   // leaves the URL so a refresh or Back does not reopen it. Every arrival
@@ -263,7 +263,7 @@ const LLMKeys = () => {
       const response = await createLLMKey({ body });
       if (response && response.data) {
         showAlert("success", "Success", "API key added successfully");
-        refreshKeys();
+        await refreshKeys();
       }
     } catch (error: any) {
       const errorMessage =
@@ -302,7 +302,7 @@ const LLMKeys = () => {
       const response = await editLLMKey({ id: keyToEdit, body });
       if (response && response.data) {
         showAlert("success", "Success", "API key updated successfully");
-        refreshKeys();
+        await refreshKeys();
       }
     } catch (error: any) {
       const errorMessage =
@@ -335,7 +335,7 @@ const LLMKeys = () => {
       const response = await deleteLLMKey(keyToDelete.id.toString());
       if (response && response.data) {
         showAlert("success", "Success", "LLM Key deleted successfully");
-        refreshKeys();
+        await refreshKeys();
       }
     } catch (_error) {
       showAlert("error", "Error", "Failed to delete LLM Key");

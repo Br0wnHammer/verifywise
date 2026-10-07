@@ -133,6 +133,32 @@ describe("LLMKeys", () => {
     expect(body.url).toBe("https://my-proxy.example.com/v1");
   });
 
+  it("does not flash the empty state while the list refreshes after adding a key", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<LLMKeys />);
+    await waitFor(() => expect(screen.getByText("No LLM keys yet")).toBeInTheDocument());
+
+    await user.click(screen.getByText("Add API key"));
+    await user.click(screen.getByText("Custom"));
+    await user.type(screen.getByLabelText(/Endpoint URL/), "https://my-proxy.example.com/v1");
+    await user.type(screen.getByLabelText(/Model name/), "llama-3");
+    await user.type(screen.getByLabelText(/^API key/), "sk-custom-newkey");
+
+    mockCreateLLMKey.mockResolvedValue({ data: { data: {} } });
+    let resolveList!: (value: unknown) => void;
+    mockGetLLMKeys.mockReturnValue(new Promise((resolve) => (resolveList = resolve)));
+
+    await user.click(screen.getByText("Add key"));
+    await waitFor(() => expect(mockCreateLLMKey).toHaveBeenCalled());
+    await waitFor(() => expect(mockGetLLMKeys).toHaveBeenCalledTimes(2));
+
+    // Still refreshing: a spinner, not "no keys".
+    expect(screen.queryByText("No LLM keys yet")).not.toBeInTheDocument();
+
+    resolveList({ data: { data: [buildKey({ name: "Custom" })] } });
+    await waitFor(() => expect(screen.getByText("Custom endpoint")).toBeInTheDocument());
+  });
+
   it("shows a custom endpoint URL field when Custom provider is selected", async () => {
     const user = userEvent.setup();
     renderWithProviders(<LLMKeys />);
