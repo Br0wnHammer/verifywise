@@ -628,16 +628,7 @@ Query params: `query`, `limit`, `offset`
 
 ### MLFlow
 
-**Base Path:** `/api/integrations/mlflow`
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| POST | `/test` | Test connection | JWT |
-| GET | `/config` | Get config | JWT |
-| POST | `/configure` | Configure | JWT |
-| GET | `/models` | Get models | JWT |
-| GET | `/sync-status` | Sync status | JWT |
-| GET | `/health` | Health check | None |
+MLflow is an extension. Its routes are under `/api/extensions/mlflow` (`GET /models`, `GET /models/:modelId`, `POST /sync`); configuration and the connection test use the generic extension endpoints. See [Extensions](#extensions).
 
 ### GitHub
 

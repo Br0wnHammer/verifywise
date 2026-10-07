@@ -26,7 +26,7 @@ export const automationsContent: ArticleContent = {
       type: 'bullet-list',
       items: [
         { bold: 'Trigger', text: 'What event starts the automation: a vendor, model, project, task, risk, training, policy or incident is added, updated or deleted; a vendor review date is approaching; or a scheduled report is due.' },
-        { bold: 'Action', text: 'What happens when the trigger fires. Today the available action is **Send email**, which emails the recipients you choose. For update triggers, the email can include a summary of the fields that changed.' },
+        { bold: 'Action', text: 'What happens when the trigger fires. Today the available action is Send email, which emails the recipients you choose. For update triggers, the email can include a summary of the fields that changed.' },
       ],
     },
     {
@@ -42,6 +42,7 @@ export const automationsContent: ArticleContent = {
         { text: 'Click **New automation**.' },
         { text: 'Give it a name and description.' },
         { text: 'Select a trigger event from the dropdown.' },
+        { text: 'Configure the trigger if it has settings, for example how many days before a vendor review date to notify, or the schedule and scope of a scheduled report.' },
         { text: 'Choose the action and configure its parameters.' },
         { text: 'Toggle the automation **Active** and click **Save**.' },
       ],

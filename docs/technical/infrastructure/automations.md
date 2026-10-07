@@ -2,7 +2,7 @@
 
 ## Overview
 
-VerifyWise uses BullMQ with Redis for background job processing and scheduled tasks. The system supports recurring jobs (cron-based), event-triggered automations, and user-configured workflows. Three separate queues handle different concerns: general automations, Slack notifications, and MLFlow sync.
+VerifyWise uses BullMQ with Redis for background job processing and scheduled tasks. The system supports recurring jobs (cron-based), event-triggered automations, and user-configured workflows. Two queues handle different concerns: general automations and Slack notifications. MLflow sync is not queued; it runs on demand when a user clicks **Sync**.
 
 ## Architecture
 
@@ -18,28 +18,28 @@ VerifyWise uses BullMQ with Redis for background job processing and scheduled ta
 │           │                                                                 │
 │           │ 1. Add job to queue                                             │
 │           ▼                                                                 │
-│  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐    │
-│  │  Automation      │     │  Slack           │     │  MLFlow          │    │
-│  │  Producer        │     │  Producer        │     │  Producer        │    │
-│  └────────┬─────────┘     └────────┬─────────┘     └────────┬─────────┘    │
-│           │                        │                        │              │
-│           │ 2. Jobs stored in Redis                         │              │
-│           ▼                        ▼                        ▼              │
+│  ┌──────────────────┐     ┌──────────────────┐                             │
+│  │  Automation      │     │  Slack           │                             │
+│  │  Producer        │     │  Producer        │                             │
+│  └────────┬─────────┘     └────────┬─────────┘                             │
+│           │                        │                                       │
+│           │ 2. Jobs stored in Redis                                        │
+│           ▼                        ▼                                       │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                              Redis                                   │   │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐      │   │
-│  │  │ automation-     │  │ slack-          │  │ mlflow-sync     │      │   │
-│  │  │ actions         │  │ notifications   │  │                 │      │   │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘      │   │
+│  │  ┌─────────────────┐  ┌─────────────────┐                           │   │
+│  │  │ automation-     │  │ slack-          │                           │   │
+│  │  │ actions         │  │ notifications   │                           │   │
+│  │  └─────────────────┘  └─────────────────┘                           │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
-│           │                        │                        │              │
-│           │ 3. Workers poll jobs                            │              │
-│           ▼                        ▼                        ▼              │
-│  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐    │
-│  │  Automation      │     │  Slack           │     │  MLFlow          │    │
-│  │  Worker          │     │  Worker          │     │  Worker          │    │
-│  │  (concurrency:10)│     │                  │     │                  │    │
-│  └────────┬─────────┘     └──────────────────┘     └──────────────────┘    │
+│           │                        │                                       │
+│           │ 3. Workers poll jobs                                           │
+│           ▼                        ▼                                       │
+│  ┌──────────────────┐     ┌──────────────────┐                             │
+│  │  Automation      │     │  Slack           │                             │
+│  │  Worker          │     │  Worker          │                             │
+│  │  (concurrency:10)│     │                  │                             │
+│  └────────┬─────────┘     └──────────────────┘                             │
 │           │                                                                 │
 │           │ 4. Execute job handler                                          │
 │           ▼                                                                 │
@@ -82,20 +82,6 @@ export const slackQueue = new Queue("slack-notifications", {
 });
 ```
 
-### MLFlow Sync Queue
-
-**Queue Name:** `mlflow-sync`
-
-Handles synchronization with MLFlow model registry.
-
-```typescript
-// File: Servers/services/mlflow/mlflowSyncProducer.ts
-
-export const mlflowQueue = new Queue("mlflow-sync", {
-  connection: { url: process.env.REDIS_URL }
-});
-```
-
 ## Scheduled Jobs
 
 ### Job Schedule Summary
@@ -109,7 +95,6 @@ Recurring (cron) jobs only — see [On-Demand Jobs](#on-demand-jobs) below for j
 | `pmm_hourly_check` | `0 * * * *` | Every hour | PMM cycle processing |
 | `report_scheduler_tick` | `*/15 * * * *` | Every 15 minutes | Template-first scheduled report dispatch |
 | `slack-notification-policy` | `0 9 * * *` | Daily at 9 AM | Slack policy due notifications |
-| `mlflow-sync-all-orgs` | `0 * * * *` | Every hour | MLFlow model sync |
 
 ### Cron Pattern Reference
 
@@ -299,19 +284,17 @@ export const createAutomationWorker = () => {
 ```typescript
 // File: Servers/jobs/worker.ts
 
+import { createNotificationWorker } from "../services/slack/slackWorker";
 import { createAutomationWorker } from "../services/automations/automationWorker";
-import { createSlackWorker } from "../services/slack/slackWorker";
-import { createMlflowWorker } from "../services/mlflow/mlflowSyncWorker";
 
-export const automationWorker = createAutomationWorker();
-export const slackWorker = createSlackWorker();
-export const mlflowWorker = createMlflowWorker();
+const notificationWorker = createNotificationWorker();
+const automationWorker = createAutomationWorker();
+
+const workers: Worker[] = [notificationWorker, automationWorker];
 
 // Graceful shutdown
 process.on("SIGINT", async () => {
-  await automationWorker.close();
-  await slackWorker.close();
-  await mlflowWorker.close();
+  await Promise.all(workers.map((worker) => worker.close()));
   process.exit(0);
 });
 ```

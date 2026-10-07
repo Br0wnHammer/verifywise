@@ -13,19 +13,19 @@ VerifyWise supports one MLflow configuration per organization. Each organization
 
 ## Setting up the MLflow extension
 1. Go to **Extensions** and click **Configure to enable** on the MLflow card.
-2. Fill in the **Tracking server URL** and **Request timeout (seconds)** (1–600 seconds, default 30). The timeout controls how long VerifyWise waits before declaring the MLflow API unreachable; increase it for slower on-prem clusters.
+2. Fill in the **Tracking server URL**. The form also has a **Request timeout (seconds)** field (1–600, default 30); it is saved but not yet applied to requests.
 3. Choose an **Authentication method**:
    - `None` – use when the server allows anonymous read access.
    - `Basic (username / password)` – enter a username and password.
    - `Token` – enter a personal access token or service token.
-4. Leave **Verify SSL certificate** on unless your server uses a self-signed certificate. Password and token fields are stored encrypted; leave a secret field blank later to keep the existing value.
+4. **Verify SSL certificate** is saved with the configuration but not yet applied: VerifyWise always verifies the server certificate, so a self-signed MLflow server needs a certificate the VerifyWise server trusts. Password and token fields are stored encrypted; leave a secret field blank later to keep the existing value.
 5. Click **Enable**, then **Test connection** to check that VerifyWise can reach the server with the saved settings.
 
 ## Syncing models
 Sync is manual. VerifyWise does not run a scheduled MLflow sync.
 
 - Open **Model Inventory → MLFlow** and click **Sync**. VerifyWise fetches experiments and runs from the MLflow REST API and upserts them into the `mlflow_model_records` table, keyed by organization, model name and version, so re-syncing updates existing records instead of creating duplicates.
-- If the sync fails, the tab shows the error returned by MLflow (or "Failed to sync with MLflow server. Showing cached data.") and keeps displaying the records from the last successful sync.
+- If the sync fails, the tab shows a "Sync failed" warning and keeps displaying the records from the last successful sync. The failure reason (for example, MLflow returned no runs) is in the API response's `status` field and the server logs.
 - Sync again whenever you need fresh data, for example before a model review.
 
 ## Working with Model Inventory → MLFlow data
@@ -41,7 +41,7 @@ The table lists each synced model version with columns for Model Name, Version, 
 - Experiment information (ID, name, artifact location) so you can trace lineage.
 
 ## Troubleshooting
-- **Connection test fails?** Check the tracking server URL, the authentication method and credentials, and network access between VerifyWise and MLflow. Increase the request timeout for slow servers.
+- **Connection test fails?** Check the tracking server URL, the authentication method and credentials, network access between VerifyWise and MLflow, and that the server's TLS certificate is trusted by the VerifyWise server.
 - **Sync succeeds but no data appears?** Confirm the MLflow account has permission to list experiments and runs, and that the server actually has runs recorded.
 - **Data looks out of date?** Click **Sync** on the MLFlow tab. Nothing pulls from MLflow in the background.
 - **Multi-tenant deployments:** Each organization repeats the setup steps above. Its configuration and model data stay isolated because VerifyWise scopes records by `organization_id`.

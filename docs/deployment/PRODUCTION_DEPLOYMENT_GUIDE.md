@@ -218,7 +218,7 @@ docker compose logs -f --tail=100
 docker compose exec backend node -e "const {sequelize} = require('./dist/database/db'); sequelize.authenticate().then(() => console.log('DB OK')).catch(e => console.error(e))"
 ```
 
-Note: VerifyWise does not currently have a dedicated health check endpoint. Monitor service health via Docker health checks and logs.
+Check `curl -fsS http://localhost:3000/health` (see [Health monitoring](#health-monitoring)), plus Docker health checks and logs.
 
 ---
 
@@ -339,7 +339,7 @@ crontab -e
 | Redis | `redis-cli ping` | Docker Compose built-in |
 | Backend | `GET /health` | HTTP probe / monitoring tool |
 
-The backend exposes `GET /health`, which checks PostgreSQL, Redis and the AI Gateway. It returns `200` with `{"status":"ok","checks":{...}}` when all checks pass, or `503` with `"status":"degraded"` and the failing check's error. The endpoint is rate-limited. Point load balancer, Kubernetes or external uptime probes at it.
+The backend exposes `GET /health`, which checks PostgreSQL, Redis and the AI Gateway. It returns `200` with `{"status":"ok","checks":{...}}` when all checks pass, or `503` with `"status":"degraded"` and the failing check's error. The endpoint is rate-limited. Use it for readiness probes, load-balancer checks and uptime monitoring. Avoid it as a liveness probe: an AI Gateway outage makes it return `503`, which would restart healthy backend pods.
 
 ### Monitoring with Docker
 

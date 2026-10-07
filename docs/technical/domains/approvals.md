@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Approval Workflows domain provides a comprehensive multi-step approval process for 15 entity types in VerifyWise (use cases, files, risks, vendors, models, policies, incidents, tasks, datasets, training, evidence, AI actions, automations, post-market monitoring configs and notes). It supports configurable workflow templates, multiple approval steps, flexible approver requirements, and automatic framework creation upon final approval.
+The Approval Workflows domain provides a comprehensive multi-step approval process for 15 entity types in VerifyWise (use cases, files, risks, vendors, models, policies, incidents, tasks, datasets, training, evidence, AI actions, automations, post-market monitoring configs and notes). It supports configurable workflow templates, multiple approval steps, flexible approver requirements, and, for use cases, automatic framework creation upon final approval.
 
 ## Key Features
 

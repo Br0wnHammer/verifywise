@@ -395,6 +395,8 @@ Pattern: Stale-while-revalidate
 ```
 verifywise_dashboard_metrics_cache   # metrics cache
 dashboard_view_preference            # "executive" | "operations"
+dashboard_active_tabs                # enabled dashboard tabs (tab bar currently hidden behind SHOW_AI_AGENT_DASHBOARD_TABS)
+dashboard_selected_tab               # last selected dashboard tab
 ```
 
 ## Error Handling
@@ -402,8 +404,9 @@ dashboard_view_preference            # "executive" | "operations"
 ### Error Boundary
 
 ```typescript
+// IntegratedDashboard.tsx wraps the whole dashboard
 <DashboardErrorBoundary>
-  <DashboardWidgets />
+  {/* dashboard content */}
 </DashboardErrorBoundary>
 ```
 
