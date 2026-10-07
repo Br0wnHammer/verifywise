@@ -9,6 +9,10 @@ import { useMyPermissions } from "./useRolePermissions";
  */
 const BUILTIN_ROLE_NAMES = new Set(["Admin", "Editor", "Reviewer", "Auditor"]);
 
+/** Whether canAccess answers from the static matrix, without waiting for permissions. */
+export const usesStaticMatrix = (roleName: string) =>
+  roleName === "SuperAdmin" || BUILTIN_ROLE_NAMES.has(roleName);
+
 /**
  * Maps frontend resource/action pairs to the backend permission key that
  * actually guards the corresponding API endpoints (issue #4588).
@@ -34,6 +38,7 @@ export const RESOURCE_ACTION_PERMISSION_KEY: Record<string, string> = {
   "customFields.manage": "customField.admin",
   "extensions.manage": "extension.admin",
   "approvalWorkflows.manage": "approvalWorkflow.admin",
+  "llmKeys.manage": "llmKeys.admin",
 };
 
 /**
@@ -62,8 +67,7 @@ export function useResourceAccess() {
       if (!allowed) return false;
 
       // SuperAdmin is not a roles-table row; keep it on the static matrix.
-      if (userRoleName === "SuperAdmin") return allowed.includes(userRoleName);
-      if (BUILTIN_ROLE_NAMES.has(userRoleName)) return allowed.includes(userRoleName);
+      if (usesStaticMatrix(userRoleName)) return allowed.includes(userRoleName);
 
       const permissionKey = RESOURCE_ACTION_PERMISSION_KEY[`${resource}.${action}`];
       return permissionKey != null && can(permissionKey);

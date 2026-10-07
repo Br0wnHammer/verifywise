@@ -1,6 +1,6 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { getLLMKeys } from "../repository/llmKeys.repository";
-import { LLMKeysModel } from "../../domain/models/Common/llmKeys/llmKeys.model";
+import { LLMKeysModel, type LLMKeysData } from "../../domain/models/Common/llmKeys/llmKeys.model";
 import { useAuth } from "./useAuth";
 import { useSettledLoading } from "./useSettledLoading";
 import { LLM_KEY_STATUS_QUERY_KEY, LLM_KEYS_QUERY_KEY } from "../constants/llmKeyQueries";
@@ -9,7 +9,7 @@ import { LLM_KEY_STATUS_QUERY_KEY, LLM_KEYS_QUERY_KEY } from "../constants/llmKe
 const NO_KEYS: LLMKeysModel[] = [];
 
 // Module-level so `select` only re-runs when the cached rows change.
-const toKeyModels = (rows: LLMKeysModel[]) => rows.map((key) => new LLMKeysModel(key));
+const toKeyModels = (rows: LLMKeysData[]) => rows.map((key) => new LLMKeysModel(key));
 
 /**
  * The organization's LLM keys, one cached query per org. Scoped to the org
@@ -28,7 +28,7 @@ export function useLLMKeys() {
     // Cache the plain rows: React Query only keeps an unchanged result's
     // reference for plain objects, so a refetch with the same keys does not
     // hand callers a new list. The models are built in `select`.
-    queryFn: async (): Promise<LLMKeysModel[]> => {
+    queryFn: async (): Promise<LLMKeysData[]> => {
       const response = await getLLMKeys();
       return response.data.data ?? [];
     },

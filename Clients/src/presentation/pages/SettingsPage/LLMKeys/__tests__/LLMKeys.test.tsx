@@ -18,7 +18,7 @@ let mockPermissionsPending = false;
 vi.mock("../../../../../application/hooks/useRolePermissions", () => ({
   useMyPermissions: () => ({
     can: (key: string) => mockPermissions.includes(key),
-    isPending: mockPermissionsPending,
+    isLoading: mockPermissionsPending,
   }),
 }));
 

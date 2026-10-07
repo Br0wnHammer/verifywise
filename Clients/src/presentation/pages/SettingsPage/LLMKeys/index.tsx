@@ -25,7 +25,11 @@ import StandardModal from "../../../components/Modals/StandardModal";
 import ConfirmationModal from "../../../components/Dialogs/ConfirmationModal";
 import Field from "../../../components/Inputs/Field";
 import Select from "../../../components/Inputs/Select";
-import { useCanManageLLMKeys } from "../../../../application/hooks/useCanManageLLMKeys";
+import { useAuth } from "../../../../application/hooks/useAuth";
+import {
+  useResourceAccess,
+  usesStaticMatrix,
+} from "../../../../application/hooks/useResourceAccess";
 import {
   LLMKeysFormData,
   LLMKeysModel,
@@ -73,8 +77,11 @@ const LLMKeys = () => {
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { canManageKeys, permissionsLoading } = useCanManageLLMKeys();
-  const isDisabled = !canManageKeys;
+  // Built-in roles use the role list; custom roles need llmKeys.admin, as on
+  // the server.
+  const { userRoleName } = useAuth();
+  const { canAccess, isLoading: permissionsLoading } = useResourceAccess();
+  const isDisabled = !canAccess("llmKeys", "manage");
 
   // The shared, cached key list that Start here and the Advisor also read.
   const {
@@ -120,12 +127,12 @@ const LLMKeys = () => {
   // once the permission list has loaded: a custom role may still be allowed.
   useEffect(() => {
     if (searchParams.get(LLM_KEY_ADD_PARAM) !== "1") return;
-    if (isDisabled && permissionsLoading) return;
+    if (isDisabled && permissionsLoading && !usesStaticMatrix(userRoleName)) return;
     if (!isDisabled) setIsCreateModalOpen(true);
     const next = new URLSearchParams(searchParams);
     next.delete(LLM_KEY_ADD_PARAM);
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isDisabled, permissionsLoading]);
+  }, [searchParams, setSearchParams, isDisabled, permissionsLoading, userRoleName]);
 
   useEffect(() => {
     if (alert) {
