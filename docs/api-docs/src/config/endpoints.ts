@@ -6665,6 +6665,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/llm-keys',
     summary: "Get L L M Keys",
+    description: "Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -6681,6 +6682,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     responses: [
       { status: 201, description: "Created successfully" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - requires the llmKeys.admin permission (Admin by default)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "LLM Keys",
@@ -6701,6 +6703,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/llm-keys/{name}',
     summary: "Get L L M Key",
+    description: "Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.",
     requiresAuth: true,
     parameters: [
       { name: 'name', in: 'path', type: 'string', required: true, description: "The name" },
@@ -6723,6 +6726,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - requires the llmKeys.admin permission (Admin by default)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "LLM Keys",
@@ -6738,6 +6742,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Deleted successfully" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - requires the llmKeys.admin permission (Admin by default)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "LLM Keys",
