@@ -26,7 +26,7 @@ from crud import evaluation_logs as crud
 from crud.deepeval_scorers import list_scorers, create_scorer, update_scorer, touch_scorer_updated_at
 from deepeval_engine.gatekeeper import evaluate_gate
 from utils.run_custom_scorer import run_custom_scorer, ScorerResult
-from utils.error_detection import FatalErrorTracker, detect_fatal_error
+from utils.error_detection import FatalErrorTracker, build_no_responses_message, detect_fatal_error
 
 
 async def _upsert_judge_scorer(
@@ -449,6 +449,9 @@ async def run_evaluation(
             return {"error": error_msg}
         
         test_cases_data = []
+        # Why each failed prompt failed (first cause per prompt), summarised in
+        # the failure reason if no prompt succeeds
+        generation_errors: Dict[int, str] = {}
 
         # Check if this is a simulated conversation mode
         simulated_mode = dataset_config.get("simulatedMode", False)
@@ -697,6 +700,8 @@ async def run_evaluation(
 
             for idx, prompt_data in enumerate(prompts, 1):
                 start_time = datetime.now()  # Set before try block so it's always defined
+                retry_error: Optional[str] = None
+                generated = False
                 try:
                     print(f"  [{idx}/{len(prompts)}] Processing: {prompt_data['prompt'][:50]}...")
                     
@@ -718,9 +723,13 @@ async def run_evaluation(
                             )
                         except Exception as retry_err:
                             print(f"     • Retry failed: {retry_err}")
+                            retry_error = str(retry_err)
                     
                     # If still empty, mark as error and continue
                     if not response or not str(response).strip():
+                        generation_errors.setdefault(
+                            idx, retry_error or "Model returned an empty response"
+                        )
                         await crud.create_log(
                             db=db,
                             project_id=config.get("project_id"),
@@ -737,6 +746,7 @@ async def run_evaluation(
                         print("     ✗ Empty output after retry - logged as error")
                         continue
                     
+                    generated = True
                     latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
                     
                     # Create test case
@@ -788,6 +798,11 @@ async def run_evaluation(
 
                 except Exception as e:
                     print(f"     ❌ Error: {e}")
+                    # A failure after the model answered is ours (saving the
+                    # result), not the provider's.
+                    generation_errors.setdefault(
+                        idx, f"Could not save the response: {e}" if generated else str(e)
+                    )
 
                     # Calculate latency even for errors (time spent before error)
                     error_latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -826,7 +841,7 @@ async def run_evaluation(
                     continue
         
         if not test_cases_data:
-            error_msg = "No responses generated"
+            error_msg = build_no_responses_message(len(prompts), list(generation_errors.values()))
             await crud.update_experiment_status(
                 db=db,
                 experiment_id=experiment_id,

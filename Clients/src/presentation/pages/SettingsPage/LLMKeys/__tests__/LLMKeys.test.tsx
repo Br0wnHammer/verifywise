@@ -13,6 +13,11 @@ vi.mock("../../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({ userRoleName: mockUserRoleName, organizationId: 1 }),
 }));
 
+let mockPermissions: string[] = [];
+vi.mock("../../../../../application/hooks/useRolePermissions", () => ({
+  useMyPermissions: () => ({ can: (key: string) => mockPermissions.includes(key) }),
+}));
+
 const mockGetLLMKeys = vi.fn();
 const mockCreateLLMKey = vi.fn();
 const mockEditLLMKey = vi.fn();
@@ -43,6 +48,7 @@ describe("LLMKeys", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUserRoleName = "Admin";
+    mockPermissions = [];
     mockGetLLMKeys.mockResolvedValue({ data: { data: [] } });
   });
 
@@ -272,5 +278,15 @@ describe("LLMKeys", () => {
     await waitFor(() =>
       expect(screen.queryByRole("heading", { name: "Add API key" })).not.toBeInTheDocument(),
     );
+  });
+
+  it("enables managing keys for a custom role granted llmKeys.admin", async () => {
+    // The server allows any role holding llmKeys.admin, not only Admin.
+    mockUserRoleName = "Platform admin";
+    mockPermissions = ["llmKeys.admin"];
+    mockGetLLMKeys.mockResolvedValue({ data: { data: [buildKey()] } });
+    renderWithProviders(<LLMKeys />);
+    await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument());
+    expect(screen.getByText("Create new LLM key").closest("button")).not.toBeDisabled();
   });
 });

@@ -7799,6 +7799,8 @@ tags:
   -
     name: 'Risk History'
   -
+    name: RiskLinks
+  -
     name: Roles
   -
     name: 'SSO Config'
@@ -9156,6 +9158,20 @@ paths:
                   message: {type: string, example: 'Internal Server Error'}
                   error: {type: string}
       operationId: deleteVendorById
+  '/vendors/{id}/riskSuggestions':
+    get:
+      summary: 'Get Vendor Risk Suggestions'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Vendors
+      operationId: getVendorRiskSuggestions
+      security:
+        -
+          bearerAuth: []
   '/vendor-change-history/{id}':
     get:
       tags:
@@ -10221,6 +10237,268 @@ paths:
         -
           bearerAuth: []
       description: 'Requires role: Admin or Editor'
+  /riskLinks/recompute:
+    post:
+      summary: 'Recompute All Risk Links'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: recomputeAllRiskLinks
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
+  /riskLinks/suggest-hierarchy:
+    post:
+      summary: 'Suggest Risk Hierarchy'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: suggestRiskHierarchy
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
+  /riskLinks:
+    post:
+      summary: 'Create Risk Link'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: createRiskLink
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or Editor'
+    get:
+      summary: 'Get Risk Graph'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getRiskGraph
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
+  /riskLinks/dismissals:
+    get:
+      summary: 'Get Dismissal Analytics'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getDismissalAnalytics
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
+  /riskLinks/duplicates:
+    get:
+      summary: 'Get Duplicate Candidates'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getDuplicateCandidates
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
+  /riskLinks/coverage:
+    get:
+      summary: 'Get Control Coverage'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getControlCoverage
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
+  /riskLinks/vendor-exposure:
+    get:
+      summary: 'Get Vendor Exposure'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorExposure
+      security:
+        -
+          bearerAuth: []
+  /riskLinks/vendor-duplicates:
+    get:
+      summary: 'Get Vendor Duplicate Candidates'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorDuplicateCandidates
+      security:
+        -
+          bearerAuth: []
+  /riskLinks/vendor-coverage:
+    get:
+      summary: 'Get Vendor Framework Coverage'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorFrameworkCoverage
+      security:
+        -
+          bearerAuth: []
+  '/riskLinks/vendor-risks/{vendorRiskId}':
+    get:
+      summary: 'Get Vendor Risk Links'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorRiskLinks
+      security:
+        -
+          bearerAuth: []
+  '/riskLinks/vendor-risks/{vendorRiskId}/shared-projects':
+    get:
+      summary: 'Get Vendor Risk Shared Projects'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getVendorRiskSharedProjects
+      security:
+        -
+          bearerAuth: []
+  /riskLinks/vendor-risks/recompute:
+    post:
+      summary: 'Recompute All Vendor Risk Links'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: recomputeAllVendorRiskLinks
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
+  '/riskLinks/vendor-risks/{vendorRiskId}/suggest-hierarchy':
+    post:
+      summary: 'Suggest Vendor Risk Hierarchy'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: suggestVendorRiskHierarchy
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or SuperAdmin'
+  '/riskLinks/{riskId}':
+    get:
+      summary: 'Get Risk Links'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getRiskLinks
+      security:
+        -
+          bearerAuth: []
+  '/riskLinks/{riskId}/shared-projects':
+    get:
+      summary: 'Get Shared Projects'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: getSharedProjects
+      security:
+        -
+          bearerAuth: []
+  '/riskLinks/{id}':
+    patch:
+      summary: 'Update Risk Link Status'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: updateRiskLinkStatus
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or Editor or Reviewer'
+  '/riskLinks/{id}/acknowledge-parent-change':
+    post:
+      summary: 'Acknowledge Parent Level Change'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - RiskLinks
+      operationId: acknowledgeParentLevelChange
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin or Editor'
   /roles:
     get:
       tags:
@@ -10237,6 +10515,47 @@ paths:
           description: Unauthorized
         '500':
           description: 'Internal server error'
+    post:
+      summary: 'Create Role'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Roles
+      operationId: createRole
+      security:
+        -
+          bearerAuth: []
+  /roles/permissions/catalog:
+    get:
+      summary: 'Get Permission Catalog'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Roles
+      operationId: getPermissionCatalog
+      security:
+        -
+          bearerAuth: []
+  /roles/my-permissions:
+    get:
+      summary: 'Get My Permissions'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Roles
+      operationId: getMyPermissions
+      security:
+        -
+          bearerAuth: []
   '/roles/{id}':
     get:
       tags:
@@ -10260,6 +10579,59 @@ paths:
           description: Unauthorized
         '500':
           description: 'Internal server error'
+    put:
+      summary: 'Update Role By Id'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Roles
+      operationId: updateRoleById
+      security:
+        -
+          bearerAuth: []
+    delete:
+      summary: 'Delete Role By Id'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Roles
+      operationId: deleteRoleById
+      security:
+        -
+          bearerAuth: []
+  '/roles/{id}/permissions':
+    get:
+      summary: 'Get Role Permissions By Id'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Roles
+      operationId: getRolePermissionsById
+      security:
+        -
+          bearerAuth: []
+    put:
+      summary: 'Replace Role Permissions'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Roles
+      operationId: replaceRolePermissions
+      security:
+        -
+          bearerAuth: []
   /files:
     get:
       tags:
@@ -17025,34 +17397,6 @@ paths:
           description: Unauthorized
         '500':
           description: 'Internal server error'
-  /file-manager/org-settings:
-    get:
-      summary: 'Get File Org Settings Handler'
-      responses:
-        '200':
-          description: Success
-        '500':
-          description: 'Internal server error'
-      tags:
-        - Files
-      operationId: getFileOrgSettingsHandler
-      security:
-        -
-          bearerAuth: []
-    put:
-      summary: 'Update File Org Settings Handler'
-      responses:
-        '200':
-          description: Success
-        '500':
-          description: 'Internal server error'
-      tags:
-        - Files
-      operationId: updateFileOrgSettingsHandler
-      security:
-        -
-          bearerAuth: []
-      description: 'Requires role: Admin'
   '/file-manager/{id}':
     get:
       tags:
@@ -17472,6 +17816,7 @@ paths:
       tags:
         - 'LLM Keys'
       summary: 'Get L L M Keys'
+      description: 'Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.'
       operationId: getLLMKeys
       security:
         -
@@ -17501,6 +17846,8 @@ paths:
           description: 'Created successfully'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - requires the llmKeys.admin permission (Admin by default)'
         '500':
           description: 'Internal server error'
   /llm-keys/status:
@@ -17524,6 +17871,7 @@ paths:
       tags:
         - 'LLM Keys'
       summary: 'Get L L M Key'
+      description: 'Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.'
       operationId: getLLMKey
       security:
         -
@@ -17568,6 +17916,8 @@ paths:
           description: Success
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - requires the llmKeys.admin permission (Admin by default)'
         '500':
           description: 'Internal server error'
     delete:
@@ -17590,6 +17940,8 @@ paths:
           description: 'Deleted successfully'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - requires the llmKeys.admin permission (Admin by default)'
         '500':
           description: 'Internal server error'
   /nist-ai-rmf/functions:
@@ -17881,6 +18233,21 @@ paths:
           description: Unauthorized
         '500':
           description: 'Internal server error'
+  /evidenceHub/freshness-sweep:
+    post:
+      summary: 'Run Freshness Sweep'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Evidence
+      operationId: runFreshnessSweep
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin'
   /evidenceHub:
     get:
       tags:

@@ -27,6 +27,7 @@ import Field from "../../../components/Inputs/Field";
 import Select from "../../../components/Inputs/Select";
 import allowedRoles from "../../../../application/constants/permissions";
 import { useAuth } from "../../../../application/hooks/useAuth";
+import { useMyPermissions } from "../../../../application/hooks/useRolePermissions";
 import {
   LLMKeysFormData,
   LLMKeysModel,
@@ -74,8 +75,11 @@ const LLMKeys = () => {
   const { userRoleName } = useAuth();
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
-  const isDisabled = !allowedRoles.llmKeys?.manage?.includes(userRoleName);
   const queryClient = useQueryClient();
+  const { can } = useMyPermissions();
+  // The server allows any role holding llmKeys.admin; the role list keeps
+  // Admins enabled while the permission list is still loading.
+  const isDisabled = !can("llmKeys.admin") && !allowedRoles.llmKeys?.manage?.includes(userRoleName);
 
   // The shared, cached key list that Start here and the Advisor also read.
   const {

@@ -13,6 +13,7 @@ import { CustomizableButton } from "../../components/button/customizable-button"
 import Alert from "../../components/Alert";
 import ConfirmationModal from "../../components/Dialogs/ConfirmationModal";
 import StandardModal from "../../components/Modals/StandardModal";
+import VWTooltip from "../../components/VWTooltip";
 import {
   TrendingUp,
   TrendingDown,
@@ -408,6 +409,10 @@ export default function ExperimentDetailContent({
       }
     ).config || {};
 
+  // Why a failed run failed; shown as the banner's main line when present
+  const failureReason =
+    experiment.status === "failed" ? experiment.error_message?.trim() || undefined : undefined;
+
   return (
     <Box>
       {alert && (
@@ -636,8 +641,13 @@ export default function ExperimentDetailContent({
       >
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           {/* Status Section */}
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <Box>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={2}
+            sx={failureReason ? { flex: 1, minWidth: 0, mr: "24px" } : undefined}
+          >
+            <Box sx={failureReason ? { minWidth: 0 } : undefined}>
               <Typography
                 sx={{
                   fontSize: 10,
@@ -658,6 +668,29 @@ export default function ExperimentDetailContent({
                     ? "Failed"
                     : "Status"}
               </Typography>
+              {failureReason && (
+                <VWTooltip
+                  content={<Box sx={{ wordBreak: "break-word" }}>{failureReason}</Box>}
+                  placement="bottom-start"
+                  maxWidth={600}
+                >
+                  <Typography
+                    data-testid="experiment-failure-reason"
+                    sx={{
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: palette.status.error.text,
+                      wordBreak: "break-word",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {failureReason}
+                  </Typography>
+                </VWTooltip>
+              )}
               <Box
                 sx={{
                   "display": "inline-flex",
@@ -703,10 +736,11 @@ export default function ExperimentDetailContent({
                   <>
                     <Typography
                       sx={{
-                        fontSize: 14,
-                        fontWeight: 500,
-                        color:
-                          experiment.status === "completed"
+                        fontSize: failureReason ? 12 : 14,
+                        fontWeight: failureReason ? 400 : 500,
+                        color: failureReason
+                          ? palette.text.secondary
+                          : experiment.status === "completed"
                             ? palette.status.success.text
                             : experiment.status === "failed"
                               ? palette.status.error.text

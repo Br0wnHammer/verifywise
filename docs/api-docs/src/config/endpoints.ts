@@ -3203,6 +3203,18 @@ export const evidenceAiEndpoints: Endpoint[] = [
 // Evidence endpoints
 export const evidenceHubEndpoints: Endpoint[] = [
   {
+    method: 'POST',
+    path: '/evidenceHub/freshness-sweep',
+    summary: "Run Freshness Sweep",
+    description: "Requires role: Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Evidence",
+  },
+  {
     method: 'GET',
     path: '/evidenceHub',
     summary: "Get All Evidences",
@@ -4351,29 +4363,6 @@ export const fileEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Files",
-  },
-  {
-    method: 'GET',
-    path: '/file-manager/org-settings',
-    summary: "Get File Org Settings Handler",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Files",
-  },
-  {
-    method: 'PUT',
-    path: '/file-manager/org-settings',
-    summary: "Update File Org Settings Handler",
-    description: "Requires role: Admin",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Files",
@@ -6676,6 +6665,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/llm-keys',
     summary: "Get L L M Keys",
+    description: "Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -6692,6 +6682,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     responses: [
       { status: 201, description: "Created successfully" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - requires the llmKeys.admin permission (Admin by default)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "LLM Keys",
@@ -6712,6 +6703,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/llm-keys/{name}',
     summary: "Get L L M Key",
+    description: "Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.",
     requiresAuth: true,
     parameters: [
       { name: 'name', in: 'path', type: 'string', required: true, description: "The name" },
@@ -6734,6 +6726,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - requires the llmKeys.admin permission (Admin by default)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "LLM Keys",
@@ -6749,6 +6742,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Deleted successfully" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - requires the llmKeys.admin permission (Admin by default)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "LLM Keys",
@@ -9386,6 +9380,219 @@ export const riskHistoryEndpoints: Endpoint[] = [
   },
 ];
 
+// RiskLinks endpoints
+export const risklinksEndpoints: Endpoint[] = [
+  {
+    method: 'POST',
+    path: '/riskLinks/recompute',
+    summary: "Recompute All Risk Links",
+    description: "Requires role: Admin or SuperAdmin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'POST',
+    path: '/riskLinks/suggest-hierarchy',
+    summary: "Suggest Risk Hierarchy",
+    description: "Requires role: Admin or SuperAdmin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks',
+    summary: "Get Risk Graph",
+    description: "Requires role: Admin or SuperAdmin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'POST',
+    path: '/riskLinks',
+    summary: "Create Risk Link",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/dismissals',
+    summary: "Get Dismissal Analytics",
+    description: "Requires role: Admin or SuperAdmin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/duplicates',
+    summary: "Get Duplicate Candidates",
+    description: "Requires role: Admin or SuperAdmin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/coverage',
+    summary: "Get Control Coverage",
+    description: "Requires role: Admin or SuperAdmin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/vendor-exposure',
+    summary: "Get Vendor Exposure",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/vendor-duplicates',
+    summary: "Get Vendor Duplicate Candidates",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/vendor-coverage',
+    summary: "Get Vendor Framework Coverage",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/vendor-risks/{vendorRiskId}',
+    summary: "Get Vendor Risk Links",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/vendor-risks/{vendorRiskId}/shared-projects',
+    summary: "Get Vendor Risk Shared Projects",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'POST',
+    path: '/riskLinks/vendor-risks/recompute',
+    summary: "Recompute All Vendor Risk Links",
+    description: "Requires role: Admin or SuperAdmin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'POST',
+    path: '/riskLinks/vendor-risks/{vendorRiskId}/suggest-hierarchy',
+    summary: "Suggest Vendor Risk Hierarchy",
+    description: "Requires role: Admin or SuperAdmin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/{riskId}',
+    summary: "Get Risk Links",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'GET',
+    path: '/riskLinks/{riskId}/shared-projects',
+    summary: "Get Shared Projects",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'PATCH',
+    path: '/riskLinks/{id}',
+    summary: "Update Risk Link Status",
+    description: "Requires role: Admin or Editor or Reviewer",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+  {
+    method: 'POST',
+    path: '/riskLinks/{id}/acknowledge-parent-change',
+    summary: "Acknowledge Parent Level Change",
+    description: "Requires role: Admin or Editor",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "RiskLinks",
+  },
+];
+
 // Roles endpoints
 export const roleEndpoints: Endpoint[] = [
   {
@@ -9401,6 +9608,39 @@ export const roleEndpoints: Endpoint[] = [
     tag: "Roles",
   },
   {
+    method: 'POST',
+    path: '/roles',
+    summary: "Create Role",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Roles",
+  },
+  {
+    method: 'GET',
+    path: '/roles/permissions/catalog',
+    summary: "Get Permission Catalog",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Roles",
+  },
+  {
+    method: 'GET',
+    path: '/roles/my-permissions',
+    summary: "Get My Permissions",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Roles",
+  },
+  {
     method: 'GET',
     path: '/roles/{id}',
     summary: "Get Role By Id",
@@ -9411,6 +9651,50 @@ export const roleEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Roles",
+  },
+  {
+    method: 'PUT',
+    path: '/roles/{id}',
+    summary: "Update Role By Id",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Roles",
+  },
+  {
+    method: 'DELETE',
+    path: '/roles/{id}',
+    summary: "Delete Role By Id",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Roles",
+  },
+  {
+    method: 'GET',
+    path: '/roles/{id}/permissions',
+    summary: "Get Role Permissions By Id",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Roles",
+  },
+  {
+    method: 'PUT',
+    path: '/roles/{id}/permissions',
+    summary: "Replace Role Permissions",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Roles",
@@ -11146,6 +11430,17 @@ export const vendorEndpoints: Endpoint[] = [
     ],
     tag: "Vendors",
   },
+  {
+    method: 'GET',
+    path: '/vendors/{id}/riskSuggestions',
+    summary: "Get Vendor Risk Suggestions",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Vendors",
+  },
 ];
 
 // Vendor Risks endpoints
@@ -11353,6 +11648,7 @@ export const allEndpoints = {
   reportingtemplates: reportingtemplatesEndpoints,
   riskBenchmark: riskBenchmarkEndpoints,
   riskHistory: riskHistoryEndpoints,
+  risklinks: risklinksEndpoints,
   role: roleEndpoints,
   search: searchEndpoints,
   setting: settingEndpoints,

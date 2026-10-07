@@ -25,6 +25,38 @@ Safety and idempotency notes:
 - `seed:incidents`: needs the backend running. Auth comes from env only: `AUTH_TOKEN=<jwt>`, or `SEED_EMAIL` + `SEED_PASSWORD`. `API_BASE_URL` defaults to `http://localhost:3000/api`. Incidents whose description already exists are skipped. They're created as regular (not `is_demo`) incidents, so `seed:demo:delete` does not remove them.
 - `seed:automation-logs`: never creates automations. If the org has none, it says so and exits. Seeded rows are tagged `trigger_data.seeded_by = "demo-seed"`. Reruns replace only those, and real run history is left alone.
 
+## Risk-links demo SQL (`scripts/seeds/sql/`)
+
+Plain SQL fixtures for the risk-links / risk-inheritance feature, run with
+`psql` against a **scratch local database only**. They target org 1 / user 1
+and are idempotent by deleting and re-inserting fixed id ranges.
+
+**Warning:** the clean-slate DELETEs match on id ranges (for example
+`evidence_hub` ids 9700-9799) without an `organization_id` filter. On any
+database that holds real data they delete whatever rows have those ids, in
+any organization. Never run them against a shared, staging or production
+database.
+
+Run order matters: `seed_risk_links_demo.sql` defines the base project and
+risks the others build on, and it clean-slates rows the later seeds add, so
+re-running it means re-running the rest. The coverage seed needs risk 9561,
+which only the duplicates seed creates.
+
+| Order | File                                 | What it adds                                                         |
+| ----- | ------------------------------------ | -------------------------------------------------------------------- |
+| 1     | `seed_risk_links_demo.sql`           | Base demo project, risks, evidence and risk links (features 1-5).    |
+| 2     | `seed_risk_duplicates_demo.sql`      | Near-duplicate risks for duplicate detection.                        |
+| 3     | `seed_risk_coverage_demo.sql`        | Control-coverage gap data. Needs risk 9561 from the duplicates seed. |
+| 4     | `seed_risk_deadlines_demo.sql`       | Deadlines on existing demo risks for the escalation sweep.           |
+| 5     | `seed_vendor_questionnaire_demo.sql` | Vendor questionnaire risks.                                          |
+
+```bash
+for f in seed_risk_links_demo seed_risk_duplicates_demo seed_risk_coverage_demo \
+         seed_risk_deadlines_demo seed_vendor_questionnaire_demo; do
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seeds/sql/$f.sql
+done
+```
+
 ## E2E and CI seeders (left in `scripts/` on purpose)
 
 CI and the Playwright suite reference these by path, so don't move or rename them.

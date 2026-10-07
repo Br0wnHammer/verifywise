@@ -52,6 +52,7 @@ interface AlertState {
   isToast?: boolean;
 }
 import Alert from "../../../components/Alert";
+import { pageOfLabel } from "../../../components/Table/pageOfLabel";
 
 // Constants for roles
 
@@ -682,7 +683,7 @@ const TeamManagement: React.FC = (): JSX.Element => {
                         ActionsComponent={(props) => <TablePaginationActions {...props} />}
                         labelRowsPerPage="Rows per page"
                         labelDisplayedRows={({ page, count }) =>
-                          `Page ${page + 1} of ${Math.max(0, Math.ceil(count / rowsPerPage))}`
+                          pageOfLabel(page + 1, Math.max(0, Math.ceil(count / rowsPerPage)))
                         }
                         slotProps={{
                           select: {

@@ -65,6 +65,14 @@ export const tenantIsolationRegistry: IsolationEntity[] = [
     tables: ["users"],
     baseRoute: "/api/users",
   },
+  // Custom organization roles and their permission matrix (issue #4588):
+  // hand-written role-permissions.isolation.test.ts.
+  {
+    name: "role-permissions",
+    tables: ["role_permissions", "roles"],
+    baseRoute: "/api/roles",
+    testFile: "role-permissions.isolation.test.ts",
+  },
   // The risks controller answers "not found" and an empty list with 204.
   crudEntity("risks", "/api/projectRisks", ["risks", "projects_risks"], riskFixture, {
     updateVerb: "PUT",
@@ -202,6 +210,14 @@ export const tenantIsolationRegistry: IsolationEntity[] = [
     name: "scheduled_reports",
     tables: ["scheduled_reports"],
     baseRoute: "/api/reporting/scheduled-reports",
+  },
+  {
+    // No conventional CRUD surface (links are scored by the engine, then
+    // confirmed or dismissed), so the hand-written file covers it.
+    name: "risk_links",
+    tables: ["risk_links"],
+    baseRoute: "/api/riskLinks",
+    testFile: "riskLinks.isolation.test.ts",
   },
 ];
 
