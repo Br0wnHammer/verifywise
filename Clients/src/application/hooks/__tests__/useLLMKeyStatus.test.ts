@@ -182,4 +182,24 @@ describe("useLLMKeyStatus", () => {
     expect(result.current.error).toBeNull();
     expect(result.current.hasKeys).toBe(false);
   });
+
+  it("stays settled when a later refetch runs after mounting on fresh cached data", async () => {
+    // Mounting on fresh data does not fetch; a later invalidation then must
+    // not read as a first load (it would lock the Advisor and hide hints).
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+    });
+    client.setQueryData(["llmKeyStatus", 1], { hasKeys: false, keyCount: 0, providers: [] });
+    const { result } = render(client);
+    expect(result.current.loading).toBe(false);
+
+    mockGetStatus.mockReturnValueOnce(new Promise(() => {}));
+    act(() => {
+      void client.invalidateQueries({ queryKey: ["llmKeyStatus"] });
+    });
+
+    await waitFor(() => expect(mockGetStatus).toHaveBeenCalledTimes(1));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.hasKeys).toBe(false);
+  });
 });

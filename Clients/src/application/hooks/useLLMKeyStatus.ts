@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getLLMKeyStatus, LLMKeyStatus } from "../repository/llmKeys.repository";
 import { useAuth } from "./useAuth";
+import { useSettledLoading } from "./useSettledLoading";
 
 /** Prefix for every org's status entry; see invalidateLLMKeyQueries. */
 export const LLM_KEY_STATUS_QUERY_KEY = ["llmKeyStatus"] as const;
@@ -22,15 +23,12 @@ export function useLLMKeyStatus() {
     queryFn: getLLMKeyStatus,
     enabled: hasOrganization,
   });
+  const loading = useSettledLoading(query, hasOrganization, organizationId);
 
   if (!hasOrganization) {
     return { data: null, loading: false, error: null, hasKeys: false };
   }
 
-  // Also loading while this mount's own refetch of cached data is in flight,
-  // so a stale "no keys" is not read as settled. Later refetches (after an
-  // invalidation) keep the settled answer on screen.
-  const loading = query.isPending || (query.isFetching && !query.isFetchedAfterMount);
   // A failed refetch keeps the last successful answer next to the error, so a
   // transient failure does not flip a known status. With no answer yet, a
   // failure leaves data null and reads as no keys.

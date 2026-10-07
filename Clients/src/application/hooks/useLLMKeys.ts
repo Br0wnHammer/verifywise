@@ -2,6 +2,7 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { getLLMKeys } from "../repository/llmKeys.repository";
 import { LLMKeysModel } from "../../domain/models/Common/llmKeys/llmKeys.model";
 import { useAuth } from "./useAuth";
+import { useSettledLoading } from "./useSettledLoading";
 import { LLM_KEY_STATUS_QUERY_KEY } from "./useLLMKeyStatus";
 
 /** Prefix for every org's key list. */
@@ -31,8 +32,7 @@ export function useLLMKeys() {
     enabled: hasOrganization,
   });
 
-  const loading =
-    hasOrganization && (query.isPending || (query.isFetching && !query.isFetchedAfterMount));
+  const loading = useSettledLoading(query, hasOrganization, organizationId);
 
   return {
     // A failed refetch keeps the last list, so a transient failure does not

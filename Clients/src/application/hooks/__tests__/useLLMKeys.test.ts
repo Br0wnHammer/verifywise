@@ -76,6 +76,38 @@ describe("useLLMKeys", () => {
     expect(result.current.keys).toHaveLength(1);
   });
 
+  it("stays settled when a later refetch runs after mounting on fresh cached data", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+    });
+    client.setQueryData(["llmKeys", 1], []);
+    const { result } = renderKeys(client);
+    expect(result.current.loading).toBe(false);
+
+    mockGetKeys.mockReturnValueOnce(new Promise(() => {}));
+    act(() => {
+      void client.invalidateQueries({ queryKey: ["llmKeys"] });
+    });
+
+    await waitFor(() => expect(mockGetKeys).toHaveBeenCalledTimes(1));
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("starts loading again when the organization changes", async () => {
+    // A different organization's list is a new first load, not a refetch:
+    // without this the previous org's settled state would show "no keys".
+    const client = newClient();
+    mockGetKeys.mockResolvedValueOnce(keysResponse(["OpenAI"]));
+    const { result, rerender } = renderKeys(client);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    mockOrganizationId = 2;
+    mockGetKeys.mockReturnValueOnce(new Promise(() => {}));
+    rerender();
+
+    expect(result.current.loading).toBe(true);
+  });
+
   it("is settled with no keys and no request without an organization", () => {
     mockOrganizationId = null;
     const { result, rerender } = renderKeys(newClient());
