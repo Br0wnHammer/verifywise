@@ -21,6 +21,7 @@ const CHANGELOG: ChangelogEntry[] = [
       "Risk inheritance — link project, vendor, and model risks as related or as parent and child, review suggested links, see when a parent risk's level changes, and explore the links on a new Risk inheritance page with reports on duplicates and control coverage",
       "Evidence hub retention — set a retention policy and expiry for evidence",
       "Dashboard — each recent activity row now opens the use case, risk, task, or other record it describes",
+      "LLM API key prompt — when no LLM API key is set up, Start here offers to add one and takes admins straight to the key form, so the AI Advisor and reporting are ready to use",
       "Date format everywhere — dates on the dashboard, in tables, the AI Gateway, the inventory, and monitoring now follow your date format preference",
       "LLM Evals — a failed experiment now shows why it failed, with credentials removed from the error text",
       "Integrations — MLflow and Azure AI Foundry sync failures now show their reason, and MLflow applies its configured request timeout",
