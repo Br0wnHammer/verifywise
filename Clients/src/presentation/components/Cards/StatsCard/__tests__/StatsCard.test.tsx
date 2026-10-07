@@ -17,18 +17,12 @@ describe("StatsCard", () => {
     expect(screen.getByText("50%")).toBeInTheDocument();
   });
 
-  it("renders an empty state when total is 0", () => {
+  it("renders 0% when total is 0", () => {
     renderWithProviders(
       <StatsCard title="items" completed={0} total={0} progressbarColor="#4caf50" />,
     );
-    expect(screen.getByText(/no regulation connected/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "link a framework" })).toHaveAttribute(
-      "href",
-      "/framework",
-    );
-    expect(screen.queryByText("0%")).not.toBeInTheDocument();
-    expect(screen.queryByText("0 items out of 0 is completed")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("progress-bar")).not.toBeInTheDocument();
+    expect(screen.getByText("0%")).toBeInTheDocument();
+    expect(screen.getByText("0 items out of 0 is completed")).toBeInTheDocument();
   });
 
   it("handles NaN completed gracefully", () => {

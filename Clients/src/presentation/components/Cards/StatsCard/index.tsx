@@ -1,6 +1,5 @@
-import { Link, Stack, Typography } from "@mui/material";
-import { Link as RouterLink } from "react-router";
-import { StatsCardCaption, StatsCardFrame, StatsCardRate } from "./style";
+import { Stack, Typography } from "@mui/material";
+import { StatsCardFrame, StatsCardRate } from "./style";
 import ProgressBar from "../../ProjectCard/ProgressBar";
 import { useMemo } from "react";
 import { StatsCardProps } from "../../../types/interfaces/i.statsCard";
@@ -24,30 +23,6 @@ export function StatsCard({ title, completed, total }: StatsCardProps) {
     return isNaN(result) ? 0 : result;
   }, [completedNum, totalNum]);
 
-  if (totalNum === 0) {
-    return (
-      <Stack sx={StatsCardFrame}>
-        <Typography sx={StatsCardCaption}>
-          No regulation connected —{" "}
-          <Link
-            component={RouterLink}
-            to="/framework"
-            sx={{
-              "color": "brand.primary",
-              "fontWeight": 500,
-              "textDecoration": "underline",
-              "textUnderlineOffset": "2px",
-              "&:hover": { color: "brand.primaryHover" },
-            }}
-          >
-            link a framework
-          </Link>{" "}
-          to track progress
-        </Typography>
-      </Stack>
-    );
-  }
-
   return (
     <Stack sx={StatsCardFrame}>
       <Stack
@@ -60,7 +35,12 @@ export function StatsCard({ title, completed, total }: StatsCardProps) {
         }}
       >
         <ProgressBar progress={progress} />
-        <Typography sx={StatsCardCaption}>
+        <Typography
+          sx={{
+            color: "#8594AC",
+            fontSize: 13,
+          }}
+        >
           {`${completedNum} ${title} out of ${totalNum} is completed`}
         </Typography>
       </Stack>
