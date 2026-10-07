@@ -1107,12 +1107,15 @@ async function updateUserById(req: Request, res: Response) {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
   const { name, surname, email, roleId: roleIdRaw, last_login } = req.body;
 
-  // The frontend may send the id as a string. Anything that is not a
-  // positive integer is refused as an unknown role below.
+  // The frontend may send the id as a string of digits. Anything else
+  // (true, arrays, "0x2", " 2 ", "2e0", ...) becomes NaN and is refused as an
+  // unknown role below; Number() alone would turn true into 1 (Admin).
   const roleId =
     roleIdRaw === undefined || roleIdRaw === null || roleIdRaw === ""
       ? undefined
-      : Number(roleIdRaw);
+      : typeof roleIdRaw === "number" || (typeof roleIdRaw === "string" && /^\d+$/.test(roleIdRaw))
+        ? Number(roleIdRaw)
+        : NaN;
 
   logStructured("processing", `updating user ID ${id}`, "updateUserById", "user.ctrl.ts");
 

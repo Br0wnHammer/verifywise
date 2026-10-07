@@ -570,7 +570,8 @@ describe("user.ctrl", () => {
       });
 
       it("should return 400 for a role id that is not a positive integer", async () => {
-        for (const roleId of ["abc", "5abc", -1, 1.5]) {
+        // true would become 1 (Admin) with Number(); only digits count.
+        for (const roleId of ["abc", "5abc", -1, 1.5, true, [3], "0x2", " 2 ", "2e0"] as any[]) {
           mockRoleById.mockClear();
           mockGetById.mockResolvedValue(
             mockUser(buildUser({ id: 2, organization_id: 1, role_id: 1 })) as any,
