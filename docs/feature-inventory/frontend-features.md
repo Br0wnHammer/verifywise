@@ -31,7 +31,7 @@ Key `App.tsx` details:
 - **Global providers:** Redux `Provider` + `PersistGate`, `VerifyWiseContext`, `ExtensionsProvider`, `UserGuideSidebarProvider`, `SmartPromptProvider`, `AdvisorConversationProvider`, and five module-specific sidebar contexts (`Evals`, `AIDetection`, `ShadowAI`, `AIGateway`, `AITrustIndex`).
 - **Theme:** `ConditionalThemeWrapper` applies the MUI `light` theme to all routes except `/aiTrustCentre/*` public pages.
 - **Sidebars hidden on:** auth routes (`/login`, `/admin-reg`, `/user-reg`, `/register`, `/forgot-password`, `/reset-password`, `/set-new-password`, `/reset-password-continue`) and public routes (`/use-case-form-intake`, `/intake/*`, `/shared/*`, `/aiTrustCentre/*`).
-- **Onboarding:** `SetupModal` is shown on `/` or `/start-here` when the user is authenticated and onboarding is incomplete.
+- **Onboarding:** `SetupModal` is shown on `/` or `/start-here` when the org creator's onboarding is incomplete. It offers demo data or a blank start.
 - **Command palette:** Always-mounted; toggled via `useCommandPalette` (`Ctrl/Cmd + K`).
 - **User guide sidebar:** Rendered inside `AdvisorConversationProvider` on non-auth, non-public pages.
 
@@ -466,10 +466,10 @@ For each page/screen the following subsections describe: routes, user-facing fea
 |-----------|-------|
 | Routes | `/start-here` |
 | Component | `Clients/src/presentation/pages/StartHere/index.tsx` |
-| Features | Personalized greeting, onboarding progress ring, getting-started cards (welcome video, quick start, dashboard guide, installation), explore VerifyWise carousel with feature videos, shortcut icons, expert contact cards, resources/what's-new sidebar. |
+| Features | Personalized greeting, onboarding progress ring, getting-started cards (welcome video, quick start, dashboard guide, installation), explore VerifyWise carousel with feature videos, shortcut icons, expert contact cards, resources/what's-new sidebar. When the organization has no LLM key (Advisor and reporting need one), admins see a configure-a-key hint and other roles see a prompt to contact their administrator. |
 | Access | Main sidebar → Start here; onboarding completion redirect. |
 | e2e tests | `Clients/e2e/start-here.spec.ts`, `Clients/e2e/onboarding.spec.ts` |
-| Backend domain | `/api/projectRisks`, `/api/users/:id`, `/api/projects` |
+| Backend domain | `/api/projectRisks`, `/api/users/:id`, `/api/projects`, `/api/llm-keys/status` |
 | User guide | `shared/user-guide-content/content/getting-started/welcome.ts`, `docs/user-guide-audit/getting-started/welcome.md` |
 
 #### Tasks

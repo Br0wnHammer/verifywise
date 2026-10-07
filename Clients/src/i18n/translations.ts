@@ -2287,6 +2287,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Linked Operational Objects": "Verknüpfte operative Objekte",
     "Linked Policies Objects": "Verknüpfte Richtlinien-Objekte",
     "Linked risk": "Verknüpftes Risiko",
+    "Configure an LLM API key so Advisor and reporting can run.":
+      "Konfigurieren Sie einen LLM-API-Schlüssel, damit KI-Berater und Berichte funktionieren.",
+    "Advisor and reporting need an LLM API key. Contact your administrator.":
+      "KI-Berater und Berichte benötigen einen LLM-API-Schlüssel. Wenden Sie sich an Ihren Administrator.",
+    "Configure an LLM API key to send messages.":
+      "Konfigurieren Sie einen LLM-API-Schlüssel, um Nachrichten zu senden.",
+    "Sending messages requires an LLM API key. Contact your administrator.":
+      "Zum Senden von Nachrichten ist ein LLM-API-Schlüssel erforderlich. Wenden Sie sich an Ihren Administrator.",
     "LLM Arena": "LLM-Arena",
     "LLM provider": "LLM-Anbieter",
     "LLM providers": "LLM-Anbieter",
@@ -4945,6 +4953,8 @@ export const translations: Record<string, Record<string, string>> = {
     "LLM key": "LLM-Schlüssel",
     "LLM use case": "LLM-Anwendungsfall",
     "LLM-enhanced analysis": "LLM-gestützte Analyse",
+    "Couldn't load LLM keys. Reload the page to try again.":
+      "LLM-Schlüssel konnten nicht geladen werden. Laden Sie die Seite neu, um es erneut zu versuchen.",
     "LangChain agents, CrewAI, AutoGen, MCP servers, and other autonomous AI systems will appear here":
       "LangChain-Agenten, CrewAI, AutoGen, MCP-Server und andere autonome KI-Systeme erscheinen hier",
     "Last login": "Letzte Anmeldung",
@@ -12070,6 +12080,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Linked Operational Objects": "Objets opérationnels liés",
     "Linked Policies Objects": "Objets de politiques liés",
     "Linked risk": "Risque lié",
+    "Configure an LLM API key so Advisor and reporting can run.":
+      "Configurez une clé API LLM pour que le conseiller IA et les rapports puissent fonctionner.",
+    "Advisor and reporting need an LLM API key. Contact your administrator.":
+      "Le conseiller IA et les rapports ont besoin d'une clé API LLM. Contactez votre administrateur.",
+    "Configure an LLM API key to send messages.":
+      "Configurez une clé API LLM pour envoyer des messages.",
+    "Sending messages requires an LLM API key. Contact your administrator.":
+      "L'envoi de messages nécessite une clé API LLM. Contactez votre administrateur.",
     "LLM Arena": "Arène LLM",
     "LLM provider": "Fournisseur LLM",
     "LLM providers": "Fournisseurs LLM",
@@ -14559,6 +14577,8 @@ export const translations: Record<string, Record<string, string>> = {
     "LLM key": "Clé LLM",
     "LLM use case": "Cas d'usage LLM",
     "LLM-enhanced analysis": "Analyse améliorée par LLM",
+    "Couldn't load LLM keys. Reload the page to try again.":
+      "Impossible de charger les clés LLM. Rechargez la page pour réessayer.",
     "LangChain agents, CrewAI, AutoGen, MCP servers, and other autonomous AI systems will appear here":
       "Les agents LangChain, CrewAI, AutoGen, les serveurs MCP et d'autres systèmes IA autonomes apparaîtront ici",
     "Last login": "Dernière connexion",
@@ -21080,6 +21100,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Linked Operational Objects": "Objetos operativos vinculados",
     "Linked Policies Objects": "Objetos de políticas vinculados",
     "Linked risk": "Riesgo vinculado",
+    "Configure an LLM API key so Advisor and reporting can run.":
+      "Configure una clave de API de LLM para que el asesor de IA y los informes puedan funcionar.",
+    "Advisor and reporting need an LLM API key. Contact your administrator.":
+      "El asesor de IA y los informes necesitan una clave de API de LLM. Póngase en contacto con su administrador.",
+    "Configure an LLM API key to send messages.":
+      "Configure una clave de API de LLM para enviar mensajes.",
+    "Sending messages requires an LLM API key. Contact your administrator.":
+      "Para enviar mensajes se necesita una clave de API de LLM. Póngase en contacto con su administrador.",
     "LLM Arena": "LLM Arena",
     "LLM provider": "Proveedor de LLM",
     "LLM providers": "Proveedores de LLM",
@@ -22466,6 +22494,8 @@ export const translations: Record<string, Record<string, string>> = {
     "LLM key": "Clave de LLM",
     "LLM use case": "Caso de uso de LLM",
     "LLM-enhanced analysis": "Análisis mejorado con LLM",
+    "Couldn't load LLM keys. Reload the page to try again.":
+      "No se pudieron cargar las claves LLM. Recarga la página para volver a intentarlo.",
     "Last login": "Último inicio de sesión",
     "Linked": "Vinculado",
     "Linked Items": "Elementos vinculados",
