@@ -121,7 +121,10 @@ export default defineConfig({
     },
     coverage: {
       provider: "v8",
-      reporter: ["text", "html", "json-summary"],
+      // CI shards (VITEST_SHARD_RUN=1) only collect raw coverage into their blob
+      // report; the merge job (`vitest --merge-reports --coverage`) writes the
+      // reports and enforces the thresholds over all shards combined.
+      reporter: process.env.VITEST_SHARD_RUN ? [] : ["text", "html", "json-summary"],
       include: ["src/**/*.ts", "src/**/*.tsx"],
       exclude: [
         "src/test/**",
@@ -132,12 +135,14 @@ export default defineConfig({
         "src/**/**/tests/**",
         "src/i18n/**",
       ],
-      thresholds: {
-        statements: 50,
-        branches: 40,
-        functions: 45,
-        lines: 50,
-      },
+      thresholds: process.env.VITEST_SHARD_RUN
+        ? undefined
+        : {
+            statements: 50,
+            branches: 40,
+            functions: 45,
+            lines: 50,
+          },
     },
   },
 });
