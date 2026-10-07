@@ -798,6 +798,8 @@
   "You are now a project {role} for {projectName}": "Vous êtes maintenant {role} pour le projet {projectName}",
   "You can only cancel scans that you initiated": "Vous ne pouvez annuler que les analyses que vous avez initiées",
   "You can only modify your own data": "Vous ne pouvez modifier que vos propres données",
+  "You cannot invite a user with more access than your own": "Vous ne pouvez pas inviter un utilisateur disposant de plus d'accès que vous",
+  "You cannot revoke an invitation for a role with more access than your own": "Vous ne pouvez pas révoquer une invitation pour un rôle disposant de plus d’accès que le vôtre",
   "You've been assigned as {roleType}: {entityName}": "Vous avez été affecté en tant que {roleType} : {entityName}",
   "Your role changed to project admin on {projectName}": "Votre rôle a été modifié en administrateur du projet sur {projectName}",
   "Vendor risks to review": "Risques fournisseurs à examiner",

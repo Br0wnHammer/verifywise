@@ -4,6 +4,10 @@ jest.mock("../../../database/db", () => ({ sequelize: { query: jest.fn() } }));
 jest.mock("../../approval/approvalGateway", () => ({ submitForApproval: jest.fn() }));
 jest.mock("../../../utils/invitation.utils", () => ({ createInvitationQuery: jest.fn() }));
 jest.mock("../../../utils/inviteEmail.utils", () => ({ sendInviteEmail: jest.fn() }));
+// The role ceiling is covered in agentSendInvitation.authorization.test.ts.
+jest.mock("../../../utils/inviteRole.utils", () => ({
+  userInviteRefusal: jest.fn(async () => null),
+}));
 
 import { writeToolExecutors } from "../../confirmation/createWriteTool";
 import "../../functions/adminFunctions";

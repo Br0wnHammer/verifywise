@@ -10878,21 +10878,28 @@ paths:
     post:
       tags:
         - Mail
-      summary: 'Invite Limiter'
+      summary: 'Invite a user'
       operationId: anonymous
       security:
         -
           bearerAuth: []
+      description: 'Requires the invitation.super permission (Admin by default). The invite always goes to the caller''s organization; an organizationId in the body is ignored, and a SuperAdmin without an organization uses /super-admin/organizations/{id}/invite. Only an Admin may grant a built-in role; other inviting roles may grant only the organization''s custom roles with no permission they lack.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
       responses:
-        '201':
-          description: 'Created successfully'
+        '200':
+          description: 'Invitation email sent'
+        '206':
+          description: 'Invitation saved but the email failed; the response carries the link'
+        '400':
+          description: 'Unknown or invalid role'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - missing permission, no organization, or the role grants more access than the caller has'
         '500':
           description: 'Internal server error'
   /mail/reset-password:

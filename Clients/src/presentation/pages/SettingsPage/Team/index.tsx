@@ -414,6 +414,7 @@ const TeamManagement: React.FC = (): JSX.Element => {
     email: string,
     status: number | string,
     link: string | undefined = undefined,
+    errorMessage: string | undefined = undefined,
   ) => {
     if (status === 200) {
       showAlert(
@@ -429,6 +430,9 @@ const TeamManagement: React.FC = (): JSX.Element => {
       });
     } else if (status === 206) {
       showAlert("info", "Info", "Email service unavailable. A fallback link was generated.");
+    } else if (errorMessage) {
+      // The server's reason, e.g. a role the inviter may not grant.
+      showAlert("error", "Error", `Failed to send invitation to ${email}: ${errorMessage}`);
     } else {
       showAlert("error", "Error", `Failed to send invitation to ${email}. Please try again.`);
     }

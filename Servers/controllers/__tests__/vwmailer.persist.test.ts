@@ -6,6 +6,10 @@ jest.mock("../../utils/inviteEmail.utils", () => ({
 jest.mock("../../utils/invitation.utils", () => ({
   createInvitationQuery: jest.fn(),
 }));
+// The role ceiling is covered in vwmailer.ctrl.test.ts.
+jest.mock("../../utils/inviteRole.utils", () => ({
+  inviteRoleRefusal: jest.fn(async () => null),
+}));
 jest.mock("../../utils/logger/logHelper", () => ({
   logProcessing: jest.fn(),
   logSuccess: jest.fn(),

@@ -7,6 +7,7 @@ import {
   updateInvitationExpiryQuery,
 } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
+import { inviteRoleRefusal } from "../utils/inviteRole.utils";
 import { INVITATION_LIFETIME_MS } from "../utils/jwt.utils";
 
 /**
@@ -37,6 +38,24 @@ export const revokeInvitation = async (req: Request, res: Response): Promise<Res
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid invitation ID")));
     }
 
+    // Revoking follows the same ceiling as sending and resending: a role
+    // may only withdraw invitations for roles it could itself grant. An
+    // invitation whose role no longer exists stays revocable.
+    const invitation = await getInvitationByIdQuery(organizationId, id);
+    if (!invitation) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
+    }
+    const refusal = await inviteRoleRefusal(organizationId, req.role!, invitation.role_id);
+    if (refusal === "exceeds_access") {
+      return res
+        .status(403)
+        .json(
+          STATUS_CODE[403](
+            req.t!("You cannot revoke an invitation for a role with more access than your own"),
+          ),
+        );
+    }
+
     const deleted = await revokeInvitationQuery(organizationId, id);
     if (!deleted) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
@@ -65,6 +84,18 @@ export const resendInvitation = async (req: Request, res: Response): Promise<Res
     const invitation = await getInvitationByIdQuery(organizationId, id);
     if (!invitation) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
+    }
+
+    // A resend re-issues a working link, so the caller must be allowed to
+    // grant the invitation's role, as when inviting.
+    const refusal = await inviteRoleRefusal(organizationId, req.role!, invitation.role_id);
+    if (refusal === "unknown_role") {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Unknown role")));
+    }
+    if (refusal === "exceeds_access") {
+      return res
+        .status(403)
+        .json(STATUS_CODE[403](req.t!("You cannot invite a user with more access than your own")));
     }
 
     // Save the new expiry first, then email a link signed for it: a link

@@ -16,6 +16,7 @@ import {
 } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
 import { INVITATION_LIFETIME_MS } from "../utils/jwt.utils";
+import { inviteRoleRefusal } from "../utils/inviteRole.utils";
 import {
   ConflictException,
   ValidationException,
@@ -171,6 +172,11 @@ export async function createOrgWithUser(req: Request, res: Response) {
         transaction,
       );
     } else {
+      // Same role check as every other invite: the new organization has no
+      // custom roles yet, so only a built-in role other than SuperAdmin passes.
+      if (await inviteRoleRefusal(orgId, null, Number(user.roleId))) {
+        throw new ValidationException(req.t!("Unknown role"), "roleId");
+      }
       await createInvitationQuery(
         orgId,
         user.email,
@@ -397,22 +403,36 @@ export async function inviteUserToOrg(req: Request, res: Response) {
       .json(STATUS_CODE[400]({ message: req.t!("email, name, and roleId are required") }));
   }
 
-  // Check if a user with this email already exists
-  const existing: any[] = await sequelize.query(`SELECT id FROM users WHERE email = :email`, {
-    replacements: { email },
-    type: "SELECT" as any,
-  });
-  if (existing.length > 0) {
-    return res.status(409).json(STATUS_CODE[409](req.t!("A user with this email already exists")));
+  // The organization is passed to invite() as trusted, so it must be real.
+  if (!Number.isInteger(orgId) || orgId <= 0) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid organization ID")));
+  }
+  try {
+    const organization: any[] = await sequelize.query(
+      `SELECT id FROM organizations WHERE id = :orgId`,
+      { replacements: { orgId }, type: "SELECT" as any },
+    );
+    if (organization.length === 0) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Organization not found")));
+    }
+
+    // Check if a user with this email already exists
+    const existing: any[] = await sequelize.query(`SELECT id FROM users WHERE email = :email`, {
+      replacements: { email },
+      type: "SELECT" as any,
+    });
+    if (existing.length > 0) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("A user with this email already exists")));
+    }
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 
-  return invite(req, res, {
-    to: email,
-    name,
-    surname,
-    roleId,
-    organizationId: orgId,
-  });
+  // The organization comes from the route, passed as trusted: invite()
+  // ignores an organization in the body.
+  return invite(req, res, { to: email, name, surname, roleId }, { organizationId: orgId });
 }
 
 /**
