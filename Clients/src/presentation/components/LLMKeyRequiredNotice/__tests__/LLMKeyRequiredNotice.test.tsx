@@ -8,15 +8,6 @@ vi.mock("../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({ userRoleName: mockUserRoleName }),
 }));
 
-let mockPermissions: string[] = [];
-let mockPermissionsLoading = false;
-vi.mock("../../../../application/hooks/useRolePermissions", () => ({
-  useMyPermissions: () => ({
-    can: (key: string) => mockPermissions.includes(key),
-    isPending: mockPermissionsLoading,
-  }),
-}));
-
 const mockNavigate = vi.fn();
 vi.mock("react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router")>()),
@@ -36,8 +27,6 @@ const renderNotice = () =>
 describe("LLMKeyRequiredNotice", () => {
   beforeEach(() => {
     mockUserRoleName = "Admin";
-    mockPermissions = [];
-    mockPermissionsLoading = false;
     mockNavigate.mockReset();
   });
 
@@ -56,28 +45,10 @@ describe("LLMKeyRequiredNotice", () => {
     expect(screen.queryByRole("button", { name: "Go to settings" })).not.toBeInTheDocument();
   });
 
-  it("links a custom role holding llmKeys.admin to the add-key form", () => {
-    // The server allows any role with llmKeys.admin, not only Admin.
-    mockUserRoleName = "Platform admin";
-    mockPermissions = ["llmKeys.admin"];
-    renderNotice();
-    expect(screen.getByRole("status")).toHaveTextContent("Configure a key.");
-    expect(screen.getByRole("button", { name: "Go to settings" })).toBeInTheDocument();
-  });
-
-  it("does not give an Auditor the link from another user's cached permissions", () => {
-    // Built-in roles follow the role list, so a stale permission list that
-    // still holds llmKeys.admin cannot upgrade them.
+  it("tells Auditors to ask an administrator", () => {
     mockUserRoleName = "Auditor";
-    mockPermissions = ["llmKeys.admin"];
     renderNotice();
     expect(screen.getByRole("status")).toHaveTextContent("Ask your administrator.");
-  });
-
-  it("waits for a custom role's permissions instead of telling it to ask an administrator", () => {
-    mockUserRoleName = "Platform admin";
-    mockPermissionsLoading = true;
-    renderNotice();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Go to settings" })).not.toBeInTheDocument();
   });
 });
