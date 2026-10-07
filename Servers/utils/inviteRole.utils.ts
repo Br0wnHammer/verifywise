@@ -1,5 +1,6 @@
-import { getRoleByName, getRoleInfoById } from "./roleMap";
-import { getEffectivePermissions } from "./rolePermissions.utils";
+import { getRoleByName, getRoleInfoById, getRoleNameById } from "./roleMap";
+import { getEffectivePermissions, roleHasPermission } from "./rolePermissions.utils";
+import { getUserByIdQuery } from "./user.utils";
 
 /** Why a role may not be granted through an invitation. */
 export type InviteRoleRefusal = "unknown_role" | "exceeds_access";
@@ -44,4 +45,26 @@ export async function inviteRoleRefusal(
     if (!held.has(permission)) return "exceeds_access";
   }
   return null;
+}
+
+/**
+ * Why `userId` may not send an invitation granting `roleId` into
+ * `organizationId` from outside the invite route (the Advisor's
+ * agent_send_invitation runs as the user who approved it). Applies the
+ * route's rules: the user is a member of the organization whose role holds
+ * invitation.super, and inviteRoleRefusal allows the role. "not_allowed"
+ * covers everything before the role check.
+ */
+export async function userInviteRefusal(
+  organizationId: number,
+  userId: number,
+  roleId: number,
+): Promise<InviteRoleRefusal | "not_allowed" | null> {
+  const user = userId ? await getUserByIdQuery(userId) : undefined;
+  if (!user || user.organization_id !== organizationId) return "not_allowed";
+  const roleName = await getRoleNameById(user.role_id);
+  if (!roleName || !(await roleHasPermission(organizationId, roleName, "invitation.super"))) {
+    return "not_allowed";
+  }
+  return inviteRoleRefusal(organizationId, roleName, roleId);
 }

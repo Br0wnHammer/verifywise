@@ -2,6 +2,7 @@ import { getAllUsersQuery, getUserByIdQuery } from "../../utils/user.utils";
 import { getAllRolesQuery } from "../../utils/role.utils";
 import { getOrganizationByIdQuery } from "../../utils/organization.utils";
 import { getSubscription } from "../../utils/subscription.util";
+import { userInviteRefusal } from "../../utils/inviteRole.utils";
 
 import { createWriteToolFn } from "../confirmation/createWriteTool";
 import { sequelize } from "../../database/db";
@@ -380,12 +381,28 @@ const fetchSlackWebhooks = async (_params: {}, organizationId: number): Promise<
 
 // --- Write Tools ---
 
+const INVITE_REFUSAL_MESSAGES = {
+  not_allowed: "You do not have permission to invite users",
+  unknown_role: "Unknown role",
+  exceeds_access: "You cannot invite a user with more access than your own",
+} as const;
+
 const agentSendInvitation = createWriteToolFn({
   toolName: "agent_send_invitation",
   warningLevel: "warning",
   descriptionFn: (params) =>
     `Send invitation to ${params.email} with role ID ${params.role_id}${params.name ? ` (${params.name})` : ""}`,
   executeFn: async (params, organizationId) => {
+    // Runs as the approving user, who needs only aiApproval.admin to approve:
+    // apply the invite route's rules to them.
+    const refusal = await userInviteRefusal(
+      organizationId,
+      params._userId as number,
+      Number(params.role_id),
+    );
+    if (refusal) {
+      throw new Error(INVITE_REFUSAL_MESSAGES[refusal]);
+    }
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
     const token = require("crypto").randomBytes(32).toString("hex");
 
