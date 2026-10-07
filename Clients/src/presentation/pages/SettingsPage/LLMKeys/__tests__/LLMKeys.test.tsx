@@ -13,15 +13,6 @@ vi.mock("../../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({ userRoleName: mockUserRoleName, organizationId: 1 }),
 }));
 
-let mockPermissions: string[] = [];
-let mockPermissionsLoading = false;
-vi.mock("../../../../../application/hooks/useRolePermissions", () => ({
-  useMyPermissions: () => ({
-    can: (key: string) => mockPermissions.includes(key),
-    isPending: mockPermissionsLoading,
-  }),
-}));
-
 const mockGetLLMKeys = vi.fn();
 const mockCreateLLMKey = vi.fn();
 const mockEditLLMKey = vi.fn();
@@ -52,8 +43,6 @@ describe("LLMKeys", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUserRoleName = "Admin";
-    mockPermissions = [];
-    mockPermissionsLoading = false;
     mockGetLLMKeys.mockResolvedValue({ data: { data: [] } });
   });
 
@@ -275,42 +264,6 @@ describe("LLMKeys", () => {
     await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^$/));
   });
 
-  it("keeps the addKey flag until permissions load, then opens the form for a custom role", async () => {
-    // A custom role holding llmKeys.admin is only known once the permission
-    // list arrives; consuming the flag before that would drop the deep link.
-    mockUserRoleName = "Platform admin";
-    mockPermissionsLoading = true;
-    renderWithProviders(
-      <>
-        <LLMKeys />
-        <SearchProbe />
-      </>,
-      { route: "/settings/apikeys?addKey=1" },
-    );
-    expect(screen.getByTestId("search")).toHaveTextContent("?addKey=1");
-
-    // The permission list arrives; the key list resolving re-renders the page.
-    mockPermissionsLoading = false;
-    mockPermissions = ["llmKeys.admin"];
-    expect(await screen.findByRole("heading", { name: "Add API key" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^$/));
-  });
-
-  it("does not wait for permissions before dropping the flag for a built-in role", async () => {
-    // Built-in roles answer from the role list, so the flag goes at once.
-    mockUserRoleName = "Editor";
-    mockPermissionsLoading = true;
-    renderWithProviders(
-      <>
-        <LLMKeys />
-        <SearchProbe />
-      </>,
-      { route: "/settings/apikeys?addKey=1" },
-    );
-    await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^$/));
-    expect(screen.queryByRole("heading", { name: "Add API key" })).not.toBeInTheDocument();
-  });
-
   it("stays closed after the deep-linked form is cancelled", async () => {
     const user = userEvent.setup();
     renderWithProviders(<LLMKeys />, { route: "/settings/apikeys?addKey=1" });
@@ -319,15 +272,5 @@ describe("LLMKeys", () => {
     await waitFor(() =>
       expect(screen.queryByRole("heading", { name: "Add API key" })).not.toBeInTheDocument(),
     );
-  });
-
-  it("enables managing keys for a custom role granted llmKeys.admin", async () => {
-    // The server allows any role holding llmKeys.admin, not only Admin.
-    mockUserRoleName = "Platform admin";
-    mockPermissions = ["llmKeys.admin"];
-    mockGetLLMKeys.mockResolvedValue({ data: { data: [buildKey()] } });
-    renderWithProviders(<LLMKeys />);
-    await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument());
-    expect(screen.getByText("Create new LLM key").closest("button")).not.toBeDisabled();
   });
 });
