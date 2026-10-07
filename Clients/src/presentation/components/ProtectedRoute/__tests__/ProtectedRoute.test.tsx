@@ -172,4 +172,25 @@ describe("ProtectedRoute", () => {
       { id: 1, name: "This user's project" },
     ]);
   });
+
+  it("keeps the session when token validation gets a 403 with a status", async () => {
+    // Session-ending 403s are handled by the axios interceptor; a 403 that
+    // reaches here with a status is e.g. the refresh call's CSRF check.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    server.use(
+      http.get("/api/users/:id", () =>
+        HttpResponse.json(
+          { message: "Forbidden", data: "CSRF token missing or invalid" },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    const { store } = renderProtected({ route: "/", authToken: TEST_AUTH_TOKEN });
+
+    await waitFor(() => expect(screen.getByTestId("dashboard")).toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mockAssign).not.toHaveBeenCalled();
+    expect(store.getState().auth.authToken).toBe(TEST_AUTH_TOKEN);
+  });
 });

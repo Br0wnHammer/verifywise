@@ -435,6 +435,9 @@ describe("customAxios", () => {
 
       // Told why before the reload, which waits so the message can be read.
       expect(alert).toHaveBeenCalledWith(expect.objectContaining({ title: "Session Expired" }));
+      // The token is dropped at once, so retries in the meantime cannot start
+      // another refresh; only the reload waits.
+      expect(mockStore.dispatch).toHaveBeenCalledWith({ type: "auth/clearAuthState" });
       expect(mockAssign).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1500);
       expect(mockStore.dispatch).toHaveBeenCalledWith({ type: "auth/clearAuthState" });

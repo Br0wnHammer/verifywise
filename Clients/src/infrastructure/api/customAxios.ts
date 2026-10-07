@@ -25,7 +25,7 @@ import axios, { AxiosError } from "axios";
 import { store } from "../../application/redux/store";
 import { ENV_VARs } from "../../../env.vars";
 import { setAuthToken } from "../../application/redux/auth/authSlice";
-import { endSessionAndReload } from "../../application/utils/clearSession";
+import { clearSession, endSessionAndReload } from "../../application/utils/clearSession";
 import { storageService } from "../storage";
 import { AlertProps } from "../../presentation/types/alert.types";
 import { translateKey } from "../../i18n/domTranslator";
@@ -73,6 +73,9 @@ const claimLogout = () => {
   isLoggingOut = true;
   return true;
 };
+
+/** True while a forced logout is under way (the page is about to reload). */
+export const isSessionEnding = () => isLoggingOut;
 
 const performLogout = async () => {
   try {
@@ -386,7 +389,10 @@ CustomAxios.interceptors.response.use(
               body: "Please login again to continue.",
             });
           }
-          // Leave the message up long enough to read before the reload.
+          // Drop the token now, so retries and clicks in the meantime cannot
+          // start another refresh; only the reload waits, so the message
+          // can be read.
+          clearSession(store.dispatch);
           setTimeout(() => {
             void performLogout();
           }, SESSION_EXPIRED_RELOAD_DELAY_MS);
