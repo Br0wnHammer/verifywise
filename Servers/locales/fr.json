@@ -708,6 +708,7 @@
   "Unauthorized **": "Non autorisé **",
   "Unintended outcomes description is required": "La description des résultats involontaires est requise",
   "Unknown dimension keys: {keys}": "Clés de dimension inconnues : {keys}",
+  "Unknown role": "Rôle inconnu",
   "Unknown vulnerability types: {keys}": "Types de vulnérabilité inconnus : {keys}",
   "Unlinked successfully": "Dissocié avec succès",
   "Unsupported entity type": "Type d'entité non pris en charge",

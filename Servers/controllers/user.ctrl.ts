@@ -1120,8 +1120,15 @@ async function updateUserById(req: Request, res: Response) {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
   const { name, surname, email, roleId: roleIdRaw, last_login } = req.body;
 
-  // Convert roleId to number if it exists (frontend may send as string)
-  const roleId = roleIdRaw ? parseInt(roleIdRaw) : undefined;
+  // The frontend may send the id as a string of digits. Anything else
+  // (true, arrays, "0x2", " 2 ", "2e0", ...) becomes NaN and is refused as an
+  // unknown role below; Number() alone would turn true into 1 (Admin).
+  const roleId =
+    roleIdRaw === undefined || roleIdRaw === null || roleIdRaw === ""
+      ? undefined
+      : typeof roleIdRaw === "number" || (typeof roleIdRaw === "string" && /^\d+$/.test(roleIdRaw))
+        ? Number(roleIdRaw)
+        : NaN;
 
   logStructured("processing", `updating user ID ${id}`, "updateUserById", "user.ctrl.ts");
 
@@ -1129,6 +1136,10 @@ async function updateUserById(req: Request, res: Response) {
     // Check permissions (if user context is available)
     const currentUserId = (req as any).user?.id;
     const user = await getUserByIdQuery(id);
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json(STATUS_CODE[404](req.t!("User not found")));
+    }
 
     const isSelf = req.userId === id;
     if (!isSelf && user.organization_id !== req.organizationId) {
@@ -1170,18 +1181,31 @@ async function updateUserById(req: Request, res: Response) {
         .json(STATUS_CODE[403](req.t!("Forbidden: Only admins can change user roles")));
     }
 
-    // Validate that the requested role actually exists.
+    // The requested role must exist and be assignable in the caller's
+    // organization: a built-in role (organization_id NULL) or one of this
+    // organization's own custom roles. Another organization's custom role
+    // and SuperAdmin (granted only through the super_admins mapping) are
+    // refused. All three cases get the same response so the endpoint does
+    // not reveal which role ids exist in other organizations.
     if (roleId !== undefined && roleId !== user.role_id) {
-      const targetRole = await getRoleByIdQuery(roleId);
-      if (!targetRole) {
+      // Read from the database, not the role cache, so a role created or
+      // deleted a moment ago is judged correctly. A built-in role has an
+      // organization_id of exactly null; a row without the field is refused.
+      const targetRole =
+        Number.isInteger(roleId) && roleId > 0 ? await getRoleByIdQuery(roleId) : null;
+      const isAssignable =
+        !!targetRole &&
+        targetRole.name !== "SuperAdmin" &&
+        (targetRole.organization_id === null || targetRole.organization_id === req.organizationId);
+      if (!isAssignable) {
         logStructured(
           "error",
-          `invalid role ID ${roleId} requested for user ID ${id}`,
+          `unassignable role ID ${roleId} requested for user ID ${id}`,
           "updateUserById",
           "user.ctrl.ts",
         );
         await transaction.rollback();
-        return res.status(400).json(STATUS_CODE[400](req.t!("Invalid role ID")));
+        return res.status(400).json(STATUS_CODE[400](req.t!("Unknown role")));
       }
     }
 

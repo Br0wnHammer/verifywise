@@ -594,6 +594,7 @@ export default function ProjectExperiments({
             : exp.status === "running"
               ? "Running"
               : "Pending",
+      errorMessage: exp.status === "failed" ? exp.error_message : undefined,
     };
   });
 
