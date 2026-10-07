@@ -255,24 +255,24 @@ const RESOURCES = [
 
 const WHATS_NEW = [
   {
-    label: "We graded 205 AI apps on data transparency",
-    sub: "June 21, 2026",
-    url: "https://verifywise.ai/blog/we-graded-205-ai-apps-on-data-transparency",
+    label: "VerifyWise on the Wavestone UK Cybersecurity Startup Radar",
+    sub: "August 26, 2026",
+    url: "https://verifywise.ai/blog/verifywise-wavestone-uk-cybersecurity-startup-radar-2026",
   },
   {
-    label: "OSFI Guideline E-23: AI model risk rules",
-    sub: "June 4, 2026",
-    url: "https://verifywise.ai/blog/osfi-e-23-ai-model-risk-management-canada",
+    label: "VerifyWise 2.5: reporting, observability, and extensions",
+    sub: "August 23, 2026",
+    url: "https://verifywise.ai/blog/verifywise-2-5-announcement",
   },
   {
-    label: "What we found running GRS across 15 AI models",
-    sub: "May 30, 2026",
-    url: "https://verifywise.ai/blog/grs-15-models-evaluation",
+    label: "Stop shopping for DORA compliance software",
+    sub: "August 11, 2026",
+    url: "https://verifywise.ai/blog/stop-shopping-for-dora-compliance-software",
   },
   {
-    label: "AI governance salaries 2026",
-    sub: "May 28, 2026",
-    url: "https://verifywise.ai/blog/ai-governance-salary-report-2026",
+    label: "Model risk management for AI and ML",
+    sub: "July 6, 2026",
+    url: "https://verifywise.ai/blog/model-risk-management-ai-ml",
   },
 ] as const;
 
