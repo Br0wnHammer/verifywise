@@ -91,9 +91,9 @@ describe("getPendingInvitationQuery", () => {
 });
 
 describe("markInvitationAcceptedQuery", () => {
-  it("counts the pending invitation it marks, and none the second time", async () => {
-    const { owner } = await seedTwoTenantContexts();
-    await createInvitationQuery(
+  it("accepts the given pending invitation once, and only that one", async () => {
+    const { owner, attacker } = await seedTwoTenantContexts();
+    const row = await createInvitationQuery(
       owner.orgId,
       "invitee@example.com",
       "In",
@@ -103,8 +103,10 @@ describe("markInvitationAcceptedQuery", () => {
       new Date("2026-11-05T12:00:00.000Z"),
     );
 
-    expect(await markInvitationAcceptedQuery(owner.orgId, "invitee@example.com")).toBe(1);
-    expect(await markInvitationAcceptedQuery(owner.orgId, "invitee@example.com")).toBe(0);
+    // Another organization cannot accept it by id.
+    expect(await markInvitationAcceptedQuery(attacker.orgId, row.id)).toBe(0);
+    expect(await markInvitationAcceptedQuery(owner.orgId, row.id)).toBe(1);
+    expect(await markInvitationAcceptedQuery(owner.orgId, row.id)).toBe(0);
     expect(await getPendingInvitationQuery(owner.orgId, "invitee@example.com")).toBeNull();
   });
 });

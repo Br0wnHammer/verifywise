@@ -122,22 +122,22 @@ export const revokeInvitationQuery = async (
 };
 
 /**
- * Mark invitation as accepted when user registers via invite link. Pass the
- * user-creation transaction so the user and the used-up link commit together.
- * Returns how many pending invitations were marked; 0 means it was revoked
- * or already used in the meantime.
+ * Mark the invitation a registration link was checked against as accepted.
+ * Pass the user-creation transaction so the user and the used-up link commit
+ * together. Returns 1 if it was still pending; 0 means it was revoked, used or
+ * replaced (a re-invite is a new row) in the meantime.
  */
 export const markInvitationAcceptedQuery = async (
   organizationId: number,
-  email: string,
+  invitationId: number,
   transaction?: Transaction,
 ): Promise<number> => {
   const rows = await sequelize.query(
     `UPDATE invitations
      SET status = 'accepted', updated_at = CURRENT_TIMESTAMP
-     WHERE organization_id = :organizationId AND email = :email AND status = 'pending'
+     WHERE organization_id = :organizationId AND id = :invitationId AND status = 'pending'
      RETURNING id`,
-    { replacements: { organizationId, email }, transaction, type: QueryTypes.SELECT },
+    { replacements: { organizationId, invitationId }, transaction, type: QueryTypes.SELECT },
   );
   return rows.length;
 };

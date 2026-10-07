@@ -28,7 +28,7 @@ const mockGetPendingInvitation = getPendingInvitationQuery as jest.MockedFunctio
 >;
 /** The current pending invitation for a token signed with `expire`. */
 const pendingInvitation = (expire: number, roleId = 1) => ({
-  id: 1,
+  id: 41,
   role_id: roleId,
   expires_at_ms: expire,
 });
@@ -43,7 +43,7 @@ function createMockReq(token?: string, body?: Record<string, unknown>): Partial<
 }
 
 function createMockRes(): Partial<Response> {
-  const res: Partial<Response> = {};
+  const res: Partial<Response> = { locals: {} };
   res.status = jest.fn().mockReturnValue(res);
   res.json = jest.fn().mockReturnValue(res);
   return res;
@@ -266,8 +266,9 @@ describe("registerJWT middleware", () => {
     await registerJWT(req, res as Response, next);
 
     expect(next).toHaveBeenCalled();
-    // Exactly as invited, so markInvitationAcceptedQuery finds the row.
     expect(req.body).toMatchObject({ email: "User@Test.com", roleId: 1, organizationId: 1 });
+    // The invitation this link was checked against, which registration accepts.
+    expect(res.locals!.invitationId).toBe(41);
   });
 
   it("rejects a link that an invitation resend has replaced", async () => {

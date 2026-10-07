@@ -397,7 +397,10 @@ describe("TeamManagement", () => {
     await user.click(screen.getByText("Invite team member"));
     await user.click(screen.getByText("send-fallback"));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/new@user.com/)).toBeInTheDocument();
+    // A fixed sentence, so it can be translated.
+    expect(
+      within(dialog).getByText(/The invitation was created, but the email could not be sent/),
+    ).toBeInTheDocument();
     expect(within(dialog).getByDisplayValue("http://fallback-link")).toBeInTheDocument();
     expect(within(dialog).queryByText(/Links sent earlier no longer work/)).not.toBeInTheDocument();
   });

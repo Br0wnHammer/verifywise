@@ -32,7 +32,12 @@ interface InviteEmailResult {
 
 /**
  * Generates a token, builds the invite link, and sends the invite email.
- * Shared by initial invite (vwmailer) and resend (invitation controller).
+ * Shared by initial invite (vwmailer), resend (invitation controller) and the
+ * super-admin invite.
+ *
+ * Callers have already saved the invitation for `expiresAt`, so this never
+ * throws on a failed send: the error comes back in `info.error` with the
+ * link, which the caller hands to the admin to share instead.
  */
 export const sendInviteEmail = async (params: InviteEmailParams): Promise<InviteEmailResult> => {
   const { email, name, surname, roleId, organizationId, lang, expiresAt } = params;
@@ -52,14 +57,19 @@ export const sendInviteEmail = async (params: InviteEmailParams): Promise<Invite
     token,
   }).toString()}`;
 
-  const templatePath = path.resolve(__dirname, "../templates/account-creation-email.mjml");
-  const template = await fs.readFile(templatePath, "utf8");
+  try {
+    const templatePath = path.resolve(__dirname, "../templates/account-creation-email.mjml");
+    const template = await fs.readFile(templatePath, "utf8");
 
-  const subject = translate(lang, "Create your account");
-  const info = await sendEmail(email, subject, template, {
-    name,
-    link,
-  });
+    const subject = translate(lang, "Create your account");
+    const info = await sendEmail(email, subject, template, {
+      name,
+      link,
+    });
 
-  return { link, info };
+    return { link, info };
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    return { link, info: { error: { name: err.name, message: err.message } } };
+  }
 };

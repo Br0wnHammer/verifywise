@@ -120,6 +120,9 @@ const registerJWT = async (
     req.body.email = decoded.email;
     req.body.roleId = decoded.roleId;
     req.body.organizationId = decoded.organizationId;
+    // The invitation this link was checked against: registration accepts
+    // exactly this row, not whichever is pending for the email by then.
+    res.locals.invitationId = invitation.id;
 
     // Proceed to next middleware or route handler
     next();

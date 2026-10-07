@@ -23,7 +23,7 @@ const sentAt = new Date("2026-10-06T12:00:00Z").getTime();
 const day = 24 * 3600 * 1000;
 
 const createRes = () => {
-  const res: Partial<Response> = {};
+  const res: Partial<Response> = { locals: {} };
   res.status = jest.fn().mockReturnValue(res) as any;
   res.json = jest.fn().mockReturnValue(res) as any;
   return res;

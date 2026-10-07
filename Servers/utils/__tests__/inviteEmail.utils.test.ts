@@ -79,16 +79,25 @@ describe("inviteEmail.utils", () => {
       });
     });
 
-    it("should handle sendEmail failure gracefully", async () => {
+    // The invitation row is already saved when this runs, so a send that
+    // throws must still hand back the link, reported like a failed send.
+    it("returns the link with the error when sendEmail throws", async () => {
       mockSendEmail.mockRejectedValue(new Error("SMTP error"));
 
-      await expect(sendInviteEmail(params)).rejects.toThrow("SMTP error");
+      const result = await sendInviteEmail(params);
+
+      expect(result.link).toBe("https://app.example.com/user-reg?token=mock-token-123");
+      expect(result.info.error).toEqual({ name: "Error", message: "SMTP error" });
     });
 
-    it("should handle fs.readFile failure gracefully", async () => {
+    it("returns the link with the error when the template cannot be read", async () => {
       mockReadFile.mockRejectedValue(new Error("ENOENT"));
 
-      await expect(sendInviteEmail(params)).rejects.toThrow("ENOENT");
+      const result = await sendInviteEmail(params);
+
+      expect(result.link).toBe("https://app.example.com/user-reg?token=mock-token-123");
+      expect(result.info.error?.message).toBe("ENOENT");
+      expect(mockSendEmail).not.toHaveBeenCalled();
     });
   });
 });

@@ -508,7 +508,11 @@ async function createNewUser(req: Request, res: Response) {
       // In the same transaction: a link works once, so if the invitation
       // cannot be marked accepted the user is not created either. No pending
       // row means it was revoked (or used) after the link was checked.
-      const accepted = await markInvitationAcceptedQuery(organizationId, email, transaction);
+      const accepted = await markInvitationAcceptedQuery(
+        organizationId,
+        Number(res.locals.invitationId),
+        transaction,
+      );
       if (accepted === 0) {
         await transaction.rollback();
         return res

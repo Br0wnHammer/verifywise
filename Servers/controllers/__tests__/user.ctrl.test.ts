@@ -369,6 +369,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
+      res.locals = { invitationId: 41 };
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(201);
     });
@@ -389,10 +390,11 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
+      res.locals = { invitationId: 41 };
       await createNewUser(req, res);
 
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(mockMark).toHaveBeenCalledWith(1, "a@b.com", tx);
+      expect(mockMark).toHaveBeenCalledWith(1, 41, tx);
       expect(mockMark.mock.invocationCallOrder[0]).toBeLessThan(
         tx.commit.mock.invocationCallOrder.at(-1),
       );
@@ -416,6 +418,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
+      res.locals = { invitationId: 41 };
       await createNewUser(req, res);
 
       expect(tx.rollback).toHaveBeenCalled();
@@ -441,6 +444,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
+      res.locals = { invitationId: 41 };
       await createNewUser(req, res);
 
       expect(res.status).toHaveBeenCalledWith(403);
@@ -460,6 +464,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
+      res.locals = { invitationId: 41 };
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(409);
     });
@@ -476,6 +481,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
+      res.locals = { invitationId: 41 };
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
     });

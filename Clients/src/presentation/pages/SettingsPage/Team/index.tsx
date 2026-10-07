@@ -424,7 +424,8 @@ const TeamManagement: React.FC = (): JSX.Element => {
     } else if (status === 206 && link) {
       setFallbackLink({
         link,
-        message: `The invitation for ${email} was created, but the email could not be sent. Share this link with them so they can create an account.`,
+        message:
+          "The invitation was created, but the email could not be sent. Share this link with the invitee so they can create an account.",
       });
     } else if (status === 206) {
       showAlert("info", "Info", "Email service unavailable. A fallback link was generated.");
