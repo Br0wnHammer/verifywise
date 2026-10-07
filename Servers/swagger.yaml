@@ -8102,7 +8102,7 @@ paths:
   /users/register:
     post:
       summary: 'Register a new user'
-      description: "Creates a new user account. Requires a valid registration JWT (set by registerJWT middleware).\nValidates email uniqueness, password strength, and required fields.\nMarks any pending invitation as accepted after successful creation.\n"
+      description: "Creates a new user account. Requires a valid registration JWT (set by registerJWT middleware).\nValidates email uniqueness, password strength, and required fields.\nThe account takes the invited email, role and organization from the invitation link, which must match the current pending invitation (a resent or re-invited link replaces earlier ones). The invitation is accepted in the same transaction, so a link registers once; a link that was revoked, used or replaced is refused with 403.\n"
       tags:
         - Users
       requestBody:
@@ -10878,21 +10878,28 @@ paths:
     post:
       tags:
         - Mail
-      summary: 'Invite Limiter'
+      summary: 'Invite a user'
       operationId: anonymous
       security:
         -
           bearerAuth: []
+      description: 'Requires the invitation.super permission (Admin by default). The invite always goes to the caller''s organization; an organizationId in the body is ignored, and a SuperAdmin without an organization uses /super-admin/organizations/{id}/invite. Only an Admin may grant a built-in role; other inviting roles may grant only the organization''s custom roles with no permission they lack.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
       responses:
-        '201':
-          description: 'Created successfully'
+        '200':
+          description: 'Invitation email sent'
+        '206':
+          description: 'Invitation saved but the email failed; the response carries the link'
+        '400':
+          description: 'Unknown or invalid role'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - missing permission, no organization, or the role grants more access than the caller has'
         '500':
           description: 'Internal server error'
   /mail/reset-password:
@@ -25755,6 +25762,28 @@ paths:
       security:
         -
           bearerAuth: []
+  /health/live:
+    get:
+      summary: 'Liveness probe'
+      description: 'Returns 200 while the process is serving HTTP. Checks no dependencies, so an outage elsewhere never fails liveness.'
+      responses:
+        '200':
+          description: Success
+      tags:
+        - System
+      operationId: healthCheck_live
+  /health/ready:
+    get:
+      summary: 'Readiness probe'
+      description: 'Checks PostgreSQL and Redis (2s timeout each). Returns 503 with status "degraded" when either fails.'
+      responses:
+        '200':
+          description: Success
+        '503':
+          description: 'A data store is unavailable'
+      tags:
+        - System
+      operationId: healthCheck_ready
   /health:
     get:
       summary: 'Health Check'

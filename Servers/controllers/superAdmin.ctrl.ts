@@ -15,7 +15,8 @@ import {
   getInvitationsByOrganizationQuery,
 } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
-import { ONE_WEEK_MS } from "../utils/jwt.utils";
+import { INVITATION_LIFETIME_MS } from "../utils/jwt.utils";
+import { inviteRoleRefusal } from "../utils/inviteRole.utils";
 import {
   ConflictException,
   ValidationException,
@@ -150,7 +151,8 @@ export async function createOrgWithUser(req: Request, res: Response) {
 
   const transaction = await sequelize.transaction();
   let orgId: number | undefined;
-  let invitationExpiresAt: Date | undefined;
+  // Invite mode stores this on the row and signs the emailed link for it.
+  const invitationExpiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
 
   try {
     const orgModel = await OrganizationModel.createNewOrganization(orgName.trim(), logo);
@@ -170,7 +172,11 @@ export async function createOrgWithUser(req: Request, res: Response) {
         transaction,
       );
     } else {
-      invitationExpiresAt = new Date(Date.now() + ONE_WEEK_MS);
+      // Same role check as every other invite: the new organization has no
+      // custom roles yet, so only a built-in role other than SuperAdmin passes.
+      if (await inviteRoleRefusal(orgId, null, Number(user.roleId))) {
+        throw new ValidationException(req.t!("Unknown role"), "roleId");
+      }
       await createInvitationQuery(
         orgId,
         user.email,
@@ -199,6 +205,8 @@ export async function createOrgWithUser(req: Request, res: Response) {
 
   if (mode === "invite") {
     try {
+      // The row is already stored; sign the link for the same expires_at so
+      // the Team page's Pending/Expired matches the link that was sent.
       const { link, info } = await sendInviteEmail({
         email: user.email,
         name: user.name,
@@ -206,6 +214,7 @@ export async function createOrgWithUser(req: Request, res: Response) {
         roleId: user.roleId,
         organizationId: orgId,
         lang: req.lang,
+        expiresAt: invitationExpiresAt,
       });
       if (info.error) {
         return res.status(206).json(
@@ -394,22 +403,36 @@ export async function inviteUserToOrg(req: Request, res: Response) {
       .json(STATUS_CODE[400]({ message: req.t!("email, name, and roleId are required") }));
   }
 
-  // Check if a user with this email already exists
-  const existing: any[] = await sequelize.query(`SELECT id FROM users WHERE email = :email`, {
-    replacements: { email },
-    type: "SELECT" as any,
-  });
-  if (existing.length > 0) {
-    return res.status(409).json(STATUS_CODE[409](req.t!("A user with this email already exists")));
+  // The organization is passed to invite() as trusted, so it must be real.
+  if (!Number.isInteger(orgId) || orgId <= 0) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid organization ID")));
+  }
+  try {
+    const organization: any[] = await sequelize.query(
+      `SELECT id FROM organizations WHERE id = :orgId`,
+      { replacements: { orgId }, type: "SELECT" as any },
+    );
+    if (organization.length === 0) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Organization not found")));
+    }
+
+    // Check if a user with this email already exists
+    const existing: any[] = await sequelize.query(`SELECT id FROM users WHERE email = :email`, {
+      replacements: { email },
+      type: "SELECT" as any,
+    });
+    if (existing.length > 0) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("A user with this email already exists")));
+    }
+  } catch (error) {
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 
-  return invite(req, res, {
-    to: email,
-    name,
-    surname,
-    roleId,
-    organizationId: orgId,
-  });
+  // The organization comes from the route, passed as trusted: invite()
+  // ignores an organization in the body.
+  return invite(req, res, { to: email, name, surname, roleId }, { organizationId: orgId });
 }
 
 /**

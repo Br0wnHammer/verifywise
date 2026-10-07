@@ -261,10 +261,14 @@ MAX_FIRST_ERROR_CHARS = 300
 _TOKEN = r"[A-Za-z0-9._~+/=-]"
 _SCHEME_VALUE = re.compile(r"(?i)\b(bearer|basic)(\s+)(" + _TOKEN + r"{8,})")
 # Labels that always introduce a secret: the value is redacted whatever it looks like.
+# The value runs to the next whitespace, quote or separator, so a password
+# with symbols ("a!b@c#d$") is redacted whole, not cut at the first symbol.
 _STRONG_LABEL_VALUE = re.compile(
     r"(?i)\b(password|passwd|secret|client[_-]?secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
-    r"([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{4,})"
+    r"([\"']?\s*[:=]\s*[\"']?)([^\s\"',;&]+)"
 )
+# user:password@ in a URL the error echoes (e.g. a proxy or database URL).
+_URL_USERINFO = re.compile(r"(://[^/\s:@]+:)([^@\s/]+)(@)")
 # Labels that also appear in ordinary error text ("Missing required key: x").
 _WEAK_LABEL_VALUE = re.compile(
     r"(?i)\b(key|token)([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{12,})"
@@ -294,6 +298,7 @@ def redact_secrets(text: str) -> str:
         label, sep, value = match.groups()
         return f"{label}{sep}[redacted]" if _looks_like_secret(value) else match.group(0)
 
+    text = _URL_USERINFO.sub(lambda m: f"{m.group(1)}[redacted]{m.group(3)}", text)
     text = _STRONG_LABEL_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", text)
     text = _SCHEME_VALUE.sub(_keep_label, text)
     text = _WEAK_LABEL_VALUE.sub(_keep_label, text)

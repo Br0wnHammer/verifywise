@@ -12,6 +12,10 @@ jest.mock("../../utils/inviteEmail.utils", () => ({
   sendInviteEmail: jest.fn(),
 }));
 
+jest.mock("../../utils/inviteRole.utils", () => ({
+  inviteRoleRefusal: jest.fn(),
+}));
+
 // Import controller AFTER mocks
 import { getInvitations, revokeInvitation, resendInvitation } from "../invitation.ctrl";
 import {
@@ -21,6 +25,7 @@ import {
   updateInvitationExpiryQuery,
 } from "../../utils/invitation.utils";
 import { sendInviteEmail } from "../../utils/inviteEmail.utils";
+import { inviteRoleRefusal } from "../../utils/inviteRole.utils";
 
 const mockGetAll = getInvitationsByTenantQuery as jest.MockedFunction<
   typeof getInvitationsByTenantQuery
@@ -31,6 +36,7 @@ const mockUpdateExpiry = updateInvitationExpiryQuery as jest.MockedFunction<
   typeof updateInvitationExpiryQuery
 >;
 const mockSendEmail = sendInviteEmail as jest.MockedFunction<typeof sendInviteEmail>;
+const mockRoleRefusal = inviteRoleRefusal as jest.MockedFunction<typeof inviteRoleRefusal>;
 
 function createReq(overrides?: Partial<Request>): any {
   return {
@@ -56,6 +62,7 @@ function createRes(): any {
 describe("invitation.ctrl", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRoleRefusal.mockResolvedValue(null);
   });
   afterEach(() => {
     jest.restoreAllMocks();
@@ -103,6 +110,46 @@ describe("invitation.ctrl", () => {
   });
 
   describe("revokeInvitation", () => {
+    beforeEach(() => {
+      mockGetById.mockResolvedValue({ id: 1, role_id: 3 } as any);
+      mockRoleRefusal.mockResolvedValue(null);
+    });
+
+    it("refuses to revoke an invitation for a role above the caller's access", async () => {
+      mockRoleRefusal.mockResolvedValue("exceeds_access");
+      const req = createReq({ params: { id: "1" }, role: "Team lead" });
+      const res = createRes();
+
+      await revokeInvitation(req, res);
+
+      expect(mockRoleRefusal).toHaveBeenCalledWith(1, "Team lead", 3);
+      expect(mockRevoke).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("still revokes an invitation whose role no longer exists", async () => {
+      mockRoleRefusal.mockResolvedValue("unknown_role");
+      mockRevoke.mockResolvedValue({ id: 1 } as any);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await revokeInvitation(req, res);
+
+      expect(mockRevoke).toHaveBeenCalledWith(1, 1);
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("returns 404 without revoking when the invitation is not in the organization", async () => {
+      mockGetById.mockResolvedValue(null as any);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await revokeInvitation(req, res);
+
+      expect(mockRevoke).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
     it("should return 200 when invitation is revoked", async () => {
       mockRevoke.mockResolvedValue({ id: 1 } as any);
       const req = createReq({ params: { id: "1" } });
@@ -169,16 +216,24 @@ describe("invitation.ctrl", () => {
       } as any);
       mockSendEmail.mockResolvedValue({
         link: "link",
-        expiresAt: "date",
         info: {},
       } as any);
-      mockUpdateExpiry.mockResolvedValue(undefined);
+      mockUpdateExpiry.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      });
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
 
       await resendInvitation(req, res);
 
       expect(mockGetById).toHaveBeenCalledWith(1, 1);
+      // The new expiry is saved first, and the link is signed for it.
+      const savedExpiry = mockUpdateExpiry.mock.calls[0][2];
+      expect(savedExpiry).toBeInstanceOf(Date);
+      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, savedExpiry);
       expect(mockSendEmail).toHaveBeenCalledWith({
         email: "a@b.com",
         name: "A",
@@ -186,8 +241,11 @@ describe("invitation.ctrl", () => {
         roleId: 1,
         organizationId: 1,
         lang: "en",
+        expiresAt: savedExpiry,
       });
-      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, "date");
+      expect(mockUpdateExpiry.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSendEmail.mock.invocationCallOrder[0],
+      );
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         message: "Invitation resent successfully",
@@ -203,16 +261,24 @@ describe("invitation.ctrl", () => {
       } as any);
       mockSendEmail.mockResolvedValue({
         link: "link",
-        expiresAt: "date",
         info: { error: { name: "SendError", message: "fail" } },
       } as any);
-      mockUpdateExpiry.mockResolvedValue(undefined);
+      mockUpdateExpiry.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      });
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
 
       await resendInvitation(req, res);
 
       expect(mockGetById).toHaveBeenCalledWith(1, 1);
+      // The new expiry is saved first, and the link is signed for it.
+      const savedExpiry = mockUpdateExpiry.mock.calls[0][2];
+      expect(savedExpiry).toBeInstanceOf(Date);
+      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, savedExpiry);
       expect(mockSendEmail).toHaveBeenCalledWith({
         email: "a@b.com",
         name: "A",
@@ -220,8 +286,11 @@ describe("invitation.ctrl", () => {
         roleId: 1,
         organizationId: 1,
         lang: "en",
+        expiresAt: savedExpiry,
       });
-      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, "date");
+      expect(mockUpdateExpiry.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSendEmail.mock.invocationCallOrder[0],
+      );
       expect(res.status).toHaveBeenCalledWith(206);
       expect(res.json).toHaveBeenCalledWith({
         message: "Partial Content",
@@ -229,6 +298,93 @@ describe("invitation.ctrl", () => {
           error: "SendError: fail",
           link: "link",
         },
+      });
+    });
+
+    it("refuses to resend an invitation whose role the caller may not grant", async () => {
+      // Resending re-issues a working link; a custom role allowed to invite
+      // must not re-issue an Admin invitation and register through it.
+      mockGetById.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      } as any);
+      mockRoleRefusal.mockResolvedValue("exceeds_access");
+      const req = createReq({ params: { id: "1" }, role: "Team lead" });
+      const res = createRes();
+
+      await resendInvitation(req, res);
+
+      expect(mockRoleRefusal).toHaveBeenCalledWith(1, "Team lead", 1);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(mockUpdateExpiry).not.toHaveBeenCalled();
+    });
+
+    it("signs the link for the role the row holds after the update", async () => {
+      // A re-invite between the read and the update can change the role; a
+      // link signed with the stale role would never register.
+      mockGetById.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 3,
+      } as any);
+      mockUpdateExpiry.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 2,
+      });
+      mockSendEmail.mockResolvedValue({ link: "link", info: {} } as any);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await resendInvitation(req, res);
+
+      expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({ roleId: 2 }));
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("sends nothing when the new expiry cannot be saved", async () => {
+      // An emailed link only registers while it matches the row; a link for
+      // an unsaved expiry would be dead on arrival.
+      mockGetById.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      } as any);
+      mockUpdateExpiry.mockRejectedValue(new Error("db down"));
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await resendInvitation(req, res);
+
+      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it("returns 404 and sends nothing when the invitation stopped being pending", async () => {
+      // Accepted or revoked between the read and the update: no row updated.
+      mockGetById.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      } as any);
+      mockUpdateExpiry.mockResolvedValue(null);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await resendInvitation(req, res);
+
+      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        message: "Not Found",
+        data: "Invitation not found",
       });
     });
 

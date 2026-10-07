@@ -218,7 +218,7 @@ docker compose logs -f --tail=100
 docker compose exec backend node -e "const {sequelize} = require('./dist/database/db'); sequelize.authenticate().then(() => console.log('DB OK')).catch(e => console.error(e))"
 ```
 
-Check `curl -fsS http://localhost:3000/health` (see [Health monitoring](#health-monitoring)), plus Docker health checks and logs.
+Check `curl -fsS http://localhost:3000/health/ready` (see [Health monitoring](#health-monitoring)), plus Docker health checks and logs.
 
 ---
 
@@ -337,9 +337,17 @@ crontab -e
 |-----------|--------------|--------|
 | PostgreSQL | `pg_isready` | Docker Compose built-in |
 | Redis | `redis-cli ping` | Docker Compose built-in |
-| Backend | `GET /health` | HTTP probe / monitoring tool |
+| Backend | `GET /health/live`, `GET /health/ready`, `GET /health` | HTTP probe / monitoring tool |
 
-The backend exposes `GET /health`, which checks PostgreSQL, Redis and the AI Gateway. It returns `200` with `{"status":"ok","checks":{...}}` when all checks pass, or `503` with `"status":"degraded"` and the failing check's error. The endpoint is rate-limited. Use it for readiness probes, load-balancer checks and uptime monitoring. Avoid it as a liveness probe: an AI Gateway outage makes it return `503`, which would restart healthy backend pods.
+The backend exposes three rate-limited health endpoints:
+
+| Endpoint | Checks | Use for |
+|----------|--------|---------|
+| `GET /health/live` | Nothing beyond the process serving HTTP; always `200` | Liveness probes |
+| `GET /health/ready` | PostgreSQL and Redis (2s timeout each) | Readiness probes, load balancers, Docker `HEALTHCHECK` |
+| `GET /health` | PostgreSQL, Redis and the AI Gateway | Uptime monitoring and dashboards |
+
+`/health/ready` and `/health` return `200` with `{"status":"ok","checks":{...}}` when every check passes, or `503` with `"status":"degraded"` and the failing check's error. Do not use `/health` for liveness or readiness: an AI Gateway outage makes it return `503`, which would restart or de-route healthy backend pods. The bundled Kubernetes manifests, Helm chart, Dockerfile and Ansible playbooks already use `/health/live` and `/health/ready`.
 
 ### Monitoring with Docker
 

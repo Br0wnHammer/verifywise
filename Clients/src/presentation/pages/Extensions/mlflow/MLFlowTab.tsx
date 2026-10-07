@@ -41,6 +41,7 @@ import {
   modalStyles,
 } from "../theme";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
+import { getApiErrorReason } from "../../../../application/utils/apiErrorReason";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import { pageOfLabel } from "../../../components/Table/pageOfLabel";
 
@@ -421,8 +422,9 @@ export default function MLFlowTab() {
       await fetchMLFlowData();
     } catch (error: any) {
       await fetchMLFlowData();
-      if (error?.response?.data?.message) {
-        setWarning(`Sync failed: ${error.response.data.message}`);
+      const reason = getApiErrorReason(error);
+      if (reason) {
+        setWarning(`Sync failed: ${reason}`);
       } else {
         setWarning("Failed to sync with MLflow server. Showing cached data.");
       }

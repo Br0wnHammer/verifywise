@@ -72,8 +72,10 @@ export async function getRolePermissionsQuery(
 /**
  * Load (and cache) the effective permission set for a CUSTOM role. Callers
  * must only pass org-scoped roles; built-ins resolve via BUILTIN_ROLE_PERMISSIONS.
+ * Exported for callers that already hold the role row (read from the
+ * database rather than the role-map cache).
  */
-async function loadCustomRolePermissions(
+export async function loadCustomRolePermissions(
   organizationId: number,
   role: RoleInfo,
 ): Promise<ReadonlySet<string>> {

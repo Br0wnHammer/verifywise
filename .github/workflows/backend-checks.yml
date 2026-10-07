@@ -88,11 +88,10 @@ jobs:
       - name: TypeScript type check
         run: npm run build
 
-      - name: Run tests
-        run: npm test
+      # The unit suite runs once, with coverage, in the Coverage Gate job below.
 
       # Blocking. The limiters are the only thing standing between /users/login and
-      # unlimited password guesses, and `npm test` above cannot see them: it excludes
+      # unlimited password guesses, and the unit suite cannot see them: it excludes
       # tests/integration/, and a limiter is invisible to a unit test with its store
       # mocked out. These three suites need no database and no environment, so they
       # run here rather than in the Postgres job. The wiring suite is excluded
@@ -112,14 +111,6 @@ jobs:
           npm audit --audit-level=high --omit=dev || true
           node $GITHUB_WORKSPACE/scripts/security/npm-audit-gate.js .
 
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: backend-coverage-report
-          path: Servers/coverage/
-          retention-days: 14
-          if-no-files-found: ignore
 
   tenant-isolation-tests:
     name: Tenant Isolation Integration Tests
