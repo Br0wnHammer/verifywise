@@ -1,8 +1,11 @@
 name: Build and Push Images to GitHub Container Registry
 
 on:
-  release:
-    types: [published]
+  # release:
+  #   types: [published]
+  push:
+    branches:
+      - hp-oct-7-fix-trivy-scan-issue
 
 jobs:
   build-and-push:
