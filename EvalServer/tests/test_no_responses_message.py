@@ -6,7 +6,7 @@ many prompts failed and the first provider error), not just a generic string.
 
 from __future__ import annotations
 
-from utils.error_detection import build_no_responses_message
+from utils.error_detection import build_no_responses_message, redact_secrets
 
 
 def test_includes_failed_count_and_first_error() -> None:
@@ -56,4 +56,29 @@ def test_redacts_credentials_in_the_first_error() -> None:
         assert secret not in message
     assert "[redacted]" in message
     assert message.startswith("No responses generated: 1/1 prompts failed. First error: 403 for url")
+
+
+def test_leaves_ordinary_error_text_alone() -> None:
+    # "token" and "key" in plain error text are not credentials.
+    for text in [
+        "Unexpected token: < in JSON at position 0",
+        "Missing required key: model",
+        "Invalid token count",
+    ]:
+        assert redact_secrets(text) == text
+
+
+def test_redacts_other_credential_formats() -> None:
+    text = (
+        'body {"api_key": "abc123secretvalue"} hf_abcdefghijklmnop gsk_abcdefghijklmnop '
+        "Authorization: Basic dXNlcjpwYXNzd29yZA=="
+    )
+    redacted = redact_secrets(text)
+    for secret in [
+        "abc123secretvalue",
+        "hf_abcdefghijklmnop",
+        "gsk_abcdefghijklmnop",
+        "dXNlcjpwYXNzd29yZA==",
+    ]:
+        assert secret not in redacted
 

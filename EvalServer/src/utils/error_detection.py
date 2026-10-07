@@ -252,21 +252,29 @@ NO_RESPONSES_MESSAGE = "No responses generated"
 MAX_FIRST_ERROR_CHARS = 300
 
 # Credentials that provider and HTTP client errors can echo back (request URL,
-# headers). The failure reason is shown to every user of the organization.
+# headers, request body). Stored failure reasons are shown to every user of the
+# organization. A value after key/token/secret/password must look like a
+# credential (12+ token characters), so "Unexpected token: <" survives.
 _SECRET_PATTERNS = [
-    re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]+"),
-    re.compile(r"(?i)\b((?:api[_-]?)?key|token|secret|password)(\s*[=:]\s*|=)[^\s&\"',]+"),
-    re.compile(r"\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}"),
-    re.compile(r"\bAIza[0-9A-Za-z_-]{10,}"),
+    (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 [redacted]"),
+    (
+        re.compile(
+            r"(?i)\b((?:api[_-]?)?key|access[_-]?token|token|secret|password)"
+            r"([\"']?\s*[:=]\s*[\"']?)[A-Za-z0-9._~+/-]{12,}"
+        ),
+        r"\1\2[redacted]",
+    ),
+    (re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}"), "[redacted]"),
+    (re.compile(r"\b(?:hf|gsk|xox[bpas]|ghp|gho|github_pat)_[A-Za-z0-9_]{10,}"), "[redacted]"),
+    (re.compile(r"\bAIza[0-9A-Za-z_-]{10,}"), "[redacted]"),
 ]
 
 
 def redact_secrets(text: str) -> str:
     """Replace credential-looking values in an error message with [redacted]."""
-    text = _SECRET_PATTERNS[0].sub(r"\1 [redacted]", text)
-    text = _SECRET_PATTERNS[1].sub(r"\1\2[redacted]", text)
-    text = _SECRET_PATTERNS[2].sub("[redacted]", text)
-    return _SECRET_PATTERNS[3].sub("[redacted]", text)
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def build_no_responses_message(total_prompts: int, errors: List[str]) -> str:

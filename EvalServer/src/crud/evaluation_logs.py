@@ -15,6 +15,8 @@ from datetime import datetime
 import uuid
 import json
 
+from utils.error_detection import redact_secrets
+
 
 # ==================== LOGS ====================
 
@@ -70,7 +72,8 @@ async def create_log(
             "token_count": token_count,
             "cost": cost,
             "status": status,
-            "error_message": error_message,
+            # Shown in the log drawer; providers can echo keys.
+            "error_message": redact_secrets(error_message) if error_message else error_message,
             "created_by": str(created_by) if created_by is not None else None,
         }
     )
@@ -510,8 +513,9 @@ async def update_experiment_status(
         params["results_json"] = json.dumps(results)
 
     if error_message is not None:
+        # Shown to every user of the organization; providers can echo keys.
         updates.append("error_message = :error_message")
-        params["error_message"] = error_message
+        params["error_message"] = redact_secrets(error_message)
 
     if status == "running":
         updates.append("started_at = COALESCE(started_at, CURRENT_TIMESTAMP)")
