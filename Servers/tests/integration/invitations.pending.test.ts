@@ -81,12 +81,38 @@ describe("getPendingInvitationQuery", () => {
       first,
     );
     const resent = new Date("2026-11-06T09:30:00.250Z");
-    await updateInvitationExpiryQuery(owner.orgId, row.id, resent);
+    expect(await updateInvitationExpiryQuery(attacker.orgId, row.id, resent)).toBe(0);
+    expect(await updateInvitationExpiryQuery(owner.orgId, row.id, resent)).toBe(1);
 
     expect(
       (await getPendingInvitationQuery(owner.orgId, "invitee@example.com"))!.expires_at_ms,
     ).toBe(resent.getTime());
     expect(await getPendingInvitationQuery(attacker.orgId, "invitee@example.com")).toBeNull();
+  });
+
+  it("does not extend an invitation that is no longer pending", async () => {
+    const { owner } = await seedTwoTenantContexts();
+    const first = new Date("2026-11-05T12:00:00.000Z");
+    const row = await createInvitationQuery(
+      owner.orgId,
+      "invitee@example.com",
+      "In",
+      "Vitee",
+      3,
+      owner.userId,
+      first,
+    );
+    expect(
+      await markInvitationAcceptedQuery(owner.orgId, {
+        id: row.id,
+        roleId: 3,
+        expiresAtMs: first.getTime(),
+      }),
+    ).toBe(1);
+
+    expect(
+      await updateInvitationExpiryQuery(owner.orgId, row.id, new Date("2026-11-06T09:30:00Z")),
+    ).toBe(0);
   });
 });
 

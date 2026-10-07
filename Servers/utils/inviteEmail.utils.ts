@@ -38,6 +38,10 @@ interface InviteEmailResult {
  * Callers have already saved the invitation for `expiresAt`, so this never
  * throws on a failed send: the error comes back in `info.error` with the
  * link, which the caller hands to the admin to share instead.
+ *
+ * It does throw, before sending anything, if the link cannot be signed
+ * (for example JWT_SECRET is unset): there is no working link to email or
+ * to hand back.
  */
 export const sendInviteEmail = async (params: InviteEmailParams): Promise<InviteEmailResult> => {
   const { email, name, surname, roleId, organizationId, lang, expiresAt } = params;
@@ -51,7 +55,10 @@ export const sendInviteEmail = async (params: InviteEmailParams): Promise<Invite
       organizationId,
     },
     expiresAt,
-  ) as string;
+  );
+  if (!token) {
+    throw new Error("Could not sign the invitation link");
+  }
 
   const link = `${frontEndUrl}/user-reg?${new URLSearchParams({
     token,

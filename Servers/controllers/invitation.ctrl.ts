@@ -71,7 +71,11 @@ export const resendInvitation = async (req: Request, res: Response): Promise<Res
     // only registers while it matches the row. If the save fails nothing is
     // sent and the invitee's current link keeps working.
     const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
-    await updateInvitationExpiryQuery(organizationId, id, expiresAt);
+    const updated = await updateInvitationExpiryQuery(organizationId, id, expiresAt);
+    if (updated === 0) {
+      // Accepted or revoked since it was read: there is nothing to resend.
+      return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
+    }
 
     const { link, info } = await sendInviteEmail({
       email: invitation.email,

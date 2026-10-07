@@ -99,5 +99,13 @@ describe("inviteEmail.utils", () => {
       expect(result.info.error?.message).toBe("ENOENT");
       expect(mockSendEmail).not.toHaveBeenCalled();
     });
+
+    // A failed signature (e.g. JWT_SECRET unset) would email token=undefined.
+    it("throws and sends nothing when the link cannot be signed", async () => {
+      mockGenerateInviteToken.mockReturnValueOnce(undefined);
+
+      await expect(sendInviteEmail(params)).rejects.toThrow("Could not sign the invitation link");
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
   });
 });

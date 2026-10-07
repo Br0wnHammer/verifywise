@@ -163,19 +163,26 @@ export const markInvitationAcceptedQuery = async (
 };
 
 /**
- * Update invitation expiry after resend.
+ * Update invitation expiry after resend. Only a pending invitation is
+ * extended, so one accepted or revoked since it was read stays as it is.
+ * Returns the number of rows updated (0 or 1).
  */
 export const updateInvitationExpiryQuery = async (
   organizationId: number,
   id: number,
   expiresAt: Date,
-): Promise<void> => {
-  await sequelize.query(
+): Promise<number> => {
+  const rows = await sequelize.query(
     `UPDATE invitations
      SET created_at = CURRENT_TIMESTAMP, expires_at = :expiresAt, updated_at = CURRENT_TIMESTAMP
-     WHERE organization_id = :organizationId AND id = :id`,
-    { replacements: { organizationId, id, expiresAt: expiresAt.toISOString() } },
+     WHERE organization_id = :organizationId AND id = :id AND status = 'pending'
+     RETURNING id`,
+    {
+      replacements: { organizationId, id, expiresAt: expiresAt.toISOString() },
+      type: QueryTypes.SELECT,
+    },
   );
+  return rows.length;
 };
 
 /**

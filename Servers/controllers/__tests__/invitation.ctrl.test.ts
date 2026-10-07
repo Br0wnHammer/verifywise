@@ -171,7 +171,7 @@ describe("invitation.ctrl", () => {
         link: "link",
         info: {},
       } as any);
-      mockUpdateExpiry.mockResolvedValue(undefined);
+      mockUpdateExpiry.mockResolvedValue(1);
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
 
@@ -211,7 +211,7 @@ describe("invitation.ctrl", () => {
         link: "link",
         info: { error: { name: "SendError", message: "fail" } },
       } as any);
-      mockUpdateExpiry.mockResolvedValue(undefined);
+      mockUpdateExpiry.mockResolvedValue(1);
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
 
@@ -261,6 +261,28 @@ describe("invitation.ctrl", () => {
 
       expect(mockSendEmail).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it("returns 404 and sends nothing when the invitation stopped being pending", async () => {
+      // Accepted or revoked between the read and the update: no row updated.
+      mockGetById.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      } as any);
+      mockUpdateExpiry.mockResolvedValue(0);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await resendInvitation(req, res);
+
+      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        message: "Not Found",
+        data: "Invitation not found",
+      });
     });
 
     it("should return 400 for invalid ID", async () => {

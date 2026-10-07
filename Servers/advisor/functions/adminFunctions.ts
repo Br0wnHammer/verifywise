@@ -2,6 +2,9 @@ import { getAllUsersQuery, getUserByIdQuery } from "../../utils/user.utils";
 import { getAllRolesQuery } from "../../utils/role.utils";
 import { getOrganizationByIdQuery } from "../../utils/organization.utils";
 import { getSubscription } from "../../utils/subscription.util";
+import { createInvitationQuery } from "../../utils/invitation.utils";
+import { sendInviteEmail } from "../../utils/inviteEmail.utils";
+import { INVITATION_LIFETIME_MS } from "../../utils/jwt.utils";
 
 import { createWriteToolFn } from "../confirmation/createWriteTool";
 import { sequelize } from "../../database/db";
@@ -386,31 +389,53 @@ const agentSendInvitation = createWriteToolFn({
   descriptionFn: (params) =>
     `Send invitation to ${params.email} with role ID ${params.role_id}${params.name ? ` (${params.name})` : ""}`,
   executeFn: async (params, organizationId) => {
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    const token = require("crypto").randomBytes(32).toString("hex");
+    // The approval gateway sets _userId to the user who approved the action.
+    const invitedBy = params._userId as number;
+    if (!invitedBy) {
+      throw new Error("Cannot send an invitation without an inviting user");
+    }
+    const email = String(params.email);
+    const name = (params.name as string) || "";
+    const roleId = Number(params.role_id);
 
-    const result = await sequelize.query(
-      `INSERT INTO invitations (organization_id, email, role_id, name, token, status, invited_by, created_at, expires_at)
-       VALUES (:organization_id, :email, :role_id, :name, :token, 'pending', :invited_by, NOW(), :expires_at)
-       RETURNING id, email, status`,
-      {
-        replacements: {
-          organization_id: organizationId,
-          email: params.email,
-          role_id: params.role_id,
-          name: params.name || null,
-          token,
-          invited_by: (params as any)._userId || null,
-          expires_at: expiresAt,
-        },
-        type: QueryTypes.INSERT,
-      },
+    // Same flow as the Team page invite (vwmailer.ctrl.ts): save the row,
+    // then email a link signed for its expires_at, so the link registers.
+    const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
+    const row = await createInvitationQuery(
+      organizationId,
+      email,
+      name,
+      "",
+      roleId,
+      invitedBy,
+      expiresAt,
     );
-    const row = (result as any[])[0]?.[0] || (result as any[])[0];
+
+    const { info } = await sendInviteEmail({
+      email,
+      name,
+      roleId,
+      organizationId,
+      expiresAt,
+    });
+
+    if (info.error) {
+      // The link is a registration credential, so it is not returned here
+      // (tool results go to the model). Resend from the Team page instead.
+      return {
+        id: row.id,
+        email: row.email,
+        status: "pending",
+        email_sent: false,
+        message: `Invitation saved, but the email could not be sent (${info.error.message}). Resend it from the Team page.`,
+      };
+    }
+
     return {
       id: row.id,
       email: row.email,
       status: "pending",
+      email_sent: true,
       message: "Invitation sent successfully",
     };
   },
