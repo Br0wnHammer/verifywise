@@ -26,7 +26,12 @@ from crud import evaluation_logs as crud
 from crud.deepeval_scorers import list_scorers, create_scorer, update_scorer, touch_scorer_updated_at
 from deepeval_engine.gatekeeper import evaluate_gate
 from utils.run_custom_scorer import run_custom_scorer, ScorerResult
-from utils.error_detection import FatalErrorTracker, build_no_responses_message, detect_fatal_error
+from utils.error_detection import (
+    FatalErrorTracker,
+    build_no_responses_message,
+    detect_fatal_error,
+    redact_secrets,
+)
 
 
 async def _upsert_judge_scorer(
@@ -603,7 +608,8 @@ async def run_evaluation(
 
                     except Exception as gen_err:
                         print(f"    ⚠️ Generation error on turn {turn_idx + 1}: {gen_err}")
-                        assistant_response = f"[Generation error: {str(gen_err)[:100]}]"
+                        # Stored as the turn's output, which the organization sees.
+                        assistant_response = f"[Generation error: {redact_secrets(str(gen_err))[:100]}]"
 
                         # Check if this is a fatal error that should stop the experiment
                         should_stop = fatal_error_tracker.track_error(str(gen_err))

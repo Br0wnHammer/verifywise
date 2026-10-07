@@ -333,6 +333,32 @@ export const updateUserByIdQuery = async (
 };
 
 /**
+ * True if `userId` holds the built-in Admin role and is the only user in
+ * `organizationId` who does. Locks every Admin row of the organization (in id
+ * order) for the rest of the transaction, so two concurrent demotions or
+ * deletions cannot each see the other Admin and leave the organization with
+ * none: the second waits, then re-reads the first one's change.
+ */
+export const isLastAdminQuery = async (
+  organizationId: number,
+  userId: number,
+  transaction: Transaction,
+): Promise<boolean> => {
+  const rows = (await sequelize.query(
+    `SELECT u.id
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+      WHERE u.organization_id = :organizationId
+        AND r.organization_id IS NULL
+        AND r.name = 'Admin'
+      ORDER BY u.id
+        FOR UPDATE OF u`,
+    { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
+  )) as { id: number }[];
+  return rows.length === 1 && rows[0].id === userId;
+};
+
+/**
  * Deletes a user from the database by their ID.
  *
  * This function executes a SQL DELETE query to remove a user from the 'users' table

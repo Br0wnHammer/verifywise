@@ -659,6 +659,7 @@
   "The form associated with this submission no longer exists. Cannot create entity.": "The form associated with this submission no longer exists. Cannot create entity.",
   "The note must be 500 characters or fewer": "The note must be 500 characters or fewer",
   "The note must be text": "The note must be text",
+  "The organization must keep at least one Admin": "The organization must keep at least one Admin",
   "These risks are already linked. If the link was dismissed, use \"Show dismissed\" to restore it.": "These risks are already linked. If the link was dismissed, use \"Show dismissed\" to restore it.",
   "This API key is already configured. Please use a different API key or edit the existing entry.": "This API key is already configured. Please use a different API key or edit the existing entry.",
   "This API key is already configured. Please use a different API key.": "This API key is already configured. Please use a different API key.",

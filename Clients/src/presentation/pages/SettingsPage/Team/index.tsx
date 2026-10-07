@@ -211,8 +211,8 @@ const TeamManagement: React.FC = (): JSX.Element => {
       if (response && response.status === 202) {
         showAlert("success", "Success", "User deleted successfully");
         refreshUsers();
-      } else if (response && response.status === 403) {
-        // Demo user cannot be deleted - show info message
+      } else if (response && (response.status === 403 || response.status === 409)) {
+        // Demo user or the last Admin cannot be deleted - show the reason
         showAlert("info", "Info", response.data?.message || "This user cannot be deleted");
       } else {
         showAlert("error", "Error", "User deletion failed");

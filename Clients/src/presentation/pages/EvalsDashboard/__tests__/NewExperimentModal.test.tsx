@@ -246,8 +246,9 @@ describe("NewExperimentModal", () => {
         expect(deepEvalMocks.readDataset).toHaveBeenCalledWith("uploads/mine.json"),
       );
 
-      // Selected dataset chip reflects the loaded prompt count
-      expect(screen.getByText("2 prompts")).toBeInTheDocument();
+      // Selected dataset chip reflects the loaded prompt count, set only once
+      // readDataset resolves
+      expect(await screen.findByText("2 prompts")).toBeInTheDocument();
     });
 
     it("uploads a valid dataset file", async () => {
@@ -266,7 +267,10 @@ describe("NewExperimentModal", () => {
       fireEvent.change(fileInput, { target: { files: [file] } });
 
       await waitFor(() => expect(deepEvalMocks.uploadDataset).toHaveBeenCalled());
-      expect(deepEvalMocks.readDataset).toHaveBeenCalledWith("uploads/uploaded.json");
+      // readDataset runs only after the upload resolves
+      await waitFor(() =>
+        expect(deepEvalMocks.readDataset).toHaveBeenCalledWith("uploads/uploaded.json"),
+      );
       expect(await screen.findByText("Uploaded!")).toBeInTheDocument();
       expect(screen.getByText("my-dataset")).toBeInTheDocument();
     });

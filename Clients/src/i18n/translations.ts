@@ -6464,6 +6464,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Failed to create the vendor risk. Please try again.":
       "Erstellen des Anbieterrisikos fehlgeschlagen. Bitte erneut versuchen.",
     "Failed to delete": "Löschen fehlgeschlagen",
+    "Failed to delete account. Please try again.":
+      "Konto konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
     "Failed to delete API key": "Löschen des API-Schlüssels fehlgeschlagen",
     "Failed to delete comparison": "Löschen des Vergleichs fehlgeschlagen",
     "Failed to delete dataset. Please try again.":
@@ -16063,6 +16065,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Failed to create the vendor risk. Please try again.":
       "Échec de la création du risque fournisseur. Veuillez réessayer.",
     "Failed to delete": "Échec de la suppression",
+    "Failed to delete account. Please try again.":
+      "Échec de la suppression du compte. Veuillez réessayer.",
     "Failed to delete API key": "Échec de la suppression de la clé API",
     "Failed to delete comparison": "Échec de la suppression de la comparaison",
     "Failed to delete dataset. Please try again.":
@@ -23212,6 +23216,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Failed to create scorer": "Error al crear el evaluador",
     "Failed to create suppression rule": "Error al crear la regla de supresión",
     "Failed to delete": "Error al eliminar",
+    "Failed to delete account. Please try again.":
+      "No se pudo eliminar la cuenta. Inténtelo de nuevo.",
     "Failed to delete API key": "Error al eliminar la clave de API",
     "Failed to delete comparison": "Error al eliminar la comparación",
     "Failed to delete demo data.": "Error al eliminar los datos de demostración.",

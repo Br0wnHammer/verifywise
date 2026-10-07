@@ -12,6 +12,7 @@ jest.mock("../../utils/user.utils", () => ({
   getUserProfilePhotoQuery: jest.fn(),
   resetPasswordQuery: jest.fn(),
   updateUserByIdQuery: jest.fn(),
+  isLastAdminQuery: jest.fn(async () => false),
 }));
 jest.mock("bcrypt", () => ({
   compare: jest.fn().mockResolvedValue(true),
@@ -176,6 +177,7 @@ jest.mock("../../domain.layer/models/userPreferences/userPreferences.model", () 
   return { UserPreferencesModel };
 });
 
+import { ForeignKeyConstraintError } from "sequelize";
 import { buildUser } from "../../tests/factories/user.factory";
 import { getRoleByIdQuery } from "../../utils/role.utils";
 import {
@@ -208,6 +210,7 @@ import {
   checkUserExistsQuery,
   getUserProfilePhotoQuery,
   deleteUserProfilePhotoQuery,
+  isLastAdminQuery,
 } from "../../utils/user.utils";
 import {
   getPreferencesByUserQuery,
@@ -221,6 +224,7 @@ const mockGetById = getUserByIdQuery as jest.MockedFunction<typeof getUserByIdQu
 const mockCreate = createNewUserQuery as jest.MockedFunction<typeof createNewUserQuery>;
 const mockUpdate = updateUserByIdQuery as jest.MockedFunction<typeof updateUserByIdQuery>;
 const mockDelete = deleteUserByIdQuery as jest.MockedFunction<typeof deleteUserByIdQuery>;
+const mockIsLastAdmin = isLastAdminQuery as jest.MockedFunction<typeof isLastAdminQuery>;
 const mockGetPreferences = getPreferencesByUserQuery as jest.MockedFunction<
   typeof getPreferencesByUserQuery
 >;
@@ -322,12 +326,12 @@ describe("user.ctrl", () => {
   });
 
   describe("getUserById", () => {
-    it("should return 403 when access is denied", async () => {
+    it("should answer 404, like a missing user, for a user in another organization", async () => {
       mockGetById.mockResolvedValue(mockUser(buildUser({ id: 2, organization_id: 99 })) as any);
       const req = createReq({ params: { id: "2" }, userId: 1, isSuperAdmin: false });
       const res = createRes();
       await getUserById(req, res);
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(404);
     });
     it("should return 200 when user is found", async () => {
       mockGetById.mockResolvedValue(mockUser(buildUser()) as any);
@@ -336,12 +340,12 @@ describe("user.ctrl", () => {
       await getUserById(req, res);
       expect(res.status).toHaveBeenCalledWith(200);
     });
-    it("should return 500 when user is not found (null access before check)", async () => {
+    it("should return 404 when user is not found", async () => {
       mockGetById.mockResolvedValue(null as any);
       const req = createReq({ params: { id: "99" } });
       const res = createRes();
       await getUserById(req, res);
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.status).toHaveBeenCalledWith(404);
     });
     it("should return 500 on error", async () => {
       mockGetById.mockRejectedValue(new Error("DB error"));
@@ -490,12 +494,13 @@ describe("user.ctrl", () => {
   });
 
   describe("updateUserById", () => {
-    it("should return 403 when org mismatch", async () => {
+    it("should answer 404, like a missing user, for a user in another organization", async () => {
       mockGetById.mockResolvedValue(mockUser(buildUser({ id: 2, organization_id: 99 })) as any);
       const req = createReq({ params: { id: "2" }, body: { name: "X" } });
       const res = createRes();
       await updateUserById(req, res);
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
     it("should return 202 when user is updated", async () => {
       const u = mockUser(buildUser({ name: "A", surname: "B" }));
@@ -536,6 +541,30 @@ describe("user.ctrl", () => {
         await updateUserById(req, res);
         return res;
       }
+
+      it("should refuse to demote the organization's last Admin", async () => {
+        mockRoleById.mockResolvedValueOnce({ id: 3, name: "Editor", organization_id: null } as any);
+        mockIsLastAdmin.mockResolvedValueOnce(true);
+        const res = await assignRole(3);
+        expect(mockIsLastAdmin).toHaveBeenCalledWith(1, 2, expect.anything());
+        expect(res.status).toHaveBeenCalledWith(409);
+        expect(mockUpdate).not.toHaveBeenCalled();
+      });
+
+      it("should answer 400 when the role is deleted before the update lands", async () => {
+        mockRoleById.mockResolvedValueOnce({ id: 3, name: "Editor", organization_id: null } as any);
+        mockGetById.mockResolvedValue(
+          mockUser(buildUser({ id: 2, organization_id: 1, role_id: 1 })) as any,
+        );
+        mockUpdate.mockRejectedValueOnce(
+          new ForeignKeyConstraintError({ message: "violates foreign key constraint" } as any),
+        );
+        const req = createReq({ params: { id: "2" }, body: { name: "X", roleId: 3 } });
+        const res = createRes();
+        await updateUserById(req, res);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: "Unknown role" }));
+      });
 
       it("should return 400 when the requested role does not exist", async () => {
         mockRoleById.mockResolvedValueOnce(null);
@@ -640,14 +669,32 @@ describe("user.ctrl", () => {
   });
 
   describe("deleteUserById", () => {
-    it("should return 403 for pure super-admin (no role, no org)", async () => {
+    it("should answer 404 for a pure super-admin (no role, no org)", async () => {
       mockGetById.mockResolvedValue(
         mockUser(buildUser({ role_id: null as any, organization_id: null as any })) as any,
       );
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
       await deleteUserById(req, res);
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
+    it("should answer 404, like a missing user, for a user in another organization", async () => {
+      mockGetById.mockResolvedValue(mockUser(buildUser({ id: 2, organization_id: 99 })) as any);
+      const req = createReq({ params: { id: "2" } });
+      const res = createRes();
+      await deleteUserById(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
+    it("should refuse to delete the organization's last Admin", async () => {
+      mockGetById.mockResolvedValue(mockUser(buildUser()) as any);
+      mockIsLastAdmin.mockResolvedValueOnce(true);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+      await deleteUserById(req, res);
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(mockDelete).not.toHaveBeenCalled();
     });
     it("should return 403 for demo user", async () => {
       const u = mockUser(buildUser());
@@ -666,12 +713,12 @@ describe("user.ctrl", () => {
       await deleteUserById(req, res);
       expect(res.status).toHaveBeenCalledWith(202);
     });
-    it("should return 500 when user is not found (null access before check)", async () => {
+    it("should return 404 when user is not found", async () => {
       mockGetById.mockResolvedValue(null as any);
       const req = createReq({ params: { id: "99" } });
       const res = createRes();
       await deleteUserById(req, res);
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.status).toHaveBeenCalledWith(404);
     });
     it("should return 500 on error", async () => {
       mockGetById.mockRejectedValue(new Error("DB error"));
