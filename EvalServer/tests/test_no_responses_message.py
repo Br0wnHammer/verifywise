@@ -99,3 +99,16 @@ def test_always_redacts_values_after_password_and_secret_labels() -> None:
     ]:
         assert "[redacted]" in redact_secrets(text), text
 
+
+
+def test_redacts_a_whole_password_with_symbols() -> None:
+    text = redact_secrets('auth failed: password=a!b@c#d$ for "password": "p@ss w0rd"')
+    assert "a!b@c#d$" not in text
+    assert "p@ss" not in text
+    assert text.count("[redacted]") == 2
+
+
+def test_redacts_credentials_in_a_url() -> None:
+    text = redact_secrets("cannot reach postgres://evals:Hunter2!x@db.internal:5432/evals")
+    assert "Hunter2!x" not in text
+    assert "postgres://evals:[redacted]@db.internal:5432/evals" in text
