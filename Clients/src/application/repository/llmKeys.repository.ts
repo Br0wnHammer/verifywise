@@ -38,10 +38,14 @@ export interface LLMKeyStatus {
   providers: string[];
 }
 
-const NO_KEY_STATUS: LLMKeyStatus = { hasKeys: false, keyCount: 0, providers: [] };
-
 export async function getLLMKeyStatus(): Promise<LLMKeyStatus> {
   const response = await apiServices.get("/llm-keys/status");
-  // Never undefined: React Query treats undefined data as a failed load.
-  return ((response.data as any)?.data as LLMKeyStatus | undefined) ?? NO_KEY_STATUS;
+  const status = (response.data as any)?.data as LLMKeyStatus | undefined;
+  // A body without a status (a proxy page, a cached or truncated response) is
+  // a failed load, not "no keys": callers show the add-a-key prompt only on a
+  // real answer.
+  if (typeof status?.hasKeys !== "boolean") {
+    throw new Error("Unexpected LLM key status response");
+  }
+  return status;
 }

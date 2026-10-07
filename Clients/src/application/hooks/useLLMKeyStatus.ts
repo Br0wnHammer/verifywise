@@ -2,9 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getLLMKeyStatus, LLMKeyStatus } from "../repository/llmKeys.repository";
 import { useAuth } from "./useAuth";
 import { useSettledLoading } from "./useSettledLoading";
-
-/** Prefix for every org's status entry; see invalidateLLMKeyQueries. */
-export const LLM_KEY_STATUS_QUERY_KEY = ["llmKeyStatus"] as const;
+import { LLM_KEY_STATUS_QUERY_KEY } from "../constants/llmKeyQueries";
 
 /**
  * Whether the organization has an LLM API key. One cached query per org,

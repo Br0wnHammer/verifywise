@@ -1,4 +1,9 @@
 import { QueryClient } from "@tanstack/react-query";
+import {
+  LLM_KEYS_QUERY_KEY,
+  LLM_KEY_STATUS_QUERY_KEY,
+  retryLLMKeyQuery,
+} from "../constants/llmKeyQueries";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,6 +23,10 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+// LLM key list and status: fail fast instead of the default three retries.
+queryClient.setQueryDefaults(LLM_KEYS_QUERY_KEY, { retry: retryLLMKeyQuery });
+queryClient.setQueryDefaults(LLM_KEY_STATUS_QUERY_KEY, { retry: retryLLMKeyQuery });
 
 // Helper function to invalidate queries
 export const invalidateQueries = (queryKeys: string[][]) => {

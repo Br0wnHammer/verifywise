@@ -82,7 +82,7 @@ export default function SettingsPage() {
     ...DEFAULT_DIMENSION_WEIGHTS,
   });
   // Shared, per-organization cache: refreshed wherever a key changes.
-  const { keys: llmKeys, loading: llmKeysLoading } = useLLMKeys();
+  const { keys: llmKeys, loading: llmKeysLoading, isError: llmKeysError } = useLLMKeys();
   const [vulnerabilityScanEnabled, setVulnerabilityScanEnabled] = useState(false);
   const [vulnerabilityTypesEnabled, setVulnerabilityTypesEnabled] = useState<
     Record<VulnerabilityTypeKey, boolean>
@@ -482,7 +482,9 @@ export default function SettingsPage() {
                       <Box sx={{ display: "flex", alignItems: "center", gap: "8px", mt: "8px" }}>
                         <Info size={12} color={palette.text.accent} strokeWidth={1.5} />
                         <Typography sx={{ fontSize: 12, color: palette.text.accent }}>
-                          Configure LLM keys in Settings → Organization → LLM keys
+                          {llmKeysError
+                            ? "Couldn't load LLM keys. Reload the page to try again."
+                            : "Configure LLM keys in Settings → Organization → LLM keys"}
                         </Typography>
                       </Box>
                     )}

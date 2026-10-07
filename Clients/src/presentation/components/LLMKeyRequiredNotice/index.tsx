@@ -1,8 +1,7 @@
 import { ReactNode } from "react";
 import { Box, Link, Typography, type SxProps, type Theme } from "@mui/material";
 import { useNavigate } from "react-router";
-import { useAuth } from "../../../application/hooks/useAuth";
-import allowedRoles from "../../../application/constants/permissions";
+import { useCanManageLLMKeys } from "../../../application/hooks/useCanManageLLMKeys";
 import { LLM_KEY_CREATE_PATH } from "../../../application/constants/llmKeyDeepLink";
 import { fontSize } from "../../themes/typography";
 
@@ -20,8 +19,8 @@ interface LLMKeyRequiredNoticeProps {
 
 /**
  * "This needs an LLM API key" for screens that cannot work without one.
- * Admins get a link straight to the add-key form; other roles are told to
- * ask an administrator, since only admins can manage keys.
+ * Roles that can manage keys get a link straight to the add-key form; others
+ * are told to ask an administrator.
  */
 const LLMKeyRequiredNotice = ({
   adminMessage,
@@ -31,8 +30,7 @@ const LLMKeyRequiredNotice = ({
   sx,
 }: LLMKeyRequiredNoticeProps) => {
   const navigate = useNavigate();
-  const { userRoleName } = useAuth();
-  const canManageKeys = allowedRoles.llmKeys.manage.includes(userRoleName);
+  const { canManageKeys } = useCanManageLLMKeys();
 
   return (
     <Box

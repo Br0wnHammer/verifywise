@@ -4943,6 +4943,8 @@ export const translations: Record<string, Record<string, string>> = {
     "LLM key": "LLM-Schlüssel",
     "LLM use case": "LLM-Anwendungsfall",
     "LLM-enhanced analysis": "LLM-gestützte Analyse",
+    "Couldn't load LLM keys. Reload the page to try again.":
+      "LLM-Schlüssel konnten nicht geladen werden. Laden Sie die Seite neu, um es erneut zu versuchen.",
     "LangChain agents, CrewAI, AutoGen, MCP servers, and other autonomous AI systems will appear here":
       "LangChain-Agenten, CrewAI, AutoGen, MCP-Server und andere autonome KI-Systeme erscheinen hier",
     "Last login": "Letzte Anmeldung",
@@ -14553,6 +14555,8 @@ export const translations: Record<string, Record<string, string>> = {
     "LLM key": "Clé LLM",
     "LLM use case": "Cas d'usage LLM",
     "LLM-enhanced analysis": "Analyse améliorée par LLM",
+    "Couldn't load LLM keys. Reload the page to try again.":
+      "Impossible de charger les clés LLM. Rechargez la page pour réessayer.",
     "LangChain agents, CrewAI, AutoGen, MCP servers, and other autonomous AI systems will appear here":
       "Les agents LangChain, CrewAI, AutoGen, les serveurs MCP et d'autres systèmes IA autonomes apparaîtront ici",
     "Last login": "Dernière connexion",
@@ -22455,6 +22459,8 @@ export const translations: Record<string, Record<string, string>> = {
     "LLM key": "Clave de LLM",
     "LLM use case": "Caso de uso de LLM",
     "LLM-enhanced analysis": "Análisis mejorado con LLM",
+    "Couldn't load LLM keys. Reload the page to try again.":
+      "No se pudieron cargar las claves LLM. Recarga la página para volver a intentarlo.",
     "Last login": "Último inicio de sesión",
     "Linked": "Vinculado",
     "Linked Items": "Elementos vinculados",

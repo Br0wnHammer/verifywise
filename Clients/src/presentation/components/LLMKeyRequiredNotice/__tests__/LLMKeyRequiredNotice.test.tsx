@@ -8,6 +8,14 @@ vi.mock("../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({ userRoleName: mockUserRoleName }),
 }));
 
+let mockPermissions: string[] = [];
+vi.mock("../../../../application/hooks/useRolePermissions", () => ({
+  useMyPermissions: () => ({
+    can: (key: string) => mockPermissions.includes(key),
+    isPending: false,
+  }),
+}));
+
 const mockNavigate = vi.fn();
 vi.mock("react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router")>()),
@@ -27,6 +35,7 @@ const renderNotice = () =>
 describe("LLMKeyRequiredNotice", () => {
   beforeEach(() => {
     mockUserRoleName = "Admin";
+    mockPermissions = [];
     mockNavigate.mockReset();
   });
 
@@ -43,5 +52,14 @@ describe("LLMKeyRequiredNotice", () => {
     renderNotice();
     expect(screen.getByRole("status")).toHaveTextContent("Ask your administrator.");
     expect(screen.queryByRole("button", { name: "Go to settings" })).not.toBeInTheDocument();
+  });
+
+  it("links a custom role holding llmKeys.admin to the add-key form", () => {
+    // The server allows any role with llmKeys.admin, not only Admin.
+    mockUserRoleName = "Platform admin";
+    mockPermissions = ["llmKeys.admin"];
+    renderNotice();
+    expect(screen.getByRole("status")).toHaveTextContent("Configure a key.");
+    expect(screen.getByRole("button", { name: "Go to settings" })).toBeInTheDocument();
   });
 });

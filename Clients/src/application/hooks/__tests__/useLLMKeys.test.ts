@@ -121,6 +121,20 @@ describe("useLLMKeys", () => {
     expect(result.current.keys).toBe(first);
   });
 
+  it("keeps the same list when a refetch returns the same keys", async () => {
+    // Callers' effects depend on the list, so an unchanged refetch must not
+    // hand them a new array.
+    mockGetKeys.mockResolvedValue(keysResponse(["OpenAI"]));
+    const client = newClient();
+    const { result } = renderKeys(client);
+    await waitFor(() => expect(result.current.keys).toHaveLength(1));
+    const firstList = result.current.keys;
+
+    await act(() => client.invalidateQueries({ queryKey: ["llmKeys"] }));
+    await waitFor(() => expect(mockGetKeys).toHaveBeenCalledTimes(2));
+    expect(result.current.keys).toBe(firstList);
+  });
+
   it("refetches the key list and the status after invalidateLLMKeyQueries", async () => {
     const client = newClient();
     const wrapper = ({ children }: { children: ReactNode }) =>

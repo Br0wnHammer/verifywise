@@ -14,8 +14,12 @@ vi.mock("../../../../../application/hooks/useAuth", () => ({
 }));
 
 let mockPermissions: string[] = [];
+let mockPermissionsPending = false;
 vi.mock("../../../../../application/hooks/useRolePermissions", () => ({
-  useMyPermissions: () => ({ can: (key: string) => mockPermissions.includes(key) }),
+  useMyPermissions: () => ({
+    can: (key: string) => mockPermissions.includes(key),
+    isPending: mockPermissionsPending,
+  }),
 }));
 
 const mockGetLLMKeys = vi.fn();
@@ -49,6 +53,7 @@ describe("LLMKeys", () => {
     vi.clearAllMocks();
     mockUserRoleName = "Admin";
     mockPermissions = [];
+    mockPermissionsPending = false;
     mockGetLLMKeys.mockResolvedValue({ data: { data: [] } });
   });
 
@@ -267,6 +272,27 @@ describe("LLMKeys", () => {
       </>,
       { route: "/settings/apikeys?addKey=1" },
     );
+    await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^$/));
+  });
+
+  it("keeps the addKey flag until permissions load, then opens the form for a custom role", async () => {
+    // A custom role holding llmKeys.admin is only known once the permission
+    // list arrives; consuming the flag before that would drop the deep link.
+    mockUserRoleName = "Platform admin";
+    mockPermissionsPending = true;
+    renderWithProviders(
+      <>
+        <LLMKeys />
+        <SearchProbe />
+      </>,
+      { route: "/settings/apikeys?addKey=1" },
+    );
+    expect(screen.getByTestId("search")).toHaveTextContent("?addKey=1");
+
+    // The permission list arrives; the key list resolving re-renders the page.
+    mockPermissionsPending = false;
+    mockPermissions = ["llmKeys.admin"];
+    expect(await screen.findByRole("heading", { name: "Add API key" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^$/));
   });
 

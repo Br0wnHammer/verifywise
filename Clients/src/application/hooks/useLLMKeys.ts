@@ -3,13 +3,13 @@ import { getLLMKeys } from "../repository/llmKeys.repository";
 import { LLMKeysModel } from "../../domain/models/Common/llmKeys/llmKeys.model";
 import { useAuth } from "./useAuth";
 import { useSettledLoading } from "./useSettledLoading";
-import { LLM_KEY_STATUS_QUERY_KEY } from "./useLLMKeyStatus";
-
-/** Prefix for every org's key list. */
-export const LLM_KEYS_QUERY_KEY = ["llmKeys"] as const;
+import { LLM_KEY_STATUS_QUERY_KEY, LLM_KEYS_QUERY_KEY } from "../constants/llmKeyQueries";
 
 /** Stable empty list, so callers' memos and effects do not re-run while loading. */
 const NO_KEYS: LLMKeysModel[] = [];
+
+// Module-level so `select` only re-runs when the cached rows change.
+const toKeyModels = (rows: LLMKeysModel[]) => rows.map((key) => new LLMKeysModel(key));
 
 /**
  * The organization's LLM keys, one cached query per org. Scoped to the org
@@ -23,12 +23,16 @@ const NO_KEYS: LLMKeysModel[] = [];
 export function useLLMKeys() {
   const { organizationId } = useAuth();
   const hasOrganization = organizationId != null;
-  const query = useQuery<LLMKeysModel[]>({
+  const query = useQuery({
     queryKey: [...LLM_KEYS_QUERY_KEY, organizationId ?? null],
-    queryFn: async () => {
+    // Cache the plain rows: React Query only keeps an unchanged result's
+    // reference for plain objects, so a refetch with the same keys does not
+    // hand callers a new list. The models are built in `select`.
+    queryFn: async (): Promise<LLMKeysModel[]> => {
       const response = await getLLMKeys();
-      return response.data.data?.map((key: LLMKeysModel) => new LLMKeysModel(key)) ?? [];
+      return response.data.data ?? [];
     },
+    select: toKeyModels,
     enabled: hasOrganization,
   });
 

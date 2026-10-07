@@ -25,9 +25,7 @@ import StandardModal from "../../../components/Modals/StandardModal";
 import ConfirmationModal from "../../../components/Dialogs/ConfirmationModal";
 import Field from "../../../components/Inputs/Field";
 import Select from "../../../components/Inputs/Select";
-import allowedRoles from "../../../../application/constants/permissions";
-import { useAuth } from "../../../../application/hooks/useAuth";
-import { useMyPermissions } from "../../../../application/hooks/useRolePermissions";
+import { useCanManageLLMKeys } from "../../../../application/hooks/useCanManageLLMKeys";
 import {
   LLMKeysFormData,
   LLMKeysModel,
@@ -72,14 +70,11 @@ const LLMKeys = () => {
     key: "",
     model: "",
   };
-  const { userRoleName } = useAuth();
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { can } = useMyPermissions();
-  // The server allows any role holding llmKeys.admin; the role list keeps
-  // Admins enabled while the permission list is still loading.
-  const isDisabled = !can("llmKeys.admin") && !allowedRoles.llmKeys?.manage?.includes(userRoleName);
+  const { canManageKeys, permissionsLoading } = useCanManageLLMKeys();
+  const isDisabled = !canManageKeys;
 
   // The shared, cached key list that Start here and the Advisor also read.
   const {
@@ -121,14 +116,16 @@ const LLMKeys = () => {
 
   // ?addKey=1 (Start here's "Go to settings") opens the add form once, then
   // leaves the URL so a refresh or Back does not reopen it. Every arrival
-  // with the flag opens it again. Roles that cannot add keys only lose the flag.
+  // with the flag opens it again. Roles that cannot add keys only lose the flag,
+  // once the permission list has loaded: a custom role may still be allowed.
   useEffect(() => {
     if (searchParams.get(LLM_KEY_ADD_PARAM) !== "1") return;
+    if (isDisabled && permissionsLoading) return;
     if (!isDisabled) setIsCreateModalOpen(true);
     const next = new URLSearchParams(searchParams);
     next.delete(LLM_KEY_ADD_PARAM);
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isDisabled]);
+  }, [searchParams, setSearchParams, isDisabled, permissionsLoading]);
 
   useEffect(() => {
     if (alert) {
