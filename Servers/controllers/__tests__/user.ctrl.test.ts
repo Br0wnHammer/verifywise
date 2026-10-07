@@ -271,6 +271,9 @@ function mockUser(data: any) {
   };
 }
 
+/** The invitation as register.middleware checked it. */
+const CHECKED_INVITATION = { id: 41, roleId: 1, expiresAtMs: 1793448000000 };
+
 describe("user.ctrl", () => {
   beforeEach(() => jest.clearAllMocks());
   afterEach(() => jest.restoreAllMocks());
@@ -369,7 +372,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
-      res.locals = { invitationId: 41 };
+      res.locals = { invitation: CHECKED_INVITATION };
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(201);
     });
@@ -390,11 +393,11 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
-      res.locals = { invitationId: 41 };
+      res.locals = { invitation: CHECKED_INVITATION };
       await createNewUser(req, res);
 
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(mockMark).toHaveBeenCalledWith(1, 41, tx);
+      expect(mockMark).toHaveBeenCalledWith(1, CHECKED_INVITATION, tx);
       expect(mockMark.mock.invocationCallOrder[0]).toBeLessThan(
         tx.commit.mock.invocationCallOrder.at(-1),
       );
@@ -418,7 +421,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
-      res.locals = { invitationId: 41 };
+      res.locals = { invitation: CHECKED_INVITATION };
       await createNewUser(req, res);
 
       expect(tx.rollback).toHaveBeenCalled();
@@ -444,7 +447,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
-      res.locals = { invitationId: 41 };
+      res.locals = { invitation: CHECKED_INVITATION };
       await createNewUser(req, res);
 
       expect(res.status).toHaveBeenCalledWith(403);
@@ -464,7 +467,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
-      res.locals = { invitationId: 41 };
+      res.locals = { invitation: CHECKED_INVITATION };
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(409);
     });
@@ -481,7 +484,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
-      res.locals = { invitationId: 41 };
+      res.locals = { invitation: CHECKED_INVITATION };
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
     });

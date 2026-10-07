@@ -121,23 +121,43 @@ export const revokeInvitationQuery = async (
   return result[0].length > 0;
 };
 
+/** An invitation as register.middleware checked it. */
+export interface CheckedInvitation {
+  id: number;
+  roleId: number;
+  expiresAtMs: number;
+}
+
 /**
- * Mark the invitation a registration link was checked against as accepted.
+ * Mark the invitation a registration link was checked against as accepted,
+ * only if it is still pending in the state that was checked: same role and
+ * same expiry. A re-invite of a pending email rewrites the same row (same id),
+ * so matching the id alone would let the old link use the new invitation.
  * Pass the user-creation transaction so the user and the used-up link commit
- * together. Returns 1 if it was still pending; 0 means it was revoked, used or
- * replaced (a re-invite is a new row) in the meantime.
+ * together. Returns 1 if accepted; 0 if it was revoked, used or rewritten.
  */
 export const markInvitationAcceptedQuery = async (
   organizationId: number,
-  invitationId: number,
+  checked: CheckedInvitation,
   transaction?: Transaction,
 ): Promise<number> => {
   const rows = await sequelize.query(
     `UPDATE invitations
      SET status = 'accepted', updated_at = CURRENT_TIMESTAMP
-     WHERE organization_id = :organizationId AND id = :invitationId AND status = 'pending'
+     WHERE organization_id = :organizationId AND id = :id AND status = 'pending'
+       AND role_id = :roleId
+       AND ROUND(EXTRACT(EPOCH FROM expires_at) * 1000) = :expiresAtMs
      RETURNING id`,
-    { replacements: { organizationId, invitationId }, transaction, type: QueryTypes.SELECT },
+    {
+      replacements: {
+        organizationId,
+        id: checked.id,
+        roleId: checked.roleId,
+        expiresAtMs: checked.expiresAtMs,
+      },
+      transaction,
+      type: QueryTypes.SELECT,
+    },
   );
   return rows.length;
 };

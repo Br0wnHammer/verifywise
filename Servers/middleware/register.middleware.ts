@@ -120,9 +120,14 @@ const registerJWT = async (
     req.body.email = decoded.email;
     req.body.roleId = decoded.roleId;
     req.body.organizationId = decoded.organizationId;
-    // The invitation this link was checked against: registration accepts
-    // exactly this row, not whichever is pending for the email by then.
-    res.locals.invitationId = invitation.id;
+    // The invitation exactly as checked: registration accepts it only if it
+    // is still in this state. A re-invite rewrites the same row (same id)
+    // with a new role and expiry, and must not be used by this link.
+    res.locals.invitation = {
+      id: invitation.id,
+      roleId: Number(invitation.role_id),
+      expiresAtMs: invitation.expires_at_ms,
+    };
 
     // Proceed to next middleware or route handler
     next();

@@ -267,8 +267,13 @@ describe("registerJWT middleware", () => {
 
     expect(next).toHaveBeenCalled();
     expect(req.body).toMatchObject({ email: "User@Test.com", roleId: 1, organizationId: 1 });
-    // The invitation this link was checked against, which registration accepts.
-    expect(res.locals!.invitationId).toBe(41);
+    // The invitation exactly as checked, which registration accepts only if
+    // it is still in that state.
+    expect(res.locals!.invitation).toEqual({
+      id: 41,
+      roleId: 1,
+      expiresAtMs: expect.any(Number),
+    });
   });
 
   it("rejects a link that an invitation resend has replaced", async () => {

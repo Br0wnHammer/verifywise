@@ -91,7 +91,9 @@ describe("getPendingInvitationQuery", () => {
 });
 
 describe("markInvitationAcceptedQuery", () => {
-  it("accepts the given pending invitation once, and only that one", async () => {
+  const EXPIRES = new Date("2026-11-05T12:00:00.000Z");
+
+  it("accepts the checked invitation once, and only from its organization", async () => {
     const { owner, attacker } = await seedTwoTenantContexts();
     const row = await createInvitationQuery(
       owner.orgId,
@@ -100,13 +102,41 @@ describe("markInvitationAcceptedQuery", () => {
       "Vitee",
       3,
       owner.userId,
-      new Date("2026-11-05T12:00:00.000Z"),
+      EXPIRES,
     );
+    const checked = { id: row.id, roleId: 3, expiresAtMs: EXPIRES.getTime() };
 
-    // Another organization cannot accept it by id.
-    expect(await markInvitationAcceptedQuery(attacker.orgId, row.id)).toBe(0);
-    expect(await markInvitationAcceptedQuery(owner.orgId, row.id)).toBe(1);
-    expect(await markInvitationAcceptedQuery(owner.orgId, row.id)).toBe(0);
+    expect(await markInvitationAcceptedQuery(attacker.orgId, checked)).toBe(0);
+    expect(await markInvitationAcceptedQuery(owner.orgId, checked)).toBe(1);
+    expect(await markInvitationAcceptedQuery(owner.orgId, checked)).toBe(0);
     expect(await getPendingInvitationQuery(owner.orgId, "invitee@example.com")).toBeNull();
+  });
+
+  it("does not accept a row a re-invite rewrote after the link was checked", async () => {
+    // A re-invite of a pending email updates the same row (same id) with the
+    // new role and expiry; the link that was checked must no longer count.
+    const { owner } = await seedTwoTenantContexts();
+    const row = await createInvitationQuery(
+      owner.orgId,
+      "invitee@example.com",
+      "In",
+      "Vitee",
+      3,
+      owner.userId,
+      EXPIRES,
+    );
+    const checked = { id: row.id, roleId: 3, expiresAtMs: EXPIRES.getTime() };
+    const reinvited = await createInvitationQuery(
+      owner.orgId,
+      "invitee@example.com",
+      "In",
+      "Vitee",
+      4,
+      owner.userId,
+      new Date("2026-11-06T12:00:00.000Z"),
+    );
+    expect(reinvited.id).toBe(row.id);
+
+    expect(await markInvitationAcceptedQuery(owner.orgId, checked)).toBe(0);
   });
 });

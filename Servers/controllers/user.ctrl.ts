@@ -510,7 +510,7 @@ async function createNewUser(req: Request, res: Response) {
       // row means it was revoked (or used) after the link was checked.
       const accepted = await markInvitationAcceptedQuery(
         organizationId,
-        Number(res.locals.invitationId),
+        res.locals.invitation,
         transaction,
       );
       if (accepted === 0) {
