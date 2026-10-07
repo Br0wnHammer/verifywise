@@ -13,11 +13,10 @@ const CHANGELOG: ChangelogEntry[] = [
   {
     version: "v2.6",
     date: "October 7, 2026",
-    title: "Custom roles, risk inheritance, and evidence retention",
+    title: "Risk inheritance, evidence retention, and security hardening",
     summary:
-      "Release that adds custom organization roles with their own permissions, links risks across projects, vendors, and models so related risks can inherit from each other, and adds retention rules to the Evidence hub. It also tightens who can invite users and manage LLM keys, shows dates in your preferred format across the app, and fixes a broad set of issues found during release testing.",
+      "Release that links risks across projects, vendors, and models so related risks can inherit from each other, and adds retention rules to the Evidence hub. It also tightens who can invite users and manage LLM keys, shows dates in your preferred format across the app, and fixes a broad set of issues found during release testing.",
     items: [
-      'Custom organization roles — create roles such as "Model owner" under Settings → Roles and choose exactly what each one can do, module by module; the built-in roles keep working as before',
       "Risk inheritance — link project, vendor, and model risks as related or as parent and child, review suggested links, see when a parent risk's level changes, and explore the links on a new Risk inheritance page with reports on duplicates and control coverage",
       "Evidence hub retention — set a retention policy and expiry for evidence",
       "Dashboard — each recent activity row now opens the use case, risk, task, or other record it describes",
