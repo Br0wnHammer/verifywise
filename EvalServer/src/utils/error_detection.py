@@ -253,27 +253,44 @@ MAX_FIRST_ERROR_CHARS = 300
 
 # Credentials that provider and HTTP client errors can echo back (request URL,
 # headers, request body). Stored failure reasons are shown to every user of the
-# organization. A value after key/token/secret/password must look like a
-# credential (12+ token characters), so "Unexpected token: <" survives.
-_SECRET_PATTERNS = [
-    (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 [redacted]"),
-    (
-        re.compile(
-            r"(?i)\b((?:api[_-]?)?key|access[_-]?token|token|secret|password)"
-            r"([\"']?\s*[:=]\s*[\"']?)[A-Za-z0-9._~+/-]{12,}"
-        ),
-        r"\1\2[redacted]",
-    ),
-    (re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}"), "[redacted]"),
-    (re.compile(r"\b(?:hf|gsk|xox[bpas]|ghp|gho|github_pat)_[A-Za-z0-9_]{10,}"), "[redacted]"),
-    (re.compile(r"\bAIza[0-9A-Za-z_-]{10,}"), "[redacted]"),
+# organization. A value after Bearer/Basic or key/token/secret/password is only
+# redacted when it looks like a credential, so error text such as
+# "Unexpected token: <", "Basic authentication is not supported" or
+# "Missing required key: messages_template" keeps its cause.
+_TOKEN = r"[A-Za-z0-9._~+/=-]"
+_SCHEME_VALUE = re.compile(r"(?i)\b(bearer|basic)(\s+)(" + _TOKEN + r"{8,})")
+_LABELLED_VALUE = re.compile(
+    r"(?i)\b((?:api[_-]?)?key|access[_-]?token|token|secret|password)"
+    r"([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{12,})"
+)
+_PREFIXED_SECRETS = [
+    re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}"),
+    re.compile(r"\b(?:hf|gsk|xox[bpas]|ghp|gho|github_pat)_[A-Za-z0-9_]{10,}"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{10,}"),
+    re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
 ]
+
+
+def _looks_like_secret(value: str) -> bool:
+    """A credential has a digit, mixed case, or base64 padding; words do not."""
+    return (
+        any(c.isdigit() for c in value)
+        or (any(c.isupper() for c in value) and any(c.islower() for c in value))
+        or value.endswith("=")
+    )
 
 
 def redact_secrets(text: str) -> str:
     """Replace credential-looking values in an error message with [redacted]."""
-    for pattern, replacement in _SECRET_PATTERNS:
-        text = pattern.sub(replacement, text)
+
+    def _keep_label(match: "re.Match[str]") -> str:
+        label, sep, value = match.groups()
+        return f"{label}{sep}[redacted]" if _looks_like_secret(value) else match.group(0)
+
+    text = _SCHEME_VALUE.sub(_keep_label, text)
+    text = _LABELLED_VALUE.sub(_keep_label, text)
+    for pattern in _PREFIXED_SECRETS:
+        text = pattern.sub("[redacted]", text)
     return text
 
 

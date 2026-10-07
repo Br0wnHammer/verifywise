@@ -63,6 +63,9 @@ def test_leaves_ordinary_error_text_alone() -> None:
     for text in [
         "Unexpected token: < in JSON at position 0",
         "Missing required key: model",
+        "Missing required key: messages_template",
+        "Basic authentication is not supported for this endpoint",
+        "Bearer authentication failed",
         "Invalid token count",
     ]:
         assert redact_secrets(text) == text
@@ -81,4 +84,8 @@ def test_redacts_other_credential_formats() -> None:
         "dXNlcjpwYXNzd29yZA==",
     ]:
         assert secret not in redacted
+
+
+def test_redacts_aws_access_keys() -> None:
+    assert "AKIAIOSFODNN7EXAMPLE" not in redact_secrets("AWS AKIAIOSFODNN7EXAMPLE denied")
 
