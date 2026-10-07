@@ -72,7 +72,6 @@ import {
 import { sendSlackNotification } from "../services/slack/slackNotificationService";
 import { SlackNotificationRoutingType } from "../domain.layer/enums/slack.enum";
 import { getRoleByIdQuery } from "../utils/role.utils";
-import { getRoleInfoById } from "../utils/roleMap";
 import { uploadFile } from "../utils/fileUpload.utils";
 import { markInvitationAcceptedQuery } from "../utils/invitation.utils";
 import { ConfidentialClientApplication } from "@azure/msal-node";
@@ -1117,6 +1116,10 @@ async function updateUserById(req: Request, res: Response) {
     // Check permissions (if user context is available)
     const currentUserId = (req as any).user?.id;
     const user = await getUserByIdQuery(id);
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json(STATUS_CODE[404](req.t!("User not found")));
+    }
 
     const isSelf = req.userId === id;
     if (!isSelf && user.organization_id !== req.organizationId) {
@@ -1165,11 +1168,14 @@ async function updateUserById(req: Request, res: Response) {
     // refused. All three cases get the same response so the endpoint does
     // not reveal which role ids exist in other organizations.
     if (roleId !== undefined && roleId !== user.role_id) {
-      const targetRole = await getRoleInfoById(roleId);
+      // Read from the database, not the role cache, so a role created or
+      // deleted a moment ago is judged correctly.
+      const targetRole = await getRoleByIdQuery(roleId);
+      const targetOrganizationId = targetRole?.organization_id ?? null;
       const isAssignable =
         !!targetRole &&
         targetRole.name !== "SuperAdmin" &&
-        (targetRole.organizationId === null || targetRole.organizationId === req.organizationId);
+        (targetOrganizationId === null || targetOrganizationId === req.organizationId);
       if (!isAssignable) {
         logStructured(
           "error",
