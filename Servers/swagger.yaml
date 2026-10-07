@@ -25755,6 +25755,28 @@ paths:
       security:
         -
           bearerAuth: []
+  /health/live:
+    get:
+      summary: 'Liveness probe'
+      description: 'Returns 200 while the process is serving HTTP. Checks no dependencies, so an outage elsewhere never fails liveness.'
+      responses:
+        '200':
+          description: Success
+      tags:
+        - System
+      operationId: healthCheck_live
+  /health/ready:
+    get:
+      summary: 'Readiness probe'
+      description: 'Checks PostgreSQL and Redis (2s timeout each). Returns 503 with status "degraded" when either fails.'
+      responses:
+        '200':
+          description: Success
+        '503':
+          description: 'A data store is unavailable'
+      tags:
+        - System
+      operationId: healthCheck_ready
   /health:
     get:
       summary: 'Health Check'

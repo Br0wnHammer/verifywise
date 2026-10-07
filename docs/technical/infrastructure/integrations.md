@@ -25,7 +25,7 @@ Pulls experiment runs from an MLflow tracking server into the Model inventory **
 
 ### Configuration
 
-Stored in `extension_enablements.configuration` for the `mlflow` extension. `password` and `api_token` are encrypted and never returned to the client. Fields: `tracking_server_url`, `auth_method` (`none` / `basic` / `token`), `username`, `password`, `api_token`, `verify_ssl` (default true), `timeout` (1–600 seconds, default 30). The service reads them with `ExtensionService.getRuntimeConfiguration("mlflow", organizationId)`.
+Stored in `extension_enablements.configuration` for the `mlflow` extension. `password` and `api_token` are encrypted and never returned to the client. Fields: `tracking_server_url`, `auth_method` (`none` / `basic` / `token`), `username`, `password`, `api_token`, `timeout` (1–600 seconds, default 30, applied per request). TLS certificates are always verified. The service reads them with `ExtensionService.getRuntimeConfiguration("mlflow", organizationId)`.
 
 Synced runs are stored in `mlflow_model_records`.
 
