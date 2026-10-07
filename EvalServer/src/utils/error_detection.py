@@ -275,8 +275,7 @@ _STRONG_LABEL_VALUE = re.compile(
 # before the host, so one containing "@" or "/" is redacted whole. Text
 # like "host:8080/a@b" reads the same as "user:1234/abc@host", so it is
 # redacted too: losing a port from an error beats leaking a password.
-# An IPv6 host ("[::1]:8080") is not a username, so "[" ends the match.
-_URL_USERINFO = re.compile(r"(://[^/\s:@\[]*:)(\S+)(@)(?=[^@\s]*(?:\s|$))")
+_URL_USERINFO = re.compile(r"(://[^/\s:@]*:)(\S+)(@)(?=[^@\s]*(?:\s|$))")
 # Labels that also appear in ordinary error text ("Missing required key: x").
 _WEAK_LABEL_VALUE = re.compile(
     r"(?i)" + _LABEL_START + r"(key|token)([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{12,})"

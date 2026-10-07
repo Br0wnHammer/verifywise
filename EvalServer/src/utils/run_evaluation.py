@@ -607,7 +607,7 @@ async def run_evaluation(
                         fatal_error_tracker.track_success()
 
                     except Exception as gen_err:
-                        print(f"    ⚠️ Generation error on turn {turn_idx + 1}: {gen_err}")
+                        print(f"    ⚠️ Generation error on turn {turn_idx + 1}: {redact_secrets(str(gen_err))}")
                         # Stored as the turn's output, which the organization sees.
                         assistant_response = f"[Generation error: {redact_secrets(str(gen_err))[:100]}]"
 
@@ -1134,7 +1134,7 @@ async def run_evaluation(
                                     }
                                 
                             except Exception as scorer_err:
-                                print(f"      ❌ Error: {scorer_err}")
+                                print(f"      ❌ Error: {redact_secrets(str(scorer_err))}")
                                 scorer_scores.append({
                                     "test_case_idx": idx,
                                     "label": "ERROR",

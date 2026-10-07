@@ -142,6 +142,7 @@ def test_redacts_a_password_that_starts_like_a_port() -> None:
     assert "2024#Secret" not in redact_secrets("postgres://admin:2024#Secret@db:5432/x failed")
 
 
-def test_keeps_an_ipv6_host() -> None:
-    assert redact_secrets("GET http://[::1]:8080/a@b failed") == "GET http://[::1]:8080/a@b failed"
+def test_redacts_userinfo_whatever_the_username_looks_like() -> None:
+    # A bracket does not mark an IPv6 host safely: "[u:pw@h" must not leak.
+    assert "secretpw" not in redact_secrets("GET https://[u:secretpw@h failed")
     assert redact_secrets("GET http://u:pw@[::1]:8080/ failed") == "GET http://u:[redacted]@[::1]:8080/ failed"
