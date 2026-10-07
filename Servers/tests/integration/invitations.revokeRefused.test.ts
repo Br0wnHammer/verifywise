@@ -75,6 +75,38 @@ describe("migration: revoke invitations the invite rules refuse", () => {
     expect(await pendingEmails(orgA)).toEqual(["kept-super-admin-invite@x.com"]);
   });
 
+  it("revokes a super admin's invites into roles the organization cannot grant", async () => {
+    // A super admin skips the inviter ceiling, not the role check.
+    const suffix = Date.now();
+    const orgA = await createTestOrganization(`Org A ${suffix}`);
+    const orgB = await createTestOrganization(`Org B ${suffix}`);
+    const superAdmin = await createTestUser(orgB, 1, `super-${suffix}@test.com`, "Password123!");
+    await sequelize.query(`INSERT INTO super_admins (user_id) VALUES (:id)`, {
+      replacements: { id: superAdmin },
+    });
+    const customRole = async (name: string, orgId: number) => {
+      const [{ id }] = await sequelize.query<{ id: number }>(
+        `INSERT INTO roles (name, description, organization_id, created_at)
+         VALUES (:name, 'Custom', :orgId, NOW()) RETURNING id`,
+        { replacements: { name, orgId }, type: QueryTypes.SELECT },
+      );
+      return id;
+    };
+    const ownRole = await customRole(`Own ${suffix}`, orgA);
+    const foreignRole = await customRole(`Foreign ${suffix}`, orgB);
+    // The built-in SuperAdmin role is gone; the name is still never invitable.
+    const superAdminRole = await customRole("SuperAdmin", orgA);
+
+    await invite(orgA, "kept-builtin@x.com", 3, superAdmin);
+    await invite(orgA, "kept-own-custom@x.com", ownRole, superAdmin);
+    await invite(orgA, "revoked-foreign-custom@x.com", foreignRole, superAdmin);
+    await invite(orgA, "revoked-super-admin-role@x.com", superAdminRole, superAdmin);
+
+    await migration.up({ sequelize });
+
+    expect(await pendingEmails(orgA)).toEqual(["kept-builtin@x.com", "kept-own-custom@x.com"]);
+  });
+
   it("revokes an invite into another organization's custom role", async () => {
     const suffix = Date.now();
     const orgA = await createTestOrganization(`Org A ${suffix}`);

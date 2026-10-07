@@ -11,14 +11,16 @@
  * revoking does, see revokeInvitationQuery). A pending invitation is kept
  * only if:
  *
- * - a super admin sent it (super-admin invites come from outside the org); or
- * - the inviter is a member of the invitation's organization, the role exists,
- *   is not SuperAdmin and is a built-in or this organization's own role, and
- *   either
- *   - the inviter is the built-in Admin, or
- *   - the inviter's role is this organization's custom role holding
- *     invitation.super, the invited role is one of its custom roles, and the
- *     invited role has no permission the inviter's role lacks.
+ * - the role exists, is not SuperAdmin and is a built-in or this
+ *   organization's own role (checked for every inviter, as the runtime does),
+ *   and either
+ *   - a super admin sent it (super-admin invites come from outside the org,
+ *     so the inviter's own role sets no ceiling); or
+ *   - the inviter is a member of the invitation's organization, and either
+ *     - the inviter is the built-in Admin, or
+ *     - the inviter's role is this organization's custom role holding
+ *       invitation.super, the invited role is one of its custom roles, and
+ *       the invited role has no permission the inviter's role lacks.
  *
  * Accepted invitations are left alone: they are history, not live links.
  * Pending ones with no recorded inviter are revoked: deleting a user clears
@@ -33,7 +35,15 @@ module.exports = {
       DELETE FROM verifywise.invitations i
       WHERE i.status = 'pending'
         AND NOT EXISTS (
-          SELECT 1 FROM verifywise.super_admins s WHERE s.user_id = i.invited_by
+          SELECT 1
+          FROM verifywise.super_admins s
+          JOIN verifywise.roles invited_role ON invited_role.id = i.role_id
+          WHERE s.user_id = i.invited_by
+            AND invited_role.name <> 'SuperAdmin'
+            AND (
+              invited_role.organization_id IS NULL
+              OR invited_role.organization_id = i.organization_id
+            )
         )
         AND NOT EXISTS (
           SELECT 1
