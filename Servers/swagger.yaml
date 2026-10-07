@@ -17845,6 +17845,8 @@ paths:
           description: 'Created successfully'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - requires the llmKeys.admin permission (Admin by default)'
         '500':
           description: 'Internal server error'
   /llm-keys/status:
@@ -17912,6 +17914,8 @@ paths:
           description: Success
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - requires the llmKeys.admin permission (Admin by default)'
         '500':
           description: 'Internal server error'
     delete:
@@ -17934,6 +17938,8 @@ paths:
           description: 'Deleted successfully'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - requires the llmKeys.admin permission (Admin by default)'
         '500':
           description: 'Internal server error'
   /nist-ai-rmf/functions:

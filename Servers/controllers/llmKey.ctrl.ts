@@ -17,7 +17,22 @@ import {
 import { ILLMKey, LLMProvider } from "../domain.layer/interfaces/i.llmKey";
 
 import { translateError } from "../utils/i18n.utils";
+import { roleHasPermission } from "../utils/rolePermissions.utils";
 const fileName = "llmKey.ctrl.ts";
+
+/**
+ * Custom headers usually carry a Custom provider's credentials, so only roles
+ * that manage keys (llmKeys.admin) see them. Everyone else gets the rest of
+ * the row: the Advisor, reporting and Start here only need to know a key
+ * exists and which provider/model it is.
+ */
+const hideHeadersUnlessManager = async <T extends { custom_headers?: unknown }>(
+  req: Request,
+  keys: T[],
+): Promise<T[]> => {
+  const canManage = await roleHasPermission(req.organizationId ?? null, req.role!, "llmKeys.admin");
+  return canManage ? keys : keys.map((key) => ({ ...key, custom_headers: null }));
+};
 
 /**
  * Validate that custom_headers is a plain object with string keys and string values.
@@ -60,7 +75,7 @@ export const getLLMKeys = async (req: Request, res: Response) => {
   logger.debug(`Fetching LLM Keys`);
   logStructured("processing", `starting LLM Keys fetch`, functionName, fileName);
   try {
-    const llmKeys = await getLLMKeysQuery(req.organizationId!);
+    const llmKeys = await hideHeadersUnlessManager(req, await getLLMKeysQuery(req.organizationId!));
     logStructured("successful", `fetched ${llmKeys.length} LLM Keys`, functionName, fileName);
     logger.debug(`Fetched ${llmKeys.length} LLM Keys`);
     return res.status(200).json(STATUS_CODE[200](llmKeys));
@@ -84,7 +99,10 @@ export const getLLMKey = async (req: Request, res: Response) => {
   logStructured("processing", `starting LLM Key fetch`, functionName, fileName);
   try {
     const name = req.params.name as string;
-    const llmKey = await getLLMKeyQuery(req.organizationId!, name);
+    const llmKey = await hideHeadersUnlessManager(
+      req,
+      await getLLMKeyQuery(req.organizationId!, name),
+    );
     logStructured("successful", `fetched LLM Key`, functionName, fileName);
     logger.debug(`Fetched LLM Key with name: ${name}`);
     return res.status(200).json(STATUS_CODE[200](llmKey));

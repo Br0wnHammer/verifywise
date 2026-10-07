@@ -6681,6 +6681,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     responses: [
       { status: 201, description: "Created successfully" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - requires the llmKeys.admin permission (Admin by default)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "LLM Keys",
@@ -6723,6 +6724,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - requires the llmKeys.admin permission (Admin by default)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "LLM Keys",
@@ -6738,6 +6740,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Deleted successfully" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - requires the llmKeys.admin permission (Admin by default)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "LLM Keys",
