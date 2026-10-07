@@ -20,6 +20,27 @@ from utils.error_detection import redact_secrets
 
 # ==================== LOGS ====================
 
+
+def _redact_scorer_errors(results: Any) -> Any:
+    """
+    Redact the error text a failed custom scorer leaves as its reason in an
+    experiment's detailed results (label "ERROR"), including results stored
+    before that was redacted on write.
+    """
+    if not isinstance(results, dict):
+        return results
+    for item in results.get("detailed_results") or []:
+        scores = item.get("metric_scores") if isinstance(item, dict) else None
+        if not isinstance(scores, dict):
+            continue
+        for score in scores.values():
+            if not isinstance(score, dict) or score.get("label") != "ERROR":
+                continue
+            reason = score.get("reason")
+            if isinstance(reason, str):
+                score["reason"] = redact_secrets(reason)
+    return results
+
 async def create_log(
     db: AsyncSession,
     project_id: str,
@@ -402,7 +423,7 @@ async def get_experiment_by_id(
             "config": row["config"],
             "baseline_experiment_id": row["baseline_experiment_id"],
             "status": row["status"],
-            "results": row["results"],
+            "results": _redact_scorer_errors(row["results"]),
             # Also redacts rows stored before redaction on write existed.
             "error_message": redact_secrets(row["error_message"]) if row["error_message"] else row["error_message"],
             "started_at": row["started_at"].isoformat() if row["started_at"] else None,
@@ -459,7 +480,7 @@ async def get_experiments(
             "description": row["description"],
             "config": row["config"],
             "status": row["status"],
-            "results": row["results"],
+            "results": _redact_scorer_errors(row["results"]),
             # Also redacts rows stored before redaction on write existed.
             "error_message": redact_secrets(row["error_message"]) if row["error_message"] else row["error_message"],
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,

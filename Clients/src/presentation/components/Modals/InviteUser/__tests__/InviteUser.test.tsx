@@ -66,6 +66,12 @@ describe("InviteUserModal errors", () => {
     );
   });
 
+  it("passes the server's reason on when the invitation changed meanwhile", async () => {
+    const message = "The invitation was changed by someone else. Try again.";
+    const onSendInvite = await submitWith(new CustomException(message, 409, {}));
+    expect(onSendInvite).toHaveBeenCalledWith("new@example.com", -1, undefined, message);
+  });
+
   it("keeps the generic message for a server or network failure", async () => {
     const onSendInvite = await submitWith(new CustomException("Internal Server Error", 500, {}));
     expect(onSendInvite).toHaveBeenCalledWith("new@example.com", -1, undefined, undefined);

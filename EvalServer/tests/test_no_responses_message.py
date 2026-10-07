@@ -112,3 +112,18 @@ def test_redacts_credentials_in_a_url() -> None:
     text = redact_secrets("cannot reach postgres://evals:Hunter2!x@db.internal:5432/evals")
     assert "Hunter2!x" not in text
     assert "postgres://evals:[redacted]@db.internal:5432/evals" in text
+
+
+def test_redacts_env_style_key_assignments() -> None:
+    # The label follows an underscore, not a word boundary.
+    for text in ("AZURE_OPENAI_API_KEY=3f2a9c1d7e8b4a6f", "x_api_key: abcdef", "OPENAI_TOKEN=abcDEF1234567890"):
+        assert redact_secrets(text).endswith("[redacted]"), text
+
+
+def test_redacts_a_url_password_containing_at_and_slash() -> None:
+    text = redact_secrets("proxy https://bob:p@ss/w0rd@proxy.local failed")
+    assert text == "proxy https://bob:[redacted]@proxy.local failed"
+
+
+def test_leaves_a_url_with_a_port_and_no_userinfo_alone() -> None:
+    assert redact_secrets("cannot reach http://host:8080/a now") == "cannot reach http://host:8080/a now"

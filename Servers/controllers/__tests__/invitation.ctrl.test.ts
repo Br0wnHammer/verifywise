@@ -135,7 +135,7 @@ describe("invitation.ctrl", () => {
 
       await revokeInvitation(req, res);
 
-      expect(mockRevoke).toHaveBeenCalledWith(1, 1);
+      expect(mockRevoke).toHaveBeenCalledWith(1, 1, 3);
       expect(res.status).toHaveBeenCalledWith(200);
     });
 
@@ -157,7 +157,7 @@ describe("invitation.ctrl", () => {
 
       await revokeInvitation(req, res);
 
-      expect(mockRevoke).toHaveBeenCalledWith(1, 1);
+      expect(mockRevoke).toHaveBeenCalledWith(1, 1, 3);
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({ message: "Invitation revoked" });
     });
@@ -177,18 +177,32 @@ describe("invitation.ctrl", () => {
     });
 
     it("should return 404 when invitation not found", async () => {
+      // Accepted or revoked between the read and the delete.
+      mockGetById.mockResolvedValueOnce({ id: 1, role_id: 3 } as any).mockResolvedValueOnce(null);
       mockRevoke.mockResolvedValue(null);
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
 
       await revokeInvitation(req, res);
 
-      expect(mockRevoke).toHaveBeenCalledWith(1, 1);
+      expect(mockRevoke).toHaveBeenCalledWith(1, 1, 3);
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
         message: "Not Found",
         data: "Invitation not found",
       });
+    });
+
+    it("answers 409 when a re-invite changed the role after the check", async () => {
+      // The delete matches only the role that was checked; the row is still
+      // pending, under another role.
+      mockRevoke.mockResolvedValue(null);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await revokeInvitation(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
     });
 
     it("should return 500 on error", async () => {
@@ -231,9 +245,9 @@ describe("invitation.ctrl", () => {
 
       expect(mockGetById).toHaveBeenCalledWith(1, 1);
       // The new expiry is saved first, and the link is signed for it.
-      const savedExpiry = mockUpdateExpiry.mock.calls[0][2];
+      const savedExpiry = mockUpdateExpiry.mock.calls[0][3];
       expect(savedExpiry).toBeInstanceOf(Date);
-      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, savedExpiry);
+      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, 1, savedExpiry);
       expect(mockSendEmail).toHaveBeenCalledWith({
         email: "a@b.com",
         name: "A",
@@ -276,9 +290,9 @@ describe("invitation.ctrl", () => {
 
       expect(mockGetById).toHaveBeenCalledWith(1, 1);
       // The new expiry is saved first, and the link is signed for it.
-      const savedExpiry = mockUpdateExpiry.mock.calls[0][2];
+      const savedExpiry = mockUpdateExpiry.mock.calls[0][3];
       expect(savedExpiry).toBeInstanceOf(Date);
-      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, savedExpiry);
+      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, 1, savedExpiry);
       expect(mockSendEmail).toHaveBeenCalledWith({
         email: "a@b.com",
         name: "A",
@@ -322,29 +336,24 @@ describe("invitation.ctrl", () => {
       expect(mockUpdateExpiry).not.toHaveBeenCalled();
     });
 
-    it("signs the link for the role the row holds after the update", async () => {
-      // A re-invite between the read and the update can change the role; a
-      // link signed with the stale role would never register.
+    it("extends only while the invitation holds the checked role, else answers 409", async () => {
+      // The ceiling was checked against role 3; a re-invite that changed the
+      // role in between must not get a link for the new role from this caller.
       mockGetById.mockResolvedValue({
         email: "a@b.com",
         name: "A",
         surname: "B",
         role_id: 3,
       } as any);
-      mockUpdateExpiry.mockResolvedValue({
-        email: "a@b.com",
-        name: "A",
-        surname: "B",
-        role_id: 2,
-      });
-      mockSendEmail.mockResolvedValue({ link: "link", info: {} } as any);
+      mockUpdateExpiry.mockResolvedValue(null);
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
 
       await resendInvitation(req, res);
 
-      expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({ roleId: 2 }));
-      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockUpdateExpiry).toHaveBeenCalledWith(1, 1, 3, expect.any(Date));
+      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(409);
     });
 
     it("sends nothing when the new expiry cannot be saved", async () => {
@@ -368,12 +377,14 @@ describe("invitation.ctrl", () => {
 
     it("returns 404 and sends nothing when the invitation stopped being pending", async () => {
       // Accepted or revoked between the read and the update: no row updated.
-      mockGetById.mockResolvedValue({
-        email: "a@b.com",
-        name: "A",
-        surname: "B",
-        role_id: 1,
-      } as any);
+      mockGetById
+        .mockResolvedValueOnce({
+          email: "a@b.com",
+          name: "A",
+          surname: "B",
+          role_id: 1,
+        } as any)
+        .mockResolvedValueOnce(null);
       mockUpdateExpiry.mockResolvedValue(null);
       const req = createReq({ params: { id: "1" } });
       const res = createRes();

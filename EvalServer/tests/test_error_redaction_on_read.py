@@ -145,3 +145,54 @@ async def test_arena_update_redacts_before_storing() -> None:
     db = _FakeDb([_arena_row()])
     await update_arena_comparison("arena-1", organization_id=1, db=db, error_message=LEAKY)  # type: ignore[arg-type]
     assert SECRET not in db.params[0]["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_experiment_readers_redact_a_stored_custom_scorer_error() -> None:
+    def row() -> Dict[str, Any]:
+        r = _experiment_row()
+        r["results"] = {
+            "detailed_results": [
+                {
+                    "metric_scores": {
+                        "tone": {"label": "ERROR", "score": 0.0, "passed": False, "reason": f"Error calling judge model (openai): {LEAKY}"},
+                        "fit": {"label": "Good", "score": 1.0, "passed": True, "reason": "Bearer of good news"},
+                    }
+                }
+            ]
+        }
+        return r
+
+    for experiment in (
+        (await get_experiments(_FakeDb([row()]), organization_id=1))[0],  # type: ignore[arg-type]
+        await get_experiment_by_id(_FakeDb([row()]), "exp-1", organization_id=1),  # type: ignore[arg-type]
+    ):
+        scores = experiment["results"]["detailed_results"][0]["metric_scores"]
+        assert SECRET not in scores["tone"]["reason"]
+        assert scores["tone"]["reason"].startswith("Error calling judge model (openai): 401")
+        assert scores["fit"]["reason"] == "Bearer of good news"
+
+
+@pytest.mark.asyncio
+async def test_custom_scorer_redacts_a_judge_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from utils import run_custom_scorer as module
+
+    def failing_client(*_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError(LEAKY)
+
+    monkeypatch.setattr(module, "get_provider_client", failing_client)
+    result = await module.run_custom_scorer(
+        scorer_config={
+            "id": "s1",
+            "name": "Tone",
+            "config": {
+                "judgeModel": {"name": "gpt-4o", "provider": "openai"},
+                "messages": [{"role": "user", "content": "Rate {{output}}"}],
+            },
+        },
+        input_text="in",
+        output_text="out",
+    )
+    assert result.label == "ERROR"
+    assert SECRET not in result.raw_response
+    assert "[redacted]" in result.raw_response

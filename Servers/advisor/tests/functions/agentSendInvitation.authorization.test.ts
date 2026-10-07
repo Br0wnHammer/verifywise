@@ -2,14 +2,20 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 jest.mock("../../../database/db", () => ({ sequelize: { query: jest.fn() } }));
 jest.mock("../../approval/approvalGateway", () => ({ submitForApproval: jest.fn() }));
-jest.mock("../../../utils/inviteRole.utils", () => ({ userInviteRefusal: jest.fn() }));
+jest.mock("../../../utils/inviteRole.utils", () => ({
+  userInviteRefusal: jest.fn(),
+  pendingInvitationToReplace: jest.fn(),
+}));
 
 import { writeToolExecutors } from "../../confirmation/createWriteTool";
 import "../../functions/adminFunctions";
 import { sequelize } from "../../../database/db";
-import { userInviteRefusal } from "../../../utils/inviteRole.utils";
+import { pendingInvitationToReplace, userInviteRefusal } from "../../../utils/inviteRole.utils";
 
 const mockRefusal = userInviteRefusal as jest.MockedFunction<typeof userInviteRefusal>;
+const mockReplace = pendingInvitationToReplace as jest.MockedFunction<
+  typeof pendingInvitationToReplace
+>;
 const mockQuery = sequelize.query as unknown as jest.Mock;
 
 const execute = (params: Record<string, unknown>) =>
@@ -32,6 +38,17 @@ describe("agent_send_invitation applies the invite rules to the approver", () =>
       message,
     );
     expect(mockRefusal).toHaveBeenCalledWith(7, 5, 1);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("refuses to replace a pending invitation the approver could not revoke", async () => {
+    mockRefusal.mockResolvedValue(null);
+    mockReplace.mockResolvedValue({ replaceRoleId: 1, refused: true });
+
+    await expect(execute({ email: "new@example.com", role_id: 3, _userId: 5 })).rejects.toThrow(
+      "You cannot replace an invitation for a role with more access than your own",
+    );
+    expect(mockReplace).toHaveBeenCalledWith(7, "new@example.com", 3, expect.any(Function));
     expect(mockQuery).not.toHaveBeenCalled();
   });
 });

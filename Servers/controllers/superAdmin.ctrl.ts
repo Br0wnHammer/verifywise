@@ -60,6 +60,12 @@ function loadObservabilityPrivateKey(): string | null {
   return inline ? inline.replace(/\\n/g, "\n") : null;
 }
 
+/** A role id from a request body as a positive integer, or null if it is not one. */
+const parseRoleId = (value: unknown): number | null => {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
 /**
  * List all organizations
  */
@@ -148,6 +154,12 @@ export async function createOrgWithUser(req: Request, res: Response) {
       .status(400)
       .json(STATUS_CODE[400]({ message: req.t!("password is required for direct creation") }));
   }
+  const roleId = parseRoleId(user.roleId);
+  if (roleId === null) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400]({ message: req.t!("Unknown role"), field: "roleId" }));
+  }
 
   const transaction = await sequelize.transaction();
   let orgId: number | undefined;
@@ -159,6 +171,13 @@ export async function createOrgWithUser(req: Request, res: Response) {
     const createdOrg = await createOrganizationQuery(orgModel, transaction);
     orgId = createdOrg.id!;
 
+    // The same role check as an invite, for either mode: the new organization
+    // has no custom roles yet, so only a built-in role other than SuperAdmin
+    // passes.
+    if (await inviteRoleRefusal(orgId, null, roleId)) {
+      throw new ValidationException(req.t!("Unknown role"), "roleId");
+    }
+
     if (mode === "direct") {
       await createNewUserWrapper(
         {
@@ -166,26 +185,21 @@ export async function createOrgWithUser(req: Request, res: Response) {
           surname: user.surname!,
           email: user.email,
           password: user.password!,
-          roleId: user.roleId,
+          roleId,
           organizationId: orgId,
         },
         transaction,
       );
     } else {
-      // Same role check as every other invite: the new organization has no
-      // custom roles yet, so only a built-in role other than SuperAdmin passes.
-      if (await inviteRoleRefusal(orgId, null, Number(user.roleId))) {
-        throw new ValidationException(req.t!("Unknown role"), "roleId");
-      }
       await createInvitationQuery(
         orgId,
         user.email,
         user.name,
         user.surname ?? "",
-        user.roleId,
+        roleId,
         req.userId!,
         invitationExpiresAt,
-        transaction,
+        { transaction },
       );
     }
 
@@ -211,7 +225,7 @@ export async function createOrgWithUser(req: Request, res: Response) {
         email: user.email,
         name: user.name,
         surname: user.surname ?? "",
-        roleId: user.roleId,
+        roleId,
         organizationId: orgId,
         lang: req.lang,
         expiresAt: invitationExpiresAt,
@@ -466,17 +480,27 @@ export async function createUserInOrg(req: Request, res: Response) {
     return res.status(400).json(STATUS_CODE[400]({ message: req.t!("Invalid organization ID") }));
   }
 
-  const { email, name, surname, password, roleId } = req.body;
-  if (!email || !name || !surname || !password || !roleId) {
+  const { email, name, surname, password } = req.body;
+  if (!email || !name || !surname || !password || !req.body.roleId) {
     return res.status(400).json(
       STATUS_CODE[400]({
         message: req.t!("email, name, surname, password, and roleId are required"),
       }),
     );
   }
+  const roleId = parseRoleId(req.body.roleId);
+  if (roleId === null) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400]({ message: req.t!("Unknown role"), field: "roleId" }));
+  }
 
   const transaction = await sequelize.transaction();
   try {
+    // The same role check as an invite into this organization.
+    if (await inviteRoleRefusal(orgId, null, roleId)) {
+      throw new ValidationException(req.t!("Unknown role"), "roleId");
+    }
     const user = await createNewUserWrapper(
       { name, surname, email, password, roleId, organizationId: orgId },
       transaction,
@@ -537,8 +561,19 @@ export async function updateUser(req: Request, res: Response) {
       replacements.email = email;
     }
     if (roleId !== undefined) {
+      // The same role check as an invite into the user's organization.
+      const checkedRoleId = parseRoleId(roleId);
+      if (
+        checkedRoleId === null ||
+        rows[0].organization_id == null ||
+        (await inviteRoleRefusal(rows[0].organization_id, null, checkedRoleId))
+      ) {
+        return res
+          .status(400)
+          .json(STATUS_CODE[400]({ message: req.t!("Unknown role"), field: "roleId" }));
+      }
       updates.push("role_id = :roleId");
-      replacements.roleId = roleId;
+      replacements.roleId = checkedRoleId;
     }
 
     if (updates.length === 0) {

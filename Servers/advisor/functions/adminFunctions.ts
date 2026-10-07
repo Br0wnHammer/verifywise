@@ -2,7 +2,7 @@ import { getAllUsersQuery, getUserByIdQuery } from "../../utils/user.utils";
 import { getAllRolesQuery } from "../../utils/role.utils";
 import { getOrganizationByIdQuery } from "../../utils/organization.utils";
 import { getSubscription } from "../../utils/subscription.util";
-import { userInviteRefusal } from "../../utils/inviteRole.utils";
+import { pendingInvitationToReplace, userInviteRefusal } from "../../utils/inviteRole.utils";
 import { createInvitationQuery } from "../../utils/invitation.utils";
 import { sendInviteEmail } from "../../utils/inviteEmail.utils";
 import { INVITATION_LIFETIME_MS } from "../../utils/jwt.utils";
@@ -419,6 +419,15 @@ const agentSendInvitation = createWriteToolFn({
     if (refusal) {
       throw new Error(INVITE_REFUSAL_MESSAGES[refusal]);
     }
+    const replace = await pendingInvitationToReplace(
+      organizationId,
+      email,
+      roleId,
+      (pendingRoleId) => userInviteRefusal(organizationId, invitedBy, pendingRoleId),
+    );
+    if (replace.refused) {
+      throw new Error("You cannot replace an invitation for a role with more access than your own");
+    }
 
     // Same flow as the Team page invite (vwmailer.ctrl.ts): save the row,
     // then email a link signed for its expires_at, so the link registers.
@@ -431,7 +440,11 @@ const agentSendInvitation = createWriteToolFn({
       roleId,
       invitedBy,
       expiresAt,
+      { replaceRoleId: replace.replaceRoleId },
     );
+    if (!row) {
+      throw new Error("The invitation was changed by someone else. Try again.");
+    }
 
     const { info } = await sendInviteEmail({
       email,

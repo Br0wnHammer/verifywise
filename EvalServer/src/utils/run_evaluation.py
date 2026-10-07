@@ -1140,7 +1140,7 @@ async def run_evaluation(
                                     "label": "ERROR",
                                     "score": 0.0,
                                     "passed": False,
-                                    "raw_response": str(scorer_err),
+                                    "raw_response": redact_secrets(str(scorer_err)),
                                 })
                         
                         custom_scorer_results[scorer_id] = scorer_scores

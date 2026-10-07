@@ -18,6 +18,11 @@ interface InvitationRow {
 /**
  * Create or update an invitation record.
  * Uses ON CONFLICT with partial unique index (organization_id, email) WHERE status='pending'.
+ *
+ * `replaceRoleId` (when given) is the role of the pending invitation the
+ * caller checked it may replace, or null if it saw none: an existing pending
+ * invitation is then rewritten only while it still holds that role, and null
+ * is returned when it does not (another invite changed it in between).
  */
 export const createInvitationQuery = async (
   organizationId: number,
@@ -27,8 +32,9 @@ export const createInvitationQuery = async (
   roleId: number,
   invitedBy: number,
   expiresAt: Date,
-  transaction?: Transaction,
-): Promise<InvitationRow> => {
+  options: { transaction?: Transaction; replaceRoleId?: number | null } = {},
+): Promise<InvitationRow | null> => {
+  const guarded = options.replaceRoleId !== undefined;
   const result = (await sequelize.query(
     `INSERT INTO invitations (organization_id, email, name, surname, role_id, status, invited_by, expires_at)
      VALUES (:organizationId, :email, :name, :surname, :roleId, 'pending', :invitedBy, :expiresAt)
@@ -41,6 +47,7 @@ export const createInvitationQuery = async (
        expires_at = EXCLUDED.expires_at,
        created_at = CURRENT_TIMESTAMP,
        updated_at = CURRENT_TIMESTAMP
+     ${guarded ? "WHERE invitations.role_id = :replaceRoleId" : ""}
      RETURNING *`,
     {
       replacements: {
@@ -51,12 +58,13 @@ export const createInvitationQuery = async (
         roleId,
         invitedBy,
         expiresAt: expiresAt.toISOString(),
+        replaceRoleId: options.replaceRoleId ?? null,
       },
-      transaction,
+      transaction: options.transaction,
     },
   )) as [InvitationRow[], number];
 
-  return result[0][0];
+  return result[0][0] ?? null;
 };
 
 /**
@@ -105,17 +113,20 @@ export const getInvitationByIdQuery = async (
 };
 
 /**
- * Revoke (delete) an invitation.
+ * Revoke (delete) a pending invitation, only while it holds `roleId`, the
+ * role the caller was checked against: a re-invite in between can change it.
  */
 export const revokeInvitationQuery = async (
   organizationId: number,
   id: number,
+  roleId: number,
 ): Promise<boolean> => {
   const result = (await sequelize.query(
     `DELETE FROM invitations
      WHERE organization_id = :organizationId AND id = :id AND status = 'pending'
+       AND role_id = :roleId
      RETURNING id`,
-    { replacements: { organizationId, id } },
+    { replacements: { organizationId, id, roleId } },
   )) as [InvitationRow[], number];
 
   return result[0].length > 0;
@@ -163,23 +174,26 @@ export const markInvitationAcceptedQuery = async (
 };
 
 /**
- * Update invitation expiry after resend. Only a pending invitation is
- * extended, so one accepted or revoked since it was read stays as it is.
- * Returns the row as updated (null when nothing was), so the resent link is
- * signed for the role the row holds now, not one read before the update.
+ * Update invitation expiry after resend. Only a pending invitation still
+ * holding `roleId` (the role the caller was checked against) is extended, so
+ * one accepted, revoked or re-invited for another role since it was read
+ * stays as it is. Returns the row as updated (null when nothing was), so the
+ * resent link is signed from the row itself.
  */
 export const updateInvitationExpiryQuery = async (
   organizationId: number,
   id: number,
+  roleId: number,
   expiresAt: Date,
 ): Promise<{ email: string; name: string; surname: string; role_id: number } | null> => {
   const rows = (await sequelize.query(
     `UPDATE invitations
      SET created_at = CURRENT_TIMESTAMP, expires_at = :expiresAt, updated_at = CURRENT_TIMESTAMP
      WHERE organization_id = :organizationId AND id = :id AND status = 'pending'
+       AND role_id = :roleId
      RETURNING email, name, surname, role_id`,
     {
-      replacements: { organizationId, id, expiresAt: expiresAt.toISOString() },
+      replacements: { organizationId, id, roleId, expiresAt: expiresAt.toISOString() },
       type: QueryTypes.SELECT,
     },
   )) as { email: string; name: string; surname: string; role_id: number }[];
