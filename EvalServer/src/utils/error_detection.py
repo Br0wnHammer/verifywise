@@ -5,6 +5,7 @@ Detects API errors that are unrecoverable (won't succeed on retry)
 and should stop the experiment early to avoid wasting time.
 """
 
+import re
 from typing import List, Optional, Tuple
 
 # Fatal error patterns that won't recover - experiment should stop
@@ -250,6 +251,23 @@ class FatalErrorTracker:
 NO_RESPONSES_MESSAGE = "No responses generated"
 MAX_FIRST_ERROR_CHARS = 300
 
+# Credentials that provider and HTTP client errors can echo back (request URL,
+# headers). The failure reason is shown to every user of the organization.
+_SECRET_PATTERNS = [
+    re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)\b((?:api[_-]?)?key|token|secret|password)(\s*[=:]\s*|=)[^\s&\"',]+"),
+    re.compile(r"\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{10,}"),
+]
+
+
+def redact_secrets(text: str) -> str:
+    """Replace credential-looking values in an error message with [redacted]."""
+    text = _SECRET_PATTERNS[0].sub(r"\1 [redacted]", text)
+    text = _SECRET_PATTERNS[1].sub(r"\1\2[redacted]", text)
+    text = _SECRET_PATTERNS[2].sub("[redacted]", text)
+    return _SECRET_PATTERNS[3].sub("[redacted]", text)
+
 
 def build_no_responses_message(total_prompts: int, errors: List[str]) -> str:
     """
@@ -269,6 +287,7 @@ def build_no_responses_message(total_prompts: int, errors: List[str]) -> str:
     first_error = next((" ".join(e.split()) for e in errors if e and e.strip()), None)
     if first_error is None:
         return NO_RESPONSES_MESSAGE
+    first_error = redact_secrets(first_error)
     if len(first_error) > MAX_FIRST_ERROR_CHARS:
         first_error = first_error[:MAX_FIRST_ERROR_CHARS] + "…"
     return (

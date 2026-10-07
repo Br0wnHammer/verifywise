@@ -435,7 +435,8 @@ async def get_experiments(
     result = await db.execute(
         _text('''
             SELECT id, project_id, name, description, config, status,
-                   results, created_at, updated_at, started_at, completed_at, model_inventory_id
+                   results, error_message, created_at, updated_at, started_at, completed_at,
+                   model_inventory_id
             FROM llm_evals_experiments
             ''' + where_clause + '''
             ORDER BY created_at DESC
@@ -454,6 +455,7 @@ async def get_experiments(
             "config": row["config"],
             "status": row["status"],
             "results": row["results"],
+            "error_message": row["error_message"],
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
             "started_at": row["started_at"].isoformat() if row["started_at"] else None,

@@ -41,3 +41,19 @@ def test_falls_back_to_generic_message_without_errors() -> None:
 def test_skips_blank_errors_when_choosing_first_error() -> None:
     message = build_no_responses_message(2, ["   ", "Real cause"])
     assert message.endswith("First error: Real cause")
+
+
+def test_redacts_credentials_in_the_first_error() -> None:
+    # Provider and HTTP errors can echo the request URL or headers.
+    message = build_no_responses_message(
+        1,
+        [
+            "403 for url https://x.googleapis.com/v1/m:generateContent?key=AIzaSyABCDEF123456 "
+            "with Authorization: Bearer sk-proj-abcdef1234567890 api_key=secret-value-99"
+        ],
+    )
+    for secret in ["AIzaSyABCDEF123456", "sk-proj-abcdef1234567890", "secret-value-99"]:
+        assert secret not in message
+    assert "[redacted]" in message
+    assert message.startswith("No responses generated: 1/1 prompts failed. First error: 403 for url")
+
