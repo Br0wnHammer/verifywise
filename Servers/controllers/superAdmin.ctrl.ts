@@ -394,6 +394,18 @@ export async function inviteUserToOrg(req: Request, res: Response) {
       .json(STATUS_CODE[400]({ message: req.t!("email, name, and roleId are required") }));
   }
 
+  // The organization is passed to invite() as trusted, so it must be real.
+  if (!Number.isInteger(orgId) || orgId <= 0) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid organization ID")));
+  }
+  const organization: any[] = await sequelize.query(
+    `SELECT id FROM organizations WHERE id = :orgId`,
+    { replacements: { orgId }, type: "SELECT" as any },
+  );
+  if (organization.length === 0) {
+    return res.status(404).json(STATUS_CODE[404](req.t!("Organization not found")));
+  }
+
   // Check if a user with this email already exists
   const existing: any[] = await sequelize.query(`SELECT id FROM users WHERE email = :email`, {
     replacements: { email },

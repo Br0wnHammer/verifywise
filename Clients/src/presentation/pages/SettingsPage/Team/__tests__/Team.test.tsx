@@ -54,6 +54,18 @@ vi.mock("../../../../components/Modals/InviteUser", () => ({
           send-fallback
         </button>
         <button onClick={() => onSendInvite("new@user.com", 500)}>send-error</button>
+        <button
+          onClick={() =>
+            onSendInvite(
+              "new@user.com",
+              -1,
+              undefined,
+              "You cannot invite a user with more access than your own",
+            )
+          }
+        >
+          send-refused
+        </button>
       </div>
     ) : null,
 }));
@@ -312,6 +324,19 @@ describe("TeamManagement", () => {
     await user.click(screen.getByText("send-error"));
     await waitFor(() => {
       expect(screen.getByText(/Failed to send invitation to new@user.com/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows the server's reason when an invite is refused", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<TeamManagement />);
+
+    await user.click(screen.getByText("Invite team member"));
+    await user.click(screen.getByText("send-refused"));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/You cannot invite a user with more access than your own/),
+      ).toBeInTheDocument();
     });
   });
 });
