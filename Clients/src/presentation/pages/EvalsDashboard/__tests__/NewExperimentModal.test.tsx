@@ -55,6 +55,9 @@ async function goToDatasetStep() {
 
 /** Advance from the dataset step to the scorer/judge step (step 2). */
 async function goToScorerStep() {
+  // Next enables once the dataset prompts are in state, which lands after
+  // readDataset resolves; clicking it while still disabled does nothing.
+  await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   await screen.findByText("Standard judge only");
 }
@@ -135,7 +138,7 @@ describe("NewExperimentModal", () => {
       await waitFor(() =>
         expect(deepEvalMocks.readDataset).toHaveBeenCalledWith(DEFAULT_TEMPLATE_PATH),
       );
-      expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+      await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
 
       await goToScorerStep();
 
