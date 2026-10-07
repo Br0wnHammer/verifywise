@@ -798,6 +798,7 @@
   "You can only cancel scans that you initiated": "You can only cancel scans that you initiated",
   "You can only modify your own data": "You can only modify your own data",
   "You cannot invite a user with more access than your own": "You cannot invite a user with more access than your own",
+  "You cannot revoke an invitation for a role with more access than your own": "You cannot revoke an invitation for a role with more access than your own",
   "You've been assigned as {roleType}: {entityName}": "You've been assigned as {roleType}: {entityName}",
   "Your role changed to project admin on {projectName}": "Your role changed to project admin on {projectName}",
   "Vendor risks to review": "Vendor risks to review",

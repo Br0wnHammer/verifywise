@@ -110,6 +110,46 @@ describe("invitation.ctrl", () => {
   });
 
   describe("revokeInvitation", () => {
+    beforeEach(() => {
+      mockGetById.mockResolvedValue({ id: 1, role_id: 3 } as any);
+      mockRoleRefusal.mockResolvedValue(null);
+    });
+
+    it("refuses to revoke an invitation for a role above the caller's access", async () => {
+      mockRoleRefusal.mockResolvedValue("exceeds_access");
+      const req = createReq({ params: { id: "1" }, role: "Team lead" });
+      const res = createRes();
+
+      await revokeInvitation(req, res);
+
+      expect(mockRoleRefusal).toHaveBeenCalledWith(1, "Team lead", 3);
+      expect(mockRevoke).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("still revokes an invitation whose role no longer exists", async () => {
+      mockRoleRefusal.mockResolvedValue("unknown_role");
+      mockRevoke.mockResolvedValue({ id: 1 } as any);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await revokeInvitation(req, res);
+
+      expect(mockRevoke).toHaveBeenCalledWith(1, 1);
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("returns 404 without revoking when the invitation is not in the organization", async () => {
+      mockGetById.mockResolvedValue(null as any);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await revokeInvitation(req, res);
+
+      expect(mockRevoke).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
     it("should return 200 when invitation is revoked", async () => {
       mockRevoke.mockResolvedValue({ id: 1 } as any);
       const req = createReq({ params: { id: "1" } });

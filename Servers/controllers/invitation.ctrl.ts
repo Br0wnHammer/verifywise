@@ -37,6 +37,24 @@ export const revokeInvitation = async (req: Request, res: Response): Promise<Res
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid invitation ID")));
     }
 
+    // Revoking follows the same ceiling as sending and resending: a role
+    // may only withdraw invitations for roles it could itself grant. An
+    // invitation whose role no longer exists stays revocable.
+    const invitation = await getInvitationByIdQuery(organizationId, id);
+    if (!invitation) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
+    }
+    const refusal = await inviteRoleRefusal(organizationId, req.role!, invitation.role_id);
+    if (refusal === "exceeds_access") {
+      return res
+        .status(403)
+        .json(
+          STATUS_CODE[403](
+            req.t!("You cannot revoke an invitation for a role with more access than your own"),
+          ),
+        );
+    }
+
     const deleted = await revokeInvitationQuery(organizationId, id);
     if (!deleted) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));

@@ -1,5 +1,10 @@
-import { getRoleByName, getRoleInfoById, getRoleNameById } from "./roleMap";
-import { getEffectivePermissions, roleHasPermission } from "./rolePermissions.utils";
+import { getRoleByName, getRoleNameById } from "./roleMap";
+import { getRoleByIdQuery } from "./role.utils";
+import {
+  getEffectivePermissions,
+  loadCustomRolePermissions,
+  roleHasPermission,
+} from "./rolePermissions.utils";
 import { getUserByIdQuery } from "./user.utils";
 
 /** Why a role may not be granted through an invitation. */
@@ -23,7 +28,13 @@ export async function inviteRoleRefusal(
   inviterRole: string | null,
   roleId: number,
 ): Promise<InviteRoleRefusal | null> {
-  const role = await getRoleInfoById(roleId);
+  // Read from the database, not the role-map cache: on another replica a
+  // role created a moment ago would read as unknown, and a deleted one as
+  // still grantable.
+  const row = await getRoleByIdQuery(roleId);
+  const role = row
+    ? { id: row.id!, name: row.name, organizationId: row.organization_id ?? null }
+    : null;
   if (
     !role ||
     role.name === "SuperAdmin" ||
@@ -38,7 +49,7 @@ export async function inviteRoleRefusal(
   if (role.organizationId === null) return "exceeds_access";
 
   const [granted, held] = await Promise.all([
-    getEffectivePermissions(organizationId, role.name),
+    loadCustomRolePermissions(organizationId, role),
     getEffectivePermissions(organizationId, inviterRole),
   ]);
   for (const permission of granted) {

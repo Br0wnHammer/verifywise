@@ -8,11 +8,14 @@ jest.mock("../../utils/invitation.utils", () => ({
   createInvitationQuery: jest.fn(),
 }));
 jest.mock("../../utils/roleMap", () => ({
-  getRoleInfoById: jest.fn(),
   getRoleByName: jest.fn(),
+}));
+jest.mock("../../utils/role.utils", () => ({
+  getRoleByIdQuery: jest.fn(),
 }));
 jest.mock("../../utils/rolePermissions.utils", () => ({
   getEffectivePermissions: jest.fn(),
+  loadCustomRolePermissions: jest.fn(),
 }));
 jest.mock("../../utils/logger/logHelper", () => ({
   logProcessing: jest.fn(),
@@ -23,12 +26,19 @@ jest.mock("../../utils/logger/logHelper", () => ({
 import { invite } from "../vwmailer.ctrl";
 import { sendInviteEmail } from "../../utils/inviteEmail.utils";
 import { createInvitationQuery } from "../../utils/invitation.utils";
-import { getRoleInfoById, getRoleByName } from "../../utils/roleMap";
-import { getEffectivePermissions } from "../../utils/rolePermissions.utils";
+import { getRoleByName } from "../../utils/roleMap";
+import { getRoleByIdQuery } from "../../utils/role.utils";
+import {
+  getEffectivePermissions,
+  loadCustomRolePermissions,
+} from "../../utils/rolePermissions.utils";
 
 const mockSend = sendInviteEmail as jest.MockedFunction<typeof sendInviteEmail>;
 const mockCreate = createInvitationQuery as jest.MockedFunction<typeof createInvitationQuery>;
-const mockGetRole = getRoleInfoById as jest.MockedFunction<typeof getRoleInfoById>;
+const mockGetRole = getRoleByIdQuery as jest.MockedFunction<typeof getRoleByIdQuery>;
+const mockCustomPermissions = loadCustomRolePermissions as jest.MockedFunction<
+  typeof loadCustomRolePermissions
+>;
 const mockGetRoleByName = getRoleByName as jest.MockedFunction<typeof getRoleByName>;
 const mockPermissions = getEffectivePermissions as jest.MockedFunction<
   typeof getEffectivePermissions
@@ -82,13 +92,21 @@ const body = (overrides: Record<string, unknown> = {}): any => ({
 describe("vwmailer.ctrl invite", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetRole.mockImplementation(async (id: number) => ROLES[id]);
+    // The invited role is read from the database (a roles row).
+    mockGetRole.mockImplementation(async (id: number) =>
+      ROLES[id]
+        ? ({ id, name: ROLES[id].name, organization_id: ROLES[id].organizationId } as any)
+        : null,
+    );
     mockGetRoleByName.mockImplementation(async (_org, name: string) =>
       Object.values(ROLES).find((r) => r.name === name),
     );
     mockPermissions.mockImplementation(
       async (_org, roleName: string) =>
         CUSTOM_PERMISSIONS[roleName] ?? BUILTIN_ROLE_PERMISSIONS[roleName] ?? new Set(),
+    );
+    mockCustomPermissions.mockImplementation(
+      async (_org, role) => CUSTOM_PERMISSIONS[role.name] ?? new Set(),
     );
     mockSend.mockResolvedValue({
       link: "http://x/user-reg?token=t",

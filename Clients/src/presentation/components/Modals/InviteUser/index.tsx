@@ -147,13 +147,16 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({ isOpen, setIsOpen, on
           onSendInvite(values.email, response.status);
         }
       } catch (error) {
-        // apiServices rethrows the server's message (e.g. a role the inviter
-        // may not grant), so the admin sees why.
+        // apiServices rethrows the server's message with its status. Show it
+        // only for a refusal (e.g. a role the inviter may not grant); other
+        // failures carry transport text, so the generic retry message stays.
+        const status = (error as { status?: number })?.status;
+        const refused = status === 400 || status === 403;
         onSendInvite(
           values.email,
           -1,
           undefined,
-          error instanceof Error && error.message ? error.message : undefined,
+          refused && error instanceof Error && error.message ? error.message : undefined,
         );
       } finally {
         setIsOpen(false);
