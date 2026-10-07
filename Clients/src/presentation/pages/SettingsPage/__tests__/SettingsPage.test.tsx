@@ -8,14 +8,6 @@ vi.mock("../../../../application/hooks/useAuth", () => ({
   }),
 }));
 
-vi.mock("../../../../application/hooks/useRolePermissions", () => ({
-  useMyPermissions: () => ({
-    can: () => true,
-    isLoading: false,
-    permissions: new Set(["roles.manage"]),
-  }),
-}));
-
 // Mock child tab components
 vi.mock("../Profile/index", () => ({
   default: () => <div data-testid="profile-tab" />,
@@ -49,10 +41,6 @@ vi.mock("../AuditLedger", () => ({
   default: () => <div data-testid="audit-ledger-tab" />,
 }));
 
-vi.mock("../Roles", () => ({
-  default: () => <div data-testid="roles-tab" />,
-}));
-
 vi.mock("../../../components/HelperIcon", () => ({
   default: () => null,
   HelperIcon: () => null,
@@ -70,12 +58,5 @@ describe("SettingsPage", () => {
       route: "/settings",
     });
     expect(container).toBeTruthy();
-  });
-
-  it("shows the Roles tab for a role holding roles.manage", () => {
-    const { getByText } = renderWithProviders(<ProfilePage />, {
-      route: "/settings/roles",
-    });
-    expect(getByText("Roles")).toBeTruthy();
   });
 });

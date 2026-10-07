@@ -25,7 +25,8 @@ import StandardModal from "../../../components/Modals/StandardModal";
 import ConfirmationModal from "../../../components/Dialogs/ConfirmationModal";
 import Field from "../../../components/Inputs/Field";
 import Select from "../../../components/Inputs/Select";
-import { useResourceAccess } from "../../../../application/hooks/useResourceAccess";
+import allowedRoles from "../../../../application/constants/permissions";
+import { useAuth } from "../../../../application/hooks/useAuth";
 import {
   LLMKeysFormData,
   LLMKeysModel,
@@ -73,10 +74,8 @@ const LLMKeys = () => {
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  // Built-in roles use the role list; custom roles need llmKeys.admin, as on
-  // the server.
-  const { canAccess, isResolving: permissionsResolving } = useResourceAccess();
-  const isDisabled = !canAccess("llmKeys", "manage");
+  const { userRoleName } = useAuth();
+  const isDisabled = !allowedRoles.llmKeys.manage.includes(userRoleName);
 
   // The shared, cached key list that Start here and the Advisor also read.
   const {
@@ -118,16 +117,14 @@ const LLMKeys = () => {
 
   // ?addKey=1 (Start here's "Go to settings") opens the add form once, then
   // leaves the URL so a refresh or Back does not reopen it. Every arrival
-  // with the flag opens it again. Roles that cannot add keys only lose the flag,
-  // once the permission list has loaded: a custom role may still be allowed.
+  // with the flag opens it again. Roles that cannot add keys only lose the flag.
   useEffect(() => {
     if (searchParams.get(LLM_KEY_ADD_PARAM) !== "1") return;
-    if (permissionsResolving) return;
     if (!isDisabled) setIsCreateModalOpen(true);
     const next = new URLSearchParams(searchParams);
     next.delete(LLM_KEY_ADD_PARAM);
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isDisabled, permissionsResolving]);
+  }, [searchParams, setSearchParams, isDisabled]);
 
   useEffect(() => {
     if (alert) {

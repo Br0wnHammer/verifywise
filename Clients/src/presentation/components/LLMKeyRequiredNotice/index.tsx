@@ -1,7 +1,8 @@
 import { ReactNode } from "react";
 import { Box, Link, Typography, type SxProps, type Theme } from "@mui/material";
 import { useNavigate } from "react-router";
-import { useResourceAccess } from "../../../application/hooks/useResourceAccess";
+import { useAuth } from "../../../application/hooks/useAuth";
+import allowedRoles from "../../../application/constants/permissions";
 import { LLM_KEY_CREATE_PATH } from "../../../application/constants/llmKeyDeepLink";
 import { fontSize } from "../../themes/typography";
 
@@ -30,12 +31,8 @@ const LLMKeyRequiredNotice = ({
   sx,
 }: LLMKeyRequiredNoticeProps) => {
   const navigate = useNavigate();
-  const { canAccess, isResolving } = useResourceAccess();
-  const canManageKeys = canAccess("llmKeys", "manage");
-
-  // A custom role is only known once its permissions load; wait rather than
-  // flash "contact your administrator" at a role that can add the key.
-  if (isResolving) return null;
+  const { userRoleName } = useAuth();
+  const canManageKeys = allowedRoles.llmKeys.manage.includes(userRoleName);
 
   return (
     <Box
