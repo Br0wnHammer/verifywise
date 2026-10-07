@@ -188,8 +188,7 @@ export const extensionsContent: ArticleContent = {
         { field: 'Username', notes: 'Needed for Basic authentication.' },
         { field: 'Password', notes: 'Needed for Basic authentication. Stored encrypted.' },
         { field: 'API token', notes: 'Needed for Token authentication. Stored encrypted.' },
-        { field: 'Verify SSL certificate', notes: 'On by default.' },
-        { field: 'Request timeout (seconds)', notes: 'Between 1 and 600. Defaults to 30.' },
+        { field: 'Request timeout (seconds)', notes: 'Between 1 and 600. Defaults to 30. Applies to each request to MLflow.' },
       ],
     },
     {

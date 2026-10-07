@@ -12,8 +12,10 @@ import { safeFetchWithBase } from "../../utils/safeOutboundUrl";
  *   auth_method          (none | basic | token)
  *   username, password   (basic auth, `password` is is_secret → encrypted)
  *   api_token            (token auth, is_secret → encrypted)
- *   verify_ssl           (boolean, informational only — fetch() honours it)
- *   timeout              (number, seconds; not currently plumbed into fetch)
+ *   timeout              (number, seconds, 1–600; default 30) — per-request limit
+ *
+ * TLS certificates are always verified (Node fetch default). Older saved
+ * configurations may still carry a `verify_ssl` key; it is ignored.
  */
 
 export interface MLflowConfig {
@@ -22,8 +24,7 @@ export interface MLflowConfig {
   username?: string;
   password?: string;
   api_token?: string;
-  verify_ssl?: boolean;
-  timeout?: number;
+  timeout?: number | string;
 }
 
 export interface MLflowTestConnectionResult {
@@ -45,6 +46,17 @@ export interface MLflowSyncResult {
 
 export async function loadConfiguration(organizationId: number): Promise<MLflowConfig> {
   return (await ExtensionService.getRuntimeConfiguration("mlflow", organizationId)) as MLflowConfig;
+}
+
+const DEFAULT_TIMEOUT_SECONDS = 30;
+const MAX_TIMEOUT_SECONDS = 600;
+
+/** Per-request abort signal from the configured timeout (seconds). */
+function timeoutSignal(config: MLflowConfig): AbortSignal {
+  const seconds = Number(config.timeout);
+  const valid = Number.isFinite(seconds) && seconds > 0;
+  const capped = valid ? Math.min(seconds, MAX_TIMEOUT_SECONDS) : DEFAULT_TIMEOUT_SECONDS;
+  return AbortSignal.timeout(capped * 1000);
 }
 
 function buildHeaders(config: MLflowConfig): Record<string, string> {
@@ -83,6 +95,7 @@ export async function testConnection(config: MLflowConfig): Promise<MLflowTestCo
         method: "POST",
         headers: buildHeaders(config),
         body: JSON.stringify({ max_results: 1 }),
+        signal: timeoutSignal(config),
       },
     );
     if (!response.ok) {
@@ -267,6 +280,7 @@ export async function syncModels(
         method: "POST",
         headers,
         body: JSON.stringify({ max_results: 1000 }),
+        signal: timeoutSignal(config),
       },
     );
     if (!experimentsResponse.ok) {
@@ -294,6 +308,7 @@ export async function syncModels(
         method: "POST",
         headers,
         body: JSON.stringify({ experiment_ids: chunk, max_results: 1000 }),
+        signal: timeoutSignal(config),
       });
       if (runsResponse.ok) {
         const runsData: any = await runsResponse.json();

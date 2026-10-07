@@ -421,8 +421,18 @@ export default function MLFlowTab() {
       await fetchMLFlowData();
     } catch (error: any) {
       await fetchMLFlowData();
-      if (error?.response?.data?.message) {
-        setWarning(`Sync failed: ${error.response.data.message}`);
+      // apiServices throws a CustomException whose `response` is the body.
+      // 4xx bodies carry the reason in `data`, 5xx bodies in `error`;
+      // `message` is only the generic status text ("Bad Request", ...).
+      const body = error?.response;
+      const reason =
+        typeof body?.error === "string"
+          ? body.error
+          : typeof body?.data === "string"
+            ? body.data
+            : null;
+      if (reason) {
+        setWarning(`Sync failed: ${reason}`);
       } else {
         setWarning("Failed to sync with MLflow server. Showing cached data.");
       }
