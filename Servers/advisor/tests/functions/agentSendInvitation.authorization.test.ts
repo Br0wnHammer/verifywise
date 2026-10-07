@@ -43,7 +43,10 @@ describe("agent_send_invitation applies the invite rules to the approver", () =>
 
   it("refuses to replace a pending invitation the approver could not revoke", async () => {
     mockRefusal.mockResolvedValue(null);
-    mockReplace.mockResolvedValue({ replaceRoleId: 1, refused: true });
+    mockReplace.mockResolvedValue({
+      replace: { id: 8, roleId: 1, expiresAtMs: 0 },
+      refused: true,
+    });
 
     await expect(execute({ email: "new@example.com", role_id: 3, _userId: 5 })).rejects.toThrow(
       "You cannot replace an invitation for a role with more access than your own",

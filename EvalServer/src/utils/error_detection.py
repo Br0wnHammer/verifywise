@@ -270,10 +270,11 @@ _STRONG_LABEL_VALUE = re.compile(
     r"(?i)" + _LABEL_START + r"(password|passwd|secret|client[_-]?secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
     r"([\"']?\s*[:=]\s*[\"']?)([^\s\"',;&]+)"
 )
-# user:password@ in a URL the error echoes (e.g. a proxy or database URL).
-# The password runs to the last "@" before the host, so one containing "@"
-# or "/" is redacted whole.
-_URL_USERINFO = re.compile(r"(://[^/\s:@]+:)(\S+)(@)(?=[^@\s]*(?:\s|$))")
+# user:password@ (or :password@, as Redis URLs carry it) in a URL the error
+# echoes (e.g. a proxy or database URL). The password runs to the last "@"
+# before the host, so one containing "@" or "/" is redacted whole. A port
+# followed by a path ("host:8080/a@b") is not a password and is kept.
+_URL_USERINFO = re.compile(r"(://[^/\s:@]*:)(?!\d{1,5}[/?#])(\S+)(@)(?=[^@\s]*(?:\s|$))")
 # Labels that also appear in ordinary error text ("Missing required key: x").
 _WEAK_LABEL_VALUE = re.compile(
     r"(?i)" + _LABEL_START + r"(key|token)([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{12,})"

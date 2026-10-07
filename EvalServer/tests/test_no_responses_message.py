@@ -127,3 +127,12 @@ def test_redacts_a_url_password_containing_at_and_slash() -> None:
 
 def test_leaves_a_url_with_a_port_and_no_userinfo_alone() -> None:
     assert redact_secrets("cannot reach http://host:8080/a now") == "cannot reach http://host:8080/a now"
+
+
+def test_redacts_a_url_password_without_a_username() -> None:
+    # Redis and Valkey URLs carry only a password.
+    assert redact_secrets("redis://:hunter2secret@cache:6379 refused") == "redis://:[redacted]@cache:6379 refused"
+
+
+def test_keeps_a_port_and_path_before_a_later_at_sign() -> None:
+    assert redact_secrets("GET http://host:8080/a@b failed") == "GET http://host:8080/a@b failed"

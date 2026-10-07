@@ -7,7 +7,7 @@ jest.mock("../../../utils/inviteEmail.utils", () => ({ sendInviteEmail: jest.fn(
 // The role ceiling is covered in agentSendInvitation.authorization.test.ts.
 jest.mock("../../../utils/inviteRole.utils", () => ({
   userInviteRefusal: jest.fn(async () => null),
-  pendingInvitationToReplace: jest.fn(async () => ({ replaceRoleId: null, refused: false })),
+  pendingInvitationToReplace: jest.fn(async () => ({ replace: null, refused: false })),
 }));
 
 import { writeToolExecutors } from "../../confirmation/createWriteTool";

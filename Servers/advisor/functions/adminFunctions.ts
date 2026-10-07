@@ -440,7 +440,7 @@ const agentSendInvitation = createWriteToolFn({
       roleId,
       invitedBy,
       expiresAt,
-      { replaceRoleId: replace.replaceRoleId },
+      { replace: replace.replace },
     );
     if (!row) {
       throw new Error("The invitation was changed by someone else. Try again.");

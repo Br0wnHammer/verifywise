@@ -83,7 +83,7 @@ export const invite = async (
       roleId,
       req.userId!,
       expiresAt,
-      { replaceRoleId: replace?.replaceRoleId },
+      { replace: replace?.replace },
     );
     if (!saved) {
       return res

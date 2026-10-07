@@ -560,7 +560,13 @@ export async function updateUser(req: Request, res: Response) {
       updates.push("email = :email");
       replacements.email = email;
     }
-    if (roleId !== undefined) {
+    // The edit form sends the current role back, null included (users whose
+    // former SuperAdmin role was cleared); only a change is checked and saved.
+    const currentRoleId = rows[0].role_id ?? null;
+    const roleChanged =
+      roleId !== undefined &&
+      (roleId === null ? currentRoleId !== null : Number(roleId) !== currentRoleId);
+    if (roleChanged) {
       // The same role check as an invite into the user's organization.
       const checkedRoleId = parseRoleId(roleId);
       if (

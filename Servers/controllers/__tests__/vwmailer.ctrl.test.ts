@@ -133,13 +133,15 @@ describe("vwmailer.ctrl invite", () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
 
-  it("replaces a pending invitation only while it holds the role that was checked", async () => {
-    mockPending.mockResolvedValue({ id: 8, role_id: 4, expires_at_ms: 0 });
+  it("replaces a pending invitation only while it is as checked", async () => {
+    mockPending.mockResolvedValue({ id: 8, role_id: 4, expires_at_ms: 1234 });
     const res = createRes();
     await invite(createReq(), res, body({ roleId: 3 }));
 
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(mockCreate.mock.calls[0][7]).toEqual({ replaceRoleId: 4 });
+    expect(mockCreate.mock.calls[0][7]).toEqual({
+      replace: { id: 8, roleId: 4, expiresAtMs: 1234 },
+    });
   });
 
   it("answers 409 without sending when a re-invite changed the invitation meanwhile", async () => {
@@ -156,7 +158,7 @@ describe("vwmailer.ctrl invite", () => {
     await invite(createReq({ role: undefined }), res, body(), { organizationId: 42 });
 
     expect(mockPending).not.toHaveBeenCalled();
-    expect(mockCreate.mock.calls[0][7]).toEqual({ replaceRoleId: undefined });
+    expect(mockCreate.mock.calls[0][7]).toEqual({ replace: undefined });
   });
 
   it("invites into the inviter's organization, ignoring the body's", async () => {

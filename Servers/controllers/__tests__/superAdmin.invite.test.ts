@@ -223,6 +223,21 @@ describe("superAdmin.ctrl direct role assignment", () => {
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
+  it.each([
+    ["an unchanged role", 3, 3],
+    ["a cleared role sent back as null", null, null],
+  ])("saves other fields without checking %s", async (_label, current, sent) => {
+    mockQuery.mockResolvedValue([{ id: 5, role_id: current, organization_id: 12 }] as never);
+    const req: any = { params: { id: "5" }, body: { name: "Renamed", roleId: sent }, t };
+    const res = createRes();
+
+    await updateUser(req, res);
+
+    expect(inviteRoleRefusal).not.toHaveBeenCalled();
+    expect(String(mockQuery.mock.calls[1][0])).not.toContain("role_id = :roleId");
+    expect(res.status).not.toHaveBeenCalledWith(400);
+  });
+
   it("refuses a role the rules refuse when updating a user, without updating", async () => {
     mockQuery.mockResolvedValue([{ id: 5, role_id: 3, organization_id: 12 }] as never);
     const req: any = { params: { id: "5" }, body: { roleId: 60 }, t };

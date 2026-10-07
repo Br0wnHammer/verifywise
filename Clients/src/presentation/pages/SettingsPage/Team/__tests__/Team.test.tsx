@@ -246,6 +246,25 @@ describe("TeamManagement", () => {
     expect(screen.getByText("No pending invitations")).toBeInTheDocument();
   });
 
+  it.each([
+    ["Resend invitation", mockResendInvitation],
+    ["Revoke invitation", mockRevokeInvitation],
+  ])("refreshes the list when %s is refused", async (title, mockAction) => {
+    // A 409 means the invitation changed meanwhile; the list must show it.
+    mockInvitations = [buildInvitation()];
+    mockAction.mockRejectedValue(
+      new Error("The invitation was changed by someone else. Try again."),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<TeamManagement />);
+
+    await user.click(screen.getByTitle(title));
+    await waitFor(() => {
+      expect(screen.getByText(/changed by someone else/)).toBeInTheDocument();
+    });
+    expect(mockRefreshInvitations).toHaveBeenCalled();
+  });
+
   it("resends an invitation", async () => {
     mockInvitations = [buildInvitation()];
     mockResendInvitation.mockResolvedValue({ status: 200 });

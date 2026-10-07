@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { STATUS_CODE } from "../utils/statusCode.utils";
 import {
   getInvitationsByTenantQuery,
+  checkedInvitation,
   getInvitationByIdQuery,
   revokeInvitationQuery,
   updateInvitationExpiryQuery,
@@ -27,8 +28,8 @@ export const getInvitations = async (req: Request, res: Response): Promise<Respo
 
 /**
  * The answer when a guarded revoke or resend matched no row: 404 if the
- * invitation was accepted or revoked meanwhile, 409 if a re-invite changed
- * its role after the caller was checked against the old one.
+ * invitation was accepted or revoked meanwhile, 409 if a re-invite or another
+ * resend changed it after the caller was checked against it.
  */
 const invitationChangedResponse = async (
   req: Request,
@@ -75,7 +76,7 @@ export const revokeInvitation = async (req: Request, res: Response): Promise<Res
         );
     }
 
-    const deleted = await revokeInvitationQuery(organizationId, id, invitation.role_id);
+    const deleted = await revokeInvitationQuery(organizationId, checkedInvitation(invitation));
     if (!deleted) {
       return invitationChangedResponse(req, res, organizationId, id);
     }
@@ -123,8 +124,7 @@ export const resendInvitation = async (req: Request, res: Response): Promise<Res
     const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
     const updated = await updateInvitationExpiryQuery(
       organizationId,
-      id,
-      invitation.role_id,
+      checkedInvitation(invitation),
       expiresAt,
     );
     if (!updated) {

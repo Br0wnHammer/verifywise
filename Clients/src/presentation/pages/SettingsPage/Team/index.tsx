@@ -389,6 +389,8 @@ const TeamManagement: React.FC = (): JSX.Element => {
         "Error",
         `Failed to resend invitation: ${(error as Error).message || "Please try again."}`,
       );
+      // A refusal can mean the invitation changed (or is gone) meanwhile.
+      refreshInvitations();
     }
   };
 
@@ -407,6 +409,8 @@ const TeamManagement: React.FC = (): JSX.Element => {
         "Error",
         `Failed to revoke invitation: ${(error as Error).message || "Please try again."}`,
       );
+      // A refusal can mean the invitation changed (or is gone) meanwhile.
+      refreshInvitations();
     }
   };
 
