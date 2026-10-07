@@ -267,7 +267,7 @@ spec:
               key: ENCRYPTION_KEY
         livenessProbe:
           httpGet:
-            path: /health
+            path: /health/live
             port: 3000
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -275,7 +275,7 @@ spec:
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /health
+            path: /health/ready
             port: 3000
           initialDelaySeconds: 10
           periodSeconds: 5

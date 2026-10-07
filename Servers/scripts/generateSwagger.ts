@@ -74,10 +74,10 @@ export function parseAppFile(): RouteRegistration[] {
     }
   }
 
-  // Inline health endpoint
-  if (content.includes('app.get("/health"')) {
+  // Inline health endpoints (/health, /health/live, /health/ready)
+  for (const match of content.matchAll(/app\.get\("(\/health(?:\/[a-z]+)?)"/g)) {
     registrations.push({
-      basePath: "/health",
+      basePath: match[1],
       importName: "_inline_health",
       isFactory: false,
       line: 0,
@@ -308,13 +308,16 @@ export function buildEndpoints(): Endpoint[] {
       endpoints.push({
         method: "get",
         routePath: "/",
-        handlerName: "healthCheck",
+        handlerName:
+          reg.basePath === "/health"
+            ? "healthCheck"
+            : `healthCheck_${reg.basePath.split("/").pop()}`,
         auth: false,
         roles: [],
-        path: "/health",
-        openApiPath: "/health",
+        path: reg.basePath,
+        openApiPath: reg.basePath,
         tag: "System",
-        basePath: "/health",
+        basePath: reg.basePath,
         routeFile: "app.ts",
       });
       continue;

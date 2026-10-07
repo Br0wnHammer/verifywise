@@ -5,6 +5,7 @@ import logger from "../utils/logger/fileLogger";
 import { createInvitationQuery } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
 import { inviteRoleRefusal } from "../utils/inviteRole.utils";
+import { INVITATION_LIFETIME_MS } from "../utils/jwt.utils";
 
 export const invite = async (
   req: Request,
@@ -54,29 +55,29 @@ export const invite = async (
         .json(STATUS_CODE[403](req.t!("You cannot invite a user with more access than your own")));
     }
 
-    const { link, expiresAt, info } = await sendInviteEmail({
+    // Save the invitation first: its link only registers while it matches
+    // this row, so a link for an unsaved row would never work. A failure
+    // here is a 500 and no email goes out.
+    const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
+    await createInvitationQuery(
+      organizationId,
+      to,
+      name,
+      surname || "",
+      roleId,
+      req.userId!,
+      expiresAt,
+    );
+
+    const { link, info } = await sendInviteEmail({
       email: to,
       name,
       surname,
       roleId,
       organizationId,
       lang: req.lang,
+      expiresAt,
     });
-
-    // Persist invitation record
-    try {
-      await createInvitationQuery(
-        organizationId,
-        to,
-        name,
-        surname || "",
-        roleId,
-        req.userId!,
-        expiresAt,
-      );
-    } catch (invErr) {
-      console.error("Failed to persist invitation record:", invErr);
-    }
 
     if (info.error) {
       console.error("Error sending email:", info.error);

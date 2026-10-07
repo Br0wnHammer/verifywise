@@ -1,4 +1,4 @@
-import { Transaction } from "sequelize";
+import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../database/db";
 
 interface InvitationRow {
@@ -121,51 +121,91 @@ export const revokeInvitationQuery = async (
   return result[0].length > 0;
 };
 
+/** An invitation as register.middleware checked it. */
+export interface CheckedInvitation {
+  id: number;
+  roleId: number;
+  expiresAtMs: number;
+}
+
 /**
- * Mark invitation as accepted when user registers via invite link.
+ * Mark the invitation a registration link was checked against as accepted,
+ * only if it is still pending in the state that was checked: same role and
+ * same expiry. A re-invite of a pending email rewrites the same row (same id),
+ * so matching the id alone would let the old link use the new invitation.
+ * Pass the user-creation transaction so the user and the used-up link commit
+ * together. Returns 1 if accepted; 0 if it was revoked, used or rewritten.
  */
 export const markInvitationAcceptedQuery = async (
   organizationId: number,
-  email: string,
-): Promise<void> => {
-  await sequelize.query(
+  checked: CheckedInvitation,
+  transaction?: Transaction,
+): Promise<number> => {
+  const rows = await sequelize.query(
     `UPDATE invitations
      SET status = 'accepted', updated_at = CURRENT_TIMESTAMP
-     WHERE organization_id = :organizationId AND email = :email AND status = 'pending'`,
-    { replacements: { organizationId, email } },
+     WHERE organization_id = :organizationId AND id = :id AND status = 'pending'
+       AND role_id = :roleId
+       AND ROUND(EXTRACT(EPOCH FROM expires_at) * 1000) = :expiresAtMs
+     RETURNING id`,
+    {
+      replacements: {
+        organizationId,
+        id: checked.id,
+        roleId: checked.roleId,
+        expiresAtMs: checked.expiresAtMs,
+      },
+      transaction,
+      type: QueryTypes.SELECT,
+    },
   );
+  return rows.length;
 };
 
 /**
- * Update invitation expiry after resend.
+ * Update invitation expiry after resend. Only a pending invitation is
+ * extended, so one accepted or revoked since it was read stays as it is.
+ * Returns the row as updated (null when nothing was), so the resent link is
+ * signed for the role the row holds now, not one read before the update.
  */
 export const updateInvitationExpiryQuery = async (
   organizationId: number,
   id: number,
   expiresAt: Date,
-): Promise<void> => {
-  await sequelize.query(
+): Promise<{ email: string; name: string; surname: string; role_id: number } | null> => {
+  const rows = (await sequelize.query(
     `UPDATE invitations
      SET created_at = CURRENT_TIMESTAMP, expires_at = :expiresAt, updated_at = CURRENT_TIMESTAMP
-     WHERE organization_id = :organizationId AND id = :id`,
-    { replacements: { organizationId, id, expiresAt: expiresAt.toISOString() } },
-  );
+     WHERE organization_id = :organizationId AND id = :id AND status = 'pending'
+     RETURNING email, name, surname, role_id`,
+    {
+      replacements: { organizationId, id, expiresAt: expiresAt.toISOString() },
+      type: QueryTypes.SELECT,
+    },
+  )) as { email: string; name: string; surname: string; role_id: number }[];
+  return rows[0] ?? null;
 };
 
 /**
- * Check if a pending invitation exists for the given email.
- * Used during registration to verify the invitation wasn't revoked.
+ * The pending invitation for an email, with its expiry as epoch ms. The
+ * column is TIMESTAMP (no zone) holding UTC, which EXTRACT(EPOCH) reads as UTC.
  */
-export const checkPendingInvitationQuery = async (
+export const getPendingInvitationQuery = async (
   organizationId: number,
   email: string,
-): Promise<boolean> => {
+  transaction?: Transaction,
+): Promise<{ id: number; role_id: number; expires_at_ms: number } | null> => {
   const result = (await sequelize.query(
-    `SELECT id FROM invitations
+    `SELECT id, role_id, ROUND(EXTRACT(EPOCH FROM expires_at) * 1000) AS expires_at_ms
+     FROM invitations
      WHERE organization_id = :organizationId AND email = :email AND status = 'pending'
+     ORDER BY id DESC
      LIMIT 1`,
-    { replacements: { organizationId, email } },
-  )) as [InvitationRow[], number];
+    { replacements: { organizationId, email }, transaction },
+  )) as [{ id: number; role_id: number; expires_at_ms: string | number }[], number];
 
-  return result[0].length > 0;
+  const row = result[0][0];
+  return row
+    ? { id: row.id, role_id: row.role_id, expires_at_ms: Number(row.expires_at_ms) }
+    : null;
 };

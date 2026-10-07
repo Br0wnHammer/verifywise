@@ -169,7 +169,8 @@ async def get_logs(
             "token_count": row["token_count"],
             "cost": float(row["cost"]) if row["cost"] else None,
             "status": row["status"],
-            "error_message": row["error_message"],
+            # Also redacts rows stored before redaction on write existed.
+            "error_message": redact_secrets(row["error_message"]) if row["error_message"] else row["error_message"],
             "timestamp": row["timestamp"].isoformat() if row["timestamp"] else None,
         })
 
@@ -402,7 +403,8 @@ async def get_experiment_by_id(
             "baseline_experiment_id": row["baseline_experiment_id"],
             "status": row["status"],
             "results": row["results"],
-            "error_message": row["error_message"],
+            # Also redacts rows stored before redaction on write existed.
+            "error_message": redact_secrets(row["error_message"]) if row["error_message"] else row["error_message"],
             "started_at": row["started_at"].isoformat() if row["started_at"] else None,
             "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
@@ -458,7 +460,8 @@ async def get_experiments(
             "config": row["config"],
             "status": row["status"],
             "results": row["results"],
-            "error_message": row["error_message"],
+            # Also redacts rows stored before redaction on write existed.
+            "error_message": redact_secrets(row["error_message"]) if row["error_message"] else row["error_message"],
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
             "started_at": row["started_at"].isoformat() if row["started_at"] else None,

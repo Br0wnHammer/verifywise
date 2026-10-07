@@ -10703,6 +10703,29 @@ export const systemEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/health/live',
+    summary: "Liveness probe",
+    description: "Returns 200 while the process is serving HTTP. Checks no dependencies, so an outage elsewhere never fails liveness.",
+    requiresAuth: false,
+    responses: [
+      { status: 200, description: "Success" },
+    ],
+    tag: "System",
+  },
+  {
+    method: 'GET',
+    path: '/health/ready',
+    summary: "Readiness probe",
+    description: "Checks PostgreSQL and Redis (2s timeout each). Returns 503 with status \"degraded\" when either fails.",
+    requiresAuth: false,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 503, description: "A data store is unavailable" },
+    ],
+    tag: "System",
+  },
+  {
+    method: 'GET',
     path: '/health',
     summary: "Health Check",
     requiresAuth: false,
@@ -11087,7 +11110,7 @@ export const userEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/users/register',
     summary: "Register a new user",
-    description: "Creates a new user account. Requires a valid registration JWT (set by registerJWT middleware). Validates email uniqueness, password strength, and required fields. Marks any pending invitation as accepted after successful creation.",
+    description: "Creates a new user account. Requires a valid registration JWT (set by registerJWT middleware). Validates email uniqueness, password strength, and required fields. The account takes the invited email, role and organization from the invitation link, which must match the current pending invitation (a resent or re-invited link replaces earlier ones). The invitation is accepted in the same transaction, so a link registers once; a link that was revoked, used or replaced is refused with 403.",
     requiresAuth: false,
     requestBody: {
       "name": "string (required)",

@@ -659,6 +659,7 @@
   "The form associated with this submission no longer exists. Cannot create entity.": "Le formulaire associé à cette soumission n'existe plus. Impossible de créer l'entité.",
   "The note must be 500 characters or fewer": "La note doit contenir 500 caractères au maximum",
   "The note must be text": "La note doit être du texte",
+  "The organization must keep at least one Admin": "L’organisation doit conserver au moins un Admin",
   "These risks are already linked. If the link was dismissed, use \"Show dismissed\" to restore it.": "Ces risques sont déjà liés. Si le lien a été rejeté, utilisez « Afficher les rejetés » pour le restaurer.",
   "This API key is already configured. Please use a different API key or edit the existing entry.": "Cette clé API est déjà configurée. Veuillez utiliser une autre clé API ou modifier l'entrée existante.",
   "This API key is already configured. Please use a different API key.": "Cette clé API est déjà configurée. Veuillez utiliser une autre clé API.",
@@ -805,5 +806,8 @@
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has 1 vendor risk it could inherit from. Review it from the Linked risks tab.": "Le risque « {riskName} » fait partie d'un cas d'usage servi par « {vendorName} », qui a 1 risque fournisseur dont il pourrait hériter. Examinez-le depuis l'onglet « Risques liés ».",
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.": "Le risque « {riskName} » fait partie d'un cas d'usage servi par « {vendorName} », qui a {count} risques fournisseurs dont il pourrait hériter. Examinez-les depuis l'onglet « Risques liés ».",
   "Only related links are supported between vendor risks.": "Seuls les liens connexes sont pris en charge entre les risques fournisseurs.",
-  "This link changed while you were deciding. Reload and try again.": "Ce lien a été modifié pendant votre décision. Rechargez et réessayez."
+  "This link changed while you were deciding. Reload and try again.": "Ce lien a été modifié pendant votre décision. Rechargez et réessayez.",
+  "This invitation was sent to a different email address.": "Cette invitation a été envoyée à une autre adresse e-mail.",
+  "This invitation link is invalid.": "Ce lien d'invitation n'est pas valide.",
+  "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it.": "Ce lien d'invitation n'est plus valide. Utilisez l'e-mail d'invitation le plus récent ou demandez à votre administrateur de le renvoyer."
 }
