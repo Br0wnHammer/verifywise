@@ -52,3 +52,11 @@ export function getDeduped(
   inflight.set(key, request);
   return request;
 }
+
+/**
+ * Forget every in-flight GET, so a request sent under one session is never
+ * handed to a caller in the next. Called when a session ends or starts.
+ */
+export function clearInflightGets(): void {
+  inflight.clear();
+}

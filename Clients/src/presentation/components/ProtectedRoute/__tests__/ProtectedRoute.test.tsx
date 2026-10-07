@@ -58,9 +58,27 @@ describe("ProtectedRoute", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
+  const originalLocation = window.location;
+  const mockAssign = vi.fn();
+
+  beforeEach(() => {
+    mockAssign.mockClear();
+    // A forced logout loads /login as a new page, which jsdom cannot do.
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { ...originalLocation, assign: mockAssign },
+    });
+  });
+
   afterEach(() => {
     // The query cache is a module singleton shared across tests.
     queryClient.clear();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
   });
 
   afterEach(() => {
@@ -109,9 +127,9 @@ describe("ProtectedRoute", () => {
 
     const { store } = renderProtected({ route: "/", authToken: TEST_AUTH_TOKEN });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("login-page")).toBeInTheDocument();
-    });
+    // A full page load, like every forced logout, so app-level state does
+    // not reach the next user.
+    await waitFor(() => expect(mockAssign).toHaveBeenCalledWith("/login"));
     expect(store.getState().auth.authToken).toBe("");
     expect(queryClient.getQueryData(["projects"])).toBeUndefined();
   });
@@ -127,9 +145,7 @@ describe("ProtectedRoute", () => {
 
     const { store } = renderProtected({ route: "/", authToken: TEST_AUTH_TOKEN });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("login-page")).toBeInTheDocument();
-    });
+    await waitFor(() => expect(mockAssign).toHaveBeenCalledWith("/login"));
     expect(store.getState().auth.authToken).toBe("");
   });
 

@@ -8,7 +8,7 @@ vi.mock("../networkServices", () => ({
 }));
 
 import { apiServices } from "../networkServices";
-import { getDeduped } from "../inflightGet";
+import { clearInflightGets, getDeduped } from "../inflightGet";
 
 const mockedGet = apiServices.get as unknown as ReturnType<typeof vi.fn>;
 
@@ -99,5 +99,19 @@ describe("getDeduped", () => {
     const retry = await getDeduped("/projects");
     expect(retry.data).toBe("ok");
     expect(mockedGet).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops pending requests when cleared, so the next caller sends its own", async () => {
+    // A request sent under one session must not be handed to the next.
+    const first = deferred<unknown>();
+    mockedGet.mockReturnValueOnce(first.promise).mockResolvedValueOnce({ data: "new" });
+
+    void getDeduped("/projects");
+    clearInflightGets();
+    const second = await getDeduped("/projects");
+
+    expect(mockedGet).toHaveBeenCalledTimes(2);
+    expect(second).toEqual({ data: "new" });
+    first.resolve({ data: "old" });
   });
 });

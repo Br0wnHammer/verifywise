@@ -746,7 +746,6 @@ first so anything that refetches afterwards has no token to send.
 | 403 org mismatch / not allowed | `performLogout` (`infrastructure/api/customAxios.ts`), once for concurrent 403s |
 | Refresh rejected (400, 401, 403 or 406) | response interceptor (`infrastructure/api/customAxios.ts`) |
 | Stored token rejected on load (400, 401, 403 or 406 only) | `ProtectedRoute` |
-| Opening a registration page | `RegisterAdmin`, `RegisterMultiTenant` |
 
 Manual logout, the 403 logout and a rejected refresh go through
 `endSessionAndReload` (same file): it clears the session, flushes
@@ -764,6 +763,13 @@ refresh: any failure of a request that carried the session token, and the auth
 middleware's `400 "Token not found"` (en/de/fr) from anything else except the
 invitation and password-reset endpoints. Errors from requests made while signed
 out (login, registration, password reset) still show.
+
+`ProtectedRoute` reloads too when the server rejects the stored token. Ending
+or starting a session also forgets in-flight deduplicated GETs
+(`clearInflightGets`), so a request sent under one session is never handed to
+the next. The registration pages call `discardToken`, which drops the token,
+the query cache and in-flight GETs without the logout reset of the rest of the
+auth state.
 
 Do not dispatch `clearAuthState()` directly for a logout; call `clearSession`.
 

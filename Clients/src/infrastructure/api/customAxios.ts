@@ -368,6 +368,16 @@ CustomAxios.interceptors.response.use(
 
     // Surface generic translated error toasts for server and network failures.
     // Auth-specific errors (403/429/406) are handled above and return early.
+    // A rejected refresh ends the session (the request that ran it reloads
+    // to /login); its own error is not shown.
+    if (
+      originalRequest?.url === "/users/refresh-token" &&
+      error.response?.status !== undefined &&
+      SESSION_ENDED_STATUSES.includes(error.response.status)
+    ) {
+      return Promise.reject(error);
+    }
+
     showGlobalErrorAlert(error);
 
     return Promise.reject(error);

@@ -21,7 +21,7 @@ import CustomizableToast from "../../../components/Toast";
 import Alert from "../../../components/Alert";
 import { useDispatch } from "react-redux";
 import { setUserExists } from "../../../../application/redux/auth/authSlice";
-import { clearSession } from "../../../../application/utils/clearSession";
+import { discardToken } from "../../../../application/utils/clearSession";
 import { createNewUser } from "../../../../application/repository/user.repository";
 import useUsers from "../../../../application/hooks/useUsers";
 
@@ -72,7 +72,7 @@ const RegisterAdmin: React.FC<{ multiTenant: boolean }> = ({ multiTenant = false
 
   useEffect(() => {
     localStorage.clear();
-    clearSession(dispatch);
+    discardToken(dispatch);
   }, []);
 
   // Handle input field changes for user form

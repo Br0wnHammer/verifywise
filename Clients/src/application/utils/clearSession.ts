@@ -2,6 +2,7 @@ import type { Dispatch } from "@reduxjs/toolkit";
 import { clearAuthState, setAuthToken } from "../redux/auth/authSlice";
 import { resetQueryCache } from "../config/queryClient";
 import { persistor } from "../redux/store";
+import { clearInflightGets } from "../../infrastructure/api/inflightGet";
 
 /**
  * Ends the local session: clears the auth state, then every cached server
@@ -17,6 +18,7 @@ import { persistor } from "../redux/store";
 export const clearSession = (dispatch: Dispatch) => {
   dispatch(clearAuthState());
   resetQueryCache();
+  clearInflightGets();
 };
 
 /**
@@ -44,5 +46,17 @@ export const endSessionAndReload = async (dispatch: Dispatch) => {
  */
 export const startSession = (dispatch: Dispatch, token: string) => {
   resetQueryCache();
+  clearInflightGets();
   dispatch(setAuthToken(token));
+};
+
+/**
+ * Drops any token and every cached response without the logout reset of the
+ * rest of the auth state (userExists, message, flags). For pages that start
+ * from no session, such as the registration pages.
+ */
+export const discardToken = (dispatch: Dispatch) => {
+  resetQueryCache();
+  clearInflightGets();
+  dispatch(setAuthToken(""));
 };

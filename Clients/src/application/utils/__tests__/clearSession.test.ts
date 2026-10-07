@@ -1,7 +1,12 @@
+const mockClearInflightGets = vi.fn();
+vi.mock("../../../infrastructure/api/inflightGet", () => ({
+  clearInflightGets: () => mockClearInflightGets(),
+}));
+
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "../../redux/auth/authSlice";
 import { queryClient } from "../../config/queryClient";
-import { clearSession, startSession } from "../clearSession";
+import { clearSession, discardToken, startSession } from "../clearSession";
 
 function createStore() {
   return configureStore({
@@ -93,5 +98,44 @@ describe("startSession", () => {
     expect(tokenWhenCleared).toBe("some-token");
     expect(store.getState().auth.authToken).toBe("new-token");
     expect(queryClient.getQueryData(["projects"])).toBeUndefined();
+  });
+});
+
+describe("in-flight GETs", () => {
+  afterEach(() => {
+    mockClearInflightGets.mockClear();
+    queryClient.clear();
+  });
+
+  it("are dropped when a session ends or starts", () => {
+    const store = createStore();
+    clearSession(store.dispatch);
+    startSession(store.dispatch, "new-token");
+
+    expect(mockClearInflightGets).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("discardToken", () => {
+  afterEach(() => {
+    mockClearInflightGets.mockClear();
+    queryClient.clear();
+  });
+
+  it("drops the token and cached data but leaves the rest of the auth state", () => {
+    // Registration pages drop any session without the logout reset
+    // (userExists, message, flags), as they did before.
+    const store = createStore();
+    queryClient.setQueryData(["projects"], [{ id: 1 }]);
+
+    discardToken(store.dispatch);
+
+    const auth = store.getState().auth;
+    expect(auth.authToken).toBe("");
+    expect(auth.user).toBe("user-data");
+    expect(auth.userExists).toBe(true);
+    expect(auth.message).toBeNull();
+    expect(queryClient.getQueryData(["projects"])).toBeUndefined();
+    expect(mockClearInflightGets).toHaveBeenCalledTimes(1);
   });
 });

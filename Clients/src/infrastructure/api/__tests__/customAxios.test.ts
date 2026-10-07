@@ -323,6 +323,26 @@ describe("customAxios", () => {
       expect(mockAssign).toHaveBeenCalledWith("/login");
     });
 
+    it.each([
+      [401, "Invalid refresh token"],
+      [400, "Refresh token is required"],
+    ])("shows no toast when the refresh itself is rejected with %i", async (status, detail) => {
+      // The request that ran the refresh ends the session and reloads; the
+      // refresh call's own error is not news to the user.
+      const alert = vi.fn();
+      setShowAlertCallback(alert);
+      const error = {
+        config: { url: "/users/refresh-token", headers: {} },
+        response: { status, data: { message: "Error", data: detail } },
+        message: detail,
+      };
+
+      await expect(rejected(error)).rejects.toBe(error);
+
+      expect(alert).not.toHaveBeenCalled();
+      setShowAlertCallback(null as any);
+    });
+
     it("ignores a 403 that arrives after the session was already cleared", async () => {
       vi.useFakeTimers();
       const alert = vi.fn();
