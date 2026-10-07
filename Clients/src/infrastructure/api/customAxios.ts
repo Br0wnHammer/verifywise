@@ -37,8 +37,28 @@ import type {
   RetriableRequestConfig,
 } from "./api.types";
 
-/** Refresh answers that mean the session cannot be renewed. */
-const SESSION_ENDED_STATUSES = [400, 401, 403, 406];
+/**
+ * Refresh answers that mean the session cannot be renewed: 400 (no refresh
+ * cookie), 401 (revoked or invalid), 406 (expired). The refresh endpoint's
+ * only 403 is the CSRF check, which says nothing about the refresh token.
+ */
+const SESSION_ENDED_STATUSES = [400, 401, 406];
+
+/** How long the "Session Expired" message stays up before the reload. */
+const SESSION_EXPIRED_RELOAD_DELAY_MS = 1500;
+
+/**
+ * The auth middleware's 403 details that end the session, as the server
+ * translates them (en, de, fr).
+ */
+const SESSION_DENIED_DETAILS = [
+  "User does not belong to this organization",
+  "Benutzer gehört nicht zu dieser Organisation",
+  "L'utilisateur n'appartient pas à cette organisation",
+  "Not allowed to access",
+  "Zugriff nicht erlaubt",
+  "Accès non autorisé",
+];
 
 // Several requests can fail at once: end the session (and alert) once.
 let isLoggingOut = false;
@@ -269,8 +289,8 @@ CustomAxios.interceptors.response.use(
 
     if (
       error.response?.status === 403 &&
-      (errorDetail === "User does not belong to this organization" ||
-        errorDetail === "Not allowed to access")
+      errorDetail !== undefined &&
+      SESSION_DENIED_DETAILS.includes(errorDetail)
     ) {
       if (claimLogout()) {
         if (showAlertCallback) {
@@ -358,7 +378,18 @@ CustomAxios.interceptors.response.use(
         // A 5xx or network failure leaves it for the next request to retry.
         const status = axios.isAxiosError(refreshError) ? refreshError.response?.status : undefined;
         if (status !== undefined && SESSION_ENDED_STATUSES.includes(status) && claimLogout()) {
-          void performLogout();
+          // A 406 already showed "Session Expired" on the refresh call itself.
+          if (status !== 406 && showAlertCallback) {
+            showAlertCallback({
+              variant: "warning",
+              title: "Session Expired",
+              body: "Please login again to continue.",
+            });
+          }
+          // Leave the message up long enough to read before the reload.
+          setTimeout(() => {
+            void performLogout();
+          }, SESSION_EXPIRED_RELOAD_DELAY_MS);
         }
         return Promise.reject(refreshError);
       } finally {

@@ -743,8 +743,8 @@ first so anything that refetches afterwards has no token to send.
 | Path | Where |
 |------|-------|
 | Manual logout (sidebar, profile deletion) | `useLogout` (`application/hooks/useLogout.ts`) |
-| 403 org mismatch / not allowed | `performLogout` (`infrastructure/api/customAxios.ts`), once for concurrent 403s |
-| Refresh rejected (400, 401, 403 or 406) | response interceptor (`infrastructure/api/customAxios.ts`) |
+| 403 org mismatch / not allowed (en, de, fr messages) | `performLogout` (`infrastructure/api/customAxios.ts`), once for concurrent 403s |
+| Refresh rejected (400, 401 or 406; a CSRF 403 does not end the session) | response interceptor (`infrastructure/api/customAxios.ts`), after showing "Session Expired" for 1.5 s |
 | Stored token rejected on load (400, 401, 403 or 406 only) | `ProtectedRoute` |
 
 Manual logout, the 403 logout and a rejected refresh go through

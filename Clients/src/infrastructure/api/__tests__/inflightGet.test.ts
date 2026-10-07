@@ -114,4 +114,27 @@ describe("getDeduped", () => {
     expect(second).toEqual({ data: "new" });
     first.resolve({ data: "old" });
   });
+
+  it("does not let a request from before the clear remove the new entry", async () => {
+    const old = deferred<unknown>();
+    const fresh = deferred<unknown>();
+    mockedGet
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(fresh.promise)
+      .mockResolvedValueOnce({ data: "third" });
+
+    void getDeduped("/projects");
+    clearInflightGets();
+    const second = getDeduped("/projects");
+    old.resolve({ data: "old" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Still deduped onto the new session's request.
+    const third = getDeduped("/projects");
+    expect(third).toBe(second);
+    expect(mockedGet).toHaveBeenCalledTimes(2);
+    fresh.resolve({ data: "fresh" });
+    await second;
+  });
 });

@@ -390,6 +390,7 @@ describe("customAxios", () => {
     });
 
     it("clears auth and the cache when the token refresh is rejected with 406", async () => {
+      vi.useFakeTimers();
       const refreshError = { isAxiosError: true, response: { status: 406 }, message: "Expired" };
       const postSpy = vi.spyOn(CustomAxios, "post").mockRejectedValueOnce(refreshError);
 
@@ -402,16 +403,22 @@ describe("customAxios", () => {
       await expect(rejected(error)).rejects.toBe(refreshError);
 
       expect(postSpy).toHaveBeenCalledWith("/users/refresh-token", {}, { withCredentials: true });
+      // The "Session Expired" message stays on screen briefly first.
+      expect(mockAssign).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1500);
       expect(mockStore.dispatch).toHaveBeenCalledWith({ type: "auth/clearAuthState" });
       expect(queryClient.getQueryData(["projects"])).toBeUndefined();
       // A full page load, so app-level state does not outlive the session.
-      await vi.waitFor(() => expect(mockAssign).toHaveBeenCalledWith("/login"));
+      expect(mockAssign).toHaveBeenCalledWith("/login");
     });
 
     it.each([
       [401, "Invalid refresh token"],
       [400, "Refresh token is required"],
     ])("ends the session when the refresh is rejected with %i", async (status, detail) => {
+      vi.useFakeTimers();
+      const alert = vi.fn();
+      setShowAlertCallback(alert);
       const refreshError = {
         isAxiosError: true,
         response: { status, data: { message: "Error", data: detail } },
@@ -426,9 +433,59 @@ describe("customAxios", () => {
 
       await expect(rejected(error)).rejects.toBe(refreshError);
 
+      // Told why before the reload, which waits so the message can be read.
+      expect(alert).toHaveBeenCalledWith(expect.objectContaining({ title: "Session Expired" }));
+      expect(mockAssign).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1500);
       expect(mockStore.dispatch).toHaveBeenCalledWith({ type: "auth/clearAuthState" });
       expect(queryClient.getQueryData(["projects"])).toBeUndefined();
-      await vi.waitFor(() => expect(mockAssign).toHaveBeenCalledWith("/login"));
+      expect(mockAssign).toHaveBeenCalledWith("/login");
+      setShowAlertCallback(null as any);
+    });
+
+    it("keeps the session when the refresh gets a CSRF 403", async () => {
+      // The refresh endpoint's only 403 is the CSRF check, which says nothing
+      // about whether the refresh token is still valid.
+      vi.useFakeTimers();
+      const refreshError = {
+        isAxiosError: true,
+        response: {
+          status: 403,
+          data: { message: "Forbidden", data: "CSRF token missing or invalid" },
+        },
+        message: "Forbidden",
+      };
+      vi.spyOn(CustomAxios, "post").mockRejectedValueOnce(refreshError);
+      const error = {
+        config: { url: "/test", headers: {} },
+        response: { status: 406, data: { message: "Not Acceptable" } },
+        message: "Not Acceptable",
+      };
+
+      await expect(rejected(error)).rejects.toBe(refreshError);
+      await vi.advanceTimersByTimeAsync(1500);
+
+      expect(mockStore.dispatch).not.toHaveBeenCalledWith({ type: "auth/clearAuthState" });
+      expect(mockAssign).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      "Zugriff nicht erlaubt",
+      "Benutzer gehört nicht zu dieser Organisation",
+      "Accès non autorisé",
+    ])("logs out on the translated 403 %p", async (detail) => {
+      vi.useFakeTimers();
+      const error = {
+        config: { url: "/test", headers: {} },
+        response: { status: 403, data: { message: "Forbidden", data: detail } },
+        message: "Forbidden",
+      };
+
+      await expect(rejected(error)).rejects.toThrow(detail);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(mockStore.dispatch).toHaveBeenCalledWith({ type: "auth/clearAuthState" });
+      expect(mockAssign).toHaveBeenCalledWith("/login");
     });
 
     it("keeps the cache when the token refresh fails for another reason", async () => {

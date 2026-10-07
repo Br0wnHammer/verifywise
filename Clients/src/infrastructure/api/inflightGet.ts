@@ -46,7 +46,9 @@ export function getDeduped(
   if (existing) return existing;
 
   const request = apiServices.get(url, config).finally(() => {
-    inflight.delete(key);
+    // Only our own entry: after clearInflightGets() the key may already
+    // hold the next session's request.
+    if (inflight.get(key) === request) inflight.delete(key);
   });
 
   inflight.set(key, request);
