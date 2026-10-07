@@ -43,6 +43,7 @@ describe("LLMKeys", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUserRoleName = "Admin";
+    mockPermissions = [];
     mockGetLLMKeys.mockResolvedValue({ data: { data: [] } });
   });
 
@@ -192,6 +193,5 @@ describe("LLMKeys", () => {
     renderWithProviders(<LLMKeys />);
     await waitFor(() => expect(screen.getByText("Anthropic")).toBeInTheDocument());
     expect(screen.getByText("Create new LLM key").closest("button")).not.toBeDisabled();
-    mockPermissions = [];
   });
 });

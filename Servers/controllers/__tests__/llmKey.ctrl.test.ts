@@ -27,7 +27,7 @@ const mockCan = roleHasPermission as unknown as jest.Mock;
 const customKey = {
   id: 1,
   name: "Custom",
-  url: "https://proxy.example.com/v1",
+  url: "https://user:token@proxy.example.com/v1?api-key=sk-live-1",
   model: "m",
   custom_headers: { Authorization: "Bearer sk-secret" },
 };
@@ -76,5 +76,30 @@ describe("llmKey.ctrl reads", () => {
     await handler(req("Admin"), res);
 
     expect(returned(res)[0].custom_headers).toEqual({ Authorization: "Bearer sk-secret" });
+  });
+
+  it("hides credentials in a Custom provider's URL from a role that cannot manage keys", async () => {
+    const res = createRes();
+    await getLLMKeys(req("Auditor"), res);
+
+    expect(returned(res)[0].url).toBe("https://proxy.example.com/v1");
+  });
+
+  it("keeps the full URL for a role that manages keys", async () => {
+    const res = createRes();
+    await getLLMKeys(req("Admin"), res);
+
+    expect(returned(res)[0].url).toBe("https://user:token@proxy.example.com/v1?api-key=sk-live-1");
+  });
+
+  it("still lists keys, without credentials, when the permission lookup fails", async () => {
+    // The Advisor and settings screens only need to know a key exists.
+    mockCan.mockRejectedValue(new Error("db down"));
+    const res = createRes();
+    await getLLMKeys(req("Admin"), res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(returned(res)[0].custom_headers).toBeNull();
+    expect(returned(res)[0].url).toBe("https://proxy.example.com/v1");
   });
 });

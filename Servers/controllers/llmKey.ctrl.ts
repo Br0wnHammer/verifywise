@@ -20,18 +20,43 @@ import { translateError } from "../utils/i18n.utils";
 import { roleHasPermission } from "../utils/rolePermissions.utils";
 const fileName = "llmKey.ctrl.ts";
 
+/** A provider URL without credentials (user:password@, query string). */
+const withoutUrlCredentials = (url: string | null | undefined): string | null | undefined => {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    return parsed.toString().replace(/\/$/, url.endsWith("/") ? "/" : "");
+  } catch {
+    return null;
+  }
+};
+
 /**
- * Custom headers usually carry a Custom provider's credentials, so only roles
- * that manage keys (llmKeys.admin) see them. Everyone else gets the rest of
- * the row: the Advisor, reporting and Start here only need to know a key
- * exists and which provider/model it is.
+ * A Custom provider's credentials usually sit in its headers, and sometimes
+ * in its URL (user:token@, ?api-key=), so only roles that manage keys
+ * (llmKeys.admin) see them. Everyone else gets the rest of the row: the
+ * Advisor, reporting and Start here only need to know a key exists and which
+ * provider/model it is. If the permission lookup fails, credentials are
+ * hidden rather than failing the whole read.
  */
-const hideHeadersUnlessManager = async <T extends { custom_headers?: unknown }>(
+const hideCredentialsUnlessManager = async <
+  T extends { custom_headers?: unknown; url?: string | null },
+>(
   req: Request,
   keys: T[],
 ): Promise<T[]> => {
-  const canManage = await roleHasPermission(req.organizationId ?? null, req.role!, "llmKeys.admin");
-  return canManage ? keys : keys.map((key) => ({ ...key, custom_headers: null }));
+  let canManage = false;
+  try {
+    canManage = await roleHasPermission(req.organizationId ?? null, req.role!, "llmKeys.admin");
+  } catch (error) {
+    logger.error("Could not resolve llmKeys.admin; hiding key credentials:", error);
+  }
+  return canManage
+    ? keys
+    : keys.map((key) => ({ ...key, custom_headers: null, url: withoutUrlCredentials(key.url) }));
 };
 
 /**
@@ -75,7 +100,10 @@ export const getLLMKeys = async (req: Request, res: Response) => {
   logger.debug(`Fetching LLM Keys`);
   logStructured("processing", `starting LLM Keys fetch`, functionName, fileName);
   try {
-    const llmKeys = await hideHeadersUnlessManager(req, await getLLMKeysQuery(req.organizationId!));
+    const llmKeys = await hideCredentialsUnlessManager(
+      req,
+      await getLLMKeysQuery(req.organizationId!),
+    );
     logStructured("successful", `fetched ${llmKeys.length} LLM Keys`, functionName, fileName);
     logger.debug(`Fetched ${llmKeys.length} LLM Keys`);
     return res.status(200).json(STATUS_CODE[200](llmKeys));
@@ -99,7 +127,7 @@ export const getLLMKey = async (req: Request, res: Response) => {
   logStructured("processing", `starting LLM Key fetch`, functionName, fileName);
   try {
     const name = req.params.name as string;
-    const llmKey = await hideHeadersUnlessManager(
+    const llmKey = await hideCredentialsUnlessManager(
       req,
       await getLLMKeyQuery(req.organizationId!, name),
     );
