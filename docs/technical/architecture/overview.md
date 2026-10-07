@@ -20,7 +20,7 @@ VerifyWise is a full-stack AI governance platform built with a modern JavaScript
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │  Vite Dev Server / Nginx (Production)  │  Port: 5173 (dev)       │  │
 │  ├──────────────────────────────────────────────────────────────────┤  │
-│  │  React 18 + Redux Toolkit + React Query + MUI v7                 │  │
+│  │  React 19 + Redux Toolkit + React Query + MUI v7                 │  │
 │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐    │  │
 │  │  │   Pages    │ │ Components │ │   Hooks    │ │   Context  │    │  │
 │  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘    │  │

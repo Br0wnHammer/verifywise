@@ -299,7 +299,7 @@ export const roleConfigurationContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Not right now. VerifyWise has four predefined roles (Admin, Reviewer, Editor, Auditor). Custom role configuration isn\'t available in this version.',
+      text: 'Yes. Go to **Settings → Roles** to create custom roles for your organization and choose exactly which permissions each one has. The four built-in roles (Admin, Reviewer, Editor, Auditor) are fixed and cannot be changed. A custom role with no permissions can sign in but cannot do anything. The Roles tab is available to users with permission to manage roles.',
     },
     {
       type: 'heading',

@@ -638,7 +638,7 @@ useEffect(() => {
 
 ### Token Management
 
-- Encrypted storage with AES-256-CBC
+- Encrypted storage with AES-256-GCM (via `encryption.utils.ts`; legacy CBC values still decrypt)
 - Token formats supported:
   - Classic: `ghp_...` (40+ chars)
   - Fine-grained: `github_pat_...` (30+ chars)
