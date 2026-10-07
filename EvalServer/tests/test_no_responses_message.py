@@ -134,5 +134,8 @@ def test_redacts_a_url_password_without_a_username() -> None:
     assert redact_secrets("redis://:hunter2secret@cache:6379 refused") == "redis://:[redacted]@cache:6379 refused"
 
 
-def test_keeps_a_port_and_path_before_a_later_at_sign() -> None:
-    assert redact_secrets("GET http://host:8080/a@b failed") == "GET http://host:8080/a@b failed"
+def test_redacts_a_password_that_starts_like_a_port() -> None:
+    # "user:1234/abc@host" cannot be told apart from "host:8080/a@b", so
+    # both are redacted rather than risk keeping a password.
+    assert "1234/abc" not in redact_secrets("cannot reach redis://user:1234/abc@cache now")
+    assert redact_secrets("GET http://host:8080/a@b failed") == "GET http://host:[redacted]@b failed"
