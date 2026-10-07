@@ -95,14 +95,40 @@ describe("llmKey.ctrl reads", () => {
     );
   });
 
-  it("still lists keys, without credentials, when the permission lookup fails", async () => {
+  it("still lists keys when the permission lookup fails, hiding credentials from non-managers", async () => {
     // The Advisor and settings screens only need to know a key exists.
     mockCan.mockRejectedValue(new Error("db down"));
     const res = createRes();
-    await getLLMKeys(req("Admin"), res);
+    await getLLMKeys(req("Auditor"), res);
 
     expect(res.status).toHaveBeenCalledWith(200);
     expect(returned(res)[0].custom_headers).toBeNull();
     expect(returned(res)[0].url).toBe("https://proxy.example.com");
+  });
+
+  it("keeps credentials for an Admin when the permission lookup fails", async () => {
+    // Otherwise the edit form would load the masked values and save them
+    // back over the real URL and headers.
+    mockCan.mockRejectedValue(new Error("db down"));
+    const res = createRes();
+    await getLLMKeys(req("Admin"), res);
+
+    expect(returned(res)[0].custom_headers).toEqual({ Authorization: "Bearer sk-secret" });
+  });
+
+  it("leaves built-in providers' fixed URLs as they are", async () => {
+    mockList.mockResolvedValue([
+      {
+        id: 2,
+        name: "OpenRouter",
+        url: "https://openrouter.ai/api/v1/",
+        model: "m",
+        custom_headers: null,
+      },
+    ] as never);
+    const res = createRes();
+    await getLLMKeys(req("Auditor"), res);
+
+    expect(returned(res)[0].url).toBe("https://openrouter.ai/api/v1/");
   });
 });

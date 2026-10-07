@@ -18,6 +18,7 @@ import { ILLMKey, LLMProvider } from "../domain.layer/interfaces/i.llmKey";
 
 import { translateError } from "../utils/i18n.utils";
 import { roleHasPermission } from "../utils/rolePermissions.utils";
+import { BUILTIN_ROLE_PERMISSIONS } from "../config/rolePermissions.config";
 const fileName = "llmKey.ctrl.ts";
 
 /**
@@ -36,27 +37,35 @@ const urlOrigin = (url: string | null | undefined): string | null | undefined =>
 
 /**
  * A Custom provider's credentials usually sit in its headers, and sometimes
- * in its URL (user:token@, ?api-key=, a path segment), so only roles that manage keys
- * (llmKeys.admin) see them. Everyone else gets the rest of the row: the
- * Advisor, reporting and Start here only need to know a key exists and which
- * provider/model it is. If the permission lookup fails, credentials are
- * hidden rather than failing the whole read.
+ * in its URL (user:token@, ?api-key=, a path segment), so only roles that
+ * manage keys (llmKeys.admin) see them. Everyone else gets the rest of the
+ * row: the Advisor, reporting and Start here only need to know a key exists
+ * and which provider/model it is. Built-in providers' URLs are fixed public
+ * constants and stay as they are.
+ *
+ * If the permission lookup fails, the built-in role matrix (no database)
+ * decides, so an Admin still gets full data: the edit form would otherwise
+ * load the masked values and save them back over the real ones.
  */
 const hideCredentialsUnlessManager = async <
-  T extends { custom_headers?: unknown; url?: string | null },
+  T extends { name?: string; custom_headers?: unknown; url?: string | null },
 >(
   req: Request,
   keys: T[],
 ): Promise<T[]> => {
-  let canManage = false;
+  let canManage: boolean;
   try {
     canManage = await roleHasPermission(req.organizationId ?? null, req.role!, "llmKeys.admin");
   } catch (error) {
-    logger.error("Could not resolve llmKeys.admin; hiding key credentials:", error);
+    logger.error("Could not resolve llmKeys.admin; using the built-in role matrix:", error);
+    canManage = BUILTIN_ROLE_PERMISSIONS[req.role!]?.has("llmKeys.admin") ?? false;
   }
-  return canManage
-    ? keys
-    : keys.map((key) => ({ ...key, custom_headers: null, url: urlOrigin(key.url) }));
+  if (canManage) return keys;
+  return keys.map((key) =>
+    key.name === "Custom"
+      ? { ...key, custom_headers: null, url: urlOrigin(key.url) }
+      : { ...key, custom_headers: null },
+  );
 };
 
 /**

@@ -6665,6 +6665,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/llm-keys',
     summary: "Get L L M Keys",
+    description: "Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -6702,6 +6703,7 @@ export const llmKeyEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/llm-keys/{name}',
     summary: "Get L L M Key",
+    description: "Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.",
     requiresAuth: true,
     parameters: [
       { name: 'name', in: 'path', type: 'string', required: true, description: "The name" },
