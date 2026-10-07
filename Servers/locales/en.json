@@ -804,5 +804,8 @@
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has 1 vendor risk it could inherit from. Review it from the Linked risks tab.": "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has 1 vendor risk it could inherit from. Review it from the Linked risks tab.",
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.": "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.",
   "Only related links are supported between vendor risks.": "Only related links are supported between vendor risks.",
-  "This link changed while you were deciding. Reload and try again.": "This link changed while you were deciding. Reload and try again."
+  "This link changed while you were deciding. Reload and try again.": "This link changed while you were deciding. Reload and try again.",
+  "This invitation was sent to a different email address.": "This invitation was sent to a different email address.",
+  "This invitation link is invalid.": "This invitation link is invalid.",
+  "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it.": "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it."
 }

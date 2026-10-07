@@ -804,5 +804,8 @@
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has 1 vendor risk it could inherit from. Review it from the Linked risks tab.": "Das Risiko „{riskName}“ gehört zu einem Anwendungsfall, den „{vendorName}“ bedient. Dieser Anbieter hat 1 Anbieterrisiko, von dem es erben könnte. Prüfen Sie es im Tab „Verknüpfte Risiken“.",
   "Risk \"{riskName}\" is in a use case served by \"{vendorName}\", which has {count} vendor risks it could inherit from. Review them from the Linked risks tab.": "Das Risiko „{riskName}“ gehört zu einem Anwendungsfall, den „{vendorName}“ bedient. Dieser Anbieter hat {count} Anbieterrisiken, von denen es erben könnte. Prüfen Sie sie im Tab „Verknüpfte Risiken“.",
   "Only related links are supported between vendor risks.": "Zwischen Anbieterrisiken werden nur verwandte Verknüpfungen unterstützt.",
-  "This link changed while you were deciding. Reload and try again.": "Diese Verknüpfung wurde während Ihrer Entscheidung geändert. Laden Sie neu und versuchen Sie es erneut."
+  "This link changed while you were deciding. Reload and try again.": "Diese Verknüpfung wurde während Ihrer Entscheidung geändert. Laden Sie neu und versuchen Sie es erneut.",
+  "This invitation was sent to a different email address.": "Diese Einladung wurde an eine andere E-Mail-Adresse gesendet.",
+  "This invitation link is invalid.": "Dieser Einladungslink ist ungültig.",
+  "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it.": "Dieser Einladungslink ist nicht mehr gültig. Verwenden Sie die neueste Einladungs-E-Mail oder bitten Sie Ihren Administrator, sie erneut zu senden."
 }

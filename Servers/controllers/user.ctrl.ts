@@ -501,14 +501,27 @@ async function createNewUser(req: Request, res: Response) {
     const user = (await createNewUserQuery(userModel, transaction)) as UserModel;
 
     if (user) {
-      await transaction.commit();
-
-      // Mark any pending invitation as accepted (fire-and-forget)
-      try {
-        await markInvitationAcceptedQuery(organizationId, email);
-      } catch (_) {
-        // Non-critical — don't block user creation
+      // In the same transaction: a link works once, so if the invitation
+      // cannot be marked accepted the user is not created either. No pending
+      // row means it was revoked (or used) after the link was checked.
+      const accepted = await markInvitationAcceptedQuery(
+        organizationId,
+        res.locals.invitation,
+        transaction,
+      );
+      if (accepted === 0) {
+        await transaction.rollback();
+        return res
+          .status(403)
+          .json(
+            STATUS_CODE[403](
+              req.t!(
+                "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it.",
+              ),
+            ),
+          );
       }
+      await transaction.commit();
 
       logStructured("successful", `user created: ${email}`, "createNewUser", "user.ctrl.ts");
       await logEvent("Create", `User created: ${email}`, req.userId!, req.organizationId!);

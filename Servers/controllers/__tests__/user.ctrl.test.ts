@@ -109,7 +109,7 @@ jest.mock("../../utils/role.utils", () => ({
   getRoleByIdQuery: jest.fn().mockResolvedValue({ name: "Admin" }),
 }));
 jest.mock("../../utils/invitation.utils", () => ({
-  markInvitationAcceptedQuery: jest.fn().mockResolvedValue(undefined),
+  markInvitationAcceptedQuery: jest.fn().mockResolvedValue(1),
 }));
 jest.mock("../../utils/userPreference.utils", () => ({
   getPreferencesByUserQuery: jest.fn(),
@@ -212,6 +212,8 @@ import {
   deleteUserProfilePhotoQuery,
   isLastAdminQuery,
 } from "../../utils/user.utils";
+import { markInvitationAcceptedQuery } from "../../utils/invitation.utils";
+import { sequelize } from "../../database/db";
 import {
   getPreferencesByUserQuery,
   createNewUserPreferencesQuery,
@@ -272,6 +274,9 @@ function mockUser(data: any) {
     isDemoUser: jest.fn().mockReturnValue(false),
   };
 }
+
+/** The invitation as register.middleware checked it. */
+const CHECKED_INVITATION = { id: 41, roleId: 1, expiresAtMs: 1793448000000 };
 
 describe("user.ctrl", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -371,8 +376,87 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
+      res.locals = { invitation: CHECKED_INVITATION };
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(201);
+    });
+    it("marks the invitation accepted inside the user's transaction, before commit", async () => {
+      // A link works once: the user and the accepted invitation commit together.
+      mockGetByEmail.mockResolvedValue(null as any);
+      mockCreate.mockResolvedValue(mockUser(buildUser()) as any);
+      const tx: any = await (sequelize.transaction as any)();
+      const mockMark = markInvitationAcceptedQuery as jest.Mock;
+      const req = createReq({
+        body: {
+          name: "A",
+          surname: "B",
+          email: "a@b.com",
+          password: "pass",
+          roleId: 1,
+          organizationId: 1,
+        },
+      });
+      const res = createRes();
+      res.locals = { invitation: CHECKED_INVITATION };
+      await createNewUser(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockMark).toHaveBeenCalledWith(1, CHECKED_INVITATION, tx);
+      expect(mockMark.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.commit.mock.invocationCallOrder.at(-1),
+      );
+    });
+    it("rolls back the user when the invitation cannot be marked accepted", async () => {
+      mockGetByEmail.mockResolvedValue(null as any);
+      mockCreate.mockResolvedValue(mockUser(buildUser()) as any);
+      const tx: any = await (sequelize.transaction as any)();
+      tx.commit.mockClear();
+      (markInvitationAcceptedQuery as jest.Mock).mockRejectedValueOnce(
+        new Error("db down") as never,
+      );
+      const req = createReq({
+        body: {
+          name: "A",
+          surname: "B",
+          email: "a@b.com",
+          password: "pass",
+          roleId: 1,
+          organizationId: 1,
+        },
+      });
+      const res = createRes();
+      res.locals = { invitation: CHECKED_INVITATION };
+      await createNewUser(req, res);
+
+      expect(tx.rollback).toHaveBeenCalled();
+      expect(tx.commit).not.toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalledWith(201);
+    });
+    it("refuses and rolls back when the invitation was revoked before acceptance", async () => {
+      // The middleware saw a pending invitation, then an admin revoked it:
+      // marking it accepted matches no row, so the link no longer counts.
+      mockGetByEmail.mockResolvedValue(null as any);
+      mockCreate.mockResolvedValue(mockUser(buildUser()) as any);
+      const tx: any = await (sequelize.transaction as any)();
+      tx.commit.mockClear();
+      (markInvitationAcceptedQuery as jest.Mock).mockResolvedValueOnce(0 as never);
+      const req = createReq({
+        body: {
+          name: "A",
+          surname: "B",
+          email: "a@b.com",
+          password: "pass",
+          roleId: 1,
+          organizationId: 1,
+        },
+      });
+      const res = createRes();
+      res.locals = { invitation: CHECKED_INVITATION };
+      await createNewUser(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(tx.rollback).toHaveBeenCalled();
+      expect(tx.commit).not.toHaveBeenCalled();
     });
     it("should return 409 when user already exists", async () => {
       mockGetByEmail.mockResolvedValue(mockUser(buildUser()) as any);
@@ -387,6 +471,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
+      res.locals = { invitation: CHECKED_INVITATION };
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(409);
     });
@@ -403,6 +488,7 @@ describe("user.ctrl", () => {
         },
       });
       const res = createRes();
+      res.locals = { invitation: CHECKED_INVITATION };
       await createNewUser(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
     });

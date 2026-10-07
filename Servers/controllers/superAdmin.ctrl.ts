@@ -15,7 +15,7 @@ import {
   getInvitationsByOrganizationQuery,
 } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
-import { ONE_WEEK_MS } from "../utils/jwt.utils";
+import { INVITATION_LIFETIME_MS } from "../utils/jwt.utils";
 import {
   ConflictException,
   ValidationException,
@@ -150,7 +150,8 @@ export async function createOrgWithUser(req: Request, res: Response) {
 
   const transaction = await sequelize.transaction();
   let orgId: number | undefined;
-  let invitationExpiresAt: Date | undefined;
+  // Invite mode stores this on the row and signs the emailed link for it.
+  const invitationExpiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
 
   try {
     const orgModel = await OrganizationModel.createNewOrganization(orgName.trim(), logo);
@@ -170,7 +171,6 @@ export async function createOrgWithUser(req: Request, res: Response) {
         transaction,
       );
     } else {
-      invitationExpiresAt = new Date(Date.now() + ONE_WEEK_MS);
       await createInvitationQuery(
         orgId,
         user.email,
@@ -199,6 +199,8 @@ export async function createOrgWithUser(req: Request, res: Response) {
 
   if (mode === "invite") {
     try {
+      // The row is already stored; sign the link for the same expires_at so
+      // the Team page's Pending/Expired matches the link that was sent.
       const { link, info } = await sendInviteEmail({
         email: user.email,
         name: user.name,
@@ -206,6 +208,7 @@ export async function createOrgWithUser(req: Request, res: Response) {
         roleId: user.roleId,
         organizationId: orgId,
         lang: req.lang,
+        expiresAt: invitationExpiresAt,
       });
       if (info.error) {
         return res.status(206).json(
