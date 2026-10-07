@@ -211,6 +211,15 @@ describe("guarded invitation writes", () => {
     );
   });
 
+  it("still revokes after a resend: the check depends on the role only", async () => {
+    const { owner } = await seedTwoTenantContexts();
+    const row = (await invite(owner.orgId, 3, owner.userId, EXPIRES))!;
+    const checked = await checkedNow(owner.orgId, row.id);
+    expect(await updateInvitationExpiryQuery(owner.orgId, checked, LATER)).not.toBeNull();
+
+    expect(await revokeInvitationQuery(owner.orgId, checked)).toBe(true);
+  });
+
   it("does not overwrite a same-role re-invite with a stale resend", async () => {
     // The re-invite emailed a link for its new expiry; a resend checked
     // before it must not move that expiry and break the link.

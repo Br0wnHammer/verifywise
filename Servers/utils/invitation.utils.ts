@@ -144,16 +144,22 @@ export const getInvitationByIdQuery = async (
   return row ? { ...row, expires_at_ms: Number(row.expires_at_ms) } : null;
 };
 
-/** The state a caller checks an invitation in, from the row it read. */
-export const checkedInvitation = (row: InvitationRow): CheckedInvitation => ({
-  id: row.id,
-  roleId: row.role_id,
-  expiresAtMs: Number(row.expires_at_ms),
-});
+/**
+ * The state a caller checks an invitation in, from a row read by
+ * getInvitationByIdQuery (the only reader that returns expires_at_ms).
+ */
+export const checkedInvitation = (row: InvitationRow): CheckedInvitation => {
+  const expiresAtMs = Number(row.expires_at_ms);
+  if (!Number.isFinite(expiresAtMs)) {
+    throw new Error("checkedInvitation needs a row with expires_at_ms");
+  }
+  return { id: row.id, roleId: row.role_id, expiresAtMs };
+};
 
 /**
- * Revoke (delete) a pending invitation, only while it is unchanged since the
- * caller was checked against it: a re-invite in between can change its role.
+ * Revoke (delete) a pending invitation, only while it holds the role the
+ * caller was checked against: a re-invite in between can change it. The
+ * expiry is not compared, since a resend in between leaves the check valid.
  */
 export const revokeInvitationQuery = async (
   organizationId: number,
@@ -162,9 +168,9 @@ export const revokeInvitationQuery = async (
   const result = (await sequelize.query(
     `DELETE FROM invitations
      WHERE organization_id = :organizationId AND status = 'pending'
-       AND ${UNCHANGED_SINCE_CHECK}
+       AND id = :id AND role_id = :roleId
      RETURNING id`,
-    { replacements: { organizationId, ...checkedReplacements(checked) } },
+    { replacements: { organizationId, id: checked.id, roleId: checked.roleId } },
   )) as [InvitationRow[], number];
 
   return result[0].length > 0;

@@ -139,3 +139,9 @@ def test_redacts_a_password_that_starts_like_a_port() -> None:
     # both are redacted rather than risk keeping a password.
     assert "1234/abc" not in redact_secrets("cannot reach redis://user:1234/abc@cache now")
     assert redact_secrets("GET http://host:8080/a@b failed") == "GET http://host:[redacted]@b failed"
+    assert "2024#Secret" not in redact_secrets("postgres://admin:2024#Secret@db:5432/x failed")
+
+
+def test_keeps_an_ipv6_host() -> None:
+    assert redact_secrets("GET http://[::1]:8080/a@b failed") == "GET http://[::1]:8080/a@b failed"
+    assert redact_secrets("GET http://u:pw@[::1]:8080/ failed") == "GET http://u:[redacted]@[::1]:8080/ failed"
