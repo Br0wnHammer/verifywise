@@ -38,7 +38,7 @@ export async function syncFromMlflow(req: Request, res: Response): Promise<any> 
     if (!result.success) {
       // The tracking server failed or returned nothing usable: an upstream
       // failure, reported with the reason the client shows to the user.
-      return res.status(502).json(STATUS_CODE[502](result.status.replace(/^failed: /, "")));
+      return res.status(502).json(STATUS_CODE[502](result.error ?? "MLflow sync failed"));
     }
     return res.status(200).json(STATUS_CODE[200](result));
   } catch (error) {

@@ -344,7 +344,7 @@ The backend exposes three rate-limited health endpoints:
 | Endpoint | Checks | Use for |
 |----------|--------|---------|
 | `GET /health/live` | Nothing beyond the process serving HTTP; always `200` | Liveness probes |
-| `GET /health/ready` | PostgreSQL and Redis | Readiness probes, load balancers, Docker `HEALTHCHECK` |
+| `GET /health/ready` | PostgreSQL and Redis (2s timeout each) | Readiness probes, load balancers, Docker `HEALTHCHECK` |
 | `GET /health` | PostgreSQL, Redis and the AI Gateway | Uptime monitoring and dashboards |
 
 `/health/ready` and `/health` return `200` with `{"status":"ok","checks":{...}}` when every check passes, or `503` with `"status":"degraded"` and the failing check's error. Do not use `/health` for liveness or readiness: an AI Gateway outage makes it return `503`, which would restart or de-route healthy backend pods. The bundled Kubernetes manifests, Helm chart, Dockerfile and Ansible playbooks already use `/health/live` and `/health/ready`.

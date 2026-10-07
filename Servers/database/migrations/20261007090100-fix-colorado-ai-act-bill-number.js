@@ -17,11 +17,8 @@ module.exports = {
     `);
   },
 
-  async down(queryInterface) {
-    await queryInterface.sequelize.query(`
-      UPDATE verifywise.frameworks
-         SET description = REPLACE(description, '(SB 24-205)', '(SB 21-169)')
-       WHERE description LIKE '%Colorado Artificial Intelligence Act (SB 24-205)%';
-    `);
+  async down() {
+    // Data correction: rolling back must not reintroduce the wrong citation,
+    // and installs seeded after this change were never wrong. No-op.
   },
 };

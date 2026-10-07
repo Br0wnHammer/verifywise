@@ -192,9 +192,25 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
 
   type HealthCheck = { status: "ok" | "error"; error?: string };
 
+  // Data-store checks must answer within the readiness probe's timeout (3s).
+  // The Redis client queues commands indefinitely while disconnected
+  // (maxRetriesPerRequest: null), so without this a Redis outage would leave
+  // every probe hanging instead of returning 503.
+  const DATA_STORE_CHECK_TIMEOUT_MS = 2000;
+  const withTimeout = <T>(work: Promise<T>, label: string): Promise<T> => {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${label} check timed out after ${DATA_STORE_CHECK_TIMEOUT_MS}ms`)),
+        DATA_STORE_CHECK_TIMEOUT_MS,
+      );
+    });
+    return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+  };
+
   const checkDatabase = async (): Promise<HealthCheck> => {
     try {
-      await sequelize.query("SELECT 1");
+      await withTimeout(sequelize.query("SELECT 1"), "Database");
       return { status: "ok" };
     } catch (err: unknown) {
       return { status: "error", error: (err as Error).message };
@@ -203,7 +219,7 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
 
   const checkRedis = async (): Promise<HealthCheck> => {
     try {
-      const pong = await redisClient.ping();
+      const pong = await withTimeout(redisClient.ping(), "Redis");
       return pong === "PONG"
         ? { status: "ok" }
         : { status: "error", error: `Unexpected PING response: ${pong}` };

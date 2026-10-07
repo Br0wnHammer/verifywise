@@ -232,7 +232,7 @@ tracking_server_url   (required)
 auth_method           (none / basic / token)
 username, password    (basic auth; password encrypted)
 api_token             (token auth; encrypted)
-timeout               (seconds, 1–600, default 30; per-request abort)
+timeout               (seconds, 1–600, default 30; per-request abort; whole sync capped at 110s)
 ```
 
 TLS certificates are always verified. Older configurations may still carry a `verify_ssl` key; it is ignored (the form field was removed in `20261007090000-remove-mlflow-verify-ssl-field.js`).
@@ -246,7 +246,7 @@ Sync is manual. No scheduler runs it.
 3. Fetch experiments, then search runs in chunks (`/api/2.0/mlflow/runs/search`)
 4. Transform runs into model records, de-duplicating on model name + lifecycle stage (latest training end wins)
 5. Upsert into `mlflow_model_records` (`ON CONFLICT (organization_id, model_name, version)`)
-6. Return `200` with the sync result, or `502` with the failure reason in `error` (including when MLflow returns no runs)
+6. Return `200` with the sync result (an empty server is a successful sync with zero models), or `502` with the failure reason in `error` (an HTTP error from experiments or runs search, a timeout, or a connection error with its cause code)
 
 ### Error Handling
 

@@ -41,6 +41,7 @@ import {
   modalStyles,
 } from "../theme";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
+import { getApiErrorReason } from "../../../../application/utils/apiErrorReason";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import { pageOfLabel } from "../../../components/Table/pageOfLabel";
 
@@ -421,16 +422,7 @@ export default function MLFlowTab() {
       await fetchMLFlowData();
     } catch (error: any) {
       await fetchMLFlowData();
-      // apiServices throws a CustomException whose `response` is the body.
-      // 4xx bodies carry the reason in `data`, 5xx bodies in `error`;
-      // `message` is only the generic status text ("Bad Request", ...).
-      const body = error?.response;
-      const reason =
-        typeof body?.error === "string"
-          ? body.error
-          : typeof body?.data === "string"
-            ? body.data
-            : null;
+      const reason = getApiErrorReason(error);
       if (reason) {
         setWarning(`Sync failed: ${reason}`);
       } else {
