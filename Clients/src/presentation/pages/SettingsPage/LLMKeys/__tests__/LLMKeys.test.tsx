@@ -14,11 +14,11 @@ vi.mock("../../../../../application/hooks/useAuth", () => ({
 }));
 
 let mockPermissions: string[] = [];
-let mockPermissionsPending = false;
+let mockPermissionsLoading = false;
 vi.mock("../../../../../application/hooks/useRolePermissions", () => ({
   useMyPermissions: () => ({
     can: (key: string) => mockPermissions.includes(key),
-    isLoading: mockPermissionsPending,
+    isPending: mockPermissionsLoading,
   }),
 }));
 
@@ -53,7 +53,7 @@ describe("LLMKeys", () => {
     vi.clearAllMocks();
     mockUserRoleName = "Admin";
     mockPermissions = [];
-    mockPermissionsPending = false;
+    mockPermissionsLoading = false;
     mockGetLLMKeys.mockResolvedValue({ data: { data: [] } });
   });
 
@@ -279,7 +279,7 @@ describe("LLMKeys", () => {
     // A custom role holding llmKeys.admin is only known once the permission
     // list arrives; consuming the flag before that would drop the deep link.
     mockUserRoleName = "Platform admin";
-    mockPermissionsPending = true;
+    mockPermissionsLoading = true;
     renderWithProviders(
       <>
         <LLMKeys />
@@ -290,10 +290,25 @@ describe("LLMKeys", () => {
     expect(screen.getByTestId("search")).toHaveTextContent("?addKey=1");
 
     // The permission list arrives; the key list resolving re-renders the page.
-    mockPermissionsPending = false;
+    mockPermissionsLoading = false;
     mockPermissions = ["llmKeys.admin"];
     expect(await screen.findByRole("heading", { name: "Add API key" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^$/));
+  });
+
+  it("does not wait for permissions before dropping the flag for a built-in role", async () => {
+    // Built-in roles answer from the role list, so the flag goes at once.
+    mockUserRoleName = "Editor";
+    mockPermissionsLoading = true;
+    renderWithProviders(
+      <>
+        <LLMKeys />
+        <SearchProbe />
+      </>,
+      { route: "/settings/apikeys?addKey=1" },
+    );
+    await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^$/));
+    expect(screen.queryByRole("heading", { name: "Add API key" })).not.toBeInTheDocument();
   });
 
   it("stays closed after the deep-linked form is cancelled", async () => {

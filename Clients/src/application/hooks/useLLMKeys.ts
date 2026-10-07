@@ -8,8 +8,13 @@ import { LLM_KEY_STATUS_QUERY_KEY, LLM_KEYS_QUERY_KEY } from "../constants/llmKe
 /** Stable empty list, so callers' memos and effects do not re-run while loading. */
 const NO_KEYS: LLMKeysModel[] = [];
 
-// Module-level so `select` only re-runs when the cached rows change.
-const toKeyModels = (rows: LLMKeysData[]) => rows.map((key) => new LLMKeysModel(key));
+/** A row of GET /llm-keys: the server never returns the key itself. */
+type LLMKeyRow = Omit<LLMKeysData, "key"> & { key?: string };
+
+// Module-level so `select` only re-runs when the cached rows change. The key
+// defaults to "", so the edit form starts empty rather than undefined.
+const toKeyModels = (rows: LLMKeyRow[]) =>
+  rows.map((row) => new LLMKeysModel({ ...row, key: row.key ?? "" }));
 
 /**
  * The organization's LLM keys, one cached query per org. Scoped to the org
@@ -28,7 +33,7 @@ export function useLLMKeys() {
     // Cache the plain rows: React Query only keeps an unchanged result's
     // reference for plain objects, so a refetch with the same keys does not
     // hand callers a new list. The models are built in `select`.
-    queryFn: async (): Promise<LLMKeysData[]> => {
+    queryFn: async (): Promise<LLMKeyRow[]> => {
       const response = await getLLMKeys();
       return response.data.data ?? [];
     },

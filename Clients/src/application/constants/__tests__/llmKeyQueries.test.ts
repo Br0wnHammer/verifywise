@@ -9,10 +9,9 @@ describe("retryLLMKeyQuery", () => {
     expect(retryLLMKeyQuery(1, { status: 500 })).toBe(false);
   });
 
-  it("retries a timeout or rate limiting once", () => {
+  it("retries a request timeout once", () => {
     expect(retryLLMKeyQuery(0, { status: 408 })).toBe(true);
-    expect(retryLLMKeyQuery(0, { status: 429 })).toBe(true);
-    expect(retryLLMKeyQuery(1, { status: 429 })).toBe(false);
+    expect(retryLLMKeyQuery(1, { status: 408 })).toBe(false);
   });
 
   it("is the retry policy of the app's key queries", () => {
@@ -25,5 +24,6 @@ describe("retryLLMKeyQuery", () => {
     expect(retryLLMKeyQuery(0, { status: 401 })).toBe(false);
     expect(retryLLMKeyQuery(0, { status: 403 })).toBe(false);
     expect(retryLLMKeyQuery(0, { status: 404 })).toBe(false);
+    expect(retryLLMKeyQuery(0, { status: 429 })).toBe(false);
   });
 });

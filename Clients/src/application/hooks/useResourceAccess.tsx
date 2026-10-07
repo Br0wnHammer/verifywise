@@ -10,7 +10,7 @@ import { useMyPermissions } from "./useRolePermissions";
 const BUILTIN_ROLE_NAMES = new Set(["Admin", "Editor", "Reviewer", "Auditor"]);
 
 /** Whether canAccess answers from the static matrix, without waiting for permissions. */
-export const usesStaticMatrix = (roleName: string) =>
+const usesStaticMatrix = (roleName: string) =>
   roleName === "SuperAdmin" || BUILTIN_ROLE_NAMES.has(roleName);
 
 /**
@@ -57,7 +57,7 @@ export const RESOURCE_ACTION_PERMISSION_KEY: Record<string, string> = {
  */
 export function useResourceAccess() {
   const { userRoleName } = useAuth();
-  const { can, isLoading } = useMyPermissions();
+  const { can, isLoading, isPending } = useMyPermissions();
 
   const canAccess = useCallback(
     (resource: keyof typeof allowedRoles | string, action: string): boolean => {
@@ -75,5 +75,9 @@ export function useResourceAccess() {
     [userRoleName, can],
   );
 
-  return { canAccess, isLoading };
+  // True while canAccess cannot answer yet: a custom role whose permissions
+  // have not loaded (including a fetch paused offline). Built-in roles never wait.
+  const isResolving = isPending && !usesStaticMatrix(userRoleName);
+
+  return { canAccess, isLoading, isResolving };
 }
