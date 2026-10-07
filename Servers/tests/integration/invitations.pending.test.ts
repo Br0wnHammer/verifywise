@@ -81,8 +81,11 @@ describe("getPendingInvitationQuery", () => {
       first,
     );
     const resent = new Date("2026-11-06T09:30:00.250Z");
-    expect(await updateInvitationExpiryQuery(attacker.orgId, row.id, resent)).toBe(0);
-    expect(await updateInvitationExpiryQuery(owner.orgId, row.id, resent)).toBe(1);
+    expect(await updateInvitationExpiryQuery(attacker.orgId, row.id, resent)).toBeNull();
+    expect(await updateInvitationExpiryQuery(owner.orgId, row.id, resent)).toMatchObject({
+      email: "invitee@example.com",
+      role_id: 3,
+    });
 
     expect(
       (await getPendingInvitationQuery(owner.orgId, "invitee@example.com"))!.expires_at_ms,
@@ -112,7 +115,7 @@ describe("getPendingInvitationQuery", () => {
 
     expect(
       await updateInvitationExpiryQuery(owner.orgId, row.id, new Date("2026-11-06T09:30:00Z")),
-    ).toBe(0);
+    ).toBeNull();
   });
 });
 

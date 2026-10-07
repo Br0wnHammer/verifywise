@@ -88,4 +88,15 @@ describe("agent_send_invitation", () => {
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockSend).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [{ email: "new@example.com", _userId: 5 }, "A valid role_id is required"],
+    [{ email: "new@example.com", role_id: "admin", _userId: 5 }, "A valid role_id is required"],
+    [{ email: "not-an-email", role_id: 3, _userId: 5 }, "A valid email address is required"],
+    [{ role_id: 3, _userId: 5 }, "A valid email address is required"],
+  ])("refuses bad model input %j before saving anything", async (params, message) => {
+    await expect(execute(params)).rejects.toThrow(message);
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
 });

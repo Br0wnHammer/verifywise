@@ -5,6 +5,7 @@ import { getSubscription } from "../../utils/subscription.util";
 import { createInvitationQuery } from "../../utils/invitation.utils";
 import { sendInviteEmail } from "../../utils/inviteEmail.utils";
 import { INVITATION_LIFETIME_MS } from "../../utils/jwt.utils";
+import { isValidEmail } from "../../services/email/types";
 
 import { createWriteToolFn } from "../confirmation/createWriteTool";
 import { sequelize } from "../../database/db";
@@ -394,9 +395,17 @@ const agentSendInvitation = createWriteToolFn({
     if (!invitedBy) {
       throw new Error("Cannot send an invitation without an inviting user");
     }
-    const email = String(params.email);
+    const email = String(params.email ?? "").trim();
     const name = (params.name as string) || "";
     const roleId = Number(params.role_id);
+    // Model-supplied: check before saving, so a bad value fails cleanly
+    // instead of storing a row whose link can never register.
+    if (!isValidEmail(email)) {
+      throw new Error("A valid email address is required");
+    }
+    if (!Number.isInteger(roleId) || roleId <= 0) {
+      throw new Error("A valid role_id is required");
+    }
 
     // Same flow as the Team page invite (vwmailer.ctrl.ts): save the row,
     // then email a link signed for its expires_at, so the link registers.

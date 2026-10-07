@@ -171,7 +171,12 @@ describe("invitation.ctrl", () => {
         link: "link",
         info: {},
       } as any);
-      mockUpdateExpiry.mockResolvedValue(1);
+      mockUpdateExpiry.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      });
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
 
@@ -211,7 +216,12 @@ describe("invitation.ctrl", () => {
         link: "link",
         info: { error: { name: "SendError", message: "fail" } },
       } as any);
-      mockUpdateExpiry.mockResolvedValue(1);
+      mockUpdateExpiry.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 1,
+      });
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
 
@@ -244,6 +254,31 @@ describe("invitation.ctrl", () => {
       });
     });
 
+    it("signs the link for the role the row holds after the update", async () => {
+      // A re-invite between the read and the update can change the role; a
+      // link signed with the stale role would never register.
+      mockGetById.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 3,
+      } as any);
+      mockUpdateExpiry.mockResolvedValue({
+        email: "a@b.com",
+        name: "A",
+        surname: "B",
+        role_id: 2,
+      });
+      mockSendEmail.mockResolvedValue({ link: "link", info: {} } as any);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await resendInvitation(req, res);
+
+      expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({ roleId: 2 }));
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
     it("sends nothing when the new expiry cannot be saved", async () => {
       // An emailed link only registers while it matches the row; a link for
       // an unsaved expiry would be dead on arrival.
@@ -271,7 +306,7 @@ describe("invitation.ctrl", () => {
         surname: "B",
         role_id: 1,
       } as any);
-      mockUpdateExpiry.mockResolvedValue(0);
+      mockUpdateExpiry.mockResolvedValue(null);
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
 
