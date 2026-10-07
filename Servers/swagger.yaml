@@ -17823,6 +17823,7 @@ paths:
       tags:
         - 'LLM Keys'
       summary: 'Get L L M Keys'
+      description: 'Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.'
       operationId: getLLMKeys
       security:
         -
@@ -17852,6 +17853,8 @@ paths:
           description: 'Created successfully'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - requires the llmKeys.admin permission (Admin by default)'
         '500':
           description: 'Internal server error'
   /llm-keys/status:
@@ -17875,6 +17878,7 @@ paths:
       tags:
         - 'LLM Keys'
       summary: 'Get L L M Key'
+      description: 'Callers without the llmKeys.admin permission get custom_headers as null and, for Custom providers, only the origin (scheme and host) of the URL. The API key itself is never returned.'
       operationId: getLLMKey
       security:
         -
@@ -17919,6 +17923,8 @@ paths:
           description: Success
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - requires the llmKeys.admin permission (Admin by default)'
         '500':
           description: 'Internal server error'
     delete:
@@ -17941,6 +17947,8 @@ paths:
           description: 'Deleted successfully'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden - requires the llmKeys.admin permission (Admin by default)'
         '500':
           description: 'Internal server error'
   /nist-ai-rmf/functions:

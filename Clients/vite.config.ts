@@ -108,6 +108,13 @@ export default defineConfig({
     setupFiles: ["./src/test/setupEnv.ts", "./src/test/setup.ts"],
     globals: true,
     testTimeout: 20000,
+    // Write console output straight to stdout instead of relaying it from the
+    // worker over Vitest's RPC channel. With interception on, a test that logs
+    // while its worker shuts down fails the whole run with
+    // "EnvironmentTeardownError: Closing rpc while 'onUserConsoleLog' was
+    // pending" even when every test passed, which made Coverage and the shard
+    // jobs fail at random in CI.
+    disableConsoleIntercept: true,
     exclude: ["e2e/**", "**/node_modules/**"],
     env: {
       VITE_APP_API_BASE_URL: "http://localhost:3000",

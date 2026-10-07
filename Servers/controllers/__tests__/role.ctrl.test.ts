@@ -153,15 +153,34 @@ describe("role.ctrl", () => {
 
   describe("getRoleById", () => {
     it("should return 200 when role is found", async () => {
-      mockGetById.mockResolvedValue({ id: 1, name: "Admin" } as any);
+      mockGetById.mockResolvedValue({ id: 1, name: "Admin", organization_id: null } as any);
       const req = createReq({ params: { id: "1" } });
       const res = createRes();
       await getRoleById(req, res);
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         message: "OK",
-        data: { id: 1, name: "Admin" },
+        data: { id: 1, name: "Admin", organization_id: null },
       });
+    });
+
+    it("should return the caller's own organization's custom role", async () => {
+      mockGetById.mockResolvedValue({ id: 41, name: "Risk Lead", organization_id: 1 } as any);
+      const req = createReq({ params: { id: "41" }, organizationId: 1 } as any);
+      const res = createRes();
+      await getRoleById(req, res);
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("should answer another organization's custom role as not found", async () => {
+      // Same response as a missing id, so role ids of other organizations
+      // cannot be probed.
+      mockGetById.mockResolvedValue({ id: 40, name: "Auditor Plus", organization_id: 2 } as any);
+      const req = createReq({ params: { id: "40" }, organizationId: 1 } as any);
+      const res = createRes();
+      await getRoleById(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: "Not Found", data: null });
     });
 
     it("should return 404 when role is not found", async () => {
