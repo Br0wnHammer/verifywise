@@ -114,6 +114,11 @@ export const ROLE_PERMISSIONS = {
     description: "Delete mappings/scenarios and edit preferences",
     legacyRoles: ADMIN,
   },
+  "llmKeys.admin": {
+    module: "LLM keys",
+    description: "Add, edit and delete LLM API keys",
+    legacyRoles: ADMIN,
+  },
   "organization.admin": {
     module: "Organization",
     description: "Update organization settings",

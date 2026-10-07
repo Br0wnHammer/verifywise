@@ -382,6 +382,7 @@ export default function ProjectOverview({
               : exp.status === "running"
                 ? "Running"
                 : "Pending",
+        errorMessage: exp.status === "failed" ? exp.error_message : undefined,
       };
     });
 
