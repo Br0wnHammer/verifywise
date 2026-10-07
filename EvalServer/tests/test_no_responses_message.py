@@ -89,3 +89,13 @@ def test_redacts_other_credential_formats() -> None:
 def test_redacts_aws_access_keys() -> None:
     assert "AKIAIOSFODNN7EXAMPLE" not in redact_secrets("AWS AKIAIOSFODNN7EXAMPLE denied")
 
+
+def test_always_redacts_values_after_password_and_secret_labels() -> None:
+    # A passphrase can be a plain lowercase word; these labels always mean a secret.
+    for text in [
+        "password=correcthorsebatterystaple",
+        'secret: "letmeinplease"',
+        "api_key=abcdefghijklmnopqrst",
+    ]:
+        assert "[redacted]" in redact_secrets(text), text
+

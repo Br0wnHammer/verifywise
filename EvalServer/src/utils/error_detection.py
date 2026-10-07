@@ -253,15 +253,21 @@ MAX_FIRST_ERROR_CHARS = 300
 
 # Credentials that provider and HTTP client errors can echo back (request URL,
 # headers, request body). Stored failure reasons are shown to every user of the
-# organization. A value after Bearer/Basic or key/token/secret/password is only
-# redacted when it looks like a credential, so error text such as
+# organization. A value after password/secret/api_key/access_token is always
+# redacted. After Bearer/Basic or a bare key/token it is redacted only when it
+# looks like a credential, so error text such as
 # "Unexpected token: <", "Basic authentication is not supported" or
 # "Missing required key: messages_template" keeps its cause.
 _TOKEN = r"[A-Za-z0-9._~+/=-]"
 _SCHEME_VALUE = re.compile(r"(?i)\b(bearer|basic)(\s+)(" + _TOKEN + r"{8,})")
-_LABELLED_VALUE = re.compile(
-    r"(?i)\b((?:api[_-]?)?key|access[_-]?token|token|secret|password)"
-    r"([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{12,})"
+# Labels that always introduce a secret: the value is redacted whatever it looks like.
+_STRONG_LABEL_VALUE = re.compile(
+    r"(?i)\b(password|passwd|secret|client[_-]?secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
+    r"([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{4,})"
+)
+# Labels that also appear in ordinary error text ("Missing required key: x").
+_WEAK_LABEL_VALUE = re.compile(
+    r"(?i)\b(key|token)([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{12,})"
 )
 _PREFIXED_SECRETS = [
     re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}"),
@@ -272,9 +278,10 @@ _PREFIXED_SECRETS = [
 
 
 def _looks_like_secret(value: str) -> bool:
-    """A credential has a digit, mixed case, or base64 padding; words do not."""
+    """A credential has a digit, mixed case, base64 padding, or is very long."""
     return (
-        any(c.isdigit() for c in value)
+        len(value) >= 24
+        or any(c.isdigit() for c in value)
         or (any(c.isupper() for c in value) and any(c.islower() for c in value))
         or value.endswith("=")
     )
@@ -287,8 +294,9 @@ def redact_secrets(text: str) -> str:
         label, sep, value = match.groups()
         return f"{label}{sep}[redacted]" if _looks_like_secret(value) else match.group(0)
 
+    text = _STRONG_LABEL_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", text)
     text = _SCHEME_VALUE.sub(_keep_label, text)
-    text = _LABELLED_VALUE.sub(_keep_label, text)
+    text = _WEAK_LABEL_VALUE.sub(_keep_label, text)
     for pattern in _PREFIXED_SECRETS:
         text = pattern.sub("[redacted]", text)
     return text
