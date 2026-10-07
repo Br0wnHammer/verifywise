@@ -569,6 +569,28 @@ describe("user.ctrl", () => {
         expect(mockUpdate).not.toHaveBeenCalled();
       });
 
+      it("should return 400 for a role id that is not a positive integer", async () => {
+        for (const roleId of ["abc", "5abc", -1, 1.5]) {
+          mockRoleById.mockClear();
+          mockGetById.mockResolvedValue(
+            mockUser(buildUser({ id: 2, organization_id: 1, role_id: 1 })) as any,
+          );
+          const req = createReq({ params: { id: "2" }, body: { name: "X", roleId } });
+          const res = createRes();
+          await updateUserById(req, res);
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(mockRoleById).not.toHaveBeenCalled();
+        }
+        expect(mockUpdate).not.toHaveBeenCalled();
+      });
+
+      it("should refuse a role row without an organization field instead of reading it as built-in", async () => {
+        mockRoleById.mockResolvedValueOnce({ id: 40, name: "Partial" } as any);
+        const res = await assignRole(40);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(mockUpdate).not.toHaveBeenCalled();
+      });
+
       it("should allow assigning the caller's own organization's custom role", async () => {
         mockRoleById.mockResolvedValueOnce({
           id: 41,

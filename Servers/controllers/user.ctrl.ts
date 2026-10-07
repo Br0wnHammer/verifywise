@@ -1107,8 +1107,12 @@ async function updateUserById(req: Request, res: Response) {
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
   const { name, surname, email, roleId: roleIdRaw, last_login } = req.body;
 
-  // Convert roleId to number if it exists (frontend may send as string)
-  const roleId = roleIdRaw ? parseInt(roleIdRaw) : undefined;
+  // The frontend may send the id as a string. Anything that is not a
+  // positive integer is refused as an unknown role below.
+  const roleId =
+    roleIdRaw === undefined || roleIdRaw === null || roleIdRaw === ""
+      ? undefined
+      : Number(roleIdRaw);
 
   logStructured("processing", `updating user ID ${id}`, "updateUserById", "user.ctrl.ts");
 
@@ -1169,13 +1173,14 @@ async function updateUserById(req: Request, res: Response) {
     // not reveal which role ids exist in other organizations.
     if (roleId !== undefined && roleId !== user.role_id) {
       // Read from the database, not the role cache, so a role created or
-      // deleted a moment ago is judged correctly.
-      const targetRole = await getRoleByIdQuery(roleId);
-      const targetOrganizationId = targetRole?.organization_id ?? null;
+      // deleted a moment ago is judged correctly. A built-in role has an
+      // organization_id of exactly null; a row without the field is refused.
+      const targetRole =
+        Number.isInteger(roleId) && roleId > 0 ? await getRoleByIdQuery(roleId) : null;
       const isAssignable =
         !!targetRole &&
         targetRole.name !== "SuperAdmin" &&
-        (targetOrganizationId === null || targetOrganizationId === req.organizationId);
+        (targetRole.organization_id === null || targetRole.organization_id === req.organizationId);
       if (!isAssignable) {
         logStructured(
           "error",
