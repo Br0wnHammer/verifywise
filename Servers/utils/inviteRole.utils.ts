@@ -6,6 +6,7 @@ import {
   roleHasPermission,
 } from "./rolePermissions.utils";
 import { getUserByIdQuery } from "./user.utils";
+import { CheckedInvitation, getPendingInvitationQuery } from "./invitation.utils";
 
 /** Why a role may not be granted through an invitation. */
 export type InviteRoleRefusal = "unknown_role" | "exceeds_access";
@@ -78,4 +79,31 @@ export async function userInviteRefusal(
     return "not_allowed";
   }
   return inviteRoleRefusal(organizationId, roleName, roleId);
+}
+
+/**
+ * The pending invitation an invite to `email` would replace, and whether the
+ * inviter may replace it. Re-inviting rewrites that invitation and voids its
+ * link, so it follows the revoke rule: `refusalFor` (the inviter's own check)
+ * must allow its role. One whose role no longer exists stays replaceable.
+ *
+ * Pass `replace` on to createInvitationQuery, which then rewrites the
+ * invitation only while it is unchanged since this check.
+ */
+export async function pendingInvitationToReplace(
+  organizationId: number,
+  email: string,
+  roleId: number,
+  refusalFor: (roleId: number) => Promise<string | null>,
+): Promise<{ replace: CheckedInvitation | null; refused: boolean }> {
+  const pending = await getPendingInvitationQuery(organizationId, email);
+  if (!pending) return { replace: null, refused: false };
+  const replace = {
+    id: pending.id,
+    roleId: pending.role_id,
+    expiresAtMs: pending.expires_at_ms,
+  };
+  if (pending.role_id === roleId) return { replace, refused: false };
+  const refusal = await refusalFor(pending.role_id);
+  return { replace, refused: refusal !== null && refusal !== "unknown_role" };
 }

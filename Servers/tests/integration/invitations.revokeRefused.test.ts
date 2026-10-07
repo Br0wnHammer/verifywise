@@ -13,8 +13,8 @@ afterEach(async () => {
 
 const EXPIRES = new Date("2026-11-05T12:00:00.000Z");
 
-const invite = (orgId: number, email: string, roleId: number, invitedBy: number) =>
-  createInvitationQuery(orgId, email, "In", "Vitee", roleId, invitedBy, EXPIRES);
+const invite = async (orgId: number, email: string, roleId: number, invitedBy: number) =>
+  (await createInvitationQuery(orgId, email, "In", "Vitee", roleId, invitedBy, EXPIRES))!;
 
 const pendingEmails = async (orgId: number) =>
   (

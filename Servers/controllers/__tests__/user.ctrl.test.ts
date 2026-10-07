@@ -964,12 +964,16 @@ describe("user.ctrl", () => {
   });
 
   describe("getUserProfilePhoto", () => {
-    it("should return 403 when org mismatch", async () => {
-      mockGetById.mockResolvedValue(mockUser(buildUser({ id: 2, organization_id: 99 })) as any);
+    // Another organization's user and a missing one answer alike (no id oracle).
+    it.each([
+      ["another organization's user", mockUser(buildUser({ id: 2, organization_id: 99 }))],
+      ["a missing user", null],
+    ])("should return 404 for %s", async (_label, user) => {
+      mockGetById.mockResolvedValue(user as any);
       const req = createReq({ params: { id: "2" } });
       const res = createRes();
       await getUserProfilePhoto(req, res);
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(404);
     });
     it("should return 200 when photo exists", async () => {
       mockGetById.mockResolvedValue(mockUser(buildUser()) as any);
@@ -1003,12 +1007,16 @@ describe("user.ctrl", () => {
   });
 
   describe("deleteUserProfilePhoto", () => {
-    it("should return 403 when org mismatch", async () => {
-      mockGetById.mockResolvedValue(mockUser(buildUser({ id: 2, organization_id: 99 })) as any);
+    // Another organization's user and a missing one answer alike (no id oracle).
+    it.each([
+      ["another organization's user", mockUser(buildUser({ id: 2, organization_id: 99 }))],
+      ["a missing user", null],
+    ])("should return 404 for %s", async (_label, user) => {
+      mockGetById.mockResolvedValue(user as any);
       const req = createReq({ params: { id: "2" } });
       const res = createRes();
       await deleteUserProfilePhoto(req, res);
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(404);
     });
     it("should return 200 when photo is deleted", async () => {
       mockGetById.mockResolvedValue(mockUser(buildUser()) as any);

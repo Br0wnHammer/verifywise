@@ -6,6 +6,7 @@ jest.mock("../../utils/inviteEmail.utils", () => ({
 }));
 jest.mock("../../utils/invitation.utils", () => ({
   createInvitationQuery: jest.fn(),
+  getPendingInvitationQuery: jest.fn(),
 }));
 jest.mock("../../utils/roleMap", () => ({
   getRoleByName: jest.fn(),
@@ -25,7 +26,7 @@ jest.mock("../../utils/logger/logHelper", () => ({
 
 import { invite } from "../vwmailer.ctrl";
 import { sendInviteEmail } from "../../utils/inviteEmail.utils";
-import { createInvitationQuery } from "../../utils/invitation.utils";
+import { createInvitationQuery, getPendingInvitationQuery } from "../../utils/invitation.utils";
 import { getRoleByName } from "../../utils/roleMap";
 import { getRoleByIdQuery } from "../../utils/role.utils";
 import {
@@ -35,6 +36,9 @@ import {
 
 const mockSend = sendInviteEmail as jest.MockedFunction<typeof sendInviteEmail>;
 const mockCreate = createInvitationQuery as jest.MockedFunction<typeof createInvitationQuery>;
+const mockPending = getPendingInvitationQuery as jest.MockedFunction<
+  typeof getPendingInvitationQuery
+>;
 const mockGetRole = getRoleByIdQuery as jest.MockedFunction<typeof getRoleByIdQuery>;
 const mockCustomPermissions = loadCustomRolePermissions as jest.MockedFunction<
   typeof loadCustomRolePermissions
@@ -114,6 +118,47 @@ describe("vwmailer.ctrl invite", () => {
       info: {},
     } as any);
     mockCreate.mockResolvedValue({} as any);
+    mockPending.mockResolvedValue(null);
+  });
+
+  // Re-inviting an email rewrites its pending invitation and voids that link,
+  // so it follows the revoke rule for the pending invitation's role.
+  it("refuses to replace a pending invitation for a role above the inviter's access", async () => {
+    mockPending.mockResolvedValue({ id: 8, role_id: 1, expires_at_ms: 0 });
+    const res = createRes();
+    await invite(createReq({ role: "Team lead" }), res, body({ roleId: 51 }));
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("replaces a pending invitation only while it is as checked", async () => {
+    mockPending.mockResolvedValue({ id: 8, role_id: 4, expires_at_ms: 1234 });
+    const res = createRes();
+    await invite(createReq(), res, body({ roleId: 3 }));
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockCreate.mock.calls[0][7]).toEqual({
+      replace: { id: 8, roleId: 4, expiresAtMs: 1234 },
+    });
+  });
+
+  it("answers 409 without sending when a re-invite changed the invitation meanwhile", async () => {
+    mockCreate.mockResolvedValue(null);
+    const res = createRes();
+    await invite(createReq(), res, body());
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("lets a trusted caller replace any pending invitation, unguarded", async () => {
+    const res = createRes();
+    await invite(createReq({ role: undefined }), res, body(), { organizationId: 42 });
+
+    expect(mockPending).not.toHaveBeenCalled();
+    expect(mockCreate.mock.calls[0][7]).toEqual({ replace: undefined });
   });
 
   it("invites into the inviter's organization, ignoring the body's", async () => {

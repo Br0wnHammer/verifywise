@@ -1882,7 +1882,8 @@ async function uploadUserProfilePhoto(req: any, res: Response) {
 
   try {
     const user = await getUserByIdQuery(userId);
-    if (user.organization_id !== req.organizationId) {
+    // A missing user and another organization's answer alike (no id oracle).
+    if (!user || user.organization_id !== req.organizationId) {
       logStructured(
         "error",
         `access denied to user ID ${userId}`,
@@ -1890,9 +1891,7 @@ async function uploadUserProfilePhoto(req: any, res: Response) {
         "user.ctrl.ts",
       );
       await transaction.rollback();
-      return res
-        .status(403)
-        .json(STATUS_CODE[403](req.t!("Forbidden: Access to this user is denied")));
+      return res.status(404).json(STATUS_CODE[404](req.t!("User not found")));
     }
 
     if (!attachment) {
@@ -2015,16 +2014,15 @@ async function getUserProfilePhoto(req: Request, res: Response) {
 
   try {
     const user = await getUserByIdQuery(userId);
-    if (user.organization_id !== req.organizationId) {
+    // A missing user and another organization's answer alike (no id oracle).
+    if (!user || user.organization_id !== req.organizationId) {
       logStructured(
         "error",
         `access denied to user ID ${userId}`,
         "getUserProfilePhoto",
         "user.ctrl.ts",
       );
-      return res
-        .status(403)
-        .json(STATUS_CODE[403](req.t!("Forbidden: Access to this user is denied")));
+      return res.status(404).json(STATUS_CODE[404](req.t!("User not found")));
     }
 
     const photo = await getUserProfilePhotoQuery(userId, req.organizationId!);
@@ -2082,7 +2080,8 @@ async function deleteUserProfilePhoto(req: Request, res: Response) {
 
   try {
     const user = await getUserByIdQuery(userId);
-    if (user.organization_id !== req.organizationId) {
+    // A missing user and another organization's answer alike (no id oracle).
+    if (!user || user.organization_id !== req.organizationId) {
       logStructured(
         "error",
         `access denied to user ID ${userId}`,
@@ -2090,9 +2089,7 @@ async function deleteUserProfilePhoto(req: Request, res: Response) {
         "user.ctrl.ts",
       );
       await transaction.rollback();
-      return res
-        .status(403)
-        .json(STATUS_CODE[403](req.t!("Forbidden: Access to this user is denied")));
+      return res.status(404).json(STATUS_CODE[404](req.t!("User not found")));
     }
 
     const isDeleted = await deleteUserProfilePhotoQuery(userId, req.organizationId!, transaction);

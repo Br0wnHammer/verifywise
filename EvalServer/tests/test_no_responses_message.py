@@ -112,3 +112,37 @@ def test_redacts_credentials_in_a_url() -> None:
     text = redact_secrets("cannot reach postgres://evals:Hunter2!x@db.internal:5432/evals")
     assert "Hunter2!x" not in text
     assert "postgres://evals:[redacted]@db.internal:5432/evals" in text
+
+
+def test_redacts_env_style_key_assignments() -> None:
+    # The label follows an underscore, not a word boundary.
+    for text in ("AZURE_OPENAI_API_KEY=3f2a9c1d7e8b4a6f", "x_api_key: abcdef", "OPENAI_TOKEN=abcDEF1234567890"):
+        assert redact_secrets(text).endswith("[redacted]"), text
+
+
+def test_redacts_a_url_password_containing_at_and_slash() -> None:
+    text = redact_secrets("proxy https://bob:p@ss/w0rd@proxy.local failed")
+    assert text == "proxy https://bob:[redacted]@proxy.local failed"
+
+
+def test_leaves_a_url_with_a_port_and_no_userinfo_alone() -> None:
+    assert redact_secrets("cannot reach http://host:8080/a now") == "cannot reach http://host:8080/a now"
+
+
+def test_redacts_a_url_password_without_a_username() -> None:
+    # Redis and Valkey URLs carry only a password.
+    assert redact_secrets("redis://:hunter2secret@cache:6379 refused") == "redis://:[redacted]@cache:6379 refused"
+
+
+def test_redacts_a_password_that_starts_like_a_port() -> None:
+    # "user:1234/abc@host" cannot be told apart from "host:8080/a@b", so
+    # both are redacted rather than risk keeping a password.
+    assert "1234/abc" not in redact_secrets("cannot reach redis://user:1234/abc@cache now")
+    assert redact_secrets("GET http://host:8080/a@b failed") == "GET http://host:[redacted]@b failed"
+    assert "2024#Secret" not in redact_secrets("postgres://admin:2024#Secret@db:5432/x failed")
+
+
+def test_redacts_userinfo_whatever_the_username_looks_like() -> None:
+    # A bracket does not mark an IPv6 host safely: "[u:pw@h" must not leak.
+    assert "secretpw" not in redact_secrets("GET https://[u:secretpw@h failed")
+    assert redact_secrets("GET http://u:pw@[::1]:8080/ failed") == "GET http://u:[redacted]@[::1]:8080/ failed"

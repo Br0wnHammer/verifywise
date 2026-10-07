@@ -260,18 +260,25 @@ MAX_FIRST_ERROR_CHARS = 300
 # "Missing required key: messages_template" keeps its cause.
 _TOKEN = r"[A-Za-z0-9._~+/=-]"
 _SCHEME_VALUE = re.compile(r"(?i)\b(bearer|basic)(\s+)(" + _TOKEN + r"{8,})")
+# A label starts after a non-alphanumeric character, not at a word boundary,
+# so an env-style name ("OPENAI_API_KEY=", "x_api_key:") still matches.
+_LABEL_START = r"(?<![A-Za-z0-9])"
 # Labels that always introduce a secret: the value is redacted whatever it looks like.
 # The value runs to the next whitespace, quote or separator, so a password
 # with symbols ("a!b@c#d$") is redacted whole, not cut at the first symbol.
 _STRONG_LABEL_VALUE = re.compile(
-    r"(?i)\b(password|passwd|secret|client[_-]?secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
+    r"(?i)" + _LABEL_START + r"(password|passwd|secret|client[_-]?secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
     r"([\"']?\s*[:=]\s*[\"']?)([^\s\"',;&]+)"
 )
-# user:password@ in a URL the error echoes (e.g. a proxy or database URL).
-_URL_USERINFO = re.compile(r"(://[^/\s:@]+:)([^@\s/]+)(@)")
+# user:password@ (or :password@, as Redis URLs carry it) in a URL the error
+# echoes (e.g. a proxy or database URL). The password runs to the last "@"
+# before the host, so one containing "@" or "/" is redacted whole. Text
+# like "host:8080/a@b" reads the same as "user:1234/abc@host", so it is
+# redacted too: losing a port from an error beats leaking a password.
+_URL_USERINFO = re.compile(r"(://[^/\s:@]*:)(\S+)(@)(?=[^@\s]*(?:\s|$))")
 # Labels that also appear in ordinary error text ("Missing required key: x").
 _WEAK_LABEL_VALUE = re.compile(
-    r"(?i)\b(key|token)([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{12,})"
+    r"(?i)" + _LABEL_START + r"(key|token)([\"']?\s*[:=]\s*[\"']?)(" + _TOKEN + r"{12,})"
 )
 _PREFIXED_SECRETS = [
     re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}"),

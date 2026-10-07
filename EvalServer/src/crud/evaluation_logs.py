@@ -20,6 +20,39 @@ from utils.error_detection import redact_secrets
 
 # ==================== LOGS ====================
 
+
+def _redact_metric_score_errors(scores: Any) -> None:
+    """
+    Redact the error text a failed custom scorer leaves as its reason in a
+    metric_scores map (label "ERROR"), including scores stored before that
+    was redacted on write.
+    """
+    if not isinstance(scores, dict):
+        return
+    for score in scores.values():
+        if not isinstance(score, dict) or score.get("label") != "ERROR":
+            continue
+        reason = score.get("reason")
+        if isinstance(reason, str):
+            score["reason"] = redact_secrets(reason)
+
+
+def _redact_scorer_errors(results: Any) -> Any:
+    """Redact scorer errors in an experiment's detailed results."""
+    if not isinstance(results, dict):
+        return results
+    for item in results.get("detailed_results") or []:
+        if isinstance(item, dict):
+            _redact_metric_score_errors(item.get("metric_scores"))
+    return results
+
+
+def _redact_log_metadata(metadata: Any) -> Any:
+    """Redact scorer errors in the metric_scores a log's metadata carries."""
+    if isinstance(metadata, dict):
+        _redact_metric_score_errors(metadata.get("metric_scores"))
+    return metadata
+
 async def create_log(
     db: AsyncSession,
     project_id: str,
@@ -164,7 +197,7 @@ async def get_logs(
             "input_text": row["input_text"],
             "output_text": row["output_text"],
             "model_name": row["model_name"],
-            "metadata": row["metadata"] if row["metadata"] else {},
+            "metadata": _redact_log_metadata(row["metadata"]) if row["metadata"] else {},
             "latency_ms": row["latency_ms"],
             "token_count": row["token_count"],
             "cost": float(row["cost"]) if row["cost"] else None,
@@ -402,7 +435,7 @@ async def get_experiment_by_id(
             "config": row["config"],
             "baseline_experiment_id": row["baseline_experiment_id"],
             "status": row["status"],
-            "results": row["results"],
+            "results": _redact_scorer_errors(row["results"]),
             # Also redacts rows stored before redaction on write existed.
             "error_message": redact_secrets(row["error_message"]) if row["error_message"] else row["error_message"],
             "started_at": row["started_at"].isoformat() if row["started_at"] else None,
@@ -459,7 +492,7 @@ async def get_experiments(
             "description": row["description"],
             "config": row["config"],
             "status": row["status"],
-            "results": row["results"],
+            "results": _redact_scorer_errors(row["results"]),
             # Also redacts rows stored before redaction on write existed.
             "error_message": redact_secrets(row["error_message"]) if row["error_message"] else row["error_message"],
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
@@ -589,7 +622,13 @@ async def update_experiment(
     row = result.mappings().first()
 
     if row:
-        return dict(row)
+        experiment = dict(row)
+        # The updated row goes back to the caller like any read: redact it the
+        # same way (rows stored before redaction on write existed).
+        experiment["results"] = _redact_scorer_errors(experiment.get("results"))
+        if experiment.get("error_message"):
+            experiment["error_message"] = redact_secrets(experiment["error_message"])
+        return experiment
     return None
 
 

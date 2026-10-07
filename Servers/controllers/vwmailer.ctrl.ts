@@ -4,7 +4,7 @@ import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper
 import logger from "../utils/logger/fileLogger";
 import { createInvitationQuery } from "../utils/invitation.utils";
 import { sendInviteEmail } from "../utils/inviteEmail.utils";
-import { inviteRoleRefusal } from "../utils/inviteRole.utils";
+import { inviteRoleRefusal, pendingInvitationToReplace } from "../utils/inviteRole.utils";
 import { INVITATION_LIFETIME_MS } from "../utils/jwt.utils";
 
 export const invite = async (
@@ -58,8 +58,24 @@ export const invite = async (
     // Save the invitation first: its link only registers while it matches
     // this row, so a link for an unsaved row would never work. A failure
     // here is a 500 and no email goes out.
+    // A trusted caller may replace any pending invitation for this email.
+    const replace = trusted
+      ? undefined
+      : await pendingInvitationToReplace(organizationId, to, roleId, (pendingRoleId) =>
+          inviteRoleRefusal(organizationId, req.role!, pendingRoleId),
+        );
+    if (replace?.refused) {
+      return res
+        .status(403)
+        .json(
+          STATUS_CODE[403](
+            req.t!("You cannot replace an invitation for a role with more access than your own"),
+          ),
+        );
+    }
+
     const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
-    await createInvitationQuery(
+    const saved = await createInvitationQuery(
       organizationId,
       to,
       name,
@@ -67,7 +83,13 @@ export const invite = async (
       roleId,
       req.userId!,
       expiresAt,
+      { replace: replace?.replace },
     );
+    if (!saved) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("The invitation was changed by someone else. Try again.")));
+    }
 
     const { link, info } = await sendInviteEmail({
       email: to,

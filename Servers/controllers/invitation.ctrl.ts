@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { STATUS_CODE } from "../utils/statusCode.utils";
 import {
   getInvitationsByTenantQuery,
+  checkedInvitation,
   getInvitationByIdQuery,
   revokeInvitationQuery,
   updateInvitationExpiryQuery,
@@ -23,6 +24,25 @@ export const getInvitations = async (req: Request, res: Response): Promise<Respo
     console.error("Error fetching invitations:", error);
     return res.status(500).json(STATUS_CODE[500](req.t!("Failed to fetch invitations")));
   }
+};
+
+/**
+ * The answer when a guarded revoke or resend matched no row: 404 if the
+ * invitation was accepted or revoked meanwhile, 409 if a re-invite or another
+ * resend changed it after the caller was checked against it.
+ */
+const invitationChangedResponse = async (
+  req: Request,
+  res: Response,
+  organizationId: number,
+  id: number,
+): Promise<Response> => {
+  if (!(await getInvitationByIdQuery(organizationId, id))) {
+    return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
+  }
+  return res
+    .status(409)
+    .json(STATUS_CODE[409](req.t!("The invitation was changed by someone else. Try again.")));
 };
 
 /**
@@ -56,9 +76,9 @@ export const revokeInvitation = async (req: Request, res: Response): Promise<Res
         );
     }
 
-    const deleted = await revokeInvitationQuery(organizationId, id);
+    const deleted = await revokeInvitationQuery(organizationId, checkedInvitation(invitation));
     if (!deleted) {
-      return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
+      return invitationChangedResponse(req, res, organizationId, id);
     }
 
     return res.status(200).json({ message: req.t!("Invitation revoked") });
@@ -102,10 +122,13 @@ export const resendInvitation = async (req: Request, res: Response): Promise<Res
     // only registers while it matches the row. If the save fails nothing is
     // sent and the invitee's current link keeps working.
     const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
-    const updated = await updateInvitationExpiryQuery(organizationId, id, expiresAt);
+    const updated = await updateInvitationExpiryQuery(
+      organizationId,
+      checkedInvitation(invitation),
+      expiresAt,
+    );
     if (!updated) {
-      // Accepted or revoked since it was read: there is nothing to resend.
-      return res.status(404).json(STATUS_CODE[404](req.t!("Invitation not found")));
+      return invitationChangedResponse(req, res, organizationId, id);
     }
 
     const { link, info } = await sendInviteEmail({

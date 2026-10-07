@@ -7,6 +7,7 @@ jest.mock("../../../utils/inviteEmail.utils", () => ({ sendInviteEmail: jest.fn(
 // The role ceiling is covered in agentSendInvitation.authorization.test.ts.
 jest.mock("../../../utils/inviteRole.utils", () => ({
   userInviteRefusal: jest.fn(async () => null),
+  pendingInvitationToReplace: jest.fn(async () => ({ replace: null, refused: false })),
 }));
 
 import { writeToolExecutors } from "../../confirmation/createWriteTool";
@@ -74,6 +75,15 @@ describe("agent_send_invitation", () => {
     expect(result).toMatchObject({ id: 11, status: "pending", email_sent: false });
     expect(JSON.stringify(result)).not.toContain("token=");
     expect(JSON.stringify(result)).toContain("SMTP down");
+  });
+
+  it("sends nothing when a re-invite changed the pending invitation meanwhile", async () => {
+    mockCreate.mockResolvedValue(null);
+
+    await expect(execute({ email: "new@example.com", role_id: 3, _userId: 5 })).rejects.toThrow(
+      "The invitation was changed by someone else",
+    );
+    expect(mockSend).not.toHaveBeenCalled();
   });
 
   it("sends nothing when the invitation cannot be saved", async () => {
