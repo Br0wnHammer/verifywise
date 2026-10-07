@@ -1007,12 +1007,13 @@ export const translations: Record<string, Record<string, string>> = {
     "SOC2 Type I": "SOC 2 Typ I",
     "SOC2 Type II": "SOC 2 Typ II",
     "AI regulation in the Middle East": "KI-Regulierung im Nahen Osten",
-    "We graded 205 AI apps on data transparency":
-      "Wir haben 205 KI-Apps zur Datentransparenz bewertet",
-    "OSFI Guideline E-23: AI model risk rules": "OSFI-Leitlinie E-23: Regeln für KI-Modellrisiken",
-    "What we found running GRS across 15 AI models":
-      "Was wir bei der Anwendung von GRS auf 15 KI-Modelle herausfanden",
-    "AI governance salaries 2026": "Gehälter im Bereich KI-Governance 2026",
+    "VerifyWise on the Wavestone UK Cybersecurity Startup Radar":
+      "VerifyWise im UK Cybersecurity Startup Radar von Wavestone",
+    "VerifyWise 2.5: reporting, observability, and extensions":
+      "VerifyWise 2.5: Reporting, Observability und Extensions",
+    "Stop shopping for DORA compliance software":
+      "Hören Sie auf, DORA-Compliance-Software zu suchen",
+    "Model risk management for AI and ML": "Modellrisikomanagement für KI und ML",
     "Clauses": "Klauseln",
     "Annexes": "Anhänge",
     "AI models mapped to this framework": "Diesem Rahmenwerk zugeordnete KI-Modelle",
@@ -5645,6 +5646,8 @@ export const translations: Record<string, Record<string, string>> = {
     "AI Chatbot for Customer Support": "KI-Chatbot für den Kundensupport",
     "AI Gateway": "AI Gateway",
     "AI Gateway, Policy Radar, and CI/CD scanning": "AI Gateway, Policy Radar und CI/CD-Scanning",
+    "Custom roles, risk inheritance, and evidence retention":
+      "Benutzerdefinierte Rollen, Risikovererbung und Aufbewahrung von Nachweisen",
     "Built-in frameworks, Model Risk Management, and Extensions":
       "Integrierte Frameworks, Model Risk Management und Extensions",
     "AI Trust Index, AI Apps inventory, and Agent Control":
@@ -11006,13 +11009,13 @@ export const translations: Record<string, Record<string, string>> = {
     "SOC2 Type I": "SOC 2 Type I",
     "SOC2 Type II": "SOC 2 Type II",
     "AI regulation in the Middle East": "Réglementation IA au Moyen-Orient",
-    "We graded 205 AI apps on data transparency":
-      "Nous avons évalué 205 applications d'IA sur la transparence des données",
-    "OSFI Guideline E-23: AI model risk rules":
-      "Ligne directrice E-23 du BSIF : règles sur le risque des modèles d'IA",
-    "What we found running GRS across 15 AI models":
-      "Ce que nous avons constaté en appliquant le GRS à 15 modèles d'IA",
-    "AI governance salaries 2026": "Salaires en gouvernance de l'IA 2026",
+    "VerifyWise on the Wavestone UK Cybersecurity Startup Radar":
+      "VerifyWise dans le UK Cybersecurity Startup Radar de Wavestone",
+    "VerifyWise 2.5: reporting, observability, and extensions":
+      "VerifyWise 2.5 : reporting, observabilité et extensions",
+    "Stop shopping for DORA compliance software":
+      "Arrêtez de chercher un logiciel de conformité DORA",
+    "Model risk management for AI and ML": "Gestion du risque de modèle pour l'IA et le ML",
     "AI models mapped to this framework": "Modèles IA rattachés à ce référentiel",
     "Organizational Frameworks": "Référentiels organisationnels",
     "Organizational policies": "Politiques organisationnelles",
@@ -15269,6 +15272,8 @@ export const translations: Record<string, Record<string, string>> = {
     "AI Chatbot for Customer Support": "Chatbot IA pour le support client",
     "AI Gateway": "AI Gateway",
     "AI Gateway, Policy Radar, and CI/CD scanning": "AI Gateway, Policy Radar et analyse CI/CD",
+    "Custom roles, risk inheritance, and evidence retention":
+      "Rôles personnalisés, héritage des risques et conservation des preuves",
     "Built-in frameworks, Model Risk Management, and Extensions":
       "Référentiels intégrés, Model Risk Management et Extensions",
     "AI Trust Index, AI Apps inventory, and Agent Control":
@@ -20068,13 +20073,12 @@ export const translations: Record<string, Record<string, string>> = {
     "SOC2 Type I": "SOC2 Type I",
     "SOC2 Type II": "SOC2 Type II",
     "AI regulation in the Middle East": "Regulación de la IA en Oriente Medio",
-    "We graded 205 AI apps on data transparency":
-      "Evaluamos 205 aplicaciones de IA en transparencia de datos",
-    "OSFI Guideline E-23: AI model risk rules":
-      "Directriz E-23 del OSFI: reglas de riesgo de modelos de IA",
-    "What we found running GRS across 15 AI models":
-      "Lo que encontramos al aplicar GRS a 15 modelos de IA",
-    "AI governance salaries 2026": "Salarios en gobernanza de IA 2026",
+    "VerifyWise on the Wavestone UK Cybersecurity Startup Radar":
+      "VerifyWise en el UK Cybersecurity Startup Radar de Wavestone",
+    "VerifyWise 2.5: reporting, observability, and extensions":
+      "VerifyWise 2.5: informes, observabilidad y extensiones",
+    "Stop shopping for DORA compliance software": "Deje de buscar software de cumplimiento de DORA",
+    "Model risk management for AI and ML": "Gestión del riesgo de modelos para IA y ML",
     "Clauses": "Cláusulas",
     "Annexes": "Anexos",
     "AI models mapped to this framework": "Modelos de IA mapeados a este marco",
@@ -22879,6 +22883,8 @@ export const translations: Record<string, Record<string, string>> = {
     "AI Chatbot for Customer Support": "Chatbot de IA para atención al cliente",
     "AI Gateway": "AI Gateway",
     "AI Gateway, Policy Radar, and CI/CD scanning": "AI Gateway, Policy Radar y análisis de CI/CD",
+    "Custom roles, risk inheritance, and evidence retention":
+      "Roles personalizados, herencia de riesgos y retención de evidencias",
     "Built-in frameworks, Model Risk Management, and Extensions":
       "Marcos integrados, Model Risk Management y Extensions",
     "AI Trust Index, AI Apps inventory, and Agent Control":
