@@ -130,19 +130,19 @@ describe("migration: revoke invitations the invite rules refuse", () => {
     expect(await pendingEmails(orgA)).toEqual(["kept-lead-grants-viewer@x.com"]);
   });
 
-  it("keeps pending invitations with no recorded inviter", async () => {
-    // Legacy rows carried over from per-tenant schemas can lack invited_by;
-    // a forged invite always records the user who sent it.
+  it("revokes pending invitations with no recorded inviter", async () => {
+    // Deleting a user clears invited_by on their invitations, so a forged
+    // invite whose sender was removed cannot be told apart from a legacy row.
     const suffix = Date.now();
     const orgA = await createTestOrganization(`Org A ${suffix}`);
     const adminA = await createTestUser(orgA, 1, `admin-a-${suffix}@test.com`, "Password123!");
-    const legacy = await invite(orgA, "kept-legacy@x.com", 3, adminA);
+    const legacy = await invite(orgA, "revoked-no-inviter@x.com", 3, adminA);
     await sequelize.query(`UPDATE invitations SET invited_by = NULL WHERE id = :id`, {
       replacements: { id: legacy.id },
     });
 
     await migration.up({ sequelize });
 
-    expect(await pendingEmails(orgA)).toEqual(["kept-legacy@x.com"]);
+    expect(await pendingEmails(orgA)).toEqual([]);
   });
 });

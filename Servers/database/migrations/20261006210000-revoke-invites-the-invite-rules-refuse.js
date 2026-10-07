@@ -21,8 +21,9 @@
  *     invited role has no permission the inviter's role lacks.
  *
  * Accepted invitations are left alone: they are history, not live links.
- * So are pending ones with no recorded inviter (legacy rows carried over from
- * per-tenant schemas): a forged invite always records the user who sent it.
+ * Pending ones with no recorded inviter are revoked: deleting a user clears
+ * invited_by on their invitations, so a forged invite whose sender was later
+ * removed looks exactly like a legacy row, and who sent it cannot be checked.
  * A legitimate pending invite this catches (for example from an Admin who has
  * since been demoted) can be sent again. Not reversible.
  */
@@ -31,7 +32,6 @@ module.exports = {
     const [revoked] = await queryInterface.sequelize.query(`
       DELETE FROM verifywise.invitations i
       WHERE i.status = 'pending'
-        AND i.invited_by IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM verifywise.super_admins s WHERE s.user_id = i.invited_by
         )
