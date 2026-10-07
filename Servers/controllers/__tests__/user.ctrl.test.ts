@@ -177,6 +177,7 @@ jest.mock("../../domain.layer/models/userPreferences/userPreferences.model", () 
 });
 
 import { buildUser } from "../../tests/factories/user.factory";
+import { getRoleByIdQuery } from "../../utils/role.utils";
 import {
   getAllUsers,
   getUserByEmail,
@@ -208,7 +209,6 @@ import {
   getUserProfilePhotoQuery,
   deleteUserProfilePhotoQuery,
 } from "../../utils/user.utils";
-import { getRoleByIdQuery } from "../../utils/role.utils";
 import {
   getPreferencesByUserQuery,
   createNewUserPreferencesQuery,
@@ -506,13 +506,6 @@ describe("user.ctrl", () => {
       await updateUserById(req, res);
       expect(res.status).toHaveBeenCalledWith(202);
     });
-    it("should return 500 when user is not found (null access before check)", async () => {
-      mockGetById.mockResolvedValue(null as any);
-      const req = createReq({ params: { id: "99" }, body: { name: "X" } });
-      const res = createRes();
-      await updateUserById(req, res);
-      expect(res.status).toHaveBeenCalledWith(500);
-    });
     it("should return 500 on error", async () => {
       mockGetById.mockRejectedValue(new Error("DB error"));
       const req = createReq({ params: { id: "1" }, body: { name: "X" } });
@@ -523,19 +516,119 @@ describe("user.ctrl", () => {
     // SuperAdmin is no longer a role (role_id=5 removed); it's a mapping-
     // table overlay. The old "cannot assign role 5" / "cannot change role
     // 5" guards are gone. Assigning a non-existent role (e.g. 5) falls
-    // through to the getRoleByIdQuery check → 400 (see "role does not
-    // exist" test below). Editing a pure SuperAdmin (NULL role + NULL org)
-    // through this endpoint is prevented separately.
-    it("should return 400 when the requested role does not exist", async () => {
-      const mockGetRole = getRoleByIdQuery as jest.MockedFunction<typeof getRoleByIdQuery>;
-      mockGetRole.mockResolvedValueOnce(null as any);
-      mockGetById.mockResolvedValue(
-        mockUser(buildUser({ id: 2, organization_id: 1, role_id: 1 })) as any,
-      );
-      const req = createReq({ params: { id: "2" }, body: { name: "X", roleId: 99 } });
+    // through to the role lookup → 400 (see "role does not exist" test
+    // below). Editing a pure SuperAdmin (NULL role + NULL org) through this
+    // endpoint is prevented separately.
+    describe("role assignment scope", () => {
+      // Read from the database (not the role cache), so a role created or
+      // deleted a moment ago is judged correctly.
+      const mockRoleById = getRoleByIdQuery as jest.MockedFunction<typeof getRoleByIdQuery>;
+
+      // Caller is an Admin of org 1 (createReq defaults); target user 2 is in
+      // org 1 with the built-in Admin role (id 1).
+      async function assignRole(roleId: number) {
+        mockGetById.mockResolvedValue(
+          mockUser(buildUser({ id: 2, organization_id: 1, role_id: 1 })) as any,
+        );
+        mockUpdate.mockResolvedValue(mockUser(buildUser({ id: 2, role_id: roleId })) as any);
+        const req = createReq({ params: { id: "2" }, body: { name: "X", roleId } });
+        const res = createRes();
+        await updateUserById(req, res);
+        return res;
+      }
+
+      it("should return 400 when the requested role does not exist", async () => {
+        mockRoleById.mockResolvedValueOnce(null);
+        const res = await assignRole(99);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: "Unknown role" }));
+        expect(mockUpdate).not.toHaveBeenCalled();
+      });
+
+      it("should return 400 and not update when assigning another organization's custom role", async () => {
+        mockRoleById.mockResolvedValueOnce({
+          id: 40,
+          name: "Auditor Plus",
+          organization_id: 2,
+        } as any);
+        const res = await assignRole(40);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: "Unknown role" }));
+        expect(mockUpdate).not.toHaveBeenCalled();
+      });
+
+      it("should return 400 and not update when assigning a role named SuperAdmin", async () => {
+        mockRoleById.mockResolvedValueOnce({
+          id: 5,
+          name: "SuperAdmin",
+          organization_id: null,
+        } as any);
+        const res = await assignRole(5);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: "Unknown role" }));
+        expect(mockUpdate).not.toHaveBeenCalled();
+      });
+
+      it("should return 400 for a role id that is not a positive integer", async () => {
+        // true would become 1 (Admin) with Number(); only digits count.
+        for (const roleId of ["abc", "5abc", -1, 1.5, true, [3], "0x2", " 2 ", "2e0"] as any[]) {
+          mockRoleById.mockClear();
+          mockGetById.mockResolvedValue(
+            mockUser(buildUser({ id: 2, organization_id: 1, role_id: 1 })) as any,
+          );
+          const req = createReq({ params: { id: "2" }, body: { name: "X", roleId } });
+          const res = createRes();
+          await updateUserById(req, res);
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(mockRoleById).not.toHaveBeenCalled();
+        }
+        expect(mockUpdate).not.toHaveBeenCalled();
+      });
+
+      it("should refuse a role row without an organization field instead of reading it as built-in", async () => {
+        mockRoleById.mockResolvedValueOnce({ id: 40, name: "Partial" } as any);
+        const res = await assignRole(40);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(mockUpdate).not.toHaveBeenCalled();
+      });
+
+      it("should allow assigning the caller's own organization's custom role", async () => {
+        mockRoleById.mockResolvedValueOnce({
+          id: 41,
+          name: "Risk Lead",
+          organization_id: 1,
+        } as any);
+        const res = await assignRole(41);
+        expect(res.status).toHaveBeenCalledWith(202);
+        expect(mockUpdate).toHaveBeenCalledWith(
+          2,
+          expect.objectContaining({ role_id: 41 }),
+          expect.anything(),
+        );
+      });
+
+      it("should allow assigning a built-in role", async () => {
+        mockRoleById.mockResolvedValueOnce({
+          id: 2,
+          name: "Reviewer",
+          organization_id: null,
+        } as any);
+        const res = await assignRole(2);
+        expect(res.status).toHaveBeenCalledWith(202);
+        expect(mockUpdate).toHaveBeenCalledWith(
+          2,
+          expect.objectContaining({ role_id: 2 }),
+          expect.anything(),
+        );
+      });
+    });
+    it("should return 404 for a user that does not exist", async () => {
+      mockGetById.mockResolvedValue(undefined as any);
+      const req = createReq({ params: { id: "999999" }, body: { name: "X" } });
       const res = createRes();
       await updateUserById(req, res);
-      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
     it("should return 403 when a non-admin updates another user", async () => {
       mockGetById.mockResolvedValue(mockUser(buildUser({ id: 2, organization_id: 1 })) as any);

@@ -159,11 +159,13 @@ export async function getRoleById(req: Request, res: Response): Promise<any> {
       organizationId: req.organizationId!,
     });
 
-    if (role) {
+    // A built-in role or this organization's own. Another organization's
+    // custom role answers like a missing one, so role ids cannot be probed.
+    if (role && (role.organization_id === null || role.organization_id === req.organizationId)) {
       return res.status(200).json(STATUS_CODE[200](role));
     }
 
-    return res.status(404).json(STATUS_CODE[404](role));
+    return res.status(404).json(STATUS_CODE[404](null));
   } catch (error) {
     await logFailure({
       eventType: "Read",
