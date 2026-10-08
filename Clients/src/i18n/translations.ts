@@ -5649,8 +5649,8 @@ export const translations: Record<string, Record<string, string>> = {
     "AI Chatbot for Customer Support": "KI-Chatbot für den Kundensupport",
     "AI Gateway": "AI Gateway",
     "AI Gateway, Policy Radar, and CI/CD scanning": "AI Gateway, Policy Radar und CI/CD-Scanning",
-    "Custom roles, risk inheritance, and evidence retention":
-      "Benutzerdefinierte Rollen, Risikovererbung und Aufbewahrung von Nachweisen",
+    "Risk inheritance, evidence retention, and security hardening":
+      "Risikovererbung, Aufbewahrung von Nachweisen und Sicherheitshärtung",
     "Built-in frameworks, Model Risk Management, and Extensions":
       "Integrierte Frameworks, Model Risk Management und Extensions",
     "AI Trust Index, AI Apps inventory, and Agent Control":
@@ -15267,8 +15267,8 @@ export const translations: Record<string, Record<string, string>> = {
     "AI Chatbot for Customer Support": "Chatbot IA pour le support client",
     "AI Gateway": "AI Gateway",
     "AI Gateway, Policy Radar, and CI/CD scanning": "AI Gateway, Policy Radar et analyse CI/CD",
-    "Custom roles, risk inheritance, and evidence retention":
-      "Rôles personnalisés, héritage des risques et conservation des preuves",
+    "Risk inheritance, evidence retention, and security hardening":
+      "Héritage des risques, conservation des preuves et renforcement de la sécurité",
     "Built-in frameworks, Model Risk Management, and Extensions":
       "Référentiels intégrés, Model Risk Management et Extensions",
     "AI Trust Index, AI Apps inventory, and Agent Control":
@@ -22870,8 +22870,8 @@ export const translations: Record<string, Record<string, string>> = {
     "AI Chatbot for Customer Support": "Chatbot de IA para atención al cliente",
     "AI Gateway": "AI Gateway",
     "AI Gateway, Policy Radar, and CI/CD scanning": "AI Gateway, Policy Radar y análisis de CI/CD",
-    "Custom roles, risk inheritance, and evidence retention":
-      "Roles personalizados, herencia de riesgos y retención de evidencias",
+    "Risk inheritance, evidence retention, and security hardening":
+      "Herencia de riesgos, retención de evidencias y refuerzo de la seguridad",
     "Built-in frameworks, Model Risk Management, and Extensions":
       "Marcos integrados, Model Risk Management y Extensions",
     "AI Trust Index, AI Apps inventory, and Agent Control":
