@@ -29,13 +29,11 @@ import TabBar from "../../../components/TabBar";
 import { PageHeaderExtended } from "../../../components/Layout/PageHeaderExtended";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import palette from "../../../themes/palette";
-import { sectionTitleSx, useCardSx, ProviderIcon, TOP_PROVIDERS } from "../shared";
+import { sectionTitleSx, useCardSx, ProviderIcon, API_KEY_PROVIDERS } from "../shared";
 import CustomizableSkeleton from "../../../components/Skeletons";
 import VirtualKeysTab from "../VirtualKeys/index";
 import { validateApiKeyFormat } from "../../../../application/utils/apiKeyValidation";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
-
-const TOP_IDS = new Set(TOP_PROVIDERS.map((p) => p._id));
 
 const TABS = [
   { label: "API keys", value: "api-keys", icon: "Key" as const },
@@ -136,7 +134,6 @@ export default function AIGatewaySettingsPage() {
   const [budget, setBudget] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [providerItems, setProviderItems] = useState(TOP_PROVIDERS);
 
   // API Key modal state
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
@@ -206,26 +203,13 @@ export default function AIGatewaySettingsPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [keysRes, budgetRes, providersRes, gsRes] = await Promise.all([
+      const [keysRes, budgetRes, gsRes] = await Promise.all([
         apiServices.get<Record<string, any>>("/ai-gateway/keys"),
         apiServices.get<Record<string, any>>("/ai-gateway/budget"),
-        apiServices
-          .get<{ data: any; providers?: string[] }>("/ai-gateway/providers")
-          .catch(() => null),
         apiServices.get<Record<string, any>>("/ai-gateway/guardrails/settings").catch(() => null),
       ]);
       setApiKeys(keysRes?.data?.data || []);
       setBudget(budgetRes?.data?.data || null);
-
-      const dynamicProviders: string[] = providersRes?.data?.data?.providers || [];
-      const otherProviders = dynamicProviders
-        .filter((p) => !TOP_IDS.has(p))
-        .sort()
-        .map((p) => ({ _id: p, name: p }));
-
-      if (otherProviders.length > 0) {
-        setProviderItems([...TOP_PROVIDERS, ...otherProviders]);
-      }
 
       const gs = gsRes?.data?.settings;
       if (gs) {
@@ -547,7 +531,7 @@ export default function AIGatewaySettingsPage() {
                     <Box>
                       <Typography sx={sectionTitleSx}>API keys</Typography>
                       <Typography sx={{ fontSize: 13, color: palette.text.tertiary, mt: "4px" }}>
-                        Provider API keys are encrypted at rest (AES-256-CBC) and only decrypted
+                        Provider API keys are encrypted at rest (AES-256-GCM) and only decrypted
                         when proxying a request.
                       </Typography>
                     </Box>
@@ -571,7 +555,7 @@ export default function AIGatewaySettingsPage() {
                       <EmptyStateTip
                         icon={Lock}
                         title="Keys are encrypted at rest"
-                        description="Your provider API keys are encrypted using AES-256-CBC before being stored. They are only decrypted when proxying a request and are never exposed in logs."
+                        description="Your provider API keys are encrypted using AES-256-GCM before being stored. They are only decrypted when proxying a request and are never exposed in logs."
                       />
                       <EmptyStateTip
                         icon={Router}
@@ -1324,11 +1308,9 @@ export default function AIGatewaySettingsPage() {
             label="Provider"
             placeholder="Select provider"
             value={keyForm.provider}
-            items={providerItems}
+            items={API_KEY_PROVIDERS}
             onChange={(e) => setKeyForm((p) => ({ ...p, provider: e.target.value as string }))}
             getOptionValue={(item) => item._id}
-            dividerAfterIndex={TOP_PROVIDERS.length}
-            dividerLabel="Other providers"
             isRequired
           />
           <Field

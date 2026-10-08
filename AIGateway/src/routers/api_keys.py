@@ -25,7 +25,12 @@ router = APIRouter(prefix="/keys", tags=["API Keys"])
 
 FRONTEND_URL = "http://localhost:5173"  # overridable via env if needed
 
-VALID_PROVIDERS = {"openai", "anthropic", "gemini", "xai", "mistral", "openrouter"}
+# Providers that LiteLLM can call with a single API key. Keep in sync with
+# API_KEY_PROVIDERS in Clients/src/presentation/pages/AIGateway/shared.ts.
+# Azure OpenAI and AWS Bedrock also need a base URL / API version or cloud
+# credentials, which ai_gateway_api_keys has no columns for, so they are not
+# accepted here.
+VALID_PROVIDERS = {"openai", "anthropic", "gemini", "xai", "mistral", "openrouter", "together_ai", "cohere"}
 
 # Provider verification endpoints (matches Express controller)
 PROVIDER_VERIFY_ENDPOINTS: dict[str, dict] = {
@@ -51,6 +56,14 @@ PROVIDER_VERIFY_ENDPOINTS: dict[str, dict] = {
     },
     "openrouter": {
         "url": lambda _k: "https://openrouter.ai/api/v1/models",
+        "headers": lambda k: {"Authorization": f"Bearer {k}"},
+    },
+    "together_ai": {
+        "url": lambda _k: "https://api.together.xyz/v1/models",
+        "headers": lambda k: {"Authorization": f"Bearer {k}"},
+    },
+    "cohere": {
+        "url": lambda _k: "https://api.cohere.com/v1/models",
         "headers": lambda k: {"Authorization": f"Bearer {k}"},
     },
 }
@@ -155,6 +168,14 @@ async def update_key(key_id: int, request: Request):
     org_id = get_org_id(request)
 
     body = await request.json()
+    if "provider" in body:
+        provider = str(body.get("provider") or "").strip().lower()
+        if provider not in VALID_PROVIDERS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid provider '{provider}'. Must be one of: {', '.join(sorted(VALID_PROVIDERS))}",
+            )
+        body["provider"] = provider
     updated = await update_api_key(org_id, key_id, body)
 
     if not updated:

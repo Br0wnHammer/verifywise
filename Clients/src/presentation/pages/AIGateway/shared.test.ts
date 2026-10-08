@@ -165,6 +165,29 @@ describe("AIGateway shared utilities", () => {
       expect(result.current.getModelsForProvider("unknown")).toEqual([]);
     });
 
+    it("drops providers that an API key cannot be stored for", async () => {
+      mockGet.mockResolvedValue({
+        data: {
+          data: {
+            providers: ["openai", "bedrock", "azure", "cohere"],
+            models: {
+              openai: [{ id: "gpt-4o", mode: "chat" }],
+              bedrock: [{ id: "anthropic.claude-3", mode: "chat" }],
+              azure: [{ id: "gpt-4o", mode: "chat" }],
+              cohere: [{ id: "command-r", mode: "chat" }],
+            },
+          },
+        },
+      });
+
+      const { result } = renderHook(() => useGatewayModels());
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.providers).toEqual(["cohere", "openai"]);
+      expect(result.current.getModelsForProvider("bedrock")).toEqual([]);
+    });
+
     it("sets an error message when the request fails", async () => {
       mockGet.mockRejectedValue(new Error("network down"));
 
