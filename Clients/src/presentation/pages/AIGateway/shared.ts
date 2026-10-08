@@ -109,6 +109,8 @@ export const API_KEY_PROVIDERS = [
   { _id: "cohere", name: "Cohere" },
 ];
 
+const API_KEY_PROVIDER_IDS = new Set(API_KEY_PROVIDERS.map((p) => p._id));
+
 /**
  * Hook: fetch models from the AI Gateway (LiteLLM registry) and provide
  * provider → model cascading data for Select components.
@@ -135,9 +137,10 @@ export function useGatewayModels() {
         const allModels: Record<string, { id: string; provider: string; mode: string }[]> =
           data.models || {};
 
-        // Only keep providers that have chat models
+        // Only keep providers that an API key can be stored for and that have chat models
         const filtered: Record<string, { id: string; mode: string }[]> = {};
         for (const p of allProviders) {
+          if (!API_KEY_PROVIDER_IDS.has(p)) continue;
           const models = (allModels[p] || [])
             .filter((m: any) => m.mode === "chat" || m.mode === "completion")
             .sort((a: any, b: any) => a.id.localeCompare(b.id));

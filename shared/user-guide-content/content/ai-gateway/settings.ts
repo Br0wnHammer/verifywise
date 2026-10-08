@@ -69,7 +69,7 @@ export const aiGatewaySettingsContent: ArticleContent = {
       rows: [
         { setting: 'Monthly limit', description: 'Maximum spend in USD per month. Must be a positive number.' },
         { setting: 'Alert threshold', description: 'Percentage (0-100) at which the progress bar turns red as a visual warning.' },
-        { setting: 'Hard limit', description: 'When enabled, requests are rejected with HTTP 402 once the budget would be exceeded. When disabled, requests continue but the progress bar shows the overage.' },
+        { setting: 'Hard limit', description: 'When enabled, requests are rejected once the budget would be exceeded: API requests sent with a virtual key get HTTP 402, Playground requests get HTTP 429. When disabled, requests continue but the progress bar shows the overage.' },
       ],
     },
     {

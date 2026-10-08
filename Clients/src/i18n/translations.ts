@@ -1636,8 +1636,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Wenn eine Automatisierung ausgelöst wird (geplant, per Webhook oder manuell), wird ihre Ausführung hier mit Status und Dauer aufgezeichnet.",
     "You're viewing a public demo of the VerifyWise AI governance platform. Feel free to explore using demo data, but please don't enter any personal or company information.":
       "Sie sehen eine öffentliche Demo der VerifyWise-KI-Governance-Plattform. Erkunden Sie sie gerne mit Demodaten, geben Sie aber bitte keine personenbezogenen oder unternehmensbezogenen Daten ein.",
-    "Your provider API keys are encrypted using AES-256-CBC before being stored. They are only decrypted when proxying a request and are never exposed in logs.":
-      "Ihre Anbieter-API-Schlüssel werden vor der Speicherung mit AES-256-CBC verschlüsselt. Sie werden nur beim Weiterleiten einer Anfrage entschlüsselt und erscheinen nie in Protokollen.",
+    "Your provider API keys are encrypted using AES-256-GCM before being stored. They are only decrypted when proxying a request and are never exposed in logs.":
+      "Ihre Anbieter-API-Schlüssel werden vor der Speicherung mit AES-256-GCM verschlüsselt. Sie werden nur beim Weiterleiten einer Anfrage entschlüsselt und erscheinen nie in Protokollen.",
     "Playground settings": "Playground-Einstellungen",
 
     // ==============================
@@ -3678,9 +3678,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Database connection strings": "Datenbank-Verbindungszeichenfolgen",
     "Internal URLs": "Interne URLs",
     "Environment variables": "Umgebungsvariablen",
-    "JSON output enforcement": "Erzwingen der JSON-Ausgabe",
-    "Response length limit": "Längenbegrenzung der Antwort",
-    "Executable code in output": "Ausführbarer Code in der Ausgabe",
     "GDPR personal data (all)": "DSGVO-personenbezogene Daten (alle)",
     "HIPAA protected health info": "HIPAA-geschützte Gesundheitsdaten",
     "PCI DSS cardholder data": "PCI-DSS-Karteninhaberdaten",
@@ -3733,11 +3730,6 @@ export const translations: Record<string, Record<string, string>> = {
       "Verweise auf interne/private Netzwerk-URLs erkennen.",
     "Detect environment variable assignments with secrets.":
       "Zuweisungen von Umgebungsvariablen mit Geheimnissen erkennen.",
-    "Ensure responses contain valid JSON when expected.":
-      "Sicherstellen, dass Antworten bei Bedarf gültiges JSON enthalten.",
-    "Flag responses exceeding 4,000 words.": "Antworten mit mehr als 4.000 Wörtern kennzeichnen.",
-    "Detect script tags or executable code patterns in LLM responses.":
-      "Script-Tags oder Muster ausführbaren Codes in LLM-Antworten erkennen.",
     "Detect all GDPR-relevant personal data: email, phone, name, location, DOB, IP, nationality.":
       "Alle DSGVO-relevanten personenbezogenen Daten erkennen: E-Mail, Telefon, Name, Ort, Geburtsdatum, IP, Nationalität.",
     "Detect PHI identifiers: names, dates, SSNs, medical licenses, phone, email.":
@@ -5251,8 +5243,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Project are loading...": "Projekt wird geladen...",
     "Prompt:": "Prompt:",
     "Provider API keys": "Anbieter-API-Schlüssel",
-    "Provider API keys are encrypted at rest (AES-256-CBC) and only decrypted when proxying a request.":
-      "Anbieter-API-Schlüssel werden im Ruhezustand verschlüsselt (AES-256-CBC) und nur beim Proxying einer Anfrage entschlüsselt.",
+    "Provider API keys are encrypted at rest (AES-256-GCM) and only decrypted when proxying a request.":
+      "Anbieter-API-Schlüssel werden im Ruhezustand verschlüsselt (AES-256-GCM) und nur beim Proxying einer Anfrage entschlüsselt.",
     "Quality metrics": "Qualitätsmetriken",
     "Quantitative Risk Assessment": "Quantitative Risikobewertung",
     "Questions about features, how-tos, or use cases?":
@@ -11450,8 +11442,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Lorsqu'une automatisation se déclenche (planifiée, via webhook ou manuellement), son exécution est enregistrée ici avec son statut et sa durée.",
     "You're viewing a public demo of the VerifyWise AI governance platform. Feel free to explore using demo data, but please don't enter any personal or company information.":
       "Vous consultez une démo publique de la plateforme de gouvernance IA VerifyWise. Explorez librement avec les données de démonstration, mais n'y saisissez pas d'informations personnelles ou d'entreprise.",
-    "Your provider API keys are encrypted using AES-256-CBC before being stored. They are only decrypted when proxying a request and are never exposed in logs.":
-      "Vos clés API de fournisseurs sont chiffrées avec AES-256-CBC avant stockage. Elles ne sont déchiffrées que pour relayer une requête et ne sont jamais exposées dans les journaux.",
+    "Your provider API keys are encrypted using AES-256-GCM before being stored. They are only decrypted when proxying a request and are never exposed in logs.":
+      "Vos clés API de fournisseurs sont chiffrées avec AES-256-GCM avant stockage. Elles ne sont déchiffrées que pour relayer une requête et ne sont jamais exposées dans les journaux.",
     "Playground settings": "Paramètres du playground",
 
     "Add a description...": "Ajouter une description...",
@@ -13442,9 +13434,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Database connection strings": "Chaînes de connexion à la base de données",
     "Internal URLs": "URL internes",
     "Environment variables": "Variables d'environnement",
-    "JSON output enforcement": "Application d'une sortie JSON",
-    "Response length limit": "Limite de longueur de réponse",
-    "Executable code in output": "Code exécutable dans la sortie",
     "GDPR personal data (all)": "Données personnelles RGPD (toutes)",
     "HIPAA protected health info": "Informations de santé protégées par HIPAA",
     "PCI DSS cardholder data": "Données de titulaires de carte PCI DSS",
@@ -13498,11 +13487,6 @@ export const translations: Record<string, Record<string, string>> = {
       "Détecter les références à des URL internes/de réseau privé.",
     "Detect environment variable assignments with secrets.":
       "Détecter les affectations de variables d'environnement contenant des secrets.",
-    "Ensure responses contain valid JSON when expected.":
-      "S'assurer que les réponses contiennent un JSON valide lorsque attendu.",
-    "Flag responses exceeding 4,000 words.": "Signaler les réponses dépassant 4 000 mots.",
-    "Detect script tags or executable code patterns in LLM responses.":
-      "Détecter les balises script ou les motifs de code exécutable dans les réponses LLM.",
     "Detect all GDPR-relevant personal data: email, phone, name, location, DOB, IP, nationality.":
       "Détecter toutes les données personnelles pertinentes au RGPD : e-mail, téléphone, nom, lieu, date de naissance, IP, nationalité.",
     "Detect PHI identifiers: names, dates, SSNs, medical licenses, phone, email.":
@@ -14869,8 +14853,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Project are loading...": "Le projet est en cours de chargement...",
     "Prompt:": "Invite :",
     "Provider API keys": "Clés API du fournisseur",
-    "Provider API keys are encrypted at rest (AES-256-CBC) and only decrypted when proxying a request.":
-      "Les clés API du fournisseur sont chiffrées au repos (AES-256-CBC) et déchiffrées uniquement lors du relais d'une requête.",
+    "Provider API keys are encrypted at rest (AES-256-GCM) and only decrypted when proxying a request.":
+      "Les clés API du fournisseur sont chiffrées au repos (AES-256-GCM) et déchiffrées uniquement lors du relais d'une requête.",
     "Quality metrics": "Métriques de qualité",
     "Quantitative Risk Assessment": "Évaluation quantitative des risques",
     "Questions about features, how-tos, or use cases?":
@@ -21934,9 +21918,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Database connection strings": "Cadenas de conexión a la base de datos",
     "Internal URLs": "URL internas",
     "Environment variables": "Variables de entorno",
-    "JSON output enforcement": "Aplicación de salida en JSON",
-    "Response length limit": "Límite de longitud de respuesta",
-    "Executable code in output": "Código ejecutable en la salida",
     "GDPR personal data (all)": "Datos personales de GDPR (todos)",
     "HIPAA protected health info": "Información sanitaria protegida por HIPAA",
     "PCI DSS cardholder data": "Datos del titular de tarjeta de PCI DSS",
@@ -21948,7 +21929,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Detect IPv4 and IPv6 addresses.": "Detecta direcciones IPv4 e IPv6.",
     "Detect medical license and DEA numbers.": "Detecta números de licencia médica y DEA.",
     "Detect European phone number formats.": "Detecta formatos de números de teléfono europeos.",
-    "Flag responses exceeding 4,000 words.": "Marca las respuestas que superen las 4000 palabras.",
     "Phone number": "Número de teléfono",
     "Credit card": "Tarjeta de crédito",
     "Person name": "Nombre de persona",
@@ -24634,8 +24614,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Cuando se activa una automatización (de forma programada, mediante webhook o manualmente), su ejecución se registra aquí con el estado y la duración.",
     "You're viewing a public demo of the VerifyWise AI governance platform. Feel free to explore using demo data, but please don't enter any personal or company information.":
       "Está viendo una demostración pública de la plataforma de gobernanza de IA de VerifyWise. Explore libremente con los datos de demostración, pero no introduzca información personal ni de la empresa.",
-    "Your provider API keys are encrypted using AES-256-CBC before being stored. They are only decrypted when proxying a request and are never exposed in logs.":
-      "Las claves de API de su proveedor se cifran con AES-256-CBC antes de almacenarse. Solo se descifran al redirigir una solicitud y nunca se exponen en los registros.",
+    "Your provider API keys are encrypted using AES-256-GCM before being stored. They are only decrypted when proxying a request and are never exposed in logs.":
+      "Las claves de API de su proveedor se cifran con AES-256-GCM antes de almacenarse. Solo se descifran al redirigir una solicitud y nunca se exponen en los registros.",
     "Add data to see your governance score": "Añada datos para ver su puntuación de gobernanza",
     "Copy the key below. It will not be shown again.":
       "Copie la clave que aparece a continuación. No volverá a mostrarse.",
@@ -25224,10 +25204,6 @@ export const translations: Record<string, Record<string, string>> = {
       "Detecte referencias a URL de redes internas/privadas.",
     "Detect environment variable assignments with secrets.":
       "Detecte asignaciones de variables de entorno con secretos.",
-    "Ensure responses contain valid JSON when expected.":
-      "Garantice que las respuestas contengan JSON válido cuando se espera.",
-    "Detect script tags or executable code patterns in LLM responses.":
-      "Detecte etiquetas de script o patrones de código ejecutable en las respuestas del LLM.",
     "Detect all GDPR-relevant personal data: email, phone, name, location, DOB, IP, nationality.":
       "Detecte todos los datos personales relevantes para el GDPR: correo electrónico, teléfono, nombre, ubicación, fecha de nacimiento, IP, nacionalidad.",
     "Detect PHI identifiers: names, dates, SSNs, medical licenses, phone, email.":
@@ -25950,8 +25926,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Resuelva este sencillo problema de matemáticas para verificar que es una persona",
     "Preview the onboarding modal for the AI Detection module.":
       "Previsualice la ventana modal de incorporación del módulo de detección de IA.",
-    "Provider API keys are encrypted at rest (AES-256-CBC) and only decrypted when proxying a request.":
-      "Las claves de API de los proveedores se cifran en reposo (AES-256-CBC) y solo se descifran al actuar como proxy de una solicitud.",
+    "Provider API keys are encrypted at rest (AES-256-GCM) and only decrypted when proxying a request.":
+      "Las claves de API de los proveedores se cifran en reposo (AES-256-GCM) y solo se descifran al actuar como proxy de una solicitud.",
     "Questions about features, how-tos, or use cases?":
       "¿Tiene preguntas sobre funciones, instrucciones o casos de uso?",
     "Questions asked during each monitoring cycle":

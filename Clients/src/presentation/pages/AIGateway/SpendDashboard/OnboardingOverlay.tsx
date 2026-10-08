@@ -148,14 +148,7 @@ function ArchDiagram() {
     </Typography>
   );
 
-  const PROVIDER_LABELS = [
-    "OpenAI",
-    "Anthropic",
-    "Google Gemini",
-    "AWS Bedrock",
-    "Azure OpenAI",
-    "Mistral",
-  ];
+  const PROVIDER_LABELS = ["OpenAI", "Anthropic", "Google Gemini", "Mistral", "xAI", "OpenRouter"];
 
   return (
     <Stack direction="row" alignItems="stretch" justifyContent="center">
@@ -417,7 +410,12 @@ export default function OnboardingOverlay({
   const { providerItems: gatewayProviders, getModelsForProvider } = useGatewayModels();
   const [endpointError, setEndpointError] = useState("");
   const [endpointSubmitting, setEndpointSubmitting] = useState(false);
-  const [availableKeys, setAvailableKeys] = useState<{ _id: string; name: string }[]>([]);
+  const [availableKeys, setAvailableKeys] = useState<
+    { _id: string; name: string; provider: string }[]
+  >([]);
+  const keysForProvider = availableKeys.filter(
+    (k) => !endpointForm.provider || k.provider === endpointForm.provider,
+  );
 
   // ── Virtual key modal state ──
   const [vkeyName, setVkeyName] = useState("");
@@ -448,6 +446,7 @@ export default function OnboardingOverlay({
           keys.map((k: { id: number; key_name: string; provider: string }) => ({
             _id: String(k.id),
             name: `${k.key_name} (${k.provider})`,
+            provider: k.provider,
           })),
         );
       })
@@ -832,7 +831,12 @@ export default function OnboardingOverlay({
                 value={endpointForm.provider}
                 items={gatewayProviders}
                 onChange={(e) =>
-                  setEndpointForm((p) => ({ ...p, provider: e.target.value as string, model: "" }))
+                  setEndpointForm((p) => ({
+                    ...p,
+                    provider: e.target.value as string,
+                    model: "",
+                    api_key_id: "",
+                  }))
                 }
                 getOptionValue={(item) => item._id}
                 isRequired
@@ -853,13 +857,13 @@ export default function OnboardingOverlay({
               />
             </Box>
           </Stack>
-          {availableKeys.length > 0 ? (
+          {keysForProvider.length > 0 ? (
             <Select
               id="onboarding-api-key"
               label="API key"
               placeholder="Select an API key"
               value={endpointForm.api_key_id}
-              items={availableKeys}
+              items={keysForProvider}
               onChange={(e) =>
                 setEndpointForm((p) => ({ ...p, api_key_id: e.target.value as string }))
               }

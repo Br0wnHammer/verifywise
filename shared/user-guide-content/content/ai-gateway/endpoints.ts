@@ -89,7 +89,7 @@ export const endpointsContent: ArticleContent = {
       type: 'callout',
       variant: 'info',
       title: 'Fallback chain',
-      text: 'The fallback endpoint can itself have a fallback, forming a chain. The gateway follows the chain until it finds a working endpoint, up to 3 fallbacks deep. Guardrails run once, before the first attempt, and every fallback receives the already-scanned request. Avoid circular chains (A to B to A): they stop after 3 attempts but waste calls.',
+      text: 'The fallback endpoint can itself have a fallback, forming a chain. The gateway follows the chain until it finds a working endpoint, up to 3 fallbacks after the first attempt. For API requests sent with a virtual key, guardrails run once, before the first attempt, and every fallback receives the already-scanned request. In the Playground, each attempt is scanned again and counts toward rate limits. Avoid circular chains (A to B to A): they stop after 4 provider calls, each of them logged as a failure.',
     },
     {
       type: 'heading',

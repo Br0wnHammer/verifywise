@@ -168,6 +168,14 @@ async def update_key(key_id: int, request: Request):
     org_id = get_org_id(request)
 
     body = await request.json()
+    if "provider" in body:
+        provider = str(body.get("provider") or "").strip().lower()
+        if provider not in VALID_PROVIDERS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid provider '{provider}'. Must be one of: {', '.join(sorted(VALID_PROVIDERS))}",
+            )
+        body["provider"] = provider
     updated = await update_api_key(org_id, key_id, body)
 
     if not updated:

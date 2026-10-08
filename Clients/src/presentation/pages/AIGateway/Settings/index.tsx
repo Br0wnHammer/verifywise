@@ -531,7 +531,7 @@ export default function AIGatewaySettingsPage() {
                     <Box>
                       <Typography sx={sectionTitleSx}>API keys</Typography>
                       <Typography sx={{ fontSize: 13, color: palette.text.tertiary, mt: "4px" }}>
-                        Provider API keys are encrypted at rest (AES-256-CBC) and only decrypted
+                        Provider API keys are encrypted at rest (AES-256-GCM) and only decrypted
                         when proxying a request.
                       </Typography>
                     </Box>
@@ -555,7 +555,7 @@ export default function AIGatewaySettingsPage() {
                       <EmptyStateTip
                         icon={Lock}
                         title="Keys are encrypted at rest"
-                        description="Your provider API keys are encrypted using AES-256-CBC before being stored. They are only decrypted when proxying a request and are never exposed in logs."
+                        description="Your provider API keys are encrypted using AES-256-GCM before being stored. They are only decrypted when proxying a request and are never exposed in logs."
                       />
                       <EmptyStateTip
                         icon={Router}
