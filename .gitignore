@@ -113,7 +113,6 @@ graphify-out/
 
 # AI agent temp files
 agent.md
-MULTI_AGENT_PLAN.md
 agent-output.md
 agent-plan.md
 plan.md
