@@ -25,7 +25,7 @@ import palette from "../../../themes/palette";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import { validateApiKeyFormat } from "../../../../application/utils/apiKeyValidation";
 import {
-  TOP_PROVIDERS,
+  API_KEY_PROVIDERS,
   useGatewayModels,
   slugify,
   GATEWAY_URL,
@@ -406,10 +406,6 @@ export default function OnboardingOverlay({
   const [keyError, setKeyError] = useState("");
   const [keySubmitting, setKeySubmitting] = useState(false);
 
-  // ── Provider list (dynamic, fetched when API key modal opens) ──
-  const [providerItems, setProviderItems] = useState(TOP_PROVIDERS);
-  const [topProviderCount, setTopProviderCount] = useState(TOP_PROVIDERS.length);
-
   // ── Endpoint modal state ──
   const [endpointForm, setEndpointForm] = useState({
     display_name: "",
@@ -437,26 +433,6 @@ export default function OnboardingOverlay({
   const [firstReqRunning, setFirstReqRunning] = useState(false);
   const [firstReqResponse, setFirstReqResponse] = useState("");
   const [firstReqError, setFirstReqError] = useState("");
-
-  // Fetch dynamic providers when API key modal opens
-  useEffect(() => {
-    if (activeModal !== "api-key") return;
-    const topIds = new Set(TOP_PROVIDERS.map((p) => p._id));
-    apiServices
-      .get<Record<string, any>>("/ai-gateway/providers")
-      .then((res) => {
-        const dynamic: string[] = res?.data?.data?.providers || [];
-        const others = dynamic
-          .filter((p) => !topIds.has(p))
-          .sort()
-          .map((p) => ({ _id: p, name: p }));
-        if (others.length > 0) {
-          setProviderItems([...TOP_PROVIDERS, ...others]);
-          setTopProviderCount(TOP_PROVIDERS.length);
-        }
-      })
-      .catch(() => {});
-  }, [activeModal]);
 
   // Fetch available keys when endpoint modal opens (with abort guard)
   useEffect(() => {
@@ -799,11 +775,9 @@ export default function OnboardingOverlay({
             label="Provider"
             placeholder="Select provider"
             value={keyForm.provider}
-            items={providerItems}
+            items={API_KEY_PROVIDERS}
             onChange={(e) => setKeyForm((p) => ({ ...p, provider: e.target.value as string }))}
             getOptionValue={(item) => item._id}
-            dividerAfterIndex={topProviderCount}
-            dividerLabel="Other providers"
             isRequired
           />
           <Field

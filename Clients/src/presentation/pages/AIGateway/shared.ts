@@ -92,16 +92,19 @@ export function ProviderIcon({ provider, size = 16 }: { provider: string; size?:
 
 // ─── Shared constants ─────────────────────────────────────────────────────────
 
-/** Top LLM providers for Select dropdowns */
-export const TOP_PROVIDERS = [
+/**
+ * Providers an API key can be stored for. Must match VALID_PROVIDERS in
+ * AIGateway/src/routers/api_keys.py, which rejects anything else. Each of these
+ * works with a single API key; providers that also need a base URL, API version
+ * or cloud credentials (Azure OpenAI, AWS Bedrock) are not supported yet.
+ */
+export const API_KEY_PROVIDERS = [
   { _id: "openai", name: "OpenAI" },
   { _id: "anthropic", name: "Anthropic" },
   { _id: "gemini", name: "Google Gemini" },
   { _id: "mistral", name: "Mistral" },
   { _id: "xai", name: "xAI" },
   { _id: "openrouter", name: "OpenRouter" },
-  { _id: "bedrock", name: "AWS Bedrock" },
-  { _id: "azure", name: "Azure OpenAI" },
   { _id: "together_ai", name: "Together AI" },
   { _id: "cohere", name: "Cohere" },
 ];

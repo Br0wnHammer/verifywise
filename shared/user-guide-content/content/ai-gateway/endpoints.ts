@@ -109,15 +109,14 @@ export const endpointsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'The model dropdown includes popular models from these providers. You can also type a custom model string in LiteLLM format:',
+      text: 'An endpoint uses a stored provider API key, so it can call models from these providers. The model dropdown lists their models, and you can also type a custom model string in LiteLLM format:',
     },
     {
       type: 'bullet-list',
       items: [
         { bold: 'Direct providers', text: 'OpenAI, Anthropic, Google Gemini, Mistral, xAI, Cohere' },
-        { bold: 'Cloud providers', text: 'AWS Bedrock, Azure OpenAI, Google Vertex AI' },
         { bold: 'Aggregators', text: 'OpenRouter, Together AI' },
-        { bold: 'Self-hosted', text: 'Ollama, vLLM, NVIDIA NIM' },
+        { bold: 'Not supported yet', text: 'Providers that need a base URL or cloud credentials as well as a key: AWS Bedrock, Azure OpenAI, Google Vertex AI and self-hosted models such as Ollama, vLLM and NVIDIA NIM' },
       ],
     },
     {

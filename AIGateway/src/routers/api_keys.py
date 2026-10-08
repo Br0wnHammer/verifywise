@@ -25,7 +25,12 @@ router = APIRouter(prefix="/keys", tags=["API Keys"])
 
 FRONTEND_URL = "http://localhost:5173"  # overridable via env if needed
 
-VALID_PROVIDERS = {"openai", "anthropic", "gemini", "xai", "mistral", "openrouter"}
+# Providers that LiteLLM can call with a single API key. Keep in sync with
+# API_KEY_PROVIDERS in Clients/src/presentation/pages/AIGateway/shared.ts.
+# Azure OpenAI and AWS Bedrock also need a base URL / API version or cloud
+# credentials, which ai_gateway_api_keys has no columns for, so they are not
+# accepted here.
+VALID_PROVIDERS = {"openai", "anthropic", "gemini", "xai", "mistral", "openrouter", "together_ai", "cohere"}
 
 # Provider verification endpoints (matches Express controller)
 PROVIDER_VERIFY_ENDPOINTS: dict[str, dict] = {
@@ -51,6 +56,14 @@ PROVIDER_VERIFY_ENDPOINTS: dict[str, dict] = {
     },
     "openrouter": {
         "url": lambda _k: "https://openrouter.ai/api/v1/models",
+        "headers": lambda k: {"Authorization": f"Bearer {k}"},
+    },
+    "together_ai": {
+        "url": lambda _k: "https://api.together.xyz/v1/models",
+        "headers": lambda k: {"Authorization": f"Bearer {k}"},
+    },
+    "cohere": {
+        "url": lambda _k: "https://api.cohere.com/v1/models",
         "headers": lambda k: {"Authorization": f"Bearer {k}"},
     },
 }

@@ -484,11 +484,10 @@ async def proxy_embeddings(request: Request, body: ProxyEmbeddingRequest):
 async def list_models_for_key(request: Request):
     """List available endpoint slugs for the authenticated virtual key."""
     vk = await _extract_virtual_key(request)
-    from src.database.db import get_db
+    from database.db import get_db
     from sqlalchemy import text as sql_text
 
-    db = await get_db()
-    try:
+    async with get_db() as db:
         allowed = vk.get("allowed_endpoint_ids") or []
         if allowed:
             result = await db.execute(
@@ -513,5 +512,3 @@ async def list_models_for_key(request: Request):
             )
         models = [dict(r) for r in result.mappings().fetchall()]
         return {"object": "list", "data": [{"id": m["id"], "object": "model", "owned_by": m["provider"]} for m in models]}
-    finally:
-        await db.close()

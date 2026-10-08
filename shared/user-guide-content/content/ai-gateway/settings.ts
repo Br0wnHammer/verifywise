@@ -20,7 +20,7 @@ export const aiGatewaySettingsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'API keys connect the gateway to LLM providers. Each key is encrypted at rest using AES-256-CBC and only decrypted at the moment a request is proxied to the provider. Keys are scoped to your organization and can be referenced by multiple endpoints.',
+      text: 'API keys connect the gateway to LLM providers. Each key is encrypted at rest using AES-256-GCM and only decrypted at the moment a request is proxied to the provider. Keys are scoped to your organization and can be referenced by multiple endpoints.',
     },
     {
       type: 'heading',
@@ -33,7 +33,7 @@ export const aiGatewaySettingsContent: ArticleContent = {
       items: [
         { text: 'Click "Add key"' },
         { text: 'Enter a name (e.g., "Production OpenAI key")' },
-        { text: 'Select the provider from the dropdown. The top 10 providers are listed first, with 100+ additional providers below the divider.' },
+        { text: 'Select the provider from the dropdown: OpenAI, Anthropic, Google Gemini, Mistral, xAI, OpenRouter, Together AI or Cohere. Providers that also need a base URL or cloud credentials, such as Azure OpenAI and AWS Bedrock, are not supported yet.' },
         { text: 'Paste your API key' },
         { text: 'Click "Add key"' },
       ],
