@@ -720,8 +720,8 @@ export const collections: Collection[] = [
       {
         id: 'role-configuration',
         title: 'Role configuration',
-        description: 'Understand Admin, Editor, and Viewer roles.',
-        keywords: ['role', 'permission', 'admin', 'editor', 'viewer', 'access'],
+        description: 'Understand the Admin, Reviewer, Editor and Auditor roles.',
+        keywords: ['role', 'permission', 'admin', 'reviewer', 'editor', 'auditor', 'access'],
       },
       {
         id: 'notifications',
