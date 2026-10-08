@@ -69,7 +69,7 @@ export const aiGatewaySettingsContent: ArticleContent = {
       rows: [
         { setting: 'Monthly limit', description: 'Maximum spend in USD per month. Must be a positive number.' },
         { setting: 'Alert threshold', description: 'Percentage (0-100) at which the progress bar turns red as a visual warning.' },
-        { setting: 'Hard limit', description: 'When enabled, requests are rejected with HTTP 429 once the budget is exceeded. When disabled, requests continue but the progress bar shows the overage.' },
+        { setting: 'Hard limit', description: 'When enabled, requests are rejected with HTTP 402 once the budget would be exceeded. When disabled, requests continue but the progress bar shows the overage.' },
       ],
     },
     {
@@ -80,7 +80,7 @@ export const aiGatewaySettingsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'When spend crosses the alert threshold percentage, the system logs an alert. Alerts are deduplicated per month (only 1 alert per threshold crossing per month). The budget spend resets automatically on the 1st of each month via a background job.',
+      text: 'When spend crosses the alert threshold percentage, Admins are notified. Alerts are deduplicated per month (only 1 alert per threshold crossing per month). Alerts are currently triggered by Playground usage only: requests that apps send with a virtual key count toward spend and the progress bar, but do not trigger the alert yet. The budget spend resets automatically on the 1st of each month via a background job.',
     },
     {
       type: 'heading',

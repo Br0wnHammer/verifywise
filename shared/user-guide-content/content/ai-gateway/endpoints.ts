@@ -83,13 +83,13 @@ export const endpointsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Select a fallback endpoint when creating or editing an endpoint. If the primary provider returns an error (timeout, 500, rate limit from the provider side), the gateway automatically retries the request using the fallback endpoint. This works for both non-streaming and streaming requests.',
+      text: 'Select a fallback endpoint when creating or editing an endpoint. If the primary provider returns an error (timeout, 500, rate limit from the provider side), the gateway automatically retries the request using the fallback endpoint. This works for all Playground requests and for non-streaming API requests. Streaming requests sent with a virtual key do not use the fallback yet.',
     },
     {
       type: 'callout',
       variant: 'info',
       title: 'Fallback chain',
-      text: 'The fallback endpoint can itself have a fallback, forming a chain. The gateway follows the chain until it finds a working endpoint or runs out of fallbacks. Guardrails run on each attempt in the chain. Avoid circular fallback chains (A to B to A) as they will loop.',
+      text: 'The fallback endpoint can itself have a fallback, forming a chain. The gateway follows the chain until it finds a working endpoint, up to 3 fallbacks deep. Guardrails run once, before the first attempt, and every fallback receives the already-scanned request. Avoid circular chains (A to B to A): they stop after 3 attempts but waste calls.',
     },
     {
       type: 'heading',

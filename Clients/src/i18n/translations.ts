@@ -3648,7 +3648,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Content safety": "Inhaltssicherheit",
     "Prompt security": "Prompt-Sicherheit",
     "Data leakage prevention": "Verhinderung von Datenabfluss",
-    "Output quality": "Ausgabequalität",
     "Enabled": "Aktiviert",
     "Enable": "Aktivieren",
     "No guardrails match your search.": "Keine Guardrails entsprechen Ihrer Suche.",
@@ -3686,8 +3685,8 @@ export const translations: Record<string, Record<string, string>> = {
     "HIPAA protected health info": "HIPAA-geschützte Gesundheitsdaten",
     "PCI DSS cardholder data": "PCI-DSS-Karteninhaberdaten",
     "SOC 2 sensitive data": "SOC-2-sensible Daten",
-    "Detect and protect email addresses in prompts and responses.":
-      "E-Mail-Adressen in Prompts und Antworten erkennen und schützen.",
+    "Detect and protect email addresses in prompts.":
+      "E-Mail-Adressen in Prompts erkennen und schützen.",
     "Detect phone numbers including international formats.":
       "Telefonnummern einschließlich internationaler Formate erkennen.",
     "Detect Visa, Mastercard, Amex, and other card formats.":
@@ -13413,7 +13412,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Content safety": "Sécurité du contenu",
     "Prompt security": "Sécurité des prompts",
     "Data leakage prevention": "Prévention des fuites de données",
-    "Output quality": "Qualité de la sortie",
     "Enabled": "Activé",
     "Enable": "Activer",
     "No guardrails match your search.": "Aucun garde-fou ne correspond à votre recherche.",
@@ -13451,8 +13449,8 @@ export const translations: Record<string, Record<string, string>> = {
     "HIPAA protected health info": "Informations de santé protégées par HIPAA",
     "PCI DSS cardholder data": "Données de titulaires de carte PCI DSS",
     "SOC 2 sensitive data": "Données sensibles SOC 2",
-    "Detect and protect email addresses in prompts and responses.":
-      "Détecter et protéger les adresses e-mail dans les prompts et les réponses.",
+    "Detect and protect email addresses in prompts.":
+      "Détecter et protéger les adresses e-mail dans les prompts.",
     "Detect phone numbers including international formats.":
       "Détecter les numéros de téléphone, y compris les formats internationaux.",
     "Detect Visa, Mastercard, Amex, and other card formats.":
@@ -21906,7 +21904,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Content safety": "Seguridad del contenido",
     "Prompt security": "Seguridad del prompt",
     "Data leakage prevention": "Prevención de fugas de datos",
-    "Output quality": "Calidad de la salida",
     "Enabled": "Activado",
     "Enable": "Activar",
     "No guardrails match your search.": "Ninguna barrera de protección coincide con tu búsqueda.",
@@ -25187,8 +25184,8 @@ export const translations: Record<string, Record<string, string>> = {
       "El contenido que coincida con este patrón de filtro dejará de bloquearse o enmascararse.",
     "You can re-enable this guardrail at any time from the catalog or by creating a new rule.":
       "Puede volver a habilitar esta barrera de protección en cualquier momento desde el catálogo o creando una nueva regla.",
-    "Detect and protect email addresses in prompts and responses.":
-      "Detecte y proteja las direcciones de correo electrónico en los prompts y las respuestas.",
+    "Detect and protect email addresses in prompts.":
+      "Detecte y proteja las direcciones de correo electrónico en los prompts.",
     "Detect phone numbers including international formats.":
       "Detecte números de teléfono, incluidos los formatos internacionales.",
     "Detect Visa, Mastercard, Amex, and other card formats.":
