@@ -486,10 +486,12 @@ const ScoredSelectInput: React.FC<InputProps> = ({ definition, draft, setDraft, 
     _id: opt.id,
     name: formatScoredOption(opt),
   }));
+  // An id that is no longer an option shows as empty instead of an out-of-range value.
+  const value = typeof draft === "string" && items.some((i) => i._id === draft) ? draft : "";
   return (
     <Select
       id={`cf-${definition.id}`}
-      value={typeof draft === "string" ? draft : ""}
+      value={value}
       items={items}
       onChange={(e) => setDraft((e.target.value as string) || null)}
       disabled={disabled}

@@ -584,7 +584,8 @@ export const updateCustomFieldDefinitionQuery = async (
         }
         for (const option of removed) {
           const target = moves[option.id];
-          if (!target) continue;
+          // Nothing to move when no record uses the option; skip the no-op write and ledger line.
+          if (!target || !counts[option.id]) continue;
           const rows = await sequelize.query(
             `UPDATE custom_field_values
                 SET value = to_jsonb(CAST(:target AS text)), updated_at = NOW()

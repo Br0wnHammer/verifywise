@@ -263,6 +263,22 @@ describe("updating a scored select definition", () => {
     );
   });
 
+  it("skips a move for a removed option no record uses", async () => {
+    serveUpdate(scoredDef, [{ option_key: "opt_00000001", count: 5 }]);
+    await updateCustomFieldDefinitionQuery(
+      11,
+      ORG,
+      { options: sameOptionsMinusMedium, option_moves: { opt_00000002: "opt_00000001" } },
+      3,
+    );
+    expect(
+      mockQuery.mock.calls.some((c) => flat(c[0]).startsWith("UPDATE custom_field_values")),
+    ).toBe(false);
+    for (const call of mockAppend.mock.calls) {
+      expect((call[0] as any).description).not.toMatch(/answers? moved/);
+    }
+  });
+
   it("rejects option_moves on a field that is not scored", async () => {
     serveUpdate(selectDef, []);
     await expect(

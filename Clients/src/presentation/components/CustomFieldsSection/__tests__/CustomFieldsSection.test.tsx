@@ -89,7 +89,14 @@ vi.mock("../../Inputs/Field", () => ({
 
 vi.mock("../../Inputs/Select", () => ({
   default: ({ id, value, items, onChange, disabled, placeholder }: any) => (
-    <select id={id} data-testid="select" value={value} disabled={disabled} onChange={onChange}>
+    <select
+      id={id}
+      data-testid="select"
+      data-value={value}
+      value={value}
+      disabled={disabled}
+      onChange={onChange}
+    >
       <option value="">{placeholder}</option>
       {items.map((item: any) => (
         <option key={item._id} value={item._id}>
@@ -334,6 +341,13 @@ describe("CustomFieldsSection", () => {
       expect(mockSetCustomFieldValue).toHaveBeenCalledWith(
         expect.objectContaining({ definition_id: 8, entity_id: 42, value: "opt_m" }),
       );
+    });
+
+    it("shows an empty selection when the stored id is no longer an option", () => {
+      mockDefsData = [scoredDef];
+      mockValuesData = [{ definition_id: 8, value: "opt_gone" }];
+      renderWithProviders(<CustomFieldsSection entityType="project" entityId={1} />);
+      expect(document.getElementById("cf-8")).toHaveAttribute("data-value", "");
     });
   });
 });
