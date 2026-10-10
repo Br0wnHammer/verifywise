@@ -303,4 +303,37 @@ describe("CustomFieldsSection", () => {
       });
     });
   });
+
+  describe("scored select", () => {
+    const scoredDef = {
+      id: 8,
+      label: "Feasibility",
+      field_type: "scored_select",
+      required: false,
+      options: [
+        { id: "opt_h", label: "High", score: 3 },
+        { id: "opt_m", label: "Medium", score: 2 },
+      ],
+    };
+
+    it("lists options with their scores and stages the option id", async () => {
+      mockDefsData = [scoredDef];
+      mockValuesData = [];
+      const ref = createRef<CustomFieldsSectionHandle>();
+      const user = userEvent.setup();
+      renderWithProviders(<CustomFieldsSection ref={ref} entityType="project" entityId={1} />);
+
+      const select = document.getElementById("cf-8") as HTMLSelectElement;
+      expect(select).toBeInTheDocument();
+      const options = Array.from(select.options).map((o) => o.text);
+      expect(options).toContain("High (3)");
+      expect(options).toContain("Medium (2)");
+
+      await user.selectOptions(select, "opt_m");
+      await ref.current!.flush(42);
+      expect(mockSetCustomFieldValue).toHaveBeenCalledWith(
+        expect.objectContaining({ definition_id: 8, entity_id: 42, value: "opt_m" }),
+      );
+    });
+  });
 });

@@ -7256,6 +7256,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Multi-select": "Mehrfachauswahl",
     "Multiple choice": "Mehrfachauswahl",
     "Multiple selection dropdown": "Mehrfachauswahl-Dropdown",
+    "Scored select": "Bewertete Auswahl",
     "Must be OpenAI-compatible API (POST /v1/chat/completions)":
       "Muss eine OpenAI-kompatible API sein (POST /v1/chat/completions)",
     "My Datasets": "Meine Datensätze",
@@ -17322,6 +17323,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Multi-select": "Sélection multiple",
     "Multiple choice": "Choix multiple",
     "Multiple selection dropdown": "Liste déroulante à sélection multiple",
+    "Scored select": "Sélection notée",
     "Must be OpenAI-compatible API (POST /v1/chat/completions)":
       "Doit être une API compatible OpenAI (POST /v1/chat/completions)",
     "My Datasets": "Mes jeux de données",
@@ -24612,6 +24614,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Multi-select": "Selección múltiple",
     "Multiple choice": "Opción múltiple",
     "Multiple selection dropdown": "Lista desplegable de selección múltiple",
+    "Scored select": "Selección con puntuación",
     "My Datasets": "Mis conjuntos de datos",
     "My datasets": "Mis conjuntos de datos",
     "My plugins": "Mis plugins",

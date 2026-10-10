@@ -1,9 +1,11 @@
 import { displayFormattedDate } from "../../tools/isoDateToString";
 import type { CustomFieldType } from "../../../domain/interfaces/i.customField";
+import { scoredOptions, formatScoredOption } from "../../../domain/interfaces/i.customField";
 
 export interface CustomFieldDefLike {
   field_type: CustomFieldType | string;
   label?: string;
+  options?: unknown;
 }
 
 export interface RowCustomFieldValue {
@@ -35,6 +37,10 @@ export function formatCustomFieldValue(
     if (!Number.isFinite(id)) return String(raw);
     const u = users?.find((user) => user.id === id);
     return u ? `${u.name} ${u.surname ?? ""}`.trim() : String(raw);
+  }
+  if (def.field_type === "scored_select") {
+    const option = scoredOptions(def).find((o) => o.id === raw);
+    return option ? formatScoredOption(option) : "—";
   }
   return String(raw);
 }

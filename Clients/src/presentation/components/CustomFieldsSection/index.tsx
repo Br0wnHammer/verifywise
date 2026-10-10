@@ -15,6 +15,11 @@ import type {
   ICustomFieldDefinition,
 } from "../../../domain/interfaces/i.customField";
 import {
+  scoredOptions,
+  stringOptions,
+  formatScoredOption,
+} from "../../../domain/interfaces/i.customField";
+import {
   customFieldsKeys,
   useCustomFieldDefinitions,
   useCustomFieldValues,
@@ -397,6 +402,8 @@ function renderInput(props: InputProps): React.ReactNode {
       return <MultiSelectInput {...props} />;
     case "user":
       return <UserInput {...props} />;
+    case "scored_select":
+      return <ScoredSelectInput {...props} />;
     default:
       return null;
   }
@@ -458,7 +465,7 @@ const BooleanInput: React.FC<InputProps> = ({ draft, setDraft, disabled }) => (
 );
 
 const SelectInput: React.FC<InputProps> = ({ definition, draft, setDraft, disabled }) => {
-  const items = (definition.options ?? []).map((opt) => ({
+  const items = stringOptions(definition).map((opt) => ({
     _id: opt,
     name: opt,
   }));
@@ -474,9 +481,26 @@ const SelectInput: React.FC<InputProps> = ({ definition, draft, setDraft, disabl
   );
 };
 
+const ScoredSelectInput: React.FC<InputProps> = ({ definition, draft, setDraft, disabled }) => {
+  const items = scoredOptions(definition).map((opt) => ({
+    _id: opt.id,
+    name: formatScoredOption(opt),
+  }));
+  return (
+    <Select
+      id={`cf-${definition.id}`}
+      value={typeof draft === "string" ? draft : ""}
+      items={items}
+      onChange={(e) => setDraft((e.target.value as string) || null)}
+      disabled={disabled}
+      placeholder="Select an option"
+    />
+  );
+};
+
 const MultiSelectInput: React.FC<InputProps> = ({ definition, draft, setDraft, disabled }) => {
   const selected = Array.isArray(draft) ? (draft as string[]) : [];
-  const options = definition.options ?? [];
+  const options = stringOptions(definition);
   return (
     <AutoCompleteField<string, true>
       multiple

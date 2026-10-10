@@ -30,6 +30,7 @@ import {
   CustomFieldEntityType,
   CustomFieldType,
   ICustomFieldDefinition,
+  stringOptions,
 } from "../../../../domain/interfaces/i.customField";
 import {
   useCreateCustomFieldDefinition,
@@ -198,7 +199,7 @@ const CustomFieldsTab: React.FC = () => {
                   </TableCell>
                   <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
                     <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                      {(def.options ?? []).map((o) => (
+                      {stringOptions(def).map((o) => (
                         <Chip
                           key={o}
                           label={o}
@@ -351,7 +352,9 @@ const DefinitionFormModal: React.FC<DefinitionFormModalProps> = ({
   const [fieldKey, setFieldKey] = useState(existing?.field_key ?? "");
   const [fieldType, setFieldType] = useState<CustomFieldType>(existing?.field_type ?? "text");
   const [required, setRequired] = useState<boolean>(existing?.required ?? false);
-  const [optionsText, setOptionsText] = useState<string>((existing?.options ?? []).join("\n"));
+  const [optionsText, setOptionsText] = useState<string>(
+    existing ? stringOptions(existing).join("\n") : "",
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   const needsOptions = fieldType === "select" || fieldType === "multiselect";
