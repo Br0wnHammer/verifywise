@@ -28,11 +28,23 @@ describe("add-scored-select-custom-field-type migration", () => {
     );
   });
 
+  it("up lets scored_select carry options in the options shape CHECK", async () => {
+    const qi = fakeQueryInterface();
+    await migration.up(qi);
+    expect(qi.statements[0]).toContain("DROP CONSTRAINT IF EXISTS cfd_options_shape");
+    expect(qi.statements[0]).toContain(
+      "CHECK ( ( field_type IN ('select','multiselect','scored_select') AND jsonb_typeof(options) = 'array' AND jsonb_array_length(options) > 0 ) OR (field_type NOT IN ('select','multiselect','scored_select') AND options IS NULL) )",
+    );
+  });
+
   it("down restores the original CHECK when no scored field exists", async () => {
     const qi = fakeQueryInterface(0);
     await migration.down(qi);
     expect(qi.statements[1]).toContain(
       "CHECK (field_type IN ('text','number','date','boolean','select','multiselect','user'))",
+    );
+    expect(qi.statements[1]).toContain(
+      "OR (field_type NOT IN ('select','multiselect') AND options IS NULL)",
     );
   });
 
