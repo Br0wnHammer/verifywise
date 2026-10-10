@@ -6,11 +6,17 @@ import {
   ForbiddenException,
   ConflictException,
 } from "../domain.layer/exceptions/custom.exception";
+import {
+  IScoredOption,
+  OPTION_MAX,
+  OPTION_MIN,
+  validateScoredOptions,
+} from "./customFieldScoredSelect.utils";
 
 // ---------- Types ----------
 
 export type CustomFieldType =
-  "text" | "number" | "date" | "boolean" | "select" | "multiselect" | "user";
+  "text" | "number" | "date" | "boolean" | "select" | "multiselect" | "user" | "scored_select";
 
 export type CustomFieldEntityType =
   | "vendor"
@@ -38,7 +44,7 @@ export interface ICustomFieldDefinition {
   field_key: string;
   label: string;
   field_type: CustomFieldType;
-  options: string[] | null;
+  options: string[] | IScoredOption[] | null;
   required: boolean;
   created_by: number | null;
   created_at: Date;
@@ -66,13 +72,12 @@ const FIELD_TYPES: ReadonlySet<CustomFieldType> = new Set([
   "select",
   "multiselect",
   "user",
+  "scored_select",
 ]);
 
 const FIELD_KEY_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 const LABEL_MIN = 1;
 const LABEL_MAX = 255;
-const OPTION_MIN = 1;
-const OPTION_MAX = 255;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
 // entity_type -> the SQL table that owns the entity. Used to verify the
@@ -112,13 +117,24 @@ const assertEntityType = (v: unknown): CustomFieldEntityType => {
   return v;
 };
 
-const validateOptionsForType = (fieldType: CustomFieldType, options: unknown): string[] | null => {
+const stringOptionsOf = (def: ICustomFieldDefinition): string[] =>
+  def.field_type === "scored_select" ? [] : ((def.options ?? []) as string[]);
+
+const validateOptionsForType = (
+  fieldType: CustomFieldType,
+  options: unknown,
+  existing: IScoredOption[] | null = null,
+): string[] | IScoredOption[] | null => {
+  if (fieldType === "scored_select") {
+    return validateScoredOptions(options, existing);
+  }
+
   const needsOptions = fieldType === "select" || fieldType === "multiselect";
 
   if (!needsOptions) {
     if (options !== null && options !== undefined) {
       throw new ValidationException(
-        "options is only allowed for select/multiselect fields",
+        "options is only allowed for select, multiselect and scored select fields",
         "options",
       );
     }
@@ -177,7 +193,7 @@ const validateDefinitionInput = (input: {
   field_key: string;
   label: string;
   field_type: CustomFieldType;
-  options: string[] | null;
+  options: string[] | IScoredOption[] | null;
   required: boolean;
 } => {
   const entity_type = assertEntityType(input.entity_type);
@@ -253,7 +269,7 @@ const validateValueForDefinition = async (
       return raw;
     }
     case "select": {
-      if (typeof raw !== "string" || !def.options?.includes(raw)) {
+      if (typeof raw !== "string" || !stringOptionsOf(def).includes(raw)) {
         throw new ValidationException("Value must be one of the allowed options", "value", raw);
       }
       return raw;
@@ -264,13 +280,20 @@ const validateValueForDefinition = async (
       }
       const seen = new Set<string>();
       for (const v of raw) {
-        if (typeof v !== "string" || !def.options?.includes(v)) {
+        if (typeof v !== "string" || !stringOptionsOf(def).includes(v)) {
           throw new ValidationException("All values must match the allowed options", "value", v);
         }
         if (seen.has(v)) {
           throw new ValidationException("Duplicate value in multiselect", "value", v);
         }
         seen.add(v);
+      }
+      return raw;
+    }
+    case "scored_select": {
+      const options = (def.options ?? []) as IScoredOption[];
+      if (typeof raw !== "string" || !options.some((o) => o.id === raw)) {
+        throw new ValidationException("Value must be one of the allowed options", "value", raw);
       }
       return raw;
     }
@@ -365,13 +388,38 @@ export const getCustomFieldDefinitionByIdQuery = async (
   return rows[0] ?? null;
 };
 
+/**
+ * Read a definition inside a transaction with a row lock. A definition update
+ * takes FOR UPDATE; a value write takes FOR SHARE. The two then serialize, so a
+ * value can never be validated against options a concurrent update removes.
+ */
+export const selectDefinitionForLock = async (
+  id: number,
+  organizationId: number,
+  transaction: Transaction,
+  lock: "SHARE" | "UPDATE",
+): Promise<ICustomFieldDefinition | null> => {
+  const sql =
+    lock === "UPDATE"
+      ? `SELECT * FROM custom_field_definitions
+           WHERE id = :id AND organization_id = :organizationId FOR UPDATE`
+      : `SELECT * FROM custom_field_definitions
+           WHERE id = :id AND organization_id = :organizationId FOR SHARE`;
+  const rows = (await sequelize.query(sql, {
+    replacements: { id, organizationId },
+    type: QueryTypes.SELECT,
+    transaction,
+  })) as ICustomFieldDefinition[];
+  return rows[0] ?? null;
+};
+
 export const createCustomFieldDefinitionQuery = async (
   input: {
     entity_type: CustomFieldEntityType;
     field_key: string;
     label: string;
     field_type: CustomFieldType;
-    options?: string[] | null;
+    options?: unknown;
     required?: boolean;
   },
   organizationId: number,
@@ -499,7 +547,13 @@ export const setCustomFieldValueQuery = async (
   const definitionId = assertPositiveInt(args.definition_id, "definition_id");
   const entityId = assertPositiveInt(args.entity_id, "entity_id");
 
-  const definition = await getCustomFieldDefinitionByIdQuery(definitionId, organizationId);
+  // Inside the caller's transaction, lock the definition (see
+  // selectDefinitionForLock). The type isn't known before the read, so every
+  // value write takes the shared lock; it only blocks a concurrent definition
+  // update of the same field.
+  const definition = transaction
+    ? await selectDefinitionForLock(definitionId, organizationId, transaction, "SHARE")
+    : await getCustomFieldDefinitionByIdQuery(definitionId, organizationId);
   if (!definition) {
     throw new NotFoundException(
       "Custom field definition not found",
