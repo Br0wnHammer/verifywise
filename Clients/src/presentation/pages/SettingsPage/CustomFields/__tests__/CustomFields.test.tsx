@@ -345,7 +345,9 @@ describe("CustomFieldsTab", () => {
       await userEvent.click(screen.getAllByRole("button", { name: "Remove option" })[1]);
       await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
-      expect(await screen.findByText("80 use cases use Medium. Move them to:")).toBeInTheDocument();
+      expect(
+        await screen.findByText("Medium is used by 80 use cases. Move these answers to:"),
+      ).toBeInTheDocument();
       openCustomSelect("move-opt_m");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
       await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
@@ -364,7 +366,7 @@ describe("CustomFieldsTab", () => {
       mockUsage = { total: 12, by_option: {} };
       renderWithProviders(<CustomFieldsTab />);
       await userEvent.click(screen.getByTitle("Delete field"));
-      expect(screen.getByText("12 use cases have a value for this field.")).toBeInTheDocument();
+      expect(screen.getByText("This field has a value on 12 use cases.")).toBeInTheDocument();
     });
   });
 });

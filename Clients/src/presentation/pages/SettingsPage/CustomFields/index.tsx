@@ -372,7 +372,7 @@ const CustomFieldsTab: React.FC = () => {
               </Typography>
               {(deleteUsage?.total ?? 0) > 0 && (
                 <Typography fontSize={13} fontWeight={500}>
-                  {fill(t("{count} {records} have a value for this field."), {
+                  {fill(t("This field has a value on {count} {records}."), {
                     count: deleteUsage!.total,
                     records: t(entityCountNoun(confirmDelete.entity_type, deleteUsage!.total)),
                   })}

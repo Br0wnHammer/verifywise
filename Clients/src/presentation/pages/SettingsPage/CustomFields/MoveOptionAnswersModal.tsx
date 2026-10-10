@@ -62,7 +62,7 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
         {inUse.map((option) => (
           <Stack key={option.id} sx={{ gap: "8px" }}>
             <Typography sx={{ fontSize: "13px" }}>
-              {fill(t("{count} {records} use {option}. Move them to:"), {
+              {fill(t("{option} is used by {count} {records}. Move these answers to:"), {
                 count: option.count,
                 records: t(entityCountNoun(entityType, option.count)),
                 option: option.label,

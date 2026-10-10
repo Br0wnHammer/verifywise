@@ -7271,10 +7271,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Move and save": "Verschieben und speichern",
     "Choose an option for each removed option.":
       "Wählen Sie für jede entfernte Option eine Option.",
-    "{count} {records} use {option}. Move them to:":
-      "{count} {records} verwenden {option}. Verschieben nach:",
-    "{count} {records} have a value for this field.":
-      "{count} {records} haben einen Wert für dieses Feld.",
+    "{option} is used by {count} {records}. Move these answers to:":
+      "{option} wird von {count} {records} verwendet. Diese Antworten verschieben nach:",
+    "This field has a value on {count} {records}.":
+      "Dieses Feld hat einen Wert in {count} {records}.",
     "use case": "Anwendungsfall",
     "use cases": "Anwendungsfälle",
     "vendor": "Anbieter",
@@ -17363,10 +17363,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Move and save": "Déplacer et enregistrer",
     "Choose an option for each removed option.":
       "Choisissez une option pour chaque option supprimée.",
-    "{count} {records} use {option}. Move them to:":
-      "{count} {records} utilisent {option}. Les déplacer vers :",
-    "{count} {records} have a value for this field.":
-      "{count} {records} ont une valeur pour ce champ.",
+    "{option} is used by {count} {records}. Move these answers to:":
+      "{option} est utilisée par {count} {records}. Déplacer ces réponses vers :",
+    "This field has a value on {count} {records}.": "Ce champ a une valeur dans {count} {records}.",
     "use case": "cas d'usage",
     "use cases": "cas d'usage",
     "vendor": "fournisseur",
@@ -24679,9 +24678,10 @@ export const translations: Record<string, Record<string, string>> = {
       "Hay registros que usan las opciones quitadas. Elige adónde van sus respuestas.",
     "Move and save": "Mover y guardar",
     "Choose an option for each removed option.": "Elige una opción para cada opción quitada.",
-    "{count} {records} use {option}. Move them to:": "{count} {records} usan {option}. Moverlos a:",
-    "{count} {records} have a value for this field.":
-      "{count} {records} tienen un valor para este campo.",
+    "{option} is used by {count} {records}. Move these answers to:":
+      "{option} se usa en {count} {records}. Mover estas respuestas a:",
+    "This field has a value on {count} {records}.":
+      "Este campo tiene un valor en {count} {records}.",
     "use case": "caso de uso",
     "use cases": "casos de uso",
     "vendor": "proveedor",
