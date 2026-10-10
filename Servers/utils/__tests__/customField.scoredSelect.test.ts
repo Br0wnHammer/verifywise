@@ -17,7 +17,13 @@ jest.mock("../auditLedger.utils", () => ({
   appendToAuditLedger: (...args: any[]) => mockAppend(...args),
 }));
 
-import { createCustomFieldDefinitionQuery, setCustomFieldValueQuery } from "../customField.utils";
+import {
+  createCustomFieldDefinitionQuery,
+  deleteCustomFieldDefinitionQuery,
+  getCustomFieldUsageQuery,
+  setCustomFieldValueQuery,
+  updateCustomFieldDefinitionQuery,
+} from "../customField.utils";
 
 const ORG = 7;
 const flat = (sql: unknown) => String(sql).replace(/\s+/g, " ").trim();
@@ -138,5 +144,171 @@ describe("setting a value", () => {
     await expect(write(selectDef, "XX")).rejects.toThrow(/allowed options/);
     await expect(write(multiDef, ["a", "b"])).resolves.toBeDefined();
     await expect(write(multiDef, ["c"])).rejects.toThrow(/allowed options/);
+  });
+});
+
+/** Serve an update: the locked read, usage counts, the move UPDATEs, then the definition UPDATE. */
+function serveUpdate(def: any, usage: Array<{ option_key: string; count: number }>, movedRows = 0) {
+  mockQuery.mockImplementation(async (sql: unknown, opts: any) => {
+    const s = flat(sql);
+    if (s.startsWith("SELECT * FROM custom_field_definitions")) return [def];
+    if (s.includes("GROUP BY")) return usage;
+    if (s.startsWith("UPDATE custom_field_values"))
+      return Array.from({ length: movedRows }, () => ({ "?column?": 1 }));
+    if (s.startsWith("UPDATE custom_field_definitions")) {
+      return [
+        {
+          ...def,
+          label: opts.replacements.label,
+          required: opts.replacements.required,
+          options: JSON.parse(opts.replacements.options),
+        },
+      ];
+    }
+    if (s.startsWith("DELETE FROM custom_field_definitions")) return [{ id: def.id }];
+    return [];
+  });
+}
+
+const sameOptionsMinusMedium = [{ id: "opt_00000001", label: "High", score: 3 }];
+
+describe("updating a scored select definition", () => {
+  beforeEach(() => {
+    mockTx.commit.mockClear();
+    mockTx.rollback.mockClear();
+  });
+
+  it("locks the definition FOR UPDATE inside one transaction and commits", async () => {
+    serveUpdate(scoredDef, []);
+    await updateCustomFieldDefinitionQuery(11, ORG, { label: "Feasibility" }, 3);
+    const read = mockQuery.mock.calls.find((c) =>
+      flat(c[0]).startsWith("SELECT * FROM custom_field_definitions"),
+    )!;
+    expect(flat(read[0])).toMatch(/FOR UPDATE$/);
+    for (const call of mockQuery.mock.calls) expect((call[1] as any).transaction).toBe(mockTx);
+    expect(mockTx.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps ids when options are renamed, so answers are untouched", async () => {
+    serveUpdate(scoredDef, [{ option_key: "opt_00000002", count: 4 }]);
+    const out = await updateCustomFieldDefinitionQuery(
+      11,
+      ORG,
+      {
+        options: [
+          { id: "opt_00000001", label: "Very high", score: 3 },
+          { id: "opt_00000002", label: "Medium", score: 2 },
+        ],
+      },
+      3,
+    );
+    expect((out.options as any[]).map((o) => o.id)).toEqual(["opt_00000001", "opt_00000002"]);
+    expect(
+      mockQuery.mock.calls.some((c) => flat(c[0]).startsWith("UPDATE custom_field_values")),
+    ).toBe(false);
+  });
+
+  it("removes an unused option without a move", async () => {
+    serveUpdate(scoredDef, [{ option_key: "opt_00000001", count: 5 }]);
+    await expect(
+      updateCustomFieldDefinitionQuery(11, ORG, { options: sameOptionsMinusMedium }, 3),
+    ).resolves.toBeDefined();
+  });
+
+  it("refuses to remove a used option without a move: 409 with counts, nothing written", async () => {
+    serveUpdate(scoredDef, [{ option_key: "opt_00000002", count: 80 }]);
+    const err: any = await updateCustomFieldDefinitionQuery(
+      11,
+      ORG,
+      { options: sameOptionsMinusMedium },
+      3,
+    ).catch((e) => e);
+    expect(err.statusCode).toBe(409);
+    expect(err.metadata).toEqual(
+      expect.objectContaining({
+        code: "options_in_use",
+        entity_type: "project",
+        in_use: [{ id: "opt_00000002", label: "Medium", count: 80 }],
+      }),
+    );
+    expect(mockQuery.mock.calls.some((c) => flat(c[0]).startsWith("UPDATE"))).toBe(false);
+    expect(mockTx.rollback).toHaveBeenCalledTimes(1);
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it("moves answers then removes the option, scoped to the field and org", async () => {
+    serveUpdate(scoredDef, [{ option_key: "opt_00000002", count: 80 }], 80);
+    await updateCustomFieldDefinitionQuery(
+      11,
+      ORG,
+      { options: sameOptionsMinusMedium, option_moves: { opt_00000002: "opt_00000001" } },
+      3,
+    );
+    const move = mockQuery.mock.calls.find((c) =>
+      flat(c[0]).startsWith("UPDATE custom_field_values"),
+    )!;
+    expect(flat(move[0])).toContain(
+      "SET value = to_jsonb(CAST(:target AS text)), updated_at = NOW() WHERE definition_id = :id AND organization_id = :organizationId AND value = to_jsonb(CAST(:removed AS text)) RETURNING 1",
+    );
+    expect((move[1] as any).replacements).toEqual({
+      target: "opt_00000001",
+      removed: "opt_00000002",
+      id: 11,
+      organizationId: ORG,
+    });
+    expect(mockAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "Use cases · Technical feasibility · 80 answers moved to High",
+      }),
+    );
+  });
+
+  it("rejects option_moves on a field that is not scored", async () => {
+    serveUpdate(selectDef, []);
+    await expect(
+      updateCustomFieldDefinitionQuery(12, ORG, { option_moves: { a: "b" } }, 3),
+    ).rejects.toThrow(/only allowed for scored select/);
+  });
+
+  it("writes ledger entries only after commit", async () => {
+    const order: string[] = [];
+    mockTx.commit.mockImplementationOnce(async () => {
+      order.push("commit");
+    });
+    mockAppend.mockImplementation(async () => {
+      order.push("ledger");
+    });
+    serveUpdate(scoredDef, []);
+    await updateCustomFieldDefinitionQuery(11, ORG, { label: "Feasibility" }, 3);
+    expect(order).toEqual(["commit", "ledger"]);
+  });
+});
+
+describe("usage and delete", () => {
+  it("returns total and per-option counts for a scored field", async () => {
+    serveUpdate(scoredDef, [
+      { option_key: "opt_00000001", count: 40 },
+      { option_key: "opt_00000002", count: 80 },
+    ]);
+    await expect(getCustomFieldUsageQuery(11, ORG)).resolves.toEqual({
+      total: 120,
+      by_option: { opt_00000001: 40, opt_00000002: 80 },
+    });
+  });
+
+  it("returns only a total for other field types", async () => {
+    serveUpdate(selectDef, [{ option_key: "EU", count: 3 }]);
+    await expect(getCustomFieldUsageQuery(12, ORG)).resolves.toEqual({ total: 3, by_option: {} });
+  });
+
+  it("logs how many records lost their answer when a field is deleted", async () => {
+    serveUpdate(scoredDef, [{ option_key: "opt_00000001", count: 12 }]);
+    await expect(deleteCustomFieldDefinitionQuery(11, ORG, 3)).resolves.toBe(true);
+    expect(mockAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "Delete",
+        description: "Use cases · Technical feasibility · 12 records lost their answer",
+      }),
+    );
   });
 });

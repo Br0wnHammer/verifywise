@@ -10,8 +10,16 @@ import {
   IScoredOption,
   OPTION_MAX,
   OPTION_MIN,
+  OPTIONS_IN_USE,
+  removedOptions,
+  validateOptionMoves,
   validateScoredOptions,
 } from "./customFieldScoredSelect.utils";
+import {
+  diffDefinitionForLedger,
+  MovedAnswers,
+  recordDefinitionChanges,
+} from "./customFieldAudit.utils";
 
 // ---------- Types ----------
 
@@ -413,6 +421,40 @@ export const selectDefinitionForLock = async (
   return rows[0] ?? null;
 };
 
+/** Value counts for one field, keyed by the stored value as text (an option id for scored selects). */
+const countValuesByKey = async (
+  id: number,
+  organizationId: number,
+  transaction?: Transaction,
+): Promise<Record<string, number>> => {
+  const rows = (await sequelize.query(
+    `SELECT value #>> '{}' AS option_key, COUNT(*)::int AS count
+       FROM custom_field_values
+      WHERE definition_id = :id AND organization_id = :organizationId
+      GROUP BY 1`,
+    { replacements: { id, organizationId }, type: QueryTypes.SELECT, transaction },
+  )) as Array<{ option_key: string; count: number }>;
+  return Object.fromEntries(rows.map((r) => [r.option_key, Number(r.count)]));
+};
+
+const sumCounts = (counts: Record<string, number>): number =>
+  Object.values(counts).reduce((a, b) => a + b, 0);
+
+export const getCustomFieldUsageQuery = async (
+  id: number,
+  organizationId: number,
+): Promise<{ total: number; by_option: Record<string, number> } | null> => {
+  assertPositiveInt(id, "id");
+  assertPositiveInt(organizationId, "organizationId");
+  const definition = await getCustomFieldDefinitionByIdQuery(id, organizationId);
+  if (!definition) return null;
+  const counts = await countValuesByKey(id, organizationId);
+  return {
+    total: sumCounts(counts),
+    by_option: definition.field_type === "scored_select" ? counts : {},
+  };
+};
+
 export const createCustomFieldDefinitionQuery = async (
   input: {
     entity_type: CustomFieldEntityType;
@@ -454,7 +496,14 @@ export const createCustomFieldDefinitionQuery = async (
       },
     )) as ICustomFieldDefinition[];
 
-    return rows[0];
+    const created = rows[0];
+    await recordDefinitionChanges(
+      organizationId,
+      userId,
+      created.id,
+      diffDefinitionForLedger(null, created),
+    );
+    return created;
   } catch (err: any) {
     if (err?.original?.code === "23505") {
       throw new ConflictException(
@@ -470,66 +519,165 @@ export const createCustomFieldDefinitionQuery = async (
 export const updateCustomFieldDefinitionQuery = async (
   id: number,
   organizationId: number,
-  patch: { label?: string; required?: boolean; options?: string[] | null },
+  patch: { label?: unknown; required?: unknown; options?: unknown; option_moves?: unknown },
+  userId: number | null = null,
 ): Promise<ICustomFieldDefinition> => {
   assertPositiveInt(id, "id");
   assertPositiveInt(organizationId, "organizationId");
 
-  // field_type, field_key, entity_type are immutable on update — changing them
-  // would invalidate existing values. Force a create + delete instead.
-  const existing = await getCustomFieldDefinitionByIdQuery(id, organizationId);
-  if (!existing) {
-    throw new NotFoundException("Custom field definition not found", "custom_field_definition", id);
+  const transaction = await sequelize.transaction();
+  // Assigned inside the try; the catch always rethrows.
+  let before!: ICustomFieldDefinition;
+  let after!: ICustomFieldDefinition;
+  const moved: MovedAnswers[] = [];
+  try {
+    // field_type, field_key, entity_type are immutable on update — changing them
+    // would invalidate existing values. Force a create + delete instead.
+    const existing = await selectDefinitionForLock(id, organizationId, transaction, "UPDATE");
+    if (!existing) {
+      throw new NotFoundException(
+        "Custom field definition not found",
+        "custom_field_definition",
+        id,
+      );
+    }
+    before = existing;
+    const isScored = existing.field_type === "scored_select";
+    const hasMoves = patch.option_moves !== undefined && patch.option_moves !== null;
+    if (!isScored && hasMoves) {
+      throw new ValidationException(
+        "option_moves is only allowed for scored select fields",
+        "option_moves",
+      );
+    }
+
+    const label = patch.label !== undefined ? validateLabel(patch.label) : existing.label;
+    const required = patch.required !== undefined ? Boolean(patch.required) : existing.required;
+    const options =
+      patch.options !== undefined
+        ? validateOptionsForType(
+            existing.field_type,
+            patch.options,
+            isScored ? ((existing.options ?? []) as IScoredOption[]) : null,
+          )
+        : existing.options;
+
+    if (isScored) {
+      const prev = (existing.options ?? []) as IScoredOption[];
+      const next = (options ?? []) as IScoredOption[];
+      const removed = removedOptions(prev, next);
+      const moves = validateOptionMoves(patch.option_moves, removed, next);
+      if (removed.length > 0) {
+        const counts = await countValuesByKey(id, organizationId, transaction);
+        const inUse = removed
+          .filter((o) => (counts[o.id] ?? 0) > 0 && !moves[o.id])
+          .map((o) => ({ id: o.id, label: o.label, count: counts[o.id] }));
+        if (inUse.length > 0) {
+          throw new ConflictException(
+            "Some removed options are in use. Choose where to move their answers.",
+            "custom_field_definition",
+            "options",
+            {
+              metadata: { code: OPTIONS_IN_USE, in_use: inUse, entity_type: existing.entity_type },
+            },
+          );
+        }
+        for (const option of removed) {
+          const target = moves[option.id];
+          if (!target) continue;
+          const rows = await sequelize.query(
+            `UPDATE custom_field_values
+                SET value = to_jsonb(CAST(:target AS text)), updated_at = NOW()
+              WHERE definition_id = :id AND organization_id = :organizationId
+                AND value = to_jsonb(CAST(:removed AS text))
+              RETURNING 1`,
+            {
+              replacements: { target, removed: option.id, id, organizationId },
+              type: QueryTypes.SELECT,
+              transaction,
+            },
+          );
+          moved.push({ from: option, to: next.find((o) => o.id === target)!, count: rows.length });
+        }
+      }
+    }
+
+    const rows = (await sequelize.query(
+      `UPDATE custom_field_definitions
+          SET label = :label,
+              required = :required,
+              options = CAST(:options AS JSONB),
+              updated_at = NOW()
+        WHERE id = :id AND organization_id = :organizationId
+        RETURNING *`,
+      {
+        replacements: {
+          id,
+          organizationId,
+          label,
+          required,
+          options: options ? JSON.stringify(options) : null,
+        },
+        type: QueryTypes.SELECT,
+        transaction,
+      },
+    )) as ICustomFieldDefinition[];
+    after = rows[0];
+    await transaction.commit();
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
   }
 
-  const label = patch.label !== undefined ? validateLabel(patch.label) : existing.label;
-  const required = patch.required !== undefined ? Boolean(patch.required) : existing.required;
-  const options =
-    patch.options !== undefined
-      ? validateOptionsForType(existing.field_type, patch.options)
-      : existing.options;
-
-  const rows = (await sequelize.query(
-    `UPDATE custom_field_definitions
-        SET label = :label,
-            required = :required,
-            options = CAST(:options AS JSONB),
-            updated_at = NOW()
-      WHERE id = :id AND organization_id = :organizationId
-      RETURNING *`,
-    {
-      replacements: {
-        id,
-        organizationId,
-        label,
-        required,
-        options: options ? JSON.stringify(options) : null,
-      },
-      type: QueryTypes.SELECT,
-    },
-  )) as ICustomFieldDefinition[];
-
-  return rows[0];
+  await recordDefinitionChanges(
+    organizationId,
+    userId,
+    id,
+    diffDefinitionForLedger(before, after, { moved }),
+  );
+  return after;
 };
 
 export const deleteCustomFieldDefinitionQuery = async (
   id: number,
   organizationId: number,
+  userId: number | null = null,
 ): Promise<boolean> => {
   assertPositiveInt(id, "id");
   assertPositiveInt(organizationId, "organizationId");
 
-  // Cascade on FK removes all values for this definition.
-  const rows = await sequelize.query(
-    `DELETE FROM custom_field_definitions
-       WHERE id = :id AND organization_id = :organizationId
-       RETURNING id`,
-    {
-      replacements: { id, organizationId },
-      type: QueryTypes.SELECT,
-    },
+  const transaction = await sequelize.transaction();
+  // Assigned inside the try; the catch always rethrows.
+  let deleted!: ICustomFieldDefinition;
+  let lostAnswers!: number;
+  try {
+    const existing = await selectDefinitionForLock(id, organizationId, transaction, "UPDATE");
+    if (!existing) {
+      await transaction.rollback();
+      return false;
+    }
+    lostAnswers = sumCounts(await countValuesByKey(id, organizationId, transaction));
+    // Cascade on FK removes all values for this definition.
+    await sequelize.query(
+      `DELETE FROM custom_field_definitions
+         WHERE id = :id AND organization_id = :organizationId
+         RETURNING id`,
+      { replacements: { id, organizationId }, type: QueryTypes.SELECT, transaction },
+    );
+    deleted = existing;
+    await transaction.commit();
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+
+  await recordDefinitionChanges(
+    organizationId,
+    userId,
+    id,
+    diffDefinitionForLedger(deleted, null, { lostAnswers }),
   );
-  return rows.length > 0;
+  return true;
 };
 
 // ---------- Public: values ----------

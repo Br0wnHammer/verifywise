@@ -25180,6 +25180,34 @@ paths:
       security:
         -
           bearerAuth: []
+  '/custom-fields/definitions/by-id/{id}/usage':
+    get:
+      summary: 'Get Custom Field Usage'
+      responses:
+        '200':
+          description: 'Answer counts. total is the number of saved answers; by_option maps option id to count (scored select only, empty otherwise).'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  by_option:
+                    type: object
+                    additionalProperties:
+                      type: integer
+        '404':
+          description: 'Definition not found'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Custom Fields'
+      operationId: getCustomFieldUsage
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Admin'
   '/custom-fields/definitions/{entityType}':
     get:
       summary: 'List Custom Field Definitions'
@@ -25208,13 +25236,34 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires role: Admin'
+      description: 'Requires role: Admin. field_type is one of text, number, date, boolean, select, multiselect, user, scored_select. For scored_select, options is an array of { id, label, score }; omit id for new options (the server assigns it).'
   '/custom-fields/definitions/{id}':
     patch:
       summary: 'Update Custom Field Definition'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                required:
+                  type: boolean
+                options:
+                  type: array
+                  description: 'For scored_select, objects { id, label, score }; id omitted for new options.'
+                  items: {}
+                option_moves:
+                  type: object
+                  description: 'scored_select only. Maps a removed option id to the option id that should receive its answers.'
+                  additionalProperties:
+                    type: string
       responses:
         '200':
           description: Success
+        '409':
+          description: 'Removed options are still in use. data has code options_in_use, in_use [{ id, label, count }] and entity_type; retry with option_moves.'
         '500':
           description: 'Internal server error'
       tags:

@@ -2449,6 +2449,19 @@ export const customFieldsEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/custom-fields/definitions/by-id/{id}/usage',
+    summary: "Get Custom Field Usage",
+    description: "Requires role: Admin. Returns { total, by_option }; by_option maps option id to answer count for scored select fields.",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 404, description: "Definition not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Custom Fields",
+  },
+  {
+    method: 'GET',
     path: '/custom-fields/definitions/{entityType}',
     summary: "List Custom Field Definitions",
     requiresAuth: true,
@@ -2474,10 +2487,11 @@ export const customFieldsEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/custom-fields/definitions/{id}',
     summary: "Update Custom Field Definition",
-    description: "Requires role: Admin",
+    description: "Requires role: Admin. For scored select fields, options are { id, label, score } (omit id for new options) and option_moves maps a removed option id to the option id receiving its answers.",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
+      { status: 409, description: "Removed options are in use (code options_in_use, with in_use counts)" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Custom Fields",
