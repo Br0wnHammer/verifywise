@@ -29,15 +29,28 @@ import {
   CUSTOM_FIELD_TYPE_LABELS,
   CustomFieldEntityType,
   CustomFieldType,
+  entityCountNoun,
+  formatScoredOption,
   ICustomFieldDefinition,
+  IScoredOptionInput,
+  scoredOptions,
   stringOptions,
 } from "../../../../domain/interfaces/i.customField";
 import {
   useCreateCustomFieldDefinition,
   useCustomFieldDefinitions,
+  useCustomFieldUsage,
   useDeleteCustomFieldDefinition,
   useUpdateCustomFieldDefinition,
 } from "../../../../application/hooks/useCustomFields";
+import { useTranslation } from "../../../../application/hooks/useTranslation";
+import { fill } from "../../../../i18n/fill";
+import ScoredOptionsEditor, {
+  newScoredRow,
+  rowsFromOptions,
+  ScoredOptionRow,
+} from "./ScoredOptionsEditor";
+import MoveOptionAnswersModal, { OptionInUse } from "./MoveOptionAnswersModal";
 
 const TABLE_COLUMNS = [
   { id: "label", label: "LABEL" },
@@ -73,6 +86,15 @@ const CustomFieldsTab: React.FC = () => {
   const createMutation = useCreateCustomFieldDefinition();
   const updateMutation = useUpdateCustomFieldDefinition(entityType);
   const deleteMutation = useDeleteCustomFieldDefinition(entityType);
+  const { t } = useTranslation();
+  const [pendingMove, setPendingMove] = useState<{
+    id: number;
+    body: { label: string; required?: boolean; options: IScoredOptionInput[] };
+    inUse: OptionInUse[];
+    entityType: CustomFieldEntityType;
+  } | null>(null);
+  const { data: editingUsage } = useCustomFieldUsage(editing?.id ?? null);
+  const { data: deleteUsage } = useCustomFieldUsage(confirmDelete?.id ?? null);
 
   if (!isAdmin) {
     return (
@@ -198,16 +220,18 @@ const CustomFieldsTab: React.FC = () => {
                     {def.required ? "Yes" : "No"}
                   </TableCell>
                   <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
-                    <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                      {stringOptions(def).map((o) => (
+                    <Stack direction="row" flexWrap="wrap" sx={{ gap: "4px" }}>
+                      {(def.field_type === "scored_select"
+                        ? scoredOptions(def).map((o) => ({
+                            key: o.id,
+                            text: formatScoredOption(o),
+                          }))
+                        : stringOptions(def).map((o) => ({ key: o, text: o }))
+                      ).map((chip) => (
                         <Chip
-                          key={o}
-                          label={o}
-                          sx={{
-                            fontSize: "11px",
-                            height: "20px",
-                            borderRadius: "4px",
-                          }}
+                          key={chip.key}
+                          label={chip.text}
+                          sx={{ fontSize: "11px", height: "20px", borderRadius: "4px" }}
                         />
                       ))}
                     </Stack>
@@ -270,6 +294,7 @@ const CustomFieldsTab: React.FC = () => {
           mode="edit"
           entityType={entityType}
           existing={editing}
+          usage={editingUsage?.by_option}
           serverError={serverError}
           isSubmitting={updateMutation.isPending}
           onClose={() => {
@@ -278,21 +303,60 @@ const CustomFieldsTab: React.FC = () => {
           }}
           onSubmit={(input) => {
             setServerError(null);
+            const body = {
+              label: input.label,
+              required: input.required,
+              options: input.options ?? null,
+            };
             updateMutation.mutate(
-              {
-                id: editing.id,
-                body: {
-                  label: input.label,
-                  required: input.required,
-                  options: input.options ?? null,
-                },
-              },
+              { id: editing.id, body },
               {
                 onSuccess: () => setEditing(null),
-                onError: (err: any) => setServerError(extractErrorMessage(err)),
+                onError: (err: any) => {
+                  const data = err?.response?.data;
+                  if (err?.status === 409 && data?.code === "options_in_use") {
+                    setPendingMove({
+                      id: editing.id,
+                      body: body as {
+                        label: string;
+                        required?: boolean;
+                        options: IScoredOptionInput[];
+                      },
+                      inUse: data.in_use as OptionInUse[],
+                      entityType: data.entity_type as CustomFieldEntityType,
+                    });
+                    return;
+                  }
+                  setServerError(extractErrorMessage(err));
+                },
               },
             );
           }}
+        />
+      )}
+
+      {pendingMove && (
+        <MoveOptionAnswersModal
+          inUse={pendingMove.inUse}
+          entityType={pendingMove.entityType}
+          remaining={pendingMove.body.options}
+          isSubmitting={updateMutation.isPending}
+          onCancel={() => setPendingMove(null)}
+          onConfirm={(moves) =>
+            updateMutation.mutate(
+              { id: pendingMove.id, body: { ...pendingMove.body, option_moves: moves } },
+              {
+                onSuccess: () => {
+                  setPendingMove(null);
+                  setEditing(null);
+                },
+                onError: (err: any) => {
+                  setPendingMove(null);
+                  setServerError(extractErrorMessage(err));
+                },
+              },
+            )
+          }
         />
       )}
 
@@ -301,10 +365,20 @@ const CustomFieldsTab: React.FC = () => {
           isOpen={true}
           title="Delete custom field"
           body={
-            <Typography fontSize={13}>
-              This will permanently remove "{confirmDelete.label}" and all values stored on existing
-              records. This action cannot be undone.
-            </Typography>
+            <Stack sx={{ gap: "8px" }}>
+              <Typography fontSize={13}>
+                This will permanently remove "{confirmDelete.label}" and all values stored on
+                existing records. This action cannot be undone.
+              </Typography>
+              {(deleteUsage?.total ?? 0) > 0 && (
+                <Typography fontSize={13} fontWeight={500}>
+                  {fill(t("{count} {records} have a value for this field."), {
+                    count: deleteUsage!.total,
+                    records: t(entityCountNoun(confirmDelete.entity_type, deleteUsage!.total)),
+                  })}
+                </Typography>
+              )}
+            </Stack>
           }
           cancelText="Cancel"
           proceedText="Delete"
@@ -327,6 +401,8 @@ interface DefinitionFormModalProps {
   mode: "create" | "edit";
   entityType: CustomFieldEntityType;
   existing?: ICustomFieldDefinition;
+  /** Records using each scored option id, for the edit form. */
+  usage?: Record<string, number>;
   serverError: string | null;
   isSubmitting: boolean;
   onClose: () => void;
@@ -334,7 +410,7 @@ interface DefinitionFormModalProps {
     field_key: string;
     label: string;
     field_type: CustomFieldType;
-    options?: string[] | null;
+    options?: string[] | IScoredOptionInput[] | null;
     required?: boolean;
   }) => void;
 }
@@ -343,6 +419,7 @@ const DefinitionFormModal: React.FC<DefinitionFormModalProps> = ({
   mode,
   entityType,
   existing,
+  usage,
   serverError,
   isSubmitting,
   onClose,
@@ -355,9 +432,14 @@ const DefinitionFormModal: React.FC<DefinitionFormModalProps> = ({
   const [optionsText, setOptionsText] = useState<string>(
     existing ? stringOptions(existing).join("\n") : "",
   );
+  // Starts with one empty row; the editor never removes the last row.
+  const [scoredRows, setScoredRows] = useState<ScoredOptionRow[]>(() =>
+    existing ? rowsFromOptions(scoredOptions(existing)) : [newScoredRow()],
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   const needsOptions = fieldType === "select" || fieldType === "multiselect";
+  const isScored = fieldType === "scored_select";
 
   const parsedOptions = useMemo(
     () =>
@@ -384,11 +466,33 @@ const DefinitionFormModal: React.FC<DefinitionFormModalProps> = ({
       setLocalError("Add at least one option (one per line).");
       return;
     }
+    let scoredInput: IScoredOptionInput[] | null = null;
+    if (isScored) {
+      const filled = scoredRows.map((r) => ({ ...r, label: r.label.trim() }));
+      if (
+        filled.some(
+          (r) => r.label === "" || r.score.trim() === "" || !Number.isFinite(Number(r.score)),
+        )
+      ) {
+        setLocalError("Every option needs a label and a score.");
+        return;
+      }
+      const lower = filled.map((r) => r.label.toLowerCase());
+      if (new Set(lower).size !== lower.length) {
+        setLocalError("Option labels must be unique.");
+        return;
+      }
+      scoredInput = filled.map((r) => ({
+        ...(r.id ? { id: r.id } : {}),
+        label: r.label,
+        score: Number(Number(r.score).toFixed(2)),
+      }));
+    }
     onSubmit({
       field_key: fieldKey,
       label: label.trim(),
       field_type: fieldType,
-      options: needsOptions ? parsedOptions : null,
+      options: isScored ? scoredInput : needsOptions ? parsedOptions : null,
       required,
     });
   };
@@ -457,6 +561,10 @@ const DefinitionFormModal: React.FC<DefinitionFormModalProps> = ({
             value={optionsText}
             onChange={(e) => setOptionsText(e.target.value)}
           />
+        )}
+
+        {isScored && (
+          <ScoredOptionsEditor rows={scoredRows} onChange={setScoredRows} usage={usage} />
         )}
 
         <Stack direction="row" alignItems="center" spacing={4}>

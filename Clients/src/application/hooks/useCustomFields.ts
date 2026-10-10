@@ -9,6 +9,7 @@ import type {
 import {
   createCustomFieldDefinition,
   deleteCustomFieldDefinition,
+  getCustomFieldUsage,
   getCustomFieldValuesForEntity,
   getMissingRequiredCustomFields,
   listCustomFieldDefinitions,
@@ -22,6 +23,7 @@ export const customFieldsKeys = {
     ["customFields", "values", entityType, entityId] as const,
   missingRequired: (entityType: CustomFieldEntityType, entityId: number | null) =>
     ["customFields", "missingRequired", entityType, entityId] as const,
+  usage: (id: number | null) => ["customFields", "usage", id] as const,
 };
 
 export function useCustomFieldDefinitions(entityType: CustomFieldEntityType) {
@@ -52,6 +54,9 @@ export function useUpdateCustomFieldDefinition(entityType: CustomFieldEntityType
       qc.invalidateQueries({
         queryKey: customFieldsKeys.definitions(entityType),
       });
+      // Moving or deleting answers changes record values and usage counts.
+      qc.invalidateQueries({ queryKey: ["customFields", "values"] });
+      qc.invalidateQueries({ queryKey: ["customFields", "usage"] });
     },
   });
 }
@@ -64,6 +69,9 @@ export function useDeleteCustomFieldDefinition(entityType: CustomFieldEntityType
       qc.invalidateQueries({
         queryKey: customFieldsKeys.definitions(entityType),
       });
+      // Moving or deleting answers changes record values and usage counts.
+      qc.invalidateQueries({ queryKey: ["customFields", "values"] });
+      qc.invalidateQueries({ queryKey: ["customFields", "usage"] });
     },
   });
 }
@@ -94,5 +102,14 @@ export function useMissingRequiredCustomFields(
         signal,
       }),
     enabled: entityId !== null && entityId > 0,
+  });
+}
+
+/** How many records have a value for a field, and per scored option. Admin only. */
+export function useCustomFieldUsage(definitionId: number | null) {
+  return useQuery({
+    queryKey: customFieldsKeys.usage(definitionId),
+    queryFn: () => getCustomFieldUsage(definitionId as number),
+    enabled: definitionId !== null,
   });
 }
