@@ -125,11 +125,9 @@ options: string[] | IScoredOption[] | null; // IScoredOption[] only when field_t
 5. For each move, run `UPDATE custom_field_values SET value = to_jsonb(CAST(:target AS text)), updated_at = NOW() WHERE definition_id = :id AND organization_id = :org AND value = to_jsonb(CAST(:removed AS text)) RETURNING 1`, and keep the row count for the ledger.
 6. Write the definition and commit. Ledger entries are written after the commit.
 
-**Racing value writes.** Today `setCustomFieldValueQuery` reads the definition outside its transaction (`customField.utils.ts:502`) and writes the value inside it (`:532`). Under READ COMMITTED, a removal could commit between the two and leave a record holding a removed id. So for `scored_select`, the value write reads the definition with `FOR SHARE` inside the transaction the controller already passes in. A removal (`FOR UPDATE`) and a value write then serialize:
+**Racing value writes.** Today `setCustomFieldValueQuery` reads the definition outside its transaction (`customField.utils.ts:502`) and writes the value inside it (`:532`). Under READ COMMITTED, a removal could commit between the two and leave a record holding a removed id. So the value write reads the definition with `FOR SHARE` inside the transaction the controller already passes in. It does this for every field type, because the type isn't known until the definition is read. The lock only blocks a concurrent edit of the same field. A removal (`FOR UPDATE`) and a value write then serialize:
 - If the write goes first, the removal sees the new value and counts or moves it.
 - If the removal goes first, the write validates against the new options and gets 400.
-
-Other field types keep their current read.
 
 ### Usage counts
 
