@@ -5,7 +5,7 @@ import Field from "../../../components/Inputs/Field";
 import { CustomizableButton } from "../../../components/button/customizable-button";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
 import { fill } from "../../../../i18n/fill";
-import type { IScoredOption } from "../../../../domain/interfaces/i.customField";
+import { IScoredOption, roundScore } from "../../../../domain/interfaces/i.customField";
 
 /** One editable option row. `id` is set for options the server already has. */
 export interface ScoredOptionRow {
@@ -27,8 +27,8 @@ export const rowsFromOptions = (options: IScoredOption[]): ScoredOptionRow[] =>
 
 /** Show what the server will store: rounded to 2 decimals. */
 const roundScoreText = (text: string): string => {
-  const n = Number(text);
-  return text.trim() !== "" && Number.isFinite(n) ? String(Number(n.toFixed(2))) : text;
+  const n = roundScore(Number(text));
+  return text.trim() !== "" && Number.isFinite(n) ? String(n) : text;
 };
 
 interface ScoredOptionsEditorProps {

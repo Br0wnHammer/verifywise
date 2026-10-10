@@ -81,7 +81,9 @@ export const validateScoredOptions = (
     }
     seenLabels.add(labelKey);
 
-    if (typeof score !== "number" || !Number.isFinite(score)) {
+    // Also check the rounded score: score * 100 overflows to Infinity above ~1.8e306,
+    // which JSON would store as null.
+    if (typeof score !== "number" || !Number.isFinite(roundScore(score))) {
       throw new ValidationException("option score must be a finite number", "options", trimmed);
     }
 

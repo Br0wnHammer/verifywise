@@ -50,7 +50,13 @@ export function useUpdateCustomFieldDefinition(entityType: CustomFieldEntityType
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: IUpdateCustomFieldDefinitionInput }) =>
       updateCustomFieldDefinition({ id, body }),
-    onSuccess: () => {
+    onSuccess: (_data, { body }) => {
+      // Moved answers change record values that every entity list (use cases,
+      // vendors, risks, ...) embeds as custom_fields, under its own query key.
+      if (body.option_moves) {
+        qc.invalidateQueries();
+        return;
+      }
       qc.invalidateQueries({
         queryKey: customFieldsKeys.definitions(entityType),
       });

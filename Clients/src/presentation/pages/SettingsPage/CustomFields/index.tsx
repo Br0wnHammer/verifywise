@@ -33,6 +33,7 @@ import {
   formatScoredOption,
   ICustomFieldDefinition,
   IScoredOptionInput,
+  roundScore,
   scoredOptions,
   stringOptions,
 } from "../../../../domain/interfaces/i.customField";
@@ -88,8 +89,13 @@ const CustomFieldsTab: React.FC = () => {
   const deleteMutation = useDeleteCustomFieldDefinition(entityType);
   const { t } = useTranslation();
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
-  const { data: editingUsage } = useCustomFieldUsage(editing?.id ?? null);
-  const { data: deleteUsage } = useCustomFieldUsage(confirmDelete?.id ?? null);
+  // Per-option counts only exist for scored fields.
+  const { data: editingUsage } = useCustomFieldUsage(
+    editing?.field_type === "scored_select" ? editing.id : null,
+  );
+  const { data: deleteUsage, isLoading: deleteUsageLoading } = useCustomFieldUsage(
+    confirmDelete?.id ?? null,
+  );
 
   // A 409 options_in_use opens the move dialog, or reopens it with the new counts
   // when another removed option gained answers before a resend. Moves already
@@ -388,7 +394,8 @@ const CustomFieldsTab: React.FC = () => {
           proceedText="Delete"
           proceedButtonColor="error"
           proceedButtonVariant="contained"
-          isLoading={deleteMutation.isPending}
+          // Wait for the record count, so the warning is shown before Delete is possible.
+          isLoading={deleteMutation.isPending || deleteUsageLoading}
           onCancel={() => setConfirmDelete(null)}
           onProceed={() => {
             deleteMutation.mutate(confirmDelete.id, {
@@ -484,7 +491,10 @@ const DefinitionFormModal: React.FC<DefinitionFormModalProps> = ({
       const filled = scoredRows.map((r) => ({ ...r, label: r.label.trim() }));
       if (
         filled.some(
-          (r) => r.label === "" || r.score.trim() === "" || !Number.isFinite(Number(r.score)),
+          (r) =>
+            r.label === "" ||
+            r.score.trim() === "" ||
+            !Number.isFinite(roundScore(Number(r.score))),
         )
       ) {
         setLocalError("Every option needs a label and a score.");
@@ -498,7 +508,7 @@ const DefinitionFormModal: React.FC<DefinitionFormModalProps> = ({
       scoredInput = filled.map((r) => ({
         ...(r.id ? { id: r.id } : {}),
         label: r.label,
-        score: Number(Number(r.score).toFixed(2)),
+        score: roundScore(Number(r.score)),
       }));
     }
     onSubmit({

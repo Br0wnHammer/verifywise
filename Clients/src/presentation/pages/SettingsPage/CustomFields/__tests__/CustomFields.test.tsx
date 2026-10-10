@@ -28,13 +28,14 @@ let mockQueryState: {
   isError: boolean;
 };
 let mockUsage: { total: number; by_option: Record<string, number> } | undefined;
+let mockUsageLoading = false;
 
 vi.mock("../../../../../application/hooks/useCustomFields", () => ({
   useCustomFieldDefinitions: () => mockQueryState,
   useCreateCustomFieldDefinition: () => ({ mutate: mockCreateMutate, isPending: false }),
   useUpdateCustomFieldDefinition: () => ({ mutate: mockUpdateMutate, isPending: false }),
   useDeleteCustomFieldDefinition: () => ({ mutate: mockDeleteMutate, isPending: false }),
-  useCustomFieldUsage: () => ({ data: mockUsage }),
+  useCustomFieldUsage: () => ({ data: mockUsage, isLoading: mockUsageLoading }),
 }));
 
 import CustomFieldsTab from "../index";
@@ -62,6 +63,7 @@ describe("CustomFieldsTab", () => {
     mockUserRoleName = "Admin";
     mockQueryState = { data: [buildDefinition()], isLoading: false, isError: false };
     mockUsage = undefined;
+    mockUsageLoading = false;
   });
 
   it("shows a restricted message for non-admins", () => {
@@ -444,6 +446,15 @@ describe("CustomFieldsTab", () => {
           "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.",
         ),
       ).toBeInTheDocument();
+    });
+
+    it("keeps Delete disabled until the record count has loaded", async () => {
+      mockQueryState = { data: [scoredDef], isLoading: false, isError: false };
+      mockUsageLoading = true;
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Delete field"));
+      expect(screen.queryByRole("button", { name: /^delete$/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /processing/i })).toBeDisabled();
     });
 
     it("shows how many records lose their value when a field is deleted", async () => {

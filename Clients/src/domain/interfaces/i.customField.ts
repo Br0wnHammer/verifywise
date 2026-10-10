@@ -97,11 +97,15 @@ export const scoredOptions = (def: OptionsLike): IScoredOption[] =>
     ? (def.options as IScoredOption[])
     : [];
 
-/** 3 -> "3", 0.5 -> "0.5", 0.333 -> "0.33"; never "-0". */
-export const formatScore = (score: number): string => {
-  const rounded = Number(score.toFixed(2));
-  return String(Object.is(rounded, -0) ? 0 : rounded);
+/** Round to 2 decimals the way the server stores scores; never -0. */
+export const roundScore = (score: number): number => {
+  const rounded = Math.round(score * 100) / 100;
+  return Object.is(rounded, -0) ? 0 : rounded;
 };
+
+/** 3 -> "3", 0.5 -> "0.5", 0.333 -> "0.33"; never "-0". */
+export const formatScore = (score: number): string =>
+  typeof score === "number" && Number.isFinite(score) ? String(roundScore(score)) : "—";
 
 export const formatScoredOption = (o: { label: string; score: number }): string =>
   `${o.label} (${formatScore(o.score)})`;

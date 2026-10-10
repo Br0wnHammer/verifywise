@@ -2,6 +2,7 @@ import { formatCustomFieldValue } from "../formatCustomFieldValue";
 import {
   entityCountNoun,
   formatScore,
+  roundScore,
   scoredOptions,
   stringOptions,
 } from "../../../../domain/interfaces/i.customField";
@@ -27,6 +28,14 @@ describe("scored select display", () => {
     expect(formatScore(3)).toBe("3");
     expect(formatScore(0.333)).toBe("0.33");
     expect(formatScore(-0)).toBe("0");
+  });
+  it("rounds like the server: half up, never -0", () => {
+    expect(roundScore(-0.125)).toBe(-0.12);
+    expect(roundScore(0.125)).toBe(0.13);
+    expect(Object.is(roundScore(-0.001), 0)).toBe(true);
+  });
+  it("does not throw on a score that is not a number", () => {
+    expect(formatScore(null as unknown as number)).toBe("—");
   });
   it("keeps select formatting unchanged", () => {
     expect(formatCustomFieldValue({ field_type: "select", options: ["US"] }, "US")).toBe("US");

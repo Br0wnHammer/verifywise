@@ -77,6 +77,7 @@ describe("validateScoredOptions", () => {
     ["a string option", ["High"]],
     ["a missing score", [{ label: "High" }]],
     ["a non-finite score", [{ label: "High", score: Infinity }]],
+    ["a score too large to round to 2 decimals", [{ label: "High", score: 1e307 }]],
     ["a string score", [{ label: "High", score: "3" }]],
     ["an empty label", [{ label: "  ", score: 1 }]],
     [
