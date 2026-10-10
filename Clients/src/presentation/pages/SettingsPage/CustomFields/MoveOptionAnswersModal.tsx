@@ -49,6 +49,7 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
       description="Records use the options you removed. Choose where their answers go."
       submitButtonText="Move and save"
       isSubmitting={isSubmitting}
+      isSubmitDisabled={targets.length === 0}
       onClose={onCancel}
       onSubmit={() => {
         if (inUse.some((o) => !moves[o.id])) {
@@ -59,6 +60,13 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
       }}
     >
       <Stack sx={{ gap: "16px" }}>
+        {targets.length === 0 && (
+          <Typography sx={{ fontSize: "13px", color: "text.secondary" }}>
+            {t(
+              "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.",
+            )}
+          </Typography>
+        )}
         {inUse.map((option) => (
           <Stack key={option.id} sx={{ gap: "8px" }}>
             <Typography sx={{ fontSize: "13px" }}>

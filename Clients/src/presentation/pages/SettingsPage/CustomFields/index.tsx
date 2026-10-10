@@ -87,14 +87,33 @@ const CustomFieldsTab: React.FC = () => {
   const updateMutation = useUpdateCustomFieldDefinition(entityType);
   const deleteMutation = useDeleteCustomFieldDefinition(entityType);
   const { t } = useTranslation();
-  const [pendingMove, setPendingMove] = useState<{
-    id: number;
-    body: { label: string; required?: boolean; options: IScoredOptionInput[] };
-    inUse: OptionInUse[];
-    entityType: CustomFieldEntityType;
-  } | null>(null);
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const { data: editingUsage } = useCustomFieldUsage(editing?.id ?? null);
   const { data: deleteUsage } = useCustomFieldUsage(confirmDelete?.id ?? null);
+
+  // A 409 options_in_use opens the move dialog, or reopens it with the new counts
+  // when another removed option gained answers before a resend. Moves already
+  // chosen are kept. Any other error shows on the edit form.
+  const handleUpdateError = (
+    err: any,
+    id: number,
+    body: PendingMove["body"],
+    moves: Record<string, string>,
+  ) => {
+    const data = err?.response?.data;
+    if (err?.status === 409 && data?.code === "options_in_use") {
+      setPendingMove({
+        id,
+        body,
+        moves,
+        inUse: data.in_use as OptionInUse[],
+        entityType: data.entity_type as CustomFieldEntityType,
+      });
+      return;
+    }
+    setPendingMove(null);
+    setServerError(extractErrorMessage(err));
+  };
 
   if (!isAdmin) {
     return (
@@ -312,23 +331,8 @@ const CustomFieldsTab: React.FC = () => {
               { id: editing.id, body },
               {
                 onSuccess: () => setEditing(null),
-                onError: (err: any) => {
-                  const data = err?.response?.data;
-                  if (err?.status === 409 && data?.code === "options_in_use") {
-                    setPendingMove({
-                      id: editing.id,
-                      body: body as {
-                        label: string;
-                        required?: boolean;
-                        options: IScoredOptionInput[];
-                      },
-                      inUse: data.in_use as OptionInUse[],
-                      entityType: data.entity_type as CustomFieldEntityType,
-                    });
-                    return;
-                  }
-                  setServerError(extractErrorMessage(err));
-                },
+                onError: (err: any) =>
+                  handleUpdateError(err, editing.id, body as PendingMove["body"], {}),
               },
             );
           }}
@@ -337,26 +341,26 @@ const CustomFieldsTab: React.FC = () => {
 
       {pendingMove && (
         <MoveOptionAnswersModal
+          key={pendingMove.inUse.map((o) => o.id).join(",")}
           inUse={pendingMove.inUse}
           entityType={pendingMove.entityType}
           remaining={pendingMove.body.options}
           isSubmitting={updateMutation.isPending}
           onCancel={() => setPendingMove(null)}
-          onConfirm={(moves) =>
+          onConfirm={(moves) => {
+            const allMoves = { ...pendingMove.moves, ...moves };
             updateMutation.mutate(
-              { id: pendingMove.id, body: { ...pendingMove.body, option_moves: moves } },
+              { id: pendingMove.id, body: { ...pendingMove.body, option_moves: allMoves } },
               {
                 onSuccess: () => {
                   setPendingMove(null);
                   setEditing(null);
                 },
-                onError: (err: any) => {
-                  setPendingMove(null);
-                  setServerError(extractErrorMessage(err));
-                },
+                onError: (err: any) =>
+                  handleUpdateError(err, pendingMove.id, pendingMove.body, allMoves),
               },
-            )
-          }
+            );
+          }}
         />
       )}
 
@@ -396,6 +400,15 @@ const CustomFieldsTab: React.FC = () => {
     </Stack>
   );
 };
+
+interface PendingMove {
+  id: number;
+  body: { label: string; required?: boolean; options: IScoredOptionInput[] };
+  /** Moves chosen in earlier rounds, resent with the next save. */
+  moves: Record<string, string>;
+  inUse: OptionInUse[];
+  entityType: CustomFieldEntityType;
+}
 
 interface DefinitionFormModalProps {
   mode: "create" | "edit";

@@ -7257,6 +7257,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Multiple choice": "Mehrfachauswahl",
     "Multiple selection dropdown": "Mehrfachauswahl-Dropdown",
     "Scored select": "Bewertete Auswahl",
+    "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.":
+      "Neue Optionen können erst nach dem Speichern Antworten erhalten. Speichern Sie zuerst die neuen Optionen und entfernen Sie dann die alten.",
+    "Custom field": "Benutzerdefiniertes Feld",
     "Option label": "Optionsbezeichnung",
     "Move option up": "Option nach oben",
     "Move option down": "Option nach unten",
@@ -17350,6 +17353,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Multiple choice": "Choix multiple",
     "Multiple selection dropdown": "Liste déroulante à sélection multiple",
     "Scored select": "Sélection notée",
+    "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.":
+      "Les nouvelles options ne peuvent recevoir de réponses qu'une fois enregistrées. Enregistrez d'abord les nouvelles options, puis supprimez les anciennes.",
+    "Custom field": "Champ personnalisé",
     "Option label": "Libellé de l'option",
     "Move option up": "Monter l'option",
     "Move option down": "Descendre l'option",
@@ -24665,6 +24671,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Multiple choice": "Opción múltiple",
     "Multiple selection dropdown": "Lista desplegable de selección múltiple",
     "Scored select": "Selección con puntuación",
+    "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.":
+      "Las opciones nuevas no pueden recibir respuestas hasta que se guarden. Guarda primero las opciones nuevas y luego quita las antiguas.",
+    "Custom field": "Campo personalizado",
     "Option label": "Etiqueta de la opción",
     "Move option up": "Subir opción",
     "Move option down": "Bajar opción",
