@@ -26,7 +26,8 @@ jest.mock("../../utils/i18n.utils", () => ({
   translateError: jest.fn((_req: any, err: any) => (err as Error).message),
 }));
 
-import { exportAuditLedger } from "../auditLedger.ctrl";
+import { exportAuditLedger, getAuditLedger } from "../auditLedger.ctrl";
+import { sequelize } from "../../database/db";
 import { fetchAuditLedgerBatch } from "../../utils/auditLedgerExport.utils";
 import { appendToAuditLedger } from "../../utils/auditLedger.utils";
 
@@ -271,5 +272,14 @@ describe("auditLedger.ctrl - exportAuditLedger", () => {
     fetchBatch.mockResolvedValueOnce(makeRows(1, 1));
     await exportAuditLedger(createReq({ entity_type: ["vendor", "policy"] }), createRes());
     expect(fetchBatch).toHaveBeenCalledWith(2, { entityType: "", entryType: "" }, 0);
+  });
+});
+
+describe("getAuditLedger", () => {
+  it("rejects an invalid entry_type with 400, like the export", async () => {
+    const res = createRes();
+    await getAuditLedger(createReq({ entry_type: "nope" }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(sequelize.query).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,11 @@
 import CustomAxios from "../../infrastructure/api/customAxios";
-import { extractFilenameFromHeaders } from "../../presentation/utils/browserDownload.utils";
+import { filenameFromContentDisposition } from "../../presentation/utils/browserDownload.utils";
+
+/**
+ * Longer than the client's 120 s default: the server streams large ledgers in
+ * batches. Still bounded, so a server that never answers frees the button.
+ */
+const EXPORT_TIMEOUT_MS = 15 * 60 * 1000;
 
 export interface AuditLedgerEntry {
   id: number;
@@ -65,18 +71,18 @@ export async function verifyAuditLedger(): Promise<VerifyResult> {
 
 export async function exportAuditLedger(
   params: Pick<GetAuditLedgerParams, "entity_type" | "entry_type"> = {},
+  signal?: AbortSignal,
 ): Promise<{ blob: Blob; filename: string }> {
   const query = new URLSearchParams();
   if (params.entity_type) query.set("entity_type", params.entity_type);
   if (params.entry_type) query.set("entry_type", params.entry_type);
   const response = await CustomAxios.get(
     `/audit-ledger/export${query.toString() ? `?${query.toString()}` : ""}`,
-    // No timeout: the server streams large ledgers for as long as it takes.
-    { responseType: "blob", timeout: 0 },
+    { responseType: "blob", timeout: EXPORT_TIMEOUT_MS, signal },
   );
   const fallback = `audit-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
-  const headers = new Headers();
-  const disposition = response.headers?.["content-disposition"];
-  if (typeof disposition === "string") headers.set("content-disposition", disposition);
-  return { blob: response.data, filename: extractFilenameFromHeaders(headers, fallback) };
+  return {
+    blob: response.data,
+    filename: filenameFromContentDisposition(response.headers?.["content-disposition"], fallback),
+  };
 }

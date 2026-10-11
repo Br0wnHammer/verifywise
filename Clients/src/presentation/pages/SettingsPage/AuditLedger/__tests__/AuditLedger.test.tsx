@@ -215,10 +215,10 @@ describe("AuditLedger", () => {
     renderWithProviders(<AuditLedger />);
     fireEvent.click(screen.getByText("Export CSV"));
     await waitFor(() => {
-      expect(mockExportAuditLedger).toHaveBeenCalledWith({
-        entity_type: "vendor",
-        entry_type: undefined,
-      });
+      expect(mockExportAuditLedger).toHaveBeenCalledWith(
+        { entity_type: "vendor", entry_type: undefined },
+        expect.any(AbortSignal),
+      );
       expect(mockTriggerBrowserDownload).toHaveBeenCalledWith(blob, "audit-ledger-2026-10-11.csv");
     });
   });

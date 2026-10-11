@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Typography,
@@ -103,19 +103,28 @@ export default function AuditLedger() {
   } = useAuditLedger();
 
   const [isExporting, setIsExporting] = useState(false);
+  // Cancels a running export when the page unmounts, so it neither keeps
+  // streaming nor downloads a file after the user has left.
+  const exportAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => exportAbort.current?.abort(), []);
 
   const handleExport = async () => {
+    const controller = new AbortController();
+    exportAbort.current = controller;
     setIsExporting(true);
     try {
-      const { blob, filename } = await exportAuditLedger({
-        entity_type: filters.entity_type || undefined,
-        entry_type: filters.entry_type || undefined,
-      });
-      triggerBrowserDownload(blob, filename);
+      const { blob, filename } = await exportAuditLedger(
+        {
+          entity_type: filters.entity_type || undefined,
+          entry_type: filters.entry_type || undefined,
+        },
+        controller.signal,
+      );
+      if (!controller.signal.aborted) triggerBrowserDownload(blob, filename);
     } catch {
-      // customAxios already surfaces request errors
+      // customAxios already surfaces request errors; a cancel needs no message.
     } finally {
-      setIsExporting(false);
+      if (!controller.signal.aborted) setIsExporting(false);
     }
   };
 

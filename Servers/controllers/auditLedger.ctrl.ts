@@ -8,6 +8,8 @@ import {
   AUDIT_LEDGER_EXPORT_COLUMNS,
   EXPORT_BATCH_SIZE,
   fetchAuditLedgerBatch,
+  isLedgerEntryType,
+  LEDGER_ENTRY_TYPES,
   LEDGER_FILTER_SQL,
   ledgerFilterReplacements,
   ledgerRowValues,
@@ -15,6 +17,8 @@ import {
 import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper";
 
 import { translateError } from "../utils/i18n.utils";
+const INVALID_ENTRY_TYPE = `entry_type must be one of: ${LEDGER_ENTRY_TYPES.join(", ")}`;
+
 export async function getAuditLedger(req: Request, res: Response): Promise<any> {
   logProcessing({
     description: "starting getAuditLedger",
@@ -29,11 +33,15 @@ export async function getAuditLedger(req: Request, res: Response): Promise<any> 
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 200);
     const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
 
-    // Optional filters; a repeated param (an array) counts as no filter.
+    // A repeated param (an array) counts as no filter.
+    const entryType = typeof req.query.entry_type === "string" ? req.query.entry_type : "";
+    if (entryType && !isLedgerEntryType(entryType)) {
+      return res.status(400).json(STATUS_CODE[400](INVALID_ENTRY_TYPE));
+    }
     const replacements = {
       ...ledgerFilterReplacements(organizationId, {
         entityType: typeof req.query.entity_type === "string" ? req.query.entity_type : "",
-        entryType: typeof req.query.entry_type === "string" ? req.query.entry_type : "",
+        entryType,
       }),
       limit,
       offset,
@@ -129,8 +137,6 @@ export async function verifyAuditLedger(req: Request, res: Response): Promise<an
   }
 }
 
-const EXPORT_ENTRY_TYPES = ["event_log", "change_history"];
-
 /** Resolves when the response drains, or when it closes (client gone). */
 function waitForDrainOrClose(res: Response): Promise<void> {
   return new Promise((resolve) => {
@@ -162,10 +168,8 @@ export async function exportAuditLedger(req: Request, res: Response): Promise<an
   const entityType = typeof req.query.entity_type === "string" ? req.query.entity_type : "";
   const entryType = typeof req.query.entry_type === "string" ? req.query.entry_type : "";
 
-  if (entryType && !EXPORT_ENTRY_TYPES.includes(entryType)) {
-    return res
-      .status(400)
-      .json(STATUS_CODE[400](`entry_type must be one of: ${EXPORT_ENTRY_TYPES.join(", ")}`));
+  if (entryType && !isLedgerEntryType(entryType)) {
+    return res.status(400).json(STATUS_CODE[400](INVALID_ENTRY_TYPE));
   }
 
   // Client disconnect = the response closed before it finished. (Not `req`

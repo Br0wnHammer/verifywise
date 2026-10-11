@@ -21,6 +21,12 @@ export const AUDIT_LEDGER_EXPORT_COLUMNS = [
   "prev_hash",
 ] as const;
 
+/** The ledger's entry types; any other entry_type filter is a 400. */
+export const LEDGER_ENTRY_TYPES = ["event_log", "change_history"] as const;
+
+export const isLedgerEntryType = (value: string): boolean =>
+  (LEDGER_ENTRY_TYPES as readonly string[]).includes(value);
+
 export interface AuditLedgerExportFilters {
   entityType?: string;
   entryType?: string;

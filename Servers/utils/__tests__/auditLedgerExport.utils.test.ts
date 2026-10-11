@@ -35,7 +35,7 @@ describe("fetchAuditLedgerBatch", () => {
       entityType: "",
       entryType: "",
       afterId: 42,
-      limit: 1000,
+      limit: EXPORT_BATCH_SIZE,
     });
   });
 
