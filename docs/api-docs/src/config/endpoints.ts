@@ -2454,7 +2454,7 @@ export const customFieldsEndpoints: Endpoint[] = [
     description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
-      { status: 200, description: "Answer counts. total is the number of saved answers; by_option maps option id to count (scored select only, empty otherwise)." },
+      { status: 200, description: "Answer counts. total is the number of saved answers; by_option maps each option to its count: the option id for scored select, the option text for select and multiselect (a multiselect record counts once per option it holds); empty for other types." },
       { status: 404, description: "Definition not found" },
       { status: 500, description: "Internal server error" },
     ],

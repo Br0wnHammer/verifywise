@@ -3,10 +3,13 @@ import { logFailure } from "./logger/logHelper";
 import { formatScore, formatScoredOption, IScoredOption } from "./customFieldScoredSelect.utils";
 import type { CustomFieldEntityType, ICustomFieldDefinition } from "./customField.utils";
 
-/** Answers moved from a removed scored option to another option. */
+/**
+ * Answers moved from a removed option to another option. For select and
+ * multiselect fields an option's id is its text.
+ */
 export interface MovedAnswers {
-  from: IScoredOption;
-  to: IScoredOption;
+  from: { id: string; label: string };
+  to: { id: string; label: string };
   count: number;
 }
 
@@ -114,6 +117,14 @@ export const diffDefinitionForLedger = (
     const next = (after.options ?? []) as string[];
     if ([...prev].sort().join("\u0000") !== [...next].sort().join("\u0000")) {
       update("options", prev.join(", "), next.join(", "));
+    }
+    for (const move of extra.moved ?? []) {
+      update(
+        "option",
+        move.from.label,
+        null,
+        `${description} · ${plural(move.count, "answer", "answers")} moved to ${move.to.label}`,
+      );
     }
   }
   return changes;

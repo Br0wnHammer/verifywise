@@ -410,7 +410,7 @@ const CustomFieldsTab: React.FC = () => {
 
 interface PendingMove {
   id: number;
-  body: { label: string; required?: boolean; options: IScoredOptionInput[] };
+  body: { label: string; required?: boolean; options: IScoredOptionInput[] | string[] };
   /** Moves chosen in earlier rounds, resent with the next save. */
   moves: Record<string, string>;
   inUse: OptionInUse[];

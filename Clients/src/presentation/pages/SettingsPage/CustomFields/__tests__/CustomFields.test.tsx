@@ -232,6 +232,59 @@ describe("CustomFieldsTab", () => {
     });
   });
 
+  describe("plain select options in use", () => {
+    const selectDef = buildDefinition({
+      id: 6,
+      entity_type: "project",
+      label: "Region",
+      field_key: "region",
+      field_type: "select",
+      options: ["Low", "Medium", "High"],
+    });
+
+    it("moves answers to the new text when a used option is renamed", async () => {
+      mockQueryState = { data: [selectDef], isLoading: false, isError: false };
+      mockUpdateMutate.mockImplementationOnce((_vars: any, opts: any) =>
+        opts.onError({
+          status: 409,
+          message: "Some removed options are in use. Choose where to move their answers.",
+          response: {
+            message: "Conflict",
+            data: {
+              code: "options_in_use",
+              in_use: [{ id: "Medium", label: "Medium", count: 3 }],
+              entity_type: "project",
+            },
+          },
+        }),
+      );
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Edit field"));
+      fireEvent.change(screen.getByDisplayValue(/Low\s+Medium\s+High/), {
+        target: { value: "Low\nModerate\nHigh" },
+      });
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+      expect(
+        await screen.findByText("Medium is used by 3 use cases. Move these answers to:"),
+      ).toBeInTheDocument();
+      openCustomSelect("move-Medium");
+      await userEvent.click(screen.getByRole("option", { name: "Moderate" }));
+      await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
+
+      expect(mockUpdateMutate).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: 6,
+          body: expect.objectContaining({
+            options: ["Low", "Moderate", "High"],
+            option_moves: { Medium: "Moderate" },
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
   describe("scored select", () => {
     const scoredDef = buildDefinition({
       id: 5,

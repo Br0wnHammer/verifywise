@@ -113,22 +113,23 @@ export const validateScoredOptions = (
 };
 
 /** Options in `before` that `after` no longer has. */
-export const removedOptions = (
-  before: IScoredOption[],
-  after: IScoredOption[],
-): IScoredOption[] => {
+export const removedOptions = <T extends { id: string }>(
+  before: ReadonlyArray<T>,
+  after: ReadonlyArray<{ id: string }>,
+): T[] => {
   const kept = new Set(after.map((o) => o.id));
   return before.filter((o) => !kept.has(o.id));
 };
 
 /**
  * Validate `option_moves` ({ removedId: targetId }). A source must be a removed
- * option; a target must be one of the remaining options.
+ * option; a target must be one of the remaining options. For select and
+ * multiselect fields an option's id is its text.
  */
 export const validateOptionMoves = (
   moves: unknown,
-  removed: IScoredOption[],
-  after: IScoredOption[],
+  removed: ReadonlyArray<{ id: string }>,
+  after: ReadonlyArray<{ id: string }>,
 ): Record<string, string> => {
   if (moves === undefined || moves === null) return {};
   if (typeof moves !== "object" || Array.isArray(moves)) {

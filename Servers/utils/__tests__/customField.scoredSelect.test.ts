@@ -43,6 +43,7 @@ const scoredDef = {
 };
 const selectDef = { ...scoredDef, id: 12, field_type: "select", options: ["US", "EU"] };
 const multiDef = { ...scoredDef, id: 13, field_type: "multiselect", options: ["a", "b"] };
+const textDef = { ...scoredDef, id: 14, field_type: "text", options: null };
 
 /** Route each SQL statement to a canned answer. */
 function serve(def: unknown) {
@@ -279,11 +280,11 @@ describe("updating a scored select definition", () => {
     }
   });
 
-  it("rejects option_moves on a field that is not scored", async () => {
-    serveUpdate(selectDef, []);
+  it("rejects option_moves on a field without options", async () => {
+    serveUpdate(textDef, []);
     await expect(
-      updateCustomFieldDefinitionQuery(12, ORG, { option_moves: { a: "b" } }, 3),
-    ).rejects.toThrow(/only allowed for scored select/);
+      updateCustomFieldDefinitionQuery(14, ORG, { option_moves: { a: "b" } }, 3),
+    ).rejects.toThrow(/only allowed for select, multiselect and scored select/);
   });
 
   it("writes ledger entries only after commit", async () => {
@@ -300,6 +301,103 @@ describe("updating a scored select definition", () => {
   });
 });
 
+describe("updating a select or multiselect definition", () => {
+  const moveCall = () =>
+    mockQuery.mock.calls.find((c) => flat(c[0]).startsWith("UPDATE custom_field_values"));
+
+  it("refuses to drop a used select option without a move: 409 keyed by the option text", async () => {
+    serveUpdate(selectDef, [{ option_key: "EU", count: 4 }]);
+    const err: any = await updateCustomFieldDefinitionQuery(12, ORG, { options: ["US"] }, 3).catch(
+      (e) => e,
+    );
+    expect(err.statusCode).toBe(409);
+    expect(err.metadata).toEqual(
+      expect.objectContaining({
+        code: "options_in_use",
+        in_use: [{ id: "EU", label: "EU", count: 4 }],
+      }),
+    );
+    expect(mockQuery.mock.calls.some((c) => flat(c[0]).startsWith("UPDATE"))).toBe(false);
+  });
+
+  it("treats a renamed select option as removed, and moves its answers to the new text", async () => {
+    serveUpdate(selectDef, [{ option_key: "EU", count: 4 }], 4);
+    await updateCustomFieldDefinitionQuery(
+      12,
+      ORG,
+      { options: ["US", "Europe"], option_moves: { EU: "Europe" } },
+      3,
+    );
+    const move = moveCall()!;
+    expect(flat(move[0])).toContain("SET value = to_jsonb(CAST(:target AS text))");
+    expect((move[1] as any).replacements).toEqual({
+      target: "Europe",
+      removed: "EU",
+      id: 12,
+      organizationId: ORG,
+    });
+    expect(mockAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fieldName: "option",
+        oldValue: "EU",
+        description: "Use cases · Technical feasibility · 4 answers moved to Europe",
+      }),
+    );
+  });
+
+  it("removes an unused select option without a move", async () => {
+    serveUpdate(selectDef, [{ option_key: "US", count: 2 }]);
+    await expect(
+      updateCustomFieldDefinitionQuery(12, ORG, { options: ["US"] }, 3),
+    ).resolves.toBeDefined();
+    expect(moveCall()).toBeUndefined();
+  });
+
+  it("counts multiselect usage per option inside each list", async () => {
+    serveUpdate(multiDef, [{ option_key: "b", count: 2 }]);
+    const err: any = await updateCustomFieldDefinitionQuery(13, ORG, { options: ["a"] }, 3).catch(
+      (e) => e,
+    );
+    expect(err.statusCode).toBe(409);
+    expect(err.metadata.in_use).toEqual([{ id: "b", label: "b", count: 2 }]);
+    const count = mockQuery.mock.calls.find((c) => flat(c[0]).includes("GROUP BY"))!;
+    expect(flat(count[0])).toContain("jsonb_array_elements_text");
+  });
+
+  it("replaces the option inside multiselect lists, keeping one copy of the target", async () => {
+    serveUpdate(multiDef, [{ option_key: "b", count: 2 }], 2);
+    await updateCustomFieldDefinitionQuery(
+      13,
+      ORG,
+      { options: ["a"], option_moves: { b: "a" } },
+      3,
+    );
+    const move = moveCall()!;
+    const sql = flat(move[0]);
+    expect(sql).toContain("jsonb_agg(option ORDER BY first_pos)");
+    expect(sql).toContain("GROUP BY 1");
+    expect(sql).toContain("value @> jsonb_build_array(CAST(:removed AS text))");
+    expect((move[1] as any).replacements).toEqual({
+      target: "a",
+      removed: "b",
+      id: 13,
+      organizationId: ORG,
+    });
+  });
+
+  it("rejects a move to an option that is not in the new list", async () => {
+    serveUpdate(selectDef, [{ option_key: "EU", count: 4 }]);
+    await expect(
+      updateCustomFieldDefinitionQuery(
+        12,
+        ORG,
+        { options: ["US"], option_moves: { EU: "Europe" } },
+        3,
+      ),
+    ).rejects.toThrow(/target must be a remaining option/);
+  });
+});
+
 describe("usage and delete", () => {
   it("returns total and per-option counts for a scored field", async () => {
     serveUpdate(scoredDef, [
@@ -312,9 +410,17 @@ describe("usage and delete", () => {
     });
   });
 
-  it("returns only a total for other field types", async () => {
+  it("returns per-option counts for a plain select", async () => {
     serveUpdate(selectDef, [{ option_key: "EU", count: 3 }]);
-    await expect(getCustomFieldUsageQuery(12, ORG)).resolves.toEqual({ total: 3, by_option: {} });
+    await expect(getCustomFieldUsageQuery(12, ORG)).resolves.toEqual({
+      total: 3,
+      by_option: { EU: 3 },
+    });
+  });
+
+  it("returns only a total for a field without options", async () => {
+    serveUpdate(textDef, [{ option_key: "anything", count: 3 }]);
+    await expect(getCustomFieldUsageQuery(14, ORG)).resolves.toEqual({ total: 3, by_option: {} });
   });
 
   it("logs how many records lost their answer when a field is deleted", async () => {

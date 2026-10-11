@@ -20,8 +20,11 @@ export interface OptionInUse {
 interface MoveOptionAnswersModalProps {
   inUse: OptionInUse[];
   entityType: CustomFieldEntityType;
-  /** Options that remain after the save (only ones with an id can be targets). */
-  remaining: IScoredOptionInput[];
+  /**
+   * Options that remain after the save. Scored options need an id to be a
+   * target; a plain select or multiselect option is its own text.
+   */
+  remaining: ReadonlyArray<IScoredOptionInput | string>;
   isSubmitting: boolean;
   onCancel: () => void;
   onConfirm: (moves: Record<string, string>) => void;
@@ -38,9 +41,10 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
   const { t } = useTranslation();
   const [moves, setMoves] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
-  const targets = remaining
-    .filter((o): o is IScoredOptionInput & { id: string } => typeof o.id === "string")
-    .map((o) => ({ _id: o.id, name: formatScoredOption(o) }));
+  const targets = remaining.flatMap((o) => {
+    if (typeof o === "string") return [{ _id: o, name: o }];
+    return typeof o.id === "string" ? [{ _id: o.id, name: formatScoredOption(o) }] : [];
+  });
 
   return (
     <StandardModal

@@ -25185,7 +25185,7 @@ paths:
       summary: 'Get Custom Field Usage'
       responses:
         '200':
-          description: 'Answer counts. total is the number of saved answers; by_option maps option id to count (scored select only, empty otherwise).'
+          description: 'Answer counts. total is the number of saved answers; by_option maps each option to its count: the option id for scored select, the option text for select and multiselect (a multiselect record counts once per option it holds); empty for other types.'
           content:
             application/json:
               schema:
@@ -25252,7 +25252,7 @@ paths:
                   items: {}
                 option_moves:
                   type: object
-                  description: 'scored_select only. Maps a removed option id to the option id that should receive its answers.'
+                  description: 'select, multiselect and scored_select. Maps a removed option to the remaining option that should receive its answers: by id for scored_select, by option text for select and multiselect (so a renamed option maps old text to new text).'
                   additionalProperties: {type: string}
       responses:
         '200':
