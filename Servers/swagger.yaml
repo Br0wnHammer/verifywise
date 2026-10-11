@@ -25191,12 +25191,8 @@ paths:
               schema:
                 type: object
                 properties:
-                  total:
-                    type: integer
-                  by_option:
-                    type: object
-                    additionalProperties:
-                      type: integer
+                  total: {type: integer}
+                  by_option: {type: object, additionalProperties: {type: integer}}
         '404':
           description: 'Definition not found'
         '500':
@@ -25257,8 +25253,7 @@ paths:
                 option_moves:
                   type: object
                   description: 'scored_select only. Maps a removed option id to the option id that should receive its answers.'
-                  additionalProperties:
-                    type: string
+                  additionalProperties: {type: string}
       responses:
         '200':
           description: Success
