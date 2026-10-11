@@ -230,6 +230,8 @@ const ProjectSettings = React.memo(
     const [showCustomizableSkeleton, setShowCustomizableSkeleton] = useState<boolean>(false);
     const initialValuesRef = useRef<FormValues>({ ...initialState });
     const customFieldsRef = useRef<CustomFieldsSectionHandle | null>(null);
+    // Unsaved custom field values; Save writes them after the project itself.
+    const [customFieldsDirty, setCustomFieldsDirty] = useState(false);
     const isModified = useMemo(() => {
       if (!initialValuesRef.current.projectTitle) return false;
 
@@ -268,7 +270,7 @@ const ProjectSettings = React.memo(
     const isSaveDisabled = useMemo(() => {
       if (showCustomizableSkeleton) return true;
       if (isFrameworkOperationInProgress) return true;
-      if (!isModified) return true;
+      if (!isModified && !customFieldsDirty) return true;
       if (customFieldsGate.blocked) return true;
 
       const hasErrors = Object.values(errors).some((error) => error && error.length > 0);
@@ -276,6 +278,7 @@ const ProjectSettings = React.memo(
       return hasErrors;
     }, [
       isModified,
+      customFieldsDirty,
       errors,
       showCustomizableSkeleton,
       isFrameworkOperationInProgress,
@@ -1542,6 +1545,7 @@ const ProjectSettings = React.memo(
                   entityType="project"
                   entityId={parseInt(projectId, 10) || null}
                   onPendingChange={customFieldsGate.onPendingChange}
+                  onDirtyChange={setCustomFieldsDirty}
                 />
               </Box>
 

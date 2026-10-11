@@ -60,7 +60,13 @@ vi.mock("../IntakeSubmissionCard", () => ({
 }));
 
 vi.mock("../../../components/CustomFieldsSection", () => ({
-  default: () => <div data-testid="custom-fields-section" />,
+  default: ({ onDirtyChange }: any) => (
+    <div data-testid="custom-fields-section">
+      <button type="button" onClick={() => onDirtyChange?.(true)}>
+        Change custom field
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("../../../components/CustomFieldsSection/RequiredCustomFieldsGate", () => ({
@@ -216,6 +222,18 @@ describe("ProjectSettings", () => {
     fireEvent.change(screen.getByDisplayValue("Chatbot Assistant"), {
       target: { value: "Renamed Assistant" },
     });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    });
+  });
+
+  it("enables Save when only a custom field answer changes", async () => {
+    renderWithProviders(<ProjectSettings />);
+    await waitFor(() => expect(screen.getByDisplayValue("Chatbot Assistant")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Change custom field" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();

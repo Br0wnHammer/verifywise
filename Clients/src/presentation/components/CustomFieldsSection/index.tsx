@@ -53,10 +53,16 @@ interface CustomFieldsSectionProps {
    * the deadlock this prevents.
    */
   onPendingChange?: (pendingDefinitionIds: ReadonlySet<number>) => void;
+  /**
+   * Called with true while any value is set, changed or cleared but not yet
+   * flushed, and false once there is nothing left to save. Lets a parent
+   * enable its Save button when only custom field values changed.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 const CustomFieldsSection = forwardRef<CustomFieldsSectionHandle, CustomFieldsSectionProps>(
-  ({ entityType, entityId, onPendingChange }, ref) => {
+  ({ entityType, entityId, onPendingChange, onDirtyChange }, ref) => {
     const theme = useTheme();
     const queryClient = useQueryClient();
     const isCreateMode = entityId === null || entityId <= 0;
@@ -92,6 +98,11 @@ const CustomFieldsSection = forwardRef<CustomFieldsSectionHandle, CustomFieldsSe
       }
       onPendingChange(ids);
     }, [stagedValues, clearedDefs, onPendingChange]);
+
+    const isDirty = stagedValues.size > 0 || clearedDefs.size > 0;
+    useEffect(() => {
+      onDirtyChange?.(isDirty);
+    }, [isDirty, onDirtyChange]);
 
     useImperativeHandle(
       ref,
