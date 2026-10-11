@@ -81,7 +81,7 @@ export const ROLE_PERMISSIONS = {
   },
   "auditLedger.admin": {
     module: "Audit ledger",
-    description: "Verify the audit ledger",
+    description: "Verify and export the audit ledger",
     legacyRoles: ADMIN,
   },
   "autoDriver.admin": {

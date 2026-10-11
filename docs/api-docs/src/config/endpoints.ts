@@ -1984,6 +1984,25 @@ export const auditEndpoints: Endpoint[] = [
     ],
     tag: "Audit",
   },
+  {
+    method: 'GET',
+    path: '/audit-ledger/export',
+    summary: "Export Audit Ledger as CSV",
+    description: "Streams the organization audit ledger as a CSV attachment (UTF-8 with BOM, oldest entry first, batches of 1000). Requires role: Admin",
+    requiresAuth: true,
+    parameters: [
+      { name: 'entity_type', in: 'query', type: 'string', required: false, description: "Only entries for this entity type" },
+      { name: 'entry_type', in: 'query', type: 'string', required: false, description: "Only entries of this kind" },
+    ],
+    responses: [
+      { status: 200, description: "CSV file attachment (audit-ledger-YYYY-MM-DD.csv)" },
+      { status: 400, description: "Invalid entry_type" },
+      { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - insufficient role" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Audit",
+  },
 ];
 
 // Authentication endpoints

@@ -24145,6 +24145,49 @@ paths:
           description: 'Forbidden - insufficient role'
         '500':
           description: 'Internal server error'
+  /audit-ledger/export:
+    get:
+      summary: 'Export Audit Ledger as CSV'
+      description: 'Streams the organization audit ledger as a CSV attachment (UTF-8 with BOM, oldest entry first, batches of 1000). Requires role: Admin'
+      parameters:
+        -
+          name: entity_type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 'Only entries for this entity type'
+        -
+          name: entry_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - event_log
+              - change_history
+          description: 'Only entries of this kind'
+      responses:
+        '200':
+          description: 'CSV file attachment (audit-ledger-YYYY-MM-DD.csv)'
+          content:
+            text/csv:
+              schema:
+                type: string
+        '400':
+          description: 'Invalid entry_type'
+        '401':
+          description: Unauthorized
+        '403':
+          description: 'Forbidden - insufficient role'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Audit
+      operationId: exportAuditLedger
+      security:
+        -
+          bearerAuth: []
   /feature-settings:
     get:
       tags:
