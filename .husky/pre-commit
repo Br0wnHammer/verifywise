@@ -1,10 +1,27 @@
+#!/usr/bin/env sh
+
 # Secret scanning: scan staged changes with gitleaks before linting.
 # Soft dependency: if gitleaks is not installed we warn and continue so
 # developers without it are not blocked (CI/server-side scans still apply).
 if command -v gitleaks >/dev/null 2>&1; then
-  gitleaks protect --staged --verbose
+  gitleaks protect --staged --verbose || exit 1
 else
   echo "\033[33mWARNING: gitleaks not found on PATH — skipping staged secret scan. Install gitleaks to enable pre-commit secret detection.\033[0m"
+fi
+
+# API docs: swagger.yaml and endpoints.ts are generated from the route layer,
+# and CI's "API Docs Drift" job fails if the committed copies are stale.
+# Regenerate and stage them whenever a commit touches their inputs.
+if git diff --cached --name-only | grep -qE '^Servers/(app\.ts|routes/|extensions/|swagger\.yaml)'; then
+  if [ -d Servers/node_modules ]; then
+    (cd Servers && npm run --silent generate:swagger && npm run --silent generate:endpoints) || {
+      echo "\033[31mERROR: API docs generation failed. Run 'npm run generate:swagger && npm run generate:endpoints' in Servers/ to see why.\033[0m"
+      exit 1
+    }
+    git add Servers/swagger.yaml docs/api-docs/src/config/endpoints.ts
+  else
+    echo "\033[33mWARNING: Servers/node_modules missing — skipping API docs generation. CI's API Docs Drift check still applies.\033[0m"
+  fi
 fi
 
 cd Servers && npx lint-staged && cd ../Clients && npx lint-staged
