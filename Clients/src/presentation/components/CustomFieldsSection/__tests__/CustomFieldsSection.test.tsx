@@ -307,6 +307,21 @@ describe("CustomFieldsSection", () => {
       await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
     });
 
+    it("reports a cleared required field to onPendingChange", async () => {
+      const user = userEvent.setup();
+      const onPendingChange = vi.fn();
+      renderWithProviders(
+        <CustomFieldsSection entityType="project" entityId={1} onPendingChange={onPendingChange} />,
+      );
+      // Department (required) is the first field with a stored value.
+      await user.click(screen.getAllByTitle("Clear value")[0]);
+      await waitFor(() =>
+        expect(onPendingChange).toHaveBeenLastCalledWith(new Set(), [
+          { id: 1, label: "Department" },
+        ]),
+      );
+    });
+
     it("reports dirty when a stored value is cleared", async () => {
       const user = userEvent.setup();
       const onDirtyChange = vi.fn();

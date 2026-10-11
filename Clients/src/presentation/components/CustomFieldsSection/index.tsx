@@ -50,9 +50,13 @@ interface CustomFieldsSectionProps {
    * Called whenever the set of definitionIds with a non-empty staged value
    * changes. Wire to `useRequiredCustomFieldsGate().onPendingChange` so the
    * parent Save button unblocks as the user types — see the gate docs for
-   * the deadlock this prevents.
+   * the deadlock this prevents. The second argument lists required fields
+   * whose stored value the user cleared, so the gate can block Save.
    */
-  onPendingChange?: (pendingDefinitionIds: ReadonlySet<number>) => void;
+  onPendingChange?: (
+    pendingDefinitionIds: ReadonlySet<number>,
+    clearedRequired: ReadonlyArray<{ id: number; label: string }>,
+  ) => void;
   /**
    * Called with true while any value is set, changed or cleared but not yet
    * flushed, and false once there is nothing left to save. Lets a parent
@@ -96,8 +100,11 @@ const CustomFieldsSection = forwardRef<CustomFieldsSectionHandle, CustomFieldsSe
         if (Array.isArray(value) && value.length === 0) continue;
         ids.add(defId);
       }
-      onPendingChange(ids);
-    }, [stagedValues, clearedDefs, onPendingChange]);
+      const clearedRequired = (definitions ?? [])
+        .filter((d) => d.required && clearedDefs.has(d.id))
+        .map((d) => ({ id: d.id, label: d.label }));
+      onPendingChange(ids, clearedRequired);
+    }, [stagedValues, clearedDefs, definitions, onPendingChange]);
 
     const isDirty = stagedValues.size > 0 || clearedDefs.size > 0;
     useEffect(() => {
@@ -108,7 +115,7 @@ const CustomFieldsSection = forwardRef<CustomFieldsSectionHandle, CustomFieldsSe
       ref,
       () => ({
         flush: async (id: number) => {
-          if (stagedValues.size === 0 && clearedDefs.size === 0) return;
+          if (!isDirty) return;
           setFlushError(null);
           try {
             await Promise.all([
@@ -139,9 +146,9 @@ const CustomFieldsSection = forwardRef<CustomFieldsSectionHandle, CustomFieldsSe
             throw err;
           }
         },
-        hasPendingValues: () => stagedValues.size > 0 || clearedDefs.size > 0,
+        hasPendingValues: () => isDirty,
       }),
-      [stagedValues, clearedDefs, queryClient, entityType],
+      [stagedValues, clearedDefs, isDirty, queryClient, entityType],
     );
 
     const stageValue = (definitionId: number, value: unknown) => {

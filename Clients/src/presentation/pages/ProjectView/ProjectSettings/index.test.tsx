@@ -59,15 +59,26 @@ vi.mock("../IntakeSubmissionCard", () => ({
   default: () => <div data-testid="intake-submission-card" />,
 }));
 
-vi.mock("../../../components/CustomFieldsSection", () => ({
-  default: ({ onDirtyChange }: any) => (
-    <div data-testid="custom-fields-section">
-      <button type="button" onClick={() => onDirtyChange?.(true)}>
-        Change custom field
-      </button>
-    </div>
-  ),
-}));
+const mockFlushCustomFields = vi.fn();
+vi.mock("../../../components/CustomFieldsSection", async () => {
+  const { forwardRef, useImperativeHandle } =
+    await vi.importActual<typeof import("react")>("react");
+  return {
+    default: forwardRef(({ onDirtyChange }: any, ref) => {
+      useImperativeHandle(ref, () => ({
+        flush: (...args: any[]) => mockFlushCustomFields(...args),
+        hasPendingValues: () => true,
+      }));
+      return (
+        <div data-testid="custom-fields-section">
+          <button type="button" onClick={() => onDirtyChange?.(true)}>
+            Change custom field
+          </button>
+        </div>
+      );
+    }),
+  };
+});
 
 vi.mock("../../../components/CustomFieldsSection/RequiredCustomFieldsGate", () => ({
   useRequiredCustomFieldsGate: () => ({ blocked: false, onPendingChange: vi.fn() }),
@@ -133,6 +144,7 @@ const iso42001Framework = { id: 2, name: "ISO 42001", is_organizational: false }
 describe("ProjectSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFlushCustomFields.mockResolvedValue(undefined);
     mockUserRoleName = "Admin";
     mockUseProjectData.mockReturnValue({ project: baseProject });
     mockUseFrameworks.mockReturnValue({
@@ -238,6 +250,34 @@ describe("ProjectSettings", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
     });
+  });
+
+  it("saves only the custom field values when no project field changed", async () => {
+    mockFlushCustomFields.mockResolvedValue(undefined);
+    renderWithProviders(<ProjectSettings />);
+    await waitFor(() => expect(screen.getByDisplayValue("Chatbot Assistant")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Change custom field" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mockFlushCustomFields).toHaveBeenCalledWith(5));
+    expect(mockUpdateProject).not.toHaveBeenCalled();
+    expect(await screen.findByText("Project updated successfully")).toBeInTheDocument();
+  });
+
+  it("disables Save while a save is in progress", async () => {
+    let finish: () => void = () => {};
+    mockFlushCustomFields.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+    renderWithProviders(<ProjectSettings />);
+    await waitFor(() => expect(screen.getByDisplayValue("Chatbot Assistant")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Change custom field" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(mockFlushCustomFields).toHaveBeenCalledTimes(1);
+    finish();
   });
 
   it("saves updated project details successfully", async () => {
