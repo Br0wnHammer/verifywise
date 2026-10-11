@@ -1,4 +1,5 @@
 import CustomAxios from "../../infrastructure/api/customAxios";
+import { extractFilenameFromHeaders } from "../../presentation/utils/browserDownload.utils";
 
 export interface AuditLedgerEntry {
   id: number;
@@ -70,9 +71,12 @@ export async function exportAuditLedger(
   if (params.entry_type) query.set("entry_type", params.entry_type);
   const response = await CustomAxios.get(
     `/audit-ledger/export${query.toString() ? `?${query.toString()}` : ""}`,
-    { responseType: "blob" },
+    // No timeout: the server streams large ledgers for as long as it takes.
+    { responseType: "blob", timeout: 0 },
   );
   const fallback = `audit-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
-  const match = /filename="?([^";]+)"?/.exec(response.headers?.["content-disposition"] ?? "");
-  return { blob: response.data, filename: match?.[1] ?? fallback };
+  const headers = new Headers();
+  const disposition = response.headers?.["content-disposition"];
+  if (typeof disposition === "string") headers.set("content-disposition", disposition);
+  return { blob: response.data, filename: extractFilenameFromHeaders(headers, fallback) };
 }

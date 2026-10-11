@@ -46,6 +46,7 @@ describe("csv.utils", () => {
   });
 
   it("exposes a UTF-8 BOM", () => {
-    expect(CSV_BOM).toBe("﻿");
+    expect(CSV_BOM).toBe("\uFEFF");
+    expect(CSV_BOM.charCodeAt(0)).toBe(0xfeff);
   });
 });

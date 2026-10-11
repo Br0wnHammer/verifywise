@@ -19,4 +19,4 @@ export const csvField = (value: unknown): string => {
 export const csvRow = (values: unknown[]): string => `${values.map(csvField).join(",")}\r\n`;
 
 /** Byte-order mark so spreadsheet apps read the file as UTF-8. */
-export const CSV_BOM = "﻿";
+export const CSV_BOM = "\uFEFF";

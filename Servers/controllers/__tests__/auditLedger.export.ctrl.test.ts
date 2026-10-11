@@ -100,7 +100,7 @@ describe("auditLedger.ctrl - exportAuditLedger", () => {
       /^attachment; filename="audit-ledger-\d{4}-\d{2}-\d{2}\.csv"$/,
     );
     expect(res.headers["Access-Control-Expose-Headers"]).toBe("Content-Disposition");
-    expect(res.chunks[0].startsWith('﻿"id","occurred_at"')).toBe(true);
+    expect(res.chunks[0].startsWith('\uFEFF"id","occurred_at"')).toBe(true);
     expect(res.chunks[0].endsWith('"prev_hash"\r\n')).toBe(true);
     expect(res.end).toHaveBeenCalled();
   });

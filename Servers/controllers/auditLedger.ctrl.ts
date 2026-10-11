@@ -8,6 +8,7 @@ import {
   AUDIT_LEDGER_EXPORT_COLUMNS,
   EXPORT_BATCH_SIZE,
   fetchAuditLedgerBatch,
+  ledgerFilterConditions,
   ledgerRowValues,
 } from "../utils/auditLedgerExport.utils";
 import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper";
@@ -27,22 +28,12 @@ export async function getAuditLedger(req: Request, res: Response): Promise<any> 
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 200);
     const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
 
-    // Optional filters
-    const entityType = (req.query.entity_type as string) || "";
-    const entryType = (req.query.entry_type as string) || "";
-
-    // Build WHERE clauses
-    const conditions: string[] = ["al.organization_id = :organizationId"];
-    const replacements: Record<string, string | number> = { organizationId, limit, offset };
-
-    if (entityType) {
-      conditions.push("al.entity_type = :entityType");
-      replacements.entityType = entityType;
-    }
-    if (entryType) {
-      conditions.push("al.entry_type = :entryType");
-      replacements.entryType = entryType;
-    }
+    // Optional filters; a repeated param (an array) counts as no filter.
+    const { conditions, replacements } = ledgerFilterConditions(organizationId, {
+      entityType: typeof req.query.entity_type === "string" ? req.query.entity_type : "",
+      entryType: typeof req.query.entry_type === "string" ? req.query.entry_type : "",
+    });
+    Object.assign(replacements, { limit, offset });
 
     const whereClause = `WHERE ${conditions.join(" AND ")}`;
 
@@ -238,6 +229,15 @@ export async function exportAuditLedger(req: Request, res: Response): Promise<an
     } catch {
       // The export already succeeded; losing the self-audit entry is acceptable.
     }
+
+    await logSuccess({
+      eventType: "Read",
+      description: `Exported ${count} audit ledger entries`,
+      functionName: "exportAuditLedger",
+      fileName: "auditLedger.ctrl.ts",
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
   } catch (error) {
     await logFailure({
       eventType: "Read",

@@ -6,6 +6,7 @@ jest.mock("../../database/db", () => ({
 
 import { sequelize } from "../../database/db";
 import {
+  ledgerFilterConditions,
   fetchAuditLedgerBatch,
   ledgerRowValues,
   AUDIT_LEDGER_EXPORT_COLUMNS,
@@ -43,6 +44,23 @@ describe("fetchAuditLedgerBatch", () => {
     expect(sql).toContain("al.entry_type = :entryType");
     expect(opts.replacements.entityType).toBe("vendor");
     expect(opts.replacements.entryType).toBe("change_history");
+  });
+});
+
+describe("ledgerFilterConditions", () => {
+  it("always scopes by organization and adds only the filters given", () => {
+    expect(ledgerFilterConditions(2, {})).toEqual({
+      conditions: ["al.organization_id = :organizationId"],
+      replacements: { organizationId: 2 },
+    });
+    expect(ledgerFilterConditions(2, { entityType: "vendor", entryType: "event_log" })).toEqual({
+      conditions: [
+        "al.organization_id = :organizationId",
+        "al.entity_type = :entityType",
+        "al.entry_type = :entryType",
+      ],
+      replacements: { organizationId: 2, entityType: "vendor", entryType: "event_log" },
+    });
   });
 });
 
