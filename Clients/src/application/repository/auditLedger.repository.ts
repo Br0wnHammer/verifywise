@@ -61,3 +61,18 @@ export async function verifyAuditLedger(): Promise<VerifyResult> {
   const response = await CustomAxios.get("/audit-ledger/verify");
   return response.data.data;
 }
+
+export async function exportAuditLedger(
+  params: Pick<GetAuditLedgerParams, "entity_type" | "entry_type"> = {},
+): Promise<{ blob: Blob; filename: string }> {
+  const query = new URLSearchParams();
+  if (params.entity_type) query.set("entity_type", params.entity_type);
+  if (params.entry_type) query.set("entry_type", params.entry_type);
+  const response = await CustomAxios.get(
+    `/audit-ledger/export${query.toString() ? `?${query.toString()}` : ""}`,
+    { responseType: "blob" },
+  );
+  const fallback = `audit-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+  const match = /filename="?([^";]+)"?/.exec(response.headers?.["content-disposition"] ?? "");
+  return { blob: response.data, filename: match?.[1] ?? fallback };
+}

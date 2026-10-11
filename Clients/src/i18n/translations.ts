@@ -2826,6 +2826,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No arena battles found. Create a new battle to get started.":
       "Keine Arena-Vergleiche gefunden. Erstellen Sie einen neuen Vergleich, um zu starten.",
     "No audit ledger entries found.": "Keine Prüfjournal-Einträge gefunden.",
+    "Exporting...": "Export läuft...",
     "No audit logs yet": "Noch keine Prüfprotokolle",
     "No bias audits yet. Audit your models for fairness across demographic groups.":
       "Noch keine Verzerrungsprüfungen. Prüfen Sie Ihre Modelle auf Fairness über demografische Gruppen hinweg.",
@@ -13082,6 +13083,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No arena battles found. Create a new battle to get started.":
       "Aucune comparaison d'arène trouvée. Créez une nouvelle comparaison pour commencer.",
     "No audit ledger entries found.": "Aucune entrée trouvée dans le registre d'audit.",
+    "Exporting...": "Exportation...",
     "No audit logs yet": "Aucun journal d'audit pour le moment",
     "No bias audits yet. Audit your models for fairness across demographic groups.":
       "Aucun audit de biais pour le moment. Auditez vos modèles pour vérifier l'équité entre groupes démographiques.",
@@ -22531,6 +22533,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No approval requests found.": "No se han encontrado solicitudes de aprobación.",
     "No approval required": "No se requiere aprobación",
     "No audit ledger entries found.": "No se han encontrado entradas en el registro de auditoría.",
+    "Exporting...": "Exportando...",
     "No audit logs yet": "Aún no hay registros de auditoría",
     "No dependencies found": "No se han encontrado dependencias",
     "No detections in this period": "No hay detecciones en este periodo",

@@ -29,6 +29,16 @@ vi.mock("../hooks/useAuditLedger", () => ({
   useAuditLedger: () => mockHookState,
 }));
 
+const mockExportAuditLedger = vi.fn();
+vi.mock("../../../../../application/repository/auditLedger.repository", () => ({
+  exportAuditLedger: (...args: unknown[]) => mockExportAuditLedger(...args),
+}));
+
+const mockTriggerBrowserDownload = vi.fn();
+vi.mock("../../../../utils/browserDownload.utils", () => ({
+  triggerBrowserDownload: (...args: unknown[]) => mockTriggerBrowserDownload(...args),
+}));
+
 import AuditLedger from "../index";
 
 const buildEntry = (overrides: Partial<AuditLedgerEntry> = {}): AuditLedgerEntry => ({
@@ -193,5 +203,34 @@ describe("AuditLedger", () => {
     mockHookState = { ...defaultHookState, isVerifying: true };
     renderWithProviders(<AuditLedger />);
     expect(screen.getByText("Verifying...")).toBeInTheDocument();
+  });
+
+  it("exports the current filters and downloads the returned file", async () => {
+    const blob = new Blob(["a,b"], { type: "text/csv" });
+    mockExportAuditLedger.mockResolvedValue({ blob, filename: "audit-ledger-2026-10-11.csv" });
+    mockHookState = {
+      ...defaultHookState,
+      filters: { entity_type: "vendor", entry_type: "", searchUser: "" },
+    };
+    renderWithProviders(<AuditLedger />);
+    fireEvent.click(screen.getByText("Export CSV"));
+    await waitFor(() => {
+      expect(mockExportAuditLedger).toHaveBeenCalledWith({
+        entity_type: "vendor",
+        entry_type: undefined,
+      });
+      expect(mockTriggerBrowserDownload).toHaveBeenCalledWith(blob, "audit-ledger-2026-10-11.csv");
+    });
+  });
+
+  it("re-enables the export button and downloads nothing when the export fails", async () => {
+    mockExportAuditLedger.mockRejectedValue(new Error("fail"));
+    renderWithProviders(<AuditLedger />);
+    fireEvent.click(screen.getByText("Export CSV"));
+    await waitFor(() => {
+      expect(mockExportAuditLedger).toHaveBeenCalled();
+      expect(screen.getByText("Export CSV").closest("button")).not.toBeDisabled();
+    });
+    expect(mockTriggerBrowserDownload).not.toHaveBeenCalled();
   });
 });

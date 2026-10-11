@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -39,6 +39,8 @@ import singleTheme from "../../../themes/v1SingleTheme";
 import { useAuditLedger } from "./hooks/useAuditLedger";
 import { useFeatureSettings } from "../../../../application/hooks/useFeatureSettings";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
+import { exportAuditLedger } from "../../../../application/repository/auditLedger.repository";
+import { triggerBrowserDownload } from "../../../utils/browserDownload.utils";
 import { pageOfLabel } from "../../../components/Table/pageOfLabel";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,6 +101,23 @@ export default function AuditLedger() {
     verifyResult,
     isVerifying,
   } = useAuditLedger();
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const { blob, filename } = await exportAuditLedger({
+        entity_type: filters.entity_type || undefined,
+        entry_type: filters.entry_type || undefined,
+      });
+      triggerBrowserDownload(blob, filename);
+    } catch {
+      // customAxios already surfaces request errors
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const verifyBanner = useMemo(() => {
     if (!verifyResult) {
@@ -224,13 +243,22 @@ export default function AuditLedger() {
                 {verifyBanner.label}
               </Typography>
             </Stack>
-            <CustomizableButton
-              text={isVerifying ? "Verifying..." : "Verify chain"}
-              variant="contained"
-              onClick={verify}
-              isDisabled={isVerifying}
-              sx={{ height: 34, minWidth: 120 }}
-            />
+            <Stack direction="row" sx={{ gap: "8px" }}>
+              <CustomizableButton
+                text={isExporting ? "Exporting..." : "Export CSV"}
+                variant="outlined"
+                onClick={handleExport}
+                isDisabled={isExporting}
+                sx={{ height: 34, minWidth: 120 }}
+              />
+              <CustomizableButton
+                text={isVerifying ? "Verifying..." : "Verify chain"}
+                variant="contained"
+                onClick={verify}
+                isDisabled={isVerifying}
+                sx={{ height: 34, minWidth: 120 }}
+              />
+            </Stack>
           </Stack>
 
           {/* Filters row */}
