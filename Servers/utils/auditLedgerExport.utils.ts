@@ -27,25 +27,24 @@ export interface AuditLedgerExportFilters {
 }
 
 /**
- * WHERE conditions shared by the ledger list and the export, so the same
- * filters always select the same rows. Tables are aliased `al`.
+ * WHERE clause shared by the ledger list and the export, so the same filters
+ * always select the same rows. The SQL is fixed text: an empty filter value
+ * matches everything, so no part of the query is built from request input.
+ * Tables are aliased `al`.
  */
-export const ledgerFilterConditions = (
+export const LEDGER_FILTER_SQL = `al.organization_id = :organizationId
+  AND (:entityType = '' OR al.entity_type = :entityType)
+  AND (:entryType = '' OR al.entry_type = :entryType)`;
+
+/** Replacements for LEDGER_FILTER_SQL; a missing filter is an empty string. */
+export const ledgerFilterReplacements = (
   organizationId: number,
   filters: AuditLedgerExportFilters,
-): { conditions: string[]; replacements: Record<string, string | number> } => {
-  const conditions = ["al.organization_id = :organizationId"];
-  const replacements: Record<string, string | number> = { organizationId };
-  if (filters.entityType) {
-    conditions.push("al.entity_type = :entityType");
-    replacements.entityType = filters.entityType;
-  }
-  if (filters.entryType) {
-    conditions.push("al.entry_type = :entryType");
-    replacements.entryType = filters.entryType;
-  }
-  return { conditions, replacements };
-};
+): Record<string, string | number> => ({
+  organizationId,
+  entityType: filters.entityType ?? "",
+  entryType: filters.entryType ?? "",
+});
 
 /** One batch of the org's ledger after `afterId`, oldest first. */
 export const fetchAuditLedgerBatch = async (
@@ -53,15 +52,18 @@ export const fetchAuditLedgerBatch = async (
   filters: AuditLedgerExportFilters,
   afterId: number,
 ): Promise<any[]> => {
-  const { conditions, replacements } = ledgerFilterConditions(organizationId, filters);
-  conditions.push("al.id > :afterId");
-  Object.assign(replacements, { afterId, limit: EXPORT_BATCH_SIZE });
+  const replacements = {
+    ...ledgerFilterReplacements(organizationId, filters),
+    afterId,
+    limit: EXPORT_BATCH_SIZE,
+  };
 
   return sequelize.query(
     `SELECT al.*, u.name AS user_name, u.surname AS user_surname
        FROM audit_ledger al
        LEFT JOIN users u ON al.user_id = u.id
-      WHERE ${conditions.join(" AND ")}
+      WHERE ${LEDGER_FILTER_SQL}
+        AND al.id > :afterId
       ORDER BY al.id ASC
       LIMIT :limit`,
     { replacements, type: QueryTypes.SELECT },

@@ -8,7 +8,8 @@ import {
   AUDIT_LEDGER_EXPORT_COLUMNS,
   EXPORT_BATCH_SIZE,
   fetchAuditLedgerBatch,
-  ledgerFilterConditions,
+  LEDGER_FILTER_SQL,
+  ledgerFilterReplacements,
   ledgerRowValues,
 } from "../utils/auditLedgerExport.utils";
 import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper";
@@ -29,16 +30,17 @@ export async function getAuditLedger(req: Request, res: Response): Promise<any> 
     const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
 
     // Optional filters; a repeated param (an array) counts as no filter.
-    const { conditions, replacements } = ledgerFilterConditions(organizationId, {
-      entityType: typeof req.query.entity_type === "string" ? req.query.entity_type : "",
-      entryType: typeof req.query.entry_type === "string" ? req.query.entry_type : "",
-    });
-    Object.assign(replacements, { limit, offset });
-
-    const whereClause = `WHERE ${conditions.join(" AND ")}`;
+    const replacements = {
+      ...ledgerFilterReplacements(organizationId, {
+        entityType: typeof req.query.entity_type === "string" ? req.query.entity_type : "",
+        entryType: typeof req.query.entry_type === "string" ? req.query.entry_type : "",
+      }),
+      limit,
+      offset,
+    };
 
     const countResult: any[] = await sequelize.query(
-      `SELECT COUNT(*) as count FROM audit_ledger al ${whereClause}`,
+      `SELECT COUNT(*) as count FROM audit_ledger al WHERE ${LEDGER_FILTER_SQL}`,
       { replacements, type: QueryTypes.SELECT },
     );
     const total = parseInt(countResult[0]?.count || "0", 10);
@@ -47,7 +49,7 @@ export async function getAuditLedger(req: Request, res: Response): Promise<any> 
       `SELECT al.*, u.name as user_name, u.surname as user_surname
        FROM audit_ledger al
        LEFT JOIN users u ON al.user_id = u.id
-       ${whereClause}
+       WHERE ${LEDGER_FILTER_SQL}
        ORDER BY al.id DESC
        LIMIT :limit OFFSET :offset`,
       {

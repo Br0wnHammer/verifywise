@@ -6,7 +6,8 @@ jest.mock("../../database/db", () => ({
 
 import { sequelize } from "../../database/db";
 import {
-  ledgerFilterConditions,
+  LEDGER_FILTER_SQL,
+  ledgerFilterReplacements,
   fetchAuditLedgerBatch,
   ledgerRowValues,
   AUDIT_LEDGER_EXPORT_COLUMNS,
@@ -28,12 +29,13 @@ describe("fetchAuditLedgerBatch", () => {
     expect(sql).toContain("al.id > :afterId");
     expect(sql).toContain("ORDER BY al.id ASC");
     expect(sql).toContain("LIMIT :limit");
-    expect(sql).not.toContain("al.entity_type");
-    expect(sql).not.toContain("al.entry_type");
+    // No filter: the fixed filter SQL gets empty values, which match everything.
     expect(opts.replacements).toEqual({
       organizationId: 7,
+      entityType: "",
+      entryType: "",
       afterId: 42,
-      limit: EXPORT_BATCH_SIZE,
+      limit: 1000,
     });
   });
 
@@ -47,19 +49,23 @@ describe("fetchAuditLedgerBatch", () => {
   });
 });
 
-describe("ledgerFilterConditions", () => {
-  it("always scopes by organization and adds only the filters given", () => {
-    expect(ledgerFilterConditions(2, {})).toEqual({
-      conditions: ["al.organization_id = :organizationId"],
-      replacements: { organizationId: 2 },
+describe("ledger filter", () => {
+  it("is fixed SQL with an always-on org scope and optional filters", () => {
+    expect(LEDGER_FILTER_SQL).toContain("al.organization_id = :organizationId");
+    expect(LEDGER_FILTER_SQL).toContain("(:entityType = '' OR al.entity_type = :entityType)");
+    expect(LEDGER_FILTER_SQL).toContain("(:entryType = '' OR al.entry_type = :entryType)");
+  });
+
+  it("passes missing filters as empty strings", () => {
+    expect(ledgerFilterReplacements(2, {})).toEqual({
+      organizationId: 2,
+      entityType: "",
+      entryType: "",
     });
-    expect(ledgerFilterConditions(2, { entityType: "vendor", entryType: "event_log" })).toEqual({
-      conditions: [
-        "al.organization_id = :organizationId",
-        "al.entity_type = :entityType",
-        "al.entry_type = :entryType",
-      ],
-      replacements: { organizationId: 2, entityType: "vendor", entryType: "event_log" },
+    expect(ledgerFilterReplacements(2, { entityType: "vendor", entryType: "event_log" })).toEqual({
+      organizationId: 2,
+      entityType: "vendor",
+      entryType: "event_log",
     });
   });
 });
