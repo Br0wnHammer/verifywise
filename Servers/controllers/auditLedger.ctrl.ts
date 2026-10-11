@@ -141,6 +141,8 @@ const EXPORT_ENTRY_TYPES = ["event_log", "change_history"];
 /** Resolves when the response drains, or when it closes (client gone). */
 function waitForDrainOrClose(res: Response): Promise<void> {
   return new Promise((resolve) => {
+    // Already gone: "close" has fired and would never fire again.
+    if (res.destroyed) return resolve();
     const onDrain = () => {
       res.off("close", onClose);
       resolve();
@@ -163,8 +165,9 @@ export async function exportAuditLedger(req: Request, res: Response): Promise<an
     organizationId: req.organizationId!,
   });
 
-  const entityType = (req.query.entity_type as string) || "";
-  const entryType = (req.query.entry_type as string) || "";
+  // A repeated param arrives as an array; treat anything but one string as no filter.
+  const entityType = typeof req.query.entity_type === "string" ? req.query.entity_type : "";
+  const entryType = typeof req.query.entry_type === "string" ? req.query.entry_type : "";
 
   if (entryType && !EXPORT_ENTRY_TYPES.includes(entryType)) {
     return res
@@ -219,7 +222,7 @@ export async function exportAuditLedger(req: Request, res: Response): Promise<an
     // Best effort; never delays or fails the download.
     try {
       const filterNote = [
-        entityType && `entity_type=${entityType}`,
+        entityType && `entity_type=${entityType.slice(0, 100)}`,
         entryType && `entry_type=${entryType}`,
       ]
         .filter(Boolean)

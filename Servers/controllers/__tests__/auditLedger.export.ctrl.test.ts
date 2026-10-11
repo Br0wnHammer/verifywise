@@ -229,6 +229,9 @@ describe("auditLedger.ctrl - exportAuditLedger", () => {
     clearInterval(pump);
     expect(fetchBatch).toHaveBeenCalledTimes(2);
     expect(res.end).toHaveBeenCalled();
+    // each drain wait removed its close listener; only the export's own remains
+    expect(res.listenerCount("drain")).toBe(0);
+    expect(res.listenerCount("close")).toBe(1);
   });
 
   it("ends the loop without hanging when close arrives instead of drain", async () => {
@@ -242,5 +245,31 @@ describe("auditLedger.ctrl - exportAuditLedger", () => {
     expect(fetchBatch).toHaveBeenCalledTimes(1);
     expect(res.end).not.toHaveBeenCalled();
     expect(appendLedger).not.toHaveBeenCalled();
+    expect(res.listenerCount("drain")).toBe(0);
+  });
+
+  it("writes nothing when the client leaves during the first batch", async () => {
+    let resolveFirst: (v: any[]) => void = () => {};
+    fetchBatch.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolveFirst = r;
+        }),
+    );
+    const res = createRes();
+    const done = exportAuditLedger(createReq(), res);
+    await flush();
+    res.emit("close");
+    resolveFirst(makeRows(1, 1000));
+    await done;
+    expect(fetchBatch).toHaveBeenCalledTimes(1);
+    expect(res.write).not.toHaveBeenCalled();
+    expect(res.end).not.toHaveBeenCalled();
+  });
+
+  it("treats a repeated filter param as no filter", async () => {
+    fetchBatch.mockResolvedValueOnce(makeRows(1, 1));
+    await exportAuditLedger(createReq({ entity_type: ["vendor", "policy"] }), createRes());
+    expect(fetchBatch).toHaveBeenCalledWith(2, { entityType: "", entryType: "" }, 0);
   });
 });
