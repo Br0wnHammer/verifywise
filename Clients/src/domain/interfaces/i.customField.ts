@@ -61,6 +61,8 @@ export interface IUpdateCustomFieldDefinitionInput {
   required?: boolean;
   options?: string[] | IScoredOptionInput[] | null;
   option_moves?: Record<string, string>;
+  /** Removed options whose answers are deleted instead of moved. */
+  option_removals?: string[];
 }
 
 export const CUSTOM_FIELD_ENTITY_LABELS: Record<CustomFieldEntityType, string> = {

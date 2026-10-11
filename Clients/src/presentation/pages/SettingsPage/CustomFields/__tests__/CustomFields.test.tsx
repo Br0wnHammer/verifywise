@@ -232,6 +232,116 @@ describe("CustomFieldsTab", () => {
     });
   });
 
+  describe("plain select options in use", () => {
+    const selectDef = buildDefinition({
+      id: 6,
+      entity_type: "project",
+      label: "Region",
+      field_key: "region",
+      field_type: "select",
+      options: ["Low", "Medium", "High"],
+    });
+
+    it("moves answers to the new text when a used option is renamed", async () => {
+      mockQueryState = { data: [selectDef], isLoading: false, isError: false };
+      mockUpdateMutate.mockImplementationOnce((_vars: any, opts: any) =>
+        opts.onError({
+          status: 409,
+          message: "Some removed options are in use. Choose where to move their answers.",
+          response: {
+            message: "Conflict",
+            data: {
+              code: "options_in_use",
+              in_use: [{ id: "Medium", label: "Medium", count: 3 }],
+              entity_type: "project",
+            },
+          },
+        }),
+      );
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Edit field"));
+      fireEvent.change(screen.getByDisplayValue(/Low\s+Medium\s+High/), {
+        target: { value: "Low\nModerate\nHigh" },
+      });
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+      expect(
+        await screen.findByText(
+          "Medium is used by 3 use cases. Choose what happens to these answers:",
+        ),
+      ).toBeInTheDocument();
+      openCustomSelect("move-0");
+      await userEvent.click(screen.getByRole("option", { name: "Moderate" }));
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+      expect(mockUpdateMutate).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: 6,
+          body: expect.objectContaining({
+            options: ["Low", "Moderate", "High"],
+            option_moves: { Medium: "Moderate" },
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe("removing answers instead of moving them", () => {
+    it("sends option_removals when Remove from records is chosen", async () => {
+      const selectDef = buildDefinition({
+        id: 7,
+        entity_type: "vendor",
+        label: "Tags",
+        field_key: "tags",
+        field_type: "multiselect",
+        options: ["Cloud", "Legacy"],
+      });
+      mockQueryState = { data: [selectDef], isLoading: false, isError: false };
+      mockUpdateMutate.mockImplementationOnce((_vars: any, opts: any) =>
+        opts.onError({
+          status: 409,
+          message: "Some removed options are in use.",
+          response: {
+            message: "Conflict",
+            data: {
+              code: "options_in_use",
+              in_use: [{ id: "Legacy", label: "Legacy", count: 40 }],
+              entity_type: "vendor",
+            },
+          },
+        }),
+      );
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Edit field"));
+      fireEvent.change(screen.getByDisplayValue(/Cloud\s+Legacy/), { target: { value: "Cloud" } });
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+      await screen.findByText(
+        "Legacy is used by 40 vendors. Choose what happens to these answers:",
+      );
+      openCustomSelect("move-0");
+      await userEvent.click(screen.getByRole("option", { name: "Remove from records" }));
+      expect(
+        screen.getByText(/These answers will be deleted and can't be restored\./),
+      ).toBeInTheDocument();
+      const dialog = screen.getByRole("dialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+      expect(mockUpdateMutate).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: 7,
+          body: expect.objectContaining({
+            options: ["Cloud"],
+            option_moves: {},
+            option_removals: ["Legacy"],
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
   describe("scored select", () => {
     const scoredDef = buildDefinition({
       id: 5,
@@ -348,11 +458,13 @@ describe("CustomFieldsTab", () => {
       await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
       expect(
-        await screen.findByText("Medium is used by 80 use cases. Move these answers to:"),
+        await screen.findByText(
+          "Medium is used by 80 use cases. Choose what happens to these answers:",
+        ),
       ).toBeInTheDocument();
-      openCustomSelect("move-opt_m");
+      openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
-      await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
       expect(mockUpdateMutate).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -391,17 +503,21 @@ describe("CustomFieldsTab", () => {
       await userEvent.click(screen.getAllByRole("button", { name: "Remove option" })[0]);
       await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
-      await screen.findByText("Medium is used by 80 use cases. Move these answers to:");
-      openCustomSelect("move-opt_m");
+      await screen.findByText(
+        "Medium is used by 80 use cases. Choose what happens to these answers:",
+      );
+      openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
-      await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
       expect(
-        await screen.findByText("High is used by 2 use cases. Move these answers to:"),
+        await screen.findByText(
+          "High is used by 2 use cases. Choose what happens to these answers:",
+        ),
       ).toBeInTheDocument();
-      openCustomSelect("move-opt_h");
+      openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
-      await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
       expect(mockUpdateMutate).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -443,7 +559,7 @@ describe("CustomFieldsTab", () => {
 
       expect(
         await screen.findByText(
-          "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.",
+          "New options can't receive answers until they are saved. Remove these answers now, or save the new options first and move the answers later.",
         ),
       ).toBeInTheDocument();
     });

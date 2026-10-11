@@ -113,30 +113,32 @@ export const validateScoredOptions = (
 };
 
 /** Options in `before` that `after` no longer has. */
-export const removedOptions = (
-  before: IScoredOption[],
-  after: IScoredOption[],
-): IScoredOption[] => {
+export const removedOptions = <T extends { id: string }>(
+  before: ReadonlyArray<T>,
+  after: ReadonlyArray<{ id: string }>,
+): T[] => {
   const kept = new Set(after.map((o) => o.id));
   return before.filter((o) => !kept.has(o.id));
 };
 
 /**
  * Validate `option_moves` ({ removedId: targetId }). A source must be a removed
- * option; a target must be one of the remaining options.
+ * option; a target must be one of the remaining options. For select and
+ * multiselect fields an option's id is its text.
  */
 export const validateOptionMoves = (
   moves: unknown,
-  removed: IScoredOption[],
-  after: IScoredOption[],
+  removed: ReadonlyArray<{ id: string }>,
+  after: ReadonlyArray<{ id: string }>,
 ): Record<string, string> => {
-  if (moves === undefined || moves === null) return {};
+  // No prototype: plain option text such as "constructor" is a valid key.
+  const result: Record<string, string> = Object.create(null);
+  if (moves === undefined || moves === null) return result;
   if (typeof moves !== "object" || Array.isArray(moves)) {
     throw new ValidationException("option_moves must be an object", "option_moves");
   }
   const removedIds = new Set(removed.map((o) => o.id));
   const targetIds = new Set(after.map((o) => o.id));
-  const result: Record<string, string> = {};
   for (const [from, to] of Object.entries(moves as Record<string, unknown>)) {
     if (!removedIds.has(from)) {
       throw new ValidationException(
@@ -153,6 +155,41 @@ export const validateOptionMoves = (
       );
     }
     result[from] = to;
+  }
+  return result;
+};
+
+/**
+ * Validate `option_removals`: removed options whose answers are deleted rather
+ * than moved. Each must be a removed option, listed once, and not also moved.
+ */
+export const validateOptionRemovals = (
+  removals: unknown,
+  removed: ReadonlyArray<{ id: string }>,
+  moves: Record<string, string>,
+): Set<string> => {
+  const result = new Set<string>();
+  if (removals === undefined || removals === null) return result;
+  if (!Array.isArray(removals)) {
+    throw new ValidationException("option_removals must be an array", "option_removals");
+  }
+  const removedIds = new Set(removed.map((o) => o.id));
+  for (const id of removals) {
+    if (typeof id !== "string" || !removedIds.has(id)) {
+      throw new ValidationException(
+        "option_removals can only list a removed option",
+        "option_removals",
+        id,
+      );
+    }
+    if (result.has(id) || Object.prototype.hasOwnProperty.call(moves, id)) {
+      throw new ValidationException(
+        "an option can be moved or removed once, not both",
+        "option_removals",
+        id,
+      );
+    }
+    result.add(id);
   }
   return result;
 };

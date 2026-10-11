@@ -13,9 +13,11 @@ import {
   OPTIONS_IN_USE,
   removedOptions,
   validateOptionMoves,
+  validateOptionRemovals,
   validateScoredOptions,
 } from "./customFieldScoredSelect.utils";
 import {
+  ClearedAnswers,
   diffDefinitionForLedger,
   MovedAnswers,
   recordDefinitionChanges,
@@ -434,11 +436,120 @@ const countValuesByKey = async (
       GROUP BY 1`,
     { replacements: { id, organizationId }, type: QueryTypes.SELECT, transaction },
   )) as Array<{ option_key: string; count: number }>;
-  return Object.fromEntries(rows.map((r) => [r.option_key, Number(r.count)]));
+  return toCounts(rows);
 };
+
+/**
+ * Counts keyed by option, with no prototype: plain option text is free text,
+ * and a key such as "constructor" must not resolve to an inherited member.
+ */
+const toCounts = (rows: Array<{ option_key: string; count: number }>): Record<string, number> =>
+  Object.assign(
+    Object.create(null),
+    Object.fromEntries(rows.map((r) => [r.option_key, Number(r.count)])),
+  );
 
 const sumCounts = (counts: Record<string, number>): number =>
   Object.values(counts).reduce((a, b) => a + b, 0);
+
+/**
+ * Records per option. A multiselect record counts once for each option it
+ * contains; other types store one option per record (see countValuesByKey).
+ */
+const countAnswersByOption = async (
+  definition: ICustomFieldDefinition,
+  transaction?: Transaction,
+): Promise<Record<string, number>> => {
+  if (definition.field_type !== "multiselect") {
+    return countValuesByKey(definition.id, definition.organization_id, transaction);
+  }
+  const rows = (await sequelize.query(
+    `SELECT option_key, COUNT(*)::int AS count
+       FROM custom_field_values v,
+            jsonb_array_elements_text(
+              CASE WHEN jsonb_typeof(v.value) = 'array' THEN v.value ELSE '[]'::jsonb END
+            ) AS option_key
+      WHERE v.definition_id = :id AND v.organization_id = :organizationId
+      GROUP BY 1`,
+    {
+      replacements: { id: definition.id, organizationId: definition.organization_id },
+      type: QueryTypes.SELECT,
+      transaction,
+    },
+  )) as Array<{ option_key: string; count: number }>;
+  return toCounts(rows);
+};
+
+const OPTION_LIST_TYPES: ReadonlySet<CustomFieldType> = new Set([
+  "select",
+  "multiselect",
+  "scored_select",
+]);
+
+/**
+ * Options keyed the way records store them: scored options by id, plain
+ * select and multiselect options by their text.
+ */
+const optionKeys = (
+  fieldType: CustomFieldType,
+  options: unknown,
+): Array<{ id: string; label: string }> =>
+  fieldType === "scored_select"
+    ? ((options ?? []) as IScoredOption[])
+    : ((options ?? []) as string[]).map((o) => ({ id: o, label: o }));
+
+/** Point every record holding the removed option at the target option. */
+const MOVE_SINGLE_SQL = `
+  UPDATE custom_field_values
+     SET value = to_jsonb(CAST(:target AS text)), updated_at = NOW()
+   WHERE definition_id = :id AND organization_id = :organizationId
+     AND value = to_jsonb(CAST(:removed AS text))
+  RETURNING 1`;
+
+/**
+ * Replace the removed option with the target in each multiselect list that
+ * contains it. A list that already has the target keeps one copy, at its
+ * first position; the other options keep their order.
+ */
+const MOVE_MULTISELECT_SQL = `
+  UPDATE custom_field_values
+     SET value = (
+           SELECT jsonb_agg(option ORDER BY first_pos)
+             FROM (
+               SELECT CASE WHEN raw = CAST(:removed AS text) THEN CAST(:target AS text) ELSE raw END
+                        AS option,
+                      MIN(pos) AS first_pos
+                 FROM jsonb_array_elements_text(value) WITH ORDINALITY AS t(raw, pos)
+                GROUP BY 1
+             ) deduped
+         ),
+         updated_at = NOW()
+   WHERE definition_id = :id AND organization_id = :organizationId
+     AND jsonb_typeof(value) = 'array'
+     AND value @> jsonb_build_array(CAST(:removed AS text))
+  RETURNING 1`;
+
+/** Delete the value of every record holding the removed option. */
+const CLEAR_SINGLE_SQL = `
+  DELETE FROM custom_field_values
+   WHERE definition_id = :id AND organization_id = :organizationId
+     AND value = to_jsonb(CAST(:removed AS text))
+  RETURNING 1`;
+
+/** Drop the removed option from each multiselect list that contains it. */
+const CLEAR_MULTISELECT_SQL = `
+  UPDATE custom_field_values
+     SET value = value - CAST(:removed AS text), updated_at = NOW()
+   WHERE definition_id = :id AND organization_id = :organizationId
+     AND jsonb_typeof(value) = 'array'
+     AND value @> jsonb_build_array(CAST(:removed AS text))
+  RETURNING 1`;
+
+/** An empty multiselect is not a valid answer: delete lists a removal emptied. */
+const DELETE_EMPTY_LISTS_SQL = `
+  DELETE FROM custom_field_values
+   WHERE definition_id = :id AND organization_id = :organizationId
+     AND value = '[]'::jsonb`;
 
 export const getCustomFieldUsageQuery = async (
   id: number,
@@ -448,10 +559,14 @@ export const getCustomFieldUsageQuery = async (
   assertPositiveInt(organizationId, "organizationId");
   const definition = await getCustomFieldDefinitionByIdQuery(id, organizationId);
   if (!definition) return null;
-  const counts = await countValuesByKey(id, organizationId);
+  // One value row per record, so the per-value counts add up to the record
+  // count. Only multiselect needs a second, per-option query.
+  const byValue = await countValuesByKey(id, organizationId);
+  const byOption =
+    definition.field_type === "multiselect" ? await countAnswersByOption(definition) : byValue;
   return {
-    total: sumCounts(counts),
-    by_option: definition.field_type === "scored_select" ? counts : {},
+    total: sumCounts(byValue),
+    by_option: OPTION_LIST_TYPES.has(definition.field_type) ? byOption : {},
   };
 };
 
@@ -519,7 +634,13 @@ export const createCustomFieldDefinitionQuery = async (
 export const updateCustomFieldDefinitionQuery = async (
   id: number,
   organizationId: number,
-  patch: { label?: unknown; required?: unknown; options?: unknown; option_moves?: unknown },
+  patch: {
+    label?: unknown;
+    required?: unknown;
+    options?: unknown;
+    option_moves?: unknown;
+    option_removals?: unknown;
+  },
   userId: number | null = null,
 ): Promise<ICustomFieldDefinition> => {
   assertPositiveInt(id, "id");
@@ -530,6 +651,7 @@ export const updateCustomFieldDefinitionQuery = async (
   let before!: ICustomFieldDefinition;
   let after!: ICustomFieldDefinition;
   const moved: MovedAnswers[] = [];
+  const cleared: ClearedAnswers[] = [];
   try {
     // field_type, field_key, entity_type are immutable on update — changing them
     // would invalidate existing values. Force a create + delete instead.
@@ -543,12 +665,14 @@ export const updateCustomFieldDefinitionQuery = async (
     }
     before = existing;
     const isScored = existing.field_type === "scored_select";
-    const hasMoves = patch.option_moves !== undefined && patch.option_moves !== null;
-    if (!isScored && hasMoves) {
-      throw new ValidationException(
-        "option_moves is only allowed for scored select fields",
-        "option_moves",
-      );
+    for (const key of ["option_moves", "option_removals"] as const) {
+      const given = patch[key] !== undefined && patch[key] !== null;
+      if (given && !OPTION_LIST_TYPES.has(existing.field_type)) {
+        throw new ValidationException(
+          `${key} is only allowed for select, multiselect and scored select fields`,
+          key,
+        );
+      }
     }
 
     const label = patch.label !== undefined ? validateLabel(patch.label) : existing.label;
@@ -562,15 +686,18 @@ export const updateCustomFieldDefinitionQuery = async (
           )
         : existing.options;
 
-    if (isScored) {
-      const prev = (existing.options ?? []) as IScoredOption[];
-      const next = (options ?? []) as IScoredOption[];
+    if (OPTION_LIST_TYPES.has(existing.field_type)) {
+      // Scored options are matched by id; plain options by their text, which is
+      // also what records store, so renaming a plain option removes the old one.
+      const prev = optionKeys(existing.field_type, existing.options);
+      const next = optionKeys(existing.field_type, options);
       const removed = removedOptions(prev, next);
       const moves = validateOptionMoves(patch.option_moves, removed, next);
+      const removals = validateOptionRemovals(patch.option_removals, removed, moves);
       if (removed.length > 0) {
-        const counts = await countValuesByKey(id, organizationId, transaction);
+        const counts = await countAnswersByOption(existing, transaction);
         const inUse = removed
-          .filter((o) => (counts[o.id] ?? 0) > 0 && !moves[o.id])
+          .filter((o) => (counts[o.id] ?? 0) > 0 && !moves[o.id] && !removals.has(o.id))
           .map((o) => ({ id: o.id, label: o.label, count: counts[o.id] }));
         if (inUse.length > 0) {
           throw new ConflictException(
@@ -583,22 +710,41 @@ export const updateCustomFieldDefinitionQuery = async (
           );
         }
         for (const option of removed) {
+          if (removals.has(option.id) && counts[option.id]) {
+            const rows = await sequelize.query(
+              existing.field_type === "multiselect" ? CLEAR_MULTISELECT_SQL : CLEAR_SINGLE_SQL,
+              {
+                replacements: { removed: option.id, id, organizationId },
+                type: QueryTypes.SELECT,
+                transaction,
+              },
+            );
+            cleared.push({ from: { id: option.id, label: option.label }, count: rows.length });
+            continue;
+          }
           const target = moves[option.id];
           // Nothing to move when no record uses the option; skip the no-op write and ledger line.
           if (!target || !counts[option.id]) continue;
           const rows = await sequelize.query(
-            `UPDATE custom_field_values
-                SET value = to_jsonb(CAST(:target AS text)), updated_at = NOW()
-              WHERE definition_id = :id AND organization_id = :organizationId
-                AND value = to_jsonb(CAST(:removed AS text))
-              RETURNING 1`,
+            existing.field_type === "multiselect" ? MOVE_MULTISELECT_SQL : MOVE_SINGLE_SQL,
             {
               replacements: { target, removed: option.id, id, organizationId },
               type: QueryTypes.SELECT,
               transaction,
             },
           );
-          moved.push({ from: option, to: next.find((o) => o.id === target)!, count: rows.length });
+          const to = next.find((o) => o.id === target)!;
+          moved.push({
+            from: { id: option.id, label: option.label },
+            to: { id: to.id, label: to.label },
+            count: rows.length,
+          });
+        }
+        if (existing.field_type === "multiselect" && cleared.length > 0) {
+          await sequelize.query(DELETE_EMPTY_LISTS_SQL, {
+            replacements: { id, organizationId },
+            transaction,
+          });
         }
       }
     }
@@ -634,7 +780,7 @@ export const updateCustomFieldDefinitionQuery = async (
     organizationId,
     userId,
     id,
-    diffDefinitionForLedger(before, after, { moved }),
+    diffDefinitionForLedger(before, after, { moved, cleared }),
   );
   return after;
 };

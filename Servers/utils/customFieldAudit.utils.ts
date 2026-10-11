@@ -3,10 +3,19 @@ import { logFailure } from "./logger/logHelper";
 import { formatScore, formatScoredOption, IScoredOption } from "./customFieldScoredSelect.utils";
 import type { CustomFieldEntityType, ICustomFieldDefinition } from "./customField.utils";
 
-/** Answers moved from a removed scored option to another option. */
+/**
+ * Answers moved from a removed option to another option. For select and
+ * multiselect fields an option's id is its text.
+ */
 export interface MovedAnswers {
-  from: IScoredOption;
-  to: IScoredOption;
+  from: { id: string; label: string };
+  to: { id: string; label: string };
+  count: number;
+}
+
+/** Answers deleted with a removed option instead of moved. */
+export interface ClearedAnswers {
+  from: { id: string; label: string };
   count: number;
 }
 
@@ -42,7 +51,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export const diffDefinitionForLedger = (
   before: ICustomFieldDefinition | null,
   after: ICustomFieldDefinition | null,
-  extra: { moved?: MovedAnswers[]; lostAnswers?: number } = {},
+  extra: { moved?: MovedAnswers[]; cleared?: ClearedAnswers[]; lostAnswers?: number } = {},
 ): LedgerChange[] => {
   if (!before && after) {
     return [
@@ -100,13 +109,16 @@ export const diffDefinitionForLedger = (
     for (const option of prev) {
       if (kept.has(option.id)) continue;
       const move = extra.moved?.find((m) => m.from.id === option.id);
+      const clear = extra.cleared?.find((c) => c.from.id === option.id);
       update(
         "option",
         formatScoredOption(option),
         null,
         move
           ? `${description} · ${plural(move.count, "answer", "answers")} moved to ${move.to.label}`
-          : description,
+          : clear
+            ? `${description} · ${plural(clear.count, "answer", "answers")} removed`
+            : description,
       );
     }
   } else {
@@ -114,6 +126,22 @@ export const diffDefinitionForLedger = (
     const next = (after.options ?? []) as string[];
     if ([...prev].sort().join("\u0000") !== [...next].sort().join("\u0000")) {
       update("options", prev.join(", "), next.join(", "));
+    }
+    for (const move of extra.moved ?? []) {
+      update(
+        "option",
+        move.from.label,
+        null,
+        `${description} · ${plural(move.count, "answer", "answers")} moved to ${move.to.label}`,
+      );
+    }
+    for (const clear of extra.cleared ?? []) {
+      update(
+        "option",
+        clear.from.label,
+        null,
+        `${description} · ${plural(clear.count, "answer", "answers")} removed`,
+      );
     }
   }
   return changes;

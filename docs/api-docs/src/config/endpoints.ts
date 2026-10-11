@@ -2454,7 +2454,7 @@ export const customFieldsEndpoints: Endpoint[] = [
     description: "Requires role: Admin",
     requiresAuth: true,
     responses: [
-      { status: 200, description: "Answer counts. total is the number of saved answers; by_option maps option id to count (scored select only, empty otherwise)." },
+      { status: 200, description: "Answer counts. total is the number of saved answers; by_option maps each option to its count: the option id for scored select, the option text for select and multiselect (a multiselect record counts once per option it holds); empty for other types." },
       { status: 404, description: "Definition not found" },
       { status: 500, description: "Internal server error" },
     ],
@@ -2494,10 +2494,11 @@ export const customFieldsEndpoints: Endpoint[] = [
       "required": "boolean (optional)",
       "options": "array (optional)",
       "option_moves": "object (optional)",
+      "option_removals": "array (optional)",
     },
     responses: [
       { status: 200, description: "Success" },
-      { status: 409, description: "Removed options are still in use. data has code options_in_use, in_use [{ id, label, count }] and entity_type; retry with option_moves." },
+      { status: 409, description: "Removed options are still in use. data has code options_in_use, in_use [{ id, label, count }] and entity_type; retry with option_moves and/or option_removals." },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Custom Fields",

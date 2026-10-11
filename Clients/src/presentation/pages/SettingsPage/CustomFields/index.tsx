@@ -89,7 +89,7 @@ const CustomFieldsTab: React.FC = () => {
   const deleteMutation = useDeleteCustomFieldDefinition(entityType);
   const { t } = useTranslation();
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
-  // Per-option counts only exist for scored fields.
+  // Per-option counts are shown only in the scored options editor.
   const { data: editingUsage } = useCustomFieldUsage(
     editing?.field_type === "scored_select" ? editing.id : null,
   );
@@ -105,6 +105,7 @@ const CustomFieldsTab: React.FC = () => {
     id: number,
     body: PendingMove["body"],
     moves: Record<string, string>,
+    removals: string[],
   ) => {
     const data = err?.response?.data;
     if (err?.status === 409 && data?.code === "options_in_use") {
@@ -112,6 +113,7 @@ const CustomFieldsTab: React.FC = () => {
         id,
         body,
         moves,
+        removals,
         inUse: data.in_use as OptionInUse[],
         entityType: data.entity_type as CustomFieldEntityType,
       });
@@ -338,7 +340,7 @@ const CustomFieldsTab: React.FC = () => {
               {
                 onSuccess: () => setEditing(null),
                 onError: (err: any) =>
-                  handleUpdateError(err, editing.id, body as PendingMove["body"], {}),
+                  handleUpdateError(err, editing.id, body as PendingMove["body"], {}, []),
               },
             );
           }}
@@ -351,19 +353,28 @@ const CustomFieldsTab: React.FC = () => {
           inUse={pendingMove.inUse}
           entityType={pendingMove.entityType}
           remaining={pendingMove.body.options}
+          required={pendingMove.body.required ?? false}
           isSubmitting={updateMutation.isPending}
           onCancel={() => setPendingMove(null)}
-          onConfirm={(moves) => {
+          onConfirm={(moves, removals) => {
             const allMoves = { ...pendingMove.moves, ...moves };
+            const allRemovals = [...new Set([...pendingMove.removals, ...removals])];
             updateMutation.mutate(
-              { id: pendingMove.id, body: { ...pendingMove.body, option_moves: allMoves } },
+              {
+                id: pendingMove.id,
+                body: {
+                  ...pendingMove.body,
+                  option_moves: allMoves,
+                  option_removals: allRemovals,
+                },
+              },
               {
                 onSuccess: () => {
                   setPendingMove(null);
                   setEditing(null);
                 },
                 onError: (err: any) =>
-                  handleUpdateError(err, pendingMove.id, pendingMove.body, allMoves),
+                  handleUpdateError(err, pendingMove.id, pendingMove.body, allMoves, allRemovals),
               },
             );
           }}
@@ -410,9 +421,11 @@ const CustomFieldsTab: React.FC = () => {
 
 interface PendingMove {
   id: number;
-  body: { label: string; required?: boolean; options: IScoredOptionInput[] };
+  body: { label: string; required?: boolean; options: IScoredOptionInput[] | string[] };
   /** Moves chosen in earlier rounds, resent with the next save. */
   moves: Record<string, string>;
+  /** Options whose answers were chosen to be removed in earlier rounds. */
+  removals: string[];
   inUse: OptionInUse[];
   entityType: CustomFieldEntityType;
 }

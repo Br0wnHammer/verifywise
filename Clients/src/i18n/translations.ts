@@ -7257,8 +7257,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Multiple choice": "Mehrfachauswahl",
     "Multiple selection dropdown": "Mehrfachauswahl-Dropdown",
     "Scored select": "Bewertete Auswahl",
-    "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.":
-      "Neue Optionen können erst nach dem Speichern Antworten erhalten. Speichern Sie zuerst die neuen Optionen und entfernen Sie dann die alten.",
+    "New options can't receive answers until they are saved. Remove these answers now, or save the new options first and move the answers later.":
+      "Neue Optionen können erst nach dem Speichern Antworten erhalten. Entfernen Sie diese Antworten jetzt oder speichern Sie zuerst die neuen Optionen und verschieben Sie die Antworten danach.",
     "Custom field": "Benutzerdefiniertes Feld",
     "Option label": "Optionsbezeichnung",
     "Move option up": "Option nach oben",
@@ -7268,14 +7268,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Every option needs a label and a score.":
       "Jede Option braucht eine Bezeichnung und eine Punktzahl.",
     "Option labels must be unique.": "Optionsbezeichnungen müssen eindeutig sein.",
-    "Move answers before removing options": "Antworten verschieben, bevor Optionen entfernt werden",
-    "Records use the options you removed. Choose where their answers go.":
-      "Datensätze verwenden die entfernten Optionen. Wählen Sie, wohin ihre Antworten verschoben werden.",
-    "Move and save": "Verschieben und speichern",
+    "Choose what happens to answers": "Festlegen, was mit den Antworten geschieht",
+    "Records use the options you removed. Move their answers to another option, or remove them.":
+      "Datensätze verwenden die entfernten Optionen. Verschieben Sie ihre Antworten zu einer anderen Option oder entfernen Sie sie.",
+    "Remove from records": "Aus Datensätzen entfernen",
+    "These answers will be deleted and can't be restored.":
+      "Diese Antworten werden gelöscht und können nicht wiederhergestellt werden.",
+    "This field is required, so these records will need a new answer.":
+      "Dieses Feld ist ein Pflichtfeld, daher brauchen diese Datensätze eine neue Antwort.",
     "Choose an option for each removed option.":
       "Wählen Sie für jede entfernte Option eine Option.",
-    "{option} is used by {count} {records}. Move these answers to:":
-      "{option} wird von {count} {records} verwendet. Diese Antworten verschieben nach:",
+    "{option} is used by {count} {records}. Choose what happens to these answers:":
+      "{option} wird von {count} {records} verwendet. Legen Sie fest, was mit diesen Antworten geschieht:",
     "This field has a value on {count} {records}.":
       "Dieses Feld hat einen Wert in {count} {records}.",
     "use case": "Anwendungsfall",
@@ -17353,8 +17357,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Multiple choice": "Choix multiple",
     "Multiple selection dropdown": "Liste déroulante à sélection multiple",
     "Scored select": "Sélection notée",
-    "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.":
-      "Les nouvelles options ne peuvent recevoir de réponses qu'une fois enregistrées. Enregistrez d'abord les nouvelles options, puis supprimez les anciennes.",
+    "New options can't receive answers until they are saved. Remove these answers now, or save the new options first and move the answers later.":
+      "Les nouvelles options ne peuvent recevoir de réponses qu'une fois enregistrées. Retirez ces réponses maintenant, ou enregistrez d'abord les nouvelles options et déplacez les réponses ensuite.",
     "Custom field": "Champ personnalisé",
     "Option label": "Libellé de l'option",
     "Move option up": "Monter l'option",
@@ -17363,14 +17367,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Used by {count}": "Utilisée par {count}",
     "Every option needs a label and a score.": "Chaque option doit avoir un libellé et un score.",
     "Option labels must be unique.": "Les libellés des options doivent être uniques.",
-    "Move answers before removing options": "Déplacer les réponses avant de supprimer des options",
-    "Records use the options you removed. Choose where their answers go.":
-      "Des enregistrements utilisent les options supprimées. Choisissez où déplacer leurs réponses.",
-    "Move and save": "Déplacer et enregistrer",
+    "Choose what happens to answers": "Choisir ce que deviennent les réponses",
+    "Records use the options you removed. Move their answers to another option, or remove them.":
+      "Des enregistrements utilisent les options supprimées. Déplacez leurs réponses vers une autre option ou retirez-les.",
+    "Remove from records": "Retirer des enregistrements",
+    "These answers will be deleted and can't be restored.":
+      "Ces réponses seront supprimées et ne pourront pas être restaurées.",
+    "This field is required, so these records will need a new answer.":
+      "Ce champ est obligatoire : ces enregistrements devront recevoir une nouvelle réponse.",
     "Choose an option for each removed option.":
       "Choisissez une option pour chaque option supprimée.",
-    "{option} is used by {count} {records}. Move these answers to:":
-      "{option} est utilisée par {count} {records}. Déplacer ces réponses vers :",
+    "{option} is used by {count} {records}. Choose what happens to these answers:":
+      "{option} est utilisé par {count} {records}. Choisissez ce que deviennent ces réponses :",
     "This field has a value on {count} {records}.": "Ce champ a une valeur dans {count} {records}.",
     "use case": "cas d'usage",
     "use cases": "cas d'usage",
@@ -24671,8 +24679,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Multiple choice": "Opción múltiple",
     "Multiple selection dropdown": "Lista desplegable de selección múltiple",
     "Scored select": "Selección con puntuación",
-    "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.":
-      "Las opciones nuevas no pueden recibir respuestas hasta que se guarden. Guarda primero las opciones nuevas y luego quita las antiguas.",
+    "New options can't receive answers until they are saved. Remove these answers now, or save the new options first and move the answers later.":
+      "Las opciones nuevas no pueden recibir respuestas hasta que se guarden. Quita estas respuestas ahora, o guarda primero las opciones nuevas y mueve las respuestas después.",
     "Custom field": "Campo personalizado",
     "Option label": "Etiqueta de la opción",
     "Move option up": "Subir opción",
@@ -24682,13 +24690,17 @@ export const translations: Record<string, Record<string, string>> = {
     "Every option needs a label and a score.":
       "Cada opción necesita una etiqueta y una puntuación.",
     "Option labels must be unique.": "Las etiquetas de las opciones deben ser únicas.",
-    "Move answers before removing options": "Mover las respuestas antes de quitar opciones",
-    "Records use the options you removed. Choose where their answers go.":
-      "Hay registros que usan las opciones quitadas. Elige adónde van sus respuestas.",
-    "Move and save": "Mover y guardar",
+    "Choose what happens to answers": "Elegir qué pasa con las respuestas",
+    "Records use the options you removed. Move their answers to another option, or remove them.":
+      "Hay registros que usan las opciones quitadas. Mueve sus respuestas a otra opción o quítalas.",
+    "Remove from records": "Quitar de los registros",
+    "These answers will be deleted and can't be restored.":
+      "Estas respuestas se eliminarán y no se podrán restaurar.",
+    "This field is required, so these records will need a new answer.":
+      "Este campo es obligatorio, así que estos registros necesitarán una nueva respuesta.",
     "Choose an option for each removed option.": "Elige una opción para cada opción quitada.",
-    "{option} is used by {count} {records}. Move these answers to:":
-      "{option} se usa en {count} {records}. Mover estas respuestas a:",
+    "{option} is used by {count} {records}. Choose what happens to these answers:":
+      "{option} se usa en {count} {records}. Elige qué pasa con estas respuestas:",
     "This field has a value on {count} {records}.":
       "Este campo tiene un valor en {count} {records}.",
     "use case": "caso de uso",
