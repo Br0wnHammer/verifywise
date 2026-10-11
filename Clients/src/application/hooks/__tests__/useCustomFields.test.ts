@@ -152,6 +152,16 @@ describe("useUpdateCustomFieldDefinition", () => {
     expect(invalidate).toHaveBeenCalledWith();
   });
 
+  it("refreshes every cached list after removing answers", async () => {
+    mockUpdateDefinition.mockResolvedValue({} as any);
+    const { result, invalidate } = renderWithClient();
+    await result.current.mutateAsync({
+      id: 1,
+      body: { options: ["Cloud"], option_removals: ["Legacy"] },
+    } as any);
+    expect(invalidate).toHaveBeenCalledWith();
+  });
+
   it("does not refresh every list for an update without moves", async () => {
     mockUpdateDefinition.mockResolvedValue({} as any);
     const { result, invalidate } = renderWithClient();

@@ -25,6 +25,8 @@ interface MoveOptionAnswersModalProps {
    * target; a plain select or multiselect option is its own text.
    */
   remaining: ReadonlyArray<IScoredOptionInput | string>;
+  /** The field is required: records whose answers are removed will need a new one. */
+  required: boolean;
   isSubmitting: boolean;
   onCancel: () => void;
   /** moves: removed option -> target option; removals: options whose answers are deleted. */
@@ -39,6 +41,7 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
   inUse,
   entityType,
   remaining,
+  required,
   isSubmitting,
   onCancel,
   onConfirm,
@@ -59,8 +62,8 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
   return (
     <StandardModal
       isOpen={true}
-      title="Move answers before removing options"
-      description="Records use the options you removed. Choose where their answers go."
+      title="Choose what happens to answers"
+      description="Records use the options you removed. Move their answers to another option, or remove them."
       submitButtonText="Save"
       isSubmitting={isSubmitting}
       onClose={onCancel}
@@ -83,18 +86,21 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
         {targets.length === 0 && (
           <Typography sx={{ fontSize: "13px", color: "text.secondary" }}>
             {t(
-              "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.",
+              "New options can't receive answers until they are saved. Remove these answers now, or save the new options first and move the answers later.",
             )}
           </Typography>
         )}
         {inUse.map((option, index) => (
           <Stack key={option.id} sx={{ gap: "8px" }}>
             <Typography sx={{ fontSize: "13px" }}>
-              {fill(t("{option} is used by {count} {records}. Move these answers to:"), {
-                count: option.count,
-                records: t(entityCountNoun(entityType, option.count)),
-                option: option.label,
-              })}
+              {fill(
+                t("{option} is used by {count} {records}. Choose what happens to these answers:"),
+                {
+                  count: option.count,
+                  records: t(entityCountNoun(entityType, option.count)),
+                  option: option.label,
+                },
+              )}
             </Typography>
             <Select
               id={`move-${index}`}
@@ -103,6 +109,13 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
               placeholder="Select an option"
               onChange={(e) => setMoves((m) => ({ ...m, [option.id]: e.target.value as string }))}
             />
+            {chosen(option.id) === REMOVE && (
+              <Typography sx={{ fontSize: "12px", color: "error.main" }}>
+                {t("These answers will be deleted and can't be restored.")}
+                {required &&
+                  ` ${t("This field is required, so these records will need a new answer.")}`}
+              </Typography>
+            )}
           </Stack>
         ))}
         {error && <Typography sx={{ fontSize: "12px", color: "error.main" }}>{error}</Typography>}

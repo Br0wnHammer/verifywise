@@ -466,6 +466,25 @@ describe("removing an option's answers instead of moving them", () => {
     );
   });
 
+  it("deletes emptied multiselect lists once, after removing several options", async () => {
+    serveUpdate(
+      { ...multiDef, options: ["a", "b", "c"] },
+      [
+        { option_key: "b", count: 2 },
+        { option_key: "c", count: 1 },
+      ],
+      1,
+    );
+    await updateCustomFieldDefinitionQuery(
+      13,
+      ORG,
+      { options: ["a"], option_removals: ["b", "c"] },
+      3,
+    );
+    expect(sqlCalls("UPDATE custom_field_values")).toHaveLength(2);
+    expect(sqlCalls("DELETE FROM custom_field_values")).toHaveLength(1);
+  });
+
   it("deletes a scored option's answers", async () => {
     serveUpdate(scoredDef, [{ option_key: "opt_00000002", count: 80 }], 80);
     await updateCustomFieldDefinitionQuery(

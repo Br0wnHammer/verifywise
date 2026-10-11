@@ -353,6 +353,7 @@ const CustomFieldsTab: React.FC = () => {
           inUse={pendingMove.inUse}
           entityType={pendingMove.entityType}
           remaining={pendingMove.body.options}
+          required={pendingMove.body.required ?? false}
           isSubmitting={updateMutation.isPending}
           onCancel={() => setPendingMove(null)}
           onConfirm={(moves, removals) => {

@@ -266,7 +266,9 @@ describe("CustomFieldsTab", () => {
       await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
       expect(
-        await screen.findByText("Medium is used by 3 use cases. Move these answers to:"),
+        await screen.findByText(
+          "Medium is used by 3 use cases. Choose what happens to these answers:",
+        ),
       ).toBeInTheDocument();
       openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Moderate" }));
@@ -315,9 +317,14 @@ describe("CustomFieldsTab", () => {
       fireEvent.change(screen.getByDisplayValue(/Cloud\s+Legacy/), { target: { value: "Cloud" } });
       await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
-      await screen.findByText("Legacy is used by 40 vendors. Move these answers to:");
+      await screen.findByText(
+        "Legacy is used by 40 vendors. Choose what happens to these answers:",
+      );
       openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Remove from records" }));
+      expect(
+        screen.getByText(/These answers will be deleted and can't be restored\./),
+      ).toBeInTheDocument();
       const dialog = screen.getByRole("dialog");
       await userEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
@@ -451,7 +458,9 @@ describe("CustomFieldsTab", () => {
       await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
       expect(
-        await screen.findByText("Medium is used by 80 use cases. Move these answers to:"),
+        await screen.findByText(
+          "Medium is used by 80 use cases. Choose what happens to these answers:",
+        ),
       ).toBeInTheDocument();
       openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
@@ -494,13 +503,17 @@ describe("CustomFieldsTab", () => {
       await userEvent.click(screen.getAllByRole("button", { name: "Remove option" })[0]);
       await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
-      await screen.findByText("Medium is used by 80 use cases. Move these answers to:");
+      await screen.findByText(
+        "Medium is used by 80 use cases. Choose what happens to these answers:",
+      );
       openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
       await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
       expect(
-        await screen.findByText("High is used by 2 use cases. Move these answers to:"),
+        await screen.findByText(
+          "High is used by 2 use cases. Choose what happens to these answers:",
+        ),
       ).toBeInTheDocument();
       openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
@@ -546,7 +559,7 @@ describe("CustomFieldsTab", () => {
 
       expect(
         await screen.findByText(
-          "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.",
+          "New options can't receive answers until they are saved. Remove these answers now, or save the new options first and move the answers later.",
         ),
       ).toBeInTheDocument();
     });

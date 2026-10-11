@@ -529,48 +529,27 @@ const MOVE_MULTISELECT_SQL = `
      AND value @> jsonb_build_array(CAST(:removed AS text))
   RETURNING 1`;
 
-/**
- * Delete a removed option's answers: the value row for single-value types,
- * the element from each multiselect list (a list left empty is deleted, as an
- * empty multiselect is not a valid answer). Returns the records affected.
- */
-const clearAnswers = async (
-  definition: ICustomFieldDefinition,
-  removed: string,
-  transaction: Transaction,
-): Promise<number> => {
-  const replacements = {
-    removed,
-    id: definition.id,
-    organizationId: definition.organization_id,
-  };
-  if (definition.field_type !== "multiselect") {
-    const rows = await sequelize.query(
-      `DELETE FROM custom_field_values
-        WHERE definition_id = :id AND organization_id = :organizationId
-          AND value = to_jsonb(CAST(:removed AS text))
-        RETURNING 1`,
-      { replacements, type: QueryTypes.SELECT, transaction },
-    );
-    return rows.length;
-  }
-  const rows = await sequelize.query(
-    `UPDATE custom_field_values
-        SET value = value - CAST(:removed AS text), updated_at = NOW()
-      WHERE definition_id = :id AND organization_id = :organizationId
-        AND jsonb_typeof(value) = 'array'
-        AND value @> jsonb_build_array(CAST(:removed AS text))
-      RETURNING 1`,
-    { replacements, type: QueryTypes.SELECT, transaction },
-  );
-  await sequelize.query(
-    `DELETE FROM custom_field_values
-      WHERE definition_id = :id AND organization_id = :organizationId
-        AND value = '[]'::jsonb`,
-    { replacements, transaction },
-  );
-  return rows.length;
-};
+/** Delete the value of every record holding the removed option. */
+const CLEAR_SINGLE_SQL = `
+  DELETE FROM custom_field_values
+   WHERE definition_id = :id AND organization_id = :organizationId
+     AND value = to_jsonb(CAST(:removed AS text))
+  RETURNING 1`;
+
+/** Drop the removed option from each multiselect list that contains it. */
+const CLEAR_MULTISELECT_SQL = `
+  UPDATE custom_field_values
+     SET value = value - CAST(:removed AS text), updated_at = NOW()
+   WHERE definition_id = :id AND organization_id = :organizationId
+     AND jsonb_typeof(value) = 'array'
+     AND value @> jsonb_build_array(CAST(:removed AS text))
+  RETURNING 1`;
+
+/** An empty multiselect is not a valid answer: delete lists a removal emptied. */
+const DELETE_EMPTY_LISTS_SQL = `
+  DELETE FROM custom_field_values
+   WHERE definition_id = :id AND organization_id = :organizationId
+     AND value = '[]'::jsonb`;
 
 export const getCustomFieldUsageQuery = async (
   id: number,
@@ -732,10 +711,15 @@ export const updateCustomFieldDefinitionQuery = async (
         }
         for (const option of removed) {
           if (removals.has(option.id) && counts[option.id]) {
-            cleared.push({
-              from: { id: option.id, label: option.label },
-              count: await clearAnswers(existing, option.id, transaction),
-            });
+            const rows = await sequelize.query(
+              existing.field_type === "multiselect" ? CLEAR_MULTISELECT_SQL : CLEAR_SINGLE_SQL,
+              {
+                replacements: { removed: option.id, id, organizationId },
+                type: QueryTypes.SELECT,
+                transaction,
+              },
+            );
+            cleared.push({ from: { id: option.id, label: option.label }, count: rows.length });
             continue;
           }
           const target = moves[option.id];
@@ -754,6 +738,12 @@ export const updateCustomFieldDefinitionQuery = async (
             from: { id: option.id, label: option.label },
             to: { id: to.id, label: to.label },
             count: rows.length,
+          });
+        }
+        if (existing.field_type === "multiselect" && cleared.length > 0) {
+          await sequelize.query(DELETE_EMPTY_LISTS_SQL, {
+            replacements: { id, organizationId },
+            transaction,
           });
         }
       }
