@@ -345,6 +345,34 @@ describe("updating a select or multiselect definition", () => {
     );
   });
 
+  it("treats an option named like an Object member as a normal option", async () => {
+    serveUpdate({ ...selectDef, options: ["constructor", "US"] }, [
+      { option_key: "constructor", count: 3 },
+    ]);
+    const err: any = await updateCustomFieldDefinitionQuery(12, ORG, { options: ["US"] }, 3).catch(
+      (e) => e,
+    );
+    expect(err.statusCode).toBe(409);
+    expect(err.metadata.in_use).toEqual([{ id: "constructor", label: "constructor", count: 3 }]);
+  });
+
+  it("moves answers from an option named like an Object member", async () => {
+    serveUpdate(
+      { ...selectDef, options: ["toString", "US"] },
+      [{ option_key: "toString", count: 2 }],
+      2,
+    );
+    await updateCustomFieldDefinitionQuery(
+      12,
+      ORG,
+      { options: ["US"], option_moves: { toString: "US" } },
+      3,
+    );
+    expect(
+      mockQuery.mock.calls.some((c) => flat(c[0]).startsWith("UPDATE custom_field_values")),
+    ).toBe(true);
+  });
+
   it("removes an unused select option without a move", async () => {
     serveUpdate(selectDef, [{ option_key: "US", count: 2 }]);
     await expect(

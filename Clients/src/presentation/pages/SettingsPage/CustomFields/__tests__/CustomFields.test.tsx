@@ -268,7 +268,7 @@ describe("CustomFieldsTab", () => {
       expect(
         await screen.findByText("Medium is used by 3 use cases. Move these answers to:"),
       ).toBeInTheDocument();
-      openCustomSelect("move-Medium");
+      openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Moderate" }));
       await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
 
@@ -403,7 +403,7 @@ describe("CustomFieldsTab", () => {
       expect(
         await screen.findByText("Medium is used by 80 use cases. Move these answers to:"),
       ).toBeInTheDocument();
-      openCustomSelect("move-opt_m");
+      openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
       await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
 
@@ -445,14 +445,14 @@ describe("CustomFieldsTab", () => {
       await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
       await screen.findByText("Medium is used by 80 use cases. Move these answers to:");
-      openCustomSelect("move-opt_m");
+      openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
       await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
 
       expect(
         await screen.findByText("High is used by 2 use cases. Move these answers to:"),
       ).toBeInTheDocument();
-      openCustomSelect("move-opt_h");
+      openCustomSelect("move-0");
       await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
       await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
 

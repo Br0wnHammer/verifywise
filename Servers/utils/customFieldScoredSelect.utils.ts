@@ -131,13 +131,14 @@ export const validateOptionMoves = (
   removed: ReadonlyArray<{ id: string }>,
   after: ReadonlyArray<{ id: string }>,
 ): Record<string, string> => {
-  if (moves === undefined || moves === null) return {};
+  // No prototype: plain option text such as "constructor" is a valid key.
+  const result: Record<string, string> = Object.create(null);
+  if (moves === undefined || moves === null) return result;
   if (typeof moves !== "object" || Array.isArray(moves)) {
     throw new ValidationException("option_moves must be an object", "option_moves");
   }
   const removedIds = new Set(removed.map((o) => o.id));
   const targetIds = new Set(after.map((o) => o.id));
-  const result: Record<string, string> = {};
   for (const [from, to] of Object.entries(moves as Record<string, unknown>)) {
     if (!removedIds.has(from)) {
       throw new ValidationException(

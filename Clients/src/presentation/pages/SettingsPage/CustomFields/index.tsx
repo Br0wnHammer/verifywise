@@ -89,7 +89,7 @@ const CustomFieldsTab: React.FC = () => {
   const deleteMutation = useDeleteCustomFieldDefinition(entityType);
   const { t } = useTranslation();
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
-  // Per-option counts only exist for scored fields.
+  // Per-option counts are shown only in the scored options editor.
   const { data: editingUsage } = useCustomFieldUsage(
     editing?.field_type === "scored_select" ? editing.id : null,
   );

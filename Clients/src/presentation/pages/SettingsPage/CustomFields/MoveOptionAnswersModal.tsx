@@ -40,6 +40,10 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [moves, setMoves] = useState<Record<string, string>>({});
+  // Plain option text is free text: read only keys this object owns, so an
+  // option named "constructor" is not mistaken for a choice.
+  const chosen = (id: string): string =>
+    Object.prototype.hasOwnProperty.call(moves, id) ? moves[id] : "";
   const [error, setError] = useState<string | null>(null);
   const targets = remaining.flatMap((o) => {
     if (typeof o === "string") return [{ _id: o, name: o }];
@@ -56,7 +60,7 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
       isSubmitDisabled={targets.length === 0}
       onClose={onCancel}
       onSubmit={() => {
-        if (inUse.some((o) => !moves[o.id])) {
+        if (inUse.some((o) => !chosen(o.id))) {
           setError(t("Choose an option for each removed option."));
           return;
         }
@@ -71,7 +75,7 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
             )}
           </Typography>
         )}
-        {inUse.map((option) => (
+        {inUse.map((option, index) => (
           <Stack key={option.id} sx={{ gap: "8px" }}>
             <Typography sx={{ fontSize: "13px" }}>
               {fill(t("{option} is used by {count} {records}. Move these answers to:"), {
@@ -81,8 +85,8 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
               })}
             </Typography>
             <Select
-              id={`move-${option.id}`}
-              value={moves[option.id] ?? ""}
+              id={`move-${index}`}
+              value={chosen(option.id)}
               items={targets}
               placeholder="Select an option"
               onChange={(e) => setMoves((m) => ({ ...m, [option.id]: e.target.value as string }))}

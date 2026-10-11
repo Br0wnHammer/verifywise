@@ -434,8 +434,18 @@ const countValuesByKey = async (
       GROUP BY 1`,
     { replacements: { id, organizationId }, type: QueryTypes.SELECT, transaction },
   )) as Array<{ option_key: string; count: number }>;
-  return Object.fromEntries(rows.map((r) => [r.option_key, Number(r.count)]));
+  return toCounts(rows);
 };
+
+/**
+ * Counts keyed by option, with no prototype: plain option text is free text,
+ * and a key such as "constructor" must not resolve to an inherited member.
+ */
+const toCounts = (rows: Array<{ option_key: string; count: number }>): Record<string, number> =>
+  Object.assign(
+    Object.create(null),
+    Object.fromEntries(rows.map((r) => [r.option_key, Number(r.count)])),
+  );
 
 const sumCounts = (counts: Record<string, number>): number =>
   Object.values(counts).reduce((a, b) => a + b, 0);
@@ -465,7 +475,7 @@ const countAnswersByOption = async (
       transaction,
     },
   )) as Array<{ option_key: string; count: number }>;
-  return Object.fromEntries(rows.map((r) => [r.option_key, Number(r.count)]));
+  return toCounts(rows);
 };
 
 const OPTION_LIST_TYPES: ReadonlySet<CustomFieldType> = new Set([
@@ -474,9 +484,17 @@ const OPTION_LIST_TYPES: ReadonlySet<CustomFieldType> = new Set([
   "scored_select",
 ]);
 
-/** Plain select and multiselect options keyed the way records store them: by text. */
-const textOptions = (options: unknown): Array<{ id: string; label: string }> =>
-  ((options ?? []) as string[]).map((o) => ({ id: o, label: o }));
+/**
+ * Options keyed the way records store them: scored options by id, plain
+ * select and multiselect options by their text.
+ */
+const optionKeys = (
+  fieldType: CustomFieldType,
+  options: unknown,
+): Array<{ id: string; label: string }> =>
+  fieldType === "scored_select"
+    ? ((options ?? []) as IScoredOption[])
+    : ((options ?? []) as string[]).map((o) => ({ id: o, label: o }));
 
 /** Point every record holding the removed option at the target option. */
 const MOVE_SINGLE_SQL = `
@@ -517,13 +535,14 @@ export const getCustomFieldUsageQuery = async (
   assertPositiveInt(organizationId, "organizationId");
   const definition = await getCustomFieldDefinitionByIdQuery(id, organizationId);
   if (!definition) return null;
-  // One value row per record, so the per-value counts add up to the record count.
-  const total = sumCounts(await countValuesByKey(id, organizationId));
+  // One value row per record, so the per-value counts add up to the record
+  // count. Only multiselect needs a second, per-option query.
+  const byValue = await countValuesByKey(id, organizationId);
+  const byOption =
+    definition.field_type === "multiselect" ? await countAnswersByOption(definition) : byValue;
   return {
-    total,
-    by_option: OPTION_LIST_TYPES.has(definition.field_type)
-      ? await countAnswersByOption(definition)
-      : {},
+    total: sumCounts(byValue),
+    by_option: OPTION_LIST_TYPES.has(definition.field_type) ? byOption : {},
   };
 };
 
@@ -637,12 +656,8 @@ export const updateCustomFieldDefinitionQuery = async (
     if (OPTION_LIST_TYPES.has(existing.field_type)) {
       // Scored options are matched by id; plain options by their text, which is
       // also what records store, so renaming a plain option removes the old one.
-      const prev: Array<{ id: string; label: string }> = isScored
-        ? ((existing.options ?? []) as IScoredOption[])
-        : textOptions(existing.options);
-      const next: Array<{ id: string; label: string }> = isScored
-        ? ((options ?? []) as IScoredOption[])
-        : textOptions(options);
+      const prev = optionKeys(existing.field_type, existing.options);
+      const next = optionKeys(existing.field_type, options);
       const removed = removedOptions(prev, next);
       const moves = validateOptionMoves(patch.option_moves, removed, next);
       if (removed.length > 0) {
