@@ -2,7 +2,14 @@ import { Request, Response } from "express";
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../database/db";
 import { STATUS_CODE } from "../utils/statusCode.utils";
-import { verifyChain } from "../utils/auditLedger.utils";
+import { appendToAuditLedger, verifyChain } from "../utils/auditLedger.utils";
+import { CSV_BOM, csvRow } from "../utils/csv.utils";
+import {
+  AUDIT_LEDGER_EXPORT_COLUMNS,
+  EXPORT_BATCH_SIZE,
+  fetchAuditLedgerBatch,
+  ledgerRowValues,
+} from "../utils/auditLedgerExport.utils";
 import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper";
 
 import { translateError } from "../utils/i18n.utils";
@@ -126,5 +133,123 @@ export async function verifyAuditLedger(req: Request, res: Response): Promise<an
     });
 
     return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+const EXPORT_ENTRY_TYPES = ["event_log", "change_history"];
+
+/** Resolves when the response drains, or when it closes (client gone). */
+function waitForDrainOrClose(res: Response): Promise<void> {
+  return new Promise((resolve) => {
+    const onDrain = () => {
+      res.off("close", onClose);
+      resolve();
+    };
+    const onClose = () => {
+      res.off("drain", onDrain);
+      resolve();
+    };
+    res.once("drain", onDrain);
+    res.once("close", onClose);
+  });
+}
+
+export async function exportAuditLedger(req: Request, res: Response): Promise<any> {
+  logProcessing({
+    description: "starting exportAuditLedger",
+    functionName: "exportAuditLedger",
+    fileName: "auditLedger.ctrl.ts",
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+
+  const entityType = (req.query.entity_type as string) || "";
+  const entryType = (req.query.entry_type as string) || "";
+
+  if (entryType && !EXPORT_ENTRY_TYPES.includes(entryType)) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400](`entry_type must be one of: ${EXPORT_ENTRY_TYPES.join(", ")}`));
+  }
+
+  // Client disconnect = the response closed before it finished. (Not `req`
+  // close: on Node 16+ that fires as soon as the request has been read.)
+  let aborted = false;
+  res.on("close", () => {
+    aborted = !res.writableFinished;
+  });
+
+  try {
+    const organizationId = req.organizationId!;
+    const filters = { entityType, entryType };
+    let started = false;
+    let afterId = 0;
+    let count = 0;
+
+    for (;;) {
+      if (aborted) break;
+      const rows = await fetchAuditLedgerBatch(organizationId, filters, afterId);
+      if (aborted) break;
+
+      // Nothing is sent until the first batch is in hand, so a failure there
+      // is still a normal JSON error response.
+      if (!started) {
+        started = true;
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="audit-ledger-${new Date().toISOString().slice(0, 10)}.csv"`,
+        );
+        res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+        res.write(CSV_BOM + csvRow([...AUDIT_LEDGER_EXPORT_COLUMNS]));
+      }
+
+      if (rows.length > 0) {
+        const text = rows.map((r) => csvRow(ledgerRowValues(r))).join("");
+        if (!res.write(text)) await waitForDrainOrClose(res);
+        count += rows.length;
+        afterId = rows[rows.length - 1].id;
+      }
+      if (rows.length < EXPORT_BATCH_SIZE) break;
+    }
+
+    if (aborted) return;
+    res.end();
+
+    // Best effort; never delays or fails the download.
+    try {
+      const filterNote = [
+        entityType && `entity_type=${entityType}`,
+        entryType && `entry_type=${entryType}`,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      await appendToAuditLedger({
+        organizationId,
+        entryType: "event_log",
+        userId: req.userId ?? null,
+        eventType: "Read",
+        entityType: "audit_ledger",
+        description: `Exported ${count} audit ledger entries${filterNote ? ` (${filterNote})` : ""}`,
+      });
+    } catch {
+      // The export already succeeded; losing the self-audit entry is acceptable.
+    }
+  } catch (error) {
+    await logFailure({
+      eventType: "Read",
+      description: "Failed to export audit ledger",
+      functionName: "exportAuditLedger",
+      fileName: "auditLedger.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+
+    if (!res.headersSent) {
+      return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+    }
+    // Streaming already started: fail the download instead of a truncated file.
+    res.destroy(error as Error);
   }
 }
