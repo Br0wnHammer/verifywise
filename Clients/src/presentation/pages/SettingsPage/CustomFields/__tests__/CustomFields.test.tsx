@@ -27,12 +27,15 @@ let mockQueryState: {
   isLoading: boolean;
   isError: boolean;
 };
+let mockUsage: { total: number; by_option: Record<string, number> } | undefined;
+let mockUsageLoading = false;
 
 vi.mock("../../../../../application/hooks/useCustomFields", () => ({
   useCustomFieldDefinitions: () => mockQueryState,
   useCreateCustomFieldDefinition: () => ({ mutate: mockCreateMutate, isPending: false }),
   useUpdateCustomFieldDefinition: () => ({ mutate: mockUpdateMutate, isPending: false }),
   useDeleteCustomFieldDefinition: () => ({ mutate: mockDeleteMutate, isPending: false }),
+  useCustomFieldUsage: () => ({ data: mockUsage, isLoading: mockUsageLoading }),
 }));
 
 import CustomFieldsTab from "../index";
@@ -59,6 +62,8 @@ describe("CustomFieldsTab", () => {
     vi.clearAllMocks();
     mockUserRoleName = "Admin";
     mockQueryState = { data: [buildDefinition()], isLoading: false, isError: false };
+    mockUsage = undefined;
+    mockUsageLoading = false;
   });
 
   it("shows a restricted message for non-admins", () => {
@@ -224,6 +229,240 @@ describe("CustomFieldsTab", () => {
         expect.objectContaining({ entity_type: "policy" }),
         expect.anything(),
       );
+    });
+  });
+
+  describe("scored select", () => {
+    const scoredDef = buildDefinition({
+      id: 5,
+      entity_type: "project",
+      label: "Feasibility",
+      field_key: "feasibility",
+      field_type: "scored_select",
+      options: [
+        { id: "opt_h", label: "High", score: 3 },
+        { id: "opt_m", label: "Medium", score: 2 },
+        { id: "opt_l", label: "Low", score: 1 },
+      ],
+    });
+
+    it("shows scored options as label (score) chips", () => {
+      mockQueryState = { data: [scoredDef], isLoading: false, isError: false };
+      renderWithProviders(<CustomFieldsTab />);
+      expect(screen.getByText("High (3)")).toBeInTheDocument();
+      expect(screen.getByText("Low (1)")).toBeInTheDocument();
+    });
+
+    it("creates a scored select with rows of label and score", async () => {
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByRole("button", { name: /add field/i }));
+      await userEvent.type(document.getElementById("cf-label")!, "Feasibility");
+      await userEvent.type(document.getElementById("cf-field-key")!, "feasibility");
+      openCustomSelect("cf-field-type");
+      await userEvent.click(screen.getByRole("option", { name: "Scored select" }));
+
+      const labels = () => screen.getAllByPlaceholderText("Option label");
+      const scores = () => screen.getAllByPlaceholderText("Score");
+      await userEvent.type(labels()[0], "High");
+      await userEvent.type(scores()[0], "3");
+      await userEvent.click(screen.getByRole("button", { name: /add option/i }));
+      await userEvent.type(labels()[1], "Low");
+      await userEvent.type(scores()[1], "0.333");
+      await userEvent.tab();
+      expect(scores()[1]).toHaveValue(0.33);
+
+      await userEvent.click(screen.getByRole("button", { name: /^create$/i }));
+      expect(mockCreateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          field_type: "scored_select",
+          options: [
+            { label: "High", score: 3 },
+            { label: "Low", score: 0.33 },
+          ],
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("blocks saving an option without a score", async () => {
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByRole("button", { name: /add field/i }));
+      await userEvent.type(document.getElementById("cf-label")!, "Feasibility");
+      await userEvent.type(document.getElementById("cf-field-key")!, "feasibility");
+      openCustomSelect("cf-field-type");
+      await userEvent.click(screen.getByRole("option", { name: "Scored select" }));
+      await userEvent.type(screen.getAllByPlaceholderText("Option label")[0], "High");
+      await userEvent.click(screen.getByRole("button", { name: /^create$/i }));
+      expect(screen.getByText("Every option needs a label and a score.")).toBeInTheDocument();
+      expect(mockCreateMutate).not.toHaveBeenCalled();
+    });
+
+    it("reorders options with the up and down buttons and keeps ids on save", async () => {
+      mockQueryState = { data: [scoredDef], isLoading: false, isError: false };
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Edit field"));
+      await userEvent.click(screen.getAllByRole("button", { name: "Move option down" })[0]);
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 5,
+          body: expect.objectContaining({
+            options: [
+              { id: "opt_m", label: "Medium", score: 2 },
+              { id: "opt_h", label: "High", score: 3 },
+              { id: "opt_l", label: "Low", score: 1 },
+            ],
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("shows how many records use each option", async () => {
+      mockQueryState = { data: [scoredDef], isLoading: false, isError: false };
+      mockUsage = { total: 80, by_option: { opt_m: 80 } };
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Edit field"));
+      expect(screen.getByText("Used by 80")).toBeInTheDocument();
+    });
+
+    it("asks where to move answers when a used option is removed, then resends with option_moves", async () => {
+      mockQueryState = { data: [scoredDef], isLoading: false, isError: false };
+      mockUpdateMutate.mockImplementationOnce((_vars: any, opts: any) =>
+        opts.onError({
+          status: 409,
+          message: "Some removed options are in use. Choose where to move their answers.",
+          response: {
+            message: "Conflict",
+            data: {
+              code: "options_in_use",
+              in_use: [{ id: "opt_m", label: "Medium", count: 80 }],
+              entity_type: "project",
+            },
+          },
+        }),
+      );
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Edit field"));
+      await userEvent.click(screen.getAllByRole("button", { name: "Remove option" })[1]);
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+      expect(
+        await screen.findByText("Medium is used by 80 use cases. Move these answers to:"),
+      ).toBeInTheDocument();
+      openCustomSelect("move-opt_m");
+      await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
+      await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
+
+      expect(mockUpdateMutate).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: 5,
+          body: expect.objectContaining({ option_moves: { opt_m: "opt_l" } }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("asks again when another removed option gained answers before the resend, keeping earlier moves", async () => {
+      mockQueryState = { data: [scoredDef], isLoading: false, isError: false };
+      const conflict = (id: string, label: string, count: number) => ({
+        status: 409,
+        message: "Some removed options are in use.",
+        response: {
+          message: "Conflict",
+          data: {
+            code: "options_in_use",
+            in_use: [{ id, label, count }],
+            entity_type: "project",
+          },
+        },
+      });
+      mockUpdateMutate
+        .mockImplementationOnce((_vars: any, opts: any) =>
+          opts.onError(conflict("opt_m", "Medium", 80)),
+        )
+        .mockImplementationOnce((_vars: any, opts: any) =>
+          opts.onError(conflict("opt_h", "High", 2)),
+        );
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Edit field"));
+      // Remove High and Medium; only Low remains.
+      await userEvent.click(screen.getAllByRole("button", { name: "Remove option" })[0]);
+      await userEvent.click(screen.getAllByRole("button", { name: "Remove option" })[0]);
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+      await screen.findByText("Medium is used by 80 use cases. Move these answers to:");
+      openCustomSelect("move-opt_m");
+      await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
+      await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
+
+      expect(
+        await screen.findByText("High is used by 2 use cases. Move these answers to:"),
+      ).toBeInTheDocument();
+      openCustomSelect("move-opt_h");
+      await userEvent.click(screen.getByRole("option", { name: "Low (1)" }));
+      await userEvent.click(screen.getByRole("button", { name: /move and save/i }));
+
+      expect(mockUpdateMutate).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: 5,
+          body: expect.objectContaining({
+            option_moves: { opt_m: "opt_l", opt_h: "opt_l" },
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("explains when no saved option is left to move answers to", async () => {
+      mockQueryState = { data: [scoredDef], isLoading: false, isError: false };
+      mockUpdateMutate.mockImplementationOnce((_vars: any, opts: any) =>
+        opts.onError({
+          status: 409,
+          message: "Some removed options are in use.",
+          response: {
+            message: "Conflict",
+            data: {
+              code: "options_in_use",
+              in_use: [{ id: "opt_h", label: "High", count: 3 }],
+              entity_type: "project",
+            },
+          },
+        }),
+      );
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Edit field"));
+      // Replace every saved option with a new one.
+      await userEvent.click(screen.getByRole("button", { name: /add option/i }));
+      await userEvent.type(screen.getAllByPlaceholderText("Option label")[3], "Very high");
+      await userEvent.type(screen.getAllByPlaceholderText("Score")[3], "4");
+      for (let i = 0; i < 3; i++) {
+        await userEvent.click(screen.getAllByRole("button", { name: "Remove option" })[0]);
+      }
+      await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+      expect(
+        await screen.findByText(
+          "New options can't receive answers until they are saved. Save the new options first, then remove the old ones.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("keeps Delete disabled until the record count has loaded", async () => {
+      mockQueryState = { data: [scoredDef], isLoading: false, isError: false };
+      mockUsageLoading = true;
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Delete field"));
+      expect(screen.queryByRole("button", { name: /^delete$/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /processing/i })).toBeDisabled();
+    });
+
+    it("shows how many records lose their value when a field is deleted", async () => {
+      mockQueryState = { data: [scoredDef], isLoading: false, isError: false };
+      mockUsage = { total: 12, by_option: {} };
+      renderWithProviders(<CustomFieldsTab />);
+      await userEvent.click(screen.getByTitle("Delete field"));
+      expect(screen.getByText("This field has a value on 12 use cases.")).toBeInTheDocument();
     });
   });
 });

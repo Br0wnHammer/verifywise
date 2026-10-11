@@ -190,6 +190,26 @@ describe("customAxios", () => {
       });
     });
 
+    it("does not show a toast for the custom fields options_in_use 409 (the page asks where to move answers)", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      const error = {
+        config: { url: "/custom-fields/definitions/5" },
+        response: {
+          status: 409,
+          data: {
+            message: "Conflict",
+            data: { message: "Some removed options are in use.", code: "options_in_use" },
+          },
+        },
+        message: "Conflict",
+      };
+
+      await expect(rejected(error)).rejects.toEqual(error);
+      expect(callback).not.toHaveBeenCalled();
+    });
+
     it("does not show a toast for 404 (callers handle it as empty state)", async () => {
       const callback = vi.fn();
       setShowAlertCallback(callback);

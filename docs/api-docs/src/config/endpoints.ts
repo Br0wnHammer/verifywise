@@ -2449,6 +2449,19 @@ export const customFieldsEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/custom-fields/definitions/by-id/{id}/usage',
+    summary: "Get Custom Field Usage",
+    description: "Requires role: Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Answer counts. total is the number of saved answers; by_option maps option id to count (scored select only, empty otherwise)." },
+      { status: 404, description: "Definition not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Custom Fields",
+  },
+  {
+    method: 'GET',
     path: '/custom-fields/definitions/{entityType}',
     summary: "List Custom Field Definitions",
     requiresAuth: true,
@@ -2462,7 +2475,7 @@ export const customFieldsEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/custom-fields/definitions',
     summary: "Create Custom Field Definition",
-    description: "Requires role: Admin",
+    description: "Requires role: Admin. field_type is one of text, number, date, boolean, select, multiselect, user, scored_select. For scored_select, options is an array of { id, label, score }; omit id for new options (the server assigns it).",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -2476,8 +2489,15 @@ export const customFieldsEndpoints: Endpoint[] = [
     summary: "Update Custom Field Definition",
     description: "Requires role: Admin",
     requiresAuth: true,
+    requestBody: {
+      "label": "string (optional)",
+      "required": "boolean (optional)",
+      "options": "array (optional)",
+      "option_moves": "object (optional)",
+    },
     responses: [
       { status: 200, description: "Success" },
+      { status: 409, description: "Removed options are still in use. data has code options_in_use, in_use [{ id, label, count }] and entity_type; retry with option_moves." },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Custom Fields",

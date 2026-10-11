@@ -55,6 +55,7 @@ const ENTITY_TYPE_ITEMS = [
   { _id: "model_inventory", name: "Model inventory" },
   { _id: "file", name: "File" },
   { _id: "dataset", name: "Dataset" },
+  { _id: "custom_field_definition", name: "Custom field" },
 ];
 
 const ENTRY_TYPE_ITEMS = [

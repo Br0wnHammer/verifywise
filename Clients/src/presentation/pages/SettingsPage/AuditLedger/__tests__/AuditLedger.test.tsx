@@ -120,6 +120,16 @@ describe("AuditLedger", () => {
     expect(screen.getByText("No audit ledger entries found.")).toBeInTheDocument();
   });
 
+  it("offers custom field changes as an entity type filter", () => {
+    renderWithProviders(<AuditLedger />);
+    const combobox = document
+      .getElementById("audit-entity-type")!
+      .closest(".MuiInputBase-root")!
+      .querySelector('[role="combobox"]') as HTMLElement;
+    fireEvent.mouseDown(combobox);
+    expect(screen.getByRole("option", { name: "Custom field" })).toBeInTheDocument();
+  });
+
   it("renders a table row for each entry", () => {
     renderWithProviders(<AuditLedger />);
     expect(screen.getByText("Jane Doe")).toBeInTheDocument();

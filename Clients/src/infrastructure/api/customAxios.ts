@@ -188,6 +188,10 @@ const showGlobalErrorAlert = (error: AxiosError) => {
 
   if (isClientError) {
     const responseData = (error.response?.data ?? {}) as ApiErrorEnvelope;
+    // Removing custom field options that records use is a step in the flow, not
+    // a failure: the Settings page opens a dialog asking where to move answers.
+    const inner = responseData.data as { code?: unknown } | undefined;
+    if (status === 409 && inner?.code === "options_in_use") return;
     const detail = getEnvelopeErrorMessage(responseData);
     showAlert({
       variant: "error",
