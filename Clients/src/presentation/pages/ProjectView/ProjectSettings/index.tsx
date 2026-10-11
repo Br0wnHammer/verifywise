@@ -230,6 +230,10 @@ const ProjectSettings = React.memo(
     const [showCustomizableSkeleton, setShowCustomizableSkeleton] = useState<boolean>(false);
     const initialValuesRef = useRef<FormValues>({ ...initialState });
     const customFieldsRef = useRef<CustomFieldsSectionHandle | null>(null);
+    // Unsaved custom field values; Save writes them after the project itself.
+    const [customFieldsDirty, setCustomFieldsDirty] = useState(false);
+    // Set for the whole save, so a double-click cannot send it twice.
+    const [isSaving, setIsSaving] = useState(false);
     const isModified = useMemo(() => {
       if (!initialValuesRef.current.projectTitle) return false;
 
@@ -267,8 +271,9 @@ const ProjectSettings = React.memo(
 
     const isSaveDisabled = useMemo(() => {
       if (showCustomizableSkeleton) return true;
+      if (isSaving) return true;
       if (isFrameworkOperationInProgress) return true;
-      if (!isModified) return true;
+      if (!isModified && !customFieldsDirty) return true;
       if (customFieldsGate.blocked) return true;
 
       const hasErrors = Object.values(errors).some((error) => error && error.length > 0);
@@ -276,6 +281,8 @@ const ProjectSettings = React.memo(
       return hasErrors;
     }, [
       isModified,
+      customFieldsDirty,
+      isSaving,
       errors,
       showCustomizableSkeleton,
       isFrameworkOperationInProgress,
@@ -658,9 +665,20 @@ const ProjectSettings = React.memo(
 
     function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
       event.preventDefault();
-      if (customFieldsGate.blocked) return;
+      if (customFieldsGate.blocked || isSaving) return;
+      // Only custom field values changed: save them without re-sending the
+      // project, which would bump last_updated and require the project form
+      // to pass validation.
+      if (!isModified) {
+        if (customFieldsDirty) {
+          setIsSaving(true);
+          saveCustomFieldsOnly().finally(() => setIsSaving(false));
+        }
+        return;
+      }
       if (validateForm()) {
-        handleSaveConfirm();
+        setIsSaving(true);
+        handleSaveConfirm().finally(() => setIsSaving(false));
       } else {
         setAlert({
           variant: "error",
@@ -691,6 +709,25 @@ const ProjectSettings = React.memo(
     const handleCloseDeleteDialog = useCallback((): void => {
       setIsDeleteModalOpen(false);
     }, []);
+    const saveCustomFieldsOnly = useCallback(async () => {
+      const pid = Number(projectId);
+      if (!Number.isFinite(pid) || pid <= 0 || !customFieldsRef.current) return;
+      try {
+        await customFieldsRef.current.flush(pid);
+      } catch (cfError) {
+        // flush() shows the error inline in the custom fields card.
+        console.error("Custom field values failed to save:", cfError);
+        return;
+      }
+      setAlert({
+        variant: "success",
+        body: "Project updated successfully",
+        isToast: true,
+        visible: true,
+      });
+      setTimeout(() => setAlert(null), 2000);
+    }, [projectId]);
+
     // saves the project
     const handleSaveConfirm = useCallback(async () => {
       const hasEuAiAct = values.monitoredRegulationsAndStandards.some((fw) => fw._id === 1);
@@ -1542,6 +1579,7 @@ const ProjectSettings = React.memo(
                   entityType="project"
                   entityId={parseInt(projectId, 10) || null}
                   onPendingChange={customFieldsGate.onPendingChange}
+                  onDirtyChange={setCustomFieldsDirty}
                 />
               </Box>
 

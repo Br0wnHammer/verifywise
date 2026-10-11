@@ -292,6 +292,54 @@ describe("CustomFieldsSection", () => {
     });
   });
 
+  describe("onDirtyChange", () => {
+    it("reports dirty after a value is typed and clean after flush", async () => {
+      const user = userEvent.setup();
+      const ref = createRef<CustomFieldsSectionHandle>();
+      const onDirtyChange = vi.fn();
+      renderWithProviders(
+        <CustomFieldsSection
+          ref={ref}
+          entityType="project"
+          entityId={1}
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+
+      await user.type(screen.getAllByTestId("field")[0], "x");
+      await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+      await ref.current!.flush(1);
+      await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it("reports a cleared required field to onPendingChange", async () => {
+      const user = userEvent.setup();
+      const onPendingChange = vi.fn();
+      renderWithProviders(
+        <CustomFieldsSection entityType="project" entityId={1} onPendingChange={onPendingChange} />,
+      );
+      // Department (required) is the first field with a stored value.
+      await user.click(screen.getAllByTitle("Clear value")[0]);
+      await waitFor(() =>
+        expect(onPendingChange).toHaveBeenLastCalledWith(new Set(), [
+          { id: 1, label: "Department" },
+        ]),
+      );
+    });
+
+    it("reports dirty when a stored value is cleared", async () => {
+      const user = userEvent.setup();
+      const onDirtyChange = vi.fn();
+      renderWithProviders(
+        <CustomFieldsSection entityType="project" entityId={1} onDirtyChange={onDirtyChange} />,
+      );
+      await user.click(screen.getAllByTitle("Clear value")[0]);
+      await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    });
+  });
+
   describe("flush error handling", () => {
     it("shows alert on flush failure", async () => {
       mockSetCustomFieldValue = vi.fn().mockRejectedValue(new Error("Network error"));
