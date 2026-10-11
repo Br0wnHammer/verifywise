@@ -158,3 +158,38 @@ export const validateOptionMoves = (
   }
   return result;
 };
+
+/**
+ * Validate `option_removals`: removed options whose answers are deleted rather
+ * than moved. Each must be a removed option, listed once, and not also moved.
+ */
+export const validateOptionRemovals = (
+  removals: unknown,
+  removed: ReadonlyArray<{ id: string }>,
+  moves: Record<string, string>,
+): Set<string> => {
+  const result = new Set<string>();
+  if (removals === undefined || removals === null) return result;
+  if (!Array.isArray(removals)) {
+    throw new ValidationException("option_removals must be an array", "option_removals");
+  }
+  const removedIds = new Set(removed.map((o) => o.id));
+  for (const id of removals) {
+    if (typeof id !== "string" || !removedIds.has(id)) {
+      throw new ValidationException(
+        "option_removals can only list a removed option",
+        "option_removals",
+        id,
+      );
+    }
+    if (result.has(id) || Object.prototype.hasOwnProperty.call(moves, id)) {
+      throw new ValidationException(
+        "an option can be moved or removed once, not both",
+        "option_removals",
+        id,
+      );
+    }
+    result.add(id);
+  }
+  return result;
+};

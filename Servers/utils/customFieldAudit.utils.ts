@@ -13,6 +13,12 @@ export interface MovedAnswers {
   count: number;
 }
 
+/** Answers deleted with a removed option instead of moved. */
+export interface ClearedAnswers {
+  from: { id: string; label: string };
+  count: number;
+}
+
 export interface LedgerChange {
   eventType: "Create" | "Update" | "Delete";
   fieldName: string | null;
@@ -45,7 +51,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export const diffDefinitionForLedger = (
   before: ICustomFieldDefinition | null,
   after: ICustomFieldDefinition | null,
-  extra: { moved?: MovedAnswers[]; lostAnswers?: number } = {},
+  extra: { moved?: MovedAnswers[]; cleared?: ClearedAnswers[]; lostAnswers?: number } = {},
 ): LedgerChange[] => {
   if (!before && after) {
     return [
@@ -103,13 +109,16 @@ export const diffDefinitionForLedger = (
     for (const option of prev) {
       if (kept.has(option.id)) continue;
       const move = extra.moved?.find((m) => m.from.id === option.id);
+      const clear = extra.cleared?.find((c) => c.from.id === option.id);
       update(
         "option",
         formatScoredOption(option),
         null,
         move
           ? `${description} · ${plural(move.count, "answer", "answers")} moved to ${move.to.label}`
-          : description,
+          : clear
+            ? `${description} · ${plural(clear.count, "answer", "answers")} removed`
+            : description,
       );
     }
   } else {
@@ -124,6 +133,14 @@ export const diffDefinitionForLedger = (
         move.from.label,
         null,
         `${description} · ${plural(move.count, "answer", "answers")} moved to ${move.to.label}`,
+      );
+    }
+    for (const clear of extra.cleared ?? []) {
+      update(
+        "option",
+        clear.from.label,
+        null,
+        `${description} · ${plural(clear.count, "answer", "answers")} removed`,
       );
     }
   }

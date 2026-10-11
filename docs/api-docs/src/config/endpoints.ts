@@ -2494,10 +2494,11 @@ export const customFieldsEndpoints: Endpoint[] = [
       "required": "boolean (optional)",
       "options": "array (optional)",
       "option_moves": "object (optional)",
+      "option_removals": "array (optional)",
     },
     responses: [
       { status: 200, description: "Success" },
-      { status: 409, description: "Removed options are still in use. data has code options_in_use, in_use [{ id, label, count }] and entity_type; retry with option_moves." },
+      { status: 409, description: "Removed options are still in use. data has code options_in_use, in_use [{ id, label, count }] and entity_type; retry with option_moves and/or option_removals." },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Custom Fields",

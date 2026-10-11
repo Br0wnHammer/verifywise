@@ -154,7 +154,10 @@ function serveUpdate(def: any, usage: Array<{ option_key: string; count: number 
     const s = flat(sql);
     if (s.startsWith("SELECT * FROM custom_field_definitions")) return [def];
     if (s.includes("GROUP BY")) return usage;
-    if (s.startsWith("UPDATE custom_field_values"))
+    if (
+      s.startsWith("UPDATE custom_field_values") ||
+      s.startsWith("DELETE FROM custom_field_values")
+    )
       return Array.from({ length: movedRows }, () => ({ "?column?": 1 }));
     if (s.startsWith("UPDATE custom_field_definitions")) {
       return [
@@ -423,6 +426,91 @@ describe("updating a select or multiselect definition", () => {
         3,
       ),
     ).rejects.toThrow(/target must be a remaining option/);
+  });
+});
+
+describe("removing an option's answers instead of moving them", () => {
+  const sqlCalls = (prefix: string) =>
+    mockQuery.mock.calls.filter((c) => flat(c[0]).startsWith(prefix));
+
+  it("deletes a single select option's answers and records it in the ledger", async () => {
+    serveUpdate(selectDef, [{ option_key: "EU", count: 4 }], 4);
+    await updateCustomFieldDefinitionQuery(
+      12,
+      ORG,
+      { options: ["US"], option_removals: ["EU"] },
+      3,
+    );
+    const del = sqlCalls("DELETE FROM custom_field_values")[0]!;
+    expect(flat(del[0])).toContain("value = to_jsonb(CAST(:removed AS text))");
+    expect((del[1] as any).replacements).toEqual({ removed: "EU", id: 12, organizationId: ORG });
+    expect(sqlCalls("UPDATE custom_field_values")).toHaveLength(0);
+    expect(mockAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oldValue: "EU",
+        description: "Use cases · Technical feasibility · 4 answers removed",
+      }),
+    );
+  });
+
+  it("drops the option from multiselect lists, then deletes lists left empty", async () => {
+    serveUpdate(multiDef, [{ option_key: "b", count: 2 }], 2);
+    await updateCustomFieldDefinitionQuery(13, ORG, { options: ["a"], option_removals: ["b"] }, 3);
+    const [update] = sqlCalls("UPDATE custom_field_values");
+    expect(flat(update[0])).toContain("SET value = value - CAST(:removed AS text)");
+    expect(flat(update[0])).toContain("value @> jsonb_build_array(CAST(:removed AS text))");
+    const [cleanup] = sqlCalls("DELETE FROM custom_field_values");
+    expect(flat(cleanup[0])).toContain("value = '[]'::jsonb");
+    expect((cleanup[1] as any).replacements).toEqual(
+      expect.objectContaining({ id: 13, organizationId: ORG }),
+    );
+  });
+
+  it("deletes a scored option's answers", async () => {
+    serveUpdate(scoredDef, [{ option_key: "opt_00000002", count: 80 }], 80);
+    await updateCustomFieldDefinitionQuery(
+      11,
+      ORG,
+      { options: sameOptionsMinusMedium, option_removals: ["opt_00000002"] },
+      3,
+    );
+    expect(sqlCalls("DELETE FROM custom_field_values")).toHaveLength(1);
+    expect(mockAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "Use cases · Technical feasibility · 80 answers removed",
+      }),
+    );
+  });
+
+  it("rejects removing answers of an option that stays", async () => {
+    serveUpdate(selectDef, [{ option_key: "EU", count: 4 }]);
+    await expect(
+      updateCustomFieldDefinitionQuery(
+        12,
+        ORG,
+        { options: ["US", "EU"], option_removals: ["EU"] },
+        3,
+      ),
+    ).rejects.toThrow(/can only list a removed option/);
+  });
+
+  it("rejects an option that is both moved and removed", async () => {
+    serveUpdate(selectDef, [{ option_key: "EU", count: 4 }]);
+    await expect(
+      updateCustomFieldDefinitionQuery(
+        12,
+        ORG,
+        { options: ["US"], option_moves: { EU: "US" }, option_removals: ["EU"] },
+        3,
+      ),
+    ).rejects.toThrow(/moved or removed once, not both/);
+  });
+
+  it("rejects option_removals on a field without options", async () => {
+    serveUpdate(textDef, []);
+    await expect(
+      updateCustomFieldDefinitionQuery(14, ORG, { option_removals: ["x"] }, 3),
+    ).rejects.toThrow(/option_removals is only allowed/);
   });
 });
 

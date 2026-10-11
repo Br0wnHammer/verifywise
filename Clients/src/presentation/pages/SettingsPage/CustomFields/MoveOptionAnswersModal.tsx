@@ -27,8 +27,13 @@ interface MoveOptionAnswersModalProps {
   remaining: ReadonlyArray<IScoredOptionInput | string>;
   isSubmitting: boolean;
   onCancel: () => void;
-  onConfirm: (moves: Record<string, string>) => void;
+  /** moves: removed option -> target option; removals: options whose answers are deleted. */
+  onConfirm: (moves: Record<string, string>, removals: string[]) => void;
 }
+
+// Select value for "Remove from records". Option text can never contain NUL
+// (PostgreSQL rejects it in text), so it cannot collide with a real option.
+const REMOVE = "\u0000remove";
 
 const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
   inUse,
@@ -49,22 +54,29 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
     if (typeof o === "string") return [{ _id: o, name: o }];
     return typeof o.id === "string" ? [{ _id: o.id, name: formatScoredOption(o) }] : [];
   });
+  const choices = [...targets, { _id: REMOVE, name: t("Remove from records") }];
 
   return (
     <StandardModal
       isOpen={true}
       title="Move answers before removing options"
       description="Records use the options you removed. Choose where their answers go."
-      submitButtonText="Move and save"
+      submitButtonText="Save"
       isSubmitting={isSubmitting}
-      isSubmitDisabled={targets.length === 0}
       onClose={onCancel}
       onSubmit={() => {
         if (inUse.some((o) => !chosen(o.id))) {
           setError(t("Choose an option for each removed option."));
           return;
         }
-        onConfirm(moves);
+        const chosenMoves: Record<string, string> = {};
+        const removals: string[] = [];
+        for (const o of inUse) {
+          const choice = chosen(o.id);
+          if (choice === REMOVE) removals.push(o.id);
+          else chosenMoves[o.id] = choice;
+        }
+        onConfirm(chosenMoves, removals);
       }}
     >
       <Stack sx={{ gap: "16px" }}>
@@ -87,7 +99,7 @@ const MoveOptionAnswersModal: React.FC<MoveOptionAnswersModalProps> = ({
             <Select
               id={`move-${index}`}
               value={chosen(option.id)}
-              items={targets}
+              items={choices}
               placeholder="Select an option"
               onChange={(e) => setMoves((m) => ({ ...m, [option.id]: e.target.value as string }))}
             />

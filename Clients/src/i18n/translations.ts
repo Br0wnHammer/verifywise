@@ -7272,6 +7272,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Records use the options you removed. Choose where their answers go.":
       "Datensätze verwenden die entfernten Optionen. Wählen Sie, wohin ihre Antworten verschoben werden.",
     "Move and save": "Verschieben und speichern",
+    "Remove from records": "Aus Datensätzen entfernen",
     "Choose an option for each removed option.":
       "Wählen Sie für jede entfernte Option eine Option.",
     "{option} is used by {count} {records}. Move these answers to:":
@@ -17367,6 +17368,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Records use the options you removed. Choose where their answers go.":
       "Des enregistrements utilisent les options supprimées. Choisissez où déplacer leurs réponses.",
     "Move and save": "Déplacer et enregistrer",
+    "Remove from records": "Retirer des enregistrements",
     "Choose an option for each removed option.":
       "Choisissez une option pour chaque option supprimée.",
     "{option} is used by {count} {records}. Move these answers to:":
@@ -24686,6 +24688,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Records use the options you removed. Choose where their answers go.":
       "Hay registros que usan las opciones quitadas. Elige adónde van sus respuestas.",
     "Move and save": "Mover y guardar",
+    "Remove from records": "Quitar de los registros",
     "Choose an option for each removed option.": "Elige una opción para cada opción quitada.",
     "{option} is used by {count} {records}. Move these answers to:":
       "{option} se usa en {count} {records}. Mover estas respuestas a:",

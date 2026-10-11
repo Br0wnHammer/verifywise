@@ -13,9 +13,11 @@ import {
   OPTIONS_IN_USE,
   removedOptions,
   validateOptionMoves,
+  validateOptionRemovals,
   validateScoredOptions,
 } from "./customFieldScoredSelect.utils";
 import {
+  ClearedAnswers,
   diffDefinitionForLedger,
   MovedAnswers,
   recordDefinitionChanges,
@@ -527,6 +529,49 @@ const MOVE_MULTISELECT_SQL = `
      AND value @> jsonb_build_array(CAST(:removed AS text))
   RETURNING 1`;
 
+/**
+ * Delete a removed option's answers: the value row for single-value types,
+ * the element from each multiselect list (a list left empty is deleted, as an
+ * empty multiselect is not a valid answer). Returns the records affected.
+ */
+const clearAnswers = async (
+  definition: ICustomFieldDefinition,
+  removed: string,
+  transaction: Transaction,
+): Promise<number> => {
+  const replacements = {
+    removed,
+    id: definition.id,
+    organizationId: definition.organization_id,
+  };
+  if (definition.field_type !== "multiselect") {
+    const rows = await sequelize.query(
+      `DELETE FROM custom_field_values
+        WHERE definition_id = :id AND organization_id = :organizationId
+          AND value = to_jsonb(CAST(:removed AS text))
+        RETURNING 1`,
+      { replacements, type: QueryTypes.SELECT, transaction },
+    );
+    return rows.length;
+  }
+  const rows = await sequelize.query(
+    `UPDATE custom_field_values
+        SET value = value - CAST(:removed AS text), updated_at = NOW()
+      WHERE definition_id = :id AND organization_id = :organizationId
+        AND jsonb_typeof(value) = 'array'
+        AND value @> jsonb_build_array(CAST(:removed AS text))
+      RETURNING 1`,
+    { replacements, type: QueryTypes.SELECT, transaction },
+  );
+  await sequelize.query(
+    `DELETE FROM custom_field_values
+      WHERE definition_id = :id AND organization_id = :organizationId
+        AND value = '[]'::jsonb`,
+    { replacements, transaction },
+  );
+  return rows.length;
+};
+
 export const getCustomFieldUsageQuery = async (
   id: number,
   organizationId: number,
@@ -610,7 +655,13 @@ export const createCustomFieldDefinitionQuery = async (
 export const updateCustomFieldDefinitionQuery = async (
   id: number,
   organizationId: number,
-  patch: { label?: unknown; required?: unknown; options?: unknown; option_moves?: unknown },
+  patch: {
+    label?: unknown;
+    required?: unknown;
+    options?: unknown;
+    option_moves?: unknown;
+    option_removals?: unknown;
+  },
   userId: number | null = null,
 ): Promise<ICustomFieldDefinition> => {
   assertPositiveInt(id, "id");
@@ -621,6 +672,7 @@ export const updateCustomFieldDefinitionQuery = async (
   let before!: ICustomFieldDefinition;
   let after!: ICustomFieldDefinition;
   const moved: MovedAnswers[] = [];
+  const cleared: ClearedAnswers[] = [];
   try {
     // field_type, field_key, entity_type are immutable on update — changing them
     // would invalidate existing values. Force a create + delete instead.
@@ -634,12 +686,14 @@ export const updateCustomFieldDefinitionQuery = async (
     }
     before = existing;
     const isScored = existing.field_type === "scored_select";
-    const hasMoves = patch.option_moves !== undefined && patch.option_moves !== null;
-    if (!OPTION_LIST_TYPES.has(existing.field_type) && hasMoves) {
-      throw new ValidationException(
-        "option_moves is only allowed for select, multiselect and scored select fields",
-        "option_moves",
-      );
+    for (const key of ["option_moves", "option_removals"] as const) {
+      const given = patch[key] !== undefined && patch[key] !== null;
+      if (given && !OPTION_LIST_TYPES.has(existing.field_type)) {
+        throw new ValidationException(
+          `${key} is only allowed for select, multiselect and scored select fields`,
+          key,
+        );
+      }
     }
 
     const label = patch.label !== undefined ? validateLabel(patch.label) : existing.label;
@@ -660,10 +714,11 @@ export const updateCustomFieldDefinitionQuery = async (
       const next = optionKeys(existing.field_type, options);
       const removed = removedOptions(prev, next);
       const moves = validateOptionMoves(patch.option_moves, removed, next);
+      const removals = validateOptionRemovals(patch.option_removals, removed, moves);
       if (removed.length > 0) {
         const counts = await countAnswersByOption(existing, transaction);
         const inUse = removed
-          .filter((o) => (counts[o.id] ?? 0) > 0 && !moves[o.id])
+          .filter((o) => (counts[o.id] ?? 0) > 0 && !moves[o.id] && !removals.has(o.id))
           .map((o) => ({ id: o.id, label: o.label, count: counts[o.id] }));
         if (inUse.length > 0) {
           throw new ConflictException(
@@ -676,6 +731,13 @@ export const updateCustomFieldDefinitionQuery = async (
           );
         }
         for (const option of removed) {
+          if (removals.has(option.id) && counts[option.id]) {
+            cleared.push({
+              from: { id: option.id, label: option.label },
+              count: await clearAnswers(existing, option.id, transaction),
+            });
+            continue;
+          }
           const target = moves[option.id];
           // Nothing to move when no record uses the option; skip the no-op write and ledger line.
           if (!target || !counts[option.id]) continue;
@@ -728,7 +790,7 @@ export const updateCustomFieldDefinitionQuery = async (
     organizationId,
     userId,
     id,
-    diffDefinitionForLedger(before, after, { moved }),
+    diffDefinitionForLedger(before, after, { moved, cleared }),
   );
   return after;
 };
