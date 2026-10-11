@@ -88,8 +88,11 @@ when the user was deleted.
 - Formula guard: a text value starting with `=`, `+`, `-`, `@`, tab or
   carriage return gets a leading `'`, so a spreadsheet does not run it.
 - Lines end with `\r\n` (RFC 4180).
-- The formula guard means the file is not byte-faithful: a value such as
-  `-5` appears as `'-5`. Accepted for spreadsheet safety.
+- Signed numbers (`-5`, `+1.5`) and a lone `-` or `+` (change history's
+  "no value") are not formulas and are left unchanged; anything else starting
+  with a guarded character is prefixed, so the file is not byte-faithful for
+  those values. Found in a live run: guarding `-` prefixed every "created"
+  change.
 
 **Self-audit:** after the stream ends successfully, append one ledger entry
 (best effort, never fails the request): `entryType: "event_log"`,

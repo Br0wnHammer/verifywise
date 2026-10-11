@@ -17,11 +17,20 @@ describe("csv.utils", () => {
 
   it("prefixes formula-looking strings with a single quote", () => {
     expect(csvField("=SUM(A1)")).toBe(`"'=SUM(A1)"`);
-    expect(csvField("+1")).toBe(`"'+1"`);
+    expect(csvField("+A1")).toBe(`"'+A1"`);
+    expect(csvField("-2+3")).toBe(`"'-2+3"`);
+    expect(csvField("-cmd|' /C calc'!A0")).toBe(`"'-cmd|' /C calc'!A0"`);
     expect(csvField("@cmd")).toBe(`"'@cmd"`);
     expect(csvField("\tx")).toBe(`"'\tx"`);
     expect(csvField("\rx")).toBe(`"'\rx"`);
-    expect(csvField("-5")).toBe(`"'-5"`);
+  });
+
+  it("leaves signed numbers and a lone sign as they are", () => {
+    expect(csvField("-5")).toBe('"-5"');
+    expect(csvField("+1.5")).toBe('"+1.5"');
+    expect(csvField("-")).toBe('"-"');
+    expect(csvField("+")).toBe('"+"');
+    expect(csvField("=5")).toBe(`"'=5"`);
   });
 
   it("does not guard numbers", () => {
