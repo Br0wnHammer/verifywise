@@ -65,9 +65,12 @@ SELECT al.*, u.name AS user_name, u.surname AS user_surname
 ```
 
 Rows are written oldest first (chain order). Each batch is written with
-`res.write`; when it returns false the loop waits for `drain`. The loop stops
-when a batch returns fewer than 1000 rows, or when the client disconnects
-(`req` `close`).
+`res.write`; when it returns false the loop waits for `drain` or `close`,
+whichever comes first. The loop stops when a batch returns fewer than 1000
+rows, or when the client disconnects: `res` `close` firing before the
+response finished. (`req` `close` is not a disconnect signal on Node 16+; it
+fires once the request has been read.) An aborted export writes no
+self-audit entry.
 
 **Errors:** an error before the first byte is a normal 500 JSON response. An
 error after streaming started is logged and the response is destroyed, so the
@@ -85,6 +88,8 @@ when the user was deleted.
 - Formula guard: a text value starting with `=`, `+`, `-`, `@`, tab or
   carriage return gets a leading `'`, so a spreadsheet does not run it.
 - Lines end with `\r\n` (RFC 4180).
+- The formula guard means the file is not byte-faithful: a value such as
+  `-5` appears as `'-5`. Accepted for spreadsheet safety.
 
 **Self-audit:** after the stream ends successfully, append one ledger entry
 (best effort, never fails the request): `entryType: "event_log"`,
@@ -92,7 +97,9 @@ when the user was deleted.
 `Exported N audit ledger entries` plus the filters used. `logSuccess` does
 not write "Read" events, so this calls `appendToAuditLedger` directly.
 
-**Index:** new migration adding
+**Index:** new migration (plain `CREATE INDEX`; the brief lock on
+`audit_ledger` while it builds is accepted, as no migration here uses
+`CONCURRENTLY`) adding
 `CREATE INDEX IF NOT EXISTS idx_audit_ledger_org_id ON verifywise.audit_ledger (organization_id, id)`
 (down drops it). The list endpoint's `organization_id` filter also benefits.
 
@@ -111,6 +118,10 @@ not write "Read" events, so this calls `appendToAuditLedger` directly.
   `filters.entry_type`, disabled while exporting, using
   `triggerBrowserDownload`. A failure shows the page's existing error alert
   pattern.
+- Errors: `customAxios` already shows a toast for any failed request, so the
+  button only resets its busy state on failure; no second alert.
+- The page is only rendered for Admins (`SettingsPage/index.tsx:52`), which
+  matches the export permission, so the button needs no extra role check.
 - New strings get de/fr/es entries.
 
 ## Testing

@@ -103,17 +103,17 @@ Tests (mock `sequelize.query`): SQL has `al.organization_id = :organizationId`, 
 
 - [ ] **Step 3: Controller, test first.** `exportAuditLedger(req, res)` in `auditLedger.ctrl.ts`:
   1. Validate `entry_type` (400 via `STATUS_CODE[400]` if not one of the two values).
-  2. Track `let aborted = false; req.on("close", () => { aborted = !res.writableEnded; });`
+  2. Track disconnects on the RESPONSE: `let aborted = false; res.on("close", () => { aborted = !res.writableFinished; });` (NOT `req` close: on Node 16+ it fires as soon as the request is read, which would cut every export after one batch).
   3. Set headers (spec), `res.write(CSV_BOM + csvRow([...AUDIT_LEDGER_EXPORT_COLUMNS]))`.
-  4. Loop: `rows = await fetchAuditLedgerBatch(...)`; if `aborted` break; build the batch text with `csvRow(ledgerRowValues(r))`; `if (!res.write(text)) await new Promise((r) => res.once("drain", r));` count rows; `afterId = last row id`; stop when `rows.length < EXPORT_BATCH_SIZE`.
-  5. `res.end()`; then best-effort `appendToAuditLedger({ organizationId, entryType: "event_log", userId: req.userId, eventType: "Read", entityType: "audit_ledger", description: \`Exported ${count} audit ledger entries\` + filters })` in try/catch.
+  4. Loop: if `aborted` break; `rows = await fetchAuditLedgerBatch(...)`; if `aborted` break; build the batch text with `csvRow(ledgerRowValues(r))`; `if (!res.write(text)) await waitForDrainOrClose(res)` (a `Promise.race` of `drain` and `close` that removes the other listener); count rows; `afterId = last row id`; stop when `rows.length < EXPORT_BATCH_SIZE`.
+  5. If `aborted`, return without `end` or self-audit. Otherwise `res.end()`; then best-effort (never awaited before `end`) `appendToAuditLedger({ organizationId, entryType: "event_log", userId: req.userId, eventType: "Read", entityType: "audit_ledger", description: \`Exported ${count} audit ledger entries\` + filters })` in try/catch.
   6. catch: `logFailure`; if `!res.headersSent` → 500 JSON; else `res.destroy(error)`.
 
-  Wait for `drain` OR `close`, so a disconnect during backpressure does not hang the loop.
+  Headers set: `Content-Type`, `Content-Disposition`, and `Access-Control-Expose-Headers: Content-Disposition` (the CORS config in app.ts exposes no headers).
 
-  Tests (mock `fetchAuditLedgerBatch`, `appendToAuditLedger`, a fake res with `setHeader`, `write`, `end`, `destroy`, `once`, `headersSent`): headers + BOM + header row; 1000 + 3 rows → two batches, second `afterId` = last id of first; invalid `entry_type` → 400 and no query; error on first batch → 500 JSON; error on second batch → `destroy` called, no `end`; self-audit called once with count 1003 after `end`; self-audit throwing does not throw; client close after batch one stops further fetches.
+  Tests (mock `fetchAuditLedgerBatch`, `appendToAuditLedger`). The fake `req` and `res` MUST be real `EventEmitter`s (`res` adds `setHeader`, `write` returning a configurable boolean, `end` setting `writableFinished`, `destroy`, `headersSent`, `status().json()`), so close/drain tests exercise real listeners: headers incl. `Access-Control-Expose-Headers` + BOM + header row; 1000 + 3 rows → two batches, second `afterId` = last id of first; invalid `entry_type` → 400 and no query; error on first batch → 500 JSON; error on second batch → `destroy` called, no `end`; self-audit called once with count 1003 after `end`; self-audit throwing does not throw; `res` close after batch one stops further fetches and skips self-audit; `req` emitting close does NOT stop the export (regression guard); `write` returning false waits until `drain` is emitted, and a `close` instead of `drain` ends the loop without hanging.
 
-- [ ] **Step 4: Route.** `router.get("/export", authorize("auditLedger.admin"), exportAuditLedger);` placed before `/verify`. Add a JSDoc/route test only if the folder has a route test pattern.
+- [ ] **Step 4: Route.** `router.get("/export", authorize("auditLedger.admin"), exportAuditLedger);`. Mandatory test: the `/export` GET layer in the router stack is guarded by `authorize("auditLedger.admin")` (mock `authorize` to tag its permission key and assert it).
 
 - [ ] **Step 5: Migration.**
 
@@ -132,7 +132,7 @@ module.exports = {
 };
 ```
 
-- [ ] **Step 6: Gates and docs.** Run the Servers gates; regenerate swagger/endpoints; commit `feat(audit-ledger): stream the audit ledger as a CSV export`.
+- [ ] **Step 6: Gates and docs.** Run the Servers gates; regenerate swagger/endpoints (the generator reads app.ts route mappings; then set the new operation's summary/description and the 200 `text/csv` response in `swagger.yaml` by hand and regenerate again so both files agree); commit `feat(audit-ledger): stream the audit ledger as a CSV export`.
 
 ### Task 2: Client — Export CSV button
 
@@ -164,10 +164,10 @@ export async function exportAuditLedger(
 }
 ```
 
-- [ ] **Step 2: Button, test first.** In `index.tsx`, an `isExporting` state and an "Export CSV" `CustomizableButton` (variant `outlined`, same `sx` height as Verify) placed before "Verify chain". On click: `exportAuditLedger({ entity_type: filters.entity_type || undefined, entry_type: filters.entry_type || undefined })` → `triggerBrowserDownload(blob, filename)`; on error set the page's existing alert/error state with "Could not export the audit ledger." Text while running: "Exporting...".
+- [ ] **Step 2: Button, test first.** In `index.tsx`, an `isExporting` state and an "Export CSV" `CustomizableButton` (variant `outlined`, same `sx` height as Verify) placed before "Verify chain". On click: `exportAuditLedger({ entity_type: filters.entity_type || undefined, entry_type: filters.entry_type || undefined })` → `triggerBrowserDownload(blob, filename)`; on error only reset `isExporting` (`customAxios` already toasts every failed request; no page alert). Text while running: "Exporting...". The page is Admin-only already; no role check.
 
-  Test: mock the repository and `triggerBrowserDownload`; with an entity filter selected, clicking "Export CSV" calls `exportAuditLedger` with that filter and downloads the returned blob; a rejected export shows the error text.
+  Test: mock the repository and `triggerBrowserDownload`; with an entity filter selected, clicking "Export CSV" calls `exportAuditLedger` with that filter and downloads the returned blob; a rejected export re-enables the button and downloads nothing.
 
-- [ ] **Step 3: i18n.** Add de/fr/es for "Export CSV", "Exporting...", "Could not export the audit ledger." next to the existing audit ledger strings.
+- [ ] **Step 3: i18n.** Add de/fr/es for "Export CSV" and "Exporting..." next to the existing audit ledger strings (skip any that already exist).
 
 - [ ] **Step 4: Gates.** Clients gates; commit `feat(audit-ledger): add Export CSV button`.
