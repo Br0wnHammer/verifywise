@@ -53,11 +53,9 @@ jest.mock("../../utils/statusCode.utils", () => ({
 }));
 jest.mock("../../utils/retentionAudit.utils", () => ({
   appendRetentionChangeToLedger: jest.fn<any>().mockResolvedValue(undefined),
-  // "Compliance lead" stands for a custom role granted organization.admin;
-  // isSuperAdmin mirrors the real helper's SuperAdmin pass.
+  // "Compliance lead" stands for a custom role granted organization.admin.
   canChangeRetentionPeriods: jest.fn(
-    async (caller: { role?: string; isSuperAdmin?: boolean }) =>
-      Boolean(caller.isSuperAdmin) || caller.role === "Compliance lead",
+    async (_orgId: number, role: string) => role === "Compliance lead",
   ),
 }));
 jest.mock("../../utils/logger/fileLogger", () => ({
@@ -1071,14 +1069,15 @@ describe("shadowAi.ctrl", () => {
       expect(mockUpdateSettings).not.toHaveBeenCalled();
     });
 
-    it("lets an elected SuperAdmin whose org role is Editor save retention periods", async () => {
-      mockUpdateSettings.mockResolvedValue({ retention_events_days: 60 });
+    it("refuses an elected SuperAdmin whose org role is Editor", async () => {
+      // SuperAdmin is a cross-tenant grant; inside an org the org role decides.
       const res = createRes();
       await updateSettings(
         createReq({ role: "Editor", isSuperAdmin: true, body: { retention_events_days: 60 } }),
         res,
       );
-      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(mockUpdateSettings).not.toHaveBeenCalled();
     });
 
     it("keeps the rate limit to the Admin and SuperAdmin roles", async () => {

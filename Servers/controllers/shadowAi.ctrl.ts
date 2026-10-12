@@ -1402,12 +1402,7 @@ export async function updateSettings(req: Request, res: Response) {
     const allowed =
       req.role === "Admin" ||
       req.role === "SuperAdmin" ||
-      (retentionOnly &&
-        (await canChangeRetentionPeriods({
-          organizationId,
-          role: req.role,
-          isSuperAdmin: req.isSuperAdmin,
-        })));
+      (retentionOnly && (await canChangeRetentionPeriods(organizationId, req.role)));
     if (!allowed) {
       return res.status(403).json(STATUS_CODE[403](req.t!("Only admins can manage settings")));
     }

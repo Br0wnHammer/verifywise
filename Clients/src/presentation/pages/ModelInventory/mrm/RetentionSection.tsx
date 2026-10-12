@@ -3,7 +3,6 @@ import { Box, Typography } from "@mui/material";
 import { CustomizableButton } from "../../../components/button/customizable-button";
 import Field from "../../../components/Inputs/Field";
 import { useMrmSettings, useUpdateMrmSettings } from "../../../../application/hooks/useMrm";
-import { useAuth } from "../../../../application/hooks/useAuth";
 import { useHasPermission } from "../../../../application/hooks/useMyPermissions";
 import { mrmErrorMessage } from "./constants";
 import { mrmSectionIntroStyle } from "./mrmStyles";
@@ -18,10 +17,10 @@ const MIN_RETENTION_MONTHS = 13;
 const RetentionSection = ({ onError, onSuccess }: RetentionSectionProps) => {
   const { data: settings } = useMrmSettings();
   const updateSettings = useUpdateMrmSettings();
-  const { isSuperAdmin } = useAuth();
   // The server allows any role holding organization.admin (custom roles too).
-  const canManageRetention = useHasPermission("organization.admin", { fallbackToAdmin: true });
-  const canEdit = canManageRetention || isSuperAdmin;
+  // SuperAdmin is a cross-tenant grant, not admin access inside an org, so an
+  // elected SuperAdmin follows their org role here.
+  const canEdit = useHasPermission("organization.admin", { fallbackToAdmin: true });
   const [months, setMonths] = useState<string>("");
 
   // Seed the input from the loaded settings; keep user edits afterwards.

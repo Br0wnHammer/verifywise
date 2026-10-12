@@ -120,22 +120,12 @@ describe("RetentionSection", () => {
     expect(screen.getByText("Save retention").closest("button")).not.toBeDisabled();
   });
 
-  it("is editable for an elected SuperAdmin whose org role is Editor", () => {
+  it("is read-only for an elected SuperAdmin whose org role is Editor", () => {
     mockRole = "Editor";
     mockIsSuperAdmin = true;
     mockUseMrmSettings.mockReturnValue({ data: settings });
     renderWithProviders(<RetentionSection onError={onError} onSuccess={onSuccess} />);
 
-    expect(screen.getByDisplayValue("24")).not.toBeDisabled();
-    expect(screen.queryByText("Only admins can change retention periods")).not.toBeInTheDocument();
-  });
-
-  it("is editable for super admins", () => {
-    mockRole = "";
-    mockIsSuperAdmin = true;
-    mockUseMrmSettings.mockReturnValue({ data: settings });
-    renderWithProviders(<RetentionSection onError={onError} onSuccess={onSuccess} />);
-
-    expect(screen.getByDisplayValue("24")).not.toBeDisabled();
+    expect(screen.getByDisplayValue("24")).toBeDisabled();
   });
 });
