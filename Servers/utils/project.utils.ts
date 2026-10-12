@@ -774,7 +774,8 @@ export const deleteHelper = async (
 };
 
 /**
- * Delete a project and everything that hangs off it. Pass
+ * Delete a project and everything that hangs off it. The project row is
+ * locked (FOR UPDATE) before any child row is touched. Pass
  * `enqueueAutomationAfterCommit` when the caller's transaction may still roll
  * back after this returns (for example a batch removal): the project_deleted
  * automation is then queued only once the transaction commits, so it never
@@ -787,6 +788,14 @@ export const deleteProjectByIdQuery = async (
   transaction: Transaction,
   options: { enqueueAutomationAfterCommit?: boolean } = {},
 ): Promise<boolean> => {
+  // Lock the project row first, before touching any child row, so every
+  // deletion path takes the same lock order (project, then its children and
+  // the rows that cascade from it) and two deletes of one project cannot
+  // deadlock. Every caller runs this inside a transaction.
+  await sequelize.query(
+    `SELECT id FROM projects WHERE id = :id AND organization_id = :organizationId FOR UPDATE;`,
+    { replacements: { id, organizationId }, type: QueryTypes.SELECT, transaction },
+  );
   const frameworks = await sequelize.query(
     `SELECT framework_id FROM projects_frameworks WHERE organization_id = :organizationId AND project_id = :project_id`,
     {

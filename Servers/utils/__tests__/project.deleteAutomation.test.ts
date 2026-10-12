@@ -56,6 +56,28 @@ beforeEach(() => {
   });
 });
 
+describe("deleteProjectByIdQuery lock order", () => {
+  it("locks the project row first, before any child row is read or deleted", async () => {
+    const tx = fakeTransaction();
+
+    await deleteProjectByIdQuery(111, 5, tx as any);
+
+    const [firstSql, firstOptions] = query.mock.calls[0] as [string, any];
+    expect(firstSql).toMatch(
+      /^SELECT id FROM projects WHERE id = :id AND organization_id = :organizationId FOR UPDATE/,
+    );
+    expect(firstOptions).toMatchObject({
+      replacements: { id: 111, organizationId: 5 },
+      transaction: tx,
+    });
+    const statements = query.mock.calls.map(([sql]) => String(sql));
+    const projectDelete = statements.findIndex((sql) => sql.startsWith("DELETE FROM projects"));
+    expect(projectDelete).toBeGreaterThan(0);
+    // Every child-row statement comes after the lock.
+    expect(statements.slice(1).some((sql) => sql.includes("FOR UPDATE"))).toBe(false);
+  });
+});
+
 describe("deleteProjectByIdQuery project_deleted automation", () => {
   it("queues the automation at once by default (core path unchanged)", async () => {
     const tx = fakeTransaction();
