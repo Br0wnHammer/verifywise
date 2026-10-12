@@ -346,7 +346,10 @@ def test_unknown_internal_paths_never_reach_the_check(monkeypatch):
     assert auth._rejected_logged_at == {}
 
     assert client.get("/internal/cache/stats").status_code == 401
-    assert set(auth._rejected_logged_at) == {"/internal/cache/stats"}
+    # One entry for the matched template. Depending on the FastAPI version
+    # the template is reported with or without the /internal prefix.
+    (template,) = auth._rejected_logged_at
+    assert template in {"/internal/cache/stats", "/cache/stats"}
 
 
 def test_missing_key_is_logged_once_per_process(monkeypatch, caplog):
