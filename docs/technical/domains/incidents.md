@@ -546,6 +546,27 @@ The incident management system supports Article 73 requirements:
 | `domain/enums/aiIncidentManagement.enum.ts` | Client enums |
 | `domain/models/Common/incidentManagement/` | Client model |
 
+## Follow-ups
+
+Known issues outside this change, recorded so they are not lost:
+
+- **Cross-organization user names in other entities' change history
+  (pre-existing).** `GENERIC_FORMATTERS.user` (`Servers/config/changeHistory.config.ts`)
+  only filters by `organization_id` when a `FormatterContext` with an
+  `organizationId` is passed. Incident history and every entity's creation
+  history (`recordEntityCreation`) pass one; the update-history callers of
+  `trackEntityChanges` for vendors, vendor risks, use cases / projects, project
+  risks, model inventory, model risks, policies, tasks, training, datasets and
+  files do not (`Servers/utils/*ChangeHistory.utils.ts` wrappers and their
+  controllers). For those, a user id from another organization written into a
+  tracked field would be shown with that user's name. Fix: pass
+  `{ organizationId, transaction }` from each caller.
+- **TIMESTAMP WITHOUT TIME ZONE dates shift on non-UTC servers
+  (pre-existing).** pg parses these columns (oid 1114) as server-local time
+  and the API serialises them with `toISOString()`, so `occurred_date`,
+  `date_detected` and `approval_date` can show a day early or late when the
+  server is not on UTC. Fix: a single pg type parser for oid 1114.
+
 ## Related Documentation
 
 - [Risk Management](./risk-management.md)

@@ -135,6 +135,15 @@ describe("reopening closed incidents", () => {
       ).toBe(true);
     });
 
+    it("does not collapse objects or mixed types in lists", () => {
+      expect(isSameIncidentValue("categories_of_harm", [{ a: 1 }], [{ a: 2 }])).toBe(false);
+      expect(isSameIncidentValue("categories_of_harm", [1], ["1"])).toBe(false);
+      // Lists in other columns compare in order, by value.
+      expect(isSameIncidentValue("affected_persons_groups", [{ a: 1 }], [{ a: 2 }])).toBe(false);
+      expect(isSameIncidentValue("affected_persons_groups", ["a", "b"], ["b", "a"])).toBe(false);
+      expect(isSameIncidentValue("affected_persons_groups", [{ a: 1 }], [{ a: 1 }])).toBe(true);
+    });
+
     it("compares harm categories as lists, whether stored as JSON text or an array", () => {
       expect(isSameIncidentValue("categories_of_harm", '["Other"]', ["Other"])).toBe(true);
       expect(isSameIncidentValue("categories_of_harm", ["Other"], ["Other", "Health"])).toBe(false);

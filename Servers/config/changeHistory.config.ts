@@ -68,12 +68,18 @@ export interface FormatterContext {
   transaction?: Transaction;
 }
 
+let lookupSavepointSeq = 0;
+
 /**
  * Runs a formatter's lookup SELECT. On a caller's transaction it runs inside
- * a SAVEPOINT (a nested transaction): Postgres aborts the whole transaction
- * on any error, so without one a failed name lookup would make the caller's
- * own write fail. With it, the error rolls back only the savepoint, the
- * formatter falls back to its id label, and the caller's transaction goes on.
+ * its own SAVEPOINT: Postgres aborts the whole transaction on any error, so
+ * without one a failed name lookup would make the caller's own write fail.
+ * On success the savepoint is released; on failure it is rolled back to and
+ * released, the error is rethrown for the formatter's id-label fallback, and
+ * the caller's transaction goes on.
+ *
+ * The SQL is issued explicitly because a sequelize v6 nested transaction
+ * never releases its savepoint on commit.
  */
 const selectInSavepoint = async <T extends object>(
   sql: string,
@@ -83,9 +89,22 @@ const selectInSavepoint = async <T extends object>(
   if (!transaction) {
     return sequelize.query<T>(sql, { replacements, type: QueryTypes.SELECT });
   }
-  return sequelize.transaction({ transaction }, (savepoint) =>
-    sequelize.query<T>(sql, { replacements, type: QueryTypes.SELECT, transaction: savepoint }),
-  );
+  lookupSavepointSeq += 1;
+  const savepoint = `history_lookup_${lookupSavepointSeq}`;
+  await sequelize.query(`SAVEPOINT ${savepoint}`, { transaction });
+  try {
+    const rows = await sequelize.query<T>(sql, {
+      replacements,
+      type: QueryTypes.SELECT,
+      transaction,
+    });
+    await sequelize.query(`RELEASE SAVEPOINT ${savepoint}`, { transaction });
+    return rows;
+  } catch (error) {
+    await sequelize.query(`ROLLBACK TO SAVEPOINT ${savepoint}`, { transaction });
+    await sequelize.query(`RELEASE SAVEPOINT ${savepoint}`, { transaction });
+    throw error;
+  }
 };
 
 /**

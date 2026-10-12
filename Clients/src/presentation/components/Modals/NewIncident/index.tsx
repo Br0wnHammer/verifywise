@@ -131,8 +131,9 @@ const FK_FIELDS = new Set<keyof NewIncidentFormValues>([
 
 /**
  * Whether two form values are the same for change detection: "" / null /
- * undefined are all empty, FK pickers compare as ids, and lists (harm
- * categories) compare as sets, ignoring order.
+ * undefined are all empty, FK pickers compare as ids, harm categories compare
+ * as a set (ignoring order, items by their JSON), and other objects or lists
+ * by their JSON, in order.
  */
 export const isSameFormValue = (
   key: keyof NewIncidentFormValues,
@@ -142,7 +143,9 @@ export const isSameFormValue = (
   const norm = (v: unknown) => {
     if (FK_FIELDS.has(key)) return toId(v);
     if (v === undefined || v === null) return "";
-    if (Array.isArray(v)) return JSON.stringify(v.map((item) => String(item)).sort());
+    if (key === "categories_of_harm" && Array.isArray(v)) {
+      return JSON.stringify(v.map((item) => JSON.stringify(item)).sort());
+    }
     return typeof v === "object" ? JSON.stringify(v) : String(v);
   };
   return norm(a) === norm(b);

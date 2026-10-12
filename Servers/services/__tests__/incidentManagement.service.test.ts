@@ -7,8 +7,7 @@ const mockTransaction = {
   afterCommit: jest.fn((cb: () => void) => afterCommitCallbacks.push(cb)),
 };
 
-// sequelize.transaction() opens the update transaction; with a callback it
-// opens a SAVEPOINT on the given parent (history name lookups).
+// sequelize.transaction() opens the update transaction.
 jest.mock("../../database/db", () => ({
   sequelize: {
     transaction: jest.fn(async (options?: any, callback?: any) =>
@@ -168,12 +167,19 @@ describe("updateIncident (shared incident write path)", () => {
       ([sql]: [string]) => String(sql).includes("FROM users"),
     );
     expect(userLookups).toHaveLength(2); // old and new owner
+    const savepointStatements = (sequelize.query as jest.MockedFunction<any>).mock.calls
+      .map(([sql]: [string]) => sql)
+      .filter((sql: string) => /SAVEPOINT history_lookup_\d+$/.test(sql));
+    expect(savepointStatements.filter((sql: string) => sql.startsWith("SAVEPOINT"))).toHaveLength(
+      2,
+    );
+    expect(savepointStatements.filter((sql: string) => sql.startsWith("RELEASE"))).toHaveLength(2);
     for (const [sql, options] of userLookups) {
       expect(sql).toContain("organization_id = :organizationId");
       expect(options).toMatchObject({
         replacements: { organizationId: 1 },
-        // A savepoint of the update transaction, so a failed lookup cannot abort it.
-        transaction: { savepointOf: mockTransaction },
+        // On the update transaction, inside its own SAVEPOINT.
+        transaction: mockTransaction,
       });
     }
   });

@@ -241,6 +241,14 @@ describe("NewIncident (SideDrawerIncident)", () => {
     );
   });
 
+  it("does not collapse objects or mixed types when comparing lists", () => {
+    expect(isSameFormValue("categories_of_harm", [{ a: 1 }], [{ a: 2 }])).toBe(false);
+    expect(isSameFormValue("categories_of_harm", [1], ["1"])).toBe(false);
+    // Lists in other fields compare in order, by value.
+    expect(isSameFormValue("description", [{ a: 1 }], [{ a: 2 }])).toBe(false);
+    expect(isSameFormValue("description", ["a", "b"], ["b", "a"])).toBe(false);
+  });
+
   it("sends no version when the loaded incident had none (never an empty string)", async () => {
     const onSuccess = vi.fn().mockResolvedValue(true);
     const noVersion = {

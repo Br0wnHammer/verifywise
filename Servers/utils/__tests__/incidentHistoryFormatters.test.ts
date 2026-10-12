@@ -1,16 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
-// sequelize.transaction({ transaction }, cb) opens a SAVEPOINT on the parent:
-// modelled as a child transaction object handed to the callback, which
-// rejects (rolling back only the savepoint) when the callback throws.
-jest.mock("../../database/db", () => ({
-  sequelize: {
-    query: jest.fn(),
-    transaction: jest.fn(async (options: any, callback: any) =>
-      callback({ savepointOf: options?.transaction }),
-    ),
-  },
-}));
+jest.mock("../../database/db", () => ({ sequelize: { query: jest.fn() } }));
 
 import { sequelize } from "../../database/db";
 import { GENERIC_FORMATTERS, getEntityConfig } from "../../config/changeHistory.config";
@@ -19,6 +9,31 @@ import { recordEntityCreation } from "../changeHistory.base.utils";
 const mockQuery = sequelize.query as jest.MockedFunction<any>;
 const formatters = getEntityConfig("incident").fieldFormatters!;
 const tx = { id: "tx" } as any;
+
+const isSavepointSql = (sql: string) =>
+  /^(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT) /.test(sql);
+
+/** Answers savepoint statements and INSERTs; `select` answers lookups. */
+function respond(select: (sql: string) => unknown) {
+  mockQuery.mockImplementation(async (sql: string) => {
+    if (isSavepointSql(sql) || sql.startsWith("INSERT")) return [[], 0];
+    return select(sql);
+  });
+}
+
+/** The lookup SELECTs (not savepoint statements or history INSERTs). */
+const lookupCalls = () =>
+  mockQuery.mock.calls.filter(
+    ([sql]: [string]) => !isSavepointSql(sql) && !sql.startsWith("INSERT"),
+  );
+
+/** The SQL statements run on `transaction`, with savepoint names normalised. */
+const statementsOn = (transaction: unknown) =>
+  mockQuery.mock.calls
+    .filter(([, options]: [string, any]) => options?.transaction === transaction)
+    .map(([sql]: [string]) =>
+      isSavepointSql(sql) ? sql.replace(/history_lookup_\d+/, "sp") : "SELECT",
+    );
 
 describe("incident change-history formatters are tenant-scoped", () => {
   beforeEach(() => {
@@ -32,22 +47,21 @@ describe("incident change-history formatters are tenant-scoped", () => {
   ])(
     "%s resolves a name only within the organization, on the update transaction",
     async (field, table, label) => {
-      mockQuery.mockResolvedValueOnce([{ name: "Fraud model" }]);
+      respond(() => [{ name: "Fraud model" }]);
 
       await expect(formatters[field](5, { organizationId: 1, transaction: tx })).resolves.toBe(
         "Fraud model",
       );
-      const [sql, options] = mockQuery.mock.calls[0];
+      const [sql, options] = lookupCalls()[0];
       expect(sql).toContain(`FROM ${table}`);
       expect(sql).toContain("organization_id = :organizationId");
       expect(options).toMatchObject({
         replacements: { id: 5, organizationId: 1 },
-        transaction: { savepointOf: tx },
+        transaction: tx,
       });
-      expect(sequelize.transaction).toHaveBeenCalledWith({ transaction: tx }, expect.any(Function));
 
       // Another organization's row is not found → id fallback, no name leaked.
-      mockQuery.mockResolvedValueOnce([]);
+      respond(() => []);
       await expect(formatters[field](6, { organizationId: 1 })).resolves.toBe(`${label} #6`);
     },
   );
@@ -61,16 +75,16 @@ describe("incident change-history formatters are tenant-scoped", () => {
   );
 
   it("assignee_id uses the user lookup scoped to the organization", async () => {
-    mockQuery.mockResolvedValueOnce([{ id: 7, name: "Grace", surname: "Hopper", email: null }]);
+    respond(() => [{ id: 7, name: "Grace", surname: "Hopper", email: null }]);
 
     await expect(formatters.assignee_id("7", { organizationId: 1, transaction: tx })).resolves.toBe(
       "Grace Hopper",
     );
-    const [sql, options] = mockQuery.mock.calls[0];
+    const [sql, options] = lookupCalls()[0];
     expect(sql).toContain("organization_id = :organizationId");
     expect(options).toMatchObject({
       replacements: { userId: 7, organizationId: 1 },
-      transaction: { savepointOf: tx },
+      transaction: tx,
     });
   });
 
@@ -78,11 +92,53 @@ describe("incident change-history formatters are tenant-scoped", () => {
     mockQuery.mockResolvedValueOnce([]);
     await expect(GENERIC_FORMATTERS.user(7)).resolves.toBe("User #7");
     expect(mockQuery.mock.calls[0][0]).not.toContain("organization_id");
+    // No transaction, no savepoint.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  describe("savepoints around lookups on a caller's transaction", () => {
+    it("opens and releases a savepoint around a successful lookup", async () => {
+      respond(() => [{ name: "Chatbot" }]);
+
+      await expect(formatters.project_id(3, { organizationId: 1, transaction: tx })).resolves.toBe(
+        "Chatbot",
+      );
+      expect(statementsOn(tx)).toEqual(["SAVEPOINT sp", "SELECT", "RELEASE SAVEPOINT sp"]);
+    });
+
+    it("rolls back to and releases the savepoint when the lookup fails, then falls back", async () => {
+      respond(() => {
+        throw new Error("division by zero");
+      });
+
+      await expect(formatters.project_id(3, { organizationId: 1, transaction: tx })).resolves.toBe(
+        "Use case #3",
+      );
+      expect(statementsOn(tx)).toEqual([
+        "SAVEPOINT sp",
+        "SELECT",
+        "ROLLBACK TO SAVEPOINT sp",
+        "RELEASE SAVEPOINT sp",
+      ]);
+    });
+
+    it("uses a distinct savepoint name for each lookup", async () => {
+      respond(() => [{ name: "Chatbot" }]);
+
+      await formatters.project_id(3, { organizationId: 1, transaction: tx });
+      await formatters.project_id(4, { organizationId: 1, transaction: tx });
+
+      const names = mockQuery.mock.calls
+        .map(([sql]: [string]) => /^SAVEPOINT (\w+)$/.exec(sql)?.[1])
+        .filter(Boolean);
+      expect(names).toHaveLength(2);
+      expect(new Set(names).size).toBe(2);
+    });
   });
 
   it("creation history records names, looked up in the organization on the creating transaction", async () => {
     const createTx = { afterCommit: jest.fn() } as any;
-    mockQuery.mockImplementation(async (sql: string) => {
+    respond((sql) => {
       if (sql.includes("FROM users")) {
         return [{ id: 7, name: "Grace", surname: "Hopper", email: null }];
       }
@@ -99,13 +155,13 @@ describe("incident change-history formatters are tenant-scoped", () => {
       createTx,
     );
 
-    const lookups = mockQuery.mock.calls.filter(([sql]: [string]) => !sql.startsWith("INSERT"));
+    const lookups = lookupCalls();
     expect(lookups).toHaveLength(2);
     for (const [sql, options] of lookups) {
       expect(sql).toContain("organization_id = :organizationId");
       expect(options).toMatchObject({
         replacements: { organizationId: 1 },
-        transaction: { savepointOf: createTx },
+        transaction: createTx,
       });
     }
     const inserted = mockQuery.mock.calls
@@ -123,21 +179,9 @@ describe("incident change-history formatters are tenant-scoped", () => {
     );
   });
 
-  it("a failing lookup on a transaction falls back to the id label inside its savepoint", async () => {
-    const tx = { id: "outer" } as any;
-    mockQuery.mockRejectedValueOnce(new Error("division by zero"));
-
-    await expect(formatters.project_id(3, { organizationId: 1, transaction: tx })).resolves.toBe(
-      "Use case #3",
-    );
-    // The failing SELECT ran on the savepoint, not on the caller's transaction.
-    expect(sequelize.transaction).toHaveBeenCalledWith({ transaction: tx }, expect.any(Function));
-    expect(mockQuery.mock.calls[0][1].transaction).toEqual({ savepointOf: tx });
-  });
-
   it("creation history still records every field when a name lookup fails", async () => {
     const createTx = { afterCommit: jest.fn() } as any;
-    mockQuery.mockImplementation(async (sql: string) => {
+    respond((sql) => {
       if (sql.includes("FROM users")) throw new Error("lookup failed");
       return [[], 0];
     });
@@ -156,6 +200,9 @@ describe("incident change-history formatters are tenant-scoped", () => {
         ["Owner", "User #7", createTx],
         ["Status", "Open", createTx],
       ]),
+    );
+    expect(mockQuery.mock.calls.map(([sql]: [string]) => sql)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^ROLLBACK TO SAVEPOINT history_lookup_\d+$/)]),
     );
   });
 });

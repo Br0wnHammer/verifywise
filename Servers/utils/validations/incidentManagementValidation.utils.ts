@@ -348,8 +348,9 @@ const toHarmArray = (value: unknown): unknown => {
  * (diffIncidentColumns).
  *
  * '' / null / undefined are all "empty"; booleans treat empty as false; date
- * columns compare calendar dates; foreign keys compare numerically; lists
- * (harm categories) compare as sets, ignoring order.
+ * columns compare calendar dates; foreign keys compare numerically; harm
+ * categories compare as a set, ignoring order; other values compare by value
+ * (objects and arrays by their JSON, in order).
  */
 export const isSameIncidentValue = (column: string, stored: unknown, sent: unknown): boolean => {
   if (INCIDENT_BOOLEAN_COLUMNS.has(column)) return Boolean(stored) === Boolean(sent);
@@ -360,12 +361,16 @@ export const isSameIncidentValue = (column: string, stored: unknown, sent: unkno
     return incidentCalendarDate(stored) === incidentCalendarDate(sent);
   }
   if (INCIDENT_FK_COLUMNS.has(column)) return Number(stored) === Number(sent);
-  const storedList = column === "categories_of_harm" ? toHarmArray(stored) : stored;
-  const sentList = column === "categories_of_harm" ? toHarmArray(sent) : sent;
-  if (Array.isArray(storedList) && Array.isArray(sentList)) {
-    // Lists (harm categories) are sets: order does not make a change.
-    const sorted = (list: unknown[]) => JSON.stringify(list.map((item) => String(item)).sort());
-    return sorted(storedList) === sorted(sentList);
+  if (column === "categories_of_harm") {
+    const storedList = toHarmArray(stored);
+    const sentList = toHarmArray(sent);
+    if (Array.isArray(storedList) && Array.isArray(sentList)) {
+      // Harm categories are a set: order does not make a change. Items are
+      // compared by their JSON, so types and object contents still count.
+      const sorted = (list: unknown[]) =>
+        JSON.stringify(list.map((item) => JSON.stringify(item)).sort());
+      return sorted(storedList) === sorted(sentList);
+    }
   }
   if (typeof stored === "object" || typeof sent === "object") {
     return JSON.stringify(stored) === JSON.stringify(sent);
