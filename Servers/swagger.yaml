@@ -7701,6 +7701,8 @@ tags:
   -
     name: 'AI Detection'
   -
+    name: 'AI Gateway'
+  -
     name: 'AI Trust Centre'
   -
     name: 'Agent Discovery'
@@ -7726,6 +7728,8 @@ tags:
     name: 'Custom Fields'
   -
     name: Dashboard
+  -
+    name: 'Data Retention'
   -
     name: Datasets
   -
@@ -24369,6 +24373,61 @@ paths:
           description: Unauthorized
         '500':
           description: 'Internal server error'
+  /data-retention:
+    get:
+      summary: 'List data retention settings'
+      description: 'Returns how long each kind of record is kept for the organization (audit records, AI gateway logs, Agent Control logs, model risk management metrics, evidence files, Shadow AI data, server logs), the latest cleanup per type, and the point the audit ledger has been pruned through. Admin only.'
+      responses:
+        '200':
+          description: Success
+        '403':
+          description: 'Admin access required'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Data Retention'
+      operationId: getDataRetention
+      security:
+        -
+          bearerAuth: []
+  /data-retention/audit-records/preview:
+    get:
+      summary: 'Preview audit record cleanup'
+      description: 'Returns how many audit records would be deleted now if the given retention period (months: 12, 24, 36, 60, 84 or 120) were applied. Read-only. Admin only.'
+      responses:
+        '200':
+          description: Success
+        '400':
+          description: 'Invalid retention period'
+        '403':
+          description: 'Admin access required'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Data Retention'
+      operationId: previewAuditRetention
+      security:
+        -
+          bearerAuth: []
+  /data-retention/audit-records:
+    put:
+      summary: 'Set audit record retention'
+      description: 'Sets how long audit records are kept. Body: { months: 12 | 24 | 36 | 60 | 84 | 120 | null }, where null keeps records indefinitely. The change is recorded in the audit ledger. Admin only.'
+      responses:
+        '200':
+          description: Success
+        '400':
+          description: 'Invalid retention period'
+        '403':
+          description: 'Admin access required'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Data Retention'
+      operationId: updateAuditRetention
+      security:
+        -
+          bearerAuth: []
   '/fria/{friaId}/rights':
     put:
       tags:
@@ -25354,6 +25413,20 @@ paths:
           description: Unauthorized
         '500':
           description: 'Internal server error'
+  /ai-gateway/guardrails/settings:
+    put:
+      summary: 'Update Guardrail Settings'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'AI Gateway'
+      operationId: updateGuardrailSettings
+      security:
+        -
+          bearerAuth: []
   '/custom-fields/definitions/by-id/{id}':
     get:
       summary: 'Get Custom Field Definition By Id'

@@ -16,6 +16,7 @@ import {
   startAiDetectionProgressCleanup,
   stopAiDetectionProgressCleanup,
 } from "./services/aiDetection.service";
+import { isGatewayInternalKeyConfigured } from "./utils/aiGatewayRetention.constants";
 
 const DEFAULT_PORT = "3000";
 const DEFAULT_HOST = "localhost";
@@ -105,6 +106,16 @@ try {
   bootstrapAgentNetwork();
   registerAllWorkflows();
   startAiDetectionProgressCleanup();
+
+  // The AI Gateway refuses internal calls without the shared key; its
+  // retention routes fail closed, so the daily log purge would be refused.
+  if (!isGatewayInternalKeyConfigured()) {
+    console.warn(
+      "⚠️  AI_GATEWAY_INTERNAL_KEY is not set. Calls to the AI Gateway will be refused, " +
+        "including the daily retention purge (recorded as 'Purge refused: internal key not " +
+        "configured'). Set the same value here and in the AI Gateway.",
+    );
+  }
 
   const server = app.listen(port, () => {
     console.log(`Server running on port http://${host}:${port}/`);

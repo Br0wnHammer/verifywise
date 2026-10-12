@@ -26,10 +26,10 @@ jest.mock("../../utils/i18n.utils", () => ({
   translateError: jest.fn((_req: any, err: any) => (err as Error).message),
 }));
 
-import { exportAuditLedger, getAuditLedger } from "../auditLedger.ctrl";
+import { exportAuditLedger, getAuditLedger, verifyAuditLedger } from "../auditLedger.ctrl";
 import { sequelize } from "../../database/db";
 import { fetchAuditLedgerBatch } from "../../utils/auditLedgerExport.utils";
-import { appendToAuditLedger } from "../../utils/auditLedger.utils";
+import { appendToAuditLedger, verifyChain } from "../../utils/auditLedger.utils";
 
 const fetchBatch = fetchAuditLedgerBatch as jest.MockedFunction<any>;
 const appendLedger = appendToAuditLedger as jest.MockedFunction<any>;
@@ -281,5 +281,21 @@ describe("getAuditLedger", () => {
     await getAuditLedger(createReq({ entry_type: "nope" }), res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(sequelize.query).not.toHaveBeenCalled();
+  });
+});
+
+describe("verifyAuditLedger", () => {
+  it("returns the chain result with prunedThrough as is", async () => {
+    const result = {
+      status: "intact",
+      totalEntries: 4,
+      prunedThrough: { id: 20, cutoff: "2025-01-01T00:00:00.000Z" },
+    };
+    (verifyChain as jest.MockedFunction<any>).mockResolvedValueOnce(result);
+    const res = createRes();
+    await verifyAuditLedger(createReq(), res);
+    expect(verifyChain).toHaveBeenCalledWith(2);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ message: "OK", data: result });
   });
 });

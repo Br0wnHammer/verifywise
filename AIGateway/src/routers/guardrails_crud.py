@@ -27,7 +27,7 @@ from crud.guardrails import (
     get_guardrail_stats_by_type,
     purge_guardrail_logs,
     update_guardrail,
-    upsert_guardrail_settings,
+    upsert_guardrail_settings_with_previous,
 )
 
 router = APIRouter(prefix="/guardrails", tags=["guardrails-crud"])
@@ -265,7 +265,7 @@ async def write_guardrail_settings(request: Request):
 
     body = await request.json()
 
-    settings = await upsert_guardrail_settings(org_id, body)
+    settings, previous = await upsert_guardrail_settings_with_previous(org_id, body)
 
     await notify_config_change(
         org_id=org_id,
@@ -276,7 +276,10 @@ async def write_guardrail_settings(request: Request):
         frontend_url=FRONTEND_URL,
     )
 
-    return {"settings": settings}
+    # previous_retention: the retention values this save replaced (null when
+    # the organization had none saved), so the caller can log the change
+    # without a separate, racy read.
+    return {"settings": settings, "previous_retention": previous}
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +359,8 @@ async def purge_logs(request: Request):
     if settings and settings.get("log_retention_days") is not None:
         retention_days = int(settings["log_retention_days"])
 
-    total_deleted = await purge_guardrail_logs(org_id, retention_days)
+    purged = await purge_guardrail_logs(org_id, retention_days)
+    total_deleted = purged["deleted"]
 
     await notify_config_change(
         org_id=org_id,

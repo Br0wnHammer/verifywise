@@ -10226,6 +10226,93 @@ export const translations: Record<string, Record<string, string>> = {
       "Beim Aktivieren wird die Zuordnung der Fragen aufgehoben, die die KI-Risikoklassifizierung und die Hochrisiko-Rolle festlegen. Sie bleiben im Formular; löschen Sie sie, damit Einreichende nicht doppelt gefragt werden.",
     "Updated since submission": "Seit der Einreichung aktualisiert",
     "Why": "Warum",
+    "Audit records": "Auditdatensätze",
+    "Audit ledger, event log, change history, AI Advisor actions, file access logs":
+      "Audit-Ledger, Ereignisprotokoll, Änderungshistorie, Aktionen des KI-Advisors, Dateizugriffsprotokolle",
+    "AI Gateway guardrail logs": "Guardrail-Protokolle des AI Gateway",
+    "AI Gateway spend logs": "Kostenprotokolle des AI Gateway",
+    "Agent Control logs": "Agent-Control-Protokolle",
+    "Tool-call logs and decided approvals": "Tool-Call-Protokolle und entschiedene Genehmigungen",
+    "Model risk metrics": "Modellrisiko-Kennzahlen",
+    "Default for new files; each file can set its own":
+      "Standard für neue Dateien; jede Datei kann einen eigenen festlegen",
+    "Shadow AI events": "Shadow-AI-Ereignisse",
+    "Shadow AI daily rollups": "Shadow-AI-Tagesaggregate",
+    "Shadow AI alert history": "Shadow-AI-Alarmverlauf",
+    "Server logs": "Serverprotokolle",
+    "Self-hosted application logs": "Protokolle selbst gehosteter Anwendungen",
+    "How long each kind of record is kept": "Wie lange jede Art von Datensatz aufbewahrt wird",
+    "{count} year": "{count} Jahr",
+    "{count} years": "{count} Jahre",
+    "{count} month": "{count} Monat",
+    "{count} months": "{count} Monate",
+    "{count} day": "{count} Tag",
+    "{count} days": "{count} Tage",
+    "Indefinitely": "Unbegrenzt",
+    "Archived, not deleted": "Archiviert, nicht gelöscht",
+    "Rotated daily": "Täglich rotiert",
+    "{date} · {count} removed": "{date} · {count} entfernt",
+    "Purge refused: internal key not configured":
+      "Löschung abgelehnt: interner Schlüssel nicht konfiguriert",
+    "Purge refused: internal key rejected":
+      "Löschung abgelehnt: interner Schlüssel nicht akzeptiert",
+    "{date} · {count} removed (more pending)": "{date} · {count} entfernt (weitere ausstehend)",
+    "Records": "Datensätze",
+    "Kept for": "Aufbewahrt für",
+    "Automatic deletion": "Automatische Löschung",
+    "Last cleanup": "Letzte Bereinigung",
+    "Unavailable": "Nicht verfügbar",
+    "Set by deployment: {setting}": "Durch die Bereitstellung festgelegt: {setting}",
+    "Edit retention: {name}": "Aufbewahrung bearbeiten: {name}",
+    "{count} logs deleted": "{count} Protokolle gelöscht",
+    "Permanently delete guardrail logs older than {days} days?":
+      "Guardrail-Protokolle, die älter als {days} Tage sind, endgültig löschen?",
+    "How long to keep guardrail detection logs and spend logs. Guardrail logs record every blocked or masked request for compliance auditing (EU AI Act Art. 12).":
+      "Wie lange Guardrail-Erkennungsprotokolle und Ausgabenprotokolle aufbewahrt werden. Guardrail-Protokolle erfassen jede blockierte oder maskierte Anfrage für die Compliance-Prüfung (EU-KI-Verordnung, Art. 12).",
+    "When on, logs older than their retention period are deleted every day. When off, logs are kept until you purge them.":
+      "Wenn aktiviert, werden Protokolle, die älter als ihre Aufbewahrungsfrist sind, täglich gelöscht. Wenn deaktiviert, werden Protokolle aufbewahrt, bis Sie sie löschen.",
+    "Only admins can change retention periods":
+      "Nur Administratoren können Aufbewahrungsfristen ändern",
+    "Records before {date} removed by retention policy":
+      "Datensätze vor dem {date} wurden durch die Aufbewahrungsrichtlinie entfernt",
+    "Spend log retention (days)": "Aufbewahrung der Ausgabenprotokolle (Tage)",
+    "Purge logs": "Protokolle löschen",
+    "This cannot be undone. The saved retention period is used, so save any change to it first.":
+      "Dies kann nicht rückgängig gemacht werden. Es gilt die gespeicherte Aufbewahrungsfrist, speichern Sie daher zuerst jede Änderung daran.",
+    "Delete old spend log entries based on the spend log retention period above.":
+      "Alte Ausgabenprotokolleinträge anhand der oben festgelegten Aufbewahrungsfrist für Ausgabenprotokolle löschen.",
+    "Retention periods must be whole numbers from {min} to {max} days":
+      "Aufbewahrungsfristen müssen ganze Zahlen von {min} bis {max} Tagen sein",
+    "Confirm automatic deletion": "Automatisches Löschen bestätigen",
+    "Failed to purge logs": "Protokolle konnten nicht gelöscht werden",
+    "Audit records before {date} were removed by the retention policy.":
+      "Auditdatensätze vor dem {date} wurden durch die Aufbewahrungsrichtlinie entfernt.",
+    "Choose how long these records are kept":
+      "Wählen Sie, wie lange diese Datensätze aufbewahrt werden",
+    "Keep indefinitely": "Unbegrenzt aufbewahren",
+    "Keep audit records for": "Auditdatensätze aufbewahren für",
+    "Keep for (days)": "Aufbewahren für (Tage)",
+    "Keep for (months)": "Aufbewahren für (Monate)",
+    "Delete automatically": "Automatisch löschen",
+    "This setting applies to both AI Gateway log types.":
+      "Diese Einstellung gilt für beide Protokolltypen des AI Gateway.",
+    "At least {min} months.": "Mindestens {min} Monate.",
+    "Leave empty or enter 0 to keep indefinitely. Maximum {max}.":
+      "Leer lassen oder 0 eingeben, um unbegrenzt aufzubewahren. Maximum {max}.",
+    "Enter a whole number": "Geben Sie eine ganze Zahl ein",
+    "Enter a number of at least {min}": "Geben Sie eine Zahl von mindestens {min} ein",
+    "Enter a number no greater than {max}": "Geben Sie eine Zahl von höchstens {max} ein",
+    "The next cleanup will permanently delete {count} records older than {period}. Deleted records cannot be restored.":
+      "Die nächste Bereinigung löscht {count} Datensätze, die älter als {period} sind, dauerhaft. Gelöschte Datensätze können nicht wiederhergestellt werden.",
+    "No records are old enough to delete yet. From now on, records older than {period} will be deleted permanently. Deleted records cannot be restored.":
+      "Es sind noch keine Datensätze alt genug zum Löschen. Ab jetzt werden Datensätze, die älter als {period} sind, dauerhaft gelöscht. Gelöschte Datensätze können nicht wiederhergestellt werden.",
+    "Export CSV first": "Zuerst CSV exportieren",
+    "Delete records": "Datensätze löschen",
+    "Failed to save settings": "Einstellungen konnten nicht gespeichert werden",
+    "Retention settings could not be loaded.":
+      "Die Aufbewahrungseinstellungen konnten nicht geladen werden.",
+    "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
+      "Guardrail-Protokolle, die älter als {guardrailDays} Tage sind, und Kostenprotokolle, die älter als {spendDays} Tage sind, werden täglich dauerhaft gelöscht. Gelöschte Protokolle können nicht wiederhergestellt werden.",
   },
 
   fr: {
@@ -20376,6 +20463,91 @@ export const translations: Record<string, Record<string, string>> = {
       "L'activation supprime l'association des questions qui définissent la classification du risque IA et le rôle à haut risque. Elles restent dans le formulaire ; supprimez-les pour que les demandeurs ne répondent pas deux fois.",
     "Updated since submission": "Mis à jour depuis la soumission",
     "Why": "Pourquoi",
+    "Audit records": "Enregistrements d'audit",
+    "Audit ledger, event log, change history, AI Advisor actions, file access logs":
+      "Registre d'audit, journal des événements, historique des modifications, actions de l'AI Advisor, journaux d'accès aux fichiers",
+    "AI Gateway guardrail logs": "Journaux des garde-fous de l'AI Gateway",
+    "AI Gateway spend logs": "Journaux de dépenses de l'AI Gateway",
+    "Agent Control logs": "Journaux d'Agent Control",
+    "Tool-call logs and decided approvals": "Journaux d'appels d'outils et approbations traitées",
+    "Model risk metrics": "Indicateurs de risque de modèle",
+    "Default for new files; each file can set its own":
+      "Valeur par défaut pour les nouveaux fichiers ; chaque fichier peut définir la sienne",
+    "Shadow AI events": "Événements Shadow AI",
+    "Shadow AI daily rollups": "Agrégats quotidiens Shadow AI",
+    "Shadow AI alert history": "Historique des alertes Shadow AI",
+    "Server logs": "Journaux du serveur",
+    "Self-hosted application logs": "Journaux d'application auto-hébergée",
+    "How long each kind of record is kept": "Durée de conservation de chaque type d'enregistrement",
+    "{count} year": "{count} an",
+    "{count} years": "{count} ans",
+    "{count} month": "{count} mois",
+    "{count} months": "{count} mois",
+    "{count} day": "{count} jour",
+    "{count} days": "{count} jours",
+    "Indefinitely": "Indéfiniment",
+    "Archived, not deleted": "Archivé, non supprimé",
+    "Rotated daily": "Rotation quotidienne",
+    "{date} · {count} removed": "{date} · {count} supprimés",
+    "Purge refused: internal key not configured": "Purge refusée : clé interne non configurée",
+    "Purge refused: internal key rejected": "Purge refusée : clé interne rejetée",
+    "{date} · {count} removed (more pending)": "{date} · {count} supprimés (d'autres en attente)",
+    "Records": "Enregistrements",
+    "Kept for": "Conservé pendant",
+    "Automatic deletion": "Suppression automatique",
+    "Last cleanup": "Dernier nettoyage",
+    "Unavailable": "Indisponible",
+    "Set by deployment: {setting}": "Défini par le déploiement : {setting}",
+    "Edit retention: {name}": "Modifier la conservation : {name}",
+    "{count} logs deleted": "{count} journaux supprimés",
+    "Permanently delete guardrail logs older than {days} days?":
+      "Supprimer définitivement les journaux de garde-fous datant de plus de {days} jours ?",
+    "How long to keep guardrail detection logs and spend logs. Guardrail logs record every blocked or masked request for compliance auditing (EU AI Act Art. 12).":
+      "Durée de conservation des journaux de détection des garde-fous et des journaux de dépenses. Les journaux des garde-fous enregistrent chaque requête bloquée ou masquée pour l'audit de conformité (règlement européen sur l'IA, art. 12).",
+    "When on, logs older than their retention period are deleted every day. When off, logs are kept until you purge them.":
+      "Si activé, les journaux plus anciens que leur durée de conservation sont supprimés chaque jour. Si désactivé, les journaux sont conservés jusqu'à ce que vous les purgiez.",
+    "Only admins can change retention periods":
+      "Seuls les administrateurs peuvent modifier les durées de conservation",
+    "Records before {date} removed by retention policy":
+      "Enregistrements antérieurs au {date} supprimés par la politique de conservation",
+    "Spend log retention (days)": "Conservation des journaux de dépenses (jours)",
+    "Purge logs": "Purger les journaux",
+    "This cannot be undone. The saved retention period is used, so save any change to it first.":
+      "Cette action est irréversible. La durée de conservation enregistrée est utilisée, enregistrez donc d'abord toute modification.",
+    "Delete old spend log entries based on the spend log retention period above.":
+      "Supprimer les anciennes entrées du journal des dépenses selon la durée de conservation des journaux de dépenses ci-dessus.",
+    "Retention periods must be whole numbers from {min} to {max} days":
+      "Les durées de conservation doivent être des nombres entiers de {min} à {max} jours",
+    "Confirm automatic deletion": "Confirmer la suppression automatique",
+    "Failed to purge logs": "Échec de la purge des journaux",
+    "Audit records before {date} were removed by the retention policy.":
+      "Les enregistrements d'audit antérieurs au {date} ont été supprimés par la politique de conservation.",
+    "Choose how long these records are kept":
+      "Choisissez la durée de conservation de ces enregistrements",
+    "Keep indefinitely": "Conserver indéfiniment",
+    "Keep audit records for": "Conserver les enregistrements d'audit pendant",
+    "Keep for (days)": "Conserver pendant (jours)",
+    "Keep for (months)": "Conserver pendant (mois)",
+    "Delete automatically": "Supprimer automatiquement",
+    "This setting applies to both AI Gateway log types.":
+      "Ce paramètre s'applique aux deux types de journaux de l'AI Gateway.",
+    "At least {min} months.": "Au moins {min} mois.",
+    "Leave empty or enter 0 to keep indefinitely. Maximum {max}.":
+      "Laissez vide ou saisissez 0 pour conserver indéfiniment. Maximum {max}.",
+    "Enter a whole number": "Saisissez un nombre entier",
+    "Enter a number of at least {min}": "Saisissez un nombre d'au moins {min}",
+    "Enter a number no greater than {max}": "Saisissez un nombre d'au plus {max}",
+    "The next cleanup will permanently delete {count} records older than {period}. Deleted records cannot be restored.":
+      "Le prochain nettoyage supprimera définitivement {count} enregistrements de plus de {period}. Les enregistrements supprimés ne peuvent pas être restaurés.",
+    "No records are old enough to delete yet. From now on, records older than {period} will be deleted permanently. Deleted records cannot be restored.":
+      "Aucun enregistrement n'est encore assez ancien pour être supprimé. Désormais, les enregistrements de plus de {period} seront supprimés définitivement. Les enregistrements supprimés ne peuvent pas être restaurés.",
+    "Export CSV first": "Exporter d'abord en CSV",
+    "Delete records": "Supprimer les enregistrements",
+    "Failed to save settings": "Impossible d'enregistrer les paramètres",
+    "Retention settings could not be loaded.":
+      "Les paramètres de conservation n'ont pas pu être chargés.",
+    "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
+      "Les journaux des garde-fous de plus de {guardrailDays} jours et les journaux de dépenses de plus de {spendDays} jours seront supprimés définitivement chaque jour. Les journaux supprimés ne peuvent pas être restaurés.",
   },
   es: {
     "Deployment name": "Nombre del despliegue",
@@ -30445,5 +30617,90 @@ export const translations: Record<string, Record<string, string>> = {
       "Al activarlo se elimina la asignación de las preguntas que establecen la clasificación de riesgo de IA y el rol de alto riesgo. Permanecen en el formulario; elimínelas para que no se pregunte dos veces a los solicitantes.",
     "Updated since submission": "Actualizado desde el envío",
     "Why": "Por qué",
+    "Audit records": "Registros de auditoría",
+    "Audit ledger, event log, change history, AI Advisor actions, file access logs":
+      "Libro de auditoría, registro de eventos, historial de cambios, acciones del AI Advisor, registros de acceso a archivos",
+    "AI Gateway guardrail logs": "Registros de guardrails del AI Gateway",
+    "AI Gateway spend logs": "Registros de gasto del AI Gateway",
+    "Agent Control logs": "Registros de Agent Control",
+    "Tool-call logs and decided approvals":
+      "Registros de llamadas a herramientas y aprobaciones resueltas",
+    "Model risk metrics": "Métricas de riesgo de modelo",
+    "Default for new files; each file can set its own":
+      "Valor predeterminado para archivos nuevos; cada archivo puede definir el suyo",
+    "Shadow AI events": "Eventos de Shadow AI",
+    "Shadow AI daily rollups": "Resúmenes diarios de Shadow AI",
+    "Shadow AI alert history": "Historial de alertas de Shadow AI",
+    "Server logs": "Registros del servidor",
+    "Self-hosted application logs": "Registros de la aplicación autoalojada",
+    "How long each kind of record is kept": "Cuánto tiempo se conserva cada tipo de registro",
+    "{count} year": "{count} año",
+    "{count} years": "{count} años",
+    "{count} month": "{count} mes",
+    "{count} months": "{count} meses",
+    "{count} day": "{count} día",
+    "{count} days": "{count} días",
+    "Indefinitely": "Indefinidamente",
+    "Archived, not deleted": "Archivado, no eliminado",
+    "Rotated daily": "Rotación diaria",
+    "{date} · {count} removed": "{date} · {count} eliminados",
+    "Purge refused: internal key not configured": "Purga rechazada: clave interna no configurada",
+    "Purge refused: internal key rejected": "Purga rechazada: clave interna rechazada",
+    "{date} · {count} removed (more pending)":
+      "{date} · {count} eliminados (quedan más pendientes)",
+    "Records": "Registros",
+    "Kept for": "Se conserva durante",
+    "Automatic deletion": "Eliminación automática",
+    "Last cleanup": "Última limpieza",
+    "Unavailable": "No disponible",
+    "Set by deployment: {setting}": "Definido por el despliegue: {setting}",
+    "Edit retention: {name}": "Editar retención: {name}",
+    "{count} logs deleted": "{count} registros eliminados",
+    "Permanently delete guardrail logs older than {days} days?":
+      "¿Eliminar permanentemente los registros de guardrails con más de {days} días?",
+    "How long to keep guardrail detection logs and spend logs. Guardrail logs record every blocked or masked request for compliance auditing (EU AI Act Art. 12).":
+      "Cuánto tiempo se conservan los registros de detección de guardrails y los registros de gasto. Los registros de guardrails recogen cada solicitud bloqueada o enmascarada para la auditoría de cumplimiento (Reglamento de IA de la UE, art. 12).",
+    "When on, logs older than their retention period are deleted every day. When off, logs are kept until you purge them.":
+      "Si está activado, los registros más antiguos que su periodo de retención se eliminan cada día. Si está desactivado, los registros se conservan hasta que los purgues.",
+    "Only admins can change retention periods":
+      "Solo los administradores pueden cambiar los periodos de retención",
+    "Records before {date} removed by retention policy":
+      "Registros anteriores al {date} eliminados por la política de retención",
+    "Spend log retention (days)": "Retención de registros de gasto (días)",
+    "Purge logs": "Purgar registros",
+    "This cannot be undone. The saved retention period is used, so save any change to it first.":
+      "Esta acción no se puede deshacer. Se usa el periodo de retención guardado, así que guarda primero cualquier cambio.",
+    "Delete old spend log entries based on the spend log retention period above.":
+      "Eliminar las entradas antiguas del registro de gasto según el periodo de retención de registros de gasto indicado arriba.",
+    "Retention periods must be whole numbers from {min} to {max} days":
+      "Los periodos de retención deben ser números enteros de {min} a {max} días",
+    "Confirm automatic deletion": "Confirmar la eliminación automática",
+    "Failed to purge logs": "No se pudieron purgar los registros",
+    "Audit records before {date} were removed by the retention policy.":
+      "Los registros de auditoría anteriores al {date} se eliminaron por la política de retención.",
+    "Choose how long these records are kept": "Elige cuánto tiempo se conservan estos registros",
+    "Keep indefinitely": "Conservar indefinidamente",
+    "Keep audit records for": "Conservar los registros de auditoría durante",
+    "Keep for (days)": "Conservar durante (días)",
+    "Keep for (months)": "Conservar durante (meses)",
+    "Delete automatically": "Eliminar automáticamente",
+    "This setting applies to both AI Gateway log types.":
+      "Este ajuste se aplica a ambos tipos de registros del AI Gateway.",
+    "At least {min} months.": "Al menos {min} meses.",
+    "Leave empty or enter 0 to keep indefinitely. Maximum {max}.":
+      "Déjalo vacío o escribe 0 para conservar indefinidamente. Máximo {max}.",
+    "Enter a whole number": "Introduce un número entero",
+    "Enter a number of at least {min}": "Introduce un número de al menos {min}",
+    "Enter a number no greater than {max}": "Introduce un número no mayor que {max}",
+    "The next cleanup will permanently delete {count} records older than {period}. Deleted records cannot be restored.":
+      "La próxima limpieza eliminará de forma permanente {count} registros con más de {period}. Los registros eliminados no se pueden restaurar.",
+    "No records are old enough to delete yet. From now on, records older than {period} will be deleted permanently. Deleted records cannot be restored.":
+      "Ningún registro es lo bastante antiguo para eliminarse todavía. A partir de ahora, los registros con más de {period} se eliminarán de forma permanente. Los registros eliminados no se pueden restaurar.",
+    "Export CSV first": "Exportar CSV primero",
+    "Delete records": "Eliminar registros",
+    "Failed to save settings": "No se pudo guardar la configuración",
+    "Retention settings could not be loaded.": "No se pudo cargar la configuración de retención.",
+    "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
+      "Los registros de guardrails con más de {guardrailDays} días y los registros de gasto con más de {spendDays} días se eliminarán de forma permanente cada día. Los registros eliminados no se pueden restaurar.",
   },
 };

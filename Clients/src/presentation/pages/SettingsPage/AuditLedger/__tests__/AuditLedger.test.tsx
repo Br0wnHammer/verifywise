@@ -187,6 +187,30 @@ describe("AuditLedger", () => {
     expect(screen.getByText(/hash chain integrity check failed/)).toBeInTheDocument();
   });
 
+  it("shows a retention note when the verified chain starts after pruned records", () => {
+    mockHookState = {
+      ...defaultHookState,
+      verifyResult: {
+        status: "intact",
+        totalEntries: 5,
+        prunedThrough: { id: 10, cutoff: "2025-03-15T00:00:00Z" },
+      },
+    };
+    renderWithProviders(<AuditLedger />);
+    expect(screen.getByTestId("ledger-pruned-note")).toHaveTextContent(
+      /Records before .*2025.* removed by retention policy/,
+    );
+  });
+
+  it("shows no retention note when nothing was pruned", () => {
+    mockHookState = {
+      ...defaultHookState,
+      verifyResult: { status: "intact", totalEntries: 5 },
+    };
+    renderWithProviders(<AuditLedger />);
+    expect(screen.queryByTestId("ledger-pruned-note")).not.toBeInTheDocument();
+  });
+
   it("calls verify when the Verify chain button is clicked", () => {
     renderWithProviders(<AuditLedger />);
     fireEvent.click(screen.getByText("Verify chain"));

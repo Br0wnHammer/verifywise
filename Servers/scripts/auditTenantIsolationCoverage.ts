@@ -59,6 +59,11 @@ const sharedTables: SharedTableEntry[] = [
     justification: "Billing tier definitions shared across tenants.",
   },
   {
+    name: "shadow_ai_settings_dedup_backup",
+    justification:
+      "Migration backup of duplicate shadow_ai_settings rows removed by 20261012091252; no application code reads it, only that migration's down().",
+  },
+  {
     name: "*_struct_*",
     justification:
       "Framework structure/reference tables are global by convention; the wildcard matches all struct tables.",

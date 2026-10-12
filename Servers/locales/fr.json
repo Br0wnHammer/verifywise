@@ -830,5 +830,7 @@
   "Complete the EU AI Act risk classification step": "Terminez l'étape de classification des risques selon l'AI Act de l'UE",
   "Remove the AI risk classification mapping from the form's questions before turning on the EU AI Act risk classification step": "Supprimez l'association à la classification des risques IA des questions du formulaire avant d'activer l'étape de classification des risques selon l'AI Act de l'UE",
   "A justification of at least 10 characters is required when changing the computed EU AI Act classification": "Une justification d'au moins 10 caractères est requise pour modifier la classification calculée selon l'AI Act de l'UE",
-  "Invalid EU AI Act classification level": "Niveau de classification selon l'AI Act de l'UE non valide"
+  "Invalid EU AI Act classification level": "Niveau de classification selon l'AI Act de l'UE non valide",
+  "Only admins can change retention periods": "Seuls les administrateurs peuvent modifier les durées de conservation",
+  "Invalid retention period": "Durée de conservation non valide"
 }

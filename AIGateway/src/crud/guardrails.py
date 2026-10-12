@@ -7,7 +7,14 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from crud.purge import (
+    MAX_RETENTION_DAYS,
+    PartialPurgeError,
+    older_rows_remain,
+    retention_cutoff,
+)
 from database.db import get_db
+from fastapi import HTTPException
 from sqlalchemy import text
 
 def _text(sql: str):
@@ -207,21 +214,108 @@ async def get_guardrail_settings(org_id: int) -> Optional[dict]:
     return None
 
 
+# Settings columns a caller may write, with the value used when an organization
+# has no settings row yet. Keys outside this table are ignored.
+_SETTINGS_DEFAULTS: dict[str, Any] = {
+    "pii_on_error": "block",
+    "content_filter_on_error": "allow",
+    "pii_replacement_format": "<ENTITY_TYPE>",
+    "content_filter_replacement": "[REDACTED]",
+    "log_retention_days": 90,
+    "spend_log_retention_days": 90,
+    "log_request_body": False,
+    "log_response_body": False,
+    "auto_purge_enabled": False,
+}
+_RETENTION_DAY_KEYS = ("log_retention_days", "spend_log_retention_days")
+
+
+def _validate_settings_input(data: dict) -> None:
+    for key in _RETENTION_DAY_KEYS:
+        if key in data:
+            value = data[key]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+                or value > MAX_RETENTION_DAYS
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{key} must be an integer from 1 to {MAX_RETENTION_DAYS}",
+                )
+    if "auto_purge_enabled" in data and not isinstance(data["auto_purge_enabled"], bool):
+        raise HTTPException(status_code=400, detail="auto_purge_enabled must be a boolean")
+
+
+# Retention values returned alongside a save as they were just before it.
+_PREVIOUS_RETENTION_KEYS = (
+    "log_retention_days",
+    "spend_log_retention_days",
+    "auto_purge_enabled",
+)
+
+
 async def upsert_guardrail_settings(org_id: int, data: dict) -> dict:
-    """INSERT ON CONFLICT (upsert) guardrail settings."""
+    """Upsert guardrail settings and return the saved row."""
+    settings, _previous = await upsert_guardrail_settings_with_previous(org_id, data)
+    return settings
+
+
+async def upsert_guardrail_settings_with_previous(
+    org_id: int, data: dict
+) -> tuple[dict, Optional[dict]]:
+    """Upsert guardrail settings. A new row takes defaults for missing keys; an
+    existing row only changes the keys present in `data`.
+
+    Returns (saved row, previous retention values). The previous values are
+    read with SELECT ... FOR UPDATE in the save's own transaction, so they are
+    exactly what this save replaced, even under concurrent saves. They are None
+    when the organization had no settings row yet.
+
+    The statement is static: each column's ``set_<column>`` flag decides whether
+    the update takes the new value or keeps the stored one."""
+    _validate_settings_input(data)
+    params: dict[str, Any] = {"org_id": org_id}
+    for column, default in _SETTINGS_DEFAULTS.items():
+        params[column] = data.get(column, default)
+        params[f"set_{column}"] = column in data
+
     async with get_db() as db:
+        # A separate statement, not a CTE of the upsert: a CTE would be read
+        # after ON CONFLICT DO UPDATE had already changed the row, and
+        # FOR UPDATE skips a row the same command updated.
+        previous_result = await db.execute(
+            text(
+                """
+                SELECT log_retention_days, spend_log_retention_days, auto_purge_enabled
+                FROM ai_gateway_guardrail_settings
+                WHERE organization_id = :org_id
+                FOR UPDATE
+                """
+            ),
+            {"org_id": org_id},
+        )
+        previous_row = previous_result.mappings().first()
+        previous = (
+            {key: previous_row[key] for key in _PREVIOUS_RETENTION_KEYS}
+            if previous_row
+            else None
+        )
         result = await db.execute(
             text(
                 """
-                INSERT INTO ai_gateway_guardrail_settings (
+                INSERT INTO ai_gateway_guardrail_settings AS s (
                     organization_id,
                     pii_on_error,
                     content_filter_on_error,
                     pii_replacement_format,
                     content_filter_replacement,
                     log_retention_days,
+                    spend_log_retention_days,
                     log_request_body,
                     log_response_body,
+                    auto_purge_enabled,
                     created_at,
                     updated_at
                 ) VALUES (
@@ -231,42 +325,33 @@ async def upsert_guardrail_settings(org_id: int, data: dict) -> dict:
                     :pii_replacement_format,
                     :content_filter_replacement,
                     :log_retention_days,
+                    :spend_log_retention_days,
                     :log_request_body,
                     :log_response_body,
+                    :auto_purge_enabled,
                     NOW(),
                     NOW()
                 )
                 ON CONFLICT (organization_id) DO UPDATE SET
-                    pii_on_error               = EXCLUDED.pii_on_error,
-                    content_filter_on_error    = EXCLUDED.content_filter_on_error,
-                    pii_replacement_format     = EXCLUDED.pii_replacement_format,
-                    content_filter_replacement = EXCLUDED.content_filter_replacement,
-                    log_retention_days         = EXCLUDED.log_retention_days,
-                    log_request_body           = EXCLUDED.log_request_body,
-                    log_response_body          = EXCLUDED.log_response_body,
-                    updated_at                 = NOW()
+                    pii_on_error = CASE WHEN :set_pii_on_error THEN EXCLUDED.pii_on_error ELSE s.pii_on_error END,
+                    content_filter_on_error = CASE WHEN :set_content_filter_on_error THEN EXCLUDED.content_filter_on_error ELSE s.content_filter_on_error END,
+                    pii_replacement_format = CASE WHEN :set_pii_replacement_format THEN EXCLUDED.pii_replacement_format ELSE s.pii_replacement_format END,
+                    content_filter_replacement = CASE WHEN :set_content_filter_replacement THEN EXCLUDED.content_filter_replacement ELSE s.content_filter_replacement END,
+                    log_retention_days = CASE WHEN :set_log_retention_days THEN EXCLUDED.log_retention_days ELSE s.log_retention_days END,
+                    spend_log_retention_days = CASE WHEN :set_spend_log_retention_days THEN EXCLUDED.spend_log_retention_days ELSE s.spend_log_retention_days END,
+                    log_request_body = CASE WHEN :set_log_request_body THEN EXCLUDED.log_request_body ELSE s.log_request_body END,
+                    log_response_body = CASE WHEN :set_log_response_body THEN EXCLUDED.log_response_body ELSE s.log_response_body END,
+                    auto_purge_enabled = CASE WHEN :set_auto_purge_enabled THEN EXCLUDED.auto_purge_enabled ELSE s.auto_purge_enabled END,
+                    updated_at = NOW()
                 RETURNING *
                 """
             ),
-            {
-                "org_id": org_id,
-                "pii_on_error": data.get("pii_on_error", "block"),
-                "content_filter_on_error": data.get("content_filter_on_error", "allow"),
-                "pii_replacement_format": data.get(
-                    "pii_replacement_format", "<ENTITY_TYPE>"
-                ),
-                "content_filter_replacement": data.get(
-                    "content_filter_replacement", "[REDACTED]"
-                ),
-                "log_retention_days": data.get("log_retention_days", 90),
-                "log_request_body": data.get("log_request_body", False),
-                "log_response_body": data.get("log_response_body", False),
-            },
+            params,
         )
         await db.commit()
         row = result.mappings().first()
-        return dict(row) if row else {}
-    return {}
+        return (dict(row) if row else {}), previous
+    return {}, None
 
 
 async def get_guardrail_logs(
@@ -376,38 +461,79 @@ async def get_guardrail_stats_by_day(
     return []
 
 
-async def purge_guardrail_logs(org_id: int, retention_days: int) -> int:
-    """Batch DELETE 1000 rows at a time, max 50 batches. Returns total deleted count."""
+_GUARDRAIL_LOGS_REMAIN_SQL = text(
+    """
+    SELECT EXISTS (
+        SELECT 1
+        FROM ai_gateway_guardrail_logs
+        WHERE organization_id = :org_id
+          AND created_at < :cutoff
+    )
+    """
+)
+
+
+async def purge_guardrail_logs(
+    org_id: int, retention_days: int, max_batches: int = 50
+) -> dict:
+    """Batch DELETE 1000 rows at a time, up to max_batches.
+
+    Returns {"deleted": <total>, "capped": <the batch limit was reached and
+    rows older than the cutoff remain>}. Each batch is committed on its own; a
+    failure after some batches raises PartialPurgeError carrying the rows
+    deleted so far.
+    """
+    cutoff = retention_cutoff(retention_days)
+    if cutoff is None:
+        return {"deleted": 0, "capped": False}
     total_deleted = 0
-    max_batches = 50
     batch_size = 1000
+    hit_batch_limit = False
 
-    async with get_db() as db:
-        for _ in range(max_batches):
-            result = await db.execute(
-                text(
-                    """
-                    DELETE FROM ai_gateway_guardrail_logs
-                    WHERE id IN (
-                        SELECT id
-                        FROM ai_gateway_guardrail_logs
-                        WHERE organization_id = :org_id
-                          AND created_at < NOW() - make_interval(days => :retention_days)
-                        LIMIT :batch_size
-                    )
-                    """
-                ),
-                {
-                    "org_id": org_id,
-                    "retention_days": retention_days,
-                    "batch_size": batch_size,
-                },
-            )
-            await db.commit()
-            deleted = result.rowcount
-            total_deleted += deleted
-            if deleted < batch_size:
-                break
+    try:
+        async with get_db() as db:
+            for batch in range(max_batches):
+                result = await db.execute(
+                    text(
+                        """
+                        DELETE FROM ai_gateway_guardrail_logs
+                        WHERE id IN (
+                            SELECT id
+                            FROM ai_gateway_guardrail_logs
+                            WHERE organization_id = :org_id
+                              AND created_at < :cutoff
+                            LIMIT :batch_size
+                        )
+                        """
+                    ),
+                    {
+                        "org_id": org_id,
+                        "cutoff": cutoff,
+                        "batch_size": batch_size,
+                    },
+                )
+                await db.commit()
+                deleted = result.rowcount or 0
+                total_deleted += deleted
+                if deleted < batch_size:
+                    break
+                if batch == max_batches - 1:
+                    hit_batch_limit = True
+    except Exception as error:
+        raise PartialPurgeError(total_deleted, error) from error
 
-        return total_deleted
-    return 0
+    # The last allowed batch was full: capped only if older rows are actually
+    # left. Outside the try above, so a failing check never fails the purge.
+    capped = False
+    if hit_batch_limit:
+
+        async def check():
+            async with get_db() as db:
+                result = await db.execute(
+                    _GUARDRAIL_LOGS_REMAIN_SQL, {"org_id": org_id, "cutoff": cutoff}
+                )
+                return result.scalar()
+
+        capped = await older_rows_remain(check, "guardrail logs", org_id)
+
+    return {"deleted": total_deleted, "capped": capped}

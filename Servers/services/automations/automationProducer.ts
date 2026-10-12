@@ -671,6 +671,25 @@ export async function scheduleMrmRetentionPrune() {
   );
 }
 
+export async function scheduleDataRetentionPrune() {
+  logger.info("Adding audit record retention prune job to the queue...");
+  // Daily at 3:30 AM, after the 3 AM MRM metric prune. Deletes audit records
+  // past each org's retention period. No obliterate here -- the repeatable add
+  // is idempotent by repeat key.
+  await automationQueue.upsertJobScheduler(
+    "data_retention_prune",
+    { pattern: "30 3 * * *" },
+    {
+      name: "data_retention_prune",
+      data: { type: "data_retention" },
+      opts: {
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    },
+  );
+}
+
 export async function scheduleFileExpirySweep() {
   logger.info("Adding file expiry sweep job to the queue...");
   // Daily at 4:30 AM (2/3/4 AM slots are taken by other jobs — kept distinct).

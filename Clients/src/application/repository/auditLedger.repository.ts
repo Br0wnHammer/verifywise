@@ -40,6 +40,8 @@ export interface VerifyResult {
   brokenAtId?: number;
   expectedHash?: string;
   actualHash?: string;
+  /** Set when retention has removed the oldest records; `cutoff` is an ISO date. */
+  prunedThrough?: { id: number; cutoff: string };
 }
 
 interface GetAuditLedgerParams {

@@ -135,6 +135,16 @@ export const tenantIsolationRegistry: IsolationEntity[] = [
     testFile: "file-org-settings.isolation.test.ts",
   },
   {
+    name: "data_retention",
+    tables: [
+      "data_retention_settings",
+      "data_retention_runs",
+      "audit_ledger_retention_checkpoints",
+    ],
+    baseRoute: "/api/data-retention",
+    testFile: "data-retention.isolation.test.ts",
+  },
+  {
     name: "eu_ai_act_classifications",
     tables: ["eu_ai_act_classifications"],
     baseRoute: "/api/projects/:id/eu-ai-act-classification",

@@ -248,6 +248,26 @@ SLACK_USER_OAUTH_TOKEN=xoxp-...
 SLACK_BOT_TOKEN=xoxb-...
 ```
 
+### AI Gateway
+
+The backend calls the AI Gateway's internal API with a shared key. Set the same value on both services.
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `AI_GATEWAY_URL` | Internal URL of the AI Gateway | No (default `http://127.0.0.1:8100`) |
+| `AI_GATEWAY_INTERNAL_KEY` | Shared secret sent as `x-internal-key` from the backend to the AI Gateway. Set the same value in `Servers/.env` and the AI Gateway's environment | Yes, when the AI Gateway runs |
+
+```bash
+# Generate once and set on both the backend and the AI Gateway
+AI_GATEWAY_INTERNAL_KEY=$(openssl rand -hex 32)
+```
+
+What happens when the key is missing or does not match:
+
+- **AI Gateway:** refuses to start when `AI_GATEWAY_INTERNAL_KEY` is empty or a placeholder.
+- **Backend:** logs a startup warning when `AI_GATEWAY_INTERNAL_KEY` is not set.
+- **Log retention:** the gateway's internal retention routes fail closed. Without a configured key they answer 503, and a key the gateway does not accept gets 401. The daily retention job then records the guardrail and spend log cleanups as failed, and **Settings > Data retention** shows "Purge refused: internal key not configured" (key missing on either side) or "Purge refused: internal key rejected" (keys differ) in the Last cleanup column. No logs are deleted until the key is fixed.
+
 ### BrandFetch (frontend)
 
 | Variable | Description | Required |
@@ -281,6 +301,29 @@ DB_NAME=verifywise
 BACKEND_URL=http://localhost:3000
 REDIS_URL=redis://localhost:6379/0
 ```
+
+---
+
+## Logging
+
+Configuration for server logging (self-hosted deployments only).
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `LOG_RETENTION_DAYS` | Number of days to keep daily-rotated server log files | `14` | No |
+
+Server logs are rotated daily and stored in the tenant log directory. The `LOG_RETENTION_DAYS` setting controls how many days of log files are retained before older files are automatically deleted.
+
+```bash
+# Keep server logs for 30 days
+LOG_RETENTION_DAYS=30
+```
+
+**Notes:**
+- Must be a whole number >= 1
+- Invalid values (0, negative, decimals, non-numeric) fall back to the default of 14 days
+- Intended for self-hosted deployments, where you control the environment
+- Each daily file also rolls over to a new file when it reaches 10 MB; retention counts days, not files
 
 ---
 
@@ -417,6 +460,9 @@ Solution: Verify `DB_HOST` and `DB_PORT` are correct. Check if PostgreSQL is run
 Error: Redis connection to redis://localhost:6379 failed
 ```
 Solution: Verify Redis is running and `REDIS_URL` is correct.
+
+**Data retention shows "Purge refused: internal key not configured" or "...rejected":**
+The daily cleanup of AI Gateway guardrail and spend logs was refused by the gateway. Solution: set the same `AI_GATEWAY_INTERNAL_KEY` on the backend and the AI Gateway, then restart both. See [AI Gateway](#ai-gateway).
 
 **Email sending failed:**
 ```
