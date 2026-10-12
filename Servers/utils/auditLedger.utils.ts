@@ -3,9 +3,9 @@ import { sequelize } from "../database/db";
 import { QueryTypes, Transaction } from "sequelize";
 import { getFeatureSettingsQuery } from "./featureSettings.utils";
 import { getLatestLedgerCheckpoint } from "./auditLedgerRetention.utils";
+import { AUDIT_LEDGER_LOCK_NS, GENESIS_HASH } from "./auditLedgerConstants";
 
-/** SHA-256 of 64 zeroes — the "genesis" previous hash for the first entry */
-export const GENESIS_HASH = "0".repeat(64);
+export { AUDIT_LEDGER_LOCK_NS, GENESIS_HASH };
 
 interface AuditLedgerEntry {
   organizationId: number;
@@ -72,13 +72,6 @@ async function isAuditLedgerEnabled(organizationId: number): Promise<boolean> {
     return true;
   }
 }
-
-/**
- * Namespace key for `pg_advisory_xact_lock(AUDIT_LEDGER_LOCK_NS, organization_id)`.
- * Any fixed int works; using a project-unique value avoids collisions with
- * other code that might take advisory locks.
- */
-export const AUDIT_LEDGER_LOCK_NS = 9001;
 
 /**
  * Append an entry to the audit_ledger.

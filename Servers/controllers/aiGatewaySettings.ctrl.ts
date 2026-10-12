@@ -9,12 +9,14 @@
 
 import { Request, Response } from "express";
 import { AiGatewayError, aiGatewayRequest } from "../utils/aiGatewayInternal.utils";
-import { appendToAuditLedger } from "../utils/auditLedger.utils";
-import { logFailure } from "../utils/logger/logHelper";
+import { appendRetentionChangeToLedger } from "../utils/retentionAudit.utils";
+import { logFailure, logProcessing, logSuccess } from "../utils/logger/logHelper";
 import logger from "../utils/logger/fileLogger";
 
 const FILE_NAME = "aiGatewaySettings.ctrl.ts";
 const SETTINGS_PATH = "/internal/guardrails/settings";
+/** Same as the generic AI Gateway proxy this route used to go through. */
+const SETTINGS_UPDATE_TIMEOUT_MS = 30_000;
 
 /** The gateway's values for an organization that has not saved its own settings. */
 const GATEWAY_DEFAULTS = {
@@ -32,24 +34,31 @@ const RETENTION_LABELS: Record<RetentionKey, string> = {
 };
 
 function formatValue(key: RetentionKey, value: unknown): string {
-  if (value === undefined || value === null) return "unknown";
   if (key === "auto_purge_enabled") return value ? "on" : "off";
   return `${value} days`;
 }
 
-/** Describe each retention value that differs between two settings objects. */
+/**
+ * Describe each retention value the request set that differs from before.
+ * Keys absent from the request are never described. `before` is null when the
+ * old settings could not be read; the new value is then written as "set to".
+ */
 export function describeRetentionChanges(
   before: Record<string, unknown> | null,
   after: Record<string, unknown>,
+  requested: Record<string, unknown>,
 ): string[] {
   const changes: string[] = [];
   for (const key of Object.keys(RETENTION_LABELS) as RetentionKey[]) {
-    if (!(key in after)) continue;
-    const oldValue = before ? (before[key] ?? GATEWAY_DEFAULTS[key]) : undefined;
+    if (!(key in requested) || !(key in after)) continue;
+    const newValue = formatValue(key, after[key]);
+    if (before === null) {
+      changes.push(`${RETENTION_LABELS[key]} set to ${newValue}`);
+      continue;
+    }
+    const oldValue = before[key] ?? GATEWAY_DEFAULTS[key];
     if (oldValue === after[key]) continue;
-    changes.push(
-      `${RETENTION_LABELS[key]} from ${formatValue(key, oldValue)} to ${formatValue(key, after[key])}`,
-    );
+    changes.push(`${RETENTION_LABELS[key]} from ${formatValue(key, oldValue)} to ${newValue}`);
   }
   return changes;
 }
@@ -60,14 +69,24 @@ export async function updateGuardrailSettings(req: Request, res: Response): Prom
     organizationId: req.organizationId!,
     role: req.role,
     userId: req.userId,
+    requestId: req.requestId,
   };
+  const body: Record<string, unknown> = req.body ?? {};
+
+  logProcessing({
+    description: `Updating AI Gateway guardrail settings for organization ${req.organizationId}`,
+    functionName: fn,
+    fileName: FILE_NAME,
+    userId: req.userId!,
+    organizationId: req.organizationId,
+  });
 
   let before: Record<string, unknown> | null = null;
   try {
     const current = await aiGatewayRequest("GET", SETTINGS_PATH, tenant);
     before = current?.settings ?? {};
   } catch (error) {
-    // The update still goes through; the ledger entry will say "unknown".
+    // The update still goes through; the ledger entry will say "set to".
     logger.warn(
       `AI Gateway request ${SETTINGS_PATH} failed: ${(error as Error)?.message ?? error}`,
     );
@@ -75,46 +94,54 @@ export async function updateGuardrailSettings(req: Request, res: Response): Prom
 
   let updated: any;
   try {
-    updated = await aiGatewayRequest("PUT", SETTINGS_PATH, { ...tenant, body: req.body ?? {} });
+    updated = await aiGatewayRequest("PUT", SETTINGS_PATH, {
+      ...tenant,
+      body,
+      timeoutMs: SETTINGS_UPDATE_TIMEOUT_MS,
+    });
   } catch (error) {
+    // A 4xx is the gateway rejecting the request (validation, admin check),
+    // passed back to the caller as is; anything else is a failure to log.
+    if (!(error instanceof AiGatewayError) || error.status >= 500) {
+      await logFailure({
+        eventType: "Update",
+        description: `Failed to update AI Gateway guardrail settings for organization ${req.organizationId}`,
+        functionName: fn,
+        fileName: FILE_NAME,
+        userId: req.userId!,
+        organizationId: req.organizationId,
+        error: error as Error,
+      });
+    }
     if (error instanceof AiGatewayError) {
       return typeof error.body === "string"
         ? res.status(error.status).send(error.body)
         : res.status(error.status).json(error.body);
     }
-    logger.error(`AI Gateway request ${SETTINGS_PATH} failed:`, error);
     return res.status(502).json({
       error: "AI Gateway proxy error",
       message: (error as Error)?.message || "Unknown error",
     });
   }
 
-  const changes = describeRetentionChanges(before, updated?.settings ?? {});
+  const changes = describeRetentionChanges(before, updated?.settings ?? {}, body);
   if (changes.length > 0) {
-    const description = `AI Gateway retention changed: ${changes.join("; ")}`;
-    try {
-      await appendToAuditLedger({
-        organizationId: req.organizationId!,
-        entryType: "event_log",
-        userId: req.userId ?? null,
-        eventType: "Update",
-        entityType: "data_retention",
-        description,
-      });
-    } catch (ledgerError) {
-      // The settings are saved, so the request still succeeds, but the missing
-      // ledger entry must leave a trace.
-      await logFailure({
-        eventType: "Update",
-        description: `${description} but the audit ledger entry could not be written (organization ${req.organizationId}): ${(ledgerError as Error)?.message ?? ledgerError}`,
-        functionName: fn,
-        fileName: FILE_NAME,
-        userId: req.userId!,
-        organizationId: req.organizationId,
-        error: ledgerError as Error,
-      });
-    }
+    await appendRetentionChangeToLedger({
+      organizationId: req.organizationId!,
+      userId: req.userId,
+      description: `AI Gateway retention changed: ${changes.join("; ")}`,
+      functionName: fn,
+      fileName: FILE_NAME,
+    });
   }
 
+  await logSuccess({
+    eventType: "Update",
+    description: `Updated AI Gateway guardrail settings for organization ${req.organizationId}`,
+    functionName: fn,
+    fileName: FILE_NAME,
+    userId: req.userId!,
+    organizationId: req.organizationId,
+  });
   return res.status(200).json(updated);
 }

@@ -1,6 +1,6 @@
 import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../database/db";
-import { AUDIT_LEDGER_LOCK_NS } from "./auditLedger.utils";
+import { AUDIT_LEDGER_LOCK_NS } from "./auditLedgerConstants";
 
 export interface LedgerCheckpoint {
   pruned_through_id: number;

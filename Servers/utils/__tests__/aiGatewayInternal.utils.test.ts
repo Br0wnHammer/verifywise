@@ -42,6 +42,18 @@ describe("aiGatewayRequest", () => {
     expect(init.body).toBe(JSON.stringify({ a: 1 }));
   });
 
+  it("forwards the request id when given", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    await aiGatewayRequest("PUT", "/internal/x", { requestId: "req-9" });
+    await aiGatewayRequest("PUT", "/internal/x");
+
+    expect((fetchMock.mock.calls[0] as [string, any])[1].headers["x-request-id"]).toBe("req-9");
+    expect((fetchMock.mock.calls[1] as [string, any])[1].headers).not.toHaveProperty(
+      "x-request-id",
+    );
+  });
+
   it("uses a custom timeout when given and the default otherwise", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
     const timeoutSpy = jest.spyOn(AbortSignal, "timeout");

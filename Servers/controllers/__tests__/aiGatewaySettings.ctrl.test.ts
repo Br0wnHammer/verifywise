@@ -15,6 +15,8 @@ jest.mock("../../utils/aiGatewayInternal.utils", () => {
 jest.mock("../../utils/auditLedger.utils", () => ({ appendToAuditLedger: jest.fn<any>() }));
 jest.mock("../../utils/logger/logHelper", () => ({
   logFailure: jest.fn<any>().mockResolvedValue(undefined),
+  logProcessing: jest.fn<any>(),
+  logSuccess: jest.fn<any>().mockResolvedValue(undefined),
 }));
 jest.mock("../../utils/logger/fileLogger", () => ({
   __esModule: true,
@@ -24,12 +26,12 @@ jest.mock("../../utils/logger/fileLogger", () => ({
 import { describeRetentionChanges, updateGuardrailSettings } from "../aiGatewaySettings.ctrl";
 import { AiGatewayError, aiGatewayRequest } from "../../utils/aiGatewayInternal.utils";
 import { appendToAuditLedger } from "../../utils/auditLedger.utils";
-import { logFailure } from "../../utils/logger/logHelper";
+import { logFailure, logProcessing, logSuccess } from "../../utils/logger/logHelper";
 
 const m = (fn: unknown) => fn as jest.MockedFunction<any>;
 
 function createReq(body: Record<string, any>, role = "Admin"): any {
-  return { userId: 5, organizationId: 2, role, body };
+  return { userId: 5, organizationId: 2, role, body, requestId: "req-1" };
 }
 function createRes(): any {
   const res: any = {};
@@ -64,15 +66,41 @@ describe("updateGuardrailSettings", () => {
       organizationId: 2,
       role: "Admin",
       userId: 5,
+      requestId: "req-1",
     });
     expect(m(aiGatewayRequest)).toHaveBeenCalledWith("PUT", "/internal/guardrails/settings", {
       organizationId: 2,
       role: "Admin",
       userId: 5,
+      requestId: "req-1",
       body: { log_retention_days: 30 },
+      timeoutMs: 30_000,
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(after);
+    expect(m(logProcessing)).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "updateGuardrailSettings", organizationId: 2 }),
+    );
+    expect(m(logSuccess)).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "Update", organizationId: 2 }),
+    );
+  });
+
+  it("describes only the retention keys the request set", async () => {
+    // The stored auto-purge value differs too, but the request did not set it.
+    gateway(
+      { settings: { log_retention_days: 90, auto_purge_enabled: false } },
+      { settings: { log_retention_days: 30, auto_purge_enabled: true } },
+    );
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), createRes());
+
+    expect(m(appendToAuditLedger)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description:
+          "AI Gateway retention changed: guardrail log retention from 90 days to 30 days",
+      }),
+    );
   });
 
   it("appends one ledger entry describing every retention change", async () => {
@@ -93,7 +121,10 @@ describe("updateGuardrailSettings", () => {
       },
     );
 
-    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), createRes());
+    await updateGuardrailSettings(
+      createReq({ log_retention_days: 30, spend_log_retention_days: 60, auto_purge_enabled: true }),
+      createRes(),
+    );
 
     expect(m(appendToAuditLedger)).toHaveBeenCalledTimes(1);
     expect(m(appendToAuditLedger)).toHaveBeenCalledWith({
@@ -144,6 +175,27 @@ describe("updateGuardrailSettings", () => {
       detail: "log_retention_days must be a positive integer",
     });
     expect(m(appendToAuditLedger)).not.toHaveBeenCalled();
+    // A validation rejection is the caller's error, not a server failure.
+    expect(m(logFailure)).not.toHaveBeenCalled();
+  });
+
+  it("appends nothing when the request set no retention key", async () => {
+    gateway(
+      { settings: { log_retention_days: 90 } },
+      { settings: { log_retention_days: 90, pii_on_error: "allow" } },
+    );
+
+    await updateGuardrailSettings(createReq({ pii_on_error: "allow" }), createRes());
+
+    expect(m(appendToAuditLedger)).not.toHaveBeenCalled();
+  });
+
+  it("appends nothing when a retention key was sent unchanged", async () => {
+    gateway({ settings: { log_retention_days: 30 } }, { settings: { log_retention_days: 30 } });
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), createRes());
+
+    expect(m(appendToAuditLedger)).not.toHaveBeenCalled();
   });
 
   it("passes the gateway's admin check through for a non-admin", async () => {
@@ -163,9 +215,12 @@ describe("updateGuardrailSettings", () => {
     await updateGuardrailSettings(createReq({ log_retention_days: 30 }), res);
 
     expect(res.status).toHaveBeenCalledWith(502);
+    expect(m(logFailure)).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "Update", functionName: "updateGuardrailSettings" }),
+    );
   });
 
-  it("still saves and records an unknown old value when the read fails", async () => {
+  it("still saves and records the new value as set when the read fails", async () => {
     m(aiGatewayRequest).mockImplementation(async (method: string) => {
       if (method === "GET") throw new Error("timeout");
       return { settings: { log_retention_days: 30 } };
@@ -177,8 +232,7 @@ describe("updateGuardrailSettings", () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(m(appendToAuditLedger)).toHaveBeenCalledWith(
       expect.objectContaining({
-        description:
-          "AI Gateway retention changed: guardrail log retention from unknown to 30 days",
+        description: "AI Gateway retention changed: guardrail log retention set to 30 days",
       }),
     );
   });
@@ -202,6 +256,18 @@ describe("updateGuardrailSettings", () => {
 
 describe("describeRetentionChanges", () => {
   it("ignores keys the gateway did not return", () => {
-    expect(describeRetentionChanges({ log_retention_days: 90 }, {})).toEqual([]);
+    expect(
+      describeRetentionChanges({ log_retention_days: 90 }, {}, { log_retention_days: 30 }),
+    ).toEqual([]);
+  });
+
+  it("writes 'set to' for every requested key when the old values are unknown", () => {
+    expect(
+      describeRetentionChanges(
+        null,
+        { log_retention_days: 30, auto_purge_enabled: false, spend_log_retention_days: 90 },
+        { log_retention_days: 30, auto_purge_enabled: false },
+      ),
+    ).toEqual(["guardrail log retention set to 30 days", "automatic deletion set to off"]);
   });
 });

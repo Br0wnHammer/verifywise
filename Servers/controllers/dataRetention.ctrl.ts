@@ -19,7 +19,7 @@ import {
   setAuditRetentionMonths,
 } from "../utils/dataRetention.utils";
 import { getLatestLedgerCheckpoint } from "../utils/auditLedgerRetention.utils";
-import { appendToAuditLedger } from "../utils/auditLedger.utils";
+import { appendRetentionChangeToLedger } from "../utils/retentionAudit.utils";
 import { aiGatewayRequest } from "../utils/aiGatewayInternal.utils";
 import { getMrmOrgSettings } from "../utils/mrmSettings.utils";
 import { getFileOrgSettings } from "../utils/fileOrgSettings.utils";
@@ -60,10 +60,6 @@ export interface RetentionRow {
   deploymentSetting?: string;
   /** The AI Gateway could not be reached, so the values are unknown. */
   unavailable?: boolean;
-}
-
-function isAdmin(req: Request): boolean {
-  return req.role === "Admin" || req.role === "SuperAdmin";
 }
 
 function daysPeriod(days: number): RetentionRow["period"] {
@@ -291,12 +287,6 @@ export async function updateAuditRetention(req: Request, res: Response): Promise
   const organizationId = req.organizationId!;
 
   try {
-    if (!isAdmin(req)) {
-      return res
-        .status(403)
-        .json(STATUS_CODE[403](req.t!("Only admins can change retention periods")));
-    }
-
     const body = req.body ?? {};
     const months: unknown = body.months;
     const valid =
@@ -310,28 +300,13 @@ export async function updateAuditRetention(req: Request, res: Response): Promise
     await setAuditRetentionMonths(organizationId, newMonths, userId);
 
     const label = (m: number | null) => (m === null ? "Indefinitely" : `${m} months`);
-    try {
-      await appendToAuditLedger({
-        organizationId,
-        entryType: "event_log",
-        userId,
-        eventType: "Update",
-        entityType: "data_retention",
-        description: `Audit record retention changed from ${label(oldMonths)} to ${label(newMonths)}`,
-      });
-    } catch (ledgerError) {
-      // The setting is saved, so the request still succeeds, but the missing
-      // ledger entry must leave a trace.
-      await logFailure({
-        eventType: "Update",
-        description: `audit record retention changed to ${label(newMonths)} but the audit ledger entry could not be written (organization ${organizationId}): ${(ledgerError as Error)?.message ?? ledgerError}`,
-        functionName: fn,
-        fileName: FILE_NAME,
-        userId,
-        organizationId,
-        error: ledgerError as Error,
-      });
-    }
+    await appendRetentionChangeToLedger({
+      organizationId,
+      userId,
+      description: `Audit record retention changed from ${label(oldMonths)} to ${label(newMonths)}`,
+      functionName: fn,
+      fileName: FILE_NAME,
+    });
 
     await logSuccess({
       eventType: "Update",

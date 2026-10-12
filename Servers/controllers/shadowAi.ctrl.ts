@@ -51,6 +51,8 @@ import {
 import { ShadowAiToolStatus } from "../domain.layer/interfaces/i.shadowAi";
 
 import { translateError } from "../utils/i18n.utils";
+import { appendRetentionChangeToLedger } from "../utils/retentionAudit.utils";
+import logger from "../utils/logger/fileLogger";
 const FILE_NAME = "shadowAi.ctrl.ts";
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -1291,6 +1293,40 @@ export async function deleteSyslogConfig(req: Request, res: Response) {
 
 // ─── Settings (Rate Limiting & Data Retention) ──────────────────────────
 
+const SHADOW_AI_RETENTION_LABELS = {
+  retention_events_days: "event retention",
+  retention_daily_rollups_days: "daily rollup retention",
+  retention_alert_history_days: "alert history retention",
+} as const;
+
+type ShadowAiRetentionKey = keyof typeof SHADOW_AI_RETENTION_LABELS;
+
+/**
+ * Describe each Shadow AI retention period that changed. `before` is null when
+ * the old settings could not be read; the new value is then written as "set to".
+ */
+export function describeShadowAiRetentionChanges(
+  before: Partial<Record<ShadowAiRetentionKey, number>> | null,
+  after: Partial<Record<ShadowAiRetentionKey, number>>,
+  requested: Record<string, unknown>,
+): string[] {
+  const format = (days: number | undefined) =>
+    days === undefined ? "unknown" : Number(days) > 0 ? `${days} days` : "indefinitely";
+  const changes: string[] = [];
+  for (const key of Object.keys(SHADOW_AI_RETENTION_LABELS) as ShadowAiRetentionKey[]) {
+    if (requested[key] === undefined) continue;
+    if (before === null) {
+      changes.push(`${SHADOW_AI_RETENTION_LABELS[key]} set to ${format(after[key])}`);
+      continue;
+    }
+    if (Number(before[key]) === Number(after[key])) continue;
+    changes.push(
+      `${SHADOW_AI_RETENTION_LABELS[key]} from ${format(before[key])} to ${format(after[key])}`,
+    );
+  }
+  return changes;
+}
+
 export async function getSettings(req: Request, res: Response) {
   const fn = "getSettings";
   const userId = req.userId!;
@@ -1354,6 +1390,22 @@ export async function updateSettings(req: Request, res: Response) {
       retention_alert_history_days,
     } = req.body;
 
+    const body: Record<string, unknown> = req.body ?? {};
+    const setsRetention = (Object.keys(SHADOW_AI_RETENTION_LABELS) as ShadowAiRetentionKey[]).some(
+      (key) => body[key] !== undefined,
+    );
+    let before: Awaited<ReturnType<typeof getSettingsQuery>> | null = null;
+    if (setsRetention) {
+      try {
+        before = (await getSettingsQuery(organizationId)) ?? null;
+      } catch (readError) {
+        // The update still goes through; the ledger entry will say "set to".
+        logger.warn(
+          `Reading Shadow AI settings before an update failed: ${(readError as Error)?.message ?? readError}`,
+        );
+      }
+    }
+
     const updated = await updateSettingsQuery(organizationId, {
       rate_limit_max_events_per_hour,
       retention_events_days,
@@ -1361,6 +1413,19 @@ export async function updateSettings(req: Request, res: Response) {
       retention_alert_history_days,
       updated_by: userId,
     });
+
+    if (setsRetention && updated) {
+      const changes = describeShadowAiRetentionChanges(before, updated, body);
+      if (changes.length > 0) {
+        await appendRetentionChangeToLedger({
+          organizationId,
+          userId,
+          description: `Shadow AI retention changed: ${changes.join("; ")}`,
+          functionName: fn,
+          fileName: FILE_NAME,
+        });
+      }
+    }
 
     await logSuccess({
       eventType: "Update",

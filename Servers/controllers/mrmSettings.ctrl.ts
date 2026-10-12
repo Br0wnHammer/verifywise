@@ -9,8 +9,7 @@ import {
   upsertMrmOrgSettings,
 } from "../utils/mrmSettings.utils";
 import { sequelize } from "../database/db";
-import { appendToAuditLedger } from "../utils/auditLedger.utils";
-import { logFailure } from "../utils/logger/logHelper";
+import { appendRetentionChangeToLedger } from "../utils/retentionAudit.utils";
 import {
   getAlertExtraRecipientsQuery,
   getOrgMemberIdsQuery,
@@ -135,44 +134,18 @@ export async function updateMrmSettingsHandler(req: Request, res: Response) {
       throw error;
     }
     if (previousRetention !== undefined && previousRetention !== settings.retention_months) {
-      await recordRetentionChange(req, fn, previousRetention, settings.retention_months);
+      await appendRetentionChangeToLedger({
+        organizationId: req.organizationId!,
+        userId: req.userId,
+        description: `Model risk metric retention changed from ${previousRetention} to ${settings.retention_months} months`,
+        functionName: fn,
+        fileName: FILE,
+      });
     }
     const alert_recipients = await getAlertExtraRecipientsQuery(req.organizationId!);
     logStructured("successful", "MRM settings updated", fn, FILE);
     return res.status(200).json(STATUS_CODE[200]({ ...settings, alert_recipients }));
   } catch (error) {
     return fail(req, res, fn, "failed to update MRM settings", error);
-  }
-}
-
-/**
- * Leave a durable trace of a retention change in the audit ledger. The setting
- * is already saved, so a failed append is logged and never fails the request.
- */
-async function recordRetentionChange(
-  req: Request,
-  fn: string,
-  from: number,
-  to: number,
-): Promise<void> {
-  try {
-    await appendToAuditLedger({
-      organizationId: req.organizationId!,
-      entryType: "event_log",
-      userId: req.userId ?? null,
-      eventType: "Update",
-      entityType: "data_retention",
-      description: `Model risk metric retention changed from ${from} to ${to} months`,
-    });
-  } catch (ledgerError) {
-    await logFailure({
-      eventType: "Update",
-      description: `model risk metric retention changed to ${to} months but the audit ledger entry could not be written (organization ${req.organizationId}): ${(ledgerError as Error)?.message ?? ledgerError}`,
-      functionName: fn,
-      fileName: FILE,
-      userId: req.userId!,
-      organizationId: req.organizationId,
-      error: ledgerError as Error,
-    });
   }
 }

@@ -51,6 +51,13 @@ jest.mock("../../utils/statusCode.utils", () => ({
     500: (d: any) => ({ message: "Internal Server Error", data: d }),
   },
 }));
+jest.mock("../../utils/retentionAudit.utils", () => ({
+  appendRetentionChangeToLedger: jest.fn<any>().mockResolvedValue(undefined),
+}));
+jest.mock("../../utils/logger/fileLogger", () => ({
+  __esModule: true,
+  default: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
 jest.mock("../../database/db", () => ({
   sequelize: {
     transaction: jest.fn<any>().mockResolvedValue({ commit: jest.fn(), rollback: jest.fn() }),
@@ -59,6 +66,7 @@ jest.mock("../../database/db", () => ({
 }));
 
 import { sequelize } from "../../database/db";
+import { appendRetentionChangeToLedger } from "../../utils/retentionAudit.utils";
 import {
   createSyslogConfigQuery,
   deleteSyslogConfigQuery,
@@ -116,6 +124,7 @@ import {
   updateSettings,
   updateSyslogConfig,
   updateToolStatus,
+  describeShadowAiRetentionChanges,
 } from "../shadowAi.ctrl";
 
 const mockGetInsightsSummary = getInsightsSummaryQuery as jest.MockedFunction<any>;
@@ -1054,6 +1063,66 @@ describe("shadowAi.ctrl", () => {
       const res = createRes();
       await updateSettings(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    const retention = {
+      retention_events_days: 30,
+      retention_daily_rollups_days: 365,
+      retention_alert_history_days: 0,
+    };
+
+    it("records a changed retention period in the audit ledger", async () => {
+      mockGetSettings.mockResolvedValue({ ...retention, rate_limit_max_events_per_hour: 100 });
+      mockUpdateSettings.mockResolvedValue({ ...retention, retention_events_days: 90 });
+      const res = createRes();
+      await updateSettings(createReq({ body: { retention_events_days: 90 } }), res);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(appendRetentionChangeToLedger).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: 1,
+          userId: 1,
+          description: "Shadow AI retention changed: event retention from 30 days to 90 days",
+        }),
+      );
+    });
+
+    it("records nothing when only the rate limit changes", async () => {
+      mockUpdateSettings.mockResolvedValue({ ...retention, rate_limit_max_events_per_hour: 5 });
+      await updateSettings(createReq({ body: { rate_limit_max_events_per_hour: 5 } }), createRes());
+      expect(mockGetSettings).not.toHaveBeenCalled();
+      expect(appendRetentionChangeToLedger).not.toHaveBeenCalled();
+    });
+
+    it("records nothing when a retention value is sent unchanged", async () => {
+      mockGetSettings.mockResolvedValue(retention);
+      mockUpdateSettings.mockResolvedValue(retention);
+      await updateSettings(createReq({ body: { retention_events_days: 30 } }), createRes());
+      expect(appendRetentionChangeToLedger).not.toHaveBeenCalled();
+    });
+
+    it("still saves and records 'set to' when reading the old settings fails", async () => {
+      mockGetSettings.mockRejectedValue(new Error("read failed"));
+      mockUpdateSettings.mockResolvedValue({ ...retention, retention_alert_history_days: 0 });
+      const res = createRes();
+      await updateSettings(createReq({ body: { retention_alert_history_days: 0 } }), res);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(appendRetentionChangeToLedger).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "Shadow AI retention changed: alert history retention set to indefinitely",
+        }),
+      );
+    });
+  });
+
+  describe("describeShadowAiRetentionChanges", () => {
+    it("describes only requested keys that changed, 0 as indefinitely", () => {
+      expect(
+        describeShadowAiRetentionChanges(
+          { retention_events_days: 30, retention_daily_rollups_days: 365 },
+          { retention_events_days: 0, retention_daily_rollups_days: 180 },
+          { retention_events_days: 0 },
+        ),
+      ).toEqual(["event retention from 30 days to indefinitely"]);
     });
   });
 });

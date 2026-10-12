@@ -268,11 +268,14 @@ describe("dataRetention.ctrl", () => {
       expect(retention.setAuditRetentionMonths).not.toHaveBeenCalled();
     });
 
-    it("rejects a non-admin", async () => {
+    it("leaves the permission check to the route, so a custom role granted it can save", async () => {
+      // The route's authorize("organization.admin") is the source of truth;
+      // the handler no longer checks role names.
+      m(retention.getAuditRetentionMonths).mockResolvedValue(null);
       const res = createRes();
-      await updateAuditRetention(createReq({ role: "Editor", body: { months: 24 } }), res);
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(retention.setAuditRetentionMonths).not.toHaveBeenCalled();
+      await updateAuditRetention(createReq({ role: "Compliance lead", body: { months: 24 } }), res);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(retention.setAuditRetentionMonths).toHaveBeenCalledWith(2, 24, 5);
     });
 
     it("saves a period and records the change in the ledger", async () => {

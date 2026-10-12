@@ -21,6 +21,8 @@ export interface AiGatewayRequestOptions {
   body?: object;
   /** Overrides the default timeout, for long-running calls such as the retention purge. */
   timeoutMs?: number;
+  /** Forwarded as x-request-id so logs thread across services. */
+  requestId?: string;
 }
 
 /** A non-2xx response from the gateway; carries its status and parsed body. */
@@ -53,6 +55,7 @@ export async function aiGatewayRequest(
   }
   if (options.role) headers["x-role"] = options.role;
   if (options.userId !== undefined) headers["x-user-id"] = String(options.userId);
+  if (options.requestId) headers["x-request-id"] = options.requestId;
 
   const response = await fetch(`${AI_GATEWAY_URL}${path}`, {
     method,
