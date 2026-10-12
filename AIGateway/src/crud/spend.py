@@ -576,7 +576,7 @@ async def purge_spend_logs(
     per call by default) to avoid long-running transactions.
 
     Returns {"deleted": <total_deleted>, "batches": <batches_run>,
-    "capped": <last allowed batch was full, so older rows may remain>}.
+    "capped": <the batch limit was reached and older rows remain>}.
     """
     cutoff_at = retention_cutoff(retention_days)
     if cutoff_at is None:
@@ -598,6 +598,14 @@ async def purge_spend_logs(
             LIMIT :batch_size
         )
     """)
+    remaining_sql = text("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM ai_gateway_spend_logs
+            WHERE organization_id = :org_id
+              AND created_at < :cutoff
+        )
+    """)
 
     try:
         while batches < max_batches:
@@ -616,7 +624,12 @@ async def purge_spend_logs(
                 # No more rows to delete
                 break
             if batches == max_batches:
-                capped = True
+                # The last allowed batch was full: capped only if older rows
+                # are actually left.
+                remaining = await db.execute(
+                    remaining_sql, {"org_id": org_id, "cutoff": cutoff}
+                )
+                capped = bool(remaining.scalar())
     except Exception as error:
         # Report what the committed batches already deleted.
         raise PartialPurgeError(total_deleted, error) from error

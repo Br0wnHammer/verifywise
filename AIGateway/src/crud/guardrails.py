@@ -420,9 +420,10 @@ async def purge_guardrail_logs(
 ) -> dict:
     """Batch DELETE 1000 rows at a time, up to max_batches.
 
-    Returns {"deleted": <total>, "capped": <the last allowed batch was full,
-    so older rows may remain>}. Each batch is committed on its own; a failure
-    after some batches raises PartialPurgeError carrying the rows deleted so far.
+    Returns {"deleted": <total>, "capped": <the batch limit was reached and
+    rows older than the cutoff remain>}. Each batch is committed on its own; a
+    failure after some batches raises PartialPurgeError carrying the rows
+    deleted so far.
     """
     cutoff = retention_cutoff(retention_days)
     if cutoff is None:
@@ -459,7 +460,22 @@ async def purge_guardrail_logs(
                 if deleted < batch_size:
                     break
                 if batch == max_batches - 1:
-                    capped = True
+                    # The last allowed batch was full: capped only if older
+                    # rows are actually left.
+                    remaining = await db.execute(
+                        text(
+                            """
+                            SELECT EXISTS (
+                                SELECT 1
+                                FROM ai_gateway_guardrail_logs
+                                WHERE organization_id = :org_id
+                                  AND created_at < :cutoff
+                            )
+                            """
+                        ),
+                        {"org_id": org_id, "cutoff": cutoff},
+                    )
+                    capped = bool(remaining.scalar())
     except Exception as error:
         raise PartialPurgeError(total_deleted, error) from error
 

@@ -251,14 +251,21 @@ async def test_spend_failure_does_not_mark_guardrail_failed(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _counting_db(rowcounts):
-    """A fake session whose DELETEs report the given rowcounts in turn."""
+def _counting_db(rowcounts, remaining=True):
+    """A fake session whose DELETEs report the given rowcounts in turn. The
+    "are older rows left" check answers `remaining`; it is not recorded in
+    `calls`, which holds the DELETEs only."""
     calls = []
     db = MagicMock()
+    db.exists_checks = 0
 
     async def execute(stmt, params=None):
-        calls.append(params)
         result = MagicMock()
+        if "SELECT EXISTS" in str(stmt):
+            db.exists_checks += 1
+            result.scalar.return_value = remaining
+            return result
+        calls.append(params)
         result.rowcount = rowcounts[len(calls) - 1]
         return result
 
@@ -281,6 +288,20 @@ async def test_guardrail_purge_reports_capped_when_last_batch_is_full(monkeypatc
     assert len(calls) == 3
 
 
+async def test_guardrail_purge_not_capped_when_the_last_full_batch_emptied_it(monkeypatch):
+    db, calls = _counting_db([1000, 1000, 1000], remaining=False)
+
+    @asynccontextmanager
+    async def get_db():
+        yield db
+
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    out = await guardrails_crud.purge_guardrail_logs(7, 30, max_batches=3)
+    assert out == {"deleted": 3000, "capped": False}
+    assert db.exists_checks == 1
+
+
 async def test_guardrail_purge_not_capped_when_rows_run_out(monkeypatch):
     db, calls = _counting_db([1000, 400])
 
@@ -293,6 +314,8 @@ async def test_guardrail_purge_not_capped_when_rows_run_out(monkeypatch):
     out = await guardrails_crud.purge_guardrail_logs(7, 30, max_batches=3)
     assert out == {"deleted": 1400, "capped": False}
     assert len(calls) == 2
+    # A short batch already proves nothing is left: no extra check.
+    assert db.exists_checks == 0
 
 
 async def test_guardrail_purge_default_keeps_manual_cap_of_50(monkeypatch):
@@ -321,6 +344,13 @@ async def test_spend_purge_reports_capped(monkeypatch):
     db, calls = _counting_db([1000] * 60)
     out = await spend_crud.purge_spend_logs(db, 7, 30)
     assert out["batches"] == 50 and out["capped"] is True
+
+
+async def test_spend_purge_not_capped_when_the_last_full_batch_emptied_it():
+    db, calls = _counting_db([1000, 1000], remaining=False)
+    out = await spend_crud.purge_spend_logs(db, 7, 30, max_batches=2)
+    assert out == {"deleted": 2000, "batches": 2, "capped": False}
+    assert db.exists_checks == 1
 
 
 async def test_spend_purge_commits_each_batch():
