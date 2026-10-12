@@ -294,9 +294,9 @@ describe("before the error_code migration has run", () => {
       await recordRetentionRun(run);
 
       expect(mockQuery).toHaveBeenCalledTimes(3);
-      expect(
-        mockQuery.mock.calls.some((call) => String(call[0]).includes("pg_attribute")),
-      ).toBe(false);
+      expect(mockQuery.mock.calls.some((call) => String(call[0]).includes("pg_attribute"))).toBe(
+        false,
+      );
     });
 
     it("uses error_code again once a later check finds the column", async () => {
