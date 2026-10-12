@@ -43,6 +43,7 @@ export const AUDIT_RECORD_TABLES: ReadonlyArray<{ table: string; timestampColumn
   { table: "dataset_change_histories", timestampColumn: "changed_at" },
   { table: "ai_gateway_endpoint_change_history", timestampColumn: "changed_at" },
   { table: "ai_gateway_guardrail_change_history", timestampColumn: "changed_at" },
+  { table: "fria_change_history", timestampColumn: "changed_at" },
   { table: "ai_action_audit_log", timestampColumn: "created_at" },
   { table: "file_access_logs", timestampColumn: "access_date" },
 ];

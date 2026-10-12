@@ -101,11 +101,32 @@ describe("runDataRetentionPrune", () => {
     expect(mockRecord).toHaveBeenCalledWith(expect.objectContaining({ status: "capped" }));
   });
 
-  it("records a failed run and rethrows on error", async () => {
-    mockTable.mockRejectedValueOnce(new Error("boom"));
-    await expect(runDataRetentionPrune(1)).rejects.toThrow("boom");
+  it("keeps draining other tables when one fails and records a failed run naming it", async () => {
+    mockLedger.mockResolvedValueOnce(4);
+    mockTable.mockImplementation(async (_org: number, entry: { table: string }) => {
+      if (entry.table === "project_change_history") throw new Error("column missing");
+      return entry.table === "event_logs" ? 3 : 0;
+    });
+    const summary = await runDataRetentionPrune(1);
+    expect(mockTable).toHaveBeenCalledTimes(AUDIT_RECORD_TABLES.length);
+    expect(summary?.deleted).toBe(7);
+    expect(mockRecord).toHaveBeenCalledTimes(1);
     expect(mockRecord).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "failed", error: "boom" }),
+      expect.objectContaining({
+        status: "failed",
+        deletedCount: 7,
+        error: expect.stringContaining("project_change_history: column missing"),
+      }),
+    );
+    expect(mockAppend).toHaveBeenCalled();
+  });
+
+  it("isolates a ledger failure from the table drains", async () => {
+    mockLedger.mockRejectedValueOnce(new Error("lock"));
+    await runDataRetentionPrune(1);
+    expect(mockTable).toHaveBeenCalledTimes(AUDIT_RECORD_TABLES.length);
+    expect(mockRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", error: expect.stringContaining("audit_ledger") }),
     );
   });
 
@@ -125,6 +146,14 @@ describe("runDataRetentionPruneAllOrgs", () => {
       return 12;
     });
     await expect(runDataRetentionPruneAllOrgs()).resolves.toBeUndefined();
+    expect(mockRecord).toHaveBeenCalledWith({
+      organizationId: 1,
+      recordType: "audit_records",
+      cutoff: null,
+      deletedCount: 0,
+      status: "failed",
+      error: "boom",
+    });
     expect(mockLedger).toHaveBeenCalledTimes(1);
     expect(mockLedger).toHaveBeenCalledWith(2, "2024-06-10 00:00:00+00", RETENTION_BATCH_SIZE);
   });

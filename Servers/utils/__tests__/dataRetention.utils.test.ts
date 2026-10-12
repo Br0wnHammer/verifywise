@@ -30,6 +30,13 @@ describe("AUDIT_RECORD_TABLES", () => {
     }
   });
 
+  it("includes the FRIA change history", () => {
+    expect(AUDIT_RECORD_TABLES).toContainEqual({
+      table: "fria_change_history",
+      timestampColumn: "changed_at",
+    });
+  });
+
   it("only contains plain identifiers and never the ledger itself", () => {
     for (const { table, timestampColumn } of AUDIT_RECORD_TABLES) {
       expect(table).toMatch(/^[a-z_]+$/);

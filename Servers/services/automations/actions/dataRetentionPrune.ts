@@ -30,15 +30,23 @@ export interface DataRetentionSummary {
 export async function runDataRetentionPrune(
   organizationId: number,
 ): Promise<DataRetentionSummary | null> {
-  const months = await getAuditRetentionMonths(organizationId);
-  if (months === null) return null;
-
-  const cutoff = await getAuditCutoff(months);
+  let cutoff: string | null = null;
   let deleted = 0;
   let capped = false;
+  const failures: { name: string; error: unknown }[] = [];
 
   try {
-    const drain = async (deleteBatch: () => Promise<number>) => {
+    const months = await getAuditRetentionMonths(organizationId);
+    if (months === null) return null;
+    cutoff = await getAuditCutoff(months);
+  } catch (error) {
+    await safeRecordRun(organizationId, cutoff, 0, "failed", error);
+    throw error;
+  }
+  const runCutoff = cutoff;
+
+  const drain = async (name: string, deleteBatch: () => Promise<number>) => {
+    try {
       for (let batches = 0; ; batches++) {
         if (batches >= RETENTION_MAX_BATCHES) {
           capped = true;
@@ -48,15 +56,20 @@ export async function runDataRetentionPrune(
         deleted += n;
         if (n < RETENTION_BATCH_SIZE) return;
       }
-    };
-
-    await drain(() => pruneAuditLedgerBatch(organizationId, cutoff, RETENTION_BATCH_SIZE));
-    for (const entry of AUDIT_RECORD_TABLES) {
-      await drain(() => deleteAuditRowsBatch(organizationId, entry, cutoff, RETENTION_BATCH_SIZE));
+    } catch (error) {
+      // One failing table must not stop the rest of the org's run.
+      failures.push({ name, error });
+      logger.error(`Audit retention failed for ${name} in org ${organizationId}:`, error);
     }
-  } catch (error) {
-    await safeRecordRun(organizationId, cutoff, deleted, "failed", error);
-    throw error;
+  };
+
+  await drain("audit_ledger", () =>
+    pruneAuditLedgerBatch(organizationId, runCutoff, RETENTION_BATCH_SIZE),
+  );
+  for (const entry of AUDIT_RECORD_TABLES) {
+    await drain(entry.table, () =>
+      deleteAuditRowsBatch(organizationId, entry, runCutoff, RETENTION_BATCH_SIZE),
+    );
   }
 
   if (deleted > 0) {
@@ -67,20 +80,27 @@ export async function runDataRetentionPrune(
         userId: null,
         eventType: "Delete",
         entityType: "audit_ledger",
-        description: `Retention removed ${deleted} audit records before ${cutoff.slice(0, 10)}`,
+        description: `Retention removed ${deleted} audit records before ${runCutoff.slice(0, 10)}`,
       });
     } catch (error) {
       logger.error(`Retention self-audit entry failed for org ${organizationId}:`, error);
     }
   }
 
-  await safeRecordRun(organizationId, cutoff, deleted, capped ? "capped" : "success");
-  return { organization_id: organizationId, cutoff, deleted, capped };
+  if (failures.length > 0) {
+    const message = failures
+      .map((f) => `${f.name}: ${f.error instanceof Error ? f.error.message : String(f.error)}`)
+      .join("; ");
+    await safeRecordRun(organizationId, runCutoff, deleted, "failed", message);
+  } else {
+    await safeRecordRun(organizationId, runCutoff, deleted, capped ? "capped" : "success");
+  }
+  return { organization_id: organizationId, cutoff: runCutoff, deleted, capped };
 }
 
 async function safeRecordRun(
   organizationId: number,
-  cutoff: string,
+  cutoff: string | null,
   deletedCount: number,
   status: "success" | "capped" | "failed",
   error?: unknown,
