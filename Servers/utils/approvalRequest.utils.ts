@@ -586,7 +586,9 @@ export const getApprovalRequestByIdQuery = async (
         ...(transaction && { transaction }),
       },
     );
-    (step as any).approvals = approvals;
+    // setDataValue (not a plain property assignment) so the field is part of
+    // dataValues and survives Model#toJSON() serialization to the HTTP response.
+    (step as any).setDataValue("approvals", approvals);
   }
 
   request.steps = steps;
