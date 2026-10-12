@@ -79,6 +79,10 @@ export const IMPORT_FAILED_MESSAGE = "The import failed.";
 export const REMOVAL_FINISHED_MESSAGE = "Missing use cases removed.";
 export const REMOVED_LABEL = "Use cases removed:";
 export const REMOVED_BEFORE_STOP_LABEL = "Use cases removed before it stopped:";
+export const UNLINKED_LABEL = "Links cleaned up:";
+export const SKIPPED_LABEL = "Use cases skipped:";
+export const REMOVAL_PARTLY_SKIPPED_MESSAGE =
+  "Removal finished, but some use cases were not removed. They are still selected.";
 export const REMOVAL_FAILED_MESSAGE = "Failed to remove use cases";
 /** An interrupted batch after earlier batches removed some ("nothing was removed" would mislead). */
 export const REMOVAL_INTERRUPTED_PARTIAL_MESSAGE =
@@ -178,28 +182,49 @@ export async function importInBatches(
   };
 }
 
+interface RemoveResponse {
+  removed?: number;
+  /** Links whose project is not in this organization; only the link was deleted. */
+  unlinked?: number;
+  /** Ids the server did not remove (no longer flagged, or not found). */
+  skipped_ids?: number[];
+}
+
 /** Remove the use cases `ids` in batches through `send` (POST /use-cases/remove-missing). */
 export async function removeInBatches(
   ids: number[],
-  send: (batch: number[]) => Promise<{ removed?: number }>,
+  send: (batch: number[]) => Promise<RemoveResponse>,
   onProgress?: (progress: BatchProgress) => void,
 ): Promise<BatchSummary<number>> {
   const run = await runInBatches(ids, send, onProgress);
-  const removed = run.done.reduce((sum, { result }) => sum + (result?.removed ?? 0), 0);
-  // A finished batch either removed each id or skipped it as no longer flagged.
-  const doneIds = run.done.flatMap(({ batch }) => batch);
+  let removed = 0;
+  let unlinked = 0;
+  let skipped = 0;
+  const doneIds: number[] = [];
+  for (const { batch, result } of run.done) {
+    removed += result?.removed ?? 0;
+    unlinked += result?.unlinked ?? 0;
+    const skippedIds = new Set(result?.skipped_ids ?? []);
+    skipped += skippedIds.size;
+    // Skipped ids stay selected; only what the server handled leaves.
+    doneIds.push(...batch.filter((id) => !skippedIds.has(id)));
+  }
+  const extraCounts = [
+    ...(unlinked > 0 ? [{ label: UNLINKED_LABEL, value: unlinked }] : []),
+    ...(skipped > 0 ? [{ label: SKIPPED_LABEL, value: skipped }] : []),
+  ];
   if (!run.error) {
     return {
-      type: "success",
-      text: REMOVAL_FINISHED_MESSAGE,
-      counts: [{ label: REMOVED_LABEL, value: removed }],
+      type: skipped > 0 ? "warning" : "success",
+      text: skipped > 0 ? REMOVAL_PARTLY_SKIPPED_MESSAGE : REMOVAL_FINISHED_MESSAGE,
+      counts: [{ label: REMOVED_LABEL, value: removed }, ...extraCounts],
       doneIds,
     };
   }
   const stop = classifyStop(run.error, RUN_CODES.removalInterrupted);
   const text =
     stop.kind === "interrupted"
-      ? removed > 0
+      ? removed + unlinked > 0
         ? REMOVAL_INTERRUPTED_PARTIAL_MESSAGE
         : stop.error.response?.data?.message || REMOVAL_INTERRUPTED_MESSAGE
       : stop.kind === "sync_running"
@@ -208,7 +233,7 @@ export async function removeInBatches(
   return {
     type: "error",
     text,
-    counts: [{ label: REMOVED_BEFORE_STOP_LABEL, value: removed }],
+    counts: [{ label: REMOVED_BEFORE_STOP_LABEL, value: removed }, ...extraCounts],
     doneIds,
   };
 }
@@ -232,29 +257,27 @@ export function deselectDone<T>(selected: Set<T>, doneIds: T[]): Set<T> {
 }
 
 /**
- * How the panel's state changes after an import, from the summary and the
- * freshly loaded imported use cases (not the ones the import started with).
- * `objects` and `selected` are state updaters, so they apply to the latest
- * state. Imported objects leave the picker, and the selection keeps only ids
- * still shown there that were not handled: failed and unsent ones. That also
- * covers a batch kept whole (errors without ids, or interrupted part-way):
- * those of its objects that did get imported leave the picker and the
- * selection together, so nothing selected is ever invisible. The handler
- * applies this once, after reloading, so no reload can clear the outcome.
+ * The panel's state after an import, from the latest state, the summary and
+ * the freshly loaded imported use cases (not the ones the import started
+ * with). Imported objects leave the picker; the selection is then derived
+ * from the objects that remain: an id stays selected only if it is still in
+ * the picker and was not handled. So nothing selected is ever invisible, by
+ * construction, including the ids of a batch kept whole (errors without ids,
+ * or interrupted part-way) that did get imported. The handler applies this
+ * once, after reloading, so no reload can clear the outcome.
  */
 export function finishImport<O extends { id: string }>(
+  state: { objects: O[]; selected: Set<string> },
   summary: BatchSummary<string>,
   importedObjectIds: Set<string> | null,
-): {
-  objects: (prev: O[]) => O[];
-  selected: (prev: Set<string>) => Set<string>;
-  message: PanelMessage;
-} {
+): { objects: O[]; selected: Set<string>; message: PanelMessage } {
   const imported = importedObjectIds ?? new Set<string>();
+  const objects = state.objects.filter((obj) => !imported.has(obj.id));
+  const shown = new Set(objects.map((obj) => obj.id));
+  const notHandled = deselectDone(state.selected, summary.doneIds);
   return {
-    objects: (prev) => prev.filter((obj) => !imported.has(obj.id)),
-    selected: (prev) =>
-      new Set([...deselectDone(prev, summary.doneIds)].filter((id) => !imported.has(id))),
+    objects,
+    selected: new Set([...notHandled].filter((id) => shown.has(id))),
     message: summaryMessage(summary),
   };
 }

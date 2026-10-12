@@ -537,26 +537,35 @@ ids, at most 100 per request (the same limit as an import,
 requests of up to 100, shows "Removing use cases 101–200 / 250", stops at the
 first error and reports how many were removed. Import batches the same way
 ("Importing objects …"); objects a batch reports as failed make the outcome a
-warning with a "not imported" count. Handled ids leave the selection (imported
-or already imported, removed or no longer flagged); failed and unsent ones
-stay selected, so a retry is one click. After an import the panel reloads the
+warning with a "not imported" count. A removal whose response lists
+`skipped_ids` (no longer flagged, or not found) is a warning with a "skipped"
+count, and links cleaned up are counted separately ("Links cleaned up").
+Handled ids leave the selection; failed, skipped and unsent ones stay
+selected, so a retry is one click. After an import the panel reloads the
 imported use cases and applies `finishImport` with that fresh list: imported
-objects leave the picker, and the selection keeps only ids still shown there,
-so nothing selected is ever hidden. The outcome is shown last. Both live in
+objects leave the picker, and the selection is derived from the objects that
+remain (an id stays only if it is still shown and was not handled), so
+nothing selected is ever hidden. The outcome is shown last. Both live in
 `jira-assets/batching.ts`.
 `removeMissingUseCases` (through `deleteUseCasesUnderClaim`):
 
 1. takes the same claim, so it cannot race a sync or import (409)
 2. locks the listed rows that are still flagged (`FOR UPDATE`)
-3. deletes each project the way the core "Delete use case" does
-   (`deleteLinkedProject`): withdraws a pending approval request, then
-   `deleteProjectByIdQuery` (files, risks, members, per-framework rows,
-   custom-field values), and records the deletion in the change history only
-   if the project was deleted. The `project_deleted` automation is queued
-   after the transaction commits (`enqueueAutomationAfterCommit`), so a
-   rolled-back removal fires none. The link row cascades. Link rows with no
-   project are deleted directly.
-4. records the run (`objects_deleted` = number removed)
+3. for each link whose project is in this organization, deletes the project
+   the way the core "Delete use case" does (`deleteLinkedProject`): locks the
+   project row first (so nothing happens to a project that is not here), then
+   withdraws a pending approval request, runs `deleteProjectByIdQuery` (files,
+   risks, members, per-framework rows, custom-field values) and records the
+   deletion in the change history. The `project_deleted` automation is
+   queued after the transaction commits (`enqueueAutomationAfterCommit`), so
+   a rolled-back removal fires none. The link row cascades.
+4. for a link with no project, or whose project is not in this organization
+   (another organization's, or a bad id), deletes only the link row: no
+   project is touched, no change history is written and no automation fires.
+   It is reported as `unlinked`, not as a removed use case. Without this,
+   such a link could never leave the "Missing in Jira" list.
+5. records the run (`objects_deleted` = use cases removed; a note counts the
+   links cleaned up)
 
 Steps 2 to 4 run in one transaction, which first share-locks the run's own
 history row so no other claim can close it mid-way.
@@ -569,15 +578,12 @@ history row is `'remove_missing'` with `objects_deleted = 1`; 409
 never takes or waits on the claim (404, not 409, during a sync). If the link
 vanished between that check and the locked one under the claim, the
 transaction rolls back and the claimed history row is deleted, so nothing is
-recorded. The same happens if the linked project is not this organization's.
-A link cannot outlive its project (it cascades with it, and the flow holds it
-`FOR UPDATE`), so a project that cannot be deleted is never removed: it is
-skipped by a removal and is 404 for a single delete, and its link is left
-untouched.
+recorded. A link whose project is not in this organization has only its link
+row deleted and returns 200 with `{ success: true, unlinked: true }`.
 
 A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is
-`{ removed, skipped }`. If the removal loses its claim before it finishes, the
+`{ removed, unlinked, skipped, skipped_ids }`. If the removal loses its claim before it finishes, the
 transaction rolls back and the route returns 409 with
 `{ message: "The removal was interrupted; nothing was removed. Try again.",
 code: "removal_interrupted" }`. The panel switches on `code`, never on the

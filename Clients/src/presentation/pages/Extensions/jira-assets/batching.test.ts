@@ -10,8 +10,12 @@ import {
   importInBatches,
   NOT_IMPORTED_LABEL,
   REMOVAL_INTERRUPTED_PARTIAL_MESSAGE,
+  REMOVAL_PARTLY_SKIPPED_MESSAGE,
   REMOVED_BEFORE_STOP_LABEL,
+  REMOVED_LABEL,
   removeInBatches,
+  SKIPPED_LABEL,
+  UNLINKED_LABEL,
   runInBatches,
 } from "./batching";
 import { REMOVAL_INTERRUPTED_MESSAGE, SYNC_RUNNING_MESSAGE } from "./runOutcome";
@@ -152,10 +156,42 @@ describe("importInBatches", () => {
 });
 
 describe("removeInBatches", () => {
+  it("does not call it finished when the server skipped some; keeps the skipped selected", async () => {
+    const send = vi.fn(async () => ({ removed: 2, unlinked: 0, skipped: 1, skipped_ids: [3] }));
+
+    const summary = await removeInBatches([1, 2, 3], send);
+
+    expect(summary).toEqual({
+      type: "warning",
+      text: REMOVAL_PARTLY_SKIPPED_MESSAGE,
+      counts: [
+        { label: REMOVED_LABEL, value: 2 },
+        { label: SKIPPED_LABEL, value: 1 },
+      ],
+      doneIds: [1, 2],
+    });
+    expect(deselectDone(new Set([1, 2, 3]), summary.doneIds)).toEqual(new Set([3]));
+  });
+
+  it("reports links cleaned up separately from use cases removed", async () => {
+    const send = vi.fn(async () => ({ removed: 1, unlinked: 1, skipped: 0, skipped_ids: [] }));
+
+    const summary = await removeInBatches([1, 2], send);
+
+    expect(summary).toMatchObject({
+      type: "success",
+      counts: [
+        { label: REMOVED_LABEL, value: 1 },
+        { label: UNLINKED_LABEL, value: 1 },
+      ],
+      doneIds: [1, 2],
+    });
+  });
+
   it("stops at an error on the 2nd batch, reports the 100 removed, deselects only those", async () => {
     const send = vi
-      .fn<(batch: number[]) => Promise<{ removed: number }>>()
-      .mockResolvedValueOnce({ removed: 100 })
+      .fn<(batch: number[]) => Promise<{ removed: number; skipped_ids: number[] }>>()
+      .mockResolvedValueOnce({ removed: 100, skipped_ids: [] })
       .mockRejectedValueOnce(
         conflict({ code: "removal_interrupted", message: REMOVAL_INTERRUPTED_MESSAGE }),
       );
@@ -201,16 +237,18 @@ describe("finishImport (the panel's state after an import)", () => {
       .fn<(batch: string[]) => Promise<any>>()
       .mockRejectedValueOnce(conflict({ code: "import_interrupted", imported: 30 }));
     const summary = await importInBatches(ids(50), send);
+
     // Fresh /use-cases after the import: objects 1..30 are imported now.
-    const next = finishImport<{ id: string; key: string }>(summary, new Set(ids(30)));
+    const next = finishImport(
+      { objects: picker(ids(50)), selected: new Set(ids(50)) },
+      summary,
+      new Set(ids(30)),
+    );
 
-    const objects = next.objects(picker(ids(50)));
-    const selected = next.selected(new Set(ids(50)));
-
-    expect(objects.map((o) => o.id)).toEqual(ids(20, 31));
-    expect(selected).toEqual(new Set(ids(20, 31)));
+    expect(next.objects.map((o) => o.id)).toEqual(ids(20, 31));
+    expect(next.selected).toEqual(new Set(ids(20, 31)));
     // The "Import N selected" count matches what the user can see.
-    expect(selected.size).toBe(objects.length);
+    expect(next.selected.size).toBe(next.objects.length);
     expect(next.message).toEqual({
       type: "error",
       text: IMPORT_INTERRUPTED_MESSAGE,
@@ -218,33 +256,62 @@ describe("finishImport (the panel's state after an import)", () => {
     });
   });
 
+  it("250 ids, batch 2 interrupted: selected = unhandled of batch 2 + the unsent batch", async () => {
+    const send = vi
+      .fn<(batch: string[]) => Promise<any>>()
+      .mockImplementationOnce(async (batch) => ok(batch))
+      .mockRejectedValueOnce(conflict({ code: "import_interrupted", imported: 40 }));
+    const summary = await importInBatches(ids(250), send);
+    expect(send).toHaveBeenCalledTimes(2);
+
+    // Batch 1 (1..100) and the first 40 of batch 2 (101..140) are imported.
+    const next = finishImport(
+      { objects: picker(ids(250)), selected: new Set(ids(250)) },
+      summary,
+      new Set(ids(140)),
+    );
+
+    expect(next.selected).toEqual(new Set([...ids(60, 141), ...ids(50, 201)]));
+    expect(next.selected.size).toBe(next.objects.length);
+    expect(next.message.counts).toEqual([{ label: IMPORTED_BEFORE_STOP_LABEL, value: 140 }]);
+  });
+
   it("a batch kept whole (errors without ids) keeps only its failed objects selected", async () => {
     const send = vi.fn(async () => ({ success: true, imported: 3, errors: ["Failed: x"] }));
     const summary = await importInBatches(ids(4), send);
-    const next = finishImport<{ id: string; key: string }>(summary, new Set(["1", "2", "3"]));
 
-    expect(next.selected(new Set(ids(4)))).toEqual(new Set(["4"]));
-    expect(next.objects(picker(ids(4))).map((o) => o.id)).toEqual(["4"]);
+    const next = finishImport(
+      { objects: picker(ids(4)), selected: new Set(ids(4)) },
+      summary,
+      new Set(["1", "2", "3"]),
+    );
+
+    expect(next.selected).toEqual(new Set(["4"]));
+    expect(next.objects.map((o) => o.id)).toEqual(["4"]);
   });
 
-  it("drops handled ids and imported objects using the fresh imported list", () => {
-    const summary = {
-      type: "success" as const,
-      text: "Import finished.",
-      counts: [],
-      doneIds: ["1", "2"],
-    };
-    const next = finishImport<{ id: string; key: string }>(summary, new Set(["1", "2"]));
+  it("never keeps an id selected that is not in the picker", () => {
+    const summary = { type: "success" as const, text: "", counts: [], doneIds: [] };
 
-    expect(next.objects(picker(["1", "2", "3"])).map((o) => o.id)).toEqual(["3"]);
-    expect(next.selected(new Set(["1", "2"]))).toEqual(new Set());
+    const next = finishImport(
+      { objects: picker(["1", "2"]), selected: new Set(["1", "2", "99"]) },
+      summary,
+      new Set<string>(),
+    );
+
+    expect(next.selected).toEqual(new Set(["1", "2"]));
   });
 
   it("leaves the picker alone when the fresh list could not be read", () => {
     const summary = { type: "success" as const, text: "", counts: [], doneIds: ["1"] };
-    const next = finishImport<{ id: string; key: string }>(summary, null);
 
-    expect(next.objects(picker(["1", "2"])).map((o) => o.id)).toEqual(["1", "2"]);
-    expect(next.selected(new Set(["1", "2"]))).toEqual(new Set(["2"]));
+    const next = finishImport(
+      { objects: picker(["1", "2"]), selected: new Set(["1", "2"]) },
+      summary,
+      null,
+    );
+
+    expect(next.objects.map((o) => o.id)).toEqual(["1", "2"]);
+    expect(next.selected).toEqual(new Set(["2"]));
   });
 });

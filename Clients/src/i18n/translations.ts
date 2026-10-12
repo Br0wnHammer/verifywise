@@ -9744,6 +9744,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Eine andere Synchronisierung oder ein Import lief bereits, daher wurde diese Synchronisierung nicht gestartet.",
     "Importing objects": "Objekte werden importiert",
+    "Links cleaned up:": "Bereinigte Verknüpfungen:",
+    "Use cases skipped:": "Übersprungene Anwendungsfälle:",
+    "Removal finished, but some use cases were not removed. They are still selected.":
+      "Entfernen abgeschlossen, aber einige Anwendungsfälle wurden nicht entfernt. Sie bleiben ausgewählt.",
     "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
       "Import abgeschlossen, aber einige Objekte konnten nicht importiert werden. Sie bleiben ausgewählt; importieren Sie erneut, um es noch einmal zu versuchen.",
     "Objects not imported:": "Nicht importierte Objekte:",
@@ -19905,6 +19909,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Une autre synchronisation ou importation était en cours, cette synchronisation n'a donc pas démarré.",
     "Importing objects": "Importation des objets",
+    "Links cleaned up:": "Liens nettoyés :",
+    "Use cases skipped:": "Cas d'usage ignorés :",
+    "Removal finished, but some use cases were not removed. They are still selected.":
+      "Suppression terminée, mais certains cas d'usage n'ont pas été supprimés. Ils restent sélectionnés.",
     "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
       "Importation terminée, mais certains objets n'ont pas pu être importés. Ils restent sélectionnés ; relancez l'importation pour réessayer.",
     "Objects not imported:": "Objets non importés :",
@@ -29993,6 +30001,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Había otra sincronización o importación en curso, por lo que esta sincronización no se inició.",
     "Importing objects": "Importando objetos",
+    "Links cleaned up:": "Vínculos depurados:",
+    "Use cases skipped:": "Casos de uso omitidos:",
+    "Removal finished, but some use cases were not removed. They are still selected.":
+      "Eliminación finalizada, pero algunos casos de uso no se eliminaron. Siguen seleccionados.",
     "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
       "Importación finalizada, pero algunos objetos no se pudieron importar. Siguen seleccionados; vuelva a importar para reintentarlo.",
     "Objects not imported:": "Objetos no importados:",

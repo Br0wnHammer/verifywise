@@ -178,6 +178,12 @@ export const JiraAssetsConfiguration: React.FC = () => {
   // Import state
   const [jiraObjects, setJiraObjects] = useState<JiraObject[]>([]);
   const [selectedObjects, setSelectedObjects] = useState<Set<string>>(new Set());
+  // Latest picker state, read by handleImport after its awaits (its closure
+  // holds the values from when it started).
+  const pickerRef = useRef({ objects: jiraObjects, selected: selectedObjects });
+  useEffect(() => {
+    pickerRef.current = { objects: jiraObjects, selected: selectedObjects };
+  }, [jiraObjects, selectedObjects]);
   const [isLoadingObjects, setIsLoadingObjects] = useState(false);
   // The picker loads one page at a time; "Load more" asks for the next.
   const [jiraHasMore, setJiraHasMore] = useState(false);
@@ -380,12 +386,12 @@ export const JiraAssetsConfiguration: React.FC = () => {
       );
       // Reload the imported use cases, then apply finishImport with that fresh
       // list (not the one this handler started with): imported objects leave
-      // the picker (pages already loaded are kept), and the selection keeps
-      // only failed and unsent ids still shown there. The outcome is set last
-      // and nothing after it clears it.
+      // the picker (pages already loaded are kept), and the selection is
+      // derived from what remains: failed and unsent ids still shown there.
+      // The outcome is set last and nothing after it clears it.
       const fresh = await loadImportedUseCases();
       const importedIds = fresh ? new Set(fresh.map((uc) => String(uc.jira_object_id))) : null;
-      const next = finishImport<JiraObject>(summary, importedIds);
+      const next = finishImport(pickerRef.current, summary, importedIds);
       setJiraObjects(next.objects);
       setSelectedObjects(next.selected);
       setImportMessage(next.message);
