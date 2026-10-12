@@ -19,6 +19,7 @@ import {
   getLatestRetentionRuns,
   recordRetentionRun,
   safeRecordRetentionRun,
+  resetErrorCodeColumnCache,
 } from "../dataRetention.utils";
 import logger from "../logger/fileLogger";
 
@@ -199,6 +200,12 @@ describe("recordRetentionRun / getLatestRetentionRuns", () => {
 });
 
 describe("before the error_code migration has run", () => {
+  beforeEach(() => {
+    resetErrorCodeColumnCache();
+  });
+  afterEach(() => {
+    resetErrorCodeColumnCache();
+  });
   const missingColumn = () =>
     Object.assign(
       new Error('column "error_code" of relation "data_retention_runs" does not exist'),
@@ -239,6 +246,26 @@ describe("before the error_code migration has run", () => {
     const runs = await getLatestRetentionRuns(1);
     expect(String(mockQuery.mock.calls[1][0])).not.toContain("error_code");
     expect(runs.audit_records?.error_code).toBeNull();
+  });
+
+  it("remembers the missing column, so later calls go straight to the fallback", async () => {
+    mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValue([]);
+    const run = {
+      organizationId: 1,
+      recordType: "audit_records" as const,
+      cutoff: null,
+      deletedCount: 0,
+      status: "success" as const,
+    };
+    await recordRetentionRun(run);
+    await recordRetentionRun(run);
+    await getLatestRetentionRuns(1);
+
+    // One failed attempt, then the fallback for everything after it.
+    expect(mockQuery).toHaveBeenCalledTimes(4);
+    for (const call of mockQuery.mock.calls.slice(1)) {
+      expect(String(call[0])).not.toContain("error_code");
+    }
   });
 
   it("does not hide other database errors", async () => {

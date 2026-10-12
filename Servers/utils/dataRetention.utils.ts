@@ -237,6 +237,18 @@ export interface RetentionRunInput {
   errorCode?: string | null;
 }
 
+/**
+ * Set after the first "error_code does not exist" error, so later inserts and
+ * reads go straight to the fallback instead of failing first each time. It
+ * resets on restart, which is when a newly run migration takes effect.
+ */
+let errorCodeColumnMissing = false;
+
+/** Test hook: forget a cached "error_code column missing". */
+export function resetErrorCodeColumnCache(): void {
+  errorCodeColumnMissing = false;
+}
+
 /** Postgres "undefined_column": the error_code migration has not run yet. */
 function isMissingErrorCodeColumn(error: unknown): boolean {
   const code =
@@ -255,6 +267,17 @@ export async function recordRetentionRun(row: RetentionRunInput): Promise<void> 
     error: row.error ?? null,
     errorCode: row.errorCode ?? null,
   };
+  const insertWithoutCode = () =>
+    sequelize.query(
+      `INSERT INTO data_retention_runs
+         (organization_id, record_type, cutoff, deleted_count, status, error)
+       VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error)`,
+      { replacements },
+    );
+  if (errorCodeColumnMissing) {
+    await insertWithoutCode();
+    return;
+  }
   try {
     await sequelize.query(
       `INSERT INTO data_retention_runs
@@ -267,12 +290,8 @@ export async function recordRetentionRun(row: RetentionRunInput): Promise<void> 
     // and worker containers never migrate). Without the column, record the
     // run without its code; the error text still names the reason.
     if (!isMissingErrorCodeColumn(error)) throw error;
-    await sequelize.query(
-      `INSERT INTO data_retention_runs
-         (organization_id, record_type, cutoff, deleted_count, status, error)
-       VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error)`,
-      { replacements },
-    );
+    errorCodeColumnMissing = true;
+    await insertWithoutCode();
   }
 }
 
@@ -396,12 +415,17 @@ export async function getLatestRetentionRuns(organizationId: number): Promise<La
       { replacements: { organizationId }, type: QueryTypes.SELECT },
     );
   let rows: any[];
-  try {
-    rows = (await latestRuns(true)) as any[];
-  } catch (error) {
-    // Before the error_code migration has run: read the runs without codes.
-    if (!isMissingErrorCodeColumn(error)) throw error;
+  if (errorCodeColumnMissing) {
     rows = (await latestRuns(false)) as any[];
+  } else {
+    try {
+      rows = (await latestRuns(true)) as any[];
+    } catch (error) {
+      // Before the error_code migration has run: read the runs without codes.
+      if (!isMissingErrorCodeColumn(error)) throw error;
+      errorCodeColumnMissing = true;
+      rows = (await latestRuns(false)) as any[];
+    }
   }
   const result = {} as LatestRetentionRuns;
   for (const r of rows) {
