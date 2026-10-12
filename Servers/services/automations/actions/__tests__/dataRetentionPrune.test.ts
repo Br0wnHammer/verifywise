@@ -15,6 +15,7 @@ import {
   safeRecordRetentionRun,
 } from "../../../../utils/dataRetention.utils";
 import { aiGatewayRequest } from "../../../../utils/aiGatewayInternal.utils";
+import logger from "../../../../utils/logger/fileLogger";
 
 jest.mock("../../../../utils/auditLedgerRetention.utils", () => ({
   pruneAuditLedgerBatch: jest.fn(),
@@ -296,6 +297,66 @@ describe("runDataRetentionPruneAllOrgs", () => {
         }
       },
     );
+
+    it("stops calling the gateway after the first refusal and records the rest without calls", async () => {
+      mockOptedIn.mockResolvedValue([5, 6, 7]);
+      mockGateway.mockRejectedValue(gatewayError(401, withCode("internal_key_rejected")));
+
+      await runDataRetentionPruneAllOrgs();
+
+      // One HTTP call: the refusal applies to the whole deployment.
+      expect(mockGateway).toHaveBeenCalledTimes(1);
+      for (const organizationId of [5, 6, 7]) {
+        for (const recordType of ["ai_gateway_guardrail_logs", "ai_gateway_spend_logs"]) {
+          expect(mockRecord).toHaveBeenCalledWith(
+            expect.objectContaining({
+              organizationId,
+              recordType,
+              status: "failed",
+              deletedCount: 0,
+              error: "Purge refused: internal key rejected",
+              errorCode: "internal_key_rejected",
+            }),
+          );
+        }
+      }
+      // Logged once for the refusal and once for the skipped orgs, not per org.
+      const refusalLogs = (logger.error as jest.Mock).mock.calls.filter((call) =>
+        String(call[0]).includes("internal key rejected"),
+      );
+      expect(refusalLogs).toHaveLength(2);
+    });
+
+    it("records the refusal only for orgs still opted in, without calling the gateway", async () => {
+      // First read: 5, 6, 7 opted in. By the time 5 is refused, 6 opted out.
+      mockOptedIn.mockResolvedValueOnce([5, 6, 7]).mockResolvedValueOnce([5, 7]);
+      mockGateway.mockRejectedValue(gatewayError(401, withCode("internal_key_rejected")));
+
+      await runDataRetentionPruneAllOrgs();
+
+      expect(mockGateway).toHaveBeenCalledTimes(1);
+      const recordedOrgs = new Set(mockRecord.mock.calls.map((call) => call[0].organizationId));
+      expect(recordedOrgs).toEqual(new Set([5, 7]));
+    });
+
+    it("records the refusal for every remaining org when the re-read fails", async () => {
+      mockOptedIn.mockResolvedValueOnce([5, 6]).mockRejectedValueOnce(new Error("db down"));
+      mockGateway.mockRejectedValue(gatewayError(401, withCode("internal_key_rejected")));
+
+      await runDataRetentionPruneAllOrgs();
+
+      const recordedOrgs = new Set(mockRecord.mock.calls.map((call) => call[0].organizationId));
+      expect(recordedOrgs).toEqual(new Set([5, 6]));
+    });
+
+    it("keeps calling the gateway after an ordinary failure", async () => {
+      mockOptedIn.mockResolvedValue([5, 6]);
+      mockGateway.mockRejectedValue(gatewayError(500, { detail: "boom" }));
+
+      await runDataRetentionPruneAllOrgs();
+
+      expect(mockGateway).toHaveBeenCalledTimes(2);
+    });
 
     it.each([
       ["a proxy's 503 while the gateway is down", 503, "Service Unavailable"],

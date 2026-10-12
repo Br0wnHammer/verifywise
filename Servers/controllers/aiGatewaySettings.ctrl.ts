@@ -150,10 +150,12 @@ export async function updateGuardrailSettings(req: Request, res: Response): Prom
   }
 
   // The "from" values come from the gateway's own save: it reads them under a
-  // row lock in the same statement, so concurrent saves cannot make them
-  // stale (a lock cannot span this backend and the gateway). null means the
-  // organization had no settings row, so the gateway defaults applied; a
-  // response without the field (an older gateway) gives "set to" wording.
+  // row lock in its save transaction, so concurrent saves cannot make them
+  // stale (a lock cannot span this backend and the gateway). The current
+  // gateway always returns an object. The fallbacks are for a rolling deploy
+  // against an older gateway: one that returns null for an organization with
+  // no settings row (the gateway defaults applied, so {} compares against
+  // them), and one that sends no previous_retention at all ("set to" wording).
   const { previous_retention: previous, ...gatewayResponse } = updated ?? {};
   const before: Record<string, unknown> | null =
     updated && "previous_retention" in updated ? (previous ?? {}) : null;

@@ -6,6 +6,7 @@ import {
   VALID_PROVIDERS,
 } from "../domain.layer/models/evaluationLlmApiKey/evaluationLlmApiKey.model";
 import { getDecryptedAiGatewayKeyForProviderQuery } from "../utils/aiGatewayEvalKey.utils";
+import { getGatewayInternalKey, getGatewayUrl } from "../utils/aiGatewayConfig";
 
 // JSON body parser for routes that need to inspect/modify the body before proxying
 const jsonParser = express.json({ limit: "50mb" });
@@ -315,9 +316,6 @@ function deepEvalRoutes() {
   const targetUrl = process.env.LLM_EVALS_URL || "http://127.0.0.1:8000";
   const EVAL_SERVER_KEY = process.env.EVAL_SERVER_INTERNAL_KEY || "";
 
-  const AI_GATEWAY_URL = process.env.AI_GATEWAY_URL || "http://127.0.0.1:8100";
-  const AI_GATEWAY_KEY = process.env.AI_GATEWAY_INTERNAL_KEY || "";
-
   // ── Playground chat endpoint ──────────────────────────────────────────────
   // POST /api/deepeval/playground/chat
   // Body: { model: string, provider: string, messages: {role,content}[] }
@@ -362,11 +360,11 @@ function deepEvalRoutes() {
       const litellmModel = toLiteLLMModel(normalizedProvider, model);
 
       try {
-        const gatewayRes = await fetch(`${AI_GATEWAY_URL}/internal/v1/chat/completions`, {
+        const gatewayRes = await fetch(`${getGatewayUrl()}/internal/v1/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-internal-key": AI_GATEWAY_KEY,
+            "x-internal-key": getGatewayInternalKey(),
             "x-organization-id": String(orgId || ""),
             "x-provider-key": apiKey,
             ...(req.requestId ? { "x-request-id": req.requestId } : {}),

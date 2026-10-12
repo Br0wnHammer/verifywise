@@ -119,12 +119,7 @@ describe("aiGatewayRequest internal key header", () => {
     fetchSpy.mockResolvedValue({ ok: true, json: async () => ({}) });
     (global as any).fetch = fetchSpy;
 
-    let request: typeof aiGatewayRequest | undefined;
-    jest.isolateModules(() => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      request = require("../aiGatewayInternal.utils").aiGatewayRequest;
-    });
-    await request!("GET", "/internal/x");
+    await aiGatewayRequest("GET", "/internal/x");
 
     const [, init] = fetchSpy.mock.calls[0] as [string, any];
     expect(init.headers["x-internal-key"]).toBe("shared-key");

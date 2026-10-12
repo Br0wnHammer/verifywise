@@ -214,8 +214,9 @@ async def get_guardrail_settings(org_id: int) -> Optional[dict]:
     return None
 
 
-# Settings columns a caller may write, with the value used when an organization
-# has no settings row yet. Keys outside this table are ignored.
+# Settings columns a caller may write, with the value an organization has
+# before it saves its own. These equal the table's column defaults (migrations
+# a0001 and a0011), which a new row takes. Keys outside this table are ignored.
 _SETTINGS_DEFAULTS: dict[str, Any] = {
     "pii_on_error": "block",
     "content_filter_on_error": "allow",
@@ -230,7 +231,43 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
 _RETENTION_DAY_KEYS = ("log_retention_days", "spend_log_retention_days")
 
 
+# What to do when a guardrail check errors. The guardrail service only acts on
+# "block"; "allow" lets the request through. Columns are VARCHAR(20).
+_ON_ERROR_KEYS = ("pii_on_error", "content_filter_on_error")
+_ON_ERROR_VALUES = ("block", "allow")
+# Replacement text columns are VARCHAR(50).
+_REPLACEMENT_KEYS = ("pii_replacement_format", "content_filter_replacement")
+_REPLACEMENT_MAX_LENGTH = 50
+_BOOLEAN_SETTING_KEYS = ("log_request_body", "log_response_body", "auto_purge_enabled")
+# The two body-logging columns are nullable; every other setting is NOT NULL.
+_NULLABLE_SETTING_KEYS = ("log_request_body", "log_response_body")
+
+
 def _validate_settings_input(data: dict) -> None:
+    """Reject values the settings columns cannot hold, as a 400.
+
+    Saves are partial: a key that is left out keeps its stored value. An
+    explicit null is stored only for the two nullable columns
+    (log_request_body, log_response_body), as before. For every other setting
+    the column is NOT NULL, so null is rejected here rather than failing in
+    the database as a 500."""
+    for key in _SETTINGS_DEFAULTS:
+        if key in data and data[key] is None and key not in _NULLABLE_SETTING_KEYS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{key} cannot be null; leave it out to keep the current value",
+            )
+    for key in (*_ON_ERROR_KEYS, *_REPLACEMENT_KEYS):
+        if key in data and not isinstance(data[key], str):
+            raise HTTPException(status_code=400, detail=f"{key} must be text")
+    for key in _BOOLEAN_SETTING_KEYS:
+        if key not in data:
+            continue
+        value = data[key]
+        if value is None and key in _NULLABLE_SETTING_KEYS:
+            continue
+        if not isinstance(value, bool):
+            raise HTTPException(status_code=400, detail=f"{key} must be a boolean")
     for key in _RETENTION_DAY_KEYS:
         if key in data:
             value = data[key]
@@ -244,8 +281,28 @@ def _validate_settings_input(data: dict) -> None:
                     status_code=400,
                     detail=f"{key} must be an integer from 1 to {MAX_RETENTION_DAYS}",
                 )
-    if "auto_purge_enabled" in data and not isinstance(data["auto_purge_enabled"], bool):
-        raise HTTPException(status_code=400, detail="auto_purge_enabled must be a boolean")
+
+
+def _validate_changed_text_settings(data: dict, current: dict) -> None:
+    """Check the on-error choices and replacement lengths, but only for values
+    that change. A row saved before these checks may hold another value; the
+    settings page sends the stored value back on every save, so validating an
+    unchanged value would make every save of that organization fail."""
+
+    def changed(key: str) -> bool:
+        return key in data and data[key] != current.get(key)
+
+    for key in _ON_ERROR_KEYS:
+        if changed(key) and data[key] not in _ON_ERROR_VALUES:
+            raise HTTPException(
+                status_code=400, detail=f"{key} must be one of: {', '.join(_ON_ERROR_VALUES)}"
+            )
+    for key in _REPLACEMENT_KEYS:
+        if changed(key) and len(data[key]) > _REPLACEMENT_MAX_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{key} must be text of at most {_REPLACEMENT_MAX_LENGTH} characters",
+            )
 
 
 # Retention values returned alongside a save as they were just before it.
@@ -259,137 +316,92 @@ _PREVIOUS_RETENTION_KEYS = (
 async def upsert_guardrail_settings_with_previous(
     org_id: int, data: dict
 ) -> tuple[dict, Optional[dict]]:
-    """Upsert guardrail settings. A new row takes defaults for missing keys; an
-    existing row only changes the keys present in `data`.
+    """Save guardrail settings: only the keys present in `data` change.
 
-    Returns (saved row, previous retention values). A missing row is first
-    created with the defaults (INSERT ... ON CONFLICT DO NOTHING), so there is
-    always a row to lock; the previous values are then read with
-    SELECT ... FOR UPDATE in the save's own transaction. They are exactly what
-    this save replaced, even under concurrent saves, including two first saves
-    for the same organization (the second waits for the first's lock). For an
-    organization with no saved settings they are the defaults.
+    Returns (saved row, previous retention values). Three statements in one
+    transaction:
 
-    The statement is static: each column's ``set_<column>`` flag decides whether
-    the update takes the new value or keeps the stored one."""
+    1. A missing row is created (INSERT ... ON CONFLICT DO NOTHING). Only
+       organization_id is given: every other column takes its column default,
+       which equals _SETTINGS_DEFAULTS, so the defaults are not listed twice.
+    2. The stored row is read with SELECT ... FOR UPDATE. Changed on-error
+       choices and replacement lengths are validated against it (unchanged
+       values are not). The previous retention values from it are
+       exactly what this save replaces, even under concurrent saves, including
+       two first saves for the same organization (the second waits for the
+       first's lock). For an organization with nothing saved they are the
+       defaults.
+    3. A plain UPDATE ... RETURNING applies the save. It is the one place the
+       settings columns are listed; each column's ``set_<column>`` flag decides
+       whether it takes the new value or keeps the stored one. The statement
+       text is static."""
     _validate_settings_input(data)
     params: dict[str, Any] = {"org_id": org_id}
-    for column, default in _SETTINGS_DEFAULTS.items():
-        params[column] = data.get(column, default)
+    for column in _SETTINGS_DEFAULTS:
+        params[column] = data.get(column)
         params[f"set_{column}"] = column in data
 
     async with get_db() as db:
-        # Create the row with the defaults if it is missing, so the lock below
-        # always has a row to hold. Without it, FOR UPDATE locks nothing and
-        # two first saves would both see no previous values.
-        await db.execute(
-            text(
-                """
-                INSERT INTO ai_gateway_guardrail_settings (
-                    organization_id,
-                    pii_on_error,
-                    content_filter_on_error,
-                    pii_replacement_format,
-                    content_filter_replacement,
-                    log_retention_days,
-                    spend_log_retention_days,
-                    log_request_body,
-                    log_response_body,
-                    auto_purge_enabled,
-                    created_at,
-                    updated_at
-                ) VALUES (
-                    :org_id,
-                    :default_pii_on_error,
-                    :default_content_filter_on_error,
-                    :default_pii_replacement_format,
-                    :default_content_filter_replacement,
-                    :default_log_retention_days,
-                    :default_spend_log_retention_days,
-                    :default_log_request_body,
-                    :default_log_response_body,
-                    :default_auto_purge_enabled,
-                    NOW(),
-                    NOW()
-                )
-                ON CONFLICT (organization_id) DO NOTHING
-                """
-            ),
-            {
-                "org_id": org_id,
-                **{f"default_{column}": value for column, value in _SETTINGS_DEFAULTS.items()},
-            },
-        )
-        # A separate statement, not a CTE of the upsert: a CTE would be read
-        # after ON CONFLICT DO UPDATE had already changed the row, and
-        # FOR UPDATE skips a row the same command updated.
-        previous_result = await db.execute(
-            text(
-                """
-                SELECT log_retention_days, spend_log_retention_days, auto_purge_enabled
-                FROM ai_gateway_guardrail_settings
-                WHERE organization_id = :org_id
-                FOR UPDATE
-                """
-            ),
-            {"org_id": org_id},
-        )
+        await db.execute(_CREATE_SETTINGS_ROW_SQL, {"org_id": org_id})
+        # A separate statement, not part of the save: FOR UPDATE skips a row
+        # the same command has already updated.
+        previous_result = await db.execute(_LOCK_PREVIOUS_RETENTION_SQL, {"org_id": org_id})
         previous_row = previous_result.mappings().first()
+        try:
+            _validate_changed_text_settings(data, dict(previous_row) if previous_row else {})
+        except HTTPException:
+            await db.rollback()
+            raise
         previous = (
             {key: previous_row[key] for key in _PREVIOUS_RETENTION_KEYS}
             if previous_row
             else None
         )
-        result = await db.execute(
-            text(
-                """
-                INSERT INTO ai_gateway_guardrail_settings AS s (
-                    organization_id,
-                    pii_on_error,
-                    content_filter_on_error,
-                    pii_replacement_format,
-                    content_filter_replacement,
-                    log_retention_days,
-                    spend_log_retention_days,
-                    log_request_body,
-                    log_response_body,
-                    auto_purge_enabled,
-                    created_at,
-                    updated_at
-                ) VALUES (
-                    :org_id,
-                    :pii_on_error,
-                    :content_filter_on_error,
-                    :pii_replacement_format,
-                    :content_filter_replacement,
-                    :log_retention_days,
-                    :spend_log_retention_days,
-                    :log_request_body,
-                    :log_response_body,
-                    :auto_purge_enabled,
-                    NOW(),
-                    NOW()
-                )
-                ON CONFLICT (organization_id) DO UPDATE SET
-                    pii_on_error = CASE WHEN :set_pii_on_error THEN EXCLUDED.pii_on_error ELSE s.pii_on_error END,
-                    content_filter_on_error = CASE WHEN :set_content_filter_on_error THEN EXCLUDED.content_filter_on_error ELSE s.content_filter_on_error END,
-                    pii_replacement_format = CASE WHEN :set_pii_replacement_format THEN EXCLUDED.pii_replacement_format ELSE s.pii_replacement_format END,
-                    content_filter_replacement = CASE WHEN :set_content_filter_replacement THEN EXCLUDED.content_filter_replacement ELSE s.content_filter_replacement END,
-                    log_retention_days = CASE WHEN :set_log_retention_days THEN EXCLUDED.log_retention_days ELSE s.log_retention_days END,
-                    spend_log_retention_days = CASE WHEN :set_spend_log_retention_days THEN EXCLUDED.spend_log_retention_days ELSE s.spend_log_retention_days END,
-                    log_request_body = CASE WHEN :set_log_request_body THEN EXCLUDED.log_request_body ELSE s.log_request_body END,
-                    log_response_body = CASE WHEN :set_log_response_body THEN EXCLUDED.log_response_body ELSE s.log_response_body END,
-                    auto_purge_enabled = CASE WHEN :set_auto_purge_enabled THEN EXCLUDED.auto_purge_enabled ELSE s.auto_purge_enabled END,
-                    updated_at = NOW()
-                RETURNING *
-                """
-            ),
-            params,
-        )
+        result = await db.execute(_UPDATE_SETTINGS_SQL, params)
         await db.commit()
         row = result.mappings().first()
         return (dict(row) if row else {}), previous
     return {}, None
+
+
+_CREATE_SETTINGS_ROW_SQL = text(
+    """
+    INSERT INTO ai_gateway_guardrail_settings (organization_id)
+    VALUES (:org_id)
+    ON CONFLICT (organization_id) DO NOTHING
+    """
+)
+
+_LOCK_PREVIOUS_RETENTION_SQL = text(
+    """
+    SELECT log_retention_days, spend_log_retention_days, auto_purge_enabled,
+           pii_on_error, content_filter_on_error,
+           pii_replacement_format, content_filter_replacement
+    FROM ai_gateway_guardrail_settings
+    WHERE organization_id = :org_id
+    FOR UPDATE
+    """
+)
+
+# The one list of settings columns in SQL. A test checks it names exactly the
+# keys of _SETTINGS_DEFAULTS.
+_UPDATE_SETTINGS_SQL = text(
+    """
+                UPDATE ai_gateway_guardrail_settings SET
+                    pii_on_error = CASE WHEN :set_pii_on_error THEN :pii_on_error ELSE pii_on_error END,
+                    content_filter_on_error = CASE WHEN :set_content_filter_on_error THEN :content_filter_on_error ELSE content_filter_on_error END,
+                    pii_replacement_format = CASE WHEN :set_pii_replacement_format THEN :pii_replacement_format ELSE pii_replacement_format END,
+                    content_filter_replacement = CASE WHEN :set_content_filter_replacement THEN :content_filter_replacement ELSE content_filter_replacement END,
+                    log_retention_days = CASE WHEN :set_log_retention_days THEN :log_retention_days ELSE log_retention_days END,
+                    spend_log_retention_days = CASE WHEN :set_spend_log_retention_days THEN :spend_log_retention_days ELSE spend_log_retention_days END,
+                    log_request_body = CASE WHEN :set_log_request_body THEN :log_request_body ELSE log_request_body END,
+                    log_response_body = CASE WHEN :set_log_response_body THEN :log_response_body ELSE log_response_body END,
+                    auto_purge_enabled = CASE WHEN :set_auto_purge_enabled THEN :auto_purge_enabled ELSE auto_purge_enabled END,
+                    updated_at = NOW()
+                WHERE organization_id = :org_id
+                RETURNING *
+    """
+)
 
 
 async def get_guardrail_logs(

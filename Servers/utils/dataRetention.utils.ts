@@ -237,23 +237,98 @@ export interface RetentionRunInput {
   errorCode?: string | null;
 }
 
+/**
+ * Set after the first "error_code does not exist" error, so later inserts and
+ * reads go straight to the fallback instead of failing first each time.
+ * Migrations can run outside this process (another container, a manual
+ * migrate), so while the flag is set the column is looked up again at most
+ * once every ERROR_CODE_RECHECK_MS; once it exists, codes are used again.
+ */
+export const ERROR_CODE_RECHECK_MS = 10 * 60 * 1000;
+let errorCodeColumnMissing = false;
+let errorCodeColumnCheckedAt = 0;
+
+/** Test hook: forget a cached "error_code column missing". */
+export function resetErrorCodeColumnCache(): void {
+  errorCodeColumnMissing = false;
+  errorCodeColumnCheckedAt = 0;
+}
+
+function markErrorCodeColumnMissing(): void {
+  errorCodeColumnMissing = true;
+  errorCodeColumnCheckedAt = Date.now();
+}
+
+/**
+ * Whether to skip error_code. While the column is known to be missing, check
+ * again once the recheck interval has passed; a failed check keeps skipping.
+ */
+async function skipErrorCodeColumn(): Promise<boolean> {
+  if (!errorCodeColumnMissing) return false;
+  if (Date.now() - errorCodeColumnCheckedAt < ERROR_CODE_RECHECK_MS) return true;
+  errorCodeColumnCheckedAt = Date.now();
+  try {
+    // Resolve the table as every other retention query does (to_regclass of
+    // the unqualified name, through search_path), then look for the column.
+    const rows = (await sequelize.query(
+      `SELECT 1 FROM pg_attribute
+        WHERE attrelid = to_regclass('data_retention_runs')
+          AND attname = 'error_code'
+          AND attnum > 0
+          AND NOT attisdropped`,
+      { type: QueryTypes.SELECT },
+    )) as unknown[];
+    if (rows.length > 0) errorCodeColumnMissing = false;
+  } catch {
+    // Keep skipping; try again after the next interval.
+  }
+  return errorCodeColumnMissing;
+}
+
+/** Postgres "undefined_column": the error_code migration has not run yet. */
+function isMissingErrorCodeColumn(error: unknown): boolean {
+  const code =
+    (error as { parent?: { code?: string }; original?: { code?: string } } | null)?.parent?.code ??
+    (error as { original?: { code?: string } } | null)?.original?.code;
+  return code === "42703" && String((error as Error)?.message ?? "").includes("error_code");
+}
+
 export async function recordRetentionRun(row: RetentionRunInput): Promise<void> {
-  await sequelize.query(
-    `INSERT INTO data_retention_runs
-       (organization_id, record_type, cutoff, deleted_count, status, error, error_code)
-     VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error, :errorCode)`,
-    {
-      replacements: {
-        organizationId: row.organizationId,
-        recordType: row.recordType,
-        cutoff: row.cutoff,
-        deletedCount: row.deletedCount,
-        status: row.status,
-        error: row.error ?? null,
-        errorCode: row.errorCode ?? null,
-      },
-    },
-  );
+  const replacements = {
+    organizationId: row.organizationId,
+    recordType: row.recordType,
+    cutoff: row.cutoff,
+    deletedCount: row.deletedCount,
+    status: row.status,
+    error: row.error ?? null,
+    errorCode: row.errorCode ?? null,
+  };
+  const insertWithoutCode = () =>
+    sequelize.query(
+      `INSERT INTO data_retention_runs
+         (organization_id, record_type, cutoff, deleted_count, status, error)
+       VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error)`,
+      { replacements },
+    );
+  if (await skipErrorCodeColumn()) {
+    await insertWithoutCode();
+    return;
+  }
+  try {
+    await sequelize.query(
+      `INSERT INTO data_retention_runs
+         (organization_id, record_type, cutoff, deleted_count, status, error, error_code)
+       VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error, :errorCode)`,
+      { replacements },
+    );
+  } catch (error) {
+    // The worker can start before migrations run (start.sh launches it first,
+    // and worker containers never migrate). Without the column, record the
+    // run without its code; the error text still names the reason.
+    if (!isMissingErrorCodeColumn(error)) throw error;
+    markErrorCodeColumnMissing();
+    await insertWithoutCode();
+  }
 }
 
 /**
@@ -365,13 +440,29 @@ export type LatestRetentionRuns = Record<
 >;
 
 export async function getLatestRetentionRuns(organizationId: number): Promise<LatestRetentionRuns> {
-  const rows = (await sequelize.query(
-    `SELECT DISTINCT ON (record_type) record_type, ran_at, deleted_count, status, error, error_code
-       FROM data_retention_runs
-      WHERE organization_id = :organizationId
-      ORDER BY record_type, ran_at DESC, id DESC`,
-    { replacements: { organizationId }, type: QueryTypes.SELECT },
-  )) as any[];
+  const latestRuns = (withErrorCode: boolean) =>
+    sequelize.query(
+      `SELECT DISTINCT ON (record_type) record_type, ran_at, deleted_count, status, error${
+        withErrorCode ? ", error_code" : ""
+      }
+         FROM data_retention_runs
+        WHERE organization_id = :organizationId
+        ORDER BY record_type, ran_at DESC, id DESC`,
+      { replacements: { organizationId }, type: QueryTypes.SELECT },
+    );
+  let rows: any[];
+  if (await skipErrorCodeColumn()) {
+    rows = (await latestRuns(false)) as any[];
+  } else {
+    try {
+      rows = (await latestRuns(true)) as any[];
+    } catch (error) {
+      // Before the error_code migration has run: read the runs without codes.
+      if (!isMissingErrorCodeColumn(error)) throw error;
+      markErrorCodeColumnMissing();
+      rows = (await latestRuns(false)) as any[];
+    }
+  }
   const result = {} as LatestRetentionRuns;
   for (const r of rows) {
     result[r.record_type as RetentionRecordType] = {

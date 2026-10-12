@@ -276,9 +276,10 @@ async def write_guardrail_settings(request: Request):
         frontend_url=FRONTEND_URL,
     )
 
-    # previous_retention: the retention values this save replaced (null when
-    # the organization had none saved), so the caller can log the change
-    # without a separate, racy read.
+    # previous_retention: the retention values this save replaced, read under
+    # a row lock in the save's transaction, so the caller can log the change
+    # without a separate, racy read. Never null: a missing row is created with
+    # the defaults first, so an organization with nothing saved reports them.
     return {"settings": settings, "previous_retention": previous}
 
 

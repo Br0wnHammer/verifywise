@@ -19,6 +19,8 @@ import {
   getLatestRetentionRuns,
   recordRetentionRun,
   safeRecordRetentionRun,
+  resetErrorCodeColumnCache,
+  ERROR_CODE_RECHECK_MS,
 } from "../dataRetention.utils";
 import logger from "../logger/fileLogger";
 
@@ -195,6 +197,154 @@ describe("recordRetentionRun / getLatestRetentionRuns", () => {
     expect(runs.ai_gateway_spend_logs?.error_code).toBe("internal_key_rejected");
     expect(mockQuery.mock.calls[0][0]).toContain("error_code");
     expect(runs.mrm_metrics).toBeUndefined();
+  });
+});
+
+describe("before the error_code migration has run", () => {
+  beforeEach(() => {
+    resetErrorCodeColumnCache();
+  });
+  afterEach(() => {
+    resetErrorCodeColumnCache();
+  });
+  const missingColumn = () =>
+    Object.assign(
+      new Error('column "error_code" of relation "data_retention_runs" does not exist'),
+      {
+        parent: { code: "42703" },
+      },
+    );
+
+  it("records the run without its code", async () => {
+    mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValueOnce([]);
+    await recordRetentionRun({
+      organizationId: 1,
+      recordType: "ai_gateway_spend_logs",
+      cutoff: null,
+      deletedCount: 0,
+      status: "failed",
+      error: "Purge refused: internal key rejected",
+      errorCode: "internal_key_rejected",
+    });
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const retrySql = String(mockQuery.mock.calls[1][0]);
+    expect(retrySql).not.toContain("error_code");
+    expect(mockQuery.mock.calls[1][1].replacements.error).toBe(
+      "Purge refused: internal key rejected",
+    );
+  });
+
+  it("reads the latest runs without codes", async () => {
+    mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValueOnce([
+      {
+        record_type: "audit_records",
+        ran_at: "2026-01-02T00:00:00.000Z",
+        deleted_count: 1,
+        status: "success",
+        error: null,
+      },
+    ]);
+    const runs = await getLatestRetentionRuns(1);
+    expect(String(mockQuery.mock.calls[1][0])).not.toContain("error_code");
+    expect(runs.audit_records?.error_code).toBeNull();
+  });
+
+  it("remembers the missing column, so later calls go straight to the fallback", async () => {
+    mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValue([]);
+    const run = {
+      organizationId: 1,
+      recordType: "audit_records" as const,
+      cutoff: null,
+      deletedCount: 0,
+      status: "success" as const,
+    };
+    await recordRetentionRun(run);
+    await recordRetentionRun(run);
+    await getLatestRetentionRuns(1);
+
+    // One failed attempt, then the fallback for everything after it.
+    expect(mockQuery).toHaveBeenCalledTimes(4);
+    for (const call of mockQuery.mock.calls.slice(1)) {
+      expect(String(call[0])).not.toContain("error_code");
+    }
+  });
+
+  describe("rechecking the column", () => {
+    const run = {
+      organizationId: 1,
+      recordType: "audit_records" as const,
+      cutoff: null,
+      deletedCount: 0,
+      status: "success" as const,
+    };
+    const sqlOf = (index: number) => String(mockQuery.mock.calls[index][0]);
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date("2026-10-12T00:00:00Z"));
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("does not recheck within the interval", async () => {
+      mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValue([]);
+      await recordRetentionRun(run);
+      jest.setSystemTime(Date.now() + ERROR_CODE_RECHECK_MS - 1);
+      await recordRetentionRun(run);
+
+      expect(mockQuery).toHaveBeenCalledTimes(3);
+      expect(mockQuery.mock.calls.some((call) => String(call[0]).includes("pg_attribute"))).toBe(
+        false,
+      );
+    });
+
+    it("uses error_code again once a later check finds the column", async () => {
+      mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValueOnce([]); // fail, fallback
+      await recordRetentionRun(run);
+
+      jest.setSystemTime(Date.now() + ERROR_CODE_RECHECK_MS);
+      mockQuery.mockResolvedValueOnce([{ "?column?": 1 }]).mockResolvedValueOnce([]); // check, insert
+      await recordRetentionRun(run);
+
+      expect(sqlOf(2)).toContain("FROM pg_attribute");
+      expect(sqlOf(2)).toContain("to_regclass('data_retention_runs')");
+      expect(sqlOf(2)).toContain("NOT attisdropped");
+      expect(sqlOf(2)).not.toMatch(/verifywise\./);
+      expect(sqlOf(3)).toContain("error_code");
+    });
+
+    it("keeps skipping when the column is still missing, and checks again later", async () => {
+      mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValueOnce([]);
+      await recordRetentionRun(run);
+
+      jest.setSystemTime(Date.now() + ERROR_CODE_RECHECK_MS);
+      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]); // check: none, fallback
+      await recordRetentionRun(run);
+      expect(sqlOf(3)).not.toContain("error_code");
+
+      // Within the next interval: straight to the fallback, no check.
+      mockQuery.mockResolvedValueOnce([]);
+      await recordRetentionRun(run);
+      expect(mockQuery).toHaveBeenCalledTimes(5);
+      expect(sqlOf(4)).not.toContain("pg_attribute");
+    });
+  });
+
+  it("does not hide other database errors", async () => {
+    mockQuery.mockRejectedValueOnce(
+      Object.assign(new Error("deadlock detected"), { parent: { code: "40P01" } }),
+    );
+    await expect(
+      recordRetentionRun({
+        organizationId: 1,
+        recordType: "audit_records",
+        cutoff: null,
+        deletedCount: 0,
+        status: "success",
+      }),
+    ).rejects.toThrow("deadlock detected");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });
 

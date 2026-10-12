@@ -7,7 +7,7 @@
  * from the request, never values supplied by the client.
  */
 
-import { AI_GATEWAY_INTERNAL_KEY, AI_GATEWAY_URL } from "./aiGatewayConfig";
+import { getGatewayInternalKey, getGatewayUrl } from "./aiGatewayConfig";
 
 const AI_GATEWAY_TIMEOUT_MS = 10_000;
 
@@ -48,7 +48,7 @@ export async function aiGatewayRequest(
 ): Promise<any> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "x-internal-key": AI_GATEWAY_INTERNAL_KEY,
+    "x-internal-key": getGatewayInternalKey(),
   };
   if (options.organizationId !== undefined) {
     headers["x-organization-id"] = String(options.organizationId);
@@ -57,7 +57,7 @@ export async function aiGatewayRequest(
   if (options.userId !== undefined) headers["x-user-id"] = String(options.userId);
   if (options.requestId) headers["x-request-id"] = options.requestId;
 
-  const response = await fetch(`${AI_GATEWAY_URL}${path}`, {
+  const response = await fetch(`${getGatewayUrl()}${path}`, {
     method,
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,

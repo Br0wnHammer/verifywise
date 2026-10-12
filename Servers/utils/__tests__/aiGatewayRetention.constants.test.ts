@@ -54,6 +54,22 @@ describe("gatewayPurgeRefusalFor", () => {
     expect(gatewayPurgeRefusalFor(gatewayError(503, "Service Unavailable"))).toBeNull();
   });
 
+  it("recognises an older gateway's exact detail strings (rolling deploy)", () => {
+    expect(
+      gatewayPurgeRefusalFor(gatewayError(503, { detail: "Internal key not configured" })),
+    ).toBe("internal_key_not_configured");
+    expect(gatewayPurgeRefusalFor(gatewayError(401, { detail: "Invalid internal key" }))).toBe(
+      "internal_key_rejected",
+    );
+    // Only the matching status and the exact text count.
+    expect(
+      gatewayPurgeRefusalFor(gatewayError(503, { detail: "Invalid internal key" })),
+    ).toBeNull();
+    expect(
+      gatewayPurgeRefusalFor(gatewayError(503, { detail: "internal key not configured" })),
+    ).toBeNull();
+  });
+
   it("ignores other statuses and non-HTTP errors", () => {
     expect(
       gatewayPurgeRefusalFor(gatewayError(500, { code: "internal_key_not_configured" })),

@@ -10,10 +10,19 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
+def keys_match(provided: str, expected: str) -> bool:
+    """Constant-time comparison of two keys as UTF-8 bytes.
+
+    hmac.compare_digest raises TypeError for a str with non-ASCII characters,
+    which would surface as a 500; such a header can never match an ASCII key,
+    so as bytes it is simply a mismatch."""
+    return hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
+
+
 def verify_internal_key(request: Request):
     """Verify the request comes from the Express backend."""
     auth = request.headers.get("x-internal-key", "")
-    if settings.ai_gateway_internal_key and not hmac.compare_digest(
+    if settings.ai_gateway_internal_key and not keys_match(
         auth, settings.ai_gateway_internal_key
     ):
         raise HTTPException(status_code=401, detail="Invalid internal key")
@@ -47,7 +56,7 @@ def require_internal_key(request: Request):
             },
         )
     auth = request.headers.get("x-internal-key", "")
-    if not hmac.compare_digest(auth, expected):
+    if not keys_match(auth, expected):
         raise HTTPException(
             status_code=401,
             detail={"message": "Invalid internal key", "code": INTERNAL_KEY_REJECTED},

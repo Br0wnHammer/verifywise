@@ -5,6 +5,7 @@ No live services: database access is replaced with fakes.
 """
 
 import os
+import re
 import sys
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -53,9 +54,13 @@ def _sql(stmt) -> str:
 
 
 def _upserts(executed):
-    """The settings upserts among the executed statements (each save first
+    """The settings UPDATEs among the executed statements (each save first
     creates a missing row and reads the previous values with a locked SELECT)."""
-    return [entry for entry in executed if "DO UPDATE" in str(entry[0])]
+    return [
+        entry
+        for entry in executed
+        if "UPDATE ai_gateway_guardrail_settings SET" in str(entry[0])
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -73,16 +78,15 @@ async def test_partial_update_only_sets_present_keys(monkeypatch):
 
     stmt, params = _upserts(executed)[0]
     # Only keys present in the body are flagged for update; the rest keep the
-    # stored value on conflict.
+    # stored value.
     assert params["set_spend_log_retention_days"] is True
     assert params["set_pii_on_error"] is False
     assert params["set_log_retention_days"] is False
     assert params["set_auto_purge_enabled"] is False
     assert params["spend_log_retention_days"] == 30
-    # The INSERT still fills the missing keys with defaults.
-    assert params["pii_on_error"] == "block"
-    assert params["log_retention_days"] == 90
-    assert params["auto_purge_enabled"] is False
+    # Keys not sent carry no value; a new row takes the column defaults.
+    assert params["pii_on_error"] is None
+    assert params["log_retention_days"] is None
 
 
 async def test_full_update_sets_every_whitelisted_key(monkeypatch):
@@ -121,8 +125,18 @@ async def test_upsert_statement_is_static(monkeypatch):
     )
 
     assert _sql(_upserts(executed)[0][0]) == _sql(_upserts(executed)[1][0])
-    conflict = _sql(_upserts(executed)[0][0]).split("ON CONFLICT")[1]
-    assert "ELSE s.pii_on_error" in conflict
+    assert "ELSE pii_on_error END" in _sql(_upserts(executed)[0][0])
+
+
+def test_update_statement_lists_exactly_the_settings_columns():
+    """The UPDATE is the one place the columns are listed in SQL; it must name
+    exactly the keys of _SETTINGS_DEFAULTS, each with its set_ flag."""
+    sql = str(guardrails_crud._UPDATE_SETTINGS_SQL)
+    flagged = set(re.findall(r":set_(\w+)", sql))
+    assigned = set(re.findall(r"^\s*(\w+) = CASE", sql, flags=re.MULTILINE))
+    expected = set(guardrails_crud._SETTINGS_DEFAULTS)
+    assert flagged == expected
+    assert assigned == expected
 
 
 def _sequenced_db(*firsts):
@@ -138,6 +152,7 @@ def _sequenced_db(*firsts):
 
     db.execute = execute
     db.commit = AsyncMock()
+    db.rollback = AsyncMock()
 
     @asynccontextmanager
     async def get_db():
@@ -164,15 +179,15 @@ async def test_save_returns_the_retention_values_it_replaced(monkeypatch):
     assert "ON CONFLICT (organization_id) DO NOTHING" in str(create_sql)
     assert "FOR UPDATE" in str(lock_sql)
     assert lock_params == {"org_id": 7}
-    assert "DO UPDATE" in str(executed[2][0])
+    assert "UPDATE ai_gateway_guardrail_settings SET" in str(executed[2][0])
     db.commit.assert_awaited_once()
 
 
 async def test_first_save_creates_the_row_with_defaults_before_locking(monkeypatch):
-    """Sequential simulation of a first save: the row is created with the
-    defaults (ON CONFLICT DO NOTHING), so the locked read finds a row and a
-    concurrent first save waits on its lock instead of also seeing nothing.
-    The real concurrent behaviour needs Postgres; see the PR notes."""
+    """Sequential simulation of a first save: the row is created first
+    (ON CONFLICT DO NOTHING, column defaults only), so the locked read finds a
+    row and a concurrent first save waits on its lock instead of also seeing
+    nothing. The real concurrent behaviour needs Postgres; see the PR notes."""
     defaults = {"log_retention_days": 90, "spend_log_retention_days": 90, "auto_purge_enabled": False}
     saved = {"organization_id": 7, "log_retention_days": 30}
     get_db, executed, _ = _sequenced_db(None, defaults, saved)
@@ -183,11 +198,10 @@ async def test_first_save_creates_the_row_with_defaults_before_locking(monkeypat
     )
 
     create_sql, create_params = executed[0]
-    assert str(create_sql).index("INSERT INTO") < str(create_sql).index("DO NOTHING")
-    # The created row takes the defaults, never the submitted values.
-    assert create_params["default_log_retention_days"] == 90
-    assert create_params["default_auto_purge_enabled"] is False
-    assert create_params["org_id"] == 7
+    assert "INSERT INTO ai_gateway_guardrail_settings (organization_id)" in str(create_sql)
+    assert "DO NOTHING" in str(create_sql)
+    # Only the organization: every other column takes its column default.
+    assert create_params == {"org_id": 7}
     # The previous values are the defaults the organization was running with.
     assert previous == defaults
     assert settings == saved
@@ -215,6 +229,150 @@ async def test_invalid_values_are_rejected(monkeypatch, body):
         await guardrails_crud.upsert_guardrail_settings_with_previous(7, body)
     assert exc.value.status_code == 400
     assert executed == []
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "pii_on_error",
+        "content_filter_on_error",
+        "pii_replacement_format",
+        "content_filter_replacement",
+        "log_retention_days",
+        "spend_log_retention_days",
+        "auto_purge_enabled",
+    ],
+)
+async def test_explicit_null_is_rejected_for_not_null_columns(monkeypatch, key):
+    """Leaving a key out keeps it; null is not a value these columns hold."""
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(HTTPException) as exc:
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, {key: None})
+    assert exc.value.status_code == 400
+    assert exc.value.detail == f"{key} cannot be null; leave it out to keep the current value"
+    assert executed == []
+
+
+@pytest.mark.parametrize("key", ["log_request_body", "log_response_body"])
+async def test_null_is_stored_for_the_nullable_body_logging_columns(monkeypatch, key):
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    await guardrails_crud.upsert_guardrail_settings_with_previous(7, {key: None})
+
+    _, params = _upserts(executed)[0]
+    assert params[f"set_{key}"] is True
+    assert params[key] is None
+
+
+@pytest.mark.parametrize(
+    "body, detail",
+    [
+        ({"pii_on_error": 5}, "pii_on_error must be text"),
+        ({"content_filter_replacement": ["x"]}, "content_filter_replacement must be text"),
+        ({"log_request_body": "yes"}, "log_request_body must be a boolean"),
+        ({"auto_purge_enabled": "yes"}, "auto_purge_enabled must be a boolean"),
+    ],
+)
+async def test_wrong_types_are_rejected_before_any_query(monkeypatch, body, detail):
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(HTTPException) as exc:
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, body)
+    assert exc.value.status_code == 400
+    assert exc.value.detail == detail
+    assert executed == []
+
+
+_STORED = {
+    "log_retention_days": 90,
+    "spend_log_retention_days": 90,
+    "auto_purge_enabled": False,
+    "pii_on_error": "block",
+    "content_filter_on_error": "allow",
+    "pii_replacement_format": "<ENTITY_TYPE>",
+    "content_filter_replacement": "[REDACTED]",
+}
+
+
+@pytest.mark.parametrize(
+    "body, detail",
+    [
+        ({"pii_on_error": "drop"}, "pii_on_error must be one of: block, allow"),
+        ({"content_filter_on_error": "BLOCK"}, "content_filter_on_error must be one of: block, allow"),
+        (
+            {"pii_replacement_format": "x" * 51},
+            "pii_replacement_format must be text of at most 50 characters",
+        ),
+    ],
+)
+async def test_invalid_changed_text_settings_are_rejected_without_saving(
+    monkeypatch, body, detail
+):
+    get_db, executed, db = _sequenced_db(None, dict(_STORED), {})
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(HTTPException) as exc:
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, body)
+    assert exc.value.status_code == 400
+    assert exc.value.detail == detail
+    assert _upserts(executed) == []
+    db.commit.assert_not_awaited()
+    db.rollback.assert_awaited_once()
+
+
+async def test_an_unchanged_legacy_value_does_not_block_a_save(monkeypatch):
+    """A row saved before the checks holds 'fail_closed'; the settings page
+    sends it back with a retention change, and the save goes through."""
+    stored = {**_STORED, "pii_on_error": "fail_closed", "content_filter_replacement": "y" * 60}
+    saved = {"organization_id": 7, "log_retention_days": 30}
+    get_db, executed, db = _sequenced_db(None, stored, saved)
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    settings, _ = await guardrails_crud.upsert_guardrail_settings_with_previous(
+        7,
+        {
+            "pii_on_error": "fail_closed",
+            "content_filter_replacement": "y" * 60,
+            "log_retention_days": 30,
+        },
+    )
+
+    assert settings == saved
+    assert len(_upserts(executed)) == 1
+    db.commit.assert_awaited_once()
+
+
+async def test_changing_a_legacy_value_to_an_invalid_one_is_rejected(monkeypatch):
+    stored = {**_STORED, "pii_on_error": "fail_closed"}
+    get_db, executed, _ = _sequenced_db(None, stored, {})
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(HTTPException) as exc:
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, {"pii_on_error": "foo"})
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "pii_on_error must be one of: block, allow"
+    assert _upserts(executed) == []
+
+
+async def test_valid_text_settings_are_accepted(monkeypatch):
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    await guardrails_crud.upsert_guardrail_settings_with_previous(
+        7,
+        {
+            "pii_on_error": "allow",
+            "content_filter_on_error": "block",
+            "pii_replacement_format": "x" * 50,
+            "content_filter_replacement": "",
+        },
+    )
+
+    assert len(_upserts(executed)) == 1
 
 
 async def test_ten_years_is_the_longest_accepted_period(monkeypatch):
@@ -305,6 +463,44 @@ async def test_retention_routes_reject_a_wrong_internal_key(monkeypatch, key):
         await retention_router.get_retention_config(_keyed_request(key))
     assert exc.value.status_code == 401
     assert exc.value.detail["code"] == "internal_key_rejected"
+
+
+async def test_retention_routes_reject_a_non_ascii_key_with_401(monkeypatch):
+    """compare_digest on a non-ASCII str raises TypeError; the key must be
+    compared as bytes so this is a plain 401, not a 500."""
+    monkeypatch.setattr(retention_router.settings, "ai_gateway_internal_key", "right-key")
+    _no_db(monkeypatch)
+
+    with pytest.raises(HTTPException) as exc:
+        await retention_router.get_retention_config(_keyed_request("clé-ü"))
+    assert exc.value.status_code == 401
+    assert exc.value.detail["code"] == "internal_key_rejected"
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [("  right-key\n", "right-key"), ("right-key", "right-key"), (" \n\t", ""), ("", "")],
+)
+def test_settings_trim_the_internal_key(monkeypatch, raw, expected):
+    """The gateway trims its key like the Express backend; whitespace-only is unset."""
+    import config
+
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", raw)
+    assert config.Settings().ai_gateway_internal_key == expected
+
+
+async def test_whitespace_only_key_is_refused_as_not_configured(monkeypatch):
+    import config
+
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "   ")
+    trimmed = config.Settings().ai_gateway_internal_key
+    monkeypatch.setattr(retention_router.settings, "ai_gateway_internal_key", trimmed)
+    _no_db(monkeypatch)
+
+    with pytest.raises(HTTPException) as exc:
+        await retention_router.get_retention_config(_keyed_request("   "))
+    assert exc.value.status_code == 503
+    assert exc.value.detail["code"] == "internal_key_not_configured"
 
 
 async def test_retention_routes_serve_the_right_internal_key(monkeypatch):
