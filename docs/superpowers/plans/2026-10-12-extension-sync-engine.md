@@ -23,17 +23,20 @@
 - Migration DDL uses the `verifywise.` prefix and runs inside one transaction; `down()` drops only the two new tables.
 - Application SQL uses unqualified table names and filters every tenant-scoped query by `organization_id` (the due query is the one documented cross-org system query).
 - Never run the sequelize CLI; create migration files by hand.
+- No visible change on the Jira Assets page except the deviations listed under "Visible changes" in Task 10. The shared panel reuses the components the page uses today for its sync section (`VWToggle`, `VWSelect` from `jira-assets/VWComponents.tsx`, the same typography and layout); "Sync now" is a `CustomizableButton` (`text=`, never `label=`) as spec section 6 requires.
 - UI text is sentence case; every new user-facing string gets de, fr and es entries in `Clients/src/i18n/translations.ts`.
-- Use house components: `CustomizableButton` (`text=` or `children`, never `label=`), `Toggle`, `Select`, `Field` from `Clients/src/presentation/components`.
 - Border `#d0d5dd`, radius 4px, 30px control height on desktop, spacing as pixel strings (`gap: "8px"`), never MUI numeric multipliers.
 - No `console.log` in app code (scripts write with `process.stdout.write`).
-- Gates run from the package directory: `cd Servers && npm run build && npm run format-check && npm run test`; `cd Clients && npm run typecheck && npm run i18n:audit:strict && npm run format-check`.
+- Gates run from the package directory: `cd Servers && npm run build && npm run format-check && npm run test && npm run check:api-drift`; `cd Clients && npm run typecheck && npm run i18n:audit:strict && npm run format-check`.
+- Tenant-isolation audit gate: `cd Servers && npx ts-node scripts/auditTenantIsolationCoverage.ts` (CI backend-checks runs it). It needs a migrated database; when none is available locally, say so in the task report and rely on the CI result, never on an unrun check.
+- `Servers/swagger.yaml` and `docs/api-docs/src/config/endpoints.ts` are generated and never edited by hand (Servers/CLAUDE.md, "API Documentation Workflow"). Every task that adds or changes a route (Tasks 5 and 7) ends with `cd Servers && npm run generate:swagger && npm run generate:endpoints && npm run check:api-drift` and commits both files.
+- Edits to existing files are given by text anchors (function names, exact lines of code), not line numbers. Where a task lists several edits to one file, apply them strictly in the order given (bottom of the file first) and do not reformat anything until that task's Prettier step.
 - Server tests: `cd Servers && npx jest -i <explicit paths>` (never `--testPathPatterns` with words that appear in the worktree path). Client tests: `cd Clients && npx vitest run <paths>`.
 - Commit messages are `type(scope): description` with a body; never mention AI tools.
 
 ## Review Focus
 
-1. **"Sync now" left mid-poll** (the admin navigates away while a run is going): polling must stop at once with no further status requests or state updates, and coming back must show the running state from the server. Test: Task 9, "stops polling when the panel unmounts".
+1. **"Sync now" left mid-poll** (the admin navigates away while a run is going): polling must stop at once with no further status requests or state updates, and coming back must show the running state from the server. Tests: Task 9, "stops polling when the panel unmounts" and "keeps refreshing the status while a run is running or queued, then stops".
 2. **An interval outside the panel's presets** (for example 72 h saved through the API): the panel must show "Every 72 hours" and keep it, not render a blank select that resets the value on the next save. Test: Task 10, "shows an interval that is not a preset".
 3. **A long failure streak** (`consecutive_failures` in the hundreds or thousands): the tick's due query must not overflow (`power(2, n)` overflows Postgres `float8` near n = 1024 and would fail the tick for every org); backoff caps at 24 h. Tests: Task 3, the SQL-shape test and the throwaway-Postgres check with `consecutive_failures = 2000`.
 4. **A provider that throws a non-`Error` value or an error with an empty message** (`throw "boom"`, `throw undefined`, `new Error("")`): the run must still close as `failed` with a usable message (the string itself, "Error" for an empty `Error`, "Unknown error" for `undefined`/`null`), not sit `started` for 15 minutes. Test: Task 2, "closes the run as failed for a thrown non-Error value".
@@ -50,11 +53,11 @@
 | `Servers/database/migrations/20261012200000-extension-sync-engine.js` | The two tables, Jira data copy with kept ids, sequence, partial unique index; `down()` drops the new tables |
 | `Servers/scripts/lib/throwawayPostgres.js` | Starts a temporary Postgres cluster (initdb + pg_ctl, TCP only) for checks, always cleans up |
 | `Servers/scripts/checkExtensionSyncMigration.js` | Throwaway-Postgres check of the migration: mapping, ids, sequence, settings, index, `down()`, `up()` again |
-| `Servers/scripts/checkExtensionSyncEngineSql.js` | Throwaway-Postgres check of the due query, the backoff formula and the ownership fragment |
+| `Servers/scripts/checkExtensionSyncEngineSql.js` | Throwaway-Postgres check of the due query, the backoff formula, the ownership fragment and the last-finished-run rule |
 | `Servers/extensions/sync-engine/types.ts` | `SyncProvider`, `RunContext`, `RunResult`, `Readiness`, statuses and engine constants |
 | `Servers/extensions/sync-engine/errors.ts` | Engine errors, `errorMessage`, `errorCode`, `truncateMessage`, `isUniqueViolation` |
 | `Servers/extensions/sync-engine/registry.ts` | `registerSyncProvider`, lookups, `statusKinds` |
-| `Servers/extensions/sync-engine/sql.ts` | Pure SQL fragments: liveness, ownership, backoff, due query; `backoffHours` mirror |
+| `Servers/extensions/sync-engine/sql.ts` | Pure SQL fragments: liveness, ownership, backoff, due query, last finished run; `backoffHours` mirror |
 | `Servers/extensions/sync-engine/claim.ts` | `claimRun`, `EngineRunContext`, `runClaimed`, `withClaim`, `failRun`, `recordSkippedRun` |
 | `Servers/extensions/sync-engine/schedule.ts` | Schedule parse/read/save, failure bookkeeping, `findDueRuns` |
 | `Servers/extensions/sync-engine/status.ts` | `hasLiveRun`, `latestStatusRunId`, `getRunStatus`, `listRuns`, `parseRunsLimit` |
@@ -64,42 +67,43 @@
 | `Servers/controllers/extensionRuns.ctrl.ts` | Handlers for the generic routes and the "only sync providers" pass-through |
 | `Servers/routes/extensionRuns.route.ts` | `POST /:key/runs`, `GET /:key/runs/status`, `GET /:key/runs`, `PATCH /:key/schedule` |
 | `Servers/extensions/jira-assets/jiraAssets.syncProvider.ts` | The Jira Assets `SyncProvider` object |
-| `Servers/tests/integration/tenant-isolation/extensionRuns.isolation.test.ts` | Hand-written isolation test for the `:key` routes and both tables |
+| `Servers/tests/integration/tenant-isolation/extensionRuns.isolation.test.ts` | Hand-written isolation test: table-level case (Task 1), route cases (Task 8) |
 
 **Modified (server)**
 
 | File | Change |
 |---|---|
 | `Servers/scripts/snapshotExtensionsData.js` | Snapshot the two new tables |
+| `Servers/tests/integration/tenant-isolation/tenantIsolation.registry.ts` | Registry entry for both tables (Task 1) |
+| `Servers/scripts/auditTenantIsolationCoverage.ts` | `jira_assets_sync_history` justification updated (Task 1) |
 | `Servers/services/automations/automationProducer.ts` | `addSingletonJob`, `extensionSyncJobId`, `hasPendingExtensionSyncJob`, `enqueueExtensionSyncRun`, `scheduleExtensionSyncTick`; Jira queue helpers removed |
 | `Servers/services/automations/automationWorker.ts` | Engine jobs (and the old Jira job names) dispatched to `handleExtensionSyncJob` |
 | `Servers/jobs/producer.ts` | Register the tick; drop the Jira check |
 | `Servers/middleware/requireExtensionEnabled.middleware.ts` | `requireExtensionEnabledFromParam` |
 | `Servers/app.ts` | Mount the generic router under `/api/extensions` next to the catalog router |
-| `Servers/extensions/jira-assets/jiraAssets.service.ts` | Run body on `RunContext`, import/remove/delete via `withClaim`, readiness, legacy status/history/config on the engine; old claim code removed |
+| `Servers/extensions/jira-assets/jiraAssets.service.ts` | Run body on `RunContext` (6a), import/remove/delete via `withClaim` (6b), readiness, legacy status/history/config on the engine (7); old claim code removed |
 | `Servers/extensions/jira-assets/jiraAssets.ctrl.ts` | Engine errors, engine manual run, engine queue state, legacy limit parsing |
-| `Servers/extensions/jira-assets/jiraAssets.scheduler.ts` | Deleted |
+| `Servers/extensions/jira-assets/jiraAssets.scheduler.ts` | Deleted (6a) |
 | `Servers/extensions/scheduledSync.utils.ts` | Trimmed to `SQL_NOW_UTC` (still used for `missing_in_jira_since`) |
 | `Servers/extensions/jira-assets/__tests__/*` | Adapted to the engine; scheduler test deleted |
-| `Servers/tests/integration/tenant-isolation/tenantIsolation.registry.ts` | Registry entry for both tables |
-| `Servers/scripts/auditTenantIsolationCoverage.ts` | `jira_assets_sync_history` justification updated (no longer written) |
-| `Servers/swagger.yaml`, `docs/api-docs/src/config/endpoints.ts` | Generic routes documented; old Jira sync routes deprecated |
+| `Servers/swagger.yaml`, `docs/api-docs/src/config/endpoints.ts` | Regenerated by `generate:swagger` / `generate:endpoints` only |
+| `Servers/CLAUDE.md` | Reference row for the sync engine, Last Updated date |
 
 **Created / modified (client)**
 
 | File | Responsibility |
 |---|---|
 | `Clients/src/application/repository/extensionSync.repository.ts` | Calls and types for the generic routes |
-| `Clients/src/application/hooks/useExtensionSync.ts` | Status query, schedule saves, "Sync now" polling (`decidePoll`) |
+| `Clients/src/application/hooks/useExtensionSync.ts` | Status query (refreshing while running or queued), schedule saves (or local drafts before a connection exists), "Sync now" polling (`decidePoll`) |
 | `Clients/src/application/utils/extensionRunOutcome.ts` | `isAbandonedRun`, `isSkippedRun`, `SYNC_RUNNING_MESSAGE` from status and code |
-| `Clients/src/presentation/components/ExtensionSyncPanel/index.tsx` | The shared sync section (toggle, interval, Sync now, last sync, failing since, outcomes) |
+| `Clients/src/presentation/components/ExtensionSyncPanel/index.tsx` | The shared sync section (toggle, interval, last sync, failing since, Sync now, outcomes) |
 | `Clients/src/presentation/pages/Extensions/jira-assets/runOutcome.ts` | Re-exports the shared readers; keeps Jira import/removal codes |
 | `Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguration.tsx` | Renders `ExtensionSyncPanel`; its own sync code removed |
 | `Clients/src/i18n/translations.ts` | de/fr/es for the new strings |
 
-**Docs:** `docs/technical/infrastructure/extensions.md`, `docs/technical/infrastructure/automations.md`.
+**Docs:** `docs/technical/infrastructure/extensions.md`, `docs/technical/infrastructure/automations.md`, `Servers/CLAUDE.md`.
 
-**Interim note for executors:** tasks land in order on one branch. Between Task 6 and Task 7 the old Jira status and config routes still read the old table, so the panel's poll is stale until Task 7. Do not deploy mid-plan.
+**Interim note for executors:** tasks land in order on one branch, and every task leaves the build and its own tests green, but the branch is only consistent at the end. Between Task 6a and Task 6b, syncs claim on the engine table while imports and removals still claim on the old one, so they do not exclude each other. From Task 6a until Task 7, `POST /sync` still runs its old checks (`hasLiveRun`, `latestSyncRunId` on the old table) before queueing the old job name, which the worker now hands to the engine; and `GET /sync/status`, `GET /sync/history`, `PATCH /config/sync` and `GET /config`'s `last_sync_*` still read the old table and columns, so the panel's poll is stale. Do not deploy mid-plan.
 
 ---
 
@@ -109,7 +113,12 @@
 - Create: `Servers/database/migrations/20261012200000-extension-sync-engine.js`
 - Create: `Servers/scripts/lib/throwawayPostgres.js`
 - Create: `Servers/scripts/checkExtensionSyncMigration.js`
-- Modify: `Servers/scripts/snapshotExtensionsData.js:30-45` (`DATA_TABLES`)
+- Modify: `Servers/scripts/snapshotExtensionsData.js` (`DATA_TABLES`)
+- Modify: `Servers/tests/integration/tenant-isolation/tenantIsolation.registry.ts` (new entry after `data_retention`)
+- Modify: `Servers/scripts/auditTenantIsolationCoverage.ts` (`jira_assets_sync_history` justification)
+- Create: `Servers/tests/integration/tenant-isolation/extensionRuns.isolation.test.ts` (table-level case; Task 8 appends the route cases)
+
+The tenant-isolation audit (CI backend-checks) fails as soon as org-scoped tables exist without a registry entry, so the registry entry, the allow-list update and a minimal hand-written test land with the tables.
 
 **Interfaces:**
 - Consumes: the existing `verifywise.jira_assets_config` (`sync_enabled`, `sync_interval_hours`) and `verifywise.jira_assets_sync_history` (all columns incl. `heartbeat_at`, `run_token`).
@@ -117,6 +126,7 @@
   - Table `extension_sync_settings(id, organization_id, extension_key, enabled, interval_hours, consecutive_failures, failing_since, updated_at)`, unique `(organization_id, extension_key)`.
   - Table `extension_sync_runs(id, organization_id, extension_key, kind, status, code, counts, message, run_token, triggered_by, started_at, heartbeat_at, completed_at)`, index `idx_extension_sync_runs_recent`, partial unique index `uq_extension_sync_runs_one_started`.
   - `withThrowawayPostgres(fn: ({ client: pg.Client, sequelize: Sequelize }) => Promise<void>): Promise<void>` from `Servers/scripts/lib/throwawayPostgres.js` (Task 3 reuses it).
+  - Registry entity `extension_sync` (tables `extension_sync_runs`, `extension_sync_settings`, test file `extensionRuns.isolation.test.ts`); Task 8 adds route cases to that file.
 
 Before starting: `ls Servers/database/migrations | tail -3` must show `20261012142910-data-retention-runs-error-code.js` as the newest file. If a newer migration exists, use `date +%Y%m%d%H%M%S` for the timestamp and rename every reference to the file in this plan.
 
@@ -634,14 +644,104 @@ to
   "slack_webhooks",
 ```
 
-- [ ] **Step 7: Format and commit**
+- [ ] **Step 7: Register the tables for tenant isolation**
+
+Create `Servers/tests/integration/tenant-isolation/extensionRuns.isolation.test.ts`:
+
+```ts
+jest.setTimeout(60000);
+
+import { QueryTypes } from "sequelize";
+import { sequelize } from "../../../database/db";
+import { cleanupDatabase, seedTwoOrgsAndUsers } from "../helpers";
+
+/**
+ * Sync engine tables (extension_sync_runs, extension_sync_settings) and the
+ * generic /api/extensions/:key/runs… and /:key/schedule routes. The CRUD
+ * matrix is id-based and these routes are keyed by the extension key, so this
+ * file covers them by hand.
+ */
+
+async function seedOwnerSync(orgId: number): Promise<void> {
+  await sequelize.query(
+    `INSERT INTO extension_sync_settings
+       (organization_id, extension_key, enabled, interval_hours, consecutive_failures, failing_since)
+     VALUES (:orgId, 'jira-assets', TRUE, 6, 2, now() - interval '1 hour');`,
+    { replacements: { orgId } },
+  );
+  await sequelize.query(
+    `INSERT INTO extension_sync_runs
+       (organization_id, extension_key, kind, status, counts, message, run_token,
+        started_at, completed_at)
+     VALUES (:orgId, 'jira-assets', 'manual', 'completed', jsonb_build_object('fetched', 3),
+             'owner run', 'owner-token', now() - interval '5 minutes', now());`,
+    { replacements: { orgId } },
+  );
+}
+
+async function count(table: string, orgId: number): Promise<number> {
+  const [row] = await sequelize.query<{ n: string }>(
+    `SELECT COUNT(*) AS n FROM ${table} WHERE organization_id = :orgId`,
+    { replacements: { orgId }, type: QueryTypes.SELECT },
+  );
+  return Number(row.n);
+}
+
+describe("extension sync tables tenant isolation", () => {
+  afterEach(async () => {
+    await cleanupDatabase();
+  });
+
+  it("does not return org A rows when reading as org B", async () => {
+    const { orgA, orgB } = await seedTwoOrgsAndUsers();
+    await seedOwnerSync(orgA);
+
+    for (const table of ["extension_sync_settings", "extension_sync_runs"]) {
+      expect(await count(table, orgA)).toBe(1);
+      expect(await count(table, orgB)).toBe(0);
+    }
+  });
+});
+```
+
+In `Servers/tests/integration/tenant-isolation/tenantIsolation.registry.ts`, after the `data_retention` entry (the object whose `testFile` is `"data-retention.isolation.test.ts"`) add:
+
+```ts
+  {
+    // Sync engine runs and schedules. The routes are keyed by extension key
+    // (/api/extensions/:key/runs…), not by row id, so a hand-written file covers them.
+    name: "extension_sync",
+    tables: ["extension_sync_runs", "extension_sync_settings"],
+    baseRoute: "/api/extensions/:key/runs",
+    testFile: "extensionRuns.isolation.test.ts",
+  },
+```
+
+In `Servers/scripts/auditTenantIsolationCoverage.ts`, in the entry `name: "jira_assets_sync_history"`, replace its `justification` with:
+
+```ts
+    justification:
+      "Extension-owned table (jira-assets), being replaced by the sync engine's extension_sync_runs (migration 20261012200000 copied every row with its organization_id). Every query on it filters by organization_id; once the engine tasks land it is no longer written or read. Kept for one release so a rollback restores the old behaviour; a follow-up migration drops it.",
+```
+
+- [ ] **Step 8: Run the isolation checks**
+
+Run: `cd Servers && npx jest -i tests/integration/tenant-isolation/tenantIsolation.coverage.test.ts`
+Expected: PASS (the registry names a test file that exists).
+
+Then, against a migrated test database (`Servers/.env.test`, see `tests/testDatabaseGuard.js`):
+
+Run: `cd Servers && node --max-old-space-size=8192 node_modules/jest/bin/jest.js --config jest.config.js --globalSetup="<rootDir>/tests/integration/globalSetup.js" --runInBand tests/integration/tenant-isolation/extensionRuns.isolation.test.ts && npx ts-node scripts/auditTenantIsolationCoverage.ts`
+Expected: PASS (1 test) and the audit exits 0. If no test database is available locally, say so in the task report and confirm both on CI's backend-checks job after pushing; do not tick this step on an unrun check.
+
+- [ ] **Step 9: Format and commit**
 
 ```bash
-cd Servers && npx prettier --write database/migrations/20261012200000-extension-sync-engine.js scripts/lib/throwawayPostgres.js scripts/checkExtensionSyncMigration.js scripts/snapshotExtensionsData.js && node scripts/checkExtensionSyncMigration.js
-cd .. && git add Servers/database/migrations/20261012200000-extension-sync-engine.js Servers/scripts/lib/throwawayPostgres.js Servers/scripts/checkExtensionSyncMigration.js Servers/scripts/snapshotExtensionsData.js
+cd Servers && npx prettier --write database/migrations/20261012200000-extension-sync-engine.js scripts/lib/throwawayPostgres.js scripts/checkExtensionSyncMigration.js scripts/snapshotExtensionsData.js scripts/auditTenantIsolationCoverage.ts tests/integration/tenant-isolation && node scripts/checkExtensionSyncMigration.js
+cd .. && git add Servers/database/migrations/20261012200000-extension-sync-engine.js Servers/scripts/lib/throwawayPostgres.js Servers/scripts/checkExtensionSyncMigration.js Servers/scripts/snapshotExtensionsData.js Servers/scripts/auditTenantIsolationCoverage.ts Servers/tests/integration/tenant-isolation
 git commit -m "feat(sync-engine): shared run and schedule tables with the Jira Assets data copied in" -m "Adds extension_sync_runs and extension_sync_settings (TIMESTAMPTZ, one transaction, verifywise. DDL). Copies Jira Assets history keeping ids, maps abandoned/skipped rows to real statuses, keeps only the newest live started row per org, moves the sequence, then adds the one-started-run partial unique index. down() drops only the new tables.
 
-scripts/checkExtensionSyncMigration.js verifies the mapping, ids, sequence, settings, index, down() and up() again on a throwaway Postgres (scripts/lib/throwawayPostgres.js)."
+scripts/checkExtensionSyncMigration.js verifies the mapping, ids, sequence, settings, index, down() and up() again on a throwaway Postgres (scripts/lib/throwawayPostgres.js). Both tables are registered for tenant isolation with a table-level test; the jira_assets_sync_history allow-list entry says it is being replaced."
 ```
 
 ---
@@ -661,7 +761,7 @@ scripts/checkExtensionSyncMigration.js verifies the mapping, ids, sequence, sett
 **Interfaces:**
 - Consumes: the tables from Task 1; `sequelize` from `Servers/database/db`; `logger`, `logStructured` from `Servers/utils/logger/fileLogger`.
 - Produces:
-  - `types.ts`: `EXTENSION_KEY_PATTERN`, `STALE_AFTER_MINUTES = 15`, `MESSAGE_MAX_LENGTH = 2000`, `DEFAULT_RUN_DEADLINE_MS = 600000`, `BACKOFF_CAP_HOURS = 24`, `ABANDONED_RUN_MESSAGE`, `SKIPPED_RUN_MESSAGE`, `RUN_STATUSES`, `type RunStatus`, `type Readiness`, `interface RunResult`, `interface RunContext`, `interface SyncProvider`.
+  - `types.ts`: `EXTENSION_KEY_PATTERN`, `STALE_AFTER_MINUTES = 15`, `MESSAGE_MAX_LENGTH = 2000`, `DEFAULT_RUN_DEADLINE_MS = 600000`, `BACKOFF_CAP_HOURS = 24`, `ABANDONED_RUN_MESSAGE`, `SKIPPED_RUN_MESSAGE`, `RUN_STATUSES`, `type RunStatus`, `type Readiness`, `interface RunResult`, `interface RunContext`, `interface SyncProvider` (required `key`, `kinds`, `readiness`, `run`; optional `displayName`, `scheduledKind`, `runDeadlineMs`, `canSchedule`).
   - `errors.ts`: `SyncInProgressError(message?)`, `RunSupersededError(runId)`, `UnknownSyncProviderError(key)`, `SyncNotReadyError(status: 400 | 404, reason)`, `SyncValidationError(message)`, `errorMessage(err: unknown): string`, `errorCode(err: unknown): string | null`, `truncateMessage(message: string): string`, `isUniqueViolation(err: unknown): boolean`.
   - `registry.ts`: `registerSyncProvider(provider: SyncProvider): void`, `getSyncProvider(key: string): SyncProvider`, `findSyncProvider(key: string): SyncProvider | undefined`, `listSyncProviders(): SyncProvider[]`, `statusKinds(provider: SyncProvider): string[]`, `__resetSyncProvidersForTests(): void`.
   - `sql.ts`: `sqlRunIsLive(alias: string): string`, `sqlLiveRunExists(keyExpr: string, orgExpr: string): string`, `interface OwnedRunRef { runId; orgId; token }`, `sqlOwnsRunFragment(run: OwnedRunRef, alias?: string): string`.
@@ -833,6 +933,8 @@ export interface RunContext {
 export interface SyncProvider {
   /** extensions.key; must match EXTENSION_KEY_PATTERN. */
   key: string;
+  /** Name used in event-log text (for example "Jira Assets"); the key when absent. */
+  displayName?: string;
   /** Every exclusive operation of the extension; must include "manual". */
   kinds: readonly string[];
   /** The kind the tick enqueues; no schedule if absent. */
@@ -896,7 +998,7 @@ export class SyncValidationError extends Error {
 
 /**
  * Message for any thrown value; never empty. Moved unchanged from
- * jiraAssets.service.ts (`errorMessage`, lines 525-534), which re-exports it.
+ * jiraAssets.service.ts (`errorMessage`), which re-exports it.
  */
 export function errorMessage(err: unknown): string {
   const message = (err as { message?: unknown } | null | undefined)?.message;
@@ -2600,9 +2702,9 @@ scripts/checkExtensionSyncEngineSql.js checks the due query, the backoff mirror 
 - Create: `Servers/extensions/sync-engine/status.ts`
 - Create: `Servers/extensions/sync-engine/providers.ts`
 - Create: `Servers/extensions/sync-engine/jobs.ts`
-- Modify: `Servers/services/automations/automationProducer.ts:361-446` (Jira queue helpers → shared `addSingletonJob`; new engine helpers)
-- Modify: `Servers/services/automations/automationWorker.ts:45-46` (import) and `:670-673` (dispatch)
-- Modify: `Servers/jobs/producer.ts:5-32` (import) and `:74` (registration)
+- Modify: `Servers/services/automations/automationProducer.ts` (`enqueueJiraAssetsSyncRun` body → shared `addSingletonJob`; new engine helpers after it)
+- Modify: `Servers/services/automations/automationWorker.ts` (an import after the `runQueuedSync` import; a dispatch branch after the `jira_assets_sync_run` branch)
+- Modify: `Servers/jobs/producer.ts` (import list; registration after the `jira-assets-scheduled-sync-check` line)
 - Test: `Servers/extensions/sync-engine/__tests__/jobs.test.ts`
 - Test: `Servers/extensions/sync-engine/__tests__/status.test.ts`
 - Test: `Servers/services/automations/tests/automationProducer.spec.ts`
@@ -2691,7 +2793,7 @@ Expected: FAIL with `extensionSyncJobId is not a function` (and the other new na
 
 - [ ] **Step 3: Add the engine queue helpers**
 
-In `Servers/services/automations/automationProducer.ts`, replace the body of `enqueueJiraAssetsSyncRun` (lines 395-427, from `export async function enqueueJiraAssetsSyncRun(data: {` to its closing `}`) with:
+In `Servers/services/automations/automationProducer.ts`, replace `enqueueJiraAssetsSyncRun` (from `export async function enqueueJiraAssetsSyncRun(data: {` to its closing `}`; keep its doc comment) with:
 
 ```ts
 export async function enqueueJiraAssetsSyncRun(data: {
@@ -3390,7 +3492,7 @@ Expected: PASS.
 
 - [ ] **Step 9: Dispatch the engine's jobs in the worker and register the tick**
 
-In `Servers/services/automations/automationWorker.ts`, after line 46 (`import { runQueuedSync } from "../../extensions/jira-assets/jiraAssets.service";`) add:
+In `Servers/services/automations/automationWorker.ts`, after the line `import { runQueuedSync } from "../../extensions/jira-assets/jiraAssets.service";` add:
 
 ```ts
 import { handleExtensionSyncJob, isExtensionSyncJob } from "../../extensions/sync-engine/jobs";
@@ -3414,9 +3516,9 @@ with
         } else if (name === "ai_gateway_budget_reset") {
 ```
 
-(The two Jira branches above still take the old names until Task 6 deletes them.)
+(The two Jira branches above still take the old names until Task 6a deletes them.)
 
-In `Servers/jobs/producer.ts`, add `scheduleExtensionSyncTick,` to the import list after `scheduleJiraAssetsScheduledSyncCheck,`, and after line 74 add:
+In `Servers/jobs/producer.ts`, add `scheduleExtensionSyncTick,` to the import list after `scheduleJiraAssetsScheduledSyncCheck,`, and after the line `  await safeSchedule("jira-assets-scheduled-sync-check", scheduleJiraAssetsScheduledSyncCheck); // non-obliterating — safe to run after the obliterating schedulers` add:
 
 ```ts
   await safeSchedule("extension-sync-tick", scheduleExtensionSyncTick); // non-obliterating — safe to run after the obliterating schedulers
@@ -3436,11 +3538,13 @@ git commit -m "feat(sync-engine): tick and per-org run jobs" -m "extension_sync_
 ### Task 5: Generic API routes
 
 **Files:**
+- Modify: `Servers/extensions/sync-engine/sql.ts` (append `sqlLastFinishedRun`)
 - Modify: `Servers/extensions/sync-engine/status.ts` (append run views, `getRunStatus`, `listRuns`, `parseRunsLimit`)
-- Modify: `Servers/middleware/requireExtensionEnabled.middleware.ts:26-65`
+- Modify: `Servers/middleware/requireExtensionEnabled.middleware.ts` (the whole `requireExtensionEnabled` function)
 - Create: `Servers/controllers/extensionRuns.ctrl.ts`
 - Create: `Servers/routes/extensionRuns.route.ts`
-- Modify: `Servers/app.ts:57` (import) and `:319-328` (mount and comment)
+- Modify: `Servers/app.ts` (import after `import extensionRoutes from "./routes/extension.route";`; mount after `app.use("/api/extensions", extensionRoutes);`)
+- Modify (generated, never by hand): `Servers/swagger.yaml`, `docs/api-docs/src/config/endpoints.ts`
 - Test: `Servers/extensions/sync-engine/__tests__/status.test.ts` (append)
 - Test: `Servers/middleware/__tests__/requireExtensionEnabled.middleware.test.ts` (append)
 - Test: `Servers/extensions/sync-engine/__tests__/extensionRuns.route.test.ts`
@@ -3448,9 +3552,10 @@ git commit -m "feat(sync-engine): tick and per-org run jobs" -m "extension_sync_
 **Interfaces:**
 - Consumes: `startManualRun` (Task 4), `hasPendingExtensionSyncJob`, `BackgroundJobsUnavailableError` (producer), `getSchedule`, `parseSchedulePatch`, `saveSchedule`, `ScheduleView` (Task 3), `findSyncProvider`, `getSyncProvider`, `statusKinds`, engine errors (Task 2).
 - Produces:
+  - `sql.ts`: `sqlLastFinishedRun(orgExpr: string, keyExpr: string, kindsExpr: string, columns: string): string` (the newest `completed` or `failed` run of the given kinds; Task 7 reuses it for `GET /config`).
   - `status.ts`: `RUNS_DEFAULT_LIMIT = 20`, `RUNS_MAX_LIMIT = 200`, `parseRunsLimit(raw: unknown): number`, `interface RunView { id; kind; status: RunStatus; code; counts; message; started_at: string; completed_at: string | null; is_live: boolean }`, `interface RunStatusView { schedule: ScheduleView | null; running: boolean; latest_run: RunView | null; last_finished_run: RunView | null }`, `getRunStatus(key, orgId): Promise<RunStatusView>`, `interface RunListRow { id; kind; status; code; counts; message; triggered_by: number | null; started_at: Date; heartbeat_at: Date | null; completed_at: Date | null }`, `listRuns(key, orgId, limit): Promise<RunListRow[]>`.
   - Middleware: `requireExtensionEnabledFromParam(param?: string)`.
-  - Controller: `onlySyncProviderKeys`, `postRunCtrl`, `getRunStatusCtrl`, `getRunsCtrl`, `patchScheduleCtrl`.
+  - Controller: `onlySyncProviderKeys`, `postRunCtrl`, `getRunStatusCtrl`, `getRunsCtrl`, `patchScheduleCtrl`. Event-log text uses `provider.displayName ?? key`: "updating <name> sync settings", "Updated <name> sync settings (enabled: <bool>, every <n> h)", "Failed to update <name> sync settings", the exact wording Jira's `PATCH /config/sync` writes today.
   - HTTP: `POST /api/extensions/:key/runs` → 202 `{ jobId, previousRunId }` | 400/404 (readiness) | 409 | 503; `GET /api/extensions/:key/runs/status` → `{ schedule, running, queued, latest_run, last_finished_run }`; `GET /api/extensions/:key/runs?limit=` (default 20, max 200); `PATCH /api/extensions/:key/schedule` `{ enabled?, interval_hours? }` → the schedule view.
 
 `last_finished_run` is an addition to the spec's status shape: the newest `completed` or `failed` run of a status kind, which the shared panel needs to reproduce the old "Last sync" line (skips and abandoned runs never replace it, as today).
@@ -3727,7 +3832,7 @@ describe("PATCH /:key/schedule", () => {
     expect(logSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "Update",
-        description: "Updated the demo-ext sync schedule (enabled: true, every 12 h)",
+        description: "Updated demo-ext sync settings (enabled: true, every 12 h)",
       }),
     );
   });
@@ -3769,7 +3874,34 @@ describe("PATCH /:key/schedule", () => {
 Run: `cd Servers && npx jest -i extensions/sync-engine/__tests__/status.test.ts middleware/__tests__/requireExtensionEnabled.middleware.test.ts extensions/sync-engine/__tests__/extensionRuns.route.test.ts`
 Expected: FAIL: `parseRunsLimit is not a function`, `requireExtensionEnabledFromParam is not a function`, and `Cannot find module '../../../routes/extensionRuns.route'`.
 
-- [ ] **Step 3: Append the run views to `status.ts`**
+- [ ] **Step 3: Add the last-finished-run fragment to `sql.ts`**
+
+Append to `Servers/extensions/sync-engine/sql.ts`:
+
+```ts
+/**
+ * SQL: the newest run of the given kinds (`kindsExpr`, a bind list or literal
+ * list) that completed or failed, for org `orgExpr` and extension `keyExpr`.
+ * Abandoned and skipped runs never count, so they never replace the last
+ * finished sync (GET /config's last_sync_*, the status route's
+ * last_finished_run). `columns` reads from alias `r`.
+ */
+export function sqlLastFinishedRun(
+  orgExpr: string,
+  keyExpr: string,
+  kindsExpr: string,
+  columns: string,
+): string {
+  return `SELECT ${columns}
+            FROM extension_sync_runs r
+           WHERE r.organization_id = ${orgExpr} AND r.extension_key = ${keyExpr}
+             AND r.kind IN (${kindsExpr}) AND r.status IN ('completed', 'failed')
+           ORDER BY r.completed_at DESC, r.id DESC
+           LIMIT 1`;
+}
+```
+
+- [ ] **Step 4: Append the run views to `status.ts`**
 
 In `Servers/extensions/sync-engine/status.ts`, change the imports to
 
@@ -3778,7 +3910,7 @@ import { QueryTypes } from "sequelize";
 import { sequelize } from "../../database/db";
 import { getSyncProvider, statusKinds } from "./registry";
 import { getSchedule, type ScheduleView } from "./schedule";
-import { sqlLiveRunExists, sqlRunIsLive } from "./sql";
+import { sqlLastFinishedRun, sqlLiveRunExists, sqlRunIsLive } from "./sql";
 import type { RunStatus } from "./types";
 ```
 
@@ -3840,12 +3972,8 @@ export async function getRunStatus(key: string, orgId: number): Promise<RunStatu
                   ORDER BY r.started_at DESC, r.id DESC
                   LIMIT 1) x) AS latest_run,
               (SELECT row_to_json(x) FROM (
-                 SELECT ${RUN_VIEW_COLUMNS}
-                   FROM extension_sync_runs r
-                  WHERE r.organization_id = :orgId AND r.extension_key = :key
-                    AND r.kind IN (:kinds) AND r.status IN ('completed', 'failed')
-                  ORDER BY r.completed_at DESC, r.id DESC
-                  LIMIT 1) x) AS last_finished_run;`,
+                 ${sqlLastFinishedRun(":orgId", ":key", ":kinds", RUN_VIEW_COLUMNS)}
+               ) x) AS last_finished_run;`,
       { replacements: { key, orgId, kinds }, type: QueryTypes.SELECT },
     ) as unknown as Promise<
       Array<{ running: boolean; latest_run: RunView | null; last_finished_run: RunView | null }>
@@ -3887,9 +4015,9 @@ export async function listRuns(key: string, orgId: number, limit: number): Promi
 }
 ```
 
-- [ ] **Step 4: Make the enablement gate key-aware**
+- [ ] **Step 5: Make the enablement gate key-aware**
 
-Replace `Servers/middleware/requireExtensionEnabled.middleware.ts` lines 26-65 (the whole `requireExtensionEnabled` function) with:
+In `Servers/middleware/requireExtensionEnabled.middleware.ts`, replace the whole `requireExtensionEnabled` function (from `export function requireExtensionEnabled(extensionKey: string) {` to its closing `}`, the end of the file) with:
 
 ```ts
 async function checkEnabled(
@@ -3949,7 +4077,7 @@ export function requireExtensionEnabledFromParam(param = "key") {
 }
 ```
 
-- [ ] **Step 5: Write the controller and the router, and mount it**
+- [ ] **Step 6: Write the controller and the router, and mount it**
 
 Create `Servers/controllers/extensionRuns.ctrl.ts`:
 
@@ -4069,16 +4197,19 @@ export async function getRunsCtrl(req: Request, res: Response): Promise<any> {
 /** PATCH /:key/schedule — `{ enabled?, interval_hours? }`; the provider may refuse. Event-logged. */
 export async function patchScheduleCtrl(req: Request, res: Response): Promise<any> {
   const key = keyParam(req);
+  // onlySyncProviderKeys guarantees a provider; its displayName keeps the
+  // event-log wording Jira's PATCH /config/sync has always written.
+  const provider = getSyncProvider(key);
+  const name = provider.displayName ?? key;
   const ctx = {
     functionName: "patchScheduleCtrl",
     fileName,
     userId: uid(req),
     organizationId: orgId(req),
   };
-  logProcessing({ ...ctx, description: `updating the ${key} sync schedule` });
+  logProcessing({ ...ctx, description: `updating ${name} sync settings` });
   try {
     const patch = parseSchedulePatch(req.body);
-    const provider = getSyncProvider(key);
     if (provider.canSchedule) {
       const allowed = await provider.canSchedule(orgId(req));
       if (!allowed.ready) throw new SyncNotReadyError(allowed.status, allowed.reason);
@@ -4087,7 +4218,7 @@ export async function patchScheduleCtrl(req: Request, res: Response): Promise<an
     await logSuccess({
       ...ctx,
       eventType: "Update",
-      description: `Updated the ${key} sync schedule (enabled: ${schedule.enabled}, every ${schedule.interval_hours} h)`,
+      description: `Updated ${name} sync settings (enabled: ${schedule.enabled}, every ${schedule.interval_hours} h)`,
     });
     return res.status(200).json(STATUS_CODE[200](schedule));
   } catch (err) {
@@ -4095,7 +4226,7 @@ export async function patchScheduleCtrl(req: Request, res: Response): Promise<an
       await logFailure({
         ...ctx,
         eventType: "Update",
-        description: `Failed to update the ${key} sync schedule`,
+        description: `Failed to update ${name} sync settings`,
         error: err instanceof Error ? err : new Error(String(err)),
       });
     }
@@ -4152,7 +4283,7 @@ router.patch(
 export default router;
 ```
 
-In `Servers/app.ts`, after `import extensionRoutes from "./routes/extension.route";` (line 57) add:
+In `Servers/app.ts`, after `import extensionRoutes from "./routes/extension.route";` add:
 
 ```ts
 import extensionRunsRoutes from "./routes/extensionRuns.route";
@@ -4179,39 +4310,40 @@ with
   app.use("/api/extensions", extensionRunsRoutes);
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `cd Servers && npx jest -i extensions/sync-engine/__tests__/status.test.ts middleware/__tests__/requireExtensionEnabled.middleware.test.ts extensions/sync-engine/__tests__/extensionRuns.route.test.ts`
 Expected: PASS.
 
-- [ ] **Step 7: Build, format and commit**
+- [ ] **Step 8: Build, regenerate the API docs, format and commit**
 
 ```bash
 cd Servers && npx prettier --write extensions/sync-engine controllers/extensionRuns.ctrl.ts routes/extensionRuns.route.ts middleware/requireExtensionEnabled.middleware.ts middleware/__tests__/requireExtensionEnabled.middleware.test.ts app.ts && npm run build
-cd .. && git add Servers/extensions/sync-engine Servers/controllers/extensionRuns.ctrl.ts Servers/routes/extensionRuns.route.ts Servers/middleware Servers/app.ts
-git commit -m "feat(sync-engine): generic runs and schedule routes" -m "POST /api/extensions/:key/runs (202, readiness 400/404, 409, 503), GET /:key/runs/status (schedule, running, queued, latest_run, last_finished_run), GET /:key/runs?limit= (default 20, max 200, bad values fall back to 20) and PATCH /:key/schedule (1-168, event-logged, the provider may refuse). All use authenticateJWT and a key-aware requireExtensionEnabled; writes need extension.admin. A key with no sync provider passes through to the per-extension routers."
+npm run generate:swagger && npm run generate:endpoints && npm run check:api-drift
+cd .. && git add Servers/extensions/sync-engine Servers/controllers/extensionRuns.ctrl.ts Servers/routes/extensionRuns.route.ts Servers/middleware Servers/app.ts Servers/swagger.yaml docs/api-docs/src/config/endpoints.ts
+git commit -m "feat(sync-engine): generic runs and schedule routes" -m "POST /api/extensions/:key/runs (202, readiness 400/404, 409, 503), GET /:key/runs/status (schedule, running, queued, latest_run, last_finished_run), GET /:key/runs?limit= (default 20, max 200, bad values fall back to 20) and PATCH /:key/schedule (1-168, event-logged, the provider may refuse). All use authenticateJWT and a key-aware requireExtensionEnabled; writes need extension.admin. A key with no sync provider passes through to the per-extension routers. swagger.yaml and endpoints.ts regenerated."
 ```
 
 ---
 
-### Task 6: Jira Assets provider: readiness, run body on the context, claims through the engine
+### Task 6a: Jira Assets provider: readiness, run body on the context, scheduler retired
 
 **Files:**
 - Create: `Servers/extensions/jira-assets/jiraAssets.syncProvider.ts`
 - Modify: `Servers/extensions/sync-engine/providers.ts` (register Jira)
-- Modify: `Servers/extensions/jira-assets/jiraAssets.service.ts` (line ranges below, from develop `c5d8f439b`)
-- Modify: `Servers/extensions/jira-assets/jiraAssets.ctrl.ts:12-37,60-70,103-137`
+- Modify: `Servers/extensions/jira-assets/jiraAssets.service.ts` (anchored edits below)
 - Delete: `Servers/extensions/jira-assets/jiraAssets.scheduler.ts`, `Servers/extensions/jira-assets/__tests__/jiraAssets.scheduler.test.ts`
-- Modify: `Servers/extensions/scheduledSync.utils.ts:31-38` (drop `sqlIntervalElapsed`, only the scheduler used it)
-- Modify: `Servers/services/automations/automationWorker.ts:45-46,670-673`
+- Modify: `Servers/extensions/scheduledSync.utils.ts` (drop `sqlIntervalElapsed`; only the scheduler used it)
+- Modify: `Servers/services/automations/automationWorker.ts` (the two Jira imports and branches)
 - Modify: `Servers/services/automations/automationProducer.ts` (`scheduleJiraAssetsScheduledSyncCheck` removed; `scheduleExtensionSyncTick` retires it)
-- Modify: `Servers/jobs/producer.ts:30,74`
-- Test: `Servers/extensions/jira-assets/__tests__/jiraAssets.service.test.ts`, `Servers/extensions/jira-assets/__tests__/jiraAssets.ctrl.test.ts`, `Servers/services/automations/tests/automationProducer.spec.ts`
+- Modify: `Servers/jobs/producer.ts` (the Jira check import and registration)
+- Test: `Servers/extensions/jira-assets/__tests__/jiraAssets.service.test.ts`, `Servers/services/automations/tests/automationProducer.spec.ts`
 
 **Interfaces:**
-- Consumes: `withClaim`, `createRunContext`, `runClaimed` (Task 2), `RunContext`, `RunResult`, `Readiness`, `ABANDONED_RUN_MESSAGE`, `SKIPPED_RUN_MESSAGE`, `RunSupersededError`, `SyncInProgressError`, `errorMessage`, `isUniqueViolation` (Task 2), `handleExtensionSyncJob`, `isExtensionSyncJob`, `SYNC_PROVIDERS` (Task 4).
-- Produces (from `jiraAssets.service.ts`): `JIRA_ASSETS_KEY = "jira-assets"`, `JIRA_RUN_KINDS`, `JIRA_NOT_CONFIGURED_MESSAGE`, `JIRA_SYNC_IN_PROGRESS_MESSAGE`, `jiraReadiness(orgId, kind): Promise<Readiness>`, `jiraCanSchedule(orgId): Promise<Readiness>`, `runJiraSync(ctx: RunContext): Promise<RunResult>` with counts `{ fetched, created, updated, deleted, missing, newly_missing }`; re-exports `RunSupersededError`, `errorMessage`, `ABANDONED_RUN_MESSAGE`, `SKIPPED_RUN_MESSAGE`. `jiraAssetsSyncProvider: SyncProvider` from `jiraAssets.syncProvider.ts`.
-- Removed: `claimSyncRun`, `touchHeartbeat`, `finalizeFailure`, `finalizeSuccess`, `assertRunOwned`, `releaseClaim`, `recordSkippedRun`, `runQueuedSync`, `startScheduledSync`, `runClaimedSync`, `RunRef`, `SyncRunType`, `JiraSyncResult`, `failedResult`, `SQL_RUN_STILL_OWNED`, the Jira scheduler, `scheduleJiraAssetsScheduledSyncCheck`, `sqlIntervalElapsed`.
+- Consumes: `createRunContext`, `runClaimed` (Task 2), `RunContext`, `RunResult`, `Readiness`, `ABANDONED_RUN_MESSAGE`, `SKIPPED_RUN_MESSAGE`, `RunSupersededError`, `errorMessage`, `isUniqueViolation` (Task 2), `handleExtensionSyncJob`, `isExtensionSyncJob`, `SYNC_PROVIDERS` (Task 4).
+- Produces (from `jiraAssets.service.ts`): `JIRA_ASSETS_KEY = "jira-assets"`, `JIRA_RUN_KINDS`, `JIRA_NOT_CONFIGURED_MESSAGE`, `JIRA_SYNC_IN_PROGRESS_MESSAGE`, `jiraReadiness(orgId, kind): Promise<Readiness>`, `jiraCanSchedule(orgId): Promise<Readiness>`, `throwIfNotReady(readiness)` (module-private), `runJiraSync(ctx: RunContext): Promise<RunResult>` with counts `{ fetched, created, updated, deleted, missing, newly_missing }`; `createLinkedUseCase(assertOwned: (t: Transaction) => Promise<void>, organizationId, ownerId, obj, now)`; re-exports `RunSupersededError`, `errorMessage`, `ABANDONED_RUN_MESSAGE`, `SKIPPED_RUN_MESSAGE` from the engine. `jiraAssetsSyncProvider: SyncProvider` (with `displayName: "Jira Assets"`) from `jiraAssets.syncProvider.ts`.
+- Removed: `runClaimedSync`, `runQueuedSync`, `recordSkippedRun`, `startScheduledSync`, `JiraSyncResult`, `failedResult`, `SQL_RUN_STILL_OWNED`, Jira's own `RunSupersededError` class, the Jira scheduler, `scheduleJiraAssetsScheduledSyncCheck`, `sqlIntervalElapsed`.
+- Still present until Task 6b: `claimSyncRun`, `touchHeartbeat`, `finalizeFailure`, `finalizeSuccess`, `assertRunOwned`, `releaseClaim`, `RunRef`, `SyncRunType` (imports and removals use them). Until Task 7: `startManualSync`, `hasLiveRun`, `latestSyncRunId`, `sqlLiveRunExists`, `SQL_RUN_IS_LIVE`, `getSyncStatus`, `getSyncHistory`, `updateSyncSettings`.
 
 Jira readiness per kind:
 - `manual`: 404 `JIRA_NOT_CONFIGURED_MESSAGE` without a config; 400 "Select an object type before syncing" without an object type (existing use cases are not needed; the first manual sync creates them).
@@ -4219,18 +4351,20 @@ Jira readiness per kind:
 - `import`: 404 without a config (the check `importObjects` makes today).
 - `remove_missing`: always ready (removal and single delete check nothing about the config today).
 
-- [ ] **Step 1: Point the Jira service tests at the engine**
+- [ ] **Step 1: Point the Jira service tests at the provider**
 
 In `Servers/extensions/jira-assets/__tests__/jiraAssets.service.test.ts`:
 
-1. Replace the import block from `"../jiraAssets.service"` (lines 1-31) with:
+1. Replace the import block from `"../jiraAssets.service"` (the first `import { … } from "../jiraAssets.service";` of the file) with:
 
 ```ts
 import {
   ABANDONED_RUN_MESSAGE,
+  claimSyncRun,
   deleteUseCaseByProjectId,
   IMPORT_MAX_OBJECTS,
   errorMessage,
+  finalizeFailure,
   getSyncStatus,
   importObjects,
   JiraConfigValidationError,
@@ -4248,24 +4382,18 @@ import {
   startManualSync,
   SKIPPED_RUN_MESSAGE,
   SQL_RUN_IS_LIVE,
+  RunRef,
   RunSupersededError,
+  touchHeartbeat,
   updateSelection,
   updateSyncSettings,
 } from "../jiraAssets.service";
 import { jiraAssetsSyncProvider } from "../jiraAssets.syncProvider";
 import { createRunContext, runClaimed } from "../../sync-engine/claim";
-import { SyncInProgressError } from "../../sync-engine/errors";
 import { __resetSyncProvidersForTests, registerSyncProvider } from "../../sync-engine/registry";
 ```
 
-2. Replace
-
-```ts
-const FAKE_TX = { id: "tx" };
-const RUN: RunRef = { historyId: 77, token: "tok-77" };
-```
-
-with
+2. Replace the line `const FAKE_TX = { id: "tx" };` with the block below, and keep the next line (`const RUN: RunRef = { historyId: 77, token: "tok-77" };`), which the old claim tests still use until Task 6b:
 
 ```ts
 // afterCommit runs at once: the mocked transaction always commits.
@@ -4288,7 +4416,7 @@ beforeAll(() => {
 });
 ```
 
-3. Replace the whole `fakeDb` function (lines 160-249, from `/** Route sequelize.query by SQL text` to its closing `}`) with:
+3. Replace the whole `fakeDb` function (from `/** Route sequelize.query by SQL text, so tests read as scenarios, not call orders. */` through the closing `}` of `function fakeDb(`; keep the `sqlCalls`, `linkReads` and `clientReturning` helpers that follow it) with:
 
 ```ts
 /** Route sequelize.query by SQL text, so tests read as scenarios, not call orders. */
@@ -4333,6 +4461,10 @@ function fakeDb({
     if (sql.includes("ORDER BY started_at DESC, id DESC LIMIT 1")) {
       return latestRunId === null ? [] : [{ id: latestRunId }];
     }
+    // Old Jira claim (imports and removals until Task 6b).
+    if (sql.includes("SET status = 'failed', completed_at")) return [[], 0];
+    if (sql.includes("SELECT id FROM jira_assets_sync_history")) return running;
+    if (sql.includes("INSERT INTO jira_assets_sync_history")) return [[{ id: 77 }], 1];
     if (sql.includes("SELECT id FROM extension_sync_runs")) return running;
     if (sql.includes("INSERT INTO extension_sync_runs")) return [[{ id: 77 }], 1];
     if (sql.includes("AS live")) return [{ live }];
@@ -4384,9 +4516,9 @@ function fakeDb({
 }
 ```
 
-4. Delete these describe blocks: `describe("claimSyncRun (overlap guard + run token)"` (lines 271-315), `describe("touchHeartbeat"` (317-339), `describe("runQueuedSync (worker claims at pickup)"` (649-708), and inside `describe("startManualSync (Sync now queues a job)"` the test `it("scheduled: queues a refresh-only job with no user"` (638-647). In `describe("finalizeFailure"` (1195-1244) delete the four `it(...)` tests and rename the describe to `describe("errorMessage"`, keeping the `it.each([...])("falls back to a usable message for %p"` table unchanged.
+4. Delete `describe("runQueuedSync (worker claims at pickup)"` entirely, and inside `describe("startManualSync (Sync now queues a job)"` delete the test `it("scheduled: queues a refresh-only job with no user"`.
 
-5. Replace `describe("runClaimedSync — never deletes, flags missing objects"` (lines 341-589) with:
+5. Replace `describe("runClaimedSync — never deletes, flags missing objects"` (the whole block) with:
 
 ```ts
 describe("runJiraSync — never deletes, flags missing objects", () => {
@@ -4607,6 +4739,7 @@ describe("runJiraSync through the engine", () => {
   it("declares Jira's kinds, its scheduled kind and its walk deadline", () => {
     expect(jiraAssetsSyncProvider).toMatchObject({
       key: "jira-assets",
+      displayName: "Jira Assets",
       kinds: ["manual", "scheduled", "import", "remove_missing"],
       scheduledKind: "scheduled",
       runDeadlineMs: 600_000,
@@ -4685,41 +4818,7 @@ describe("jiraReadiness", () => {
 });
 ```
 
-6. In the remaining `removeMissingUseCases`, `deleteUseCaseByProjectId` and `importObjects` describes, apply exactly these substitutions (every occurrence):
-
-| Old text | New text |
-|---|---|
-| `sqlCalls("INSERT INTO jira_assets_sync_history")` | `sqlCalls("INSERT INTO extension_sync_runs")` |
-| `.toMatchObject({ syncType: "remove_missing", triggeredBy: 8 })` | `.toMatchObject({ key: "jira-assets", kind: "remove_missing", triggeredBy: 8 })` |
-| `.toMatchObject({ syncType: "import", triggeredBy: 8 })` | `.toMatchObject({ key: "jira-assets", kind: "import", triggeredBy: 8 })` |
-| `sqlCalls("SET status = 'failed', error_message")` | `sqlCalls("SET status = 'failed'")` |
-| `sqlCalls("DELETE FROM jira_assets_sync_history")` | `sqlCalls("DELETE FROM extension_sync_runs")` |
-| `expect(completed.replacements).toMatchObject({ objectsDeleted: 1 });` | `expect(JSON.parse(completed.replacements.counts)).toMatchObject({ deleted: 1 });` |
-| `completed.replacements.note` | `completed.replacements.message` |
-| `.rejects.toBeInstanceOf(JiraSyncInProgressError)` in `removeMissingUseCases` ("cannot run while a sync is running"), `deleteUseCaseByProjectId` ("is 409 while a sync, import or removal runs") and `importObjects` ("takes the same claim as sync") | `.rejects.toBeInstanceOf(SyncInProgressError)` |
-| `expect(release.replacements).toMatchObject({ id: 77, organizationId: 5 });` | `expect(release.replacements).toMatchObject({ runId: 77, orgId: 5, key: "jira-assets" });` |
-
-(`startManualSync` keeps its `JiraSyncInProgressError` expectations until Task 7.)
-
-- [ ] **Step 2: Add the controller and producer tests**
-
-In `Servers/extensions/jira-assets/__tests__/jiraAssets.ctrl.test.ts`, add `JIRA_SYNC_IN_PROGRESS_MESSAGE: "A Jira Assets sync is already running for this organization",` to the object returned by the `jest.mock("../jiraAssets.service", ...)` factory, add `import { SyncInProgressError } from "../../sync-engine/errors";` after the other imports, and add inside `describe("POST /import"`:
-
-```ts
-  it("returns 409 with the Jira message when the engine claim is taken", async () => {
-    (importObjects as jest.Mock).mockRejectedValue(new SyncInProgressError());
-    const res = mockRes();
-
-    await postImport({ ...req, body: { object_ids: ["1"] } }, res);
-
-    expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json.mock.calls[0][0].data).toBe(
-      "A Jira Assets sync is already running for this organization",
-    );
-  });
-```
-
-In `Servers/services/automations/tests/automationProducer.spec.ts`: in the `bullmq` mock add `const mockRemoveJobScheduler = jest.fn().mockResolvedValue(true);` and `removeJobScheduler: mockRemoveJobScheduler,` to the queue object; remove `scheduleJiraAssetsScheduledSyncCheck,` from the import list; delete `describe("scheduleJiraAssetsScheduledSyncCheck"` (lines 342-349); and inside `describe("extension sync engine jobs"` add:
+In `Servers/services/automations/tests/automationProducer.spec.ts`: in the `bullmq` mock add `const mockRemoveJobScheduler = jest.fn().mockResolvedValue(true);` and `removeJobScheduler: mockRemoveJobScheduler,` to the queue object; remove `scheduleJiraAssetsScheduledSyncCheck,` from the import list; delete `describe("scheduleJiraAssetsScheduledSyncCheck"`; and inside `describe("extension sync engine jobs"` add:
 
 ```ts
     it("retires the old Jira check scheduler before scheduling the tick", async () => {
@@ -4738,18 +4837,18 @@ In `Servers/services/automations/tests/automationProducer.spec.ts`: in the `bull
 
 Delete `Servers/extensions/jira-assets/__tests__/jiraAssets.scheduler.test.ts`.
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cd Servers && npx jest -i extensions/jira-assets/__tests__/jiraAssets.service.test.ts extensions/jira-assets/__tests__/jiraAssets.ctrl.test.ts services/automations/tests/automationProducer.spec.ts`
-Expected: FAIL: `Cannot find module '../jiraAssets.syncProvider'`, the ctrl 409 test gets 500, and the producer test `removeJobScheduler` was not called.
+Run: `cd Servers && npx jest -i extensions/jira-assets/__tests__/jiraAssets.service.test.ts services/automations/tests/automationProducer.spec.ts`
+Expected: FAIL: `Cannot find module '../jiraAssets.syncProvider'`, and the producer test reports `removeJobScheduler` was not called.
 
-- [ ] **Step 4: Rework `jiraAssets.service.ts`**
+- [ ] **Step 3: Rework `jiraAssets.service.ts`**
 
-Apply these edits from the bottom of the file up, so the line numbers (develop `c5d8f439b`) stay valid:
+Apply these edits strictly in this order (bottom of the file first), with no reformatting until Step 7:
 
-1. **Lines 1686-1753** (`recordSkippedRun` and `runQueuedSync`, with their doc comments): delete.
+1. Delete `recordSkippedRun` and `runQueuedSync` with their doc comments (from `/**` + ` * A closed (failed) manual history row explaining that the queued sync did` through the closing `}` of `runQueuedSync`).
 
-2. **Lines 1470-1684** (doc comment and `runClaimedSync`): replace with:
+2. Replace `runClaimedSync` with its doc comment (from `/**` + ` * Run a sync whose history row has already been claimed. Syncs never delete` through the closing `}` of `runClaimedSync`) with:
 
 ```ts
 /**
@@ -4817,7 +4916,13 @@ export async function runJiraSync(ctx: RunContext): Promise<RunResult> {
 
     if (!existing) {
       if (!refreshOnly) {
-        const outcome = await createLinkedUseCase(ctx, organizationId, ctx.triggeredBy, obj, now);
+        const outcome = await createLinkedUseCase(
+          (t) => ctx.assertOwned(t),
+          organizationId,
+          ctx.triggeredBy,
+          obj,
+          now,
+        );
         if (outcome === "created") objectsCreated++;
       }
     } else {
@@ -4933,185 +5038,19 @@ export async function runJiraSync(ctx: RunContext): Promise<RunResult> {
 }
 ```
 
-3. **Lines 1459-1468** (doc comment and `startScheduledSync`): delete.
+3. Delete `startScheduledSync` with its doc comment (from `/**` + ` * Queue a scheduled (refresh-only) sync for one org.` through its closing `}`).
 
-4. **Lines 1389-1406** (doc comment and `releaseClaim`): delete.
+4. In `importObjects`, change the `createLinkedUseCase(` call's first argument from `run,` to `(t) => assertRunOwned(run, organizationId, t),`.
 
-5. **`deleteUseCasesUnderClaim` (lines 1140-1387):**
-   - In its doc comment, replace the sentence at lines 1177-1181 (`With \`requireAll\` (single delete), nothing handled is ... records objects_deleted = projects (use cases) deleted.`) with:
+5. Delete `failedResult` (from `function failedResult(status: string): JiraSyncResult {` through its closing `}`).
 
-```ts
- * With `requireAll` (single delete), nothing handled is
- * JiraUseCaseNotFoundError: the transaction rolls back and the claim is
- * released (it never did anything). Other errors close the run as failed; a
- * lost claim (RunSupersededError) writes nothing more. The run records
- * counts.deleted = projects (use cases) deleted, finalized inside the data
- * transaction, so a lost claim rolls the deletes back.
-```
+6. Delete the `SQL_RUN_STILL_OWNED` constant with its doc comment (from `/**` + ` * SQL guard: the run (:historyId, :runToken) still owns a \`started\` row for` through the closing backtick-semicolon of the constant), and the `SKIPPED_RUN_MESSAGE` constant with its comment (`/** Recorded (manual runs only) when the worker skipped …*/` and the two lines after it). Both now come from the engine.
 
-   - Replace lines 1188-1190:
+7. In `createLinkedUseCase`: change the first parameter `  run: RunRef,` to `  assertOwned: (transaction: Transaction) => Promise<void>,`; change `      await assertRunOwned(run, organizationId, transaction);` to `      await assertOwned(transaction);`; in its doc comment replace ``The transaction first proves `run` still owns its claim (RunSupersededError otherwise).`` with ``The transaction first proves the run still owns its claim (`assertOwned`, which throws RunSupersededError otherwise).``
 
-```ts
-  const run = await claimSyncRun(organizationId, "remove_missing", userId);
-  const matchColumn = target.by === "id" ? "id" : "project_id";
-  try {
-```
+8. Delete `errorMessage` (from `/** Message for any thrown value; never empty. */` through its closing `}`) and `isUniqueViolation` (from `function isUniqueViolation(err: unknown): boolean {` through its closing `}`); both now come from the engine.
 
-   with
-
-```ts
-  const matchColumn = target.by === "id" ? "id" : "project_id";
-  return withClaim(
-    JIRA_ASSETS_KEY,
-    organizationId,
-    "remove_missing",
-    userId,
-    async (ctx) => {
-```
-
-   - Replace line 1198 `      await assertRunOwned(run, organizationId, transaction);` with `      await ctx.assertOwned(transaction);`.
-   - Replace lines 1359-1387 (from `      // Recorded in the same transaction` through the function's closing `}` on line 1387, which takes in the old `return outcome;` and the `catch` block that released or failed the claim) with:
-
-```ts
-      // Recorded in the same transaction: if this run lost its claim, the
-      // deletes roll back with it.
-      await ctx.finalize(
-        {
-          counts: {
-            fetched: 0,
-            created: 0,
-            updated: 0,
-            deleted: outcome.removedProjectIds.length,
-          },
-          message:
-            outcome.unlinkedIds.length > 0
-              ? `${outcome.unlinkedIds.length} link(s) with no project in this organization were cleaned up.`
-              : null,
-        },
-        transaction,
-      );
-    });
-    return { value: outcome };
-    },
-    {
-      // Nothing was done: the claim is released, not recorded as a failed run.
-      releaseOn: (err) =>
-        err instanceof JiraUseCaseNotFoundError || err instanceof JiraConfigValidationError,
-    },
-  );
-}
-```
-
-6. **`importObjects` (lines 902-1004, doc comment included):** replace with:
-
-```ts
-/**
- * Import the selected objects. Takes the same engine claim as syncs (kind
- * 'import'), so an import and a sync never overlap. The outcome is recorded on
- * the import's run only; imports never count as a sync for the schedule.
- */
-export async function importObjects(
-  organizationId: number,
-  userId: number,
-  objectIds: string[],
-): Promise<ImportResult> {
-  if (!Array.isArray(objectIds) || objectIds.length === 0) {
-    throw new JiraConfigValidationError("No objects selected for import");
-  }
-  if (objectIds.length > IMPORT_MAX_OBJECTS) {
-    throw new JiraConfigValidationError(
-      `Select up to ${IMPORT_MAX_OBJECTS} objects per import. ${objectIds.length} were selected.`,
-    );
-  }
-  throwIfNotReady(await jiraReadiness(organizationId, "import"));
-
-  let imported = 0;
-  let skipped = 0;
-  try {
-    return await withClaim(JIRA_ASSETS_KEY, organizationId, "import", userId, async (ctx) => {
-      const errors: string[] = [];
-      const failedIds: string[] = [];
-      const config = await loadFullConfig(organizationId);
-      if (!config) throw new JiraNotConfiguredError();
-      const client = clientFromConfig(config);
-
-      // ID→name mapping so JIRA attribute IDs resolve to human names.
-      const attrIdToName: Record<string, string> = {};
-      if (config.selected_object_type_id) {
-        const defs = await client.getAttributes(config.selected_object_type_id);
-        for (const attr of defs) attrIdToName[attr.id] = attr.name;
-      }
-
-      const now = new Date();
-      for (const [index, objectId] of objectIds.entries()) {
-        try {
-          const existing = (await sequelize.query(
-            `SELECT id FROM jira_assets_use_cases
-              WHERE jira_object_id = :objectId AND organization_id = :organizationId;`,
-            {
-              replacements: { objectId: String(objectId), organizationId },
-              type: QueryTypes.SELECT,
-            },
-          )) as Array<{ id: number }>;
-          if (existing.length > 0) {
-            skipped++;
-          } else {
-            const jiraObj = await client.getObjectById(objectId);
-            const outcome = await createLinkedUseCase(
-              ctx,
-              organizationId,
-              userId ?? null,
-              describeObject(jiraObj, attrIdToName),
-              now,
-            );
-            if (outcome === "created") imported++;
-            else skipped++;
-          }
-        } catch (err) {
-          // Lost the claim: stop now rather than record it as one failed object.
-          if (err instanceof RunSupersededError) throw err;
-          errors.push(`Failed to import ${objectId}: ${errorMessage(err)}`);
-          failedIds.push(String(objectId));
-        }
-        // Skipped objects count too, so a run of already-linked ones still heartbeats.
-        if ((index + 1) % HEARTBEAT_EVERY_OBJECTS === 0) {
-          await ctx.heartbeat();
-        }
-      }
-
-      return {
-        value: {
-          success: true,
-          imported,
-          skipped,
-          errors: errors.length > 0 ? errors : undefined,
-          failed_ids: failedIds.length > 0 ? failedIds : undefined,
-        },
-        result: {
-          counts: { fetched: objectIds.length, created: imported, updated: 0, deleted: 0 },
-          message: errors.length > 0 ? `${errors.length} object(s) failed to import` : null,
-        },
-      };
-    });
-  } catch (err) {
-    if (err instanceof RunSupersededError) {
-      // Another claim closed this import as abandoned. Report how far it got.
-      throw new JiraImportInterruptedError(imported, skipped);
-    }
-    throw err;
-  }
-}
-```
-
-7. **Lines 666-879** (from `/**\n * SQL guard: the run (:historyId, :runToken)` through the end of `failedResult`, i.e. `SQL_RUN_STILL_OWNED`, `SKIPPED_RUN_MESSAGE`, `RunRef`, `claimSyncRun`, `touchHeartbeat`, `finalizeFailure`, `RunCounts`, `finalizeSuccess`, `failedResult`): delete. Keep `MISSING_IDS_IN_NOTE` and `idList` (line 880 on).
-
-8. **`createLinkedUseCase` (lines 602-664):** in its doc comment replace `The transaction first proves \`run\` still owns its claim (RunSupersededError otherwise).` with `The transaction first proves the run still owns its claim (ctx.assertOwned; RunSupersededError otherwise).`; change the first parameter `run: RunRef,` (line 611) to `ctx: RunContext,`; change line 619 `      await assertRunOwned(run, organizationId, transaction);` to `      await ctx.assertOwned(transaction);`.
-
-9. **Lines 576-600** (`assertRunOwned` and its doc comment): delete.
-
-10. **Lines 525-544** (`errorMessage` and `isUniqueViolation`): delete (both now come from the engine).
-
-11. **After `clientFromConfig` (after line 511)** insert:
+9. After the closing `}` of `clientFromConfig`, insert:
 
 ```ts
 // ---------------------------------------------------------------------------
@@ -5172,9 +5111,9 @@ function throwIfNotReady(readiness: Readiness): void {
 }
 ```
 
-12. **Lines 143-152** (`RunSupersededError` class and doc comment): delete.
+10. Delete Jira's `RunSupersededError` class with its doc comment (from `/**` + ` * This run's history row is no longer \`started\`` through the class's closing `}`).
 
-13. **Lines 127-141:** replace with
+11. Replace the `JiraSyncInProgressError` and `JiraNotConfiguredError` classes with their doc comments (from `/** Thrown when a sync or import is already running for the organization. */` through the closing `}` of `JiraNotConfiguredError`) with:
 
 ```ts
 export const JIRA_NOT_CONFIGURED_MESSAGE =
@@ -5199,9 +5138,9 @@ export class JiraNotConfiguredError extends Error {
 }
 ```
 
-14. **Lines 109-110** (`ABANDONED_RUN_MESSAGE` and its comment): delete.
+12. Delete `ABANDONED_RUN_MESSAGE` with its comment (`/** error_message written on a \`started\` row closed because it stopped heart-beating. */` and the line after it).
 
-15. **Lines 61-75** (`JiraSyncResult` and `SyncRunType`): replace with
+13. Replace `export interface JiraSyncResult {` through its closing `}` with:
 
 ```ts
 export const JIRA_ASSETS_KEY = "jira-assets";
@@ -5209,26 +5148,18 @@ export const JIRA_ASSETS_KEY = "jira-assets";
 export const JIRA_RUN_KINDS = ["manual", "scheduled", "import", "remove_missing"] as const;
 ```
 
-16. **Lines 1-17** (imports): replace with
+14. In the imports at the top of the file, replace
 
 ```ts
-import { QueryTypes, Transaction } from "sequelize";
-import { sequelize } from "../../database/db";
-import { encryptText, decryptText } from "../../tools/createSecureValue";
-import {
-  JiraAssetsClient,
-  JiraObject,
-  JiraUpstreamError,
-  MAX_PAGES,
-  PAGE_SIZE,
-  WORKER_SYNC_DEADLINE_MS,
-} from "./jira.client";
-import { transformAttributes } from "./jira.constants";
-import { logStructured } from "../../utils/logger/fileLogger";
-import { enqueueJiraAssetsSyncRun } from "../../services/automations/automationProducer";
 import { SQL_NOW_UTC, sqlWithinLastMinutes } from "../scheduledSync.utils";
 import { deleteProjectWithSideEffects } from "../../utils/projectDeletion.utils";
-import { withClaim } from "../sync-engine/claim";
+```
+
+with
+
+```ts
+import { SQL_NOW_UTC, sqlWithinLastMinutes } from "../scheduledSync.utils";
+import { deleteProjectWithSideEffects } from "../../utils/projectDeletion.utils";
 import { errorMessage, isUniqueViolation, RunSupersededError } from "../sync-engine/errors";
 import { ABANDONED_RUN_MESSAGE, SKIPPED_RUN_MESSAGE } from "../sync-engine/types";
 import type { Readiness, RunContext, RunResult } from "../sync-engine/types";
@@ -5236,7 +5167,9 @@ import type { Readiness, RunContext, RunResult } from "../sync-engine/types";
 export { ABANDONED_RUN_MESSAGE, errorMessage, RunSupersededError, SKIPPED_RUN_MESSAGE };
 ```
 
-- [ ] **Step 5: Add the provider and register it**
+(`randomUUID`, `logger` and the producer import stay: the old claim code and `startManualSync` still use them.)
+
+- [ ] **Step 4: Add the provider and register it**
 
 Create `Servers/extensions/jira-assets/jiraAssets.syncProvider.ts`:
 
@@ -5258,6 +5191,7 @@ import {
  */
 export const jiraAssetsSyncProvider: SyncProvider = {
   key: JIRA_ASSETS_KEY,
+  displayName: "Jira Assets",
   kinds: JIRA_RUN_KINDS,
   scheduledKind: "scheduled",
   runDeadlineMs: WORKER_SYNC_DEADLINE_MS,
@@ -5269,27 +5203,11 @@ export const jiraAssetsSyncProvider: SyncProvider = {
 
 In `Servers/extensions/sync-engine/providers.ts`, add `import { jiraAssetsSyncProvider } from "../jira-assets/jiraAssets.syncProvider";` and change `export const SYNC_PROVIDERS: SyncProvider[] = [];` to `export const SYNC_PROVIDERS: SyncProvider[] = [jiraAssetsSyncProvider];`.
 
-- [ ] **Step 6: Map the engine's 409 in the Jira controller**
-
-In `Servers/extensions/jira-assets/jiraAssets.ctrl.ts`:
-- add `JIRA_SYNC_IN_PROGRESS_MESSAGE,` to the import list from `"./jiraAssets.service"`, and add `import { SyncInProgressError } from "../sync-engine/errors";` after it;
-- in `isExpectedError` add `err instanceof SyncInProgressError ||` after `err instanceof JiraSyncInProgressError ||`;
-- in `sendError`, after the `JiraSyncInProgressError` block, add:
-
-```ts
-  if (err instanceof SyncInProgressError) {
-    // The engine's claim is per extension; keep Jira's own message and shape.
-    return res.status(409).json(STATUS_CODE[409](JIRA_SYNC_IN_PROGRESS_MESSAGE));
-  }
-```
-
-and add ` * - SyncInProgressError (engine claim taken) → 409 with JIRA_SYNC_IN_PROGRESS_MESSAGE` to its doc list after the `JiraSyncInProgressError → 409` line.
-
-- [ ] **Step 7: Retire the Jira scheduler and route the old job names to the engine**
+- [ ] **Step 5: Retire the Jira scheduler and route the old job names to the engine**
 
 1. Delete `Servers/extensions/jira-assets/jiraAssets.scheduler.ts`.
-2. In `Servers/extensions/scheduledSync.utils.ts`, delete lines 31-38 (`sqlIntervalElapsed` and its doc comment).
-3. In `Servers/services/automations/automationWorker.ts`, delete lines 45-46 (the `runJiraAssetsScheduledSyncAllOrgs` and `runQueuedSync` imports) and delete these four lines:
+2. In `Servers/extensions/scheduledSync.utils.ts`, delete `sqlIntervalElapsed` with its doc comment (from `/**` + ` * True when \`intervalHoursExpr\` hours have passed since \`lastRunExpr\`` through its closing `}`).
+3. In `Servers/services/automations/automationWorker.ts`, delete the two imports `import { runJiraAssetsScheduledSyncAllOrgs } from "../../extensions/jira-assets/jiraAssets.scheduler";` and `import { runQueuedSync } from "../../extensions/jira-assets/jiraAssets.service";`, and delete these four lines:
 
 ```ts
         } else if (name === "jira_assets_scheduled_sync_check") {
@@ -5298,8 +5216,8 @@ and add ` * - SyncInProgressError (engine claim taken) → 409 with JIRA_SYNC_IN
           await runQueuedSync(job.data);
 ```
 
-   The old names now reach `isExtensionSyncJob` → `handleExtensionSyncJob`, which routes them to the engine.
-4. In `Servers/services/automations/automationProducer.ts`, delete `scheduleJiraAssetsScheduledSyncCheck` (lines 429-446), and in `scheduleExtensionSyncTick` insert before `await automationQueue.upsertJobScheduler(`:
+   The old names now reach the `isExtensionSyncJob(name)` branch (Task 4), which routes them to the engine.
+4. In `Servers/services/automations/automationProducer.ts`, delete `scheduleJiraAssetsScheduledSyncCheck` (from `export async function scheduleJiraAssetsScheduledSyncCheck() {` through its closing `}`), and in `scheduleExtensionSyncTick` insert before `  await automationQueue.upsertJobScheduler(`:
 
 ```ts
   // The tick replaces the Jira-only check job. Its queued jobs still run (the
@@ -5311,21 +5229,288 @@ and add ` * - SyncInProgressError (engine claim taken) → 409 with JIRA_SYNC_IN
   }
 ```
 
-5. In `Servers/jobs/producer.ts`, delete `scheduleJiraAssetsScheduledSyncCheck,` (line 30) and line 74 (`await safeSchedule("jira-assets-scheduled-sync-check", ...)`).
+5. In `Servers/jobs/producer.ts`, delete `  scheduleJiraAssetsScheduledSyncCheck,` from the import list and the line `  await safeSchedule("jira-assets-scheduled-sync-check", scheduleJiraAssetsScheduledSyncCheck); // non-obliterating — safe to run after the obliterating schedulers`.
 
-- [ ] **Step 8: Run the tests to verify they pass**
+- [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `cd Servers && npx jest -i extensions/jira-assets/__tests__ extensions/sync-engine/__tests__ services/automations/tests/automationProducer.spec.ts`
-Expected: PASS. Then `grep -rn "claimSyncRun\|runQueuedSync\|runClaimedSync\|touchHeartbeat\|finalizeFailure\|jiraAssets.scheduler\|scheduleJiraAssetsScheduledSyncCheck\|sqlIntervalElapsed" Servers --include='*.ts' | grep -v node_modules` prints nothing.
+Expected: PASS. Then `grep -rn "runQueuedSync\|runClaimedSync\|startScheduledSync\|jiraAssets.scheduler\|scheduleJiraAssetsScheduledSyncCheck\|sqlIntervalElapsed\|SQL_RUN_STILL_OWNED" Servers --include='*.ts' | grep -v node_modules` prints nothing.
 
-- [ ] **Step 9: Build, format and commit**
+- [ ] **Step 7: Build, format and commit**
 
 ```bash
-cd Servers && npx prettier --write extensions services/automations jobs/producer.ts && npm run build
+cd Servers && npx prettier --write extensions services/automations jobs/producer.ts && npm run build && npm run check:api-drift
 cd .. && git add -A Servers/extensions Servers/services/automations Servers/jobs/producer.ts
-git commit -m "feat(jira-assets): run Jira Assets on the sync engine" -m "jiraAssetsSyncProvider declares the manual, scheduled, import and remove_missing kinds with readiness per kind. The sync body (runJiraSync) runs on the RunContext: ctx.heartbeat replaces touchHeartbeat, ctx.sqlOwnsRun replaces the history-table ownership fragments, and the engine records the outcome. Import, remove-missing and single delete take the engine claim through withClaim; removal and delete still finalize or release inside their data transaction, with the same lock order.
+git commit -m "feat(jira-assets): Jira Assets sync runs on the sync engine" -m "jiraAssetsSyncProvider declares the manual, scheduled, import and remove_missing kinds with readiness per kind and is registered with the engine. The sync body (runJiraSync) runs on the RunContext: ctx.heartbeat replaces touchHeartbeat, ctx.sqlOwnsRun replaces the history-table ownership fragments, ctx.signal is the walk deadline, and the engine records the outcome.
 
-The Jira claim, heartbeat, finalize, scheduler, check job and run-job handler are gone. The worker routes the old jira_assets_* job names to the engine for one release, and the tick's registration retires the old check scheduler."
+The Jira scheduler, its check job and the run-job handler are gone. The worker routes the old jira_assets_* job names to the engine for one release, and the tick's registration retires the old check scheduler. Imports and removals move to the engine claim in the next commit."
+```
+
+---
+
+### Task 6b: Jira import, remove-missing and single delete on `withClaim`
+
+**Files:**
+- Modify: `Servers/extensions/jira-assets/jiraAssets.service.ts` (anchored edits below)
+- Modify: `Servers/extensions/jira-assets/jiraAssets.ctrl.ts` (imports, `isExpectedError`, `sendError`)
+- Test: `Servers/extensions/jira-assets/__tests__/jiraAssets.service.test.ts`, `Servers/extensions/jira-assets/__tests__/jiraAssets.ctrl.test.ts`
+
+**Interfaces:**
+- Consumes: `withClaim` (Task 2), `SyncInProgressError` (Task 2), `jiraReadiness`, `throwIfNotReady`, `JIRA_ASSETS_KEY`, `JIRA_SYNC_IN_PROGRESS_MESSAGE`, `createLinkedUseCase(assertOwned, …)` (Task 6a).
+- Produces: `importObjects`, `removeMissingUseCases`, `deleteUseCaseByProjectId` with unchanged signatures and results, now under the engine claim (kinds `import` and `remove_missing`). The controller maps the engine's `SyncInProgressError` to 409 with `JIRA_SYNC_IN_PROGRESS_MESSAGE`.
+- Removed: `claimSyncRun`, `touchHeartbeat`, `finalizeFailure`, `finalizeSuccess`, `RunCounts`, `assertRunOwned`, `releaseClaim`, `RunRef`, `SyncRunType`.
+
+Their locking (projects before links), the rule that only fully selected projects are deleted, and finalizing or releasing inside the data transaction are unchanged.
+
+- [ ] **Step 1: Point the remaining service tests and the controller test at the engine claim**
+
+In `Servers/extensions/jira-assets/__tests__/jiraAssets.service.test.ts`:
+
+1. In the import list from `"../jiraAssets.service"`, remove `claimSyncRun,`, `finalizeFailure,`, `RunRef,` and `touchHeartbeat,`. After the other imports add `import { SyncInProgressError } from "../../sync-engine/errors";`.
+2. Delete the line `const RUN: RunRef = { historyId: 77, token: "tok-77" };`.
+3. In `fakeDb`, delete the three lines under the comment `// Old Jira claim (imports and removals until Task 6b).` and the comment itself.
+4. Delete `describe("claimSyncRun (overlap guard + run token)"` and `describe("touchHeartbeat"` entirely. In `describe("finalizeFailure"`, delete its four `it(...)` tests and rename the describe to `describe("errorMessage"`, keeping the `it.each([...])("falls back to a usable message for %p"` table unchanged.
+5. In the remaining `removeMissingUseCases`, `deleteUseCaseByProjectId` and `importObjects` describes, apply exactly these substitutions (every occurrence):
+
+| Old text | New text |
+|---|---|
+| `sqlCalls("INSERT INTO jira_assets_sync_history")` | `sqlCalls("INSERT INTO extension_sync_runs")` |
+| `.toMatchObject({ syncType: "remove_missing", triggeredBy: 8 })` | `.toMatchObject({ key: "jira-assets", kind: "remove_missing", triggeredBy: 8 })` |
+| `.toMatchObject({ syncType: "import", triggeredBy: 8 })` | `.toMatchObject({ key: "jira-assets", kind: "import", triggeredBy: 8 })` |
+| `sqlCalls("SET status = 'failed', error_message")` | `sqlCalls("SET status = 'failed'")` |
+| `sqlCalls("DELETE FROM jira_assets_sync_history")` | `sqlCalls("DELETE FROM extension_sync_runs")` |
+| `expect(completed.replacements).toMatchObject({ objectsDeleted: 1 });` | `expect(JSON.parse(completed.replacements.counts)).toMatchObject({ deleted: 1 });` |
+| `completed.replacements.note` | `completed.replacements.message` |
+| `.rejects.toBeInstanceOf(JiraSyncInProgressError)` in `removeMissingUseCases` ("cannot run while a sync is running"), `deleteUseCaseByProjectId` ("is 409 while a sync, import or removal runs") and `importObjects` ("takes the same claim as sync") | `.rejects.toBeInstanceOf(SyncInProgressError)` |
+| `expect(release.replacements).toMatchObject({ id: 77, organizationId: 5 });` | `expect(release.replacements).toMatchObject({ runId: 77, orgId: 5, key: "jira-assets" });` |
+In `Servers/extensions/jira-assets/__tests__/jiraAssets.ctrl.test.ts`, add `JIRA_SYNC_IN_PROGRESS_MESSAGE: "A Jira Assets sync is already running for this organization",` to the object returned by the `jest.mock("../jiraAssets.service", ...)` factory, add `import { SyncInProgressError } from "../../sync-engine/errors";` after the other imports, and add inside `describe("POST /import"`:
+
+```ts
+  it("returns 409 with the Jira message when the engine claim is taken", async () => {
+    (importObjects as jest.Mock).mockRejectedValue(new SyncInProgressError());
+    const res = mockRes();
+
+    await postImport({ ...req, body: { object_ids: ["1"] } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0].data).toBe(
+      "A Jira Assets sync is already running for this organization",
+    );
+  });
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `cd Servers && npx jest -i extensions/jira-assets/__tests__/jiraAssets.service.test.ts extensions/jira-assets/__tests__/jiraAssets.ctrl.test.ts`
+Expected: FAIL: the import and removal tests find no `INSERT INTO extension_sync_runs` (they still claim on the old table), and the controller's engine-409 test gets 500.
+
+- [ ] **Step 3: Move import, removal and single delete onto `withClaim`**
+
+In `Servers/extensions/jira-assets/jiraAssets.service.ts`, apply strictly in this order (bottom first), with no reformatting until Step 6:
+
+1. Delete `releaseClaim` with its doc comment (from `/**` + ` * Delete a claimed history row that did nothing` through its closing `}`).
+
+2. In `deleteUseCasesUnderClaim`:
+   - In its doc comment, replace the paragraph that starts `With \`requireAll\` (single delete), nothing handled is` and ends `records objects_deleted = projects (use cases) deleted.` with:
+
+```ts
+ * With `requireAll` (single delete), nothing handled is
+ * JiraUseCaseNotFoundError: the transaction rolls back and the claim is
+ * released (it never did anything). Other errors close the run as failed; a
+ * lost claim (RunSupersededError) writes nothing more. The run records
+ * counts.deleted = projects (use cases) deleted, finalized inside the data
+ * transaction, so a lost claim rolls the deletes back.
+```
+
+   - Replace
+
+```ts
+  const run = await claimSyncRun(organizationId, "remove_missing", userId);
+  const matchColumn = target.by === "id" ? "id" : "project_id";
+  try {
+```
+
+   with
+
+```ts
+  const matchColumn = target.by === "id" ? "id" : "project_id";
+  return withClaim(
+    JIRA_ASSETS_KEY,
+    organizationId,
+    "remove_missing",
+    userId,
+    async (ctx) => {
+```
+
+   - Replace `      await assertRunOwned(run, organizationId, transaction);` with `      await ctx.assertOwned(transaction);`.
+   - Replace everything from the line `      // Recorded in the same transaction: if this run lost its claim, the` through the function's closing `}` (this takes in the old `finalizeSuccess(…)` call, `return outcome;` and the `catch` block that released or failed the claim) with:
+
+```ts
+      // Recorded in the same transaction: if this run lost its claim, the
+      // deletes roll back with it.
+      await ctx.finalize(
+        {
+          counts: {
+            fetched: 0,
+            created: 0,
+            updated: 0,
+            deleted: outcome.removedProjectIds.length,
+          },
+          message:
+            outcome.unlinkedIds.length > 0
+              ? `${outcome.unlinkedIds.length} link(s) with no project in this organization were cleaned up.`
+              : null,
+        },
+        transaction,
+      );
+    });
+    return { value: outcome };
+    },
+    {
+      // Nothing was done: the claim is released, not recorded as a failed run.
+      releaseOn: (err) =>
+        err instanceof JiraUseCaseNotFoundError || err instanceof JiraConfigValidationError,
+    },
+  );
+}
+```
+
+3. Replace `importObjects` with its doc comment (from `/**` + ` * Import the selected objects. Takes the same per-org claim as sync` through the closing `}` of `importObjects`) with:
+
+```ts
+/**
+ * Import the selected objects. Takes the same engine claim as syncs (kind
+ * 'import'), so an import and a sync never overlap. The outcome is recorded on
+ * the import's run only; imports never count as a sync for the schedule.
+ */
+export async function importObjects(
+  organizationId: number,
+  userId: number,
+  objectIds: string[],
+): Promise<ImportResult> {
+  if (!Array.isArray(objectIds) || objectIds.length === 0) {
+    throw new JiraConfigValidationError("No objects selected for import");
+  }
+  if (objectIds.length > IMPORT_MAX_OBJECTS) {
+    throw new JiraConfigValidationError(
+      `Select up to ${IMPORT_MAX_OBJECTS} objects per import. ${objectIds.length} were selected.`,
+    );
+  }
+  throwIfNotReady(await jiraReadiness(organizationId, "import"));
+
+  let imported = 0;
+  let skipped = 0;
+  try {
+    return await withClaim(JIRA_ASSETS_KEY, organizationId, "import", userId, async (ctx) => {
+      const errors: string[] = [];
+      const failedIds: string[] = [];
+      const config = await loadFullConfig(organizationId);
+      if (!config) throw new JiraNotConfiguredError();
+      const client = clientFromConfig(config);
+
+      // ID→name mapping so JIRA attribute IDs resolve to human names.
+      const attrIdToName: Record<string, string> = {};
+      if (config.selected_object_type_id) {
+        const defs = await client.getAttributes(config.selected_object_type_id);
+        for (const attr of defs) attrIdToName[attr.id] = attr.name;
+      }
+
+      const now = new Date();
+      for (const [index, objectId] of objectIds.entries()) {
+        try {
+          const existing = (await sequelize.query(
+            `SELECT id FROM jira_assets_use_cases
+              WHERE jira_object_id = :objectId AND organization_id = :organizationId;`,
+            {
+              replacements: { objectId: String(objectId), organizationId },
+              type: QueryTypes.SELECT,
+            },
+          )) as Array<{ id: number }>;
+          if (existing.length > 0) {
+            skipped++;
+          } else {
+            const jiraObj = await client.getObjectById(objectId);
+            const outcome = await createLinkedUseCase(
+              (t) => ctx.assertOwned(t),
+              organizationId,
+              userId ?? null,
+              describeObject(jiraObj, attrIdToName),
+              now,
+            );
+            if (outcome === "created") imported++;
+            else skipped++;
+          }
+        } catch (err) {
+          // Lost the claim: stop now rather than record it as one failed object.
+          if (err instanceof RunSupersededError) throw err;
+          errors.push(`Failed to import ${objectId}: ${errorMessage(err)}`);
+          failedIds.push(String(objectId));
+        }
+        // Skipped objects count too, so a run of already-linked ones still heartbeats.
+        if ((index + 1) % HEARTBEAT_EVERY_OBJECTS === 0) {
+          await ctx.heartbeat();
+        }
+      }
+
+      return {
+        value: {
+          success: true,
+          imported,
+          skipped,
+          errors: errors.length > 0 ? errors : undefined,
+          failed_ids: failedIds.length > 0 ? failedIds : undefined,
+        },
+        result: {
+          counts: { fetched: objectIds.length, created: imported, updated: 0, deleted: 0 },
+          message: errors.length > 0 ? `${errors.length} object(s) failed to import` : null,
+        },
+      };
+    });
+  } catch (err) {
+    if (err instanceof RunSupersededError) {
+      // Another claim closed this import as abandoned. Report how far it got.
+      throw new JiraImportInterruptedError(imported, skipped);
+    }
+    throw err;
+  }
+}
+```
+
+4. Delete everything from `/** A claimed run: its history row and the random token only this run holds. */` through the closing `}` of `finalizeSuccess` (that is `RunRef`, `claimSyncRun`, `touchHeartbeat`, `finalizeFailure`, `RunCounts` and `finalizeSuccess` with their doc comments).
+
+5. Delete `assertRunOwned` with its doc comment (from `/**` + ` * Inside \`transaction\`, prove this run still owns its \`started\` history row` through its closing `}`).
+
+6. Delete the line `export type SyncRunType = "manual" | "scheduled" | "import" | "remove_missing";`.
+
+7. In the imports: delete `import { randomUUID } from "crypto";`; change `import logger, { logStructured } from "../../utils/logger/fileLogger";` to `import { logStructured } from "../../utils/logger/fileLogger";`; and after `import { deleteProjectWithSideEffects } from "../../utils/projectDeletion.utils";` add `import { withClaim } from "../sync-engine/claim";`.
+
+- [ ] **Step 4: Map the engine's 409 in the Jira controller**
+
+In `Servers/extensions/jira-assets/jiraAssets.ctrl.ts`:
+- add `JIRA_SYNC_IN_PROGRESS_MESSAGE,` to the import list from `"./jiraAssets.service"`, and add `import { SyncInProgressError } from "../sync-engine/errors";` after it;
+- in `isExpectedError` add `err instanceof SyncInProgressError ||` after `err instanceof JiraSyncInProgressError ||`;
+- in `sendError`, after the `if (err instanceof JiraSyncInProgressError) { … }` block, add:
+
+```ts
+  if (err instanceof SyncInProgressError) {
+    // The engine's claim is per extension; keep Jira's own message and shape.
+    return res.status(409).json(STATUS_CODE[409](JIRA_SYNC_IN_PROGRESS_MESSAGE));
+  }
+```
+
+and add ` * - SyncInProgressError (engine claim taken) → 409 with JIRA_SYNC_IN_PROGRESS_MESSAGE` to its doc list after the `JiraSyncInProgressError → 409` line.
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `cd Servers && npx jest -i extensions/jira-assets/__tests__ extensions/sync-engine/__tests__`
+Expected: PASS. Then `grep -rn "claimSyncRun\|touchHeartbeat\|finalizeFailure\|finalizeSuccess\|assertRunOwned\|releaseClaim\|RunRef" Servers --include='*.ts' | grep -v node_modules` prints nothing.
+
+- [ ] **Step 6: Build, format and commit**
+
+```bash
+cd Servers && npx prettier --write extensions/jira-assets && npm run build && npm run check:api-drift
+cd .. && git add Servers/extensions/jira-assets
+git commit -m "feat(jira-assets): imports and removals take the sync engine claim" -m "Import, remove-missing and single use-case delete run through withClaim (kinds import and remove_missing), so they share one claim with syncs again. Removal and delete still finalize or release inside their data transaction, so a lost claim rolls the deletes back; their lock order and the fully-selected-projects rule are unchanged. The controller answers the engine's SyncInProgressError with Jira's own 409 message. Jira's claim, heartbeat, finalize and release code is gone."
 ```
 
 ---
@@ -5333,19 +5518,22 @@ The Jira claim, heartbeat, finalize, scheduler, check job and run-job handler ar
 ### Task 7: Old Jira Assets sync routes on the engine, with their exact shapes
 
 **Files:**
-- Modify: `Servers/extensions/jira-assets/jiraAssets.service.ts` (text anchors below; line numbers are from develop `c5d8f439b`)
+- Modify: `Servers/extensions/jira-assets/jiraAssets.service.ts` (text anchors below)
 - Modify: `Servers/extensions/jira-assets/jiraAssets.ctrl.ts` (imports, `isExpectedError`, `sendError`, `patchSyncSettings`, `postSync`, `getSyncStatusCtrl`, `getSyncHistoryCtrl`)
 - Modify: `Servers/extensions/scheduledSync.utils.ts` (whole file)
-- Modify: `Servers/services/automations/automationProducer.ts:360-394` (Jira queue helpers removed)
-- Modify: `Servers/swagger.yaml` (four operations marked deprecated)
+- Modify: `Servers/services/automations/automationProducer.ts` (Jira queue helpers removed)
+- Modify: `Servers/scripts/checkExtensionSyncEngineSql.js` (last-finished-run case)
+- Modify (generated, never by hand): `Servers/swagger.yaml`, `docs/api-docs/src/config/endpoints.ts`
 - Test: `Servers/extensions/jira-assets/__tests__/jiraAssets.service.test.ts`, `Servers/extensions/jira-assets/__tests__/jiraAssets.ctrl.test.ts`, `Servers/services/automations/tests/automationProducer.spec.ts`
 
 **Interfaces:**
-- Consumes: `startManualRun` (Task 4), `getRunStatus`, `listRuns`, `parseRunsLimit`, `RunView`, `RunListRow` (Task 5), `saveSchedule`, `parseIntervalHours` (Task 3), `SyncNotReadyError`, `SyncInProgressError`, `SyncValidationError` (Task 2), `jiraCanSchedule`, `throwIfNotReady`, `JIRA_ASSETS_KEY` (Task 6), `hasPendingExtensionSyncJob` (Task 4).
+- Consumes: `startManualRun` (Task 4), `getRunStatus`, `listRuns`, `parseRunsLimit`, `RunView`, `RunListRow`, `sqlLastFinishedRun` (Task 5), `saveSchedule`, `parseIntervalHours` (Task 3), `SyncNotReadyError`, `SyncInProgressError`, `SyncValidationError` (Task 2), `jiraCanSchedule`, `throwIfNotReady`, `JIRA_ASSETS_KEY` (Task 6a), `hasPendingExtensionSyncJob` (Task 4).
 - Produces: `getPublicConfig` derives `sync_enabled`, `sync_interval_hours` and `last_sync_*` from the engine; `getSyncStatus(orgId): Promise<LegacySyncStatus | null>`; `getSyncHistory(orgId, limit): Promise<LegacySyncHistoryRow[]>`; `updateSyncSettings(orgId, body)` (the unused `userId` parameter is dropped); `toLegacyLatestRun(run: RunView)`, `toLegacyHistoryRow(run: RunListRow, orgId)`.
 - Removed: `startManualSync`, `hasLiveRun`, `latestSyncRunId`, `sqlLiveRunExists`, `SQL_RUN_IS_LIVE`, `SYNC_STALE_AFTER_MINUTES`, `SYNC_INTERVAL_MIN_HOURS`, `SYNC_INTERVAL_MAX_HOURS`, `JiraSyncInProgressError`, `jiraAssetsSyncJobId`, `hasPendingJiraAssetsSyncJob`, `enqueueJiraAssetsSyncRun`, `sqlWithinLastMinutes`.
 
 Old-shape mapping (spec section 5): `sync_type` = `kind`; `objects_*` from `counts`; `error_message` = `message`; `status`: `completed` → `completed`, `started` → `started`, `failed`/`abandoned`/`skipped` → `failed`; `code` `"abandoned"` or `"skipped"`, else null; `last_sync_*` from the newest finished manual or scheduled run whose status is `completed` or `failed` (`last_sync_at` = its `completed_at`, `last_sync_status` `'success'` or `'failed'`); `sync_enabled` and `sync_interval_hours` from `extension_sync_settings` (`false` and 24 without a row). History rows keep every old `SELECT *` column; `run_token` is always `null` because the token is now the engine's ownership secret and no client reads it. Timestamps are now TIMESTAMPTZ, so `latest_run` times carry an offset (`…+00:00`) instead of a bare UTC wall-clock string; keys and types are unchanged.
+
+The old routes are deprecated for one release. The swagger generator has no deprecation marker that comes from route code, and the generated files are never edited by hand, so the deprecation is recorded in the controller doc comments (Step 5) and in the "Scheduled sync" section of `extensions.md` (Task 11).
 
 - [ ] **Step 1: Write the failing service tests**
 
@@ -5365,7 +5553,7 @@ import type { RunView } from "../../sync-engine/status";
 
 4. Delete `describe("startManualSync (Sync now queues a job)"` entirely (the engine's `startManualRun` tests and the controller tests cover it).
 
-5. Replace `describe("getSyncStatus"` (lines 1364-1381) and `describe("updateSyncSettings (partial patch)"` (lines 1383-1419) with:
+5. Replace the two blocks `describe("getSyncStatus"` and `describe("updateSyncSettings (partial patch)"` (each from its `describe(` line through its closing `});`) with:
 
 ```ts
 const runView = (over: Partial<RunView> = {}): RunView => ({
@@ -5598,7 +5786,7 @@ jest.mock("../../sync-engine/jobs", () => ({ startManualRun: jest.fn() }));
 2. In the `jest.mock("../jiraAssets.service", ...)` factory: delete `class JiraSyncInProgressError extends Error {}`, `JiraSyncInProgressError,` and `startManualSync: jest.fn(),`; add `getSyncHistory: jest.fn(),`, `updateSyncSettings: jest.fn(),` and `JIRA_ASSETS_KEY: "jira-assets",`.
 3. Change the producer mock to `return { BackgroundJobsUnavailableError, hasPendingExtensionSyncJob: jest.fn() };`.
 4. Imports: from `"../jiraAssets.ctrl"` add `getSyncHistoryCtrl`; from the producer import `hasPendingExtensionSyncJob` instead of `hasPendingJiraAssetsSyncJob`; from `"../jiraAssets.service"` remove `JiraSyncInProgressError` and `startManualSync`, add `getSyncHistory`; change the engine errors import to `import { SyncInProgressError, SyncNotReadyError } from "../../sync-engine/errors";` and add `import { startManualRun } from "../../sync-engine/jobs";`.
-5. Replace `describe("POST /sync (Sync now)"` (lines 108-168) with:
+5. Replace `describe("POST /sync (Sync now)"` (from its `describe(` line through its closing `});`) with:
 
 ```ts
 describe("POST /sync (Sync now, deprecated)", () => {
@@ -5689,7 +5877,7 @@ describe("GET /sync/history (deprecated)", () => {
 ```
 
 6. In `describe("GET /sync/status"`, replace `hasPendingJiraAssetsSyncJob` with `hasPendingExtensionSyncJob` (both tests) and add `expect(hasPendingExtensionSyncJob).toHaveBeenCalledWith("jira-assets", 5);` after `await getSyncStatusCtrl(req, res);` in the first test.
-7. Delete the test `it("returns 409 while a sync is running"` in `describe("POST /import"` (Task 6's engine-409 test replaces it), and replace the remaining `new JiraSyncInProgressError("running")` (the remove-missing and delete tests) with `new SyncInProgressError()`.
+7. Delete the test `it("returns 409 while a sync is running"` in `describe("POST /import"` (Task 6b's engine-409 test replaces it), and replace the remaining `new JiraSyncInProgressError("running")` (the remove-missing and delete tests) with `new SyncInProgressError()`.
 
 In `Servers/services/automations/tests/automationProducer.spec.ts`: remove `enqueueJiraAssetsSyncRun,` and `hasPendingJiraAssetsSyncJob,` from the imports; in `describe("enqueueJiraAssetsSyncRun"` rename it to `describe("enqueueExtensionSyncRun (one job per extension and org)"`, set `const payload = { key: "jira-assets", orgId: 5, kind: "scheduled", triggeredBy: null, payload: null };`, and replace in that block every `enqueueJiraAssetsSyncRun(` with `enqueueExtensionSyncRun(`, `"jira-assets-sync-5"` with `"ext-sync-jira-assets-5"`, `"jira_assets_sync_run"` with `"extension_sync_run"`, and `hasPendingJiraAssetsSyncJob(5)` with `hasPendingExtensionSyncJob("jira-assets", 5)`. Then delete the now-duplicate tests `it("queues one attempt of extension_sync_run under that id, removed when done"` and `it("does not queue a second job while one is waiting"` from `describe("extension sync engine jobs"`.
 
@@ -5733,12 +5921,13 @@ import {
   SyncValidationError,
 } from "../sync-engine/errors";
 import { parseIntervalHours, saveSchedule } from "../sync-engine/schedule";
+import { sqlLastFinishedRun } from "../sync-engine/sql";
 import { getRunStatus, listRuns, type RunListRow, type RunView } from "../sync-engine/status";
 import { ABANDONED_RUN_MESSAGE, SKIPPED_RUN_MESSAGE } from "../sync-engine/types";
 import type { Readiness, RunContext, RunResult, RunStatus } from "../sync-engine/types";
 ```
 
-2. Replace the block from `/** Bounds for \`sync_interval_hours\`; mirrors jira_assets_config_sync_interval_range_chk. */` (line 77) through the end of `sqlLiveRunExists` (line 107) with:
+2. Replace the block from `/** Bounds for \`sync_interval_hours\`; mirrors jira_assets_config_sync_interval_range_chk. */` through the closing `}` of `sqlLiveRunExists` with:
 
 ```ts
 /** `sync_interval_hours` when POST /config leaves it out. */
@@ -5791,12 +5980,12 @@ export async function getPublicConfig(organizationId: number): Promise<JiraAsset
        LEFT JOIN extension_sync_settings s
          ON s.organization_id = c.organization_id AND s.extension_key = :key
        LEFT JOIN LATERAL (
-         SELECT r.status, r.message, r.completed_at
-           FROM extension_sync_runs r
-          WHERE r.organization_id = c.organization_id AND r.extension_key = :key
-            AND r.kind IN ('manual', 'scheduled') AND r.status IN ('completed', 'failed')
-          ORDER BY r.completed_at DESC, r.id DESC
-          LIMIT 1
+         ${sqlLastFinishedRun(
+           "c.organization_id",
+           ":key",
+           "'manual', 'scheduled'",
+           "r.status, r.message, r.completed_at",
+         )}
        ) lf ON TRUE
       WHERE c.organization_id = :organizationId
       LIMIT 1;`,
@@ -6067,75 +6256,85 @@ export const SQL_NOW_UTC = "(NOW() AT TIME ZONE 'UTC')";
 
 In `Servers/services/automations/automationProducer.ts`, delete `jiraAssetsSyncJobId` and its comment, `hasPendingJiraAssetsSyncJob` and its comment, and `enqueueJiraAssetsSyncRun` with its doc comment (the block from `/** One Jira Assets sync job per org at a time` through the end of `enqueueJiraAssetsSyncRun`, keeping `PENDING_JOB_STATES`).
 
-- [ ] **Step 7: Mark the old routes deprecated in swagger**
+- [ ] **Step 7: Prove the last-finished-run rule on a throwaway Postgres**
 
-In `Servers/swagger.yaml`, under each of these four operations add `      deprecated: true` right after its `summary:` line, and start its `description:` with `Deprecated, kept for one release: use <new route>. `:
+In `Servers/scripts/checkExtensionSyncEngineSql.js`, add `sqlLastFinishedRun,` to the names required from `"../extensions/sync-engine/sql"`, and insert this block right before the line `    const { rows: [started] } = await client.query(`:
 
-| Operation (anchor) | New route named in the description |
-|---|---|
-| `/extensions/jira-assets/sync:` → `post:` → `summary: 'Post Sync'` | `POST /extensions/{key}/runs` |
-| `/extensions/jira-assets/sync/status:` → `get:` → `summary: 'Get Sync Status Ctrl'` | `GET /extensions/{key}/runs/status` |
-| `/extensions/jira-assets/sync/history:` → `get:` → `summary: 'Get Sync History Ctrl'` | `GET /extensions/{key}/runs` |
-| `/extensions/jira-assets/config/sync:` → `patch:` → `summary: 'Patch Sync Settings'` | `PATCH /extensions/{key}/schedule` |
-
-For example the first becomes:
-
-```yaml
-  /extensions/jira-assets/sync:
-    post:
-      summary: 'Post Sync'
-      deprecated: true
+```js
+    // last_sync_* / last_finished_run: a newer abandoned or skipped run never
+    // replaces an older completed or failed one; a newer failed one does.
+    const lastFinished = async () => {
+      const [row] = await sequelize.query(
+        `SELECT * FROM (${sqlLastFinishedRun(":orgId", ":key", ":kinds", "r.id, r.status")}) x`,
+        { replacements: { orgId: 7, key: KEY, kinds: STATUS_KINDS }, type: QueryTypes.SELECT },
+      );
+      return row;
+    };
+    const { rows: [done] } = await client.query(
+      `INSERT INTO verifywise.extension_sync_runs
+         (organization_id, extension_key, kind, status, run_token, started_at, completed_at)
+       VALUES (7, '${KEY}', 'manual', 'completed', 't7a', now() - interval '60 minutes',
+               now() - interval '59 minutes') RETURNING id`,
+    );
+    await client.query(
+      `INSERT INTO verifywise.extension_sync_runs
+         (organization_id, extension_key, kind, status, code, run_token, started_at, completed_at)
+       VALUES (7, '${KEY}', 'scheduled', 'abandoned', 'abandoned', 't7b',
+               now() - interval '30 minutes', now() - interval '10 minutes'),
+              (7, '${KEY}', 'manual', 'skipped', 'skipped', NULL,
+               now() - interval '5 minutes', now() - interval '5 minutes')`,
+    );
+    assert.deepEqual(await lastFinished(), { id: done.id, status: "completed" });
+    const { rows: [failed] } = await client.query(
+      `INSERT INTO verifywise.extension_sync_runs
+         (organization_id, extension_key, kind, status, run_token, started_at, completed_at)
+       VALUES (7, '${KEY}', 'scheduled', 'failed', 't7c', now() - interval '3 minutes',
+               now() - interval '2 minutes') RETURNING id`,
+    );
+    assert.deepEqual(await lastFinished(), { id: failed.id, status: "failed" });
 ```
 
-with `description: 'Deprecated, kept for one release: use POST /extensions/{key}/runs. Starts a manual sync in the background. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'`. For the two GET operations, whose descriptions are `'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'`, prefix the same way.
+Run: `cd Servers && node scripts/checkExtensionSyncEngineSql.js`
+Expected: PASS, printing `extension sync engine SQL: all checks passed`. (Org 7's schedule is off, so these rows do not change the due-query assertions above them.)
 
 - [ ] **Step 8: Run the tests to verify they pass**
 
 Run: `cd Servers && npx jest -i extensions/jira-assets/__tests__ extensions/sync-engine/__tests__ services/automations/tests/automationProducer.spec.ts`
 Expected: PASS. Then `grep -rn "jira_assets_sync_history\|JiraSyncInProgressError\|startManualSync\|hasPendingJiraAssetsSyncJob\|enqueueJiraAssetsSyncRun\|sqlWithinLastMinutes" Servers --include='*.ts' | grep -v node_modules` prints nothing.
 
-- [ ] **Step 9: Build, format and commit**
+- [ ] **Step 9: Build, regenerate the API docs, format and commit**
 
 ```bash
-cd Servers && npx prettier --write extensions services/automations swagger.yaml && npm run build
-cd .. && git add Servers/extensions Servers/services/automations Servers/swagger.yaml
-git commit -m "feat(jira-assets): serve the old sync routes from the sync engine" -m "POST /sync, GET /sync/status, GET /sync/history and PATCH /config/sync keep their URLs and response shapes, now backed by the engine's manual run, run history and schedule: kind becomes sync_type, counts become objects_*, abandoned and skipped runs are failed rows coded abandoned/skipped. GET /config derives sync_enabled, sync_interval_hours and last_sync_* (newest finished manual or scheduled run that completed or failed) from the engine. POST /config writes the schedule only when the body carries sync fields. History limits are parsed defensively. The four routes are marked deprecated in swagger."
+cd Servers && npx prettier --write extensions services/automations scripts/checkExtensionSyncEngineSql.js && npm run build
+npm run generate:swagger && npm run generate:endpoints && npm run check:api-drift
+cd .. && git add Servers/extensions Servers/services/automations Servers/scripts/checkExtensionSyncEngineSql.js Servers/swagger.yaml docs/api-docs/src/config/endpoints.ts
+git commit -m "feat(jira-assets): serve the old sync routes from the sync engine" -m "POST /sync, GET /sync/status, GET /sync/history and PATCH /config/sync keep their URLs and response shapes, now backed by the engine's manual run, run history and schedule: kind becomes sync_type, counts become objects_*, abandoned and skipped runs are failed rows coded abandoned/skipped. GET /config derives sync_enabled, sync_interval_hours and last_sync_* (newest finished manual or scheduled run that completed or failed) from the engine. POST /config writes the schedule only when the body carries sync fields. History limits are parsed defensively. scripts/checkExtensionSyncEngineSql.js proves a newer abandoned or skipped run never replaces the last finished one."
 ```
 
 ---
 
-### Task 8: Tenant isolation for the engine tables and routes
+### Task 8: Tenant isolation for the engine routes
 
 **Files:**
-- Modify: `Servers/tests/integration/tenant-isolation/tenantIsolation.registry.ts` (after the `data_retention` entry, around line 146)
-- Modify: `Servers/scripts/auditTenantIsolationCoverage.ts:134-137` (`jira_assets_sync_history` justification)
-- Create: `Servers/tests/integration/tenant-isolation/extensionRuns.isolation.test.ts`
+- Modify: `Servers/tests/integration/tenant-isolation/extensionRuns.isolation.test.ts` (created in Task 1; append the route cases)
 
 **Interfaces:**
-- Consumes: `seedTwoTenantContexts`, `buildTenantContext` (harness), `cleanupDatabase` (`tests/integration/helpers.ts`), the routes from Task 5, `jiraCanSchedule` (Task 6, via `PATCH /:key/schedule`).
-- Produces: registry entity `extension_sync` covering `extension_sync_runs` and `extension_sync_settings`.
+- Consumes: `seedTwoTenantContexts`, `buildTenantContext` (harness), `cleanupDatabase` (`tests/integration/helpers.ts`), the `seedOwnerSync` and `count` helpers already in the file (Task 1), the routes from Task 5, `jiraCanSchedule` (Task 6a, via `PATCH /:key/schedule`).
+- Produces: route-level isolation cases for `GET /:key/runs/status`, `GET /:key/runs` and `PATCH /:key/schedule`. The registry entry and the audit allow-list update landed in Task 1.
 
-The integration suite needs `Servers/.env.test` pointing at a test database (`tests/testDatabaseGuard.js` refuses the dev database). If none is set up locally, push the branch and read the result of CI's backend-checks job for the integration and audit steps; do not tick those steps without a real run.
+The integration suite needs `Servers/.env.test` pointing at a test database (`tests/testDatabaseGuard.js` refuses the dev database). If none is set up locally, push the branch and read the result of CI's backend-checks job; do not tick the run step without a real run.
 
-- [ ] **Step 1: Write the isolation test**
+- [ ] **Step 1: Write the route cases**
 
-Create `Servers/tests/integration/tenant-isolation/extensionRuns.isolation.test.ts`:
+In `Servers/tests/integration/tenant-isolation/extensionRuns.isolation.test.ts`, add the harness import after `import { cleanupDatabase, seedTwoOrgsAndUsers } from "../helpers";`:
 
 ```ts
-jest.setTimeout(60000);
-
-import { QueryTypes } from "sequelize";
-import { sequelize } from "../../../database/db";
-import { cleanupDatabase, seedTwoOrgsAndUsers } from "../helpers";
 import { buildTenantContext, seedTwoTenantContexts } from "./tenantIsolation.harness";
+```
 
-/**
- * Sync engine tables (extension_sync_runs, extension_sync_settings) and the
- * generic /api/extensions/:key/runs… and /:key/schedule routes. The CRUD
- * matrix is id-based and these routes are keyed by the extension key, so this
- * file covers them by hand.
- */
+add this helper after the `count` helper:
 
+```ts
 async function enableJiraAssets(orgId: number, userId: number): Promise<void> {
   await sequelize.query(
     `INSERT INTO extension_enablements (organization_id, extension_id, enabled, enabled_at, enabled_by)
@@ -6144,48 +6343,11 @@ async function enableJiraAssets(orgId: number, userId: number): Promise<void> {
     { replacements: { orgId, userId } },
   );
 }
+```
 
-async function seedOwnerSync(orgId: number): Promise<void> {
-  await sequelize.query(
-    `INSERT INTO extension_sync_settings
-       (organization_id, extension_key, enabled, interval_hours, consecutive_failures, failing_since)
-     VALUES (:orgId, 'jira-assets', TRUE, 6, 2, now() - interval '1 hour');`,
-    { replacements: { orgId } },
-  );
-  await sequelize.query(
-    `INSERT INTO extension_sync_runs
-       (organization_id, extension_key, kind, status, counts, message, run_token,
-        started_at, completed_at)
-     VALUES (:orgId, 'jira-assets', 'manual', 'completed', jsonb_build_object('fetched', 3),
-             'owner run', 'owner-token', now() - interval '5 minutes', now());`,
-    { replacements: { orgId } },
-  );
-}
+and append at the end of the file:
 
-async function count(table: string, orgId: number): Promise<number> {
-  const [row] = await sequelize.query<{ n: string }>(
-    `SELECT COUNT(*) AS n FROM ${table} WHERE organization_id = :orgId`,
-    { replacements: { orgId }, type: QueryTypes.SELECT },
-  );
-  return Number(row.n);
-}
-
-describe("extension sync tables tenant isolation", () => {
-  afterEach(async () => {
-    await cleanupDatabase();
-  });
-
-  it("does not return org A rows when reading as org B", async () => {
-    const { orgA, orgB } = await seedTwoOrgsAndUsers();
-    await seedOwnerSync(orgA);
-
-    for (const table of ["extension_sync_settings", "extension_sync_runs"]) {
-      expect(await count(table, orgA)).toBe(1);
-      expect(await count(table, orgB)).toBe(0);
-    }
-  });
-});
-
+```ts
 describe("extension sync routes tenant isolation", () => {
   afterEach(async () => {
     await cleanupDatabase();
@@ -6274,45 +6436,17 @@ describe("extension sync routes tenant isolation", () => {
 });
 ```
 
-- [ ] **Step 2: Run the coverage test to verify it fails**
+- [ ] **Step 2: Run the isolation tests**
 
-Run: `cd Servers && npx jest -i tests/integration/tenant-isolation/tenantIsolation.coverage.test.ts`
-Expected: PASS for the existing entries; the new file is not yet referenced. Then run the audit against a migrated test database: `cd Servers && npx ts-node scripts/auditTenantIsolationCoverage.ts`
-Expected: FAIL (exit 1) naming `extension_sync_runs` and `extension_sync_settings` as uncovered scoped tables.
+Run: `cd Servers && node --max-old-space-size=8192 node_modules/jest/bin/jest.js --config jest.config.js --globalSetup="<rootDir>/tests/integration/globalSetup.js" --runInBand tests/integration/tenant-isolation/extensionRuns.isolation.test.ts`
+Expected: PASS (4 tests). Before the routes existed these cases would have failed with 404; they guard the routes from Task 5 and the Jira refusal from Task 6a. Then run `npx jest -i tests/integration/tenant-isolation/tenantIsolation.coverage.test.ts && npx ts-node scripts/auditTenantIsolationCoverage.ts` (the audit needs the migrated test database) and expect both to pass.
 
-- [ ] **Step 3: Register the tables and update the audit allow-list**
-
-In `Servers/tests/integration/tenant-isolation/tenantIsolation.registry.ts`, after the `data_retention` entry add:
-
-```ts
-  {
-    // Sync engine runs and schedules. The routes are keyed by extension key
-    // (/api/extensions/:key/runs…), not by row id, so a hand-written file covers them.
-    name: "extension_sync",
-    tables: ["extension_sync_runs", "extension_sync_settings"],
-    baseRoute: "/api/extensions/:key/runs",
-    testFile: "extensionRuns.isolation.test.ts",
-  },
-```
-
-In `Servers/scripts/auditTenantIsolationCoverage.ts`, replace the `jira_assets_sync_history` justification with:
-
-```ts
-    justification:
-      "Extension-owned table (jira-assets), no longer written or read: the sync engine's extension_sync_runs replaced it (migration 20261012200000 copied every row with its organization_id). Kept for one release so a rollback restores the old behaviour; a follow-up migration drops it.",
-```
-
-- [ ] **Step 4: Run the isolation tests and the audit**
-
-Run: `cd Servers && npx jest -i tests/integration/tenant-isolation/tenantIsolation.coverage.test.ts && node --max-old-space-size=8192 node_modules/jest/bin/jest.js --config jest.config.js --globalSetup="<rootDir>/tests/integration/globalSetup.js" --runInBand tests/integration/tenant-isolation/extensionRuns.isolation.test.ts && npx ts-node scripts/auditTenantIsolationCoverage.ts`
-Expected: PASS (coverage, 4 isolation tests), and the audit exits 0.
-
-- [ ] **Step 5: Format and commit**
+- [ ] **Step 3: Format and commit**
 
 ```bash
-cd Servers && npx prettier --write tests/integration/tenant-isolation scripts/auditTenantIsolationCoverage.ts
-cd .. && git add Servers/tests/integration/tenant-isolation Servers/scripts/auditTenantIsolationCoverage.ts
-git commit -m "test(sync-engine): tenant isolation for sync runs and schedules" -m "Registers extension_sync_runs and extension_sync_settings and covers the key-addressed routes by hand: org B sees none of org A's runs, schedule or failure streak, cannot change org A's schedule, and an Editor cannot change a schedule. The jira_assets_sync_history allow-list entry now says the table is no longer written."
+cd Servers && npx prettier --write tests/integration/tenant-isolation/extensionRuns.isolation.test.ts
+cd .. && git add Servers/tests/integration/tenant-isolation/extensionRuns.isolation.test.ts
+git commit -m "test(sync-engine): tenant isolation for the sync engine routes" -m "Covers the key-addressed routes by hand: org B sees none of org A's runs, schedule or failure streak through GET /api/extensions/jira-assets/runs/status and /runs, cannot change org A's schedule through PATCH /schedule, and an Editor cannot change a schedule."
 ```
 
 ---
@@ -6328,9 +6462,9 @@ git commit -m "test(sync-engine): tenant isolation for sync runs and schedules" 
 - Consumes: `GET /api/extensions/:key/runs/status`, `POST /api/extensions/:key/runs`, `PATCH /api/extensions/:key/schedule` (Task 5); `apiServices` (throws `CustomException` with `.status`).
 - Produces:
   - Repository: `type ExtensionRunStatus`, `interface ExtensionRun`, `interface ExtensionSchedule`, `interface ExtensionSyncStatus`, `interface SchedulePatch`, `getExtensionSyncStatus(key, signal?)`, `startExtensionRun(key)`, `updateExtensionSchedule(key, patch)`.
-  - Hook: `SYNC_POLL_MS = 3000`, `SYNC_POLL_LIMIT_MS = 1200000`, `NOT_STARTED_AFTER_POLLS = 3`, `type SyncNowOutcome = { kind: "refused"; error } | { kind: "done"; run } | { kind: "stalled" } | { kind: "not_started" } | { kind: "timeout" } | { kind: "unmounted" }`, `interface ScheduleState { enabled; interval_hours }`, `extensionSyncStatusKey(key)`, `decidePoll(status, previousRunId, idlePolls): PollStep`, `useExtensionSyncStatus(key)`, `useExtensionSync(key): { status, isLoading, isSyncing, syncNow(): Promise<SyncNowOutcome>, schedule: ScheduleState, setSchedule(patch: SchedulePatch): void, scheduleError: boolean, clearScheduleError(): void }`.
+  - Hook: `SYNC_POLL_MS = 3000`, `SYNC_POLL_LIMIT_MS = 1200000`, `NOT_STARTED_AFTER_POLLS = 3`, `type SyncNowOutcome = { kind: "refused"; error } | { kind: "done"; run } | { kind: "stalled" } | { kind: "not_started" } | { kind: "timeout" } | { kind: "unmounted" }`, `interface ScheduleState { enabled; interval_hours }`, `extensionSyncStatusKey(key)`, `decidePoll(status, previousRunId, idlePolls): PollStep`, `useExtensionSyncStatus(key)` (refetches every `SYNC_POLL_MS` while the server reports a run `running` or `queued`, so a run started elsewhere or a scheduled one never leaves the panel stuck on "Syncing..."), `interface UseExtensionSyncOptions { persistSchedule?: boolean }`, `useExtensionSync(key, options?): { status, isLoading, isSyncing, syncNow(): Promise<SyncNowOutcome>, schedule: ScheduleState, setSchedule(patch: SchedulePatch): void, scheduleError: boolean, clearScheduleError(): void }`. With `persistSchedule: false` (Jira before its connection is saved, when the schedule route answers 404), schedule changes stay local so the page can send them with its own save, as the Jira page did before.
 
-The polling rules move here unchanged from `JiraAssetsConfiguration.tsx:458-533` (`handleSyncNow`): every 3 seconds, up to 20 minutes; done when a run newer than `previousRunId` is no longer `started`; stalled when that newer run is `started` but not live; not started after 3 polls with `queued === false`, nothing running and no newer run (`queued: null` never counts). The ordered schedule saves move from `handleSyncSettingChange` (`:733-771`).
+The polling rules move here unchanged from `JiraAssetsConfiguration.tsx` (`handleSyncNow`): every 3 seconds, up to 20 minutes; done when a run newer than `previousRunId` is no longer `started`; stalled when that newer run is `started` but not live; not started after 3 polls with `queued === false`, nothing running and no newer run (`queued: null` never counts). The ordered schedule saves move from `handleSyncSettingChange`.
 
 - [ ] **Step 1: Write the failing hook tests**
 
@@ -6520,6 +6654,49 @@ describe("useExtensionSync", () => {
     expect(vi.mocked(getExtensionSyncStatus).mock.calls.length).toBe(callsBefore);
   });
 
+  it("keeps refreshing the status while a run is running or queued, then stops", async () => {
+    current = status({
+      running: true,
+      latest_run: run({ id: 41, status: "started", is_live: true, completed_at: null }),
+    });
+    await mount();
+    const calls = () => vi.mocked(getExtensionSyncStatus).mock.calls.length;
+    const afterMount = calls();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(calls()).toBe(afterMount + 1);
+
+    current = status({ latest_run: run({ id: 41 }) });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    const settled = calls();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9000);
+    });
+    expect(calls()).toBe(settled);
+  });
+
+  it("keeps schedule changes local until the connection is saved", async () => {
+    const hook = renderHook(() => useExtensionSync("jira-assets", { persistSchedule: false }), {
+      wrapper,
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await act(async () => {
+      hook.result.current.setSchedule({ enabled: false, interval_hours: 12 });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(updateExtensionSchedule).not.toHaveBeenCalled();
+    expect(hook.result.current.schedule).toEqual({ enabled: false, interval_hours: 12 });
+    expect(hook.result.current.scheduleError).toBe(false);
+  });
+
   it("returns the refusal when the run cannot start", async () => {
     vi.mocked(startExtensionRun).mockRejectedValue({ status: 409 });
     const { result } = await mount();
@@ -6700,12 +6877,28 @@ export function decidePoll(
   return { next: "wait", idlePolls: nextIdle };
 }
 
-/** The status query alone (shared cache), for pages that only display it. */
+/**
+ * The status query (shared cache). While the server reports a run running or a
+ * job queued it refetches every SYNC_POLL_MS, so a scheduled run, or one
+ * started from another tab, never leaves the panel showing "Syncing..." after
+ * it ends; it stops refetching once nothing is running or queued.
+ */
 export function useExtensionSyncStatus(key: string) {
   return useQuery({
     queryKey: extensionSyncStatusKey(key),
     queryFn: ({ signal }) => getExtensionSyncStatus(key, signal),
+    refetchInterval: (query) =>
+      query.state.data?.running || query.state.data?.queued ? SYNC_POLL_MS : false,
   });
+}
+
+export interface UseExtensionSyncOptions {
+  /**
+   * False keeps schedule changes local (no PATCH) and only reports them
+   * through `schedule`: for a page whose connection is not saved yet, which
+   * sends the schedule with its own save. Default true.
+   */
+  persistSchedule?: boolean;
 }
 
 /**
@@ -6714,7 +6907,8 @@ export function useExtensionSyncStatus(key: string) {
  * when the newest settles, the controls show the server's latest answer and an
  * error if any save in that burst failed.
  */
-export function useExtensionSync(key: string) {
+export function useExtensionSync(key: string, options: UseExtensionSyncOptions = {}) {
+  const persistSchedule = options.persistSchedule ?? true;
   const queryClient = useQueryClient();
   const statusQuery = useExtensionSyncStatus(key);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -6753,6 +6947,11 @@ export function useExtensionSync(key: string) {
     (patch: SchedulePatch) => {
       setScheduleState((prev) => ({ ...prev, ...patch }));
       setScheduleError(false);
+      if (!persistSchedule) {
+        // Not saved yet: the page sends it; it is also what a failed save reverts to.
+        savedSchedule.current = { ...(savedSchedule.current ?? schedule), ...patch };
+        return;
+      }
       const seq = ++scheduleSeq.current;
       scheduleQueue.current = scheduleQueue.current.then(async () => {
         try {
@@ -6773,7 +6972,7 @@ export function useExtensionSync(key: string) {
         burstFailed.current = false;
       });
     },
-    [key, queryClient],
+    [key, queryClient, persistSchedule, schedule],
   );
 
   const syncNow = useCallback(async (): Promise<SyncNowOutcome> => {
@@ -6833,7 +7032,7 @@ export function useExtensionSync(key: string) {
 - [ ] **Step 4: Run them to verify they pass**
 
 Run: `cd Clients && npx vitest run src/application/hooks/__tests__/useExtensionSync.test.ts`
-Expected: PASS (13 tests).
+Expected: PASS (15 tests).
 
 - [ ] **Step 5: Typecheck, format and commit**
 
@@ -6853,17 +7052,25 @@ git commit -m "feat(sync-engine): useExtensionSync hook for the generic sync rou
 - Test: `Clients/src/presentation/components/ExtensionSyncPanel/__tests__/ExtensionSyncPanel.test.tsx`
 - Modify: `Clients/src/presentation/pages/Extensions/jira-assets/runOutcome.ts` (whole file)
 - Modify: `Clients/src/presentation/pages/Extensions/jira-assets/runOutcome.test.ts` (whole file)
-- Modify: `Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguration.tsx` (line ranges below)
+- Modify: `Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguration.tsx` (anchored edits below)
 - Test: `Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguration.test.tsx`
 - Modify: `Clients/src/i18n/translations.ts` (de, fr, es blocks)
 
 **Interfaces:**
-- Consumes: `useExtensionSync`, `useExtensionSyncStatus`, `SyncNowOutcome` (Task 9); `ExtensionRun` (Task 9 repository); `Toggle`, `Select`, `CustomizableButton`, `useFormattedDate`, `getApiErrorReason`.
+- Consumes: `useExtensionSync(key, { persistSchedule })`, `useExtensionSyncStatus`, `SyncNowOutcome`, `ScheduleState` (Task 9); `ExtensionRun` (Task 9 repository); `VWToggle`, `VWSelect` (`pages/Extensions/jira-assets/VWComponents.tsx`), `CustomizableButton`, `useFormattedDate`, `getApiErrorReason`.
 - Produces:
   - `extensionRunOutcome.ts`: `SYNC_RUN_CODES`, `SYNC_RUNNING_MESSAGE`, `isAbandonedRun(run)`, `isSkippedRun(run)` (both read `status`, then `code`).
-  - `ExtensionSyncPanel` (default and named export) with props `{ extensionKey: string; canManage: boolean; scheduleDescription?: string; scheduleHelp?: string; syncNowDisabled?: boolean; describeCompletedRun?: (run: ExtensionRun) => string; onRunCompleted?: (run: ExtensionRun) => void }`; also exports `INTERVAL_PRESETS`, `intervalItems(current: number)`, `outcomeMessage(outcome, describeCompleted)`.
+  - `ExtensionSyncPanel` (default and named export) with props `{ extensionKey: string; canManage: boolean; scheduleDescription?: string; scheduleHelp?: string; showSyncNow?: boolean; syncNowDisabled?: boolean; persistSchedule?: boolean; onScheduleChange?: (schedule: ScheduleState) => void; describeCompletedRun?: (run: ExtensionRun) => string; onRunCompleted?: (run: ExtensionRun) => void }`; also exports `INTERVAL_PRESETS`, `intervalItems(current: number)`, `outcomeMessage(outcome, describeCompleted)`.
 
-The panel reproduces the Jira sync section: the "Enable automatic sync" toggle, the interval select (same five presets, plus the stored value when it is not a preset), "Sync now", the "Last sync" line (from `last_finished_run`: date, then "Successful" or the run's message; a note on a successful run shows beneath, as before), the running state, and the same outcome messages. It adds "Failing since <date>" when `consecutive_failures > 0`. Visible differences on the Jira page: "Sync now" moves from the Import header into the sync section, and the copy is sentence case ("Sync now", "Sync interval"). Before a connection is saved the page shows "Save the connection to set up automatic sync." instead of the controls (the schedule route answers 404 until then, as `PATCH /config/sync` did).
+**Visible changes on the Jira Assets page.** The panel reproduces today's sync section with the same components and layout: `VWToggle` with "Enable automatic sync" and the page's description, `VWSelect` with the same five presets (plus a stored value that is not a preset), the same caption, the same "Could not save the sync settings. Try again." alert, and the same "Last sync: <date> - Successful" line (or the run's message; a note on a successful run below it), with the same severities. Before a connection is saved the schedule stays a local draft that the page sends with "Save Configuration", as before. "Sync now" is shown under today's condition (a saved connection and a selected object type) and disabled under today's rules (no imported use cases, or a run going). The only changes:
+
+1. "Failing since <date>" while scheduled runs keep failing (the intended addition).
+2. "Sync now" and its outcome message sit in the sync section instead of the Import & Sync header.
+3. Sentence-case labels: "Sync interval" (was "Sync Interval") and "Sync now" (was "Sync Now").
+
+"Sync now" is a `CustomizableButton` (outlined, 30px) as spec section 6 requires, in place of the page's MUI `Button` with hand-written green styles.
+
+The panel imports `VWToggle` and `VWSelect` from the Jira Assets folder because the section must look exactly as it does today; a later change can move `VWComponents.tsx` into `presentation/components` once a second extension uses the panel.
 
 - [ ] **Step 1: Write the failing panel, outcome and page tests**
 
@@ -6889,7 +7096,7 @@ Create `Clients/src/presentation/components/ExtensionSyncPanel/__tests__/Extensi
 
 ```tsx
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ThemeProvider } from "@mui/material";
 import { light } from "../../../themes";
 import type {
@@ -6899,7 +7106,7 @@ import type {
 
 const mockUseExtensionSync = vi.fn();
 vi.mock("../../../../application/hooks/useExtensionSync", () => ({
-  useExtensionSync: (key: string) => mockUseExtensionSync(key),
+  useExtensionSync: (key: string, options: unknown) => mockUseExtensionSync(key, options),
 }));
 vi.mock("../../../../application/hooks/useFormattedDate", () => ({
   default: () => () => "12-10-2026 10:00",
@@ -6944,38 +7151,60 @@ const renderPanel = (props: Record<string, unknown> = {}) =>
       <ExtensionSyncPanel extensionKey="jira-assets" canManage {...props} />
     </ThemeProvider>,
   );
+/** VWToggle renders an unlabelled MUI Switch: its checkbox input. */
+const toggle = (container: HTMLElement) =>
+  container.querySelector('input[type="checkbox"]') as HTMLInputElement;
 
 describe("ExtensionSyncPanel", () => {
   beforeEach(() => mockUseExtensionSync.mockReset());
 
   it("idle: schedule off, Sync now enabled, no last sync", () => {
     mockUseExtensionSync.mockReturnValue(hookState());
-    renderPanel();
-    expect(mockUseExtensionSync).toHaveBeenCalledWith("jira-assets");
-    expect(screen.getByLabelText("Enable automatic sync")).not.toBeChecked();
+    const { container } = renderPanel();
+    expect(mockUseExtensionSync).toHaveBeenCalledWith("jira-assets", { persistSchedule: true });
+    expect(screen.getByText("Enable automatic sync")).toBeInTheDocument();
+    expect(toggle(container)).not.toBeChecked();
     expect(screen.queryByText("Sync interval")).toBeNull();
     expect(screen.getByRole("button", { name: "Sync now" })).toBeEnabled();
-    expect(screen.queryByText("Last sync")).toBeNull();
+    expect(screen.queryByText(/Last sync/)).toBeNull();
     expect(screen.queryByText("Failing since")).toBeNull();
   });
 
   it("saves the schedule when the toggle changes", () => {
     const state = hookState();
     mockUseExtensionSync.mockReturnValue(state);
-    renderPanel();
-    fireEvent.click(screen.getByLabelText("Enable automatic sync"));
+    const { container } = renderPanel();
+    fireEvent.click(toggle(container));
     expect(state.setSchedule).toHaveBeenCalledWith({ enabled: true });
   });
 
-  it("running: Sync now shows the run and is disabled", () => {
-    mockUseExtensionSync.mockReturnValue(hookState({ status: status({ running: true }) }));
+  it("keeps the schedule local and reports it to the page before a connection is saved", () => {
+    const onScheduleChange = vi.fn();
+    mockUseExtensionSync.mockReturnValue(hookState({ schedule: { enabled: true, interval_hours: 6 } }));
+    renderPanel({ persistSchedule: false, onScheduleChange });
+    expect(mockUseExtensionSync).toHaveBeenCalledWith("jira-assets", { persistSchedule: false });
+    expect(onScheduleChange).toHaveBeenCalledWith({ enabled: true, interval_hours: 6 });
+  });
+
+  it.each([
+    ["running", { running: true }],
+    ["queued", { queued: true }],
+  ])("%s: Sync now shows the run and is disabled", (_label, over) => {
+    mockUseExtensionSync.mockReturnValue(hookState({ status: status(over) }));
     renderPanel();
     expect(screen.getByRole("button", { name: /Syncing/ })).toBeDisabled();
+  });
+
+  it("hides Sync now when the page says so", () => {
+    mockUseExtensionSync.mockReturnValue(hookState());
+    renderPanel({ showSyncNow: false });
+    expect(screen.queryByRole("button", { name: "Sync now" })).toBeNull();
   });
 
   it("shows the interval when the schedule is on", () => {
     mockUseExtensionSync.mockReturnValue(hookState({ schedule: { enabled: true, interval_hours: 6 } }));
     renderPanel();
+    expect(screen.getByText("Sync interval")).toBeInTheDocument();
     expect(screen.getByText("Every 6 hours")).toBeInTheDocument();
   });
 
@@ -7002,36 +7231,66 @@ describe("ExtensionSyncPanel", () => {
     expect(screen.getByText("Failing since")).toBeInTheDocument();
   });
 
-  it("last sync: a successful run, and a failed one with its message", () => {
+  it("last sync: the same line as before, successful or with the run's message", () => {
     mockUseExtensionSync.mockReturnValue(hookState({ status: status({ last_finished_run: run() }) }));
     const { unmount } = renderPanel();
-    expect(screen.getByText("Last sync")).toBeInTheDocument();
-    expect(screen.getByText("Successful")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Last sync: 12-10-2026 10:00 - Successful");
     unmount();
 
     mockUseExtensionSync.mockReturnValue(
-      hookState({ status: status({ last_finished_run: run({ status: "failed", message: "Jira returned 401" }) }) }),
+      hookState({
+        status: status({ last_finished_run: run({ status: "failed", message: "Jira returned 401" }) }),
+      }),
     );
     renderPanel();
-    expect(screen.getByText("Jira returned 401")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Last sync: 12-10-2026 10:00 - Jira returned 401",
+    );
   });
 
   it.each([
     [
       "skipped",
-      { kind: "done", run: run({ status: "skipped", code: "skipped", message: "Another sync or import was running, so this sync did not start." }) },
+      {
+        kind: "done",
+        run: run({
+          status: "skipped",
+          code: "skipped",
+          message: "Another sync or import was running, so this sync did not start.",
+        }),
+      },
       "Another sync or import was running, so this sync did not start.",
     ],
-    ["abandoned", { kind: "done", run: run({ status: "abandoned", code: "abandoned" }) }, "The sync stopped responding. Try again."],
+    [
+      "abandoned",
+      { kind: "done", run: run({ status: "abandoned", code: "abandoned" }) },
+      "The sync stopped responding. Try again.",
+    ],
     ["stalled", { kind: "stalled" }, "The sync stopped responding. Try again."],
     ["not started", { kind: "not_started" }, "The sync did not start. Try again."],
-    ["timeout", { kind: "timeout" }, "The sync is taking longer than expected. Check the last sync result later."],
-    ["409", { kind: "refused", error: { status: 409 } }, "A sync is already running. Try again when it finishes."],
-    ["failed", { kind: "done", run: run({ status: "failed", message: "Jira returned 500" }) }, "Jira returned 500"],
+    [
+      "timeout",
+      { kind: "timeout" },
+      "The sync is taking longer than expected. Check the last sync result later.",
+    ],
+    [
+      "409",
+      { kind: "refused", error: { status: 409 } },
+      "A sync is already running. Try again when it finishes.",
+    ],
+    [
+      "failed",
+      { kind: "done", run: run({ status: "failed", message: "Jira returned 500" }) },
+      "Jira returned 500",
+    ],
   ])("%s: Sync now reports the outcome", async (_label, outcome, text) => {
-    mockUseExtensionSync.mockReturnValue(hookState({ syncNow: vi.fn().mockResolvedValue(outcome) }));
+    mockUseExtensionSync.mockReturnValue(
+      hookState({ syncNow: vi.fn().mockResolvedValue(outcome) }),
+    );
     renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
+    });
     expect(await screen.findByText(text)).toBeInTheDocument();
   });
 
@@ -7045,15 +7304,17 @@ describe("ExtensionSyncPanel", () => {
       describeCompletedRun: (r: ExtensionRun) => `Sync completed: ${r.counts.created} created`,
       onRunCompleted,
     });
-    fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
+    });
     expect(await screen.findByText("Sync completed: 2 created")).toBeInTheDocument();
     expect(onRunCompleted).toHaveBeenCalledWith(done);
   });
 
   it("non-admins cannot change the schedule or sync", () => {
     mockUseExtensionSync.mockReturnValue(hookState());
-    renderPanel({ canManage: false });
-    expect(screen.getByLabelText("Enable automatic sync")).toBeDisabled();
+    const { container } = renderPanel({ canManage: false });
+    expect(toggle(container)).toBeDisabled();
     expect(screen.getByRole("button", { name: "Sync now" })).toBeDisabled();
   });
 });
@@ -7063,7 +7324,7 @@ Create `Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfigur
 
 ```tsx
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ThemeProvider } from "@mui/material";
 import { light } from "../../../themes";
 
@@ -7084,10 +7345,11 @@ vi.mock("../../../../application/hooks/useFormattedDate", () => ({
   default: () => () => "12-10-2026",
 }));
 const mockGet = vi.fn();
+const mockPost = vi.fn();
 vi.mock("../../../../infrastructure/api/networkServices", () => ({
   apiServices: {
     get: (url: string) => mockGet(url),
-    post: vi.fn(),
+    post: (url: string, body: unknown) => mockPost(url, body),
     put: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
@@ -7096,7 +7358,7 @@ vi.mock("../../../../infrastructure/api/networkServices", () => ({
 
 import JiraAssetsConfiguration from "./JiraAssetsConfiguration";
 
-const CONFIG = {
+const SAVED = {
   id: 1,
   jira_base_url: "https://x.atlassian.net",
   workspace_id: "w",
@@ -7114,32 +7376,56 @@ const renderPage = () =>
     </ThemeProvider>,
   );
 
+const lastPanelProps = () =>
+  panelProps.mock.calls[panelProps.mock.calls.length - 1][0] as Record<string, any>;
+
 describe("JiraAssetsConfiguration sync section", () => {
   beforeEach(() => {
     panelProps.mockReset();
+    mockPost.mockReset();
     mockGet.mockImplementation(async (url: string) => ({
-      data: { data: url.endsWith("/config") ? CONFIG : [] },
+      data: { data: url.endsWith("/config") ? SAVED : [] },
     }));
   });
 
-  it("renders the shared sync panel for jira-assets once the connection is saved", async () => {
+  it("renders the shared sync panel for jira-assets, with Sync now under today's rules", async () => {
     renderPage();
     expect(await screen.findByTestId("shared-sync-panel")).toBeInTheDocument();
-    expect(panelProps).toHaveBeenLastCalledWith(
-      expect.objectContaining({ extensionKey: "jira-assets", canManage: true, syncNowDisabled: true }),
-    );
+    await waitFor(() => expect(lastPanelProps().persistSchedule).toBe(true));
+    expect(lastPanelProps()).toMatchObject({
+      extensionKey: "jira-assets",
+      canManage: true,
+      showSyncNow: true,
+      syncNowDisabled: true,
+    });
     expect(screen.queryByRole("button", { name: "Sync Now" })).toBeNull();
   });
 
-  it("asks for the connection first when none is saved", async () => {
+  it("before the first save, keeps the schedule as a draft and sends it with the connection", async () => {
     mockGet.mockImplementation(async (url: string) => ({
-      data: { data: url.endsWith("/config") ? null : [] },
+      data: {
+        data: url.endsWith("/config")
+          ? { jira_base_url: "https://x.atlassian.net", workspace_id: "w", email: "a@b.co", api_token: "t" }
+          : [],
+      },
     }));
+    mockPost.mockResolvedValue({ data: { data: { success: true } } });
     renderPage();
-    expect(
-      await screen.findByText("Save the connection to set up automatic sync."),
-    ).toBeInTheDocument();
-    expect(screen.queryByTestId("shared-sync-panel")).toBeNull();
+    await screen.findByTestId("shared-sync-panel");
+    await waitFor(() => expect(lastPanelProps().persistSchedule).toBe(false));
+    expect(lastPanelProps().showSyncNow).toBe(false);
+
+    act(() => {
+      lastPanelProps().onScheduleChange({ enabled: true, interval_hours: 6 });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save Configuration" }));
+    });
+
+    expect(mockPost).toHaveBeenCalledWith(
+      "/extensions/jira-assets/config",
+      expect.objectContaining({ sync_enabled: true, sync_interval_hours: 6 }),
+    );
   });
 });
 ```
@@ -7207,15 +7493,17 @@ export const REMOVAL_INTERRUPTED_MESSAGE =
 Create `Clients/src/presentation/components/ExtensionSyncPanel/index.tsx`:
 
 ```tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Box, Stack, Typography } from "@mui/material";
 import { RefreshCw } from "lucide-react";
-import Toggle from "../Inputs/Toggle";
-import Select from "../Inputs/Select";
+// The section must look exactly as it does on the Jira Assets page today, so
+// it reuses that page's controls.
+import { VWSelect, VWToggle } from "../../pages/Extensions/jira-assets/VWComponents";
 import { CustomizableButton } from "../button/customizable-button";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import {
   useExtensionSync,
+  type ScheduleState,
   type SyncNowOutcome,
 } from "../../../application/hooks/useExtensionSync";
 import type { ExtensionRun } from "../../../application/repository/extensionSync.repository";
@@ -7282,7 +7570,9 @@ export function outcomeMessage(
     case "done": {
       const { run } = outcome;
       if (isAbandonedRun(run)) return { type: "error", text: SYNC_STALLED_MESSAGE };
-      if (isSkippedRun(run)) return { type: "error", text: run.message || SYNC_NOT_STARTED_MESSAGE };
+      if (isSkippedRun(run)) {
+        return { type: "error", text: run.message || SYNC_NOT_STARTED_MESSAGE };
+      }
       if (run.status === "completed") return { type: "success", text: describeCompleted(run) };
       return { type: "error", text: run.message || SYNC_FAILED_MESSAGE };
     }
@@ -7296,7 +7586,13 @@ export interface ExtensionSyncPanelProps {
   canManage: boolean;
   scheduleDescription?: string;
   scheduleHelp?: string;
+  /** Show "Sync now" (Jira: once a connection and an object type are saved). Default true. */
+  showSyncNow?: boolean;
   syncNowDisabled?: boolean;
+  /** False before the extension's connection is saved: schedule changes stay a local draft. */
+  persistSchedule?: boolean;
+  /** Called with the schedule shown, so a page can send a draft with its own save. */
+  onScheduleChange?: (schedule: ScheduleState) => void;
   /** The success line for a completed "Sync now" run. */
   describeCompletedRun?: (run: ExtensionRun) => string;
   onRunCompleted?: (run: ExtensionRun) => void;
@@ -7304,26 +7600,33 @@ export interface ExtensionSyncPanelProps {
 
 /**
  * The sync section shared by extensions on the sync engine: automatic sync and
- * its interval, "Sync now", the last finished sync, the running state, the
- * outcome of the last click, and "Failing since" while scheduled runs keep
- * failing.
+ * its interval, the last finished sync, "Failing since" while scheduled runs
+ * keep failing, "Sync now" with the running state (a run going or a job
+ * queued) and the outcome of the last click.
  */
 export function ExtensionSyncPanel({
   extensionKey,
   canManage,
   scheduleDescription,
   scheduleHelp,
+  showSyncNow = true,
   syncNowDisabled = false,
+  persistSchedule = true,
+  onScheduleChange,
   describeCompletedRun = () => SYNC_COMPLETED_MESSAGE,
   onRunCompleted,
 }: ExtensionSyncPanelProps) {
   const formatDate = useFormattedDate();
-  const sync = useExtensionSync(extensionKey);
+  const sync = useExtensionSync(extensionKey, { persistSchedule });
   const [message, setMessage] = useState<PanelMessage | null>(null);
   const lastFinished = sync.status?.last_finished_run ?? null;
   const failures = sync.status?.schedule?.consecutive_failures ?? 0;
   const failingSince = sync.status?.schedule?.failing_since ?? null;
-  const running = sync.isSyncing || !!sync.status?.running;
+  const running = sync.isSyncing || !!sync.status?.running || !!sync.status?.queued;
+
+  useEffect(() => {
+    onScheduleChange?.(sync.schedule);
+  }, [sync.schedule, onScheduleChange]);
 
   const handleSyncNow = async () => {
     setMessage(null);
@@ -7336,100 +7639,99 @@ export function ExtensionSyncPanel({
   };
 
   return (
-    <Stack sx={{ gap: "16px" }} data-testid={`extension-sync-panel-${extensionKey}`}>
-      <Box sx={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-        <Toggle
-          checked={sync.schedule.enabled}
-          onChange={(event) => sync.setSchedule({ enabled: event.target.checked })}
-          disabled={!canManage}
-          ariaLabel="Enable automatic sync"
-        />
+    <Box data-testid={`extension-sync-panel-${extensionKey}`}>
+      <Stack spacing="20px">
         <Box>
-          <Typography sx={{ fontSize: "13px", fontWeight: 500 }}>Enable automatic sync</Typography>
-          {scheduleDescription && (
-            <Typography sx={{ fontSize: "12px", color: "text.secondary" }}>
-              {scheduleDescription}
-            </Typography>
-          )}
-        </Box>
-      </Box>
-
-      {sync.schedule.enabled && (
-        <Box>
-          <Select
-            id={`${extensionKey}-sync-interval`}
-            label="Sync interval"
-            value={sync.schedule.interval_hours}
-            items={intervalItems(sync.schedule.interval_hours)}
-            onChange={(event) => sync.setSchedule({ interval_hours: Number(event.target.value) })}
+          <VWToggle
+            checked={sync.schedule.enabled}
+            onChange={(event) => sync.setSchedule({ enabled: event.target.checked })}
             disabled={!canManage}
+            label="Enable automatic sync"
+            description={scheduleDescription}
           />
-          {scheduleHelp && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ mt: "4px", display: "block" }}
-            >
-              {scheduleHelp}
-            </Typography>
-          )}
         </Box>
-      )}
 
-      {sync.scheduleError && (
-        <Alert severity="error" sx={{ fontSize: "13px" }} onClose={sync.clearScheduleError}>
-          Could not save the sync settings. Try again.
-        </Alert>
-      )}
+        {sync.schedule.enabled && (
+          <Box>
+            <VWSelect
+              id={`${extensionKey}-sync-interval`}
+              label="Sync interval"
+              value={sync.schedule.interval_hours}
+              onChange={(event) => sync.setSchedule({ interval_hours: Number(event.target.value) })}
+              disabled={!canManage}
+              items={intervalItems(sync.schedule.interval_hours)}
+            />
+            {scheduleHelp && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mt: "4px", display: "block" }}
+              >
+                {scheduleHelp}
+              </Typography>
+            )}
+          </Box>
+        )}
+
+        {sync.scheduleError && (
+          <Alert severity="error" sx={{ fontSize: "13px" }} onClose={sync.clearScheduleError}>
+            Could not save the sync settings. Try again.
+          </Alert>
+        )}
+      </Stack>
 
       {failures > 0 && failingSince && (
-        <Alert severity="warning" sx={{ fontSize: "13px" }}>
-          <span>Failing since</span>{" "}
-          <span>{formatDate(new Date(failingSince), { includeTime: true })}</span>
-        </Alert>
+        <Box sx={{ mt: "16px" }}>
+          <Alert severity="warning" sx={{ fontSize: "13px" }}>
+            <span>Failing since</span>{" "}
+            <span>{formatDate(new Date(failingSince), { includeTime: true })}</span>
+          </Alert>
+        </Box>
       )}
 
       {lastFinished?.completed_at && (
-        <Alert
-          severity={
-            lastFinished.status === "completed" && !lastFinished.message ? "success" : "warning"
-          }
-          sx={{ fontSize: "13px" }}
-        >
-          <span>Last sync</span>{" "}
-          <span>{formatDate(new Date(lastFinished.completed_at), { includeTime: true })}</span>
-          {" - "}
-          {lastFinished.status === "completed" ? (
-            <span>Successful</span>
-          ) : (
-            <span>{lastFinished.message}</span>
-          )}
-          {lastFinished.status === "completed" && lastFinished.message && (
-            <Box component="span" sx={{ display: "block", mt: "4px" }}>
-              {lastFinished.message}
-            </Box>
-          )}
-        </Alert>
+        <Box sx={{ mt: "16px" }}>
+          <Alert
+            severity={
+              lastFinished.status === "completed" && !lastFinished.message ? "success" : "warning"
+            }
+            sx={{ fontSize: "13px" }}
+          >
+            Last sync: {formatDate(new Date(lastFinished.completed_at), { includeTime: true })} -{" "}
+            {lastFinished.status === "completed" ? "Successful" : lastFinished.message}
+            {lastFinished.status === "completed" && lastFinished.message && (
+              <Box component="span" sx={{ display: "block", mt: "4px" }}>
+                {lastFinished.message}
+              </Box>
+            )}
+          </Alert>
+        </Box>
       )}
 
-      <Box>
-        <CustomizableButton
-          variant="outlined"
-          text={running ? "Syncing..." : "Sync now"}
-          startIcon={<RefreshCw size={14} strokeWidth={1.5} />}
-          onClick={handleSyncNow}
-          isDisabled={!canManage || running || syncNowDisabled}
-          testId={`${extensionKey}-sync-now`}
-          sx={CONTROL_HEIGHT_SX}
-        />
-      </Box>
+      {showSyncNow && (
+        <Box sx={{ mt: "16px" }}>
+          <CustomizableButton
+            variant="outlined"
+            text={running ? "Syncing..." : "Sync now"}
+            startIcon={<RefreshCw size={14} strokeWidth={1.5} />}
+            onClick={handleSyncNow}
+            isDisabled={!canManage || running || syncNowDisabled}
+            testId={`${extensionKey}-sync-now`}
+            sx={CONTROL_HEIGHT_SX}
+          />
+        </Box>
+      )}
 
       {message && (
-        <Alert severity={message.type} sx={{ fontSize: "13px" }} onClose={() => setMessage(null)}>
+        <Alert
+          severity={message.type}
+          sx={{ mt: "16px", fontSize: "13px" }}
+          onClose={() => setMessage(null)}
+        >
           {message.text}
         </Alert>
       )}
-    </Stack>
+    </Box>
   );
 }
 
@@ -7438,10 +7740,11 @@ export default ExtensionSyncPanel;
 
 - [ ] **Step 5: Switch the Jira Assets page to the shared panel**
 
-In `Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguration.tsx` (line numbers from develop `c5d8f439b`; apply bottom-up):
+In `Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguration.tsx`, apply strictly in this order (bottom of the file first), with no reformatting until Step 8:
 
-1. **Lines 1162-1177** (the `Sync Now` `<Button …>…</Button>` in the Import & Sync header): delete; the `Import` button stays.
-2. **Lines 1157-1158**: replace
+1. In the Import & Sync header, delete the `Sync Now` button: the `<Button` element whose props start `variant="outlined"` and `startIcon={isSyncing ? <CircularProgress size={14} /> : <RefreshCw size={14} />}` and whose text is `{isSyncing ? "Syncing..." : "Sync Now"}`, through its `</Button>`. The `Import` button after it stays.
+
+2. Replace
 
 ```tsx
                 {localConfig.last_sync_at &&
@@ -7454,43 +7757,77 @@ In `Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguratio
                 {lastSyncAt && ` • Last sync: ${formatDate(new Date(lastSyncAt), { includeTime: true })}`}
 ```
 
-3. **Lines 1076-1142** (from `      <Stack spacing={2.5}>` after the "Step 3: Sync Settings" heading through the closing `)}` of the `{/* Last Sync Info */}` block): replace with
+3. Replace the sync section's body: from the `      <Stack spacing={2.5}>` that directly follows the `Step 3: Sync Settings` heading's closing `</Typography>`, through the `)}` that closes the `{/* Last Sync Info */}` block (the last line before `{/* Import Section - Only show if config is saved and object type is selected */}`), with:
 
 ```tsx
-      {localConfig.has_api_token ? (
-        <ExtensionSyncPanel
-          extensionKey="jira-assets"
-          canManage={canManageSync}
-          scheduleDescription="Automatically sync data from JIRA on a schedule"
-          scheduleHelp="Automatic sync refreshes use cases you have imported. It does not import new objects or remove any."
-          syncNowDisabled={importedUseCases.length === 0}
-          describeCompletedRun={describeJiraSync}
-          onRunCompleted={() => {
-            void loadImportedUseCases();
-          }}
-        />
-      ) : (
-        <Typography variant="body2" fontSize={13} color="text.secondary">
-          Save the connection to set up automatic sync.
-        </Typography>
-      )}
+      <ExtensionSyncPanel
+        extensionKey="jira-assets"
+        canManage={canManageSync}
+        scheduleDescription="Automatically sync data from JIRA on a schedule"
+        scheduleHelp="Automatic sync refreshes use cases you have imported. It does not import new objects or remove any."
+        persistSchedule={!!localConfig.has_api_token}
+        onScheduleChange={handleScheduleDraft}
+        showSyncNow={!!(localConfig.has_api_token && localConfig.selected_object_type_id)}
+        syncNowDisabled={importedUseCases.length === 0}
+        describeCompletedRun={describeJiraSync}
+        onRunCompleted={() => {
+          void loadImportedUseCases();
+        }}
+      />
 ```
 
-4. **Lines 817-823** (`syncIntervalOptions`): delete.
-5. **Lines 733-771** (the comment and `handleSyncSettingChange`): delete.
-6. **Lines 667-668** in `handleSaveConfig` (`sync_enabled: …` and `sync_interval_hours: …`): delete; the schedule is saved by the panel.
-7. **Lines 443-533** (`readSyncStatus` and `handleSyncNow` with their comments): delete.
-8. **Lines 251-254** in `loadConfig` (the `savedSyncSettings.current = { … };` statement): delete.
-9. **Lines 226-233** (the sync-settings comment, `syncSettingsQueue`, `syncSettingsSeq`, `syncSettingsBurstFailed`, `savedSyncSettings`): delete; keep the selection refs on lines 234-236.
-10. **Lines 214-215** (`isSyncing` and `syncSettingsError` state): delete. After `const canManageSync = userRoleName === "Admin";` (line 135) add:
+4. Delete `const syncIntervalOptions = [` through its closing `];`.
+
+5. Delete `handleSyncSettingChange` with its comment (from `  // Sync settings sit below the Save Configuration button, so persist them on` through the function's closing `  };`).
+
+6. In `handleSaveConfig`, replace
+
+```tsx
+        sync_enabled: localConfig.sync_enabled || false,
+        sync_interval_hours: localConfig.sync_interval_hours || 24,
+```
+
+   with
+
+```tsx
+        // Before the first save the schedule has no connection to attach to,
+        // so the panel's draft travels with the connection, as it always did.
+        ...(localConfig.has_api_token ? {} : scheduleDraft.current),
+```
+
+7. Delete `readSyncStatus` and `handleSyncNow` with their comments (from `  // Re-read the last-sync fields (not the connection form, which may hold` through the closing `  };` of `handleSyncNow`, right after `setSyncMessage({ type: "error", text: run.error_message || "Sync failed" });` and its closing `}`).
+
+8. In `loadConfig`, delete the statement `          savedSyncSettings.current = {` … `          };` (four lines).
+
+9. Delete the sync-settings refs with their comment (from `  // Sync-setting saves run one at a time, in order (each PATCH sends only the` through `  const savedSyncSettings = useRef<SyncSettings | null>(null);`); keep the selection refs that follow.
+
+10. Delete `  const [isSyncing, setIsSyncing] = useState(false);` and `  const [syncSettingsError, setSyncSettingsError] = useState(false);`. After `  const canManageSync = userRoleName === "Admin";` add:
 
 ```tsx
   // The "Last sync" date in the Import & Sync header comes from the sync engine.
   const syncStatus = useExtensionSyncStatus("jira-assets");
   const lastSyncAt = syncStatus.data?.last_finished_run?.completed_at ?? null;
+  // Before the connection is saved, the panel's schedule is a draft sent with it.
+  const scheduleDraft = useRef({ sync_enabled: false, sync_interval_hours: 24 });
+  const handleScheduleDraft = useCallback((schedule: ScheduleState) => {
+    scheduleDraft.current = {
+      sync_enabled: schedule.enabled,
+      sync_interval_hours: schedule.interval_hours,
+    };
+  }, []);
 ```
 
-11. **Lines 163-167**: replace the initial `localConfig` with
+11. Replace the initial `localConfig`
+
+```tsx
+  const [localConfig, setLocalConfig] = useState<Record<string, any>>({
+    deployment_type: "cloud",
+    sync_enabled: false,
+    sync_interval_hours: 24,
+  });
+```
+
+   with
 
 ```tsx
   const [localConfig, setLocalConfig] = useState<Record<string, any>>({
@@ -7498,7 +7835,7 @@ In `Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguratio
   });
 ```
 
-12. **Lines 85-93** (`NOT_STARTED_AFTER_POLLS`, `SYNC_POLL_MS`, `SYNC_POLL_LIMIT_MS`, `sleep`, `SyncSettings`) and **lines 74-75, 77-78** (`SYNC_SLOW_MESSAGE`, `SYNC_STALLED_MESSAGE`, `SYNC_NOT_STARTED_MESSAGE`): delete. After `const CONTROL_HEIGHT_SX = { height: 30, minHeight: 30 };` add:
+12. Delete the constants `NOT_STARTED_AFTER_POLLS`, `SYNC_POLL_MS`, `SYNC_POLL_LIMIT_MS` (with their comments), `const sleep = …`, `type SyncSettings = …`, `SYNC_SLOW_MESSAGE` (two lines), `SYNC_STALLED_MESSAGE` and `SYNC_NOT_STARTED_MESSAGE`. After `const CONTROL_HEIGHT_SX = { height: 30, minHeight: 30 };` add:
 
 ```tsx
 /** The "Sync now" success line, as the page showed it before the shared panel. */
@@ -7507,51 +7844,45 @@ function describeJiraSync(run: ExtensionRun): string {
 }
 ```
 
-13. **Imports (lines 22-30):** change `import { RefreshCw, Download } from "lucide-react";` to `import { Download } from "lucide-react";`; change `import { VWField, VWSelect, VWToggle } from "./VWComponents";` to `import { VWField, VWSelect } from "./VWComponents";`; delete `import { isAbandonedRun, SYNC_RUNNING_MESSAGE } from "./runOutcome";`; and add:
+13. Imports: change `import { RefreshCw, Download } from "lucide-react";` to `import { Download } from "lucide-react";`; change `import { VWField, VWSelect, VWToggle } from "./VWComponents";` to `import { VWField, VWSelect } from "./VWComponents";` (the panel now renders the toggle); delete `import { isAbandonedRun, SYNC_RUNNING_MESSAGE } from "./runOutcome";`; and add:
 
 ```tsx
 import ExtensionSyncPanel from "../../../components/ExtensionSyncPanel";
-import { useExtensionSyncStatus } from "../../../../application/hooks/useExtensionSync";
+import {
+  useExtensionSyncStatus,
+  type ScheduleState,
+} from "../../../../application/hooks/useExtensionSync";
 import type { ExtensionRun } from "../../../../application/repository/extensionSync.repository";
 ```
 
-After these edits `grep -n "isSyncing\|syncSettings\|handleSyncNow\|readSyncStatus\|SYNC_POLL\|sleep(\|VWToggle\|RefreshCw" Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguration.tsx` prints nothing.
+After these edits `grep -n "isSyncing\|syncSettings\|handleSyncNow\|readSyncStatus\|SYNC_POLL\|sleep(\|RefreshCw\|handleSyncSettingChange" Clients/src/presentation/pages/Extensions/jira-assets/JiraAssetsConfiguration.tsx` prints nothing.
 
 - [ ] **Step 6: Add the translations**
 
-Check none of the new keys exist yet: `grep -cE '^    "(Sync interval|Last sync|Failing since|Sync completed\.|Save the connection to set up automatic sync\.)":' Clients/src/i18n/translations.ts` prints `0`.
+Check none of the new keys exist yet: `grep -cE '^    "(Sync interval|Failing since|Sync completed\.)":' Clients/src/i18n/translations.ts` prints `0`. ("Last sync: …" keeps the page's existing text node; "Sync now", "Syncing...", the presets and the alerts already have entries.)
 
 In `Clients/src/i18n/translations.ts`, after the de line `    "Enable automatic sync": "Automatische Synchronisierung aktivieren",` add:
 
 ```ts
     "Sync interval": "Synchronisierungsintervall",
-    "Last sync": "Letzte Synchronisierung",
     "Failing since": "Fehlgeschlagen seit",
     "Sync completed.": "Synchronisierung abgeschlossen.",
-    "Save the connection to set up automatic sync.":
-      "Speichern Sie die Verbindung, um die automatische Synchronisierung einzurichten.",
 ```
 
 after the fr line `    "Enable automatic sync": "Activer la synchronisation automatique",` add:
 
 ```ts
     "Sync interval": "Intervalle de synchronisation",
-    "Last sync": "Dernière synchronisation",
     "Failing since": "En échec depuis",
     "Sync completed.": "Synchronisation terminée.",
-    "Save the connection to set up automatic sync.":
-      "Enregistrez la connexion pour configurer la synchronisation automatique.",
 ```
 
 and after the es line `    "Enable automatic sync": "Activar sincronización automática",` add:
 
 ```ts
     "Sync interval": "Intervalo de sincronización",
-    "Last sync": "Última sincronización",
     "Failing since": "Con errores desde",
     "Sync completed.": "Sincronización completada.",
-    "Save the connection to set up automatic sync.":
-      "Guarde la conexión para configurar la sincronización automática.",
 ```
 
 - [ ] **Step 7: Run the tests to verify they pass**
@@ -7564,19 +7895,20 @@ Expected: PASS (panel, page, run outcome, batching and hook suites).
 ```bash
 cd Clients && npx prettier --write src/application/utils/extensionRunOutcome.ts src/presentation/components/ExtensionSyncPanel src/presentation/pages/Extensions/jira-assets src/i18n/translations.ts && npm run typecheck && npm run i18n:audit:strict && npm run format-check
 cd .. && git add Clients/src
-git commit -m "feat(sync-engine): shared ExtensionSyncPanel, used by Jira Assets" -m "ExtensionSyncPanel reproduces the Jira Assets sync section on top of useExtensionSync: the automatic sync toggle, the interval (presets plus a stored value outside them), Sync now, the last finished sync, the running state and the same outcome messages, read from the run's status and code. It adds Failing since <date> while scheduled runs keep failing. The Jira Assets page renders it in place of its own sync code; runOutcome.ts re-exports the shared readers. Sentence-case copy with de, fr and es translations."
+git commit -m "feat(sync-engine): shared ExtensionSyncPanel, used by Jira Assets" -m "ExtensionSyncPanel reproduces the Jira Assets sync section with the page's own controls on top of useExtensionSync: the automatic sync toggle, the interval (presets plus a stored value outside them), the same Last sync line, the running state (a run going or a job queued) and the same outcome messages, read from the run's status and code. It adds Failing since <date> while scheduled runs keep failing. Before a connection is saved the schedule stays a draft sent with Save Configuration, as before.
+
+The Jira Assets page renders it in place of its own sync code; Sync now and its message move into the sync section, and labels are sentence case. runOutcome.ts re-exports the shared readers. de, fr and es translations for the new strings."
 ```
 
 ---
 
-### Task 11: Docs, swagger and endpoint registry, final gates
+### Task 11: Docs, CLAUDE.md reference, API-docs check, final gates
 
 **Files:**
-- Modify: `docs/technical/infrastructure/extensions.md:106` (data table row) and `:314-686` ("Scheduled sync")
-- Modify: `docs/technical/infrastructure/automations.md:97,214,223`
-- Modify: `Servers/swagger.yaml` (regenerated, then the four generic operations described)
-- Modify: `docs/api-docs/src/config/endpoints.ts` (regenerated)
-- Modify: `Servers/CLAUDE.md:3` only if a rule there changed (none does in this plan, so leave it)
+- Modify: `docs/technical/infrastructure/extensions.md` (the jira-assets row of the extension-owned tables table, and the "Scheduled sync" section)
+- Modify: `docs/technical/infrastructure/automations.md` (the two Jira job rows and the worker paragraph)
+- Modify: `Servers/CLAUDE.md` (a reference row and the Last Updated date)
+- Verify (generated, never by hand): `Servers/swagger.yaml`, `docs/api-docs/src/config/endpoints.ts`
 
 **Interfaces:**
 - Consumes: everything above.
@@ -7584,13 +7916,13 @@ git commit -m "feat(sync-engine): shared ExtensionSyncPanel, used by Jira Assets
 
 - [ ] **Step 1: Rewrite the "Scheduled sync" section of `extensions.md`**
 
-1. In the data-model table (line 106) change the jira-assets row to:
+1. In the "Extension-owned data tables" table, change the row that starts `| jira-assets |` to:
 
 ```markdown
 | jira-assets | `jira_assets_config`, `jira_assets_use_cases`, sequence `jira_use_case_uc_id_seq`; runs and schedule in the shared `extension_sync_runs` / `extension_sync_settings` (the old `jira_assets_sync_history` is kept, unwritten, for one release) |
 ```
 
-2. Replace lines 314-455 (from `## Scheduled sync` through the end of the "Sync now and the panel" list, just before `**Pagination, timeouts, deadline.**`) with:
+2. Replace the text from `## Scheduled sync` through the end of the "Sync now and the panel" list, just before `**Pagination, timeouts, deadline.**`) with:
 
 ````markdown
 ## Scheduled sync
@@ -7630,6 +7962,7 @@ engine's SQL on a throwaway Postgres.
 ```ts
 interface SyncProvider {
   key: string;                    // extensions.key, /^[a-z0-9-]+$/
+  displayName?: string;           // name in event-log text ("Jira Assets"); the key when absent
   kinds: readonly string[];       // every exclusive operation; must include "manual"
   scheduledKind?: string;         // the kind the tick queues; no schedule if absent
   runDeadlineMs?: number;         // ctx.signal deadline (default 10 minutes)
@@ -7727,8 +8060,10 @@ the per-extension routers.
 - `PATCH /:key/schedule`: `{ enabled?, interval_hours? }`, 1 to 168; the
   provider may refuse with its status; the change goes to the event log.
 
-The old Jira Assets routes stay, served by the engine with their exact
-response shapes, and are deprecated in swagger: `POST /sync`,
+The old Jira Assets routes stay for one release, served by the engine with
+their exact response shapes, and are deprecated (recorded here and in the
+controller comments; the generated swagger has no deprecation marker):
+`POST /sync`,
 `GET /sync/status` (`data: null` when Jira is not configured), `GET
 /sync/history` and `PATCH /config/sync`. `GET /config` derives `sync_enabled`,
 `sync_interval_hours` and `last_sync_*` from the engine (`last_sync_*` is the
@@ -7739,9 +8074,14 @@ newest finished manual or scheduled run that completed or failed).
 `ExtensionSyncPanel` (`Clients/src/presentation/components/ExtensionSyncPanel/`)
 and `useExtensionSync(key)` (`Clients/src/application/hooks/`) give any
 provider the sync section: the automatic sync toggle and interval, "Sync now",
-the last finished sync, the running state, the outcome messages, and "Failing
-since <date>" while scheduled runs keep failing. "Sync now" polls the status
-every 3 seconds, for up to 20 minutes, and stops at the first of:
+the last finished sync, the running state (a run going or a job queued), the
+outcome messages, and "Failing since <date>" while scheduled runs keep failing.
+The status query refreshes every 3 seconds while a run is running or queued.
+`showSyncNow` and `syncNowDisabled` keep the page's own rules for the button;
+with `persistSchedule={false}` (before a connection is saved) schedule changes
+stay a draft that the page sends with its own save (`onScheduleChange`).
+"Sync now" polls the status every 3 seconds, for up to 20 minutes, and stops
+at the first of:
 
 - a run newer than `previousRunId` has finished: its counts, or its message
   (`skipped` runs say why they did not start);
@@ -7763,8 +8103,8 @@ finalize or release inside their data transaction.
 **What a sync does** (`runJiraSync`):
 ````
 
-3. In the kept "What a sync does" list (old lines 398-430), replace `A CTE selects the run's history row (id, token, \`started\`) \`FOR SHARE\`, and the link update (which clears any missing flag) and the project update run only if it found the row.` with `The link update (which clears any missing flag) and the project update are guarded by \`ctx.sqlOwnsRun()\`, which share-locks the run's own \`started\` row.`, and replace `The run's note (\`error_message\` on the completed row, and \`last_sync_message\`) lists the missing objects.` with `The run's note (\`message\` on the completed run) lists the missing objects.` and `The result reports \`objectsMissingInJira\`, \`objectsNewlyMissing\` and \`missingInJiraIds\`. \`objects_deleted\` is always 0 for a sync.` with `The run's counts are \`fetched\`, \`created\`, \`updated\`, \`deleted\` (always 0 for a sync), \`missing\` and \`newly_missing\`.`
-4. Replace the "Claims, tokens, heartbeats" paragraph and list (old lines 492-524, from `**Claims, tokens, heartbeats.**` through the migrations list) with:
+3. In the kept "What a sync does" list, replace `A CTE selects the run's history row (id, token, \`started\`) \`FOR SHARE\`, and the link update (which clears any missing flag) and the project update run only if it found the row.` with `The link update (which clears any missing flag) and the project update are guarded by \`ctx.sqlOwnsRun()\`, which share-locks the run's own \`started\` row.`, and replace `The run's note (\`error_message\` on the completed row, and \`last_sync_message\`) lists the missing objects.` with `The run's note (\`message\` on the completed run) lists the missing objects.` and `The result reports \`objectsMissingInJira\`, \`objectsNewlyMissing\` and \`missingInJiraIds\`. \`objects_deleted\` is always 0 for a sync.` with `The run's counts are \`fetched\`, \`created\`, \`updated\`, \`deleted\` (always 0 for a sync), \`missing\` and \`newly_missing\`.`
+4. Replace the "Claims, tokens, heartbeats" paragraph and list (from `**Claims, tokens, heartbeats.**` through the list of migrations that ends with `` `missing_in_jira_since`, `run_token` and the `'remove_missing'` type``) with:
 
 ```markdown
 **Claims, tokens, heartbeats.** Every Jira Assets run takes the engine claim
@@ -7776,8 +8116,8 @@ migrations (`20261012003957-jira-assets-sync-heartbeat.js`,
 history table that `20261012200000-extension-sync-engine.js` copied.
 ```
 
-5. In "Removing missing use cases" (old lines 525-658) apply these replacements wherever they appear: `claimSyncRun` → `withClaim`; `the run's own history row` → `the run's own row`; `history row` → `run`; `assertRunOwned` → `ctx.assertOwned`; `finalizeSuccess` → `ctx.finalize`; `releaseClaim` → `ctx.release`; `objects_deleted` → `counts.deleted`; `jira_assets_sync_history` → `extension_sync_runs`.
-6. Replace "Settings and validation" and "Adding a scheduled sync to another extension" (old lines 659-685) with:
+5. In "Removing missing use cases" (from `**Removing missing use cases.**` up to `**Settings and validation.**`) apply these replacements wherever they appear: `claimSyncRun` → `withClaim`; `the run's own history row` → `the run's own row`; `history row` → `run`; `assertRunOwned` → `ctx.assertOwned`; `finalizeSuccess` → `ctx.finalize`; `releaseClaim` → `ctx.release`; `objects_deleted` → `counts.deleted`; `jira_assets_sync_history` → `extension_sync_runs`.
+6. Replace "Settings and validation" and "Adding a scheduled sync to another extension" (from `**Settings and validation.**` through the last numbered item before `## Adding a new extension`) with:
 
 ```markdown
 **Settings and validation.**
@@ -7808,7 +8148,7 @@ remove button are disabled for non-Admins.
 4. Add the provider to `SYNC_PROVIDERS` in
    `Servers/extensions/sync-engine/providers.ts`.
 5. Render `<ExtensionSyncPanel extensionKey="<key>" canManage={…} />` in the
-   extension's settings panel.
+   extension's settings panel, and set `displayName` for event-log text.
 6. Add tests like `extensions/jira-assets/__tests__/` (run body on a context
    from `createRunContext`, readiness per kind).
 ```
@@ -7818,120 +8158,51 @@ remove button are disabled for non-Admins.
 - [ ] **Step 2: Update `automations.md`**
 
 In `docs/technical/infrastructure/automations.md`:
-- replace the `jira_assets_scheduled_sync_check` row (line 97) with:
+- replace the table row that starts `` | `jira_assets_scheduled_sync_check` | `` with:
 
 ```markdown
 | `extension_sync_tick` | `*/5 * * * *` | Every 5 minutes | Sync engine: queues one `extension_sync_run` per org whose schedule is due (interval and failure backoff) for every extension with a sync provider (see [Extensions → Scheduled sync](./extensions.md#scheduled-sync)). Retires the old `jira_assets_scheduled_sync_check` scheduler, whose name the worker still accepts for one release |
 ```
 
-- replace the `jira_assets_sync_run` row (line 214) with:
+- replace the table row that starts `` | `jira_assets_sync_run` | `` with:
 
 ```markdown
 | `extension_sync_run` | `automation-actions` | `startManualRun` (`POST /api/extensions/:key/runs` and Jira Assets' deprecated `POST /sync`) and the tick, via `enqueueExtensionSyncRun`; job id fixed per extension and org (`ext-sync-<key>-<orgId>`); `{ key, orgId, kind, triggeredBy, payload }`, one attempt, removed on complete and on fail. The old `jira_assets_sync_run` name is accepted for one release | `runExtensionSyncJob` (claims at pickup) → `runClaimed` |
 ```
 
-- in the paragraph on line 223, replace `` `jira_assets_sync_run` also needs a worker. `` with `` `extension_sync_run` also needs a worker. ``.
+- in the paragraph that starts `` `jira_assets_sync_run` also needs a worker.``, replace `` `jira_assets_sync_run` also needs a worker. `` with `` `extension_sync_run` also needs a worker. ``.
 
-- [ ] **Step 3: Regenerate swagger and the endpoint registry**
+- [ ] **Step 3: Add the sync engine to `Servers/CLAUDE.md` and confirm the API docs are current**
 
-Run: `cd Servers && npm run generate:swagger && npm run generate:endpoints`
-Expected: both succeed; `git diff --stat Servers/swagger.yaml docs/api-docs/src/config/endpoints.ts` shows the four new paths.
+In `Servers/CLAUDE.md`, change `> **Last Updated:** 2026-09-28` to the date of this change (`> **Last Updated:** 2026-10-12` if it lands today), and in the reference table add, after the row `| Extensions (catalog, gate, config)        | \`docs/technical/infrastructure/extensions.md\`     |`:
 
-Then, in `Servers/swagger.yaml`, give the generated operations (found by `operationId: postRunCtrl`, `getRunStatusCtrl`, `getRunsCtrl`, `patchScheduleCtrl`) these `responses` and `description` (keep the generated `tags`, `operationId` and `security`):
-
-```yaml
-  /extensions/{key}/runs:
-    post:
-      summary: 'Start a manual run'
-      parameters:
-        - { name: key, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9-]+$' } }
-      responses:
-        '202':
-          description: 'Run queued ({ jobId, previousRunId }); the worker claims it at pickup. Poll GET /extensions/{key}/runs/status until nothing is queued or running and latest_run is newer than previousRunId'
-        '400':
-          description: "The provider's readiness refused the run (reason in data)"
-        '403':
-          description: 'Extension not enabled for this organization, or role not allowed'
-        '404':
-          description: "The provider's readiness refused the run, e.g. not configured (reason in data)"
-        '409':
-          description: 'A run is live, or a run job for this extension and organization is already waiting'
-        '500':
-          description: 'Internal server error'
-        '503':
-          description: 'Background jobs are unavailable (the queue did not answer within 5 seconds)'
-      description: 'Sync engine. Only for extensions with a sync provider; other keys fall through to the extension''s own routes. Requires the extension to be enabled and the extension.admin permission.'
-    get:
-      summary: 'List runs'
-      parameters:
-        - { name: key, in: path, required: true, schema: { type: string } }
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 20 } }
-      responses:
-        '200':
-          description: 'Runs of the extension for the organization, newest first ({ id, kind, status, code, counts, message, triggered_by, started_at, heartbeat_at, completed_at }); a limit that is not a whole number of at least 1 lists 20'
-        '403':
-          description: 'Extension not enabled for this organization'
-        '500':
-          description: 'Internal server error'
-      description: 'Sync engine. Requires the extension to be enabled for the organization.'
-  /extensions/{key}/runs/status:
-    get:
-      summary: 'Run status'
-      parameters:
-        - { name: key, in: path, required: true, schema: { type: string } }
-      responses:
-        '200':
-          description: '{ schedule: { enabled, interval_hours, consecutive_failures, failing_since } | null, running, queued (null if the queue did not answer), latest_run, last_finished_run }; runs are { id, kind, status (started, completed, failed, abandoned, skipped), code, counts, message, started_at, completed_at, is_live }'
-        '403':
-          description: 'Extension not enabled for this organization'
-        '500':
-          description: 'Internal server error'
-      description: 'Sync engine. Requires the extension to be enabled for the organization.'
-  /extensions/{key}/schedule:
-    patch:
-      summary: 'Update the sync schedule'
-      parameters:
-        - { name: key, in: path, required: true, schema: { type: string } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                enabled: { type: boolean }
-                interval_hours: { type: integer, minimum: 1, maximum: 168 }
-      responses:
-        '200':
-          description: 'The schedule ({ enabled, interval_hours, consecutive_failures, failing_since })'
-        '400':
-          description: 'No field given, non-boolean enabled, or interval_hours outside 1-168'
-        '403':
-          description: 'Extension not enabled for this organization, or role not allowed'
-        '404':
-          description: 'The provider refused, e.g. the extension is not configured'
-        '500':
-          description: 'Internal server error'
-      description: 'Sync engine. Event-logged. Requires the extension to be enabled and the extension.admin permission.'
+```markdown
+| Extension sync engine (providers, runs, schedule) | `docs/technical/infrastructure/extensions.md#scheduled-sync` |
 ```
 
-Run `npm run generate:swagger` once more and confirm `git diff Servers/swagger.yaml` shows no further change (the generator keeps hand-written metadata) and `grep -c "deprecated: true" Servers/swagger.yaml` prints `4`.
+Then run `cd Servers && npx prettier --write CLAUDE.md` (it realigns the table).
+
+The routes were documented when they changed (Tasks 5 and 7). Confirm nothing is left:
+
+Run: `cd Servers && npm run generate:swagger && npm run generate:endpoints && npm run check:api-drift && git diff --exit-code swagger.yaml ../docs/api-docs/src/config/endpoints.ts`
+Expected: the drift check passes and `git diff --exit-code` exits 0. Do not edit either file by hand; if the diff is not empty, commit the regenerated files with this task.
 
 - [ ] **Step 4: Run every gate**
 
 ```bash
-cd Servers && npm run build && npm run format-check && npm run test
+cd Servers && npm run build && npm run format-check && npm run test && npm run check:api-drift
 node scripts/checkExtensionSyncMigration.js && node scripts/checkExtensionSyncEngineSql.js
+npx ts-node scripts/auditTenantIsolationCoverage.ts
 cd ../Clients && npm run typecheck && npm run i18n:audit:strict && npm run format-check && npx vitest run
 ```
 
-Expected: every command exits 0. Report the real output of any that does not; if `npm run format-check` reports files, run `npm run format` in that package and re-run the gate.
+Expected: every command exits 0. The audit needs a migrated database; if none is available locally, say so and confirm it on CI's backend-checks job instead. Report the real output of any command that does not pass; if `npm run format-check` reports files, run `npm run format` in that package and re-run the gate.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/technical/infrastructure/extensions.md docs/technical/infrastructure/automations.md Servers/swagger.yaml docs/api-docs/src/config/endpoints.ts
-git commit -m "docs(sync-engine): document the sync engine and its routes" -m "Rewrites the Scheduled sync section of extensions.md around the engine: tables, the provider contract, claims, schedule and backoff, jobs, routes, the shared panel, Jira Assets as the first provider, and how to add a provider. Updates the job tables in automations.md, notes that the API and the worker must be deployed together, regenerates swagger and the endpoint registry, and documents the four generic operations."
+git add docs/technical/infrastructure/extensions.md docs/technical/infrastructure/automations.md Servers/CLAUDE.md
+git commit -m "docs(sync-engine): document the sync engine and its routes" -m "Rewrites the Scheduled sync section of extensions.md around the engine: tables, the provider contract, claims, schedule and backoff, jobs, routes, the shared panel, Jira Assets as the first provider, and how to add a provider. Updates the job tables in automations.md, notes that the API and the worker must be deployed together and that the old Jira sync routes are deprecated for one release, and adds the engine to the Servers/CLAUDE.md reference table."
 ```
 
 ---
@@ -7943,31 +8214,32 @@ git commit -m "docs(sync-engine): document the sync engine and its routes" -m "R
 | Spec item | Task |
 |---|---|
 | Decision 1, per-org runs only; webhooks stay out | Architecture; nothing in the plan adds webhooks |
-| Decision 2, one claim per (extension, org) for every exclusive operation | Task 2 (`claimRun`, `withClaim`), Task 6 (import, remove-missing, single delete) |
+| Decision 2, one claim per (extension, org) for every exclusive operation | Task 2 (`claimRun`, `withClaim`), Task 6a (syncs), Task 6b (import, remove-missing, single delete) |
 | Decision 3, two shared tables; extension config stays | Task 1 |
 | Decision 4, real statuses | Task 1 (CHECK, mapping), Task 2 |
 | Decision 5, TIMESTAMPTZ | Task 1; Global Constraints |
 | Decision 6, one tick job and one per-org run job | Task 4 |
 | Decision 7, backoff for scheduled runs only, no auto-disable | Task 3 |
 | Decision 8, generic API on its own path; old Jira routes stay with their shapes | Tasks 5 and 7 |
-| Decision 9, shared panel and hook; "Failing since" | Tasks 9 and 10 |
+| Decision 9, shared panel and hook; "Failing since" as the one intended addition | Tasks 9 and 10 (Task 10 lists every visible change) |
 | Decision 10, out of scope items | Not touched (MLflow, Azure, token encryption, dropping old table, RLS) |
 | Section 1, columns, indexes, partial unique index after copy | Task 1 |
-| Section 2, settings copy, ids kept, `setval`, timestamp conversion, status mapping, old columns untouched, `down()` | Task 1 (check script covers each) |
+| Section 2, settings copy, ids kept, `setval`, timestamp conversion, status mapping, old columns untouched, `down()` | Task 1 (the check script covers each) |
 | Section 3, interface, registry key check, `claimRun`, `runClaimed` (2,000 characters, code, superseded), `withClaim`, bookkeeping, due query, readiness at the tick, behaviour change | Tasks 2 and 3; behaviour change documented in Task 11 |
-| Section 4, tick, run job, enqueue rules, pickup skip, old job names, deployment note, `removeJobScheduler` | Tasks 4 and 6; deployment note in Task 11 |
-| Section 5, generic routes, gating, `next()` for unknown keys, readiness statuses, event log, old routes and mapping, `GET /config` derivation, swagger deprecation | Tasks 5 and 7 |
+| Section 4, tick, run job, enqueue rules, pickup skip, old job names, deployment note, `removeJobScheduler` | Tasks 4 and 6a; deployment note in Task 11 |
+| Section 5, generic routes, gating, `next()` for unknown keys, readiness statuses, event log, old routes and mapping, `GET /config` derivation, deprecation | Tasks 5 and 7 (deprecation in the controller comments and extensions.md, since swagger is generated) |
 | Section 6, hook polling rules, panel parts, sentence case, translations, Jira switch, `runOutcome.ts` | Tasks 9 and 10 |
-| Section 7, Jira kinds, readiness per kind, run body on ctx, `withClaim` with in-transaction finalize/release, removal of old code, `scheduledSync.utils.ts` | Tasks 6 and 7 (the file keeps only `SQL_NOW_UTC`, which `missing_in_jira_since` still uses) |
+| Section 7, Jira kinds, readiness per kind, run body on ctx, `withClaim` with in-transaction finalize/release, removal of old code, `scheduledSync.utils.ts` | Tasks 6a, 6b and 7 (the file keeps only `SQL_NOW_UTC`, which `missing_in_jira_since` still uses) |
 | Errors and edge cases (run in flight at deploy, two ticks, error without code, clock skew, org deleted) | Task 1 (live started row kept), Task 2 (unique violation → 409, null code), DB `now()` everywhere, cascades in Task 1 |
-| Testing list | Engine: Tasks 2-5; migration: Task 1; Jira: Tasks 6-7; isolation: Task 8; client: Tasks 9-10 |
-| Docs | Task 11 |
+| Testing list | Engine: Tasks 2-5; migration: Task 1; Jira: Tasks 6a, 6b, 7 (old-route shapes, `GET /config` derivation, the last-finished-run rule on a throwaway Postgres, old job names); isolation: Tasks 1 and 8; client: Tasks 9-10 |
+| Docs | Task 11, plus the `Servers/CLAUDE.md` reference row |
+| CI gates (`check:api-drift`, tenant-isolation audit) | Global Constraints; Tasks 1, 5, 7, 8, 11 |
 
-**Placeholder scan.** No "TBD", "TODO" or "similar to Task N". Moved code names its source lines and shows the full new code (Task 6 `runJiraSync`, `importObjects`; Task 7 legacy readers). The two mechanical edit lists (Task 6 test substitutions, Task 11 doc renames) give exact old and new text.
+**Placeholder scan.** No "TBD", "TODO" or "similar to Task N". Moved code names its source function and shows the full new code (Task 6a `runJiraSync`; Task 6b `importObjects`, `deleteUseCasesUnderClaim`; Task 7 legacy readers). Edits to existing files use text anchors, applied bottom-up without reformatting until the Prettier step. The mechanical edit lists (Task 6b test substitutions, Task 11 doc renames) give exact old and new text. Nothing edits `swagger.yaml` or `endpoints.ts` by hand.
 
-**Type consistency.** `ClaimedRun`, `EngineRunContext`, `createRunContext(provider, run, payload)`, `withClaim(key, orgId, kind, triggeredBy, fn, options)`, `startManualRun(key, orgId, userId)`, `getRunStatus(key, orgId)`, `listRuns(key, orgId, limit)`, `saveSchedule(key, orgId, { enabled?, intervalHours? })`, `ExtensionSyncJobData { key, orgId, kind, triggeredBy, payload }` and `SyncNowOutcome` are used with the same names and shapes in every task that consumes them. The client `ExtensionRun` mirrors the server `RunView`.
+**Type consistency.** `ClaimedRun`, `EngineRunContext`, `createRunContext(provider, run, payload)`, `withClaim(key, orgId, kind, triggeredBy, fn, options)`, `startManualRun(key, orgId, userId)`, `getRunStatus(key, orgId)`, `listRuns(key, orgId, limit)`, `sqlLastFinishedRun(orgExpr, keyExpr, kindsExpr, columns)`, `saveSchedule(key, orgId, { enabled?, intervalHours? })`, `SyncProvider.displayName`, `createLinkedUseCase(assertOwned, …)`, `ExtensionSyncJobData { key, orgId, kind, triggeredBy, payload }`, `useExtensionSync(key, { persistSchedule })`, `ScheduleState` and `SyncNowOutcome` are used with the same names and shapes in every task that consumes them. The client `ExtensionRun` mirrors the server `RunView`. Each task leaves the build and its tests green: 6a keeps the old claim for imports and removals (its test `fakeDb` routes both), 6b removes it.
 
-**Review focus.** Each of the five lines has a test in its owning task: unmount mid-poll (Task 9), interval outside the presets (Task 10), long failure streak (Task 3 unit and throwaway Postgres), non-`Error` throws (Task 2), malformed limit and schedule values (Task 5, plus the legacy history limit in Task 7).
+**Review focus.** Each of the five lines has a test in its owning task: unmount mid-poll and the running/queued refresh (Task 9), interval outside the presets (Task 10), long failure streak (Task 3 unit and throwaway Postgres), non-`Error` throws (Task 2), malformed limit and schedule values (Task 5, plus the legacy history limit in Task 7).
 
 **Spec ambiguities resolved here.**
 
@@ -7975,10 +8247,12 @@ git commit -m "docs(sync-engine): document the sync engine and its routes" -m "R
 2. Provider registration: there is no extension module index, so `Servers/extensions/sync-engine/providers.ts` lists the providers and both the router and the worker's jobs module register them.
 3. The schedule route's refusal uses a new optional `canSchedule(orgId)` on `SyncProvider` (Jira: 404 without a config), since none of the declared kinds fits a schedule change.
 4. `ctx.signal`'s deadline comes from a new optional `runDeadlineMs` (Jira: its 10-minute walk deadline).
-5. The generic status adds `last_finished_run`, which the panel needs to reproduce the old "Last sync" line.
-6. Legacy `GET /sync/history` returns `run_token: null` instead of the token.
-7. `POST /config` writes the schedule only when the body carries sync fields (it used to reset them to off and 24 when they were missing); the panel stops sending them.
-8. Old `started` rows without a token are closed as abandoned, so every `started` row has a token (new CHECK).
-9. `scheduledSync.utils.ts` is kept with only `SQL_NOW_UTC`, which `missing_in_jira_since` still needs.
-10. Before a Jira connection is saved the panel is replaced by a one-line prompt; "Sync now" moves into the sync section.
+5. Event-log wording comes from a new optional `displayName` (Jira: "Jira Assets"), so the generic schedule route writes "Updated Jira Assets sync settings (…)" as `PATCH /config/sync` always did.
+6. The generic status adds `last_finished_run`, which the panel needs to reproduce the old "Last sync" line.
+7. Legacy `GET /sync/history` returns `run_token: null` instead of the token.
+8. `POST /config` writes the schedule only when the body carries sync fields; the panel sends them only before the first save (its draft), as the old page effectively did.
+9. Old `started` rows without a token are closed as abandoned, so every `started` row has a token (new CHECK).
+10. `scheduledSync.utils.ts` is kept with only `SQL_NOW_UTC`, which `missing_in_jira_since` still needs.
 11. The generic `PATCH /:key/schedule` rejects `interval_hours: null` (400), while the deprecated `PATCH /config/sync` keeps its old "null means 24".
+12. Deprecation of the old Jira routes is recorded in the controller comments and `extensions.md`, because the swagger generator has no deprecation marker from route code and generated files are not hand-edited.
+13. The shared panel imports `VWToggle`/`VWSelect` from the Jira Assets folder to keep the section visually identical; moving `VWComponents.tsx` into `presentation/components` is left for when a second extension uses the panel.
