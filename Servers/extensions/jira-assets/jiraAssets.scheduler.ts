@@ -2,7 +2,7 @@ import { QueryTypes } from "sequelize";
 import { sequelize } from "../../database/db";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
 import { sqlIntervalElapsed } from "../scheduledSync.utils";
-import { SQL_RUN_IS_LIVE, startScheduledSync } from "./jiraAssets.service";
+import { sqlLiveRunExists, startScheduledSync } from "./jiraAssets.service";
 
 /**
  * Automatic Jira Assets sync.
@@ -67,11 +67,7 @@ export async function getScheduledSyncCandidates(): Promise<JiraScheduledSyncSta
             EXISTS (SELECT 1
                       FROM jira_assets_use_cases u
                      WHERE u.organization_id = c.organization_id) AS has_use_cases,
-            EXISTS (SELECT 1
-                      FROM jira_assets_sync_history h
-                     WHERE h.organization_id = c.organization_id
-                       AND h.status = 'started'
-                       AND ${SQL_RUN_IS_LIVE}) AS running_is_live,
+            ${sqlLiveRunExists("c.organization_id")} AS running_is_live,
             ${sqlIntervalElapsed("lr.last_run", "c.sync_interval_hours")} AS is_due
        FROM jira_assets_config c
        -- The later of the last finish and the newest manual/scheduled start

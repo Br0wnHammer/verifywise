@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { STATUS_CODE } from "../../utils/statusCode.utils";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
 import { translateError } from "../../utils/i18n.utils";
+import { logFailure, logProcessing, logSuccess } from "../../utils/logger/logHelper";
 import { JiraAssetsClient, JiraUpstreamError } from "./jira.client";
 import {
   BackgroundJobsUnavailableError,
@@ -17,6 +18,7 @@ import {
   getSyncStatus,
   getUseCaseByProjectId,
   importObjects,
+  JIRA_RUN_CODES,
   JiraAssetsConfig,
   JiraConfigValidationError,
   JiraImportInterruptedError,
@@ -48,6 +50,15 @@ function intParam(req: Request, name: string): number {
   return parseInt(stringParam(req, name), 10);
 }
 
+/** Who and where, for logProcessing / logSuccess / logFailure. */
+function logContext(req: Request, functionName: string) {
+  return { functionName, fileName, userId: uid(req), organizationId: orgId(req) };
+}
+
+function asError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
 async function requireClient(organizationId: number): Promise<JiraAssetsClient> {
   const config = await loadFullConfig(organizationId);
   if (!config?.jira_base_url || !config.workspace_id || !config.email) {
@@ -64,7 +75,7 @@ async function requireClient(organizationId: number): Promise<JiraAssetsClient> 
  * - JiraConfigValidationError → 400
  * - JiraNotConfiguredError → 404
  * - JiraSyncInProgressError → 409
- * - JiraImportInterruptedError → 409 with { message, imported, skipped }
+ * - JiraImportInterruptedError → 409 with { message, code: "import_interrupted", imported, skipped }
  * - JiraUpstreamError (Jira response, timeout, DNS/TLS) → 502
  * - BackgroundJobsUnavailableError (queue did not answer) → 503
  * - anything else → 500, logged
@@ -80,11 +91,14 @@ function sendError(req: Request, res: Response, err: unknown, functionName: stri
     return res.status(409).json(STATUS_CODE[409](err.message));
   }
   if (err instanceof JiraImportInterruptedError) {
-    return res
-      .status(409)
-      .json(
-        STATUS_CODE[409]({ message: err.message, imported: err.imported, skipped: err.skipped }),
-      );
+    return res.status(409).json(
+      STATUS_CODE[409]({
+        message: err.message,
+        code: JIRA_RUN_CODES.importInterrupted,
+        imported: err.imported,
+        skipped: err.skipped,
+      }),
+    );
   }
   if (err instanceof JiraUpstreamError) {
     return res.status(502).json(STATUS_CODE[502](err.message));
@@ -126,10 +140,23 @@ export async function postConfig(req: Request, res: Response): Promise<any> {
  * Used by the panel's auto-save so it never re-sends connection fields.
  */
 export async function patchSyncSettings(req: Request, res: Response): Promise<any> {
+  const ctx = logContext(req, "patchSyncSettings");
+  logProcessing({ ...ctx, description: "updating Jira Assets sync settings" });
   try {
     const settings = await updateSyncSettings(orgId(req), uid(req), req.body ?? {});
+    await logSuccess({
+      ...ctx,
+      eventType: "Update",
+      description: `Updated Jira Assets sync settings (enabled: ${settings.sync_enabled}, every ${settings.sync_interval_hours} h)`,
+    });
     return res.status(200).json(STATUS_CODE[200](settings));
   } catch (err) {
+    await logFailure({
+      ...ctx,
+      eventType: "Update",
+      description: "Failed to update Jira Assets sync settings",
+      error: asError(err),
+    });
     return sendError(req, res, err, "patchSyncSettings");
   }
 }
@@ -140,10 +167,23 @@ export async function patchSyncSettings(req: Request, res: Response): Promise<an
  * pickers change, so nothing else in the config is re-sent.
  */
 export async function patchSelection(req: Request, res: Response): Promise<any> {
+  const ctx = logContext(req, "patchSelection");
+  logProcessing({ ...ctx, description: "updating Jira Assets schema and object type selection" });
   try {
     const selection = await updateSelection(orgId(req), uid(req), req.body ?? {});
+    await logSuccess({
+      ...ctx,
+      eventType: "Update",
+      description: `Updated Jira Assets selection (schema ${selection.selected_schema_id ?? "none"}, object type ${selection.selected_object_type_id ?? "none"})`,
+    });
     return res.status(200).json(STATUS_CODE[200](selection));
   } catch (err) {
+    await logFailure({
+      ...ctx,
+      eventType: "Update",
+      description: "Failed to update Jira Assets selection",
+      error: asError(err),
+    });
     return sendError(req, res, err, "patchSelection");
   }
 }
@@ -237,11 +277,14 @@ export async function postImport(req: Request, res: Response): Promise<any> {
 }
 
 /**
- * POST /sync — "Sync now". Checks the config (404 / 400), claims the run
- * (409 if a sync or import is running) and queues it for the worker: 202 with
- * `{ historyId }`. The outcome, including the reason for a failure, is
- * recorded on the history row and the config; the panel polls GET
- * /sync/status (`running`, `latest_run`, `last_sync_*`) to show it.
+ * POST /sync — "Sync now". Checks the config (404 / 400), refuses with 409 if
+ * a run is live or a sync job for the org is already waiting, and otherwise
+ * queues the job: 202 with `{ jobId, previousRunId }`. Nothing is claimed
+ * here; the worker claims the run when it picks the job up. `previousRunId`
+ * is the newest manual or scheduled run before this request. The outcome,
+ * including the reason for a failure, is recorded on the history row and the
+ * config; the panel polls GET /sync/status (`queued`, `running`,
+ * `latest_run`, `last_sync_*`) until a run newer than `previousRunId` ends.
  */
 export async function postSync(req: Request, res: Response): Promise<any> {
   try {
@@ -313,26 +356,66 @@ export const REMOVAL_INTERRUPTED_MESSAGE =
  * POST /use-cases/remove-missing — delete the use cases the admin chose from
  * the "Missing in Jira" list (`{ use_case_ids: number[] }`). Only ids still
  * flagged as missing are removed; returns `{ removed, skipped }`. 409 while a
- * sync or import is running.
+ * sync or import is running, or `{ message, code: "removal_interrupted" }`
+ * when the removal lost its claim (nothing was removed).
  */
 export async function removeMissingCtrl(req: Request, res: Response): Promise<any> {
+  const ctx = logContext(req, "removeMissingCtrl");
+  const requested = Array.isArray(req.body?.use_case_ids) ? req.body.use_case_ids.length : 0;
+  logProcessing({
+    ...ctx,
+    description: `removing ${requested} use case(s) flagged as missing in Jira`,
+  });
   try {
     const result = await removeMissingUseCases(orgId(req), uid(req), req.body?.use_case_ids);
+    await logSuccess({
+      ...ctx,
+      eventType: "Delete",
+      description: `Removed ${result.removed} use case(s) missing in Jira (${result.skipped} skipped)`,
+    });
     return res.status(200).json(STATUS_CODE[200](result));
   } catch (err) {
+    await logFailure({
+      ...ctx,
+      eventType: "Delete",
+      description: "Failed to remove use cases missing in Jira",
+      error: asError(err),
+    });
     // The removal lost its claim before finishing; its transaction rolled back.
     if (err instanceof RunSupersededError) {
-      return res.status(409).json(STATUS_CODE[409](REMOVAL_INTERRUPTED_MESSAGE));
+      return res.status(409).json(
+        STATUS_CODE[409]({
+          message: REMOVAL_INTERRUPTED_MESSAGE,
+          code: JIRA_RUN_CODES.removalInterrupted,
+        }),
+      );
     }
     return sendError(req, res, err, "removeMissing");
   }
 }
 
 export async function deleteUseCaseCtrl(req: Request, res: Response): Promise<any> {
+  const ctx = logContext(req, "deleteUseCaseCtrl");
+  const projectId = intParam(req, "id");
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return res.status(400).json(STATUS_CODE[400]("Invalid use case id"));
+  }
+  logProcessing({ ...ctx, description: `deleting Jira Assets use case project ${projectId}` });
   try {
-    await deleteUseCaseByProjectId(intParam(req, "id"), orgId(req));
+    await deleteUseCaseByProjectId(projectId, orgId(req), uid(req) ?? null);
+    await logSuccess({
+      ...ctx,
+      eventType: "Delete",
+      description: `Deleted Jira Assets use case project ${projectId}`,
+    });
     return res.status(200).json(STATUS_CODE[200]({ success: true }));
   } catch (err: any) {
+    await logFailure({
+      ...ctx,
+      eventType: "Delete",
+      description: `Failed to delete Jira Assets use case project ${projectId}`,
+      error: asError(err),
+    });
     return res.status(500).json(STATUS_CODE[500](err.message));
   }
 }

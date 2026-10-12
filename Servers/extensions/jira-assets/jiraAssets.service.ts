@@ -12,6 +12,12 @@ import { transformAttributes } from "./jira.constants";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
 import { enqueueJiraAssetsSyncRun } from "../../services/automations/automationProducer";
 import { SQL_NOW_UTC, sqlWithinLastMinutes } from "../scheduledSync.utils";
+import { deleteProjectByIdQuery } from "../../utils/project.utils";
+import {
+  getPendingApprovalRequestIdQuery,
+  withdrawApprovalRequestQuery,
+} from "../../utils/approvalRequest.utils";
+import { recordUseCaseDeletion } from "../../utils/useCaseChangeHistory.utils";
 
 const fileName = "jiraAssets.service.ts";
 
@@ -91,6 +97,35 @@ export const SQL_RUN_IS_LIVE = sqlWithinLastMinutes(
   "COALESCE(h.heartbeat_at, h.started_at)",
   SYNC_STALE_AFTER_MINUTES,
 );
+
+/**
+ * SQL: a live `started` run exists for the organization `orgExpr` (a bind
+ * parameter or a column). Shared by "Sync now", the status poll and the
+ * scheduler so they agree on what "running" means.
+ */
+export function sqlLiveRunExists(orgExpr: string): string {
+  return `EXISTS (SELECT 1 FROM jira_assets_sync_history h
+                   WHERE h.organization_id = ${orgExpr}
+                     AND h.status = 'started' AND ${SQL_RUN_IS_LIVE})`;
+}
+
+/** error_message written on a `started` row closed because it stopped heart-beating. */
+export const ABANDONED_RUN_MESSAGE = "Sync stopped responding and was marked as abandoned";
+
+/**
+ * Machine-readable outcome codes the panel switches on (never on message
+ * text): on 409 bodies for an interrupted import or removal, and on
+ * `latest_run.code` in GET /sync/status.
+ */
+export const JIRA_RUN_CODES = {
+  abandoned: "abandoned",
+  skipped: "skipped",
+  importInterrupted: "import_interrupted",
+  removalInterrupted: "removal_interrupted",
+} as const;
+
+/** Most objects one import request may name; keeps the request well inside the client timeout. */
+export const IMPORT_MAX_OBJECTS = 100;
 
 /** Thrown when a sync or import is already running for the organization. */
 export class JiraSyncInProgressError extends Error {
@@ -495,12 +530,41 @@ function describeObject(
 }
 
 /**
+ * Inside `transaction`, prove this run still owns its `started` history row
+ * and hold a share lock on it until the transaction ends. A claim closing the
+ * row as abandoned must update it, so it waits for this transaction: the
+ * writes made under the lock can never land after the run lost its claim.
+ * Throws RunSupersededError when the run no longer owns the row.
+ */
+async function assertRunOwned(
+  run: RunRef,
+  organizationId: number,
+  transaction: Transaction,
+): Promise<void> {
+  const rows = (await sequelize.query(
+    `SELECT id FROM jira_assets_sync_history
+      WHERE id = :id AND organization_id = :organizationId
+        AND run_token = :token AND status = 'started'
+      FOR SHARE;`,
+    {
+      replacements: { id: run.historyId, organizationId, token: run.token },
+      type: QueryTypes.SELECT,
+      transaction,
+    },
+  )) as Array<{ id: number }>;
+  if (rows.length === 0) throw new RunSupersededError(run.historyId);
+}
+
+/**
  * Create the native project and its jira_assets_use_cases link in one
  * transaction, so a failure can't leave a project without a link (or the
- * reverse). Returns "exists" if the object is already linked (unique
- * violation on organization_id + jira_object_id) instead of throwing.
+ * reverse). The transaction first proves `run` still owns its claim
+ * (RunSupersededError otherwise). Returns "exists" if the object is already
+ * linked (unique violation on organization_id + jira_object_id) instead of
+ * throwing.
  */
 async function createLinkedUseCase(
+  run: RunRef,
   organizationId: number,
   ownerId: number | null,
   obj: DescribedObject,
@@ -508,6 +572,7 @@ async function createLinkedUseCase(
 ): Promise<"created" | "exists"> {
   try {
     await sequelize.transaction(async (transaction) => {
+      await assertRunOwned(run, organizationId, transaction);
       const ucId = await nextUcId(organizationId, transaction);
       const projectRows = (await sequelize.query(
         `INSERT INTO projects
@@ -607,11 +672,11 @@ export async function claimSyncRun(
     await sequelize.query(
       `UPDATE jira_assets_sync_history h
           SET status = 'failed', completed_at = ${SQL_NOW_UTC},
-              error_message = 'Sync stopped responding and was marked as abandoned'
+              error_message = :abandonedMessage
         WHERE h.organization_id = :organizationId
           AND h.status = 'started'
           AND NOT ${SQL_RUN_IS_LIVE};`,
-      { replacements: { organizationId }, transaction },
+      { replacements: { organizationId, abandonedMessage: ABANDONED_RUN_MESSAGE }, transaction },
     );
 
     const running = (await sequelize.query(
@@ -802,6 +867,11 @@ export async function importObjects(
   if (!Array.isArray(objectIds) || objectIds.length === 0) {
     throw new JiraConfigValidationError("No objects selected for import");
   }
+  if (objectIds.length > IMPORT_MAX_OBJECTS) {
+    throw new JiraConfigValidationError(
+      `Select up to ${IMPORT_MAX_OBJECTS} objects per import. ${objectIds.length} were selected.`,
+    );
+  }
   if (!(await getPublicConfig(organizationId))) throw new JiraNotConfiguredError();
 
   const run = await claimSyncRun(organizationId, "import", userId);
@@ -831,20 +901,24 @@ export async function importObjects(
         )) as Array<{ id: number }>;
         if (existing.length > 0) {
           skipped++;
-          continue;
+        } else {
+          const jiraObj = await client.getObjectById(objectId);
+          const outcome = await createLinkedUseCase(
+            run,
+            organizationId,
+            userId ?? null,
+            describeObject(jiraObj, attrIdToName),
+            now,
+          );
+          if (outcome === "created") imported++;
+          else skipped++;
         }
-        const jiraObj = await client.getObjectById(objectId);
-        const outcome = await createLinkedUseCase(
-          organizationId,
-          userId ?? null,
-          describeObject(jiraObj, attrIdToName),
-          now,
-        );
-        if (outcome === "created") imported++;
-        else skipped++;
       } catch (err) {
+        // Lost the claim: stop now rather than record it as one failed object.
+        if (err instanceof RunSupersededError) throw err;
         errors.push(`Failed to import ${objectId}: ${errorMessage(err)}`);
       }
+      // Skipped objects count too, so a run of already-linked ones still heartbeats.
       if ((index + 1) % HEARTBEAT_EVERY_OBJECTS === 0) {
         await touchHeartbeat(run, organizationId);
       }
@@ -883,13 +957,42 @@ export async function importObjects(
 export const REMOVE_MISSING_MAX_IDS = 1000;
 
 /**
+ * Delete one imported use case's native project the way the core "Delete use
+ * case" does: withdraw a pending approval request, record the deletion in the
+ * change history, then deleteProjectByIdQuery (files, risks, members,
+ * per-framework rows, custom-field values, the project_deleted automation).
+ * The jira_assets_use_cases link cascades with the project. Returns false if
+ * the project was already gone.
+ */
+async function deleteLinkedProject(
+  projectId: number,
+  organizationId: number,
+  userId: number | null,
+  transaction: Transaction,
+): Promise<boolean> {
+  const pendingApprovalId = await getPendingApprovalRequestIdQuery(
+    projectId,
+    "use_case",
+    organizationId,
+    transaction,
+  );
+  if (pendingApprovalId) {
+    await withdrawApprovalRequestQuery(pendingApprovalId, organizationId, transaction);
+  }
+  if (userId) await recordUseCaseDeletion(projectId, userId, organizationId, transaction);
+  return deleteProjectByIdQuery(projectId, organizationId, transaction);
+}
+
+/**
  * Delete the use cases an admin chose from the "Missing in Jira" list. Only
  * ids that belong to the org AND are still flagged are removed — one that a
  * sync found again in the meantime is skipped. Takes the same per-org claim
  * as syncs and imports (history row 'remove_missing', objects_deleted = the
  * number removed), so it cannot race a sync. All deletes run in one
- * transaction: the native project goes (its jira_assets_use_cases row
- * cascades); a link with no project is deleted itself.
+ * transaction that first share-locks the run's own row, so no other claim
+ * can close it mid-way: each native project goes through deleteLinkedProject
+ * (its jira_assets_use_cases row cascades); a link with no project is deleted
+ * itself.
  */
 export async function removeMissingUseCases(
   organizationId: number,
@@ -912,6 +1015,7 @@ export async function removeMissingUseCases(
   try {
     let removed = 0;
     await sequelize.transaction(async (transaction) => {
+      await assertRunOwned(run, organizationId, transaction);
       const flagged = (await sequelize.query(
         `SELECT id, project_id FROM jira_assets_use_cases
           WHERE organization_id = :organizationId
@@ -921,16 +1025,13 @@ export async function removeMissingUseCases(
         { replacements: { organizationId, ids }, type: QueryTypes.SELECT, transaction },
       )) as Array<{ id: number; project_id: number | null }>;
 
-      const projectIds = flagged.filter((r) => r.project_id !== null).map((r) => r.project_id);
-      const linkOnlyIds = flagged.filter((r) => r.project_id === null).map((r) => r.id);
-      if (projectIds.length > 0) {
-        const [deleted] = (await sequelize.query(
-          `DELETE FROM projects
-            WHERE organization_id = :organizationId AND id IN (:projectIds)
-            RETURNING id;`,
-          { replacements: { organizationId, projectIds }, transaction },
-        )) as unknown as [Array<{ id: number }>, unknown];
-        removed += deleted?.length ?? 0;
+      const linkOnlyIds: number[] = [];
+      for (const row of flagged) {
+        if (row.project_id === null) {
+          linkOnlyIds.push(row.id);
+        } else if (await deleteLinkedProject(row.project_id, organizationId, userId, transaction)) {
+          removed++;
+        }
       }
       if (linkOnlyIds.length > 0) {
         const [deleted] = (await sequelize.query(
@@ -965,14 +1066,12 @@ export async function removeMissingUseCases(
 // Sync
 // ---------------------------------------------------------------------------
 
-/** SQL: a live `started` run exists for :organizationId. */
+/** A live `started` run exists for the organization. */
 async function hasLiveRun(organizationId: number): Promise<boolean> {
-  const rows = (await sequelize.query(
-    `SELECT EXISTS (SELECT 1 FROM jira_assets_sync_history h
-                     WHERE h.organization_id = :organizationId
-                       AND h.status = 'started' AND ${SQL_RUN_IS_LIVE}) AS live;`,
-    { replacements: { organizationId }, type: QueryTypes.SELECT },
-  )) as Array<{ live: boolean }>;
+  const rows = (await sequelize.query(`SELECT ${sqlLiveRunExists(":organizationId")} AS live;`, {
+    replacements: { organizationId },
+    type: QueryTypes.SELECT,
+  })) as Array<{ live: boolean }>;
   return !!rows[0]?.live;
 }
 
@@ -1095,11 +1194,13 @@ export async function runClaimedSync(
 
       if (!existing) {
         if (!refreshOnly) {
-          const outcome = await createLinkedUseCase(organizationId, triggeredBy, obj, now);
+          const outcome = await createLinkedUseCase(run, organizationId, triggeredBy, obj, now);
           if (outcome === "created") objectsCreated++;
         }
       } else {
         await sequelize.transaction(async (transaction) => {
+          // Nothing below may land once another claim has closed this run.
+          await assertRunOwned(run, organizationId, transaction);
           if (existing.project_id !== null) {
             await sequelize.query(
               `UPDATE projects
@@ -1117,8 +1218,8 @@ export async function runClaimedSync(
               },
             );
           }
-          // Seen in Jira again: clear any missing flag — only while this
-          // run still owns its claim.
+          // Seen in Jira again: clear any missing flag. The ownership check is
+          // repeated in SQL as a second line of defence.
           await sequelize.query(
             `UPDATE jira_assets_use_cases
                 SET data = CAST(:data AS JSONB),
@@ -1368,14 +1469,14 @@ export async function getUseCaseByProjectId(
   };
 }
 
+/** DELETE /use-cases/:id — the same full project deletion as the core "Delete use case". */
 export async function deleteUseCaseByProjectId(
   projectId: number,
   organizationId: number,
+  userId: number | null,
 ): Promise<void> {
-  // Cascade deletes the jira_assets_use_cases row via FK.
-  await sequelize.query(
-    `DELETE FROM projects WHERE id = :projectId AND organization_id = :organizationId;`,
-    { replacements: { projectId, organizationId } },
+  await sequelize.transaction((transaction) =>
+    deleteLinkedProject(projectId, organizationId, userId, transaction),
   );
 }
 
@@ -1386,7 +1487,9 @@ export async function deleteUseCaseByProjectId(
 /**
  * Last-sync fields plus, computed in SQL, whether a run is live now
  * (`running`) and the newest manual or scheduled run (`latest_run`, with
- * `is_live`). The controller adds `queued` (a sync job waiting in the queue).
+ * `is_live` and `code`: "abandoned" or "skipped" for a run closed for that
+ * reason, else null). The controller adds `queued` (a sync job waiting in the
+ * queue).
  * The panel polls this after "Sync now" until nothing is queued or running
  * and `latest_run` is newer than the run it saw before clicking.
  */
@@ -1394,15 +1497,15 @@ export async function getSyncStatus(organizationId: number): Promise<any | null>
   const rows = (await sequelize.query(
     `SELECT c.last_sync_at, c.last_sync_status, c.last_sync_message,
             c.sync_enabled, c.sync_interval_hours,
-            EXISTS (SELECT 1
-                      FROM jira_assets_sync_history h
-                     WHERE h.organization_id = :organizationId
-                       AND h.status = 'started'
-                       AND ${SQL_RUN_IS_LIVE}) AS running,
+            ${sqlLiveRunExists(":organizationId")} AS running,
             (SELECT row_to_json(r)
                FROM (SELECT h.id, h.sync_type, h.status, h.objects_fetched, h.objects_created,
                             h.objects_updated, h.error_message, h.started_at, h.completed_at,
-                            (h.status = 'started' AND ${SQL_RUN_IS_LIVE}) AS is_live
+                            (h.status = 'started' AND ${SQL_RUN_IS_LIVE}) AS is_live,
+                            CASE WHEN h.status <> 'failed' THEN NULL
+                                 WHEN h.error_message = :abandonedMessage THEN :abandonedCode
+                                 WHEN h.error_message = :skippedMessage THEN :skippedCode
+                            END AS code
                        FROM jira_assets_sync_history h
                       WHERE h.organization_id = :organizationId
                         AND h.sync_type IN ('manual', 'scheduled')
@@ -1411,7 +1514,16 @@ export async function getSyncStatus(organizationId: number): Promise<any | null>
        FROM jira_assets_config c
       WHERE c.organization_id = :organizationId
       LIMIT 1;`,
-    { replacements: { organizationId }, type: QueryTypes.SELECT },
+    {
+      replacements: {
+        organizationId,
+        abandonedMessage: ABANDONED_RUN_MESSAGE,
+        abandonedCode: JIRA_RUN_CODES.abandoned,
+        skippedMessage: SKIPPED_RUN_MESSAGE,
+        skippedCode: JIRA_RUN_CODES.skipped,
+      },
+      type: QueryTypes.SELECT,
+    },
   )) as any[];
   return rows[0] ?? null;
 }

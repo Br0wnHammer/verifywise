@@ -410,9 +410,13 @@ SQL does not rely on that setting. The building blocks are in
     this again in SQL. A link from another or an unknown type is never flagged
     by that walk, and is left exactly as it was. Switching the selected type
     therefore never flags the old type's use cases.
-  - Setting and clearing flags happens only while the run still owns its
-    claim. Both statements carry an `EXISTS` guard on the run's history row
-    (id, token, `started`).
+  - Every per-object write (project update, link update, new use case)
+    happens only while the run still owns its claim. Each object's transaction
+    first selects the run's history row (id, token, `started`) `FOR SHARE`;
+    a claim closing that row as abandoned must wait for the transaction, and
+    once the row is closed the next object's check fails with
+    `RunSupersededError` and the run stops with nothing more written. Setting
+    and clearing flags also carry an `EXISTS` guard on the same row.
   - After an incomplete or empty walk, no flag is set. A false "complete"
     would only mis-flag, which the next complete sync clears.
 - The run's note (`error_message` on the completed row, and
@@ -431,7 +435,8 @@ SQL does not rely on that setting. The building blocks are in
 `previousRunId` is the newest manual or scheduled run before the click.
 `GET /sync/status` returns:
 
-- `running` and `latest_run` (with `is_live`), computed in SQL
+- `running` and `latest_run` (with `is_live`, and `code`: `"abandoned"` or
+  `"skipped"` for a run closed for that reason, else null), computed in SQL
 - `queued`: whether a job for the org is waiting. It is `null` if the queue did
   not answer.
 
@@ -440,8 +445,8 @@ of these:
 
 - a run newer than `previousRunId` has finished: it reports that run's counts,
   or its error
-- that newer run stopped heart-beating: "The sync stopped responding. Try
-  again."
+- that newer run stopped heart-beating, or was closed with `code`
+  `"abandoned"`: "The sync stopped responding. Try again."
 - nothing is queued or running and no newer run appears for three polls: "The
   sync did not start. Try again."
 
@@ -451,9 +456,11 @@ the Assets API pages. Completeness now only decides whether flags may be set.
 - **Cloud:** `POST object/aql?startAt=&maxResults=`. Only `isLast === true`
   proves the end, because `total` can be capped. The walk advances by the
   number of rows returned.
-- **Data Center:** `GET iql/objects?...&page=&resultPerPage=`. The walk asks
-  until a page comes back partial or empty. `pageSize` and `totalFilterCount`
-  are not used.
+- **Data Center:** `GET iql/objects?...&page=&resultPerPage=`. The server may
+  cap `resultPerPage`, so a short page proves nothing. The walk asks until a
+  page comes back empty; only that proves the end. A non-empty page with no
+  new object (a server repeating its last page) stops the walk as incomplete.
+  `pageSize` and `totalFilterCount` are not used.
 
 Every request has a 30-second timeout. The worker's walk has a 10-minute
 deadline (`WORKER_SYNC_DEADLINE_MS`). When it passes, the run fails with
@@ -462,7 +469,11 @@ nothing changed. Every request, connection or body-read failure becomes
 claim) propagates as itself and is not reported as a deadline stop. The
 import picker (`GET /object-types/:id/objects?startAt=`) returns one page of up
 to 1000 as `{ objects, hasMore, nextStartAt }`, with **Load more** in the
-panel.
+panel. `POST /import` takes at most 100 `object_ids` per request
+(`IMPORT_MAX_OBJECTS`, 400 above that; the panel disables Import and says so),
+because it runs inside the request and fetches each object from Jira in turn.
+An import that loses its claim returns 409 with
+`{ message, code: "import_interrupted", imported, skipped }`.
 
 **Claims, tokens, heartbeats.** Every run starts with `claimSyncRun`: syncs at
 worker pickup, plus imports (`sync_type = 'import'`) and removals
@@ -511,15 +522,23 @@ ids (1 to 1000). `removeMissingUseCases`:
 
 1. takes the same claim, so it cannot race a sync or import (409)
 2. locks the listed rows that are still flagged (`FOR UPDATE`)
-3. deletes their projects (the link row cascades), or deletes link rows that
-   have no project
+3. deletes each project the way the core "Delete use case" does
+   (`deleteLinkedProject`): withdraws a pending approval request, records the
+   deletion in the change history, then `deleteProjectByIdQuery` (files,
+   risks, members, per-framework rows, custom-field values, the
+   `project_deleted` automation). The link row cascades. Link rows with no
+   project are deleted directly.
 4. records the run (`objects_deleted` = number removed)
 
-Steps 2 to 4 run in one transaction. A use case a sync found again in the
+Steps 2 to 4 run in one transaction, which first share-locks the run's own
+history row so no other claim can close it mid-way. `DELETE /use-cases/:id`
+uses the same `deleteLinkedProject`. A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is
 `{ removed, skipped }`. If the removal loses its claim before it finishes, the
-transaction rolls back and the route returns 409 "The removal was interrupted;
-nothing was removed. Try again."
+transaction rolls back and the route returns 409 with
+`{ message: "The removal was interrupted; nothing was removed. Try again.",
+code: "removal_interrupted" }`. The panel switches on `code`, never on the
+message text.
 
 **Settings and validation.**
 

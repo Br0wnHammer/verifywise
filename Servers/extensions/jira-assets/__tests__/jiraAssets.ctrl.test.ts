@@ -22,6 +22,13 @@ jest.mock("../jiraAssets.service", () => {
     importObjects: jest.fn(),
     updateSelection: jest.fn(),
     removeMissingUseCases: jest.fn(),
+    deleteUseCaseByProjectId: jest.fn(),
+    JIRA_RUN_CODES: {
+      abandoned: "abandoned",
+      skipped: "skipped",
+      importInterrupted: "import_interrupted",
+      removalInterrupted: "removal_interrupted",
+    },
     loadFullConfig: jest.fn(),
     clientFromConfig: jest.fn(),
   };
@@ -39,11 +46,18 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
   default: { error: jest.fn(), warn: jest.fn() },
   logStructured: jest.fn(),
 }));
+jest.mock("../../../utils/logger/logHelper", () => ({
+  logProcessing: jest.fn(),
+  logSuccess: jest.fn(),
+  logFailure: jest.fn(),
+}));
 jest.mock("../../../utils/i18n.utils", () => ({
   translateError: jest.fn(() => "Something went wrong"),
 }));
 
+import { logFailure, logProcessing, logSuccess } from "../../../utils/logger/logHelper";
 import {
+  deleteUseCaseCtrl,
   getObjects,
   getSyncStatusCtrl,
   patchSelection,
@@ -57,6 +71,7 @@ import {
 } from "../../../services/automations/automationProducer";
 import {
   clientFromConfig,
+  deleteUseCaseByProjectId,
   getSyncStatus,
   JiraImportInterruptedError,
   importObjects,
@@ -169,7 +184,12 @@ describe("POST /import", () => {
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith({
       message: "Conflict",
-      data: { message: "interrupted after 3", imported: 3, skipped: 1 },
+      data: {
+        message: "interrupted after 3",
+        code: "import_interrupted",
+        imported: 3,
+        skipped: 1,
+      },
     });
   });
 
@@ -263,6 +283,16 @@ describe("POST /use-cases/remove-missing", () => {
     expect(removeMissingUseCases).toHaveBeenCalledWith(5, 8, [11, 12, 13]);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ message: "OK", data: { removed: 2, skipped: 1 } });
+    expect(logProcessing).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "removeMissingCtrl", userId: 8, organizationId: 5 }),
+    );
+    expect(logSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "Delete",
+        description: expect.stringContaining("Removed 2 use case(s)"),
+      }),
+    );
+    expect(logFailure).not.toHaveBeenCalled();
   });
 
   it("returns 409 'interrupted, nothing removed' when the removal lost its claim", async () => {
@@ -274,8 +304,12 @@ describe("POST /use-cases/remove-missing", () => {
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith({
       message: "Conflict",
-      data: "The removal was interrupted; nothing was removed. Try again.",
+      data: {
+        message: "The removal was interrupted; nothing was removed. Try again.",
+        code: "removal_interrupted",
+      },
     });
+    expect(logFailure).toHaveBeenCalledWith(expect.objectContaining({ eventType: "Delete" }));
   });
 
   it("returns 409 while a sync is running and 400 for a bad list", async () => {
@@ -292,5 +326,26 @@ describe("POST /use-cases/remove-missing", () => {
     const res400 = mockRes();
     await removeMissingCtrl({ ...req, body: {} }, res400);
     expect(res400.status).toHaveBeenCalledWith(400);
+  });
+});
+
+describe("DELETE /use-cases/:id", () => {
+  it("deletes through the service with the caller's user id, and logs it", async () => {
+    const res = mockRes();
+
+    await deleteUseCaseCtrl({ ...req, params: { id: "111" } }, res);
+
+    expect(deleteUseCaseByProjectId).toHaveBeenCalledWith(111, 5, 8);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(logSuccess).toHaveBeenCalledWith(expect.objectContaining({ eventType: "Delete" }));
+  });
+
+  it("rejects a non-numeric id with 400 before deleting", async () => {
+    const res = mockRes();
+
+    await deleteUseCaseCtrl({ ...req, params: { id: "abc" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(deleteUseCaseByProjectId).not.toHaveBeenCalled();
   });
 });

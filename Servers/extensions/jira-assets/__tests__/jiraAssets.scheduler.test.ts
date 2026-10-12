@@ -19,7 +19,7 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
 jest.mock("../jiraAssets.service", () => {
   return {
     startScheduledSync: jest.fn(),
-    SQL_RUN_IS_LIVE: "(LIVE_CHECK)",
+    sqlLiveRunExists: (org: string) => `EXISTS(LIVE_CHECK h.organization_id = ${org})`,
   };
 });
 
@@ -98,7 +98,9 @@ describe("getScheduledSyncCandidates", () => {
     expect(sql).toContain("h.sync_type IN ('manual', 'scheduled')");
     // A manual sync the worker skipped (no token) does not delay the schedule.
     expect(sql).toContain("AND h.run_token IS NOT NULL");
-    expect(sql).toContain("(LIVE_CHECK)) AS running_is_live");
+    expect(sql).toContain(
+      "EXISTS(LIVE_CHECK h.organization_id = c.organization_id) AS running_is_live",
+    );
     expect(sql).toMatch(/CROSS JOIN LATERAL[\s\S]*GREATEST\(\s*c\.last_sync_at/);
     expect(sql).toContain(
       "(lr.last_run IS NULL OR lr.last_run + make_interval(hours => c.sync_interval_hours) <= (NOW() AT TIME ZONE 'UTC')) AS is_due",
