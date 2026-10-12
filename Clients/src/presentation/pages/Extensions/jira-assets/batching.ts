@@ -34,17 +34,73 @@ export async function runInBatches<T, R>(
   onProgress?: (progress: BatchProgress) => void,
   size: number = BATCH_SIZE,
 ): Promise<BatchRun<T, R>> {
-  const done: BatchRun<T, R>["done"] = [];
+  const batches: T[][] = [];
   for (let start = 0; start < items.length; start += size) {
-    const batch = items.slice(start, start + size);
-    onProgress?.({ from: start + 1, to: start + batch.length, total: items.length });
+    batches.push(items.slice(start, start + size));
+  }
+  return runBatches(batches, send, onProgress);
+}
+
+/** Send prepared batches one request at a time, stopping at the first error. */
+export async function runBatches<T, R>(
+  batches: T[][],
+  send: (batch: T[]) => Promise<R>,
+  onProgress?: (progress: BatchProgress) => void,
+): Promise<BatchRun<T, R>> {
+  const total = batches.reduce((sum, b) => sum + b.length, 0);
+  const done: BatchRun<T, R>["done"] = [];
+  let from = 1;
+  for (const batch of batches) {
+    onProgress?.({ from, to: from + batch.length - 1, total });
     try {
       done.push({ batch, result: await send(batch) });
     } catch (error) {
       return { done, error };
     }
+    from += batch.length;
   }
   return { done };
+}
+
+/**
+ * Batches that keep every group whole: ids of one group (the links of one
+ * project) always go in the same request, because a removal deletes a project
+ * only when all its links are in the request. Groups are packed into batches
+ * of up to `size` ids in the order they first appear; a group larger than
+ * `size` goes alone (the server accepts that: its limit is on projects per
+ * request). Ids without a group are their own group.
+ */
+export function planBatches<T>(
+  ids: T[],
+  groupOf: (id: T) => number | string | null | undefined,
+  size: number = BATCH_SIZE,
+): T[][] {
+  const groups = new Map<unknown, T[]>();
+  let ungrouped = 0;
+  for (const id of ids) {
+    const key = groupOf(id) ?? `__single_${ungrouped++}`;
+    const group = groups.get(key);
+    if (group) group.push(id);
+    else groups.set(key, [id]);
+  }
+  const batches: T[][] = [];
+  let current: T[] = [];
+  for (const group of groups.values()) {
+    if (group.length > size) {
+      // Keep the order: flush what is packed so far, then the big group alone.
+      if (current.length > 0) batches.push(current);
+      current = [];
+      batches.push(group);
+      continue;
+    }
+    if (current.length + group.length > size) {
+      batches.push(current);
+      current = [];
+    }
+    current.push(...group);
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
 }
 
 /** A count shown after a message, with its own label. */
@@ -85,6 +141,10 @@ export const SKIPPED_LIVE_LABEL = "Skipped, still linked to an object in Jira:";
 export const SKIPPED_CHANGED_LABEL = "Skipped, changed during the removal:";
 export const SKIPPED_OTHER_LABEL = "Skipped, other reason:";
 export const LINKS_REMOVED_LABEL = "Jira links removed:";
+export const SKIPPED_NOT_SELECTED_LABEL =
+  "Skipped, other missing items of the same use case not selected:";
+export const REMOVAL_NOT_SELECTED_MESSAGE =
+  "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.";
 export const REMOVAL_LIVE_LINK_MESSAGE =
   "Removal finished. Some use cases were not removed because their use case is still linked to an object that exists in Jira.";
 export const REMOVAL_PARTLY_SKIPPED_MESSAGE =
@@ -196,7 +256,8 @@ export async function importInBatches(
  * (there is no package shared by Servers and Clients); a reason this list does
  * not know is handled explicitly below (kept selected, generic message).
  */
-export type RemovalSkipReason = "no_longer_missing" | "not_found" | "changed" | "has_live_links";
+export type RemovalSkipReason =
+  "no_longer_missing" | "not_found" | "changed" | "has_live_links" | "other_links_not_selected";
 
 interface RemoveResponse {
   /** Use cases (projects) deleted. */
@@ -211,11 +272,14 @@ interface RemoveResponse {
 /**
  * What a skip means for the selection. no_longer_missing, not_found and
  * has_live_links settle the id (it leaves the "Missing in Jira" list, or is
- * backed by an object Jira still has): deselected. changed is still flagged
- * and worth another try: kept selected. An unknown reason is kept too.
+ * backed by an object Jira still has): deselected. changed (still flagged,
+ * worth another try) and other_links_not_selected (select the rest of the use
+ * case to remove it) stay selected. An unknown reason is kept too.
  */
-function skipBucket(reason: string): "gone" | "live" | "changed" | "other" {
+function skipBucket(reason: string): "gone" | "live" | "notSelected" | "changed" | "other" {
   switch (reason) {
+    case "other_links_not_selected":
+      return "notSelected";
     case "no_longer_missing":
     case "not_found":
       return "gone";
@@ -233,12 +297,14 @@ export async function removeInBatches(
   ids: number[],
   send: (batch: number[]) => Promise<RemoveResponse>,
   onProgress?: (progress: BatchProgress) => void,
+  /** The project (use case) of each link, so all its links go in one request. */
+  projectOf: (id: number) => number | null | undefined = () => null,
 ): Promise<BatchSummary<number>> {
-  const run = await runInBatches(ids, send, onProgress);
+  const run = await runBatches(planBatches(ids, projectOf), send, onProgress);
   let removed = 0;
   let linksRemoved = 0;
   let unlinked = 0;
-  const skips = { gone: 0, live: 0, changed: 0, other: 0 };
+  const skips = { gone: 0, live: 0, notSelected: 0, changed: 0, other: 0 };
   const doneIds: number[] = [];
   for (const { batch, result } of run.done) {
     removed += result?.removed ?? 0;
@@ -248,7 +314,7 @@ export async function removeInBatches(
     for (const { id, reason } of result?.skipped_items ?? []) {
       const bucket = skipBucket(reason);
       skips[bucket]++;
-      if (bucket === "changed" || bucket === "other") kept.add(id);
+      if (bucket === "changed" || bucket === "other" || bucket === "notSelected") kept.add(id);
     }
     doneIds.push(...batch.filter((id) => !kept.has(id)));
   }
@@ -260,6 +326,9 @@ export async function removeInBatches(
     ...(unlinked > 0 ? [{ label: UNLINKED_LABEL, value: unlinked }] : []),
     ...(skips.gone > 0 ? [{ label: SKIPPED_GONE_LABEL, value: skips.gone }] : []),
     ...(skips.live > 0 ? [{ label: SKIPPED_LIVE_LABEL, value: skips.live }] : []),
+    ...(skips.notSelected > 0
+      ? [{ label: SKIPPED_NOT_SELECTED_LABEL, value: skips.notSelected }]
+      : []),
     ...(skips.changed > 0 ? [{ label: SKIPPED_CHANGED_LABEL, value: skips.changed }] : []),
     ...(skips.other > 0 ? [{ label: SKIPPED_OTHER_LABEL, value: skips.other }] : []),
   ];
@@ -267,13 +336,15 @@ export async function removeInBatches(
     const keptAny = skips.changed + skips.other > 0;
     const text = keptAny
       ? REMOVAL_KEPT_MESSAGE
-      : skips.live > 0
-        ? REMOVAL_LIVE_LINK_MESSAGE
-        : skips.gone > 0
-          ? REMOVAL_PARTLY_SKIPPED_MESSAGE
-          : REMOVAL_FINISHED_MESSAGE;
+      : skips.notSelected > 0
+        ? REMOVAL_NOT_SELECTED_MESSAGE
+        : skips.live > 0
+          ? REMOVAL_LIVE_LINK_MESSAGE
+          : skips.gone > 0
+            ? REMOVAL_PARTLY_SKIPPED_MESSAGE
+            : REMOVAL_FINISHED_MESSAGE;
     return {
-      type: keptAny || skips.live + skips.gone > 0 ? "warning" : "success",
+      type: keptAny || skips.notSelected + skips.live + skips.gone > 0 ? "warning" : "success",
       text,
       counts: [...removedCounts(REMOVED_LABEL), ...extraCounts],
       doneIds,
@@ -340,6 +411,67 @@ export function createRequestGate() {
     /** Whether a response from `token`'s generation may still be applied. */
     isCurrent: (token: number) => token === generation,
   };
+}
+
+export type RequestGate = ReturnType<typeof createRequestGate>;
+
+/**
+ * One picker request with its loading flag. A fresh load starts a new
+ * generation; "Load more" joins the current one. A response from an older
+ * generation is dropped. The loading flag is always cleared: by this request
+ * when it is still current, by the reset that superseded it (resetPicker
+ * clears it), and after an error even if the error handler reset the picker.
+ */
+export async function runPickerRequest<T>(opts: {
+  gate: RequestGate;
+  append: boolean;
+  setLoading: (loading: boolean) => void;
+  fetch: () => Promise<T>;
+  onResult: (result: T) => void;
+  onError: (error: unknown) => void;
+}): Promise<void> {
+  const { gate, append, setLoading } = opts;
+  const token = append ? gate.current() : gate.bump();
+  setLoading(true);
+  try {
+    const result = await opts.fetch();
+    if (!gate.isCurrent(token)) return;
+    opts.onResult(result);
+    setLoading(false);
+  } catch (error) {
+    if (!gate.isCurrent(token)) return;
+    opts.onError(error);
+    setLoading(false);
+  }
+}
+
+export interface PickerPage<O> {
+  objects: O[];
+  hasMore: boolean;
+  nextStartAt: number;
+}
+
+/**
+ * Load the picker from the start up to `depth` pages (at least one), so a
+ * refresh shows as much as was loaded before and keeps the ticks on objects
+ * from "Load more" pages. Stops early when there is no more.
+ */
+export async function loadPages<O>(
+  fetchPage: (startAt: number) => Promise<PickerPage<O>>,
+  depth: number,
+): Promise<PickerPage<O> & { pages: number }> {
+  const objects: O[] = [];
+  let startAt = 0;
+  let hasMore = false;
+  let pages = 0;
+  do {
+    const page = await fetchPage(startAt);
+    objects.push(...page.objects);
+    hasMore = page.hasMore;
+    startAt = page.nextStartAt;
+    pages++;
+  } while (hasMore && pages < Math.max(1, depth));
+  return { objects, hasMore, nextStartAt: startAt, pages };
 }
 
 /**

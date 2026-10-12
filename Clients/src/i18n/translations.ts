@@ -9744,6 +9744,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Eine andere Synchronisierung oder ein Import lief bereits, daher wurde diese Synchronisierung nicht gestartet.",
     "Importing objects": "Objekte werden importiert",
+    "Skipped, other missing items of the same use case not selected:":
+      "Übersprungen, andere fehlende Einträge desselben Anwendungsfalls nicht ausgewählt:",
+    "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.":
+      "Entfernen abgeschlossen, aber einige Anwendungsfälle wurden nicht entfernt, weil andere fehlende Einträge desselben Anwendungsfalls nicht ausgewählt waren. Sie bleiben ausgewählt; wählen Sie die übrigen aus, um ihn zu entfernen.",
     "Skipped, still linked to an object in Jira:":
       "Übersprungen, noch mit einem Objekt in Jira verknüpft:",
     "Skipped, other reason:": "Übersprungen, anderer Grund:",
@@ -20006,6 +20010,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Une autre synchronisation ou importation était en cours, cette synchronisation n'a donc pas démarré.",
     "Importing objects": "Importation des objets",
+    "Skipped, other missing items of the same use case not selected:":
+      "Ignorés, autres éléments absents du même cas d'usage non sélectionnés :",
+    "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.":
+      "Suppression terminée, mais certains cas d'usage n'ont pas été supprimés, car d'autres éléments absents du même cas d'usage n'étaient pas sélectionnés. Ils restent sélectionnés ; sélectionnez les autres pour le supprimer.",
     "Skipped, still linked to an object in Jira:": "Ignorés, encore liés à un objet dans Jira :",
     "Skipped, other reason:": "Ignorés, autre raison :",
     "Jira links removed:": "Liens Jira supprimés :",
@@ -30191,6 +30199,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Había otra sincronización o importación en curso, por lo que esta sincronización no se inició.",
     "Importing objects": "Importando objetos",
+    "Skipped, other missing items of the same use case not selected:":
+      "Omitidos, otros elementos que faltan del mismo caso de uso no seleccionados:",
+    "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.":
+      "Eliminación finalizada, pero algunos casos de uso no se eliminaron porque no se seleccionaron otros elementos que faltan del mismo caso de uso. Siguen seleccionados; seleccione el resto para eliminarlo.",
     "Skipped, still linked to an object in Jira:": "Omitidos, aún vinculados a un objeto en Jira:",
     "Skipped, other reason:": "Omitidos, otro motivo:",
     "Jira links removed:": "Vínculos de Jira eliminados:",

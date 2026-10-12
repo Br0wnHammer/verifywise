@@ -22,6 +22,11 @@ import {
   LINKS_REMOVED_LABEL,
   REMOVAL_LIVE_LINK_MESSAGE,
   createRequestGate,
+  loadPages,
+  planBatches,
+  runPickerRequest,
+  REMOVAL_NOT_SELECTED_MESSAGE,
+  SKIPPED_NOT_SELECTED_LABEL,
   REMOVAL_KEPT_MESSAGE,
   appendPage,
   UNLINKED_LABEL,
@@ -454,5 +459,136 @@ describe("selection pruning when the picker list is replaced", () => {
     // "Load more" brings X back.
     objects = appendPage(objects, [obj("X")], new Set());
     expect(keepShown(stored, objects)).toEqual(new Set(["Y"]));
+  });
+});
+
+describe("planBatches (all links of one use case in one request)", () => {
+  it("packs whole groups into batches of up to 100", () => {
+    // 60 links of project A, 60 of B, 10 ungrouped.
+    const ids = [...nums(60, 1), ...nums(60, 101), ...nums(10, 201)];
+    const projectOf = (id: number) => (id <= 60 ? 1 : id <= 160 ? 2 : null);
+
+    const batches = planBatches(ids, projectOf);
+
+    expect(batches.map((b) => b.length)).toEqual([60, 70]);
+    expect(batches[0]).toEqual(nums(60, 1));
+    expect(batches[1]).toEqual([...nums(60, 101), ...nums(10, 201)]);
+  });
+
+  it("sends a group larger than 100 alone", () => {
+    const ids = [...nums(5, 1), ...nums(150, 1001)];
+    const projectOf = (id: number) => (id > 1000 ? 7 : null);
+
+    const batches = planBatches(ids, projectOf);
+
+    expect(batches.map((b) => b.length)).toEqual([5, 150]);
+  });
+});
+
+describe("removeInBatches grouped by use case", () => {
+  it("in a selection over 100, links 50 and 150 of one use case go in the same request", async () => {
+    const ids = nums(200);
+    const projectOf = (id: number) => (id === 50 || id === 150 ? 999 : null);
+    const send = vi.fn(async (batch: number[]) => ({ removed: batch.length, skipped_items: [] }));
+
+    await removeInBatches(ids, send, undefined, projectOf);
+
+    const withBoth = send.mock.calls.filter(([batch]) => batch.includes(50) || batch.includes(150));
+    expect(withBoth).toHaveLength(1);
+    expect(withBoth[0][0]).toEqual(expect.arrayContaining([50, 150]));
+    expect(send.mock.calls.every(([batch]) => batch.length <= 100)).toBe(true);
+  });
+
+  it("keeps an id selected when other items of its use case were not selected", async () => {
+    const send = vi.fn(async () => ({
+      removed: 0,
+      skipped_items: [{ id: 50, reason: "other_links_not_selected" }],
+    }));
+
+    const summary = await removeInBatches([50], send);
+
+    expect(summary.type).toBe("warning");
+    expect(summary.text).toBe(REMOVAL_NOT_SELECTED_MESSAGE);
+    expect(summary.counts).toContainEqual({ label: SKIPPED_NOT_SELECTED_LABEL, value: 1 });
+    expect(summary.doneIds).toEqual([]);
+  });
+});
+
+describe("runPickerRequest (loading flag)", () => {
+  it("clears loading when a fresh load fails and its error handler resets the picker", async () => {
+    const gate = createRequestGate();
+    const loading: boolean[] = [];
+    const onError = vi.fn(() => gate.bump()); // resetPicker bumps the generation
+
+    await runPickerRequest({
+      gate,
+      append: false,
+      setLoading: (l) => loading.push(l),
+      fetch: async () => {
+        throw new Error("boom");
+      },
+      onResult: vi.fn(),
+      onError,
+    });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(loading[loading.length - 1]).toBe(false);
+  });
+
+  it("a reset mid-request drops the response and leaves loading cleared", async () => {
+    const gate = createRequestGate();
+    const loading: boolean[] = [];
+    let release!: (v: string) => void;
+    const onResult = vi.fn();
+    const request = runPickerRequest({
+      gate,
+      append: true,
+      setLoading: (l) => loading.push(l),
+      fetch: () => new Promise<string>((resolve) => (release = resolve)),
+      onResult,
+      onError: vi.fn(),
+    });
+
+    // resetPicker: new generation and loading cleared.
+    gate.bump();
+    loading.push(false);
+    release("late page");
+    await request;
+
+    expect(onResult).not.toHaveBeenCalled();
+    expect(loading).toEqual([true, false]);
+  });
+});
+
+describe("loadPages (refresh to the loaded depth)", () => {
+  it("reloads as many pages as were loaded, so ticks on page 2 objects survive", async () => {
+    const fetchPage = vi.fn(async (startAt: number) =>
+      startAt === 0
+        ? { objects: [{ id: "A" }], hasMore: true, nextStartAt: 1000 }
+        : { objects: [{ id: "B" }], hasMore: true, nextStartAt: 2000 },
+    );
+
+    const result = await loadPages(fetchPage, 2);
+
+    expect(fetchPage.mock.calls.map(([start]) => start)).toEqual([0, 1000]);
+    expect(result).toEqual({
+      objects: [{ id: "A" }, { id: "B" }],
+      hasMore: true,
+      nextStartAt: 2000,
+      pages: 2,
+    });
+    // "B" was ticked on a Load more page; it is still ticked after the refresh.
+    expect(keepShown(new Set(["A", "B"]), result.objects)).toEqual(new Set(["A", "B"]));
+  });
+
+  it("loads one page when nothing was loaded before, and stops when there is no more", async () => {
+    const fetchPage = vi.fn(async () => ({
+      objects: [{ id: "A" }],
+      hasMore: false,
+      nextStartAt: 0,
+    }));
+
+    expect((await loadPages(fetchPage, 0)).pages).toBe(1);
+    expect((await loadPages(fetchPage, 5)).pages).toBe(1);
   });
 });

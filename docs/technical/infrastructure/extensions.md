@@ -532,34 +532,48 @@ ticks the use cases to delete and clicks **Remove selected use cases (N)**.
 They confirm in a `StandardModal` that shows the count and the list, and that
 says the projects and their data will be deleted. The panel then calls
 `POST /use-cases/remove-missing` with `{ use_case_ids }`, exactly the selected
-ids, at most 100 per request (the same limit as an import,
-`REMOVE_MISSING_MAX_IDS`). For a bigger selection the panel sends sequential
-requests of up to 100, shows "Removing use cases 101–200 / 250", stops at the
-first error and reports how many were removed. Import batches the same way
-("Importing objects …"); objects a batch reports as failed make the outcome a
-warning with a "not imported" count. A removal reports each skipped id with a
-reason (`skipped_items`): `no_longer_missing` and `not_found` leave the list
-on reload, and `has_live_links` (still linked to an object Jira returns) has
-its own message; all three are deselected. Only `changed` (and a reason the
-panel does not know) stays selected for another try. The message and the
-counts say which. "Use cases removed" counts projects; "Jira links removed"
-is shown next to it when it differs. Links cleaned up are counted
-separately ("Links cleaned up"). A delete that failed shows the server's
-message, which names the use case by its title and Jira key. Failed and unsent ids
-stay selected, so a retry is one click. After an import the panel reloads the
-imported use cases and applies `finishImport`'s updaters with that fresh list
-to the latest state (a "Load more" or toggle made meanwhile is kept):
-imported objects leave the picker and handled ids leave the selection. A
-"Load more" page is filtered against the imported ids known when it lands
-(`appendPage`, with the ids set where the imported list is fetched), so one
-still in flight during an import cannot bring imported objects back.
-Picker requests carry a generation (`createRequestGate`): a reset, an
-object-type change or a fresh load starts a new one, and a response from an
-older one is dropped, objects and paging alike. The stored selection is
-pruned in the same step whenever the list is replaced or filtered, so an id
-hidden by a refresh does not come back ticked; the effective selection is
-also derived at render (`keepShown`), so nothing selected is ever hidden. The outcome is
-shown last. Both live in `jira-assets/batching.ts`.
+ids. A request may name up to 1000 ids (`REMOVE_MISSING_MAX_IDS`) but cover
+at most 100 use cases (`REMOVE_MISSING_MAX_PROJECTS`, the same number as the
+import limit, checked before claiming): the cost of a removal is one project
+deletion per use case. The panel groups the selected ids by use case
+(`planBatches`), so every link of one use case goes in the same request, and
+packs the groups into sequential requests of up to 100 ids; a single use case
+with more than 100 links goes alone. It shows "Removing use cases 101–200 /
+250", stops at the first error and reports how many were removed. Import
+batches the same way ("Importing objects …"), 100 objects per request;
+objects a batch reports as failed make the outcome a warning with a "not
+imported" count.
+
+A removal reports each skipped id with a reason (`skipped_items`):
+`no_longer_missing` and `not_found` leave the list on reload, and
+`has_live_links` (still linked to an object Jira returns) has its own
+message; all three are deselected. `other_links_not_selected` (other missing
+items of the same use case were not ticked) and `changed` stay selected, with
+a message saying why; so does a reason the panel does not know. "Use cases
+removed" counts projects; "Jira links removed" is shown next to it when it
+differs. Links cleaned up are counted separately ("Links cleaned up"). A
+delete that failed shows the server's message, which names the use case by
+the requested link's title and Jira key. Failed and unsent ids stay selected,
+so a retry is one click.
+
+After an import the panel reloads the imported use cases and applies
+`finishImport`'s updaters with that fresh list to the latest state (a "Load
+more" or toggle made meanwhile is kept): imported objects leave the picker
+and the selection, and nothing else is dropped. A "Load more" page is
+filtered against the imported ids known when it lands (`appendPage`, with the
+ids set where the imported list is fetched), so one still in flight during an
+import cannot bring imported objects back. Picker requests run through
+`runPickerRequest` with a generation (`createRequestGate`): a reset, an
+object-type change or a fresh load starts a new one, a response from an older
+one is dropped (objects and paging alike), and the loading flag is always
+cleared (a reset clears it, and so does a failed load). A refresh reloads as
+many pages as were loaded before (`loadPages`), so ticks on objects from
+"Load more" pages are kept while the objects are still there; the stored
+selection is pruned to the reloaded list in the same step, and a reset or
+type change clears it. The effective selection is also derived at render
+(`keepShown`), so nothing selected is ever hidden. The outcome is shown last.
+All of this lives in `jira-assets/batching.ts`.
+
 `removeMissingUseCases` (through `deleteUseCasesUnderClaim`):
 
 1. takes the same claim, so it cannot race a sync or import (409)
@@ -568,20 +582,19 @@ shown last. Both live in `jira-assets/batching.ts`.
    which also classifies them as in this organization or not; then locks the
    listed links, then every link of a locked project (two queries, each
    ordered by id), and decides each listed id from those locked rows.
-3. for each project in this organization, deletes it once the way the core
-   "Delete use case" does (`deleteLinkedProject`): withdraws a pending
-   approval request, runs `deleteProjectByIdQuery` (files, risks, members,
-   per-framework rows, custom-field values) and records the deletion in the
-   change history. Its links go with it (cascade): two flagged links to one
-   project make one removed use case and two `links_removed`. A project that
-   also backs a link that is not flagged missing (an object Jira still
-   returns) is not deleted (skipped, `has_live_links`): a live use case is
-   never removed by cascade. Its other flagged links, listed or not (for
-   example in a later batch), do not block it; they go with it, and a later
-   request for them is `not_found`. A locked project that fails to delete
-   throws `JiraUseCaseDeleteFailedError`, which names the use case by its
-   title and Jira key; the whole removal rolls back and the route returns
-   500 with that message. The
+3. for each project in this organization, deletes it once only when every
+   link of it is in the request and flagged missing. A project that also
+   backs a link Jira still returns is skipped (`has_live_links`); one with
+   flagged links that are not in the request is skipped
+   (`other_links_not_selected`). Nothing the admin did not tick is ever
+   removed by cascade. Otherwise the project goes through
+   `deleteProjectWithSideEffects` (see below): approval withdrawal, change
+   history, `deleteProjectByIdQuery` (files, risks, members, per-framework
+   rows, custom-field values). Its links go with it (cascade): two selected
+   links to one project make one removed use case and two `links_removed`. A
+   locked project that fails to delete throws `JiraUseCaseDeleteFailedError`,
+   which names the use case by the requested link's title and Jira key; the
+   whole removal rolls back and the route returns 500 with that message. The
    `project_deleted` automation is queued after the transaction commits
    (`enqueueAutomationAfterCommit`), so a rolled-back removal fires none.
 4. for a link with no project, or whose project is not in this organization
@@ -595,15 +608,17 @@ shown last. Both live in `jira-assets/batching.ts`.
 Steps 2 to 4 run in one transaction, which first share-locks the run's own
 history row so no other claim can close it mid-way.
 
-Lock order: every path that deletes a project locks its row first, with
-`lockProjectForDelete` (`Servers/utils/project.utils.ts`). The core "Delete
-use case" calls it as the first statement of its transaction, before the
-approval withdrawal and the change-history row that reference the project;
-`deleteProjectByIdQuery` and the Jira `deleteLinkedProject` call it again
-(a no-op within the transaction) before touching anything; the Jira flow
-locks its projects before any link row. So a Jira removal and a core
-"Delete use case" on the same project wait for each other instead of
-deadlocking.
+Deleting a project: every path goes through `deleteProjectWithSideEffects`
+(`Servers/utils/projectDeletion.utils.ts`), which runs, in this order: lock
+the project row (`lockProjectForDelete`, unless the caller already holds
+it), withdraw a pending approval request, record the deletion in the change
+history, then `deleteProjectByIdQuery`. The core "Delete use case" calls it
+first thing in its transaction; the Jira flow locks its projects before any
+link row and passes `alreadyLocked`; the demo-data driver locks each project
+before deleting its NIST data and skips the approval and history steps. So
+every path takes a project's lock before anything that references it, a
+Jira removal and a core "Delete use case" on the same project wait for each
+other instead of deadlocking, and the order cannot drift between callers.
 
 `DELETE /use-cases/:id` deletes one imported use case through the same
 `deleteUseCasesUnderClaim` flow (409 while a sync, import or removal runs; its
