@@ -16,7 +16,17 @@ vi.mock("../../../../application/hooks/useAuth", () => ({
 vi.mock("../../../../application/hooks/useMyPermissions", () => ({
   useHasPermission: (key: string) =>
     !mockPermissionsLoading && key === "organization.admin" && mockHasOrganizationAdmin,
-  useMyPermissions: () => ({ isLoading: mockPermissionsLoading }),
+  // While loading (or disabled, before a user is known) React Query has no
+  // data; v5 reports a disabled query as not loading.
+  useMyPermissions: () => ({
+    permissions: mockPermissionsLoading
+      ? undefined
+      : mockHasOrganizationAdmin
+        ? ["organization.admin"]
+        : [],
+    isLoading: false,
+    error: null,
+  }),
 }));
 
 // Mock child tab components
@@ -108,7 +118,14 @@ describe("SettingsPage", () => {
     expect(screen.queryByTestId("data-retention-tab")).not.toBeInTheDocument();
   });
 
-  it("waits for permissions to load before redirecting", () => {
+  it("stays on the tab when permissions are loaded and include organization.admin", () => {
+    mockRole = "Compliance lead";
+    renderAt("/settings/data-retention");
+    expect(screen.getByTestId("path")).toHaveTextContent("/settings/data-retention");
+    expect(screen.getByTestId("data-retention-tab")).toBeInTheDocument();
+  });
+
+  it("does not redirect while the permissions query is disabled or pending", () => {
     mockPermissionsLoading = true;
     renderAt("/settings/data-retention");
     expect(screen.getByTestId("path")).toHaveTextContent("/settings/data-retention");

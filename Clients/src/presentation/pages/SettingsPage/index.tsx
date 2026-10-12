@@ -56,7 +56,11 @@ export default function ProfilePage() {
   // Data retention follows the organization.admin permission its routes
   // authorize on, so a custom role granted it gets the tab too.
   const canManageRetention = useHasPermission("organization.admin", { fallbackToAdmin: true });
-  const { isLoading: permissionsLoading } = useMyPermissions();
+  // Resolved means the permissions arrived (or failed, when the Admin fallback
+  // applies). A disabled query (no user yet) is not resolved, even though
+  // React Query reports it as not loading.
+  const { permissions, error: permissionsError } = useMyPermissions();
+  const permissionsResolved = permissions !== undefined || Boolean(permissionsError);
   const isCustomFieldsDisabled = userRoleName !== "Admin";
 
   const { tab } = useParams<{ tab?: string }>();
@@ -88,11 +92,11 @@ export default function ProfilePage() {
   // without the permission would show an empty page. Once permissions are
   // known, fall back to the default tab instead.
   useEffect(() => {
-    if (activeTab === "data-retention" && !permissionsLoading && !canManageRetention) {
+    if (activeTab === "data-retention" && permissionsResolved && !canManageRetention) {
       navigate("/settings", { replace: true });
       setActiveTab(defaultTab);
     }
-  }, [activeTab, permissionsLoading, canManageRetention, navigate]);
+  }, [activeTab, permissionsResolved, canManageRetention, navigate]);
 
   // Handle navigation state from command palette
   useEffect(() => {
