@@ -43,6 +43,9 @@ const MISSING_REMOVED_MESSAGE = "Missing use cases removed.";
 /** Most objects one import may send; the server enforces the same limit. */
 const IMPORT_MAX_OBJECTS = 100;
 const IMPORT_LIMIT_MESSAGE = `Select up to ${IMPORT_MAX_OBJECTS} objects per import.`;
+/** Most use cases one removal may send; the server uses the same limit as imports. */
+const REMOVE_MAX_USE_CASES = IMPORT_MAX_OBJECTS;
+const REMOVE_LIMIT_MESSAGE = `Select up to ${REMOVE_MAX_USE_CASES} use cases per removal.`;
 /** Desktop control height for the panel's action buttons. */
 const CONTROL_HEIGHT_SX = { height: 30, minHeight: 30 };
 const MISSING_EXPLAINER =
@@ -514,6 +517,11 @@ export const JiraAssetsConfiguration: React.FC = () => {
   };
 
   const handleRemoveMissing = async () => {
+    if (selectedMissing.length > REMOVE_MAX_USE_CASES) {
+      setSyncMessage({ type: "error", text: REMOVE_LIMIT_MESSAGE });
+      setIsRemoveMissingOpen(false);
+      return;
+    }
     setIsRemovingMissing(true);
     setSyncMessage(null);
     try {
@@ -1191,30 +1199,21 @@ export const JiraAssetsConfiguration: React.FC = () => {
                     </Typography>
                   }
                 />
-                <Button
+                <CustomizableButton
                   variant="contained"
                   onClick={handleImport}
-                  disabled={
+                  isDisabled={
                     isImporting ||
                     selectedObjects.size === 0 ||
                     selectedObjects.size > IMPORT_MAX_OBJECTS
                   }
-                  startIcon={
-                    isImporting ? (
-                      <CircularProgress size={14} sx={{ color: "white" }} />
-                    ) : (
-                      <Download size={14} />
-                    )
-                  }
-                  sx={{
-                    "backgroundColor": "#13715B",
-                    "textTransform": "none",
-                    "fontSize": "13px",
-                    "&:hover": { backgroundColor: "#0F5A47" },
-                  }}
+                  loading={isImporting}
+                  startIcon={<Download size={14} />}
+                  testId="jira-import-selected"
+                  sx={CONTROL_HEIGHT_SX}
                 >
-                  {isImporting ? "Importing..." : `Import ${selectedObjects.size} Selected`}
-                </Button>
+                  {isImporting ? "Importing..." : `Import ${selectedObjects.size} selected`}
+                </CustomizableButton>
               </Box>
 
               {selectedObjects.size > IMPORT_MAX_OBJECTS && (
@@ -1311,7 +1310,12 @@ export const JiraAssetsConfiguration: React.FC = () => {
                   variant="outlined"
                   color="error"
                   onClick={() => setIsRemoveMissingOpen(true)}
-                  isDisabled={!canManageSync || isRemovingMissing || selectedMissing.length === 0}
+                  isDisabled={
+                    !canManageSync ||
+                    isRemovingMissing ||
+                    selectedMissing.length === 0 ||
+                    selectedMissing.length > REMOVE_MAX_USE_CASES
+                  }
                   testId="jira-remove-missing"
                   sx={{
                     ...CONTROL_HEIGHT_SX,
@@ -1339,6 +1343,16 @@ export const JiraAssetsConfiguration: React.FC = () => {
               >
                 {MISSING_EXPLAINER}
               </Typography>
+              {selectedMissing.length > REMOVE_MAX_USE_CASES && (
+                <Typography
+                  variant="caption"
+                  sx={{ display: "block", mb: 1, color: theme.palette.status.error.text }}
+                  data-testid="jira-remove-limit"
+                >
+                  {REMOVE_LIMIT_MESSAGE} <span>{selectedMissing.length}</span>{" "}
+                  <span>selected.</span>
+                </Typography>
+              )}
               <TableContainer
                 component={Paper}
                 sx={{
