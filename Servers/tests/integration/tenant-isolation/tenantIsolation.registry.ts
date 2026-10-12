@@ -145,6 +145,14 @@ export const tenantIsolationRegistry: IsolationEntity[] = [
     testFile: "data-retention.isolation.test.ts",
   },
   {
+    // Sync engine runs and schedules. The routes are keyed by extension key
+    // (/api/extensions/:key/runs…), not by row id, so a hand-written file covers them.
+    name: "extension_sync",
+    tables: ["extension_sync_runs", "extension_sync_settings"],
+    baseRoute: "/api/extensions/:key/runs",
+    testFile: "extensionRuns.isolation.test.ts",
+  },
+  {
     name: "eu_ai_act_classifications",
     tables: ["eu_ai_act_classifications"],
     baseRoute: "/api/projects/:id/eu-ai-act-classification",
