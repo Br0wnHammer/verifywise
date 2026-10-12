@@ -231,33 +231,52 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
 _RETENTION_DAY_KEYS = ("log_retention_days", "spend_log_retention_days")
 
 
-_TEXT_SETTING_KEYS = (
-    "pii_on_error",
-    "content_filter_on_error",
-    "pii_replacement_format",
-    "content_filter_replacement",
-)
+# What to do when a guardrail check errors. The guardrail service only acts on
+# "block"; "allow" lets the request through. Columns are VARCHAR(20).
+_ON_ERROR_KEYS = ("pii_on_error", "content_filter_on_error")
+_ON_ERROR_VALUES = ("block", "allow")
+# Replacement text columns are VARCHAR(50).
+_REPLACEMENT_KEYS = ("pii_replacement_format", "content_filter_replacement")
+_REPLACEMENT_MAX_LENGTH = 50
 _BOOLEAN_SETTING_KEYS = ("log_request_body", "log_response_body", "auto_purge_enabled")
+# The two body-logging columns are nullable; every other setting is NOT NULL.
+_NULLABLE_SETTING_KEYS = ("log_request_body", "log_response_body")
 
 
 def _validate_settings_input(data: dict) -> None:
     """Reject values the settings columns cannot hold, as a 400.
 
     Saves are partial: a key that is left out keeps its stored value. An
-    explicit null is not "leave it", so it is rejected rather than silently
-    ignored; the text and retention columns are NOT NULL, and storing it would
-    otherwise fail as a 500."""
+    explicit null is stored only for the two nullable columns
+    (log_request_body, log_response_body), as before. For every other setting
+    the column is NOT NULL, so null is rejected here rather than failing in
+    the database as a 500."""
     for key in _SETTINGS_DEFAULTS:
-        if key in data and data[key] is None:
+        if key in data and data[key] is None and key not in _NULLABLE_SETTING_KEYS:
             raise HTTPException(
                 status_code=400,
                 detail=f"{key} cannot be null; leave it out to keep the current value",
             )
-    for key in _TEXT_SETTING_KEYS:
-        if key in data and not isinstance(data[key], str):
-            raise HTTPException(status_code=400, detail=f"{key} must be a string")
+    for key in _ON_ERROR_KEYS:
+        if key in data and data[key] not in _ON_ERROR_VALUES:
+            raise HTTPException(
+                status_code=400, detail=f"{key} must be one of: {', '.join(_ON_ERROR_VALUES)}"
+            )
+    for key in _REPLACEMENT_KEYS:
+        if key in data and (
+            not isinstance(data[key], str) or len(data[key]) > _REPLACEMENT_MAX_LENGTH
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{key} must be text of at most {_REPLACEMENT_MAX_LENGTH} characters",
+            )
     for key in _BOOLEAN_SETTING_KEYS:
-        if key in data and not isinstance(data[key], bool):
+        if key not in data:
+            continue
+        value = data[key]
+        if value is None and key in _NULLABLE_SETTING_KEYS:
+            continue
+        if not isinstance(value, bool):
             raise HTTPException(status_code=400, detail=f"{key} must be a boolean")
     for key in _RETENTION_DAY_KEYS:
         if key in data:

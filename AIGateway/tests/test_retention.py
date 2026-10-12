@@ -239,13 +239,11 @@ async def test_invalid_values_are_rejected(monkeypatch, body):
         "content_filter_replacement",
         "log_retention_days",
         "spend_log_retention_days",
-        "log_request_body",
-        "log_response_body",
         "auto_purge_enabled",
     ],
 )
-async def test_explicit_null_is_rejected_with_400(monkeypatch, key):
-    """Leaving a key out keeps it; null is not a value any setting can take."""
+async def test_explicit_null_is_rejected_for_not_null_columns(monkeypatch, key):
+    """Leaving a key out keeps it; null is not a value these columns hold."""
     get_db, executed = _fake_db()
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
@@ -256,15 +254,37 @@ async def test_explicit_null_is_rejected_with_400(monkeypatch, key):
     assert executed == []
 
 
+@pytest.mark.parametrize("key", ["log_request_body", "log_response_body"])
+async def test_null_is_stored_for_the_nullable_body_logging_columns(monkeypatch, key):
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    await guardrails_crud.upsert_guardrail_settings_with_previous(7, {key: None})
+
+    _, params = _upserts(executed)[0]
+    assert params[f"set_{key}"] is True
+    assert params[key] is None
+
+
 @pytest.mark.parametrize(
     "body, detail",
     [
-        ({"pii_on_error": 5}, "pii_on_error must be a string"),
-        ({"content_filter_replacement": ["x"]}, "content_filter_replacement must be a string"),
+        ({"pii_on_error": "drop"}, "pii_on_error must be one of: block, allow"),
+        ({"pii_on_error": 5}, "pii_on_error must be one of: block, allow"),
+        ({"content_filter_on_error": "BLOCK"}, "content_filter_on_error must be one of: block, allow"),
+        (
+            {"pii_replacement_format": "x" * 51},
+            "pii_replacement_format must be text of at most 50 characters",
+        ),
+        (
+            {"content_filter_replacement": ["x"]},
+            "content_filter_replacement must be text of at most 50 characters",
+        ),
         ({"log_request_body": "yes"}, "log_request_body must be a boolean"),
+        ({"auto_purge_enabled": "yes"}, "auto_purge_enabled must be a boolean"),
     ],
 )
-async def test_wrong_types_are_rejected_with_400(monkeypatch, body, detail):
+async def test_invalid_text_and_boolean_settings_are_rejected_with_400(monkeypatch, body, detail):
     get_db, executed = _fake_db()
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
@@ -273,6 +293,23 @@ async def test_wrong_types_are_rejected_with_400(monkeypatch, body, detail):
     assert exc.value.status_code == 400
     assert exc.value.detail == detail
     assert executed == []
+
+
+async def test_valid_text_settings_are_accepted(monkeypatch):
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    await guardrails_crud.upsert_guardrail_settings_with_previous(
+        7,
+        {
+            "pii_on_error": "allow",
+            "content_filter_on_error": "block",
+            "pii_replacement_format": "x" * 50,
+            "content_filter_replacement": "",
+        },
+    )
+
+    assert len(_upserts(executed)) == 1
 
 
 async def test_ten_years_is_the_longest_accepted_period(monkeypatch):
