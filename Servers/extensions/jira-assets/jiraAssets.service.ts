@@ -1175,8 +1175,8 @@ type LinkRow = { id: number; project_id: number | null; missing_in_jira_since: D
  * same-organization links (composite FK; the migration backed up and deleted
  * existing cross-organization links), so in practice this path only handles a
  * NULL project_id. The cross-organization branches here are unreachable now
- * and are kept only until that migration's rollback window has passed (a
- * down() restores the old single-column FK); remove them after that. A project that is locked here but fails to
+ * and are kept only until that migration's rollback window has passed (its
+ * down() drops the composite FK); remove them after that. A project that is locked here but fails to
  * delete throws JiraUseCaseDeleteFailedError, naming the use case by its
  * title and Jira key, and everything rolls back.
  *

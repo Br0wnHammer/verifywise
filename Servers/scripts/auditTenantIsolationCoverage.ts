@@ -144,7 +144,7 @@ const deferredScopedTables: SharedTableEntry[] = [
   {
     name: "jira_assets_use_cases_fk_cleanup_backup",
     justification:
-      "Backup written once by migration 20261012165625-jira-assets-link-same-org-fk (links whose project was missing or in another organization, deleted when the composite FK was added) and read only by its down(). No app code reads or writes it. Dropped by down().",
+      "Backup written once by migration 20261012165625-jira-assets-link-same-org-fk (links whose project was missing or in another organization, deleted when the composite FK was added) and read only by its down(). No app code reads or writes it. organization_id references organizations ON DELETE CASCADE, so a deleted organization's rows go with it. Dropped by down() once empty.",
   },
   {
     name: "model_lifecycle_change_history",
