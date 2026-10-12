@@ -10206,6 +10206,19 @@ export const translations: Record<string, Record<string, string>> = {
     "Unavailable": "Nicht verfügbar",
     "Set by deployment: {setting}": "Durch die Bereitstellung festgelegt: {setting}",
     "Edit retention: {name}": "Aufbewahrung bearbeiten: {name}",
+    "Only admins can change retention periods":
+      "Nur Administratoren können Aufbewahrungsfristen ändern",
+    "Records before {date} removed by retention policy":
+      "Datensätze vor dem {date} wurden durch die Aufbewahrungsrichtlinie entfernt",
+    "Spend log retention (days)": "Aufbewahrung der Ausgabenprotokolle (Tage)",
+    "Purge logs": "Protokolle löschen",
+    "This cannot be undone. The saved retention period is used, so save any change to it first.":
+      "Dies kann nicht rückgängig gemacht werden. Es gilt die gespeicherte Aufbewahrungsfrist, speichern Sie daher zuerst jede Änderung daran.",
+    "Delete old spend log entries based on the spend log retention period above.":
+      "Alte Ausgabenprotokolleinträge anhand der oben festgelegten Aufbewahrungsfrist für Ausgabenprotokolle löschen.",
+    "Retention periods must be whole numbers of at least 1 day":
+      "Aufbewahrungsfristen müssen ganze Zahlen von mindestens 1 Tag sein",
+    "Failed to purge logs": "Protokolle konnten nicht gelöscht werden",
     "Audit records before {date} were removed by the retention policy.":
       "Auditdatensätze vor dem {date} wurden durch die Aufbewahrungsrichtlinie entfernt.",
     "Choose how long these records are kept":
@@ -20359,6 +20372,19 @@ export const translations: Record<string, Record<string, string>> = {
     "Unavailable": "Indisponible",
     "Set by deployment: {setting}": "Défini par le déploiement : {setting}",
     "Edit retention: {name}": "Modifier la conservation : {name}",
+    "Only admins can change retention periods":
+      "Seuls les administrateurs peuvent modifier les durées de conservation",
+    "Records before {date} removed by retention policy":
+      "Enregistrements antérieurs au {date} supprimés par la politique de conservation",
+    "Spend log retention (days)": "Conservation des journaux de dépenses (jours)",
+    "Purge logs": "Purger les journaux",
+    "This cannot be undone. The saved retention period is used, so save any change to it first.":
+      "Cette action est irréversible. La durée de conservation enregistrée est utilisée, enregistrez donc d'abord toute modification.",
+    "Delete old spend log entries based on the spend log retention period above.":
+      "Supprimer les anciennes entrées du journal des dépenses selon la durée de conservation des journaux de dépenses ci-dessus.",
+    "Retention periods must be whole numbers of at least 1 day":
+      "Les durées de conservation doivent être des nombres entiers d'au moins 1 jour",
+    "Failed to purge logs": "Échec de la purge des journaux",
     "Audit records before {date} were removed by the retention policy.":
       "Les enregistrements d'audit antérieurs au {date} ont été supprimés par la politique de conservation.",
     "Choose how long these records are kept":
@@ -30432,6 +30458,19 @@ export const translations: Record<string, Record<string, string>> = {
     "Unavailable": "No disponible",
     "Set by deployment: {setting}": "Definido por el despliegue: {setting}",
     "Edit retention: {name}": "Editar retención: {name}",
+    "Only admins can change retention periods":
+      "Solo los administradores pueden cambiar los periodos de retención",
+    "Records before {date} removed by retention policy":
+      "Registros anteriores al {date} eliminados por la política de retención",
+    "Spend log retention (days)": "Retención de registros de gasto (días)",
+    "Purge logs": "Purgar registros",
+    "This cannot be undone. The saved retention period is used, so save any change to it first.":
+      "Esta acción no se puede deshacer. Se usa el periodo de retención guardado, así que guarda primero cualquier cambio.",
+    "Delete old spend log entries based on the spend log retention period above.":
+      "Eliminar las entradas antiguas del registro de gasto según el periodo de retención de registros de gasto indicado arriba.",
+    "Retention periods must be whole numbers of at least 1 day":
+      "Los periodos de retención deben ser números enteros de al menos 1 día",
+    "Failed to purge logs": "No se pudieron purgar los registros",
     "Audit records before {date} were removed by the retention policy.":
       "Los registros de auditoría anteriores al {date} se eliminaron por la política de retención.",
     "Choose how long these records are kept": "Elige cuánto tiempo se conservan estos registros",

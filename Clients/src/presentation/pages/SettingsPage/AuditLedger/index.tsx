@@ -26,6 +26,8 @@ import {
   Lock,
   Filter,
 } from "lucide-react";
+import { useTranslation } from "../../../../application/hooks/useTranslation";
+import { fill } from "../../../../i18n/fill";
 import EmptyStateTip from "../../../components/EmptyState/EmptyStateTip";
 import { CustomizableButton } from "../../../components/button/customizable-button";
 import SearchBox from "../../../components/Search/SearchBox";
@@ -102,6 +104,7 @@ export default function AuditLedger() {
     isVerifying,
   } = useAuditLedger();
 
+  const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
   // Cancels a running export when the page unmounts, so it neither keeps
   // streaming nor downloads a file after the user has left.
@@ -251,6 +254,16 @@ export default function AuditLedger() {
               >
                 {verifyBanner.label}
               </Typography>
+              {verifyResult?.prunedThrough && (
+                <Typography
+                  sx={{ fontSize: 13, color: theme.palette.text.secondary }}
+                  data-testid="ledger-pruned-note"
+                >
+                  {fill(t("Records before {date} removed by retention policy"), {
+                    date: formatDate(new Date(verifyResult.prunedThrough.cutoff)),
+                  })}
+                </Typography>
+              )}
             </Stack>
             <Stack direction="row" sx={{ gap: "8px" }}>
               <CustomizableButton

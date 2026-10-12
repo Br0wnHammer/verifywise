@@ -153,17 +153,23 @@ export default function AIGatewaySettingsPage() {
   const [budgetSubmitting, setBudgetSubmitting] = useState(false);
 
   // Guardrail settings state
-  const [, setGuardrailSettings] = useState<any>(null);
+  const [guardrailSettings, setGuardrailSettings] = useState<any>(null);
   const [gsForm, setGsForm] = useState({
     pii_on_error: "block",
     content_filter_on_error: "allow",
     pii_replacement_format: "<ENTITY_TYPE>",
     content_filter_replacement: "[REDACTED]",
     log_retention_days: "90",
+    spend_log_retention_days: "90",
+    auto_purge_enabled: false,
     log_request_body: false,
     log_response_body: false,
   });
   const [gsSaving, setGsSaving] = useState(false);
+  const [gsError, setGsError] = useState("");
+  const [isPurgeModalOpen, setIsPurgeModalOpen] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [purgeMessage, setPurgeMessage] = useState<{ text: string; isError: boolean } | null>(null);
   const [spendPurgeResult, setSpendPurgeResult] = useState("");
 
   // Cache settings
@@ -220,6 +226,8 @@ export default function AIGatewaySettingsPage() {
           pii_replacement_format: gs.pii_replacement_format || "<ENTITY_TYPE>",
           content_filter_replacement: gs.content_filter_replacement || "[REDACTED]",
           log_retention_days: String(gs.log_retention_days ?? 90),
+          spend_log_retention_days: String(gs.spend_log_retention_days ?? 90),
+          auto_purge_enabled: gs.auto_purge_enabled ?? false,
           log_request_body: gs.log_request_body || false,
           log_response_body: gs.log_response_body || false,
         });
@@ -354,17 +362,44 @@ export default function AIGatewaySettingsPage() {
   };
 
   const handleSaveGuardrailSettings = async () => {
+    const logDays = Number(gsForm.log_retention_days);
+    const spendDays = Number(gsForm.spend_log_retention_days);
+    if (
+      !Number.isInteger(logDays) ||
+      logDays < 1 ||
+      !Number.isInteger(spendDays) ||
+      spendDays < 1
+    ) {
+      setGsError("Retention periods must be whole numbers of at least 1 day");
+      return;
+    }
+    setGsError("");
     setGsSaving(true);
     try {
       await apiServices.put("/ai-gateway/guardrails/settings", {
         ...gsForm,
-        log_retention_days: Number(gsForm.log_retention_days) || 90,
+        log_retention_days: logDays,
+        spend_log_retention_days: spendDays,
       });
       await loadData();
-    } catch {
-      // Silently handle
+    } catch (err: any) {
+      setGsError(err?.message || "Failed to save settings");
     } finally {
       setGsSaving(false);
+    }
+  };
+
+  const handlePurgeGuardrailLogs = async () => {
+    setPurging(true);
+    try {
+      const res = await apiServices.post<Record<string, any>>("/ai-gateway/guardrails/logs/purge");
+      const count = res?.data?.total_deleted ?? res?.data?.data?.total_deleted ?? 0;
+      setPurgeMessage({ text: `${count} logs deleted`, isError: false });
+    } catch (err: any) {
+      setPurgeMessage({ text: err?.message || "Failed to purge logs", isError: true });
+    } finally {
+      setPurging(false);
+      setIsPurgeModalOpen(false);
     }
   };
 
@@ -714,7 +749,12 @@ export default function AIGatewaySettingsPage() {
             {activeTab === "guardrails" && (
               <Stack gap="16px">
                 {/* Save button */}
-                <Stack direction="row" justifyContent="flex-end">
+                <Stack direction="row" justifyContent="flex-end" alignItems="center" gap="12px">
+                  {gsError && (
+                    <Typography sx={{ fontSize: 13, color: palette.status.error.text }}>
+                      {gsError}
+                    </Typography>
+                  )}
                   <CustomizableButton
                     text={gsSaving ? "Saving..." : "Save settings"}
                     onClick={handleSaveGuardrailSettings}
@@ -807,8 +847,9 @@ export default function AIGatewaySettingsPage() {
                   <Stack gap="8px">
                     <Typography sx={sectionTitleSx}>Audit log retention</Typography>
                     <Typography sx={{ fontSize: 13, color: palette.text.tertiary }}>
-                      How long to keep guardrail detection logs. These logs record every blocked or
-                      masked request for compliance auditing (EU AI Act Art. 12).
+                      How long to keep guardrail detection logs and spend logs. Guardrail logs
+                      record every blocked or masked request for compliance auditing (EU AI Act Art.
+                      12).
                     </Typography>
                     <Box sx={{ maxWidth: 200, mt: "8px" }}>
                       <Field
@@ -820,18 +861,57 @@ export default function AIGatewaySettingsPage() {
                         }
                       />
                     </Box>
+                    <Box sx={{ maxWidth: 200, mt: "8px" }}>
+                      <Field
+                        label="Spend log retention (days)"
+                        placeholder="90"
+                        value={gsForm.spend_log_retention_days}
+                        onChange={(e) =>
+                          setGsForm((p) => ({ ...p, spend_log_retention_days: e.target.value }))
+                        }
+                      />
+                    </Box>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                      sx={{ mt: "8px" }}
+                    >
+                      <Typography sx={{ fontSize: 13 }}>Delete automatically</Typography>
+                      <Toggle
+                        checked={gsForm.auto_purge_enabled}
+                        ariaLabel="Delete automatically"
+                        onChange={() =>
+                          setGsForm((p) => ({ ...p, auto_purge_enabled: !p.auto_purge_enabled }))
+                        }
+                      />
+                    </Stack>
+                    <Typography sx={{ fontSize: 13, color: palette.text.tertiary }}>
+                      When on, logs older than their retention period are deleted every day. When
+                      off, logs are kept until you purge them.
+                    </Typography>
                     <Box sx={{ mt: "8px" }}>
                       <CustomizableButton
                         text="Purge old logs"
                         variant="outlined"
-                        onClick={async () => {
-                          try {
-                            await apiServices.post("/ai-gateway/guardrails/logs/purge");
-                          } catch {
-                            // Silently handle
-                          }
+                        onClick={() => {
+                          setPurgeMessage(null);
+                          setIsPurgeModalOpen(true);
                         }}
                       />
+                      {purgeMessage && (
+                        <Typography
+                          sx={{
+                            fontSize: 13,
+                            mt: "8px",
+                            color: purgeMessage.isError
+                              ? palette.status.error.text
+                              : palette.text.secondary,
+                          }}
+                        >
+                          {purgeMessage.text}
+                        </Typography>
+                      )}
                     </Box>
                   </Stack>
                 </Box>
@@ -875,7 +955,7 @@ export default function AIGatewaySettingsPage() {
                   <Stack gap="8px">
                     <Typography sx={sectionTitleSx}>Spend log cleanup</Typography>
                     <Typography sx={{ fontSize: 13, color: palette.text.tertiary }}>
-                      Delete old spend log entries based on the retention period above.
+                      Delete old spend log entries based on the spend log retention period above.
                     </Typography>
                     <Box sx={{ mt: "8px" }}>
                       <CustomizableButton
@@ -1327,6 +1407,24 @@ export default function AIGatewaySettingsPage() {
             </Typography>
           )}
         </Stack>
+      </StandardModal>
+
+      <StandardModal
+        isOpen={isPurgeModalOpen}
+        onClose={() => setIsPurgeModalOpen(false)}
+        title="Purge old logs"
+        description={`Permanently delete guardrail logs older than ${
+          guardrailSettings?.log_retention_days ?? 90
+        } days?`}
+        onSubmit={handlePurgeGuardrailLogs}
+        submitButtonText="Purge logs"
+        submitButtonColor="#D32F2F"
+        isSubmitting={purging}
+        maxWidth="480px"
+      >
+        <Typography sx={{ fontSize: 13, color: palette.text.secondary }}>
+          This cannot be undone. The saved retention period is used, so save any change to it first.
+        </Typography>
       </StandardModal>
 
       {/* Delete API Key Confirmation */}

@@ -12,6 +12,12 @@ vi.mock("../../../../application/hooks/useMrm", () => ({
   useUpdateMrmSettings: () => mockUseUpdateMrmSettings(),
 }));
 
+let mockRole = "Admin";
+let mockIsSuperAdmin = false;
+vi.mock("../../../../application/hooks/useAuth", () => ({
+  useAuth: () => ({ userRoleName: mockRole, isSuperAdmin: mockIsSuperAdmin }),
+}));
+
 const settings: IMrmOrgSettings = {
   organization_id: 1,
   retention_months: 24,
@@ -26,6 +32,8 @@ describe("RetentionSection", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRole = "Admin";
+    mockIsSuperAdmin = false;
     mockUseUpdateMrmSettings.mockReturnValue({ mutateAsync: mockMutateAsync, isPending: false });
   });
 
@@ -74,5 +82,36 @@ describe("RetentionSection", () => {
     await waitFor(() => {
       expect(onError).toHaveBeenCalledWith("Failed to save retention");
     });
+  });
+
+  it.each(["Editor", "Reviewer", "Auditor"])(
+    "is read-only for the %s role with an admin-only note",
+    (role) => {
+      mockRole = role;
+      mockUseMrmSettings.mockReturnValue({ data: settings });
+      renderWithProviders(<RetentionSection onError={onError} onSuccess={onSuccess} />);
+
+      expect(screen.getByDisplayValue("24")).toBeDisabled();
+      expect(screen.getByText("Only admins can change retention periods")).toBeInTheDocument();
+      expect(screen.getByText("Save retention").closest("button")).toBeDisabled();
+    },
+  );
+
+  it("is editable for admins", () => {
+    mockUseMrmSettings.mockReturnValue({ data: settings });
+    renderWithProviders(<RetentionSection onError={onError} onSuccess={onSuccess} />);
+
+    expect(screen.getByDisplayValue("24")).not.toBeDisabled();
+    expect(screen.queryByText("Only admins can change retention periods")).not.toBeInTheDocument();
+    expect(screen.getByText("Save retention").closest("button")).not.toBeDisabled();
+  });
+
+  it("is editable for super admins", () => {
+    mockRole = "";
+    mockIsSuperAdmin = true;
+    mockUseMrmSettings.mockReturnValue({ data: settings });
+    renderWithProviders(<RetentionSection onError={onError} onSuccess={onSuccess} />);
+
+    expect(screen.getByDisplayValue("24")).not.toBeDisabled();
   });
 });
