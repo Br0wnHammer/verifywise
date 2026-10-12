@@ -1,4 +1,5 @@
 from pathlib import Path
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 import dotenv
 
@@ -23,6 +24,14 @@ class Settings(BaseSettings):
     mcp_circuit_breaker_timeout_seconds: int = 30
     mcp_approval_expiry_seconds: int = 900
     mcp_audit_retention_days: int = 30
+
+    @field_validator("ai_gateway_internal_key", mode="before")
+    @classmethod
+    def _trim_internal_key(cls, value):
+        """Trim the shared key, as the Express backend does, so an .env line
+        with a trailing space or newline gives the same key on both sides and
+        a whitespace-only key counts as not set."""
+        return value.strip() if isinstance(value, str) else value
 
 
 settings = Settings()

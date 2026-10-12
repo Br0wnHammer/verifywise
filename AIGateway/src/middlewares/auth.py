@@ -47,7 +47,10 @@ def require_internal_key(request: Request):
             },
         )
     auth = request.headers.get("x-internal-key", "")
-    if not hmac.compare_digest(auth, expected):
+    # Compare bytes: hmac.compare_digest raises TypeError for a str with
+    # non-ASCII characters, which would surface as a 500. Such a header can
+    # never match an ASCII key, so it is simply rejected.
+    if not hmac.compare_digest(auth.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(
             status_code=401,
             detail={"message": "Invalid internal key", "code": INTERNAL_KEY_REJECTED},

@@ -307,6 +307,44 @@ async def test_retention_routes_reject_a_wrong_internal_key(monkeypatch, key):
     assert exc.value.detail["code"] == "internal_key_rejected"
 
 
+async def test_retention_routes_reject_a_non_ascii_key_with_401(monkeypatch):
+    """compare_digest on a non-ASCII str raises TypeError; the key must be
+    compared as bytes so this is a plain 401, not a 500."""
+    monkeypatch.setattr(retention_router.settings, "ai_gateway_internal_key", "right-key")
+    _no_db(monkeypatch)
+
+    with pytest.raises(HTTPException) as exc:
+        await retention_router.get_retention_config(_keyed_request("clé-ü"))
+    assert exc.value.status_code == 401
+    assert exc.value.detail["code"] == "internal_key_rejected"
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [("  right-key\n", "right-key"), ("right-key", "right-key"), (" \n\t", ""), ("", "")],
+)
+def test_settings_trim_the_internal_key(monkeypatch, raw, expected):
+    """The gateway trims its key like the Express backend; whitespace-only is unset."""
+    import config
+
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", raw)
+    assert config.Settings().ai_gateway_internal_key == expected
+
+
+async def test_whitespace_only_key_is_refused_as_not_configured(monkeypatch):
+    import config
+
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "   ")
+    trimmed = config.Settings().ai_gateway_internal_key
+    monkeypatch.setattr(retention_router.settings, "ai_gateway_internal_key", trimmed)
+    _no_db(monkeypatch)
+
+    with pytest.raises(HTTPException) as exc:
+        await retention_router.get_retention_config(_keyed_request("   "))
+    assert exc.value.status_code == 503
+    assert exc.value.detail["code"] == "internal_key_not_configured"
+
+
 async def test_retention_routes_serve_the_right_internal_key(monkeypatch):
     monkeypatch.setattr(retention_router.settings, "ai_gateway_internal_key", "right-key")
     monkeypatch.setattr(retention_router.settings, "mcp_audit_retention_days", 30)

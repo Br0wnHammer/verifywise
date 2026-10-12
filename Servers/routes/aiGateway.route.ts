@@ -10,9 +10,7 @@ import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
 import authenticateJWT from "../middleware/auth.middleware";
 import express, { Request, Router } from "express";
 import { updateGuardrailSettings } from "../controllers/aiGatewaySettings.ctrl";
-
-const AI_GATEWAY_URL = process.env.AI_GATEWAY_URL || "http://127.0.0.1:8100";
-const AI_GATEWAY_KEY = process.env.AI_GATEWAY_INTERNAL_KEY || "";
+import { getGatewayInternalKey, getGatewayUrl } from "../utils/aiGatewayConfig";
 
 const jsonParser = express.json({ limit: "50mb" });
 
@@ -20,7 +18,7 @@ function aiGatewayRoutes() {
   const router = Router();
 
   const proxy = createProxyMiddleware({
-    target: AI_GATEWAY_URL,
+    target: getGatewayUrl(),
     changeOrigin: true,
     timeout: 30_000, // 30s — abort if AI Gateway doesn't respond
     proxyTimeout: 30_000, // 30s — abort if connection takes too long
@@ -31,7 +29,7 @@ function aiGatewayRoutes() {
         const expressReq = req as Request;
 
         // Forward internal API key
-        proxyReq.setHeader("x-internal-key", AI_GATEWAY_KEY);
+        proxyReq.setHeader("x-internal-key", getGatewayInternalKey());
 
         // Forward the request id so logs thread across services
         if (expressReq.requestId) {

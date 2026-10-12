@@ -129,6 +129,7 @@ import ssoConfigRoutes from "./routes/ssoConfig.route";
 import aiTrustIndexRoutes from "./routes/aiTrustIndex.route";
 import telemetryRoutes from "./routes/telemetry.route";
 import { requestMetricsMiddleware } from "./middleware/requestMetrics.middleware";
+import { getGatewayUrl } from "./utils/aiGatewayConfig";
 
 const swaggerDoc = YAML.load("./swagger.yaml");
 
@@ -231,9 +232,9 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   };
 
   const checkAiGateway = async (): Promise<HealthCheck> => {
-    const AI_GATEWAY_URL = process.env.AI_GATEWAY_URL || "http://localhost:8100";
     try {
-      const gwRes = await fetch(`${AI_GATEWAY_URL}/health`, { signal: AbortSignal.timeout(5000) });
+      // Same address every other gateway call uses (see aiGatewayConfig).
+      const gwRes = await fetch(`${getGatewayUrl()}/health`, { signal: AbortSignal.timeout(5000) });
       return gwRes.ok ? { status: "ok" } : { status: "error", error: `HTTP ${gwRes.status}` };
     } catch (err: unknown) {
       return { status: "error", error: (err as Error).message };
