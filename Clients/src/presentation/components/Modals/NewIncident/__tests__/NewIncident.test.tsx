@@ -2,7 +2,13 @@ import { vi, describe, it, expect, beforeAll } from "vitest";
 import { screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 vi.mock("../../../Inputs/Field", () => ({
-  default: (props: any) => <input data-testid={`field-${props.id || "field"}`} />,
+  default: (props: any) => (
+    <input
+      data-testid={`field-${props.id || "field"}`}
+      value={props.value ?? ""}
+      onChange={props.onChange}
+    />
+  ),
 }));
 vi.mock("../../../Inputs/Datepicker", () => ({
   default: () => <div data-testid="datepicker" />,
@@ -250,5 +256,37 @@ describe("NewIncident (SideDrawerIncident)", () => {
     // validator tests; this checks the submit is blocked.
     fireEvent.click(screen.getByText("Save incident"));
     expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("keeps the user's edits when the parent re-renders after a failed save", async () => {
+    const onSuccess = vi.fn().mockRejectedValue(new Error("400"));
+    const props = { isOpen: true, setIsOpen: vi.fn(), onSuccess, isEdit: true, incidentId: 42 };
+    const view = renderWithProviders(<SideDrawerIncident {...props} initialData={savableData} />);
+
+    fireEvent.change(screen.getByTestId("field-description"), {
+      target: { value: "Edited description text" },
+    });
+    fireEvent.click(screen.getByText("Update incident"));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+
+    // The page re-renders (for example to show the error toast) and passes a
+    // new, equal initialData object for the same incident.
+    view.rerender(<SideDrawerIncident {...props} initialData={{ ...savableData }} />);
+
+    expect(screen.getByTestId("field-description")).toHaveValue("Edited description text");
+  });
+
+  it("re-seeds the form when a different incident is loaded", () => {
+    const props = { isOpen: true, setIsOpen: vi.fn(), isEdit: true };
+    const view = renderWithProviders(
+      <SideDrawerIncident {...props} incidentId={42} initialData={savableData} />,
+    );
+    const other = {
+      ...savableData,
+      description: "A different incident entirely.",
+    } as unknown as NewIncidentFormValues;
+    view.rerender(<SideDrawerIncident {...props} incidentId={43} initialData={other} />);
+
+    expect(screen.getByTestId("field-description")).toHaveValue("A different incident entirely.");
   });
 });

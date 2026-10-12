@@ -222,7 +222,7 @@ export async function createNewIncident(req: Request, res: Response) {
         message: "Incident creation validation failed",
         errors: validationErrors.map((err: ValidationError) => ({
           field: err.field,
-          message: err.message,
+          message: translateError(req, err.message),
           code: err.code,
         })),
       }),
@@ -366,14 +366,21 @@ export async function updateIncidentById(req: Request, res: Response) {
     existingIncident = (await getIncidentByIdQuery(
       incidentId,
       req.organizationId!,
-    )) as AIIncidentManagementModel;
-  } catch {}
+    )) as AIIncidentManagementModel | null;
+  } catch (error) {
+    // Don't validate against a record we could not read.
+    logger.error("❌ Error loading incident for update validation:", error);
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+  if (!existingIncident) {
+    return res.status(404).json(STATUS_CODE[404](translateError(req, "Incident not found")));
+  }
 
   const validationErrors = validateCompleteIncidentUpdate(req.body, existingIncident);
   if (validationErrors.length > 0) {
     const errorDetails = validationErrors.map((err: ValidationError) => ({
       field: err.field,
-      message: err.message,
+      message: translateError(req, err.message),
       code: err.code,
     }));
     logStructured(

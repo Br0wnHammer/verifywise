@@ -37,7 +37,10 @@ import { ColumnSelector } from "../../components/Table/ColumnSelector";
 import { useColumnVisibility, ColumnConfig } from "../../../application/hooks/useColumnVisibility";
 
 import Alert from "../../components/Alert";
-import { getApiValidationMessage } from "../../../application/utils/apiErrorReason";
+import {
+  getApiValidationMessage,
+  UserFacingFieldErrors,
+} from "../../../application/utils/apiErrorReason";
 
 type IncidentColumnKey =
   | "incident_id"
@@ -63,6 +66,19 @@ const INCIDENT_TABLE_COLUMNS: ColumnConfig<IncidentColumnKey>[] = [
   { key: "approved_by", label: "Approved by", defaultVisible: true },
   { key: "actions", label: "Actions", defaultVisible: true, alwaysVisible: true },
 ];
+
+/**
+ * Server field errors that may appear in the save-failure toast. Reference
+ * fields name database columns, so they get a sentence instead.
+ */
+const INCIDENT_SAVE_ERROR_FIELDS: UserFacingFieldErrors = {
+  passThrough: ["description"],
+  replace: {
+    project_id: "The selected use case is no longer available.",
+    model_inventory_id: "The selected affected model is no longer available.",
+    assignee_id: "The selected owner is no longer available.",
+  },
+};
 
 const IncidentManagement: React.FC = () => {
   const location = useLocation();
@@ -519,6 +535,47 @@ const IncidentManagement: React.FC = () => {
     setArchiveId(null);
   };
 
+  // Memoised on the selected incident: a new object on every page render
+  // (for example after an error toast) would make the drawer look like it
+  // received fresh data.
+  const incidentInitialData = useMemo(
+    () =>
+      selectedIncident
+        ? {
+            incident_id: selectedIncident.incident_id || "",
+            ai_project: selectedIncident.ai_project || "",
+            project_id: selectedIncident.project_id ?? "",
+            model_inventory_id: selectedIncident.model_inventory_id ?? "",
+            assignee_id: selectedIncident.assignee_id ?? "",
+            type: selectedIncident.type || "",
+            severity: selectedIncident.severity || "",
+            status: selectedIncident.status || "",
+            occurred_date: selectedIncident.occurred_date
+              ? new Date(selectedIncident.occurred_date).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0],
+            date_detected: selectedIncident.date_detected
+              ? new Date(selectedIncident.date_detected).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0],
+            reporter: selectedIncident.reporter,
+            categories_of_harm: selectedIncident.categories_of_harm || [],
+            description: selectedIncident.description,
+            affected_persons_groups: selectedIncident.affected_persons_groups || "",
+            relationship_causality: selectedIncident.relationship_causality || "",
+            immediate_mitigations: selectedIncident.immediate_mitigations || "",
+            planned_corrective_actions: selectedIncident.planned_corrective_actions || "",
+            model_system_version: selectedIncident.model_system_version,
+            interim_report: selectedIncident.interim_report || false,
+            approval_status: selectedIncident.approval_status,
+            approved_by: selectedIncident.approved_by,
+            approval_date: selectedIncident.approval_date
+              ? new Date(selectedIncident.approval_date).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0],
+            approval_notes: selectedIncident.approval_notes,
+          }
+        : undefined,
+    [selectedIncident],
+  );
+
   // Rethrows on failure so the drawer stays open with the user's input.
   const handleIncidentSuccess = async (formData: any) => {
     try {
@@ -544,7 +601,7 @@ const IncidentManagement: React.FC = () => {
       setAlert({
         variant: "error",
         body:
-          getApiValidationMessage(error) ??
+          getApiValidationMessage(error, INCIDENT_SAVE_ERROR_FIELDS) ??
           (selectedIncident ? "Failed to update incident." : "Failed to add incident."),
       });
       throw error;
@@ -771,41 +828,7 @@ const IncidentManagement: React.FC = () => {
         isOpen={isNewIncidentModalOpen}
         setIsOpen={handleCloseModal}
         onSuccess={handleIncidentSuccess}
-        initialData={
-          selectedIncident
-            ? {
-                incident_id: selectedIncident.incident_id || "",
-                ai_project: selectedIncident.ai_project || "",
-                project_id: selectedIncident.project_id ?? "",
-                model_inventory_id: selectedIncident.model_inventory_id ?? "",
-                assignee_id: selectedIncident.assignee_id ?? "",
-                type: selectedIncident.type || "",
-                severity: selectedIncident.severity || "",
-                status: selectedIncident.status || "",
-                occurred_date: selectedIncident.occurred_date
-                  ? new Date(selectedIncident.occurred_date).toISOString().split("T")[0]
-                  : new Date().toISOString().split("T")[0],
-                date_detected: selectedIncident.date_detected
-                  ? new Date(selectedIncident.date_detected).toISOString().split("T")[0]
-                  : new Date().toISOString().split("T")[0],
-                reporter: selectedIncident.reporter,
-                categories_of_harm: selectedIncident.categories_of_harm || [],
-                description: selectedIncident.description,
-                affected_persons_groups: selectedIncident.affected_persons_groups || "",
-                relationship_causality: selectedIncident.relationship_causality || "",
-                immediate_mitigations: selectedIncident.immediate_mitigations || "",
-                planned_corrective_actions: selectedIncident.planned_corrective_actions || "",
-                model_system_version: selectedIncident.model_system_version,
-                interim_report: selectedIncident.interim_report || false,
-                approval_status: selectedIncident.approval_status,
-                approved_by: selectedIncident.approved_by,
-                approval_date: selectedIncident.approval_date
-                  ? new Date(selectedIncident.approval_date).toISOString().split("T")[0]
-                  : new Date().toISOString().split("T")[0],
-                approval_notes: selectedIncident.approval_notes,
-              }
-            : undefined
-        }
+        initialData={incidentInitialData}
         isEdit={!!selectedIncident}
         mode={mode}
         incidentId={selectedIncident?.id}

@@ -580,6 +580,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Description cannot exceed 32,767 characters.":
       "Die Beschreibung darf 32.767 Zeichen nicht überschreiten.",
     "Description is required.": "Beschreibung ist erforderlich.",
+    "The selected use case is no longer available.":
+      "Der ausgewählte Anwendungsfall ist nicht mehr verfügbar.",
+    "The selected affected model is no longer available.":
+      "Das ausgewählte betroffene Modell ist nicht mehr verfügbar.",
+    "The selected owner is no longer available.":
+      "Der ausgewählte Verantwortliche ist nicht mehr verfügbar.",
     "Description must be at least 5 characters.":
       "Die Beschreibung muss mindestens 5 Zeichen lang sein.",
     "Edit agent": "Agent bearbeiten",
@@ -10735,6 +10741,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Description cannot exceed 32,767 characters.":
       "La description ne peut pas dépasser 32 767 caractères.",
     "Description is required.": "La description est obligatoire.",
+    "The selected use case is no longer available.":
+      "Le cas d'usage sélectionné n'est plus disponible.",
+    "The selected affected model is no longer available.":
+      "Le modèle concerné sélectionné n'est plus disponible.",
+    "The selected owner is no longer available.":
+      "Le responsable sélectionné n'est plus disponible.",
     "Description must be at least 5 characters.":
       "La description doit comporter au moins 5 caractères.",
     "Edit agent": "Modifier l'agent",
@@ -20624,6 +20636,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Description cannot exceed 32,767 characters.":
       "La descripción no puede superar los 32.767 caracteres.",
     "Description is required.": "La descripción es obligatoria.",
+    "The selected use case is no longer available.":
+      "El caso de uso seleccionado ya no está disponible.",
+    "The selected affected model is no longer available.":
+      "El modelo afectado seleccionado ya no está disponible.",
+    "The selected owner is no longer available.":
+      "El responsable seleccionado ya no está disponible.",
     "Description must be at least 5 characters.":
       "La descripción debe tener al menos 5 caracteres.",
     "Edit agent": "Editar agente",

@@ -110,7 +110,12 @@ describe("getApiValidationMessage", () => {
       data: { status: "error", message: "Incident creation validation failed", errors },
     });
 
-  it("returns the field-level messages of a 400 validation response", () => {
+  const fields = {
+    passThrough: ["description"],
+    replace: { project_id: "The selected use case is no longer available." },
+  };
+
+  it("shows pass-through field messages as sent", () => {
     expect(
       getApiValidationMessage(
         validation400([
@@ -120,30 +125,60 @@ describe("getApiValidationMessage", () => {
             code: "MAX_LENGTH",
           },
         ]),
+        fields,
       ),
     ).toBe("Description cannot exceed 32,767 characters.");
   });
 
-  it("joins several field messages", () => {
+  it("replaces messages for fields that name internals", () => {
     expect(
       getApiValidationMessage(
         validation400([
+          {
+            field: "project_id",
+            message: "project_id does not reference an entity in your organization",
+            code: "INVALID_REFERENCE",
+          },
           { field: "description", message: "Description is required." },
-          { field: "project_id", message: "project_id does not reference an entity" },
         ]),
+        fields,
       ),
-    ).toBe("Description is required. project_id does not reference an entity");
+    ).toBe("The selected use case is no longer available. Description is required.");
   });
 
-  it("falls back to the general 4xx reason when there are no field messages", () => {
-    expect(getApiValidationMessage(validation400([]))).toBe("Incident creation validation failed");
+  it("skips fields that are not listed, and returns null when nothing is left", () => {
+    const unlisted = validation400([
+      { field: "assignee_id", message: "assignee_id does not reference an entity" },
+    ]);
+    expect(getApiValidationMessage(unlisted, fields)).toBeNull();
+    expect(
+      getApiValidationMessage(
+        validation400([
+          { field: "assignee_id", message: "assignee_id must be a positive integer" },
+          { field: "description", message: "Description is required." },
+        ]),
+        fields,
+      ),
+    ).toBe("Description is required.");
+  });
+
+  it("falls back to the general 4xx reason when there are no field errors", () => {
+    expect(getApiValidationMessage(validation400([]), fields)).toBe(
+      "Incident creation validation failed",
+    );
+    expect(
+      getApiValidationMessage(new CustomException("Incident not found", 404, {}), fields),
+    ).toBe("Incident not found");
   });
 
   it("returns null for 5xx and non-API errors", () => {
     expect(
-      getApiValidationMessage(new CustomException("database exploded", 500, { error: "x" })),
+      getApiValidationMessage(
+        new CustomException("database exploded", 500, { error: "x" }),
+        fields,
+      ),
     ).toBeNull();
-    expect(getApiValidationMessage(new Error("network down"))).toBeNull();
-    expect(getApiValidationMessage(null)).toBeNull();
+    expect(getApiValidationMessage(new Error("network down"), fields)).toBeNull();
+    expect(getApiValidationMessage(null, fields)).toBeNull();
   });
 });

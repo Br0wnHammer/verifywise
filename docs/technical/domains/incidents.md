@@ -315,7 +315,10 @@ side and the two must stay in sync:
   `isIncidentDescriptionChanged` in `Servers/utils/validations/incidentManagementValidation.utils.ts`.
   - The controller rejects up front: `createIncidentSchema` includes `description`, and
     `validateIncidentUpdateBusinessRules` checks it when an update changes it. Failures return the
-    standard 400 body `{ status, message, errors: [{ field: "description", message, code }] }`.
+    standard 400 body `{ status, message, errors: [{ field: "description", message, code }] }`,
+    with each message translated for the request. The update handler reads the stored incident
+    first: a missing incident returns 404 and a failed read returns 500, so it never validates
+    against a record it does not have.
   - As a backstop for writers that skip the controller (AI Advisor `agent_create_incident` /
     `agent_update_incident` / `agent_update_incident_status`, future integrations),
     `createNewIncidentQuery` and `updateIncidentByIdQuery` (`Servers/utils/incidentManagement.utils.ts`)
@@ -329,8 +332,13 @@ side and the two must stay in sync:
   incident drawer. In edit mode the drawer skips the check when the description is unchanged from
   the loaded value, as the backend does. The drawer closes only after the save succeeds; while
   saving, Esc, Cancel, the close icon and the backdrop are ignored, and a save that settles after a
-  newer draft was opened does not touch it. On failure the page toast shows the server's field
-  messages when present (`getApiValidationMessage` in `application/utils/apiErrorReason.ts`).
+  newer draft was opened does not touch it. The drawer fills the form from `initialData` only when
+  it opens or a different incident (`incidentId`) is loaded, and the page memoises `initialData` on
+  the selected incident, so a page re-render (such as the failed-save toast) keeps the user's
+  edits. On failure the toast shows server field messages only for allowlisted fields
+  (`getApiValidationMessage` in `application/utils/apiErrorReason.ts`): description messages as
+  sent, reference fields (`project_id`, `model_inventory_id`, `assignee_id`) as a sentence naming
+  the picker. Anything else falls back to the generic text.
 
 The messages are identical on both sides: "Description is required.", "Description must be at least
 5 characters." and "Description cannot exceed 32,767 characters." (translated in

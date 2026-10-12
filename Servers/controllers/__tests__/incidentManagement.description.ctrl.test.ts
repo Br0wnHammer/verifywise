@@ -105,4 +105,34 @@ describe("incident controller description validation", () => {
     await updateIncidentById(makeReq({ status: "Closed" }, { id: "42" }), res);
     expectStandard400(res, "Incident update validation failed", "MAX_LENGTH");
   });
+
+  it("translates up-front field messages like the write-path backstop", async () => {
+    const t = jest.fn((key: string) => `translated:${key}`);
+    for (const [handler, body, params] of [
+      [createNewIncident, { description: "a".repeat(32768) }, {}],
+      [updateIncidentById, { description: "a".repeat(32768) }, { id: "42" }],
+    ] as const) {
+      const res = makeRes();
+      await handler({ ...makeReq(body, params), t } as any, res);
+      const sent = res.json.mock.calls[0][0] as any;
+      expect(sent.data.errors[0].message).toBe(`translated:${TOO_LONG}`);
+    }
+  });
+
+  it("returns 404 on update when the incident does not exist, without validating", async () => {
+    mockGetById.mockResolvedValue(null);
+    const res = makeRes();
+    await updateIncidentById(makeReq({ description: "a".repeat(32768) }, { id: "42" }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: "Not Found", data: "Incident not found" });
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 on update when the incident cannot be read, without validating", async () => {
+    mockGetById.mockRejectedValue(new Error("connection reset"));
+    const res = makeRes();
+    await updateIncidentById(makeReq({ description: "a".repeat(32768) }, { id: "42" }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
 });

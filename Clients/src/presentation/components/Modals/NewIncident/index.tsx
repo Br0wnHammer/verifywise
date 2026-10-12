@@ -214,14 +214,21 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
     }
   }, [isOpen]);
 
+  // Re-seed the form only when a different incident is loaded or the drawer
+  // is (re)opened. Re-running on every new initialData object would overwrite
+  // the user's unsaved edits whenever the parent re-renders (for example to
+  // show a failed-save toast).
+  const initialDataRef = useRef(initialData);
+  initialDataRef.current = initialData;
   useEffect(() => {
-    if (initialData) {
+    const data = initialDataRef.current;
+    if (isOpen && data) {
       setValues((prev) => ({
         ...prev,
-        ...initialData,
+        ...data,
       }));
     }
-  }, [initialData]);
+  }, [isOpen, incidentId]);
 
   const fetchUsers = async () => {
     setIsLoadingUsers(true);
