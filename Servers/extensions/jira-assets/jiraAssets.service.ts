@@ -6,6 +6,8 @@ import {
   JiraAssetsClient,
   JiraObject,
   JiraUpstreamError,
+  MAX_PAGES,
+  PAGE_SIZE,
   WORKER_SYNC_DEADLINE_MS,
 } from "./jira.client";
 import { transformAttributes } from "./jira.constants";
@@ -1023,6 +1025,31 @@ export const REMOVE_MISSING_MAX_PROJECTS = IMPORT_MAX_OBJECTS;
 export const REMOVE_MISSING_MAX_IDS = 1000;
 
 /**
+ * A request covering exactly one use case is exempt from REMOVE_MISSING_MAX_IDS
+ * (all links of one use case must be sent together), bounded instead by the
+ * most objects a sync can walk (MAX_PAGES × PAGE_SIZE = 25,000).
+ */
+export const REMOVE_MISSING_SINGLE_USE_CASE_MAX_IDS = MAX_PAGES * PAGE_SIZE;
+
+/**
+ * The size rule for one removal request: at most REMOVE_MISSING_MAX_PROJECTS
+ * use cases, and at most REMOVE_MISSING_MAX_IDS ids unless they all belong to
+ * one use case. Checked before claiming and again under the locks.
+ */
+function checkRemovalSize(idCount: number, projectCount: number): void {
+  if (projectCount > REMOVE_MISSING_MAX_PROJECTS) {
+    throw new JiraConfigValidationError(
+      `A removal may cover at most ${REMOVE_MISSING_MAX_PROJECTS} use cases; these ids cover ${projectCount}`,
+    );
+  }
+  if (idCount > REMOVE_MISSING_MAX_IDS && projectCount > 1) {
+    throw new JiraConfigValidationError(
+      `A removal may name at most ${REMOVE_MISSING_MAX_IDS} ids unless they all belong to one use case`,
+    );
+  }
+}
+
+/**
  * Delete the use cases an admin chose from the "Missing in Jira" list. Only
  * ids that belong to the org AND are still flagged are removed — one that a
  * sync found again in the meantime is skipped. Takes the same per-org claim
@@ -1045,26 +1072,21 @@ export async function removeMissingUseCases(
   if (
     !Array.isArray(useCaseIds) ||
     useCaseIds.length === 0 ||
-    useCaseIds.length > REMOVE_MISSING_MAX_IDS ||
+    useCaseIds.length > REMOVE_MISSING_SINGLE_USE_CASE_MAX_IDS ||
     !useCaseIds.every((id) => Number.isInteger(id) && id > 0)
   ) {
     throw new JiraConfigValidationError(
-      `use_case_ids must be a list of 1 to ${REMOVE_MISSING_MAX_IDS} use case ids`,
+      `use_case_ids must be a list of 1 to ${REMOVE_MISSING_MAX_IDS} use case ids (up to ${REMOVE_MISSING_SINGLE_USE_CASE_MAX_IDS} for one use case)`,
     );
   }
   const ids = Array.from(new Set(useCaseIds as number[]));
-  // Checked before claiming (unlocked): at most REMOVE_MISSING_MAX_PROJECTS
-  // distinct projects per request.
+  // Cheap unlocked pre-check before claiming; checked again under the locks.
   const [{ projects }] = (await sequelize.query(
     `SELECT COUNT(DISTINCT project_id)::int AS projects FROM jira_assets_use_cases
       WHERE organization_id = :organizationId AND id IN (:ids);`,
     { replacements: { organizationId, ids }, type: QueryTypes.SELECT },
   )) as Array<{ projects: number }>;
-  if (projects > REMOVE_MISSING_MAX_PROJECTS) {
-    throw new JiraConfigValidationError(
-      `A removal may cover at most ${REMOVE_MISSING_MAX_PROJECTS} use cases; these ids cover ${projects}`,
-    );
-  }
+  checkRemovalSize(ids.length, projects);
   const outcome = await deleteUseCasesUnderClaim(organizationId, userId, {
     by: "id",
     ids,
@@ -1219,6 +1241,13 @@ async function deleteUseCasesUnderClaim(
           transaction,
         },
       )) as LinkRow[];
+      if (target.onlyMissing) {
+        // The size rule again, on the locked rows (the pre-check was unlocked).
+        const lockedProjects = new Set(
+          requestedLinks.map((l) => l.project_id).filter((id) => id !== null),
+        );
+        checkRemovalSize(target.ids.length, lockedProjects.size);
+      }
       const projectLinks =
         inOrg.size === 0
           ? []
@@ -1347,7 +1376,8 @@ async function deleteUseCasesUnderClaim(
     });
     return outcome;
   } catch (err) {
-    if (err instanceof JiraUseCaseNotFoundError) {
+    if (err instanceof JiraUseCaseNotFoundError || err instanceof JiraConfigValidationError) {
+      // Nothing was done: the claimed row goes, not a failed run.
       await releaseClaim(run, organizationId);
     } else if (!(err instanceof RunSupersededError)) {
       await finalizeFailure(run, organizationId, err, false);

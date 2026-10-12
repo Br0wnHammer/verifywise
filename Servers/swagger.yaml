@@ -14478,13 +14478,13 @@ paths:
                 use_case_ids:
                   type: array
                   minItems: 1
-                  maxItems: 1000
+                  maxItems: 25000
                   items: {type: integer, minimum: 1}
       responses:
         '200':
           description: 'Removed the listed use cases still flagged as missing in Jira ({ removed, links_removed, unlinked, skipped, skipped_items }). removed counts use cases (projects) deleted and links_removed the links that went with them; unlinked counts links whose project is not in this organization (only the link was deleted); skipped_items lists [{ id, reason }] with reason no_longer_missing, not_found, changed, has_live_links or other_links_not_selected (a use case is removed only when all its missing links are in the request)'
         '400':
-          description: 'use_case_ids is not a list of 1 to 1000 use case ids, or covers more than 100 use cases'
+          description: 'use_case_ids is not a list of 1 to 1000 use case ids (up to 25,000 when they all belong to one use case), or covers more than 100 use cases'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
         '409':

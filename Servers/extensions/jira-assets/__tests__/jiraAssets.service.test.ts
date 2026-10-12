@@ -58,7 +58,13 @@ jest.mock("../../../tools/createSecureValue", () => ({
 }));
 jest.mock("../jira.client", () => {
   class JiraUpstreamError extends Error {}
-  return { JiraAssetsClient: jest.fn(), JiraUpstreamError, WORKER_SYNC_DEADLINE_MS: 600_000 };
+  return {
+    JiraAssetsClient: jest.fn(),
+    JiraUpstreamError,
+    WORKER_SYNC_DEADLINE_MS: 600_000,
+    MAX_PAGES: 500,
+    PAGE_SIZE: 50,
+  };
 });
 jest.mock("../../../services/automations/automationProducer", () => {
   class BackgroundJobsUnavailableError extends Error {}
@@ -703,7 +709,7 @@ describe("runQueuedSync (worker claims at pickup)", () => {
 
 describe("removeMissingUseCases", () => {
   it("validates the id list before claiming", async () => {
-    for (const bad of [undefined, [], ["1"], [0], [1.5], new Array(1001).fill(1)]) {
+    for (const bad of [undefined, [], ["1"], [0], [1.5], new Array(25_001).fill(1)]) {
       await expect(removeMissingUseCases(5, 8, bad)).rejects.toBeInstanceOf(
         JiraConfigValidationError,
       );
@@ -761,7 +767,6 @@ describe("removeMissingUseCases", () => {
     expect(mockDeleteProject).toHaveBeenCalledTimes(1);
     expect(mockDeleteProject).toHaveBeenCalledWith(111, 5, FAKE_TX, {
       enqueueAutomationAfterCommit: true,
-      projectLocked: true,
     });
     expect(mockRecordDeletion).toHaveBeenCalledWith(111, 8, 5, FAKE_TX);
     expect(sqlCalls("DELETE FROM jira_assets_use_cases")[0][1]).toMatchObject({
@@ -979,8 +984,8 @@ describe("removeMissingUseCases", () => {
     });
   });
 
-  it("rejects more than 1000 ids before touching the database", async () => {
-    const ids = Array.from({ length: 1001 }, (_, i) => i + 1);
+  it("rejects more than 25,000 ids before touching the database", async () => {
+    const ids = Array.from({ length: 25_001 }, (_, i) => i + 1);
 
     await expect(removeMissingUseCases(5, 8, ids)).rejects.toBeInstanceOf(
       JiraConfigValidationError,
@@ -1003,6 +1008,61 @@ describe("removeMissingUseCases", () => {
       ),
     ).rejects.toBeInstanceOf(JiraConfigValidationError);
     expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
+  });
+
+  it("accepts 1,500 links of one use case in one request (exempt from the id cap)", async () => {
+    const links = Array.from({ length: 1500 }, (_, i) => ({ id: i + 1, project_id: 111 }));
+    fakeDb({ stillFlagged: links });
+
+    const result = await removeMissingUseCases(
+      5,
+      8,
+      links.map((l) => l.id),
+    );
+
+    expect(result).toMatchObject({ removed: 1, links_removed: 1500, skipped: 0 });
+  });
+
+  it("rejects more than 1000 ids spread over several use cases", async () => {
+    const links = Array.from({ length: 1001 }, (_, i) => ({
+      id: i + 1,
+      project_id: i < 1000 ? 111 : 222,
+    }));
+    fakeDb({ stillFlagged: links });
+
+    await expect(
+      removeMissingUseCases(
+        5,
+        8,
+        links.map((l) => l.id),
+      ),
+    ).rejects.toBeInstanceOf(JiraConfigValidationError);
+    expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
+  });
+
+  it("re-checks the use-case count under the locks and releases the claim when over", async () => {
+    // The unlocked pre-check sees one use case; the locked rows span 101.
+    const links = Array.from({ length: IMPORT_MAX_OBJECTS + 1 }, (_, i) => ({
+      id: i + 1,
+      project_id: 1000 + i,
+    }));
+    fakeDb({ stillFlagged: links });
+    const base = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, opts: unknown) => {
+      if (sql.includes("COUNT(DISTINCT project_id)")) return [{ projects: 1 }];
+      return base(sql, opts);
+    });
+
+    await expect(
+      removeMissingUseCases(
+        5,
+        8,
+        links.map((l) => l.id),
+      ),
+    ).rejects.toBeInstanceOf(JiraConfigValidationError);
+    expect(mockDeleteProject).not.toHaveBeenCalled();
+    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
+    expect(sqlCalls("DELETE FROM jira_assets_sync_history")).toHaveLength(1);
   });
 
   it("accepts more than 100 links when they belong to one use case", async () => {
@@ -1042,7 +1102,6 @@ describe("deleteUseCaseByProjectId", () => {
     expect(lockSql).toContain("project_id IN (:ids)");
     expect(mockDeleteProject).toHaveBeenCalledWith(111, 5, FAKE_TX, {
       enqueueAutomationAfterCommit: true,
-      projectLocked: true,
     });
     expect(mockRecordDeletion).toHaveBeenCalledWith(111, 8, 5, FAKE_TX);
     const [, completed] = sqlCalls("SET status = 'completed'")[0];
