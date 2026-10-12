@@ -27,25 +27,49 @@ import StandardModal from "../../../components/Modals/StandardModal";
 import { useAuth } from "../../../../application/hooks/useAuth";
 import { getApiErrorReason } from "../../../../application/utils/apiErrorReason";
 import { CustomizableButton } from "../../../components/button/customizable-button";
-import {
-  isAbandonedRun,
-  isImportInterrupted,
-  removalConflictText,
-  SYNC_RUNNING_MESSAGE,
-} from "./runOutcome";
+import { isAbandonedRun, SYNC_RUNNING_MESSAGE } from "./runOutcome";
+import { BatchProgress, BatchSummary, importInBatches, removeInBatches } from "./batching";
+
+type PanelMessage = {
+  type: "success" | "error";
+  text: string;
+  count?: BatchSummary["count"];
+};
+
+/** A panel message: the text, then its count with its own label (each translatable). */
+function MessageBody({ message }: { message: PanelMessage }) {
+  return (
+    <>
+      <span>{message.text}</span>
+      {message.count && (
+        <>
+          {" "}
+          <span>{message.count.label}</span> <span>{message.count.value}</span>
+        </>
+      )}
+    </>
+  );
+}
+
+/** "Importing objects 101–200 / 250" while a batched run is going. */
+function BatchProgressLine({ label, progress }: { label: string; progress: BatchProgress }) {
+  return (
+    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+      <span>{label}</span>{" "}
+      <span>
+        {progress.from}–{progress.to} / {progress.total}
+      </span>
+    </Typography>
+  );
+}
 
 const SYNC_SLOW_MESSAGE =
   "The sync is taking longer than expected. Check the last sync result later.";
 const SELECTION_SAVE_FAILED = "Could not save the schema and object type. Try again.";
 const SYNC_STALLED_MESSAGE = "The sync stopped responding. Try again.";
 const SYNC_NOT_STARTED_MESSAGE = "The sync did not start. Try again.";
-const MISSING_REMOVED_MESSAGE = "Missing use cases removed.";
-/** Most objects one import may send; the server enforces the same limit. */
-const IMPORT_MAX_OBJECTS = 100;
-const IMPORT_LIMIT_MESSAGE = `Select up to ${IMPORT_MAX_OBJECTS} objects per import.`;
-/** Most use cases one removal may send; the server uses the same limit as imports. */
-const REMOVE_MAX_USE_CASES = IMPORT_MAX_OBJECTS;
-const REMOVE_LIMIT_MESSAGE = `Select up to ${REMOVE_MAX_USE_CASES} use cases per removal.`;
+const IMPORT_PROGRESS_LABEL = "Importing objects";
+const REMOVE_PROGRESS_LABEL = "Removing use cases";
 /** Desktop control height for the panel's action buttons. */
 const CONTROL_HEIGHT_SX = { height: 30, minHeight: 30 };
 const MISSING_EXPLAINER =
@@ -157,10 +181,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
   const [jiraHasMore, setJiraHasMore] = useState(false);
   const [jiraNextStartAt, setJiraNextStartAt] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
-  const [importMessage, setImportMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [importMessage, setImportMessage] = useState<PanelMessage | null>(null);
+  const [importProgress, setImportProgress] = useState<BatchProgress | null>(null);
 
   // Imported use cases state
   const [importedUseCases, setImportedUseCases] = useState<ImportedUseCase[]>([]);
@@ -188,10 +210,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
   // Schema / object-type saves: same ordering, latest response wins.
   const selectionQueue = useRef<Promise<void>>(Promise.resolve());
   const selectionSeq = useRef(0);
-  const [syncMessage, setSyncMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [syncMessage, setSyncMessage] = useState<PanelMessage | null>(null);
+  const [removeProgress, setRemoveProgress] = useState<BatchProgress | null>(null);
 
   // Load config from plugin's own endpoint on mount (only once)
   useEffect(() => {
@@ -339,49 +359,27 @@ export const JiraAssetsConfiguration: React.FC = () => {
     }
   }, [pluginApiCall]);
 
-  // Import selected objects
+  // Import the selected objects, 100 per request (the server limit), one
+  // request at a time; the first error stops the rest. Lists refresh at the end.
   const handleImport = async () => {
     if (selectedObjects.size === 0) return;
-    if (selectedObjects.size > IMPORT_MAX_OBJECTS) {
-      setImportMessage({ type: "error", text: IMPORT_LIMIT_MESSAGE });
-      return;
-    }
 
     setIsImporting(true);
     setImportMessage(null);
     try {
-      const response = await pluginApiCall("POST", "/import", {
-        object_ids: Array.from(selectedObjects),
-      });
-
-      if (response?.success) {
-        setImportMessage({
-          type: "success",
-          text: `Successfully imported ${response.imported} objects`,
-        });
+      const summary = await importInBatches(
+        Array.from(selectedObjects),
+        (batch) => pluginApiCall("POST", "/import", { object_ids: batch }),
+        setImportProgress,
+      );
+      setImportMessage({ type: summary.type, text: summary.text, count: summary.count });
+      if (summary.type === "success" || (summary.count?.value ?? 0) > 0) {
         setSelectedObjects(new Set());
-        // Reload both lists
-        await loadImportedUseCases();
-        await loadJiraObjects();
-      } else {
-        setImportMessage({ type: "error", text: response?.error || "Import failed" });
       }
-    } catch (error: any) {
-      // 409 import_interrupted: stopped part-way; show how far it got.
-      const interrupted = isImportInterrupted(error);
-      if (interrupted) {
-        setSelectedObjects(new Set());
-        await loadImportedUseCases();
-      }
-      setImportMessage({
-        type: "error",
-        text: interrupted
-          ? error.response.data.message || error.message
-          : error?.status === 409
-            ? SYNC_RUNNING_MESSAGE
-            : getApiErrorReason(error) || error?.message || "Import failed",
-      });
+      await loadImportedUseCases();
+      await loadJiraObjects();
     } finally {
+      setImportProgress(null);
       setIsImporting(false);
     }
   };
@@ -516,32 +514,24 @@ export const JiraAssetsConfiguration: React.FC = () => {
     );
   };
 
+  // Remove the selected use cases, 100 per request (the server limit), one
+  // request at a time; the first error stops the rest. The list refreshes at
+  // the end. The server removes only those still flagged.
   const handleRemoveMissing = async () => {
-    if (selectedMissing.length > REMOVE_MAX_USE_CASES) {
-      setSyncMessage({ type: "error", text: REMOVE_LIMIT_MESSAGE });
-      setIsRemoveMissingOpen(false);
-      return;
-    }
     setIsRemovingMissing(true);
     setSyncMessage(null);
+    setIsRemoveMissingOpen(false);
     try {
-      await pluginApiCall("POST", "/use-cases/remove-missing", {
-        // Exactly what the Admin selected; the server removes only those still flagged.
-        use_case_ids: selectedMissing.map((uc) => uc.id),
-      });
-      setSelectedMissingIds(new Set());
-      setSyncMessage({ type: "success", text: MISSING_REMOVED_MESSAGE });
-      setIsRemoveMissingOpen(false);
+      const summary = await removeInBatches(
+        selectedMissing.map((uc) => uc.id),
+        (batch) => pluginApiCall("POST", "/use-cases/remove-missing", { use_case_ids: batch }),
+        setRemoveProgress,
+      );
+      setSyncMessage({ type: summary.type, text: summary.text, count: summary.count });
+      if (summary.type === "success") setSelectedMissingIds(new Set());
       await loadImportedUseCases();
-    } catch (error: any) {
-      setSyncMessage({
-        type: "error",
-        text:
-          removalConflictText(error) ??
-          (getApiErrorReason(error) || error?.message || "Failed to remove use cases"),
-      });
-      setIsRemoveMissingOpen(false);
     } finally {
+      setRemoveProgress(null);
       setIsRemovingMissing(false);
     }
   };
@@ -1156,7 +1146,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
               sx={{ mt: 2, fontSize: "13px" }}
               onClose={() => setImportMessage(null)}
             >
-              {importMessage.text}
+              <MessageBody message={importMessage} />
             </Alert>
           )}
           {syncMessage && (
@@ -1165,7 +1155,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
               sx={{ mt: 2, fontSize: "13px" }}
               onClose={() => setSyncMessage(null)}
             >
-              {syncMessage.text}
+              <MessageBody message={syncMessage} />
             </Alert>
           )}
 
@@ -1202,11 +1192,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
                 <CustomizableButton
                   variant="contained"
                   onClick={handleImport}
-                  isDisabled={
-                    isImporting ||
-                    selectedObjects.size === 0 ||
-                    selectedObjects.size > IMPORT_MAX_OBJECTS
-                  }
+                  isDisabled={isImporting || selectedObjects.size === 0}
                   loading={isImporting}
                   startIcon={<Download size={14} />}
                   testId="jira-import-selected"
@@ -1216,14 +1202,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
                 </CustomizableButton>
               </Box>
 
-              {selectedObjects.size > IMPORT_MAX_OBJECTS && (
-                <Typography
-                  variant="caption"
-                  sx={{ display: "block", mb: 1, color: theme.palette.status.error.text }}
-                  data-testid="jira-import-limit"
-                >
-                  {IMPORT_LIMIT_MESSAGE} <span>{selectedObjects.size}</span> <span>selected.</span>
-                </Typography>
+              {importProgress && (
+                <BatchProgressLine label={IMPORT_PROGRESS_LABEL} progress={importProgress} />
               )}
 
               <TableContainer
@@ -1310,12 +1290,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
                   variant="outlined"
                   color="error"
                   onClick={() => setIsRemoveMissingOpen(true)}
-                  isDisabled={
-                    !canManageSync ||
-                    isRemovingMissing ||
-                    selectedMissing.length === 0 ||
-                    selectedMissing.length > REMOVE_MAX_USE_CASES
-                  }
+                  isDisabled={!canManageSync || isRemovingMissing || selectedMissing.length === 0}
                   testId="jira-remove-missing"
                   sx={{
                     ...CONTROL_HEIGHT_SX,
@@ -1343,15 +1318,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
               >
                 {MISSING_EXPLAINER}
               </Typography>
-              {selectedMissing.length > REMOVE_MAX_USE_CASES && (
-                <Typography
-                  variant="caption"
-                  sx={{ display: "block", mb: 1, color: theme.palette.status.error.text }}
-                  data-testid="jira-remove-limit"
-                >
-                  {REMOVE_LIMIT_MESSAGE} <span>{selectedMissing.length}</span>{" "}
-                  <span>selected.</span>
-                </Typography>
+              {removeProgress && (
+                <BatchProgressLine label={REMOVE_PROGRESS_LABEL} progress={removeProgress} />
               )}
               <TableContainer
                 component={Paper}

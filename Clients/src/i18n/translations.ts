@@ -9743,6 +9743,18 @@ export const translations: Record<string, Record<string, string>> = {
       "Das Entfernen wurde unterbrochen; es wurde nichts entfernt. Versuchen Sie es erneut.",
     "Another sync or import was running, so this sync did not start.":
       "Eine andere Synchronisierung oder ein Import lief bereits, daher wurde diese Synchronisierung nicht gestartet.",
+    "Importing objects": "Objekte werden importiert",
+    "Removing use cases": "Anwendungsfälle werden entfernt",
+    "Import finished.": "Import abgeschlossen.",
+    "Objects imported:": "Importierte Objekte:",
+    "Objects imported before it stopped:": "Vor dem Abbruch importierte Objekte:",
+    "The import was interrupted because another sync took over.":
+      "Der Import wurde unterbrochen, weil eine andere Synchronisierung übernommen hat.",
+    "The import failed.": "Der Import ist fehlgeschlagen.",
+    "Use cases removed:": "Entfernte Anwendungsfälle:",
+    "Use cases removed before it stopped:": "Vor dem Abbruch entfernte Anwendungsfälle:",
+    "The removal was interrupted before it finished. Try again for the rest.":
+      "Das Entfernen wurde vor dem Abschluss unterbrochen. Versuchen Sie es für die übrigen erneut.",
     "A sync is already running. Try again when it finishes.":
       "Es läuft bereits eine Synchronisierung. Versuchen Sie es erneut, wenn sie abgeschlossen ist.",
     "Error Details:": "Fehlerdetails:",
@@ -19889,6 +19901,18 @@ export const translations: Record<string, Record<string, string>> = {
       "La suppression a été interrompue ; rien n'a été supprimé. Réessayez.",
     "Another sync or import was running, so this sync did not start.":
       "Une autre synchronisation ou importation était en cours, cette synchronisation n'a donc pas démarré.",
+    "Importing objects": "Importation des objets",
+    "Removing use cases": "Suppression des cas d'usage",
+    "Import finished.": "Importation terminée.",
+    "Objects imported:": "Objets importés :",
+    "Objects imported before it stopped:": "Objets importés avant l'arrêt :",
+    "The import was interrupted because another sync took over.":
+      "L'importation a été interrompue, car une autre synchronisation a pris le relais.",
+    "The import failed.": "L'importation a échoué.",
+    "Use cases removed:": "Cas d'usage supprimés :",
+    "Use cases removed before it stopped:": "Cas d'usage supprimés avant l'arrêt :",
+    "The removal was interrupted before it finished. Try again for the rest.":
+      "La suppression a été interrompue avant la fin. Réessayez pour les autres.",
     "A sync is already running. Try again when it finishes.":
       "Une synchronisation est déjà en cours. Réessayez une fois qu'elle est terminée.",
     "Error Details:": "Détails de l'erreur :",
@@ -29962,6 +29986,18 @@ export const translations: Record<string, Record<string, string>> = {
       "La eliminación se interrumpió; no se eliminó nada. Inténtelo de nuevo.",
     "Another sync or import was running, so this sync did not start.":
       "Había otra sincronización o importación en curso, por lo que esta sincronización no se inició.",
+    "Importing objects": "Importando objetos",
+    "Removing use cases": "Eliminando casos de uso",
+    "Import finished.": "Importación finalizada.",
+    "Objects imported:": "Objetos importados:",
+    "Objects imported before it stopped:": "Objetos importados antes de detenerse:",
+    "The import was interrupted because another sync took over.":
+      "La importación se interrumpió porque otra sincronización tomó el control.",
+    "The import failed.": "La importación falló.",
+    "Use cases removed:": "Casos de uso eliminados:",
+    "Use cases removed before it stopped:": "Casos de uso eliminados antes de detenerse:",
+    "The removal was interrupted before it finished. Try again for the rest.":
+      "La eliminación se interrumpió antes de terminar. Inténtelo de nuevo para el resto.",
     "A sync is already running. Try again when it finishes.":
       "Ya hay una sincronización en curso. Inténtelo de nuevo cuando termine.",
     "Error Details:": "Detalles del error:",
