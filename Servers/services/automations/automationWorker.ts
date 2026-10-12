@@ -33,6 +33,7 @@ import { runDataRetentionPruneAllOrgs } from "./actions/dataRetentionPrune";
 import { runEvidenceFreshnessSweepAllOrgs } from "./actions/evidenceFreshnessSweep";
 import { runDeadlineEscalationSweepAllOrgs } from "./actions/deadlineEscalationSweep";
 import { runStaleInheritanceNotifySweepAllOrgs } from "./actions/staleInheritanceNotifySweep";
+import { runApprovalOverdueSweepAllOrgs } from "./actions/approvalOverdueSweep";
 import { recomputeRiskLinks, recomputeRiskLinksBatch } from "../riskLinks/recompute";
 import {
   recomputeVendorRiskLinks,
@@ -688,6 +689,8 @@ export const createAutomationWorker = () => {
           await runEvidenceFreshnessSweepAllOrgs();
         } else if (name === "deadline_escalation_sweep") {
           await runDeadlineEscalationSweepAllOrgs();
+        } else if (name === "approval_overdue_sweep") {
+          await runApprovalOverdueSweepAllOrgs();
         } else if (name === "stale_inheritance_notify_sweep") {
           await runStaleInheritanceNotifySweepAllOrgs();
         } else if (name === "risk_link_recompute") {
