@@ -98,6 +98,7 @@ export interface IntakeForm {
   riskAssessmentConfig?: Record<string, unknown> | null;
   llmKeyId?: number | null;
   suggestedQuestionsEnabled?: boolean;
+  euAiActRiskStepEnabled?: boolean;
   designSettings?: FormDesignSettings | null;
   createdBy?: number;
   createdAt?: Date;
@@ -120,6 +121,7 @@ export interface CreateIntakeFormInput {
   riskTierSystem?: string;
   llmKeyId?: number | null;
   suggestedQuestionsEnabled?: boolean;
+  euAiActRiskStepEnabled?: boolean;
   designSettings?: FormDesignSettings | null;
 }
 
@@ -138,6 +140,7 @@ export interface UpdateIntakeFormInput {
   riskTierSystem?: string;
   llmKeyId?: number | null;
   suggestedQuestionsEnabled?: boolean;
+  euAiActRiskStepEnabled?: boolean;
   designSettings?: FormDesignSettings | null;
 }
 
@@ -432,32 +435,6 @@ export const DEFAULT_USE_CASE_FIELDS: FormField[] = [
   {
     id: generateFieldId(),
     type: "select",
-    label: "AI risk classification",
-    guidanceText: "This classification determines the level of regulatory scrutiny required.",
-    options: [
-      { label: "Minimal risk", value: "minimal" },
-      { label: "Limited risk", value: "limited" },
-      { label: "High risk", value: "high" },
-      { label: "Unacceptable risk", value: "unacceptable" },
-    ],
-    entityFieldMapping: "ai_risk_classification",
-    order: 3,
-  },
-  {
-    id: generateFieldId(),
-    type: "select",
-    label: "High risk role type",
-    guidanceText: "Under the EU AI Act, your role determines your compliance obligations.",
-    options: [
-      { label: "Deployer", value: "Deployer" },
-      { label: "Provider", value: "Provider" },
-    ],
-    entityFieldMapping: "type_of_high_risk_role",
-    order: 4,
-  },
-  {
-    id: generateFieldId(),
-    type: "select",
     label: "Geography",
     guidanceText: "The geographic scope affects which regulations apply to this use case.",
     options: [
@@ -469,7 +446,7 @@ export const DEFAULT_USE_CASE_FIELDS: FormField[] = [
       { label: "Africa", value: "6" },
     ],
     entityFieldMapping: "geography",
-    order: 5,
+    order: 3,
   },
   {
     id: generateFieldId(),
@@ -482,7 +459,7 @@ export const DEFAULT_USE_CASE_FIELDS: FormField[] = [
       { label: "Partially — recommends but human decides", value: "partial" },
       { label: "Yes — makes decisions without human review", value: "yes" },
     ],
-    order: 6,
+    order: 4,
   },
   {
     id: generateFieldId(),
@@ -495,7 +472,7 @@ export const DEFAULT_USE_CASE_FIELDS: FormField[] = [
       { label: "Sensitive personal data (health, biometric)", value: "sensitive" },
       { label: "Special category data (racial, political)", value: "special" },
     ],
-    order: 7,
+    order: 5,
   },
 ];
 
@@ -579,12 +556,39 @@ export interface MappingCoverage {
   }>;
 }
 
+/** Entity fields the EU AI Act risk step fills in, so the builder does not offer them. */
+const RISK_STEP_SET_FIELDS = new Set(["ai_risk_classification", "type_of_high_risk_role"]);
+
+/** True when the EU AI Act risk step sets `mapping`, so a field must not also map to it. */
+export function isRiskStepSetField(mapping: string | undefined): boolean {
+  return mapping !== undefined && RISK_STEP_SET_FIELDS.has(mapping);
+}
+
+/**
+ * Entity mappings the field editor must not offer for `selectedFieldId`:
+ * those taken by other fields, plus the ones the EU AI Act risk step sets
+ * while it is on. The editor still shows a field's own current mapping.
+ */
+export function usedEntityMappingsFor(
+  fields: FormField[],
+  selectedFieldId: string,
+  riskStepEnabled: boolean | undefined,
+): string[] {
+  return [
+    ...fields
+      .filter((f) => f.id !== selectedFieldId && f.entityFieldMapping)
+      .map((f) => f.entityFieldMapping!),
+    ...(riskStepEnabled ? [...RISK_STEP_SET_FIELDS] : []),
+  ];
+}
+
 /**
  * Analyze mapping coverage for a form's fields against the entity field definitions
  */
 export function analyzeMappingCoverage(
   fields: FormField[],
   entityType: IntakeEntityType,
+  options: { riskStepEnabled?: boolean } = {},
 ): MappingCoverage {
   const entityMappings = ENTITY_FIELD_MAPPINGS[entityType] || [];
   const mappedKeys = new Set(
@@ -595,6 +599,10 @@ export function analyzeMappingCoverage(
   const missingOptional: EntityFieldMapping[] = [];
 
   for (const mapping of entityMappings) {
+    // With the EU AI Act risk step on, the server sets ai_risk_classification
+    // itself and the step also sets the role, so neither is reported as
+    // missing. Type checks below still cover a field already mapped to them.
+    if (options.riskStepEnabled && RISK_STEP_SET_FIELDS.has(mapping.field)) continue;
     if (!mappedKeys.has(mapping.field)) {
       if (mapping.entityRequired) {
         missingRequired.push(mapping);
@@ -748,6 +756,9 @@ export function createEmptyForm(entityType?: IntakeEntityType): IntakeForm {
     riskTierSystem: "eu_ai_act",
     llmKeyId: null,
     suggestedQuestionsEnabled: false,
+    // New use case forms start with the EU AI Act step on; it replaces the
+    // old risk level and role questions of the template.
+    euAiActRiskStepEnabled: type === IntakeEntityType.USE_CASE,
     designSettings: { ...DEFAULT_DESIGN_SETTINGS },
   };
 }

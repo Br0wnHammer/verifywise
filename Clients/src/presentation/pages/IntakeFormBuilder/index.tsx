@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Box,
   Typography,
@@ -33,7 +34,8 @@ import {
   IntakeEntityType,
 } from "../../../application/repository/intakeForm.repository";
 import CustomAxios from "../../../infrastructure/api/customAxios";
-import { useLLMKeys } from "../../../application/hooks/useLLMKeys";
+import { invalidateLLMKeyQueries, useLLMKeys } from "../../../application/hooks/useLLMKeys";
+import { getClientErrorReason, isClientError } from "../../../application/utils/apiErrorReason";
 import {
   FieldPalette,
   SuggestedQuestionsPanel,
@@ -47,16 +49,19 @@ import {
   FormField,
   IntakeForm,
   createEmptyForm,
+  isRiskStepSetField,
   generateFieldId,
   generateSlug,
   DEFAULT_DESIGN_SETTINGS,
   analyzeMappingCoverage,
   createFieldFromMapping,
+  usedEntityMappingsFor,
 } from "./types";
 import { CustomizableButton } from "../../components/button/customizable-button";
 import StandardModal from "../../components/Modals/StandardModal";
 import Select from "../../components/Inputs/Select";
 import Checkbox from "../../components/Inputs/Checkbox";
+import EuAiActStepToggle from "./EuAiActStepToggle";
 import Chip from "../../components/Chip";
 import { PageBreadcrumbs } from "../../components/breadcrumbs/PageBreadcrumbs";
 
@@ -90,11 +95,24 @@ export function IntakeFormBuilder() {
   const suggestedPanelRef = useRef<SuggestedQuestionsPanelHandle>(null);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const [isLoadingForm, setIsLoadingForm] = useState(false);
+  // Starts true when editing so the default form never renders in its place.
+  const [isLoadingForm, setIsLoadingForm] = useState(isEditing);
+  // Set when the stored form could not be loaded. The builder is not shown, so
+  // the default form cannot be saved over the stored one.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   // Shared, per-organization cache: refreshed wherever a key changes. A failed
   // load leaves the picker with only "None", as before.
-  const { keys: llmKeys } = useLLMKeys();
+  const { keys: llmKeys, loading: llmKeysLoading, isError: llmKeysError } = useLLMKeys();
+  const queryClient = useQueryClient();
+  // A stored id can outlive its key (deleted elsewhere). Once the key list has
+  // loaded, an id that is not in it counts as no key. While the list is
+  // loading or failed to load, the stored id is trusted as is.
+  const llmKeysLoaded = !llmKeysLoading && !llmKeysError;
+  const activeLlmKeyId =
+    form.llmKeyId && (!llmKeysLoaded || llmKeys.some((key) => key.id === form.llmKeyId))
+      ? form.llmKeyId
+      : null;
   const [formSettingsOpen, setFormSettingsOpen] = useState(true);
   const [orgUsers, setOrgUsers] = useState<
     Array<{ id: number; name: string; surname?: string; email: string }>
@@ -115,11 +133,14 @@ export function IntakeFormBuilder() {
   useEffect(() => {
     if (isEditing && formId) {
       setIsLoadingForm(true);
+      setLoadFailed(false);
       getIntakeForm(parseInt(formId))
         .then((response) => {
           if (response.data) setForm(response.data);
+          else setLoadFailed(true);
         })
         .catch(() => {
+          setLoadFailed(true);
           setSnackbar({
             open: true,
             message: "Failed to load form",
@@ -132,6 +153,7 @@ export function IntakeFormBuilder() {
         entityTypeParam === IntakeEntityType.MODEL
           ? IntakeEntityType.MODEL
           : IntakeEntityType.USE_CASE;
+      setLoadFailed(false);
       setForm(createEmptyForm(entityType));
       setSelectedFieldId(null);
       setIsDirty(false);
@@ -247,6 +269,22 @@ export function IntakeFormBuilder() {
     setIsDirty(true);
   }, []);
 
+  /**
+   * Shows why a form write failed. A rejected write that sent a key may mean
+   * the key was deleted elsewhere (the server's reason is translated, so it is
+   * not matched): refetch the key list so a missing key falls back to none.
+   */
+  const showWriteError = (error: unknown, sentLlmKeyId: number | null, fallback: string) => {
+    if (sentLlmKeyId && isClientError(error)) {
+      void invalidateLLMKeyQueries(queryClient);
+    }
+    setSnackbar({
+      open: true,
+      message: getClientErrorReason(error) ?? fallback,
+      severity: "error",
+    });
+  };
+
   const handleSave = async (): Promise<number | null> => {
     if (!form.name.trim()) {
       setSnackbar({
@@ -263,8 +301,9 @@ export function IntakeFormBuilder() {
         slug: form.slug || generateSlug(form.name),
         recipients: form.recipients ?? [],
         riskTierSystem: form.riskTierSystem ?? "eu_ai_act",
-        llmKeyId: form.llmKeyId ?? null,
+        llmKeyId: activeLlmKeyId,
         suggestedQuestionsEnabled: form.suggestedQuestionsEnabled ?? false,
+        euAiActRiskStepEnabled: form.euAiActRiskStepEnabled ?? false,
       };
       if (isEditing && formId) {
         const response = await updateIntakeForm(parseInt(formId), formData);
@@ -294,12 +333,8 @@ export function IntakeFormBuilder() {
         }
       }
       return null;
-    } catch {
-      setSnackbar({
-        open: true,
-        message: "Failed to save form",
-        severity: "error",
-      });
+    } catch (error) {
+      showWriteError(error, activeLlmKeyId, "Failed to save form");
       return null;
     } finally {
       setIsSaving(false);
@@ -314,8 +349,9 @@ export function IntakeFormBuilder() {
         slug: form.slug || generateSlug(form.name),
         recipients: form.recipients ?? [],
         riskTierSystem: form.riskTierSystem ?? "eu_ai_act",
-        llmKeyId: form.llmKeyId ?? null,
+        llmKeyId: activeLlmKeyId,
         suggestedQuestionsEnabled: form.suggestedQuestionsEnabled ?? false,
+        euAiActRiskStepEnabled: form.euAiActRiskStepEnabled ?? false,
         status: IntakeFormStatus.ACTIVE,
       };
       const formIdNum = isEditing && formId ? parseInt(formId) : undefined;
@@ -339,12 +375,8 @@ export function IntakeFormBuilder() {
         message: "Form published successfully",
         severity: "success",
       });
-    } catch {
-      setSnackbar({
-        open: true,
-        message: "Failed to publish form",
-        severity: "error",
-      });
+    } catch (error) {
+      showWriteError(error, activeLlmKeyId, "Failed to publish form");
     } finally {
       setIsSaving(false);
     }
@@ -452,8 +484,11 @@ export function IntakeFormBuilder() {
   // ============================================================================
 
   const mappingCoverage = useMemo(
-    () => analyzeMappingCoverage(form.schema.fields, form.entityType),
-    [form.schema.fields, form.entityType],
+    () =>
+      analyzeMappingCoverage(form.schema.fields, form.entityType, {
+        riskStepEnabled: form.euAiActRiskStepEnabled ?? false,
+      }),
+    [form.schema.fields, form.entityType, form.euAiActRiskStepEnabled],
   );
 
   const selectedField = form.schema.fields.find((f) => f.id === selectedFieldId);
@@ -467,6 +502,11 @@ export function IntakeFormBuilder() {
       _id: String(key.id),
       name: `${key.name} — ${key.model}`,
     })),
+    // The stored key while the list is loading or failed to load, so the
+    // picker shows it rather than an empty value.
+    ...(activeLlmKeyId && !llmKeys.some((key) => key.id === activeLlmKeyId)
+      ? [{ _id: String(activeLlmKeyId), name: "Saved key" }]
+      : []),
   ];
 
   // ============================================================================
@@ -511,6 +551,19 @@ export function IntakeFormBuilder() {
               }}
             >
               <CircularProgress sx={{ color: theme.palette.primary.main }} />
+            </Box>
+          ) : loadFailed ? (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flex: 1,
+              }}
+            >
+              <Typography sx={{ fontSize: "13px", color: theme.palette.text.secondary }}>
+                Failed to load form
+              </Typography>
             </Box>
           ) : (
             <>
@@ -769,6 +822,10 @@ export function IntakeFormBuilder() {
                     onNameChange={(name) => updateForm({ name })}
                     onDescriptionChange={(description) => updateForm({ description })}
                     collectContactInfo
+                    euAiActRiskStepEnabled={
+                      form.entityType === IntakeEntityType.USE_CASE &&
+                      (form.euAiActRiskStepEnabled ?? false)
+                    }
                   />
                   {form.suggestedQuestionsEnabled && (
                     <SuggestedQuestionsPanel
@@ -776,7 +833,7 @@ export function IntakeFormBuilder() {
                       fieldCount={form.schema.fields.length}
                       existingFieldLabels={form.schema.fields.map((f) => f.label)}
                       entityType={form.entityType}
-                      llmKeyId={form.llmKeyId}
+                      llmKeyId={activeLlmKeyId}
                       onAdd={addField}
                     />
                   )}
@@ -792,10 +849,12 @@ export function IntakeFormBuilder() {
                   <FieldEditor
                     field={selectedField}
                     entityType={form.entityType}
-                    usedEntityMappings={form.schema.fields
-                      .filter((f) => f.id !== selectedField.id && f.entityFieldMapping)
-                      .map((f) => f.entityFieldMapping!)}
-                    llmKeyId={form.llmKeyId}
+                    usedEntityMappings={usedEntityMappingsFor(
+                      form.schema.fields,
+                      selectedField.id,
+                      form.euAiActRiskStepEnabled,
+                    )}
+                    llmKeyId={activeLlmKeyId}
                     onChange={updateField}
                     onClose={() => setSelectedFieldId(null)}
                   />
@@ -1067,7 +1126,7 @@ export function IntakeFormBuilder() {
                           <Select
                             id="llm-key"
                             label=""
-                            value={form.llmKeyId ? String(form.llmKeyId) : ""}
+                            value={activeLlmKeyId ? String(activeLlmKeyId) : ""}
                             onChange={(e) =>
                               updateForm({
                                 llmKeyId: e.target.value === "" ? null : Number(e.target.value),
@@ -1089,13 +1148,14 @@ export function IntakeFormBuilder() {
                               lineHeight: 1.4,
                             }}
                           >
-                            {form.llmKeyId
+                            {activeLlmKeyId
                               ? "Submissions will be scored using AI-enhanced risk analysis. You can also generate suggested questions and field guidance text with AI."
                               : "Without an LLM key, submissions are scored using rule-based risk analysis only. Add a key in Settings > LLM keys to enable AI features."}
                           </Typography>
                         </Box>
 
-                        {form.llmKeyId && (
+                        {/* Shown whenever the panel can render, so it can always be turned off. */}
+                        {(activeLlmKeyId || form.suggestedQuestionsEnabled) && (
                           <Box
                             sx={{
                               display: "flex",
@@ -1140,6 +1200,31 @@ export function IntakeFormBuilder() {
                             </Box>
                           </Box>
                         )}
+
+                        <EuAiActStepToggle
+                          entityType={form.entityType}
+                          enabled={form.euAiActRiskStepEnabled ?? false}
+                          hasRiskMapping={form.schema.fields.some((f) =>
+                            isRiskStepSetField(f.entityFieldMapping),
+                          )}
+                          onToggle={(enabled) =>
+                            updateForm({
+                              euAiActRiskStepEnabled: enabled,
+                              ...(enabled
+                                ? {
+                                    schema: {
+                                      ...form.schema,
+                                      fields: form.schema.fields.map((f) =>
+                                        isRiskStepSetField(f.entityFieldMapping)
+                                          ? { ...f, entityFieldMapping: undefined }
+                                          : f,
+                                      ),
+                                    },
+                                  }
+                                : {}),
+                            })
+                          }
+                        />
                       </Box>
                     </Collapse>
                   </Box>

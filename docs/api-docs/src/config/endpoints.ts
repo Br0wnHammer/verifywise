@@ -45,10 +45,20 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/agent-primitives',
     summary: "Create Agent Primitive",
-    description: "Requires role: Admin",
+    description: "Adds a manual agent. Owners: send owner_ids, the user ids of the owners, primary first. The legacy owner_id is still accepted. Sent alone, a user id makes that user the only owner, and any other text is stored as is as a free-text owner (owner_ids stays empty). Sent with owner_ids, owner_id must be a user id; it becomes the primary owner and is moved to the front. An agent can have at most 50 owners. Requires role: Admin",
     requiresAuth: true,
+    requestBody: {
+      "display_name": "string (required)",
+      "primitive_type": "string (required)",
+      "owner_ids": "array (optional)",
+      "owner_id": "string (optional, nullable)",
+      "permissions": "array (optional)",
+      "permission_categories": "array (optional)",
+      "metadata": "object (optional)",
+    },
     responses: [
-      { status: 201, description: "Created successfully" },
+      { status: 201, description: "Created successfully. The agent includes owner_ids." },
+      { status: 400, description: "Missing display_name or primitive_type, an invalid owner id, an owner who is not a user of your organization, owner_id that is not a user id when sent with owner_ids, a text owner_id longer than 255 characters, or more than 50 owners" },
       { status: 401, description: "Unauthorized" },
       { status: 500, description: "Internal server error" },
     ],
@@ -109,14 +119,24 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/agent-primitives/{id}',
     summary: "Update Agent Primitive",
-    description: "Requires role: Admin",
+    description: "Edits a manual agent. Owners change only when owner_ids or owner_id is sent, so an edit of other fields leaves them as they are. owner_ids replaces the full owner set, primary first. owner_id sent alone (legacy): a user id becomes the primary owner, replacing the previous primary and keeping the other owners; null or an empty string removes only the primary owner, and the next owner becomes primary (or none is left); any other text replaces all owners with that one free-text owner. Sent with owner_ids, owner_id must be a user id; it becomes the primary owner and is moved to the front. An agent can have at most 50 owners. Requires role: Admin",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
     ],
+    requestBody: {
+      "display_name": "string (optional)",
+      "primitive_type": "string (optional)",
+      "owner_ids": "array (optional)",
+      "owner_id": "string (optional, nullable)",
+      "metadata": "object (optional)",
+    },
     responses: [
-      { status: 200, description: "Success" },
+      { status: 200, description: "Success. The agent includes owner_ids." },
+      { status: 400, description: "No fields to update, an invalid owner id, a newly added owner who is not a user of your organization, owner_id that is not a user id when sent with owner_ids, a text owner_id longer than 255 characters, or more than 50 owners" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Only manually-added agents can be edited" },
+      { status: 404, description: "Agent primitive not found" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Agent Discovery",
@@ -1964,6 +1984,25 @@ export const auditEndpoints: Endpoint[] = [
     ],
     tag: "Audit",
   },
+  {
+    method: 'GET',
+    path: '/audit-ledger/export',
+    summary: "Export Audit Ledger as CSV",
+    description: "Streams the organization audit ledger as a CSV attachment (UTF-8 with BOM, oldest entry first, batches of 1000). Requires role: Admin",
+    requiresAuth: true,
+    parameters: [
+      { name: 'entity_type', in: 'query', type: 'string', required: false, description: "Only entries for this entity type" },
+      { name: 'entry_type', in: 'query', type: 'string', required: false, description: "Only entries of this kind" },
+    ],
+    responses: [
+      { status: 200, description: "CSV file attachment (audit-ledger-YYYY-MM-DD.csv)" },
+      { status: 400, description: "Invalid entry_type" },
+      { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden - insufficient role" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Audit",
+  },
 ];
 
 // Authentication endpoints
@@ -2429,6 +2468,19 @@ export const customFieldsEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/custom-fields/definitions/by-id/{id}/usage',
+    summary: "Get Custom Field Usage",
+    description: "Requires role: Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Answer counts. total is the number of saved answers; by_option maps each option to its count: the option id for scored select, the option text for select and multiselect (a multiselect record counts once per option it holds); empty for other types." },
+      { status: 404, description: "Definition not found" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Custom Fields",
+  },
+  {
+    method: 'GET',
     path: '/custom-fields/definitions/{entityType}',
     summary: "List Custom Field Definitions",
     requiresAuth: true,
@@ -2442,7 +2494,7 @@ export const customFieldsEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/custom-fields/definitions',
     summary: "Create Custom Field Definition",
-    description: "Requires role: Admin",
+    description: "Requires role: Admin. field_type is one of text, number, date, boolean, select, multiselect, user, scored_select. For scored_select, options is an array of { id, label, score }; omit id for new options (the server assigns it).",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -2456,8 +2508,16 @@ export const customFieldsEndpoints: Endpoint[] = [
     summary: "Update Custom Field Definition",
     description: "Requires role: Admin",
     requiresAuth: true,
+    requestBody: {
+      "label": "string (optional)",
+      "required": "boolean (optional)",
+      "options": "array (optional)",
+      "option_moves": "object (optional)",
+      "option_removals": "array (optional)",
+    },
     responses: [
       { status: 200, description: "Success" },
+      { status: 409, description: "Removed options are still in use. data has code options_in_use, in_use [{ id, label, count }] and entity_type; retry with option_moves and/or option_removals." },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Custom Fields",
@@ -3131,6 +3191,32 @@ export const euAiActEndpoints: Endpoint[] = [
       { status: 500, description: "Internal server error" },
     ],
     tag: "EU AI Act",
+  },
+];
+
+// Eu Ai Act Classification endpoints
+export const euAiActClassificationEndpoints: Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/eu-ai-act-classification/questionnaire',
+    summary: "Get Questionnaire",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Eu Ai Act Classification",
+  },
+  {
+    method: 'POST',
+    path: '/eu-ai-act-classification/score',
+    summary: "Score Answers",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Eu Ai Act Classification",
   },
 ];
 
@@ -4367,6 +4453,28 @@ export const fileEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Files",
+  },
+  {
+    method: 'GET',
+    path: '/file-manager/org-settings',
+    summary: "Get File Org Settings Handler",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Files",
+  },
+  {
+    method: 'PUT',
+    path: '/file-manager/org-settings',
+    summary: "Update File Org Settings Handler",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Files",
@@ -8644,6 +8752,28 @@ export const projectEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/projects/{id}/eu-ai-act-classification',
+    summary: "Get Use Case Classification",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Projects",
+  },
+  {
+    method: 'POST',
+    path: '/projects/{id}/eu-ai-act-classification',
+    summary: "Classify Use Case",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Projects",
+  },
+  {
+    method: 'GET',
     path: '/projects/all/compliance/progress',
     summary: "Get compliance progress across all projects",
     requiresAuth: true,
@@ -8806,6 +8936,28 @@ export const projectRiskEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 500, description: "Internal server error" },
+    ],
+    tag: "Project Risks",
+  },
+  {
+    method: 'POST',
+    path: '/projectRisks/suggest-ai',
+    summary: "Suggest Risks With AI",
+    description: "Read-only: the org-configured LLM returns matching entries from the built-in MIT and IBM risk catalogs plus free-form suggested risks for the use case of the project. Nothing is persisted. Rate limited to 10 requests per hour per user.",
+    requiresAuth: true,
+    requestBody: {
+      "projectId": "integer (required)",
+      "technologySummary": "string (optional)",
+      "llmKeyId": "integer (optional)",
+    },
+    responses: [
+      { status: 200, description: "Suggestions generated" },
+      { status: 400, description: "Invalid request, or no LLM keys configured for the organization" },
+      { status: 401, description: "Unauthorized" },
+      { status: 404, description: "Project not found" },
+      { status: 429, description: "Rate limit exceeded (10 requests per hour per user)" },
+      { status: 500, description: "Internal server error" },
+      { status: 502, description: "The configured AI provider rejected or failed the request" },
     ],
     tag: "Project Risks",
   },
@@ -11005,7 +11157,7 @@ export const userEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/users/preferences',
     summary: "Get current user preferences",
-    description: "Returns the authenticated user's persisted preferences (date_format, language) from user_preferences. If no row exists, returns safe defaults including a transient theme default.",
+    description: "Returns the authenticated user's persisted preferences (date_format, language, parallel_agents) from user_preferences. If no row exists, returns safe defaults including a transient theme default and parallel_agents false.",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Preferences found or defaults returned" },
@@ -11018,7 +11170,7 @@ export const userEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/users/me/preferences',
     summary: "Get current user preferences",
-    description: "Returns the authenticated user's persisted preferences (date_format, language) from user_preferences. If no row exists, returns safe defaults including a transient theme default. Preferred alias of GET /users/preferences.",
+    description: "Returns the authenticated user's persisted preferences (date_format, language, parallel_agents) from user_preferences. If no row exists, returns safe defaults including a transient theme default and parallel_agents false. Preferred alias of GET /users/preferences.",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Preferences found or defaults returned" },
@@ -11032,11 +11184,12 @@ export const userEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/users/me/preferences',
     summary: "Update current user preferences",
-    description: "Upserts the authenticated user's date_format and/or language. At least one field is required. Unknown format strings and languages are rejected. Any user_id in the body is ignored; the JWT user is always the target.",
+    description: "Upserts the authenticated user's date_format, language, and/or parallel_agents. At least one field is required. Unknown format strings, languages, and non-boolean parallel_agents values are rejected. Any user_id in the body is ignored; the JWT user is always the target.",
     requiresAuth: true,
     requestBody: {
       "date_format": "DD-MM-YYYY | MM-DD-YYYY | DD/MM/YY | MM/DD/YY (optional)",
       "language": "en | de | fr | es (optional)",
+      "parallel_agents": "boolean (optional)",
     },
     responses: [
       { status: 200, description: "Preferences saved" },
@@ -11640,6 +11793,7 @@ export const allEndpoints = {
   email: emailEndpoints,
   entityGraph: entityGraphEndpoints,
   euAiAct: euAiActEndpoints,
+  euAiActClassification: euAiActClassificationEndpoints,
   evidenceAi: evidenceAiEndpoints,
   evidenceHub: evidenceHubEndpoints,
   extension: extensionEndpoints,

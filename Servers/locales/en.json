@@ -1,4 +1,9 @@
 {
+  "An agent can have at most 50 owners": "An agent can have at most 50 owners",
+  "Owner IDs must be valid user IDs": "Owner IDs must be valid user IDs",
+  "Owners must be users in your organization": "Owners must be users in your organization",
+  "owner_id must be a user ID when sent with owner_ids": "owner_id must be a user ID when sent with owner_ids",
+  "owner_id must be at most 255 characters": "owner_id must be at most 255 characters",
   "{days} days overdue": "{days} days overdue",
   "{projectName} is created in VerifyWise": "{projectName} is created in VerifyWise",
   "{type} with id {id} not found": "{type} with id {id} not found",
@@ -386,7 +391,8 @@
   "Linked successfully": "Linked successfully",
   "LLM Key deleted successfully": "LLM Key deleted successfully",
   "LLM key ID is required": "LLM key ID is required",
-  "LLM Key not found": "LLM Key not found",
+  "LLM key ID must be a positive integer": "LLM key ID must be a positive integer",
+  "LLM key not found": "LLM key not found",
   "Logo must be a valid URL": "Logo must be a valid URL",
   "Logo URL cannot be empty if provided": "Logo URL cannot be empty if provided",
   "Maximum {max} events per request": "Maximum {max} events per request",
@@ -811,5 +817,14 @@
   "This link changed while you were deciding. Reload and try again.": "This link changed while you were deciding. Reload and try again.",
   "This invitation was sent to a different email address.": "This invitation was sent to a different email address.",
   "This invitation link is invalid.": "This invitation link is invalid.",
-  "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it.": "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it."
+  "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it.": "This invitation link is no longer valid. Use the most recent invitation email, or ask your administrator to resend it.",
+  "Members must be users of this organization": "Members must be users of this organization",
+  "Owner must be a user of this organization": "Owner must be a user of this organization",
+  "The EU AI Act risk classification answers are invalid": "The EU AI Act risk classification answers are invalid",
+  "The EU AI Act risk classification does not apply to organizational projects": "The EU AI Act risk classification does not apply to organizational projects",
+  "The EU AI Act risk classification requires the EU AI Act framework on this use case": "The EU AI Act risk classification requires the EU AI Act framework on this use case",
+  "Complete the EU AI Act risk classification step": "Complete the EU AI Act risk classification step",
+  "Remove the AI risk classification mapping from the form's questions before turning on the EU AI Act risk classification step": "Remove the AI risk classification mapping from the form's questions before turning on the EU AI Act risk classification step",
+  "A justification of at least 10 characters is required when changing the computed EU AI Act classification": "A justification of at least 10 characters is required when changing the computed EU AI Act classification",
+  "Invalid EU AI Act classification level": "Invalid EU AI Act classification level"
 }
