@@ -92,4 +92,5 @@ jobs:
             tests/test_model_catalog_contract.py \
             tests/test_agent_policy_scope.py \
             tests/test_retention.py \
+            tests/test_internal_key.py \
             -v

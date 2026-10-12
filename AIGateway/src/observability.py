@@ -61,7 +61,11 @@ def _fetch_config() -> dict:
     }
 
     backend_url = os.environ.get("BACKEND_URL")
-    internal_key = os.environ.get("AI_GATEWAY_INTERNAL_KEY")
+    # The trimmed key from settings, the same value the gateway checks and the
+    # backend expects (a raw env read would keep a trailing space or newline).
+    from config import settings
+
+    internal_key = settings.ai_gateway_internal_key
     if not backend_url or not internal_key:
         return fallback
 
