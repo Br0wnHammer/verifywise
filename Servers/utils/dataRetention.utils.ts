@@ -1,5 +1,6 @@
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../database/db";
+import logger from "./logger/fileLogger";
 
 /** Allowed audit record retention periods in months; null (no row value) keeps records indefinitely. */
 export const AUDIT_RETENTION_MONTHS = [12, 24, 36, 60, 84, 120] as const;
@@ -133,16 +134,15 @@ export async function auditTableExists(entry: {
 
 /**
  * Delete up to `batchSize` of the oldest rows older than `cutoff` from one
- * audit table for one org. Returns the rows deleted; 0 when the table does not
- * exist in this deployment. A caller that already checked the table exists
- * (the daily job checks once per table per run) passes `tableKnownToExist`.
+ * audit table for one org. Returns the rows deleted. The table must exist:
+ * callers check with auditTableExists first (the daily job checks once per
+ * table per run).
  */
 export async function deleteAuditRowsBatch(
   organizationId: number,
   entry: { table: string; timestampColumn: string },
   cutoff: string,
   batchSize: number,
-  tableKnownToExist = false,
 ): Promise<number> {
   const { table, timestampColumn } = resolveAuditTable(entry);
   return sequelize.transaction(async (transaction) => {
@@ -151,15 +151,6 @@ export async function deleteAuditRowsBatch(
       type: QueryTypes.SELECT,
       transaction,
     });
-    if (!tableKnownToExist) {
-      const exists = (await sequelize.query(`SELECT to_regclass('verifywise.' || :table) AS reg`, {
-        replacements: { table },
-        type: QueryTypes.SELECT,
-        transaction,
-      })) as { reg: string | null }[];
-      if (!exists[0]?.reg) return 0;
-    }
-
     const [, meta] = (await sequelize.query(
       `DELETE FROM ${table} WHERE ctid IN (
          SELECT ctid FROM ${table}
@@ -197,13 +188,9 @@ export async function countAuditRecordsBefore(
     )) as { n: number }[];
     let total = Number(ledger[0]?.n ?? 0);
 
-    for (const { table, timestampColumn } of AUDIT_RECORD_TABLES) {
-      const exists = (await sequelize.query(`SELECT to_regclass('verifywise.' || :table) AS reg`, {
-        replacements: { table },
-        type: QueryTypes.SELECT,
-        transaction,
-      })) as { reg: string | null }[];
-      if (!exists[0]?.reg) continue;
+    for (const entry of AUDIT_RECORD_TABLES) {
+      if (!(await auditTableExists(entry))) continue;
+      const { table, timestampColumn } = entry;
       const rows = (await sequelize.query(
         `SELECT COUNT(*)::int AS n FROM ${table}
           WHERE organization_id = :organizationId AND ${timestampColumn} < :cutoff`,
@@ -240,6 +227,28 @@ export async function recordRetentionRun(row: RetentionRunInput): Promise<void> 
       },
     },
   );
+}
+
+/**
+ * Record a retention run without ever failing the cleanup that ran: a
+ * recording failure is logged only. `error` may be an Error, a message or
+ * absent; it is stored as its message.
+ */
+export async function safeRecordRetentionRun(
+  run: Omit<RetentionRunInput, "error"> & { error?: unknown },
+): Promise<void> {
+  const { error, ...rest } = run;
+  try {
+    await recordRetentionRun({
+      ...rest,
+      error: error == null ? null : error instanceof Error ? error.message : String(error),
+    });
+  } catch (recordError) {
+    logger.error(
+      `Recording ${run.recordType} retention run failed for org ${run.organizationId}:`,
+      recordError,
+    );
+  }
 }
 
 /** Run history older than this is deleted, except each type's latest run per org. */

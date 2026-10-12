@@ -32,7 +32,7 @@ jest.mock("../../utils/shadowAiConfig.utils", () => ({
 }));
 
 jest.mock("../../utils/dataRetention.utils", () => ({
-  recordRetentionRun: jest.fn(),
+  safeRecordRetentionRun: jest.fn(),
   deletedRowCount: jest.requireActual("../../utils/dataRetention.utils").deletedRowCount,
 }));
 
@@ -46,7 +46,7 @@ import { sequelize } from "../../database/db";
 import { calculateRiskScoresForOrganization } from "../shadowAiRiskScoring.service";
 import { getSettingsQuery } from "../../utils/shadowAiConfig.utils";
 import logger from "../../utils/logger/fileLogger";
-import { recordRetentionRun } from "../../utils/dataRetention.utils";
+import { safeRecordRetentionRun as recordRetentionRun } from "../../utils/dataRetention.utils";
 
 // Cast mocks
 const mockQuery = sequelize.query as jest.MockedFunction<typeof sequelize.query>;
@@ -165,26 +165,6 @@ describe("shadowAiAggregation.service", () => {
       );
     });
 
-    it("should not fail the cleanup when recording a run fails", async () => {
-      mockOrgIds([1]);
-      mockGetSettings.mockResolvedValue({
-        retention_events_days: 30,
-        retention_daily_rollups_days: 90,
-        retention_alert_history_days: 180,
-      } as any);
-      mockQuery.mockResolvedValue([[], { rowCount: 1 }] as any);
-      (recordRetentionRun as jest.Mock).mockRejectedValue(new Error("record failed"));
-
-      await purgeOldEvents();
-
-      // All three deletes still ran
-      expect(mockQuery).toHaveBeenCalledTimes(4);
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("retention run failed"),
-        expect.any(Error),
-      );
-    });
-
     it("should skip purge when retention days is 0", async () => {
       mockOrgIds([1]);
       mockGetSettings.mockResolvedValue({
@@ -216,10 +196,30 @@ describe("shadowAiAggregation.service", () => {
         expect.stringContaining("Data retention cleanup failed for organization 1"),
         expect.any(Error),
       );
+      // Without its settings, org 1 records a failed run (no cutoff) per type.
+      for (const recordType of [
+        "shadow_ai_events",
+        "shadow_ai_daily_rollups",
+        "shadow_ai_alert_history",
+      ]) {
+        expect(recordRetentionRun).toHaveBeenCalledWith({
+          organizationId: 1,
+          recordType,
+          cutoff: null,
+          deletedCount: 0,
+          status: "failed",
+          error: expect.objectContaining({ message: "settings error" }),
+        });
+      }
       // Org 2 still ran its events cleanup.
       expect(recordRetentionRun).toHaveBeenCalledWith(
-        expect.objectContaining({ organizationId: 2, recordType: "shadow_ai_events" }),
+        expect.objectContaining({
+          organizationId: 2,
+          recordType: "shadow_ai_events",
+          status: "success",
+        }),
       );
+      expect(recordRetentionRun).toHaveBeenCalledTimes(4);
     });
 
     it("records a failed run for a cleanup that fails and still runs the others", async () => {
@@ -241,7 +241,7 @@ describe("shadowAiAggregation.service", () => {
           recordType: "shadow_ai_events",
           deletedCount: 0,
           status: "failed",
-          error: "lock timeout",
+          error: expect.objectContaining({ message: "lock timeout" }),
         }),
       );
       expect(recordRetentionRun).toHaveBeenCalledWith(
@@ -249,29 +249,11 @@ describe("shadowAiAggregation.service", () => {
           recordType: "shadow_ai_daily_rollups",
           deletedCount: 4,
           status: "success",
-          error: null,
         }),
       );
       // Period 0 means keep forever: no run, failed or otherwise.
       expect(recordRetentionRun).not.toHaveBeenCalledWith(
         expect.objectContaining({ recordType: "shadow_ai_alert_history" }),
-      );
-    });
-
-    it("only logs when recording a failed run also fails", async () => {
-      mockOrgIds([1]);
-      mockGetSettings.mockResolvedValue({
-        retention_events_days: 30,
-        retention_daily_rollups_days: 0,
-        retention_alert_history_days: 0,
-      } as any);
-      mockQuery.mockRejectedValueOnce(new Error("lock timeout"));
-      (recordRetentionRun as jest.Mock).mockRejectedValueOnce(new Error("record failed"));
-
-      await expect(purgeOldEvents()).resolves.toBeUndefined();
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("retention run failed"),
-        expect.any(Error),
       );
     });
   });

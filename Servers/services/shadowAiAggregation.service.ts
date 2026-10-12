@@ -16,33 +16,13 @@ import { calculateRiskScoresForOrganization } from "./shadowAiRiskScoring.servic
 import { getSettingsQuery } from "../utils/shadowAiConfig.utils";
 import {
   deletedRowCount,
-  recordRetentionRun,
+  safeRecordRetentionRun,
   type RetentionRecordType,
 } from "../utils/dataRetention.utils";
 
-/** Record a cleanup run; a recording failure is logged and never breaks the cleanup. */
-async function recordShadowAiRun(
-  organizationId: number,
-  recordType: RetentionRecordType,
-  days: number,
-  deletedCount: number,
-  error?: unknown,
-): Promise<void> {
-  try {
-    await recordRetentionRun({
-      organizationId,
-      recordType,
-      cutoff: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
-      deletedCount,
-      status: error === undefined ? "success" : "failed",
-      error: error === undefined ? null : error instanceof Error ? error.message : String(error),
-    });
-  } catch (error) {
-    logger.error(
-      `❌ Recording ${recordType} retention run failed for organization ${organizationId}:`,
-      error,
-    );
-  }
+/** The cutoff a cleanup with this period uses, for the run record. */
+function cutoffForDays(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 /**
@@ -193,8 +173,19 @@ export async function purgeOldEvents(): Promise<void> {
     try {
       settings = await getSettingsQuery(organizationId);
     } catch (error) {
-      // Without the settings there are no periods, so no run to record.
+      // Without the settings there are no periods: record a failed run (with
+      // no cutoff) for each cleanup so the failure shows on the settings page.
       logger.error(`❌ Data retention cleanup failed for organization ${organizationId}:`, error);
+      for (const purge of SHADOW_AI_PURGES) {
+        await safeRecordRetentionRun({
+          organizationId,
+          recordType: purge.recordType,
+          cutoff: null,
+          deletedCount: 0,
+          status: "failed",
+          error,
+        });
+      }
       continue;
     }
 
@@ -209,7 +200,13 @@ export async function purgeOldEvents(): Promise<void> {
           { replacements: { organizationId, days } },
         );
         const deleted = deletedRowCount(meta);
-        await recordShadowAiRun(organizationId, purge.recordType, days, deleted);
+        await safeRecordRetentionRun({
+          organizationId,
+          recordType: purge.recordType,
+          cutoff: cutoffForDays(days),
+          deletedCount: deleted,
+          status: "success",
+        });
         if (deleted > 0) {
           logger.debug(
             `✅ Purged ${deleted} ${purge.label} older than ${days}d for organization ${organizationId}`,
@@ -220,7 +217,14 @@ export async function purgeOldEvents(): Promise<void> {
           `❌ Data retention cleanup failed for organization ${organizationId} (${purge.table}):`,
           error,
         );
-        await recordShadowAiRun(organizationId, purge.recordType, days, 0, error);
+        await safeRecordRetentionRun({
+          organizationId,
+          recordType: purge.recordType,
+          cutoff: cutoffForDays(days),
+          deletedCount: 0,
+          status: "failed",
+          error,
+        });
       }
     }
   }

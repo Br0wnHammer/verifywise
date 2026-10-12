@@ -12,7 +12,7 @@ import {
   getGatewayAutoPurgeOrgIds,
   getOrgsWithAuditRetention,
   pruneRetentionRunHistory,
-  recordRetentionRun,
+  safeRecordRetentionRun,
 } from "../../../../utils/dataRetention.utils";
 import { aiGatewayRequest } from "../../../../utils/aiGatewayInternal.utils";
 
@@ -27,7 +27,7 @@ jest.mock("../../../../utils/dataRetention.utils", () => ({
   getAuditRetentionMonths: jest.fn(),
   getAuditCutoff: jest.fn(),
   deleteAuditRowsBatch: jest.fn(),
-  recordRetentionRun: jest.fn(),
+  safeRecordRetentionRun: jest.fn(),
   getGatewayAutoPurgeOrgIds: jest.fn(),
   getOrgsWithAuditRetention: jest.fn(),
   pruneRetentionRunHistory: jest.fn(),
@@ -44,7 +44,7 @@ jest.mock("../../../../utils/logger/fileLogger", () => ({
 const mockMonths = getAuditRetentionMonths as jest.Mock;
 const mockLedger = pruneAuditLedgerBatch as jest.Mock;
 const mockTable = deleteAuditRowsBatch as jest.Mock;
-const mockRecord = recordRetentionRun as jest.Mock;
+const mockRecord = safeRecordRetentionRun as jest.Mock;
 const mockAppend = appendToAuditLedger as jest.Mock;
 const mockAllOrgs = getOrgsWithAuditRetention as jest.Mock;
 const mockCutoff = getAuditCutoff as jest.Mock;
@@ -87,7 +87,7 @@ describe("runDataRetentionPrune", () => {
       cutoff: "2024-06-10 00:00:00+00",
       deletedCount: 7,
       status: "success",
-      error: null,
+      error: undefined,
     });
     expect(mockAppend).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -146,10 +146,9 @@ describe("runDataRetentionPrune", () => {
     );
   });
 
-  it("does not fail when the self-audit entry or run recording fails", async () => {
+  it("does not fail when the self-audit entry fails", async () => {
     mockLedger.mockResolvedValueOnce(2);
     mockAppend.mockRejectedValueOnce(new Error("ledger down"));
-    mockRecord.mockRejectedValueOnce(new Error("record down"));
     await expect(runDataRetentionPrune(1)).resolves.toMatchObject({ deleted: 2 });
   });
 });
@@ -164,15 +163,12 @@ describe("audit table existence", () => {
       expect.objectContaining({ table: "event_logs" }),
       expect.anything(),
       expect.anything(),
-      expect.anything(),
     );
-    // The job already checked, so each batch skips its own check.
     expect(mockTable).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ table: "vendor_change_history" }),
       "2024-06-10 00:00:00+00",
       RETENTION_BATCH_SIZE,
-      true,
     );
   });
 
@@ -217,7 +213,7 @@ describe("runDataRetentionPruneAllOrgs", () => {
       cutoff: null,
       deletedCount: 0,
       status: "failed",
-      error: "boom",
+      error: expect.objectContaining({ message: "boom" }),
     });
     expect(mockLedger).toHaveBeenCalledTimes(1);
     expect(mockLedger).toHaveBeenCalledWith(2, "2024-06-10 00:00:00+00", RETENTION_BATCH_SIZE);
@@ -293,7 +289,7 @@ describe("runDataRetentionPruneAllOrgs", () => {
         recordType: "ai_gateway_guardrail_logs",
         deletedCount: 4,
         status: "success",
-        error: null,
+        error: undefined,
       }),
     );
   });
@@ -422,15 +418,5 @@ describe("runDataRetentionPruneAllOrgs", () => {
     await expect(runDataRetentionPruneAllOrgs()).resolves.toBeUndefined();
     expect(mockGateway).not.toHaveBeenCalled();
     expect(mockRecord).not.toHaveBeenCalled();
-  });
-
-  it("keeps going when recording one gateway run fails", async () => {
-    mockOptedIn.mockResolvedValue([5]);
-    mockGateway.mockResolvedValue({
-      results: [{ organization_id: 5, guardrail_deleted: 1, spend_deleted: 2 }],
-    });
-    mockRecord.mockRejectedValueOnce(new Error("insert failed"));
-    await expect(runDataRetentionPruneAllOrgs()).resolves.toBeUndefined();
-    expect(mockRecord).toHaveBeenCalledTimes(2);
   });
 });

@@ -5,6 +5,11 @@ jest.mock("../../database/db", () => ({
   },
 }));
 
+jest.mock("../logger/fileLogger", () => ({
+  __esModule: true,
+  default: { error: jest.fn(), info: jest.fn(), warn: jest.fn() },
+}));
+
 import { ENTITY_CONFIGS } from "../../config/changeHistory.config";
 import { sequelize } from "../../database/db";
 import {
@@ -13,7 +18,9 @@ import {
   deleteAuditRowsBatch,
   getLatestRetentionRuns,
   recordRetentionRun,
+  safeRecordRetentionRun,
 } from "../dataRetention.utils";
+import logger from "../logger/fileLogger";
 
 const mockQuery = sequelize.query as jest.Mock;
 
@@ -65,24 +72,14 @@ describe("deleteAuditRowsBatch", () => {
     ).rejects.toThrow(/Not an audit record table/);
   });
 
-  it("returns 0 without deleting when the table does not exist", async () => {
-    mockQuery
-      .mockResolvedValueOnce([{}]) // set_config
-      .mockResolvedValueOnce([{ reg: null }]); // to_regclass
-    const n = await deleteAuditRowsBatch(1, AUDIT_RECORD_TABLES[0], "2020-01-01", 10);
-    expect(n).toBe(0);
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    expect(mockQuery.mock.calls.some((c) => String(c[0]).includes("DELETE"))).toBe(false);
-  });
-
   it("deletes a batch scoped to the org and returns the row count", async () => {
-    mockQuery
-      .mockResolvedValueOnce([{}])
-      .mockResolvedValueOnce([{ reg: "event_logs" }])
-      .mockResolvedValueOnce([undefined, { rowCount: 7 }]);
+    mockQuery.mockResolvedValueOnce([{}]).mockResolvedValueOnce([undefined, { rowCount: 7 }]);
     const n = await deleteAuditRowsBatch(4, AUDIT_RECORD_TABLES[0], "2020-01-01", 10);
     expect(n).toBe(7);
-    const [sql, opts] = mockQuery.mock.calls[2];
+    // No existence check of its own: callers check with auditTableExists.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockQuery.mock.calls.some((c) => String(c[0]).includes("to_regclass"))).toBe(false);
+    const [sql, opts] = mockQuery.mock.calls[1];
     expect(sql).toContain("DELETE FROM event_logs");
     expect(sql).toContain("organization_id = :organizationId");
     expect(opts.replacements).toEqual({ organizationId: 4, cutoff: "2020-01-01", batchSize: 10 });
@@ -100,6 +97,20 @@ describe("countAuditRecordsBefore", () => {
     });
     const total = await countAuditRecordsBefore(1, 24);
     expect(total).toBe(5 + 2 * AUDIT_RECORD_TABLES.length);
+  });
+
+  it("skips tables that do not exist", async () => {
+    mockQuery.mockImplementation(async (sql: string, opts: any) => {
+      if (sql.includes("AS cutoff")) return [{ cutoff: "2020-01-01 00:00:00+00" }];
+      if (sql.includes("set_config")) return [{}];
+      if (sql.includes("FROM audit_ledger")) return [{ n: 5 }];
+      if (sql.includes("to_regclass")) {
+        return [{ reg: opts.replacements.table === "event_logs" ? "event_logs" : null }];
+      }
+      return [{ n: 2 }];
+    });
+    const total = await countAuditRecordsBefore(1, 24);
+    expect(total).toBe(5 + 2);
   });
 });
 
@@ -138,5 +149,41 @@ describe("recordRetentionRun / getLatestRetentionRuns", () => {
       status: "capped",
     });
     expect(runs.mrm_metrics).toBeUndefined();
+  });
+});
+
+describe("safeRecordRetentionRun", () => {
+  const run = {
+    organizationId: 3,
+    recordType: "mrm_metrics" as const,
+    cutoff: null,
+    deletedCount: 4,
+    status: "failed" as const,
+  };
+
+  it.each([
+    [new Error("statement timeout"), "statement timeout"],
+    ["gateway down", "gateway down"],
+    [undefined, null],
+  ])("stores error %p as %p", async (error, stored) => {
+    mockQuery.mockResolvedValue([]);
+    await safeRecordRetentionRun({ ...run, error });
+    expect(mockQuery.mock.calls[0][1].replacements).toEqual({
+      organizationId: 3,
+      recordType: "mrm_metrics",
+      cutoff: null,
+      deletedCount: 4,
+      status: "failed",
+      error: stored,
+    });
+  });
+
+  it("logs a recording failure instead of throwing", async () => {
+    mockQuery.mockRejectedValue(new Error("insert failed"));
+    await expect(safeRecordRetentionRun(run)).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("mrm_metrics retention run failed for org 3"),
+      expect.objectContaining({ message: "insert failed" }),
+    );
   });
 });

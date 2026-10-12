@@ -528,20 +528,20 @@ describe("retention run history and daily job reads", () => {
     await cleanupDatabase();
   });
 
-  async function insertRun(recordType: string, monthsAgo: number): Promise<number> {
+  async function insertRun(recordType: string, monthsAgo: number, org = orgId): Promise<number> {
     const [rows] = (await sequelize.query(
       `INSERT INTO data_retention_runs (organization_id, record_type, ran_at, deleted_count, status)
-       VALUES (:orgId, :recordType, now() - make_interval(months => :monthsAgo), 0, 'success')
+       VALUES (:org, :recordType, now() - make_interval(months => :monthsAgo), 0, 'success')
        RETURNING id`,
-      { replacements: { orgId, recordType, monthsAgo }, type: QueryTypes.INSERT },
+      { replacements: { org, recordType, monthsAgo }, type: QueryTypes.INSERT },
     )) as unknown as [{ id: string }[], number];
     return Number(rows[0].id);
   }
 
-  async function runIds(): Promise<number[]> {
+  async function runIds(org = orgId): Promise<number[]> {
     const rows = await sequelize.query<{ id: string }>(
-      `SELECT id FROM data_retention_runs WHERE organization_id = :orgId ORDER BY id`,
-      { replacements: { orgId }, type: QueryTypes.SELECT },
+      `SELECT id FROM data_retention_runs WHERE organization_id = :org ORDER BY id`,
+      { replacements: { org }, type: QueryTypes.SELECT },
     );
     return rows.map((r) => Number(r.id));
   }
@@ -553,6 +553,14 @@ describe("retention run history and daily job reads", () => {
     await insertRun("mrm_metrics", 20);
     const currentMrm = await insertRun("mrm_metrics", 0);
     const recentShadow = await insertRun("shadow_ai_events", 2);
+    // A second org whose runs are all its own latest per type (or recent).
+    // Its 20-month-old audit run is older than the first org's latest audit
+    // run, so it survives only if "latest per type" is worked out per org.
+    const otherOrg = await createTestOrganization(`Other org ${Date.now()}`);
+    const otherRuns = [
+      await insertRun("audit_records", 20, otherOrg),
+      await insertRun("mrm_metrics", 1, otherOrg),
+    ];
 
     const removed = await pruneRetentionRunHistory();
 
@@ -561,6 +569,7 @@ describe("retention run history and daily job reads", () => {
     expect(await runIds()).toEqual(
       [latestOldAudit, currentMrm, recentShadow].sort((a, b) => a - b),
     );
+    expect(await runIds(otherOrg)).toEqual(otherRuns);
     expect(await pruneRetentionRunHistory()).toBe(0);
   });
 

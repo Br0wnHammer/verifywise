@@ -11,8 +11,7 @@ import {
   getGatewayAutoPurgeOrgIds,
   getOrgsWithAuditRetention,
   pruneRetentionRunHistory,
-  recordRetentionRun,
-  type RetentionRecordType,
+  safeRecordRetentionRun,
 } from "../../../utils/dataRetention.utils";
 import { aiGatewayRequest } from "../../../utils/aiGatewayInternal.utils";
 import logger from "../../../utils/logger/fileLogger";
@@ -55,7 +54,7 @@ export async function runDataRetentionPrune(
     if (period === null) return null;
     cutoff = await getAuditCutoff(period);
   } catch (error) {
-    await safeRecordRun(organizationId, cutoff, 0, "failed", error);
+    await recordAuditRun(organizationId, cutoff, 0, "failed", error);
     throw error;
   }
   const runCutoff = cutoff;
@@ -89,7 +88,7 @@ export async function runDataRetentionPrune(
         tableExists.set(entry.table, exists);
       }
       if (!exists) return 0;
-      return deleteAuditRowsBatch(organizationId, entry, runCutoff, RETENTION_BATCH_SIZE, true);
+      return deleteAuditRowsBatch(organizationId, entry, runCutoff, RETENTION_BATCH_SIZE);
     });
   }
 
@@ -112,33 +111,29 @@ export async function runDataRetentionPrune(
     const message = failures
       .map((f) => `${f.name}: ${f.error instanceof Error ? f.error.message : String(f.error)}`)
       .join("; ");
-    await safeRecordRun(organizationId, runCutoff, deleted, "failed", message);
+    await recordAuditRun(organizationId, runCutoff, deleted, "failed", message);
   } else {
-    await safeRecordRun(organizationId, runCutoff, deleted, capped ? "capped" : "success");
+    await recordAuditRun(organizationId, runCutoff, deleted, capped ? "capped" : "success");
   }
   return { organization_id: organizationId, cutoff: runCutoff, deleted, capped };
 }
 
-async function safeRecordRun(
+/** Record this org's audit_records run. */
+function recordAuditRun(
   organizationId: number,
   cutoff: string | null,
   deletedCount: number,
   status: "success" | "capped" | "failed",
   error?: unknown,
-  recordType: RetentionRecordType = "audit_records",
 ): Promise<void> {
-  try {
-    await recordRetentionRun({
-      organizationId,
-      recordType,
-      cutoff,
-      deletedCount,
-      status,
-      error: error === undefined ? null : error instanceof Error ? error.message : String(error),
-    });
-  } catch (recordError) {
-    logger.error(`Recording retention run failed for org ${organizationId}:`, recordError);
-  }
+  return safeRecordRetentionRun({
+    organizationId,
+    recordType: "audit_records",
+    cutoff,
+    deletedCount,
+    status,
+    error,
+  });
 }
 
 /**
@@ -260,20 +255,20 @@ async function purgeGatewayLogsForOrg(orgId: number): Promise<void> {
   }
   if (!answered) return;
 
-  await safeRecordRun(
-    orgId,
-    null,
-    guardrail.deleted,
-    gatewayRunStatus(guardrail),
-    guardrail.error,
-    "ai_gateway_guardrail_logs",
-  );
-  await safeRecordRun(
-    orgId,
-    null,
-    spend.deleted,
-    gatewayRunStatus(spend),
-    spend.error,
-    "ai_gateway_spend_logs",
-  );
+  await safeRecordRetentionRun({
+    organizationId: orgId,
+    recordType: "ai_gateway_guardrail_logs",
+    cutoff: null,
+    deletedCount: guardrail.deleted,
+    status: gatewayRunStatus(guardrail),
+    error: guardrail.error,
+  });
+  await safeRecordRetentionRun({
+    organizationId: orgId,
+    recordType: "ai_gateway_spend_logs",
+    cutoff: null,
+    deletedCount: spend.deleted,
+    status: gatewayRunStatus(spend),
+    error: spend.error,
+  });
 }

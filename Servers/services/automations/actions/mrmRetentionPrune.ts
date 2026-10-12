@@ -1,7 +1,7 @@
 import { getAllOrganizationsQuery } from "../../../utils/organization.utils";
 import { getMrmOrgSettings } from "../../../utils/mrmSettings.utils";
 import { getRetentionCutoffQuery, pruneMetricsBatchQuery } from "../../../utils/mrmRetention.utils";
-import { recordRetentionRun, type RetentionRunInput } from "../../../utils/dataRetention.utils";
+import { safeRecordRetentionRun } from "../../../utils/dataRetention.utils";
 import logger from "../../../utils/logger/fileLogger";
 
 /**
@@ -60,7 +60,7 @@ export async function runRetentionPrune(organizationId: number): Promise<Retenti
       }
     }
 
-    await safeRecordMrmRun({
+    await safeRecordRetentionRun({
       organizationId,
       recordType: "mrm_metrics",
       cutoff,
@@ -69,24 +69,15 @@ export async function runRetentionPrune(organizationId: number): Promise<Retenti
     });
     return { organization_id: organizationId, cutoff: runCutoff, deleted, batches, capped };
   } catch (error) {
-    await safeRecordMrmRun({
+    await safeRecordRetentionRun({
       organizationId,
       recordType: "mrm_metrics",
       cutoff,
       deletedCount: deleted,
       status: "failed",
-      error: error instanceof Error ? error.message : String(error),
+      error,
     });
     throw error;
-  }
-}
-
-/** Recording a run never fails the prune; a recording failure is logged only. */
-async function safeRecordMrmRun(run: RetentionRunInput): Promise<void> {
-  try {
-    await recordRetentionRun(run);
-  } catch (error) {
-    logger.error(`Recording MRM retention run failed for org ${run.organizationId}:`, error);
   }
 }
 
