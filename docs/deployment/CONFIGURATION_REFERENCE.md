@@ -284,6 +284,29 @@ REDIS_URL=redis://localhost:6379/0
 
 ---
 
+## Logging
+
+Configuration for server logging (self-hosted deployments only).
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `LOG_RETENTION_DAYS` | Number of days to keep daily-rotated server log files | `14` | No |
+
+Server logs are rotated daily and stored in the tenant log directory. The `LOG_RETENTION_DAYS` setting controls how many days of log files are retained before older files are automatically deleted.
+
+```bash
+# Keep server logs for 30 days
+LOG_RETENTION_DAYS=30
+```
+
+**Notes:**
+- Must be a whole number >= 1
+- Invalid values (0, negative, decimals, non-numeric) fall back to the default of 14 days
+- Self-hosted deployments only; does not apply to cloud-hosted instances
+- Log file sizes are also limited by `maxSize: "10m"` per rotation
+
+---
+
 ## Docker Compose variables
 
 These variables are used by Docker Compose for service configuration.
