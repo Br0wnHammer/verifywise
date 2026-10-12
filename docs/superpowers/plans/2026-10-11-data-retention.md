@@ -334,7 +334,7 @@ interface RetentionRow {
 
 - [ ] **Step 3: Spend purge** keeps reading `spend_log_retention_days` (now real). No behavior change beyond the column existing.
 
-- [ ] **Step 4: Internal endpoints, test first.** Both `verify_internal_key`. Purge selects orgs `WHERE auto_purge_enabled`, and for each runs `purge_guardrail_logs(org, log_retention_days)` and `purge_spend_logs(db, org, spend_log_retention_days)` in its own try/except (an error yields `{..., "error": str}` for that org). Tests: orgs with the switch off are not purged; one org failing does not stop others.
+- [ ] **Step 4: Internal endpoints, test first.** Both `verify_internal_key`. Purge selects orgs `WHERE auto_purge_enabled`, and for each runs `purge_guardrail_logs(org, log_retention_days)` and `purge_spend_logs(db, org, spend_log_retention_days)` in its own try/except (an error returns `{..., "error": str}` for that org). Tests: orgs with the switch off are not purged; one org failing does not stop others.
 
 - [ ] **Step 5: Node side.** In `runDataRetentionPruneAllOrgs`, after the org loop: `aiGatewayRequest("POST", "/internal/retention/purge")`; for each result record `ai_gateway_guardrail_logs` and `ai_gateway_spend_logs` runs (`failed` with the error when present). A gateway failure is logged and never fails the job. Unit test with mocked helper.
 
