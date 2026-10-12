@@ -228,13 +228,14 @@ describe("data center pagination (page / resultPerPage / pageSize)", () => {
       expect(result.objects).toHaveLength(73);
     });
 
-    it("is complete from pageSize alone", async () => {
+    it("is incomplete from pageSize alone: the page count is never trusted", async () => {
       server({ pageSize: 2 });
 
       const result = await datacenter().getAllObjects("42");
 
-      expect(result.complete).toBe(true);
+      expect(result.complete).toBe(false);
       expect(result.objects).toHaveLength(73);
+      expect(objectCalls()).toHaveLength(3);
     });
 
     it("is incomplete with no signal: the repeated page proves nothing", async () => {
@@ -248,16 +249,49 @@ describe("data center pagination (page / resultPerPage / pageSize)", () => {
     });
   });
 
-  it("a repeated page after the reported last (full) page ends the walk complete", async () => {
+  it("a repeated page after the reported last page, with no total, is incomplete", async () => {
     mockFetch
       .mockResolvedValueOnce(ok({ objectEntries: objects(0, PAGE_SIZE), pageSize: 2 }))
       .mockResolvedValue(ok({ objectEntries: objects(PAGE_SIZE, PAGE_SIZE), pageSize: 2 }));
 
     const result = await datacenter().getAllObjects("42");
 
-    expect(result.complete).toBe(true);
+    expect(result.complete).toBe(false);
     expect(result.objects).toHaveLength(2 * PAGE_SIZE);
     expect(objectCalls()).toHaveLength(3);
+  });
+
+  describe("a 200-object server that caps pages at 25 but reports pageSize from 50", () => {
+    function server(signals: Record<string, unknown>) {
+      mockFetch.mockImplementation(async (url: string) => {
+        const page = Number(/[?&]page=(\d+)/.exec(String(url))![1]);
+        const from = (page - 1) * 25;
+        return ok({
+          objectEntries: objects(from, Math.max(0, Math.min(25, 200 - from))),
+          ...signals,
+        });
+      });
+    }
+
+    it("is complete only once totalFilterCount is reached, not at the reported page 4", async () => {
+      server({ pageSize: 4, totalFilterCount: 200 });
+
+      const result = await datacenter().getAllObjects("42");
+
+      expect(result.complete).toBe(true);
+      expect(result.objects).toHaveLength(200);
+      expect(objectCalls()).toHaveLength(8);
+    });
+
+    it("without a total, walks on to the empty page", async () => {
+      server({ pageSize: 4 });
+
+      const result = await datacenter().getAllObjects("42");
+
+      expect(result.complete).toBe(true);
+      expect(result.objects).toHaveLength(200);
+      expect(objectCalls()).toHaveLength(9);
+    });
   });
 
   it("does not trust a total reached on a full page (it may be capped)", async () => {
