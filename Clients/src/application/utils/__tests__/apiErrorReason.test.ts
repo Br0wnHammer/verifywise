@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getApiErrorReason, getClientErrorReason, isClientError } from "../apiErrorReason";
+import {
+  getApiErrorReason,
+  getClientErrorReason,
+  getGatewayErrorDetail,
+  isClientError,
+} from "../apiErrorReason";
 import CustomException from "../../../infrastructure/exceptions/customeException";
 
 describe("getApiErrorReason", () => {
@@ -95,5 +100,20 @@ describe("isClientError", () => {
     expect(isClientError(apiError("x", 500))).toBe(false);
     expect(isClientError(apiError("x", undefined))).toBe(false);
     expect(isClientError(new Error("x"))).toBe(false);
+  });
+});
+
+describe("getGatewayErrorDetail", () => {
+  it("reads the gateway's { detail } reason", () => {
+    expect(
+      getGatewayErrorDetail({ response: { detail: "log_retention_days must be an integer" } }),
+    ).toBe("log_retention_days must be an integer");
+  });
+
+  it("returns null when there is no string detail", () => {
+    expect(getGatewayErrorDetail({ response: { detail: [{ msg: "x" }] } })).toBeNull();
+    expect(getGatewayErrorDetail({ response: { detail: "" } })).toBeNull();
+    expect(getGatewayErrorDetail(new Error("network"))).toBeNull();
+    expect(getGatewayErrorDetail(null)).toBeNull();
   });
 });

@@ -22,6 +22,7 @@ import {
   type RetentionPolicy,
 } from "../../../../domain/enums/retention.enum";
 import { fill } from "../../../../i18n/fill";
+import { getGatewayErrorDetail } from "../../../../application/utils/apiErrorReason";
 import {
   GatewayPurgeWarning,
   MAX_GATEWAY_RETENTION_DAYS,
@@ -57,13 +58,6 @@ interface EditRetentionModalProps {
   rows: RetentionRow[];
   onClose: () => void;
 }
-
-// apiServices rejects with a CustomException whose `response` is the raw body;
-// the gateway reports validation failures as { detail }.
-const gatewayErrorDetail = (err: unknown): string | undefined => {
-  const detail = (err as { response?: { detail?: unknown } } | null)?.response?.detail;
-  return typeof detail === "string" && detail ? detail : undefined;
-};
 
 const isWholeNumber = (text: string) => /^\d+$/.test(text.trim());
 
@@ -146,8 +140,8 @@ export default function EditRetentionModal({ row, rows, onClose }: EditRetention
     try {
       await updateGatewayRetention(update);
     } catch (err) {
-      const detail = gatewayErrorDetail(err);
-      if (detail === undefined) throw err;
+      const detail = getGatewayErrorDetail(err);
+      if (detail === null) throw err;
       setPendingGateway(null);
       setError(detail);
       return;

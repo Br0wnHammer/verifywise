@@ -36,6 +36,7 @@ import CustomizableSkeleton from "../../../components/Skeletons";
 import VirtualKeysTab from "../VirtualKeys/index";
 import { validateApiKeyFormat } from "../../../../application/utils/apiKeyValidation";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
+import { getGatewayErrorDetail } from "../../../../application/utils/apiErrorReason";
 import {
   GATEWAY_DEFAULT_RETENTION_DAYS,
   GatewayPurgeWarning,
@@ -132,11 +133,9 @@ interface RiskSuggestion {
   reviewed_by_name?: string;
 }
 
-// apiServices rejects with a CustomException whose `response` is the raw body.
-// The gateway reports validation failures as { detail }, which the message
-// extraction does not read, so prefer it over the generic axios message.
+// Prefer the gateway's own { detail } reason over the generic axios message.
 const apiErrorText = (err: any, fallback: string): string =>
-  (typeof err?.response?.detail === "string" && err.response.detail) || err?.message || fallback;
+  getGatewayErrorDetail(err) || err?.message || fallback;
 
 export default function AIGatewaySettingsPage() {
   const { t } = useTranslation();
