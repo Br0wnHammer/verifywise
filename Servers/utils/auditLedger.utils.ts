@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { sequelize } from "../database/db";
 import { QueryTypes, Transaction } from "sequelize";
 import { getFeatureSettingsQuery } from "./featureSettings.utils";
+import { getLatestLedgerCheckpoint } from "./auditLedgerRetention.utils";
 
 /** SHA-256 of 64 zeroes — the "genesis" previous hash for the first entry */
 export const GENESIS_HASH = "0".repeat(64);
@@ -77,7 +78,7 @@ async function isAuditLedgerEnabled(organizationId: number): Promise<boolean> {
  * Any fixed int works; using a project-unique value avoids collisions with
  * other code that might take advisory locks.
  */
-const AUDIT_LEDGER_LOCK_NS = 9001;
+export const AUDIT_LEDGER_LOCK_NS = 9001;
 
 /**
  * Append an entry to the audit_ledger.
@@ -225,10 +226,14 @@ interface VerifyChainResult {
   brokenAtId?: number;
   expectedHash?: string;
   actualHash?: string;
+  /** Present when older rows were pruned; the walk starts after this id. */
+  prunedThrough?: { id: number; cutoff: string };
 }
 
 /**
- * Walk the entire audit chain and recompute every hash.
+ * Walk the audit chain and recompute every hash. After a retention prune the
+ * walk starts from the latest checkpoint: rows up to its pruned_through_id are
+ * gone, and the first remaining row must link to the checkpoint's anchor hash.
  * Returns the first broken link if any.
  */
 export async function verifyChain(
@@ -238,7 +243,12 @@ export async function verifyChain(
   const batchSize = options?.batchSize || 1000;
   const maxEntries = options?.maxEntries || 100000;
   let offset = 0;
-  let prevHash = GENESIS_HASH;
+  const checkpoint = await getLatestLedgerCheckpoint(organizationId);
+  const prunedThroughId = checkpoint ? checkpoint.pruned_through_id : 0;
+  const prunedThrough = checkpoint
+    ? { id: checkpoint.pruned_through_id, cutoff: checkpoint.cutoff }
+    : undefined;
+  let prevHash = checkpoint ? checkpoint.anchor_hash : GENESIS_HASH;
   let totalEntries = 0;
 
   while (true) {
@@ -247,11 +257,11 @@ export async function verifyChain(
               entity_id, action, field_name, old_value, new_value, description,
               entry_hash, prev_hash
        FROM audit_ledger
-       WHERE organization_id = :organizationId
+       WHERE organization_id = :organizationId AND id > :prunedThroughId
        ORDER BY id ASC
        LIMIT :batchSize OFFSET :offset`,
       {
-        replacements: { organizationId, batchSize, offset },
+        replacements: { organizationId, prunedThroughId, batchSize, offset },
         type: QueryTypes.SELECT,
       },
     );
@@ -273,6 +283,7 @@ export async function verifyChain(
           brokenAtId: row.id,
           expectedHash: prevHash,
           actualHash: rowPrevHash,
+          prunedThrough,
         };
       }
 
@@ -302,6 +313,7 @@ export async function verifyChain(
           brokenAtId: row.id,
           expectedHash,
           actualHash: rowEntryHash,
+          prunedThrough,
         };
       }
 
@@ -310,15 +322,15 @@ export async function verifyChain(
 
     // Cap the number of entries verified to prevent unbounded CPU usage
     if (totalEntries >= maxEntries) {
-      return { status: "partial", totalEntries };
+      return { status: "partial", totalEntries, prunedThrough };
     }
 
     offset += batchSize;
   }
 
   if (totalEntries === 0) {
-    return { status: "empty", totalEntries: 0 };
+    return { status: "empty", totalEntries: 0, prunedThrough };
   }
 
-  return { status: "intact", totalEntries };
+  return { status: "intact", totalEntries, prunedThrough };
 }
