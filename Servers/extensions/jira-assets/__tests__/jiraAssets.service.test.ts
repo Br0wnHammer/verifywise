@@ -203,6 +203,13 @@ function fakeDb({
         }))
         .sort((a, b) => a.id - b.id);
     }
+    if (sql.includes("COUNT(DISTINCT project_id)")) {
+      const ids: number[] = opts.replacements?.ids ?? [];
+      const projects = new Set(
+        [...stillFlagged, ...otherLinks].filter((r) => ids.includes(r.id)).map((r) => r.project_id),
+      );
+      return [{ projects: projects.size }];
+    }
     if (sql.includes("SELECT p.project_title")) {
       return [{ title: "Credit model", object_key: "AI-11" }];
     }
@@ -754,6 +761,7 @@ describe("removeMissingUseCases", () => {
     expect(mockDeleteProject).toHaveBeenCalledTimes(1);
     expect(mockDeleteProject).toHaveBeenCalledWith(111, 5, FAKE_TX, {
       enqueueAutomationAfterCommit: true,
+      projectLocked: true,
     });
     expect(mockRecordDeletion).toHaveBeenCalledWith(111, 8, 5, FAKE_TX);
     expect(sqlCalls("DELETE FROM jira_assets_use_cases")[0][1]).toMatchObject({
@@ -849,16 +857,37 @@ describe("removeMissingUseCases", () => {
     expect(sqlCalls("DELETE FROM jira_assets_use_cases")).toHaveLength(0);
   });
 
-  it("flagged links of one project split across batches: the first deletes it, the second finds them gone", async () => {
-    // Links 50 and 150 of project 111 are both flagged; 50 is sent first.
+  it("tick 50 but not 150 of one project: the project is kept, 50 skipped, 150 untouched", async () => {
     fakeDb({
       stillFlagged: [{ id: 50, project_id: 111 }],
       otherLinks: [{ id: 150, project_id: 111 }],
     });
 
-    const first = await removeMissingUseCases(5, 8, [50]);
+    const result = await removeMissingUseCases(5, 8, [50]);
 
-    expect(first).toEqual({
+    expect(result).toEqual({
+      removed: 0,
+      links_removed: 0,
+      unlinked: 0,
+      skipped: 1,
+      skipped_items: [{ id: 50, reason: "other_links_not_selected" }],
+    });
+    expect(mockDeleteProject).not.toHaveBeenCalled();
+    expect(mockPendingApproval).not.toHaveBeenCalled();
+    expect(sqlCalls("DELETE FROM jira_assets_use_cases")).toHaveLength(0);
+  });
+
+  it("tick both 50 and 150 (same request): the project and both links go", async () => {
+    fakeDb({
+      stillFlagged: [
+        { id: 50, project_id: 111 },
+        { id: 150, project_id: 111 },
+      ],
+    });
+
+    const result = await removeMissingUseCases(5, 8, [50, 150]);
+
+    expect(result).toEqual({
       removed: 1,
       links_removed: 2,
       unlinked: 0,
@@ -866,31 +895,26 @@ describe("removeMissingUseCases", () => {
       skipped_items: [],
     });
     expect(mockDeleteProject).toHaveBeenCalledTimes(1);
-
-    // Second batch: both links went with the project.
-    mockQuery.mockReset();
-    fakeDb({ stillFlagged: [] });
-    const second = await removeMissingUseCases(5, 8, [150]);
-
-    expect(second.skipped_items).toEqual([{ id: 150, reason: "not_found" }]);
   });
 
-  it("locks the project before withdrawing its approval (same order as the core delete)", async () => {
+  it("deletes in the shared order: project lock, approval, history, then the delete", async () => {
     fakeDb({ stillFlagged: [{ id: 11, project_id: 111 }] });
     mockPendingApproval.mockResolvedValue(900);
 
     await removeMissingUseCases(5, 8, [11]);
 
-    expect(mockLockProject).toHaveBeenCalledWith(111, 5, FAKE_TX);
-    expect(mockLockProject.mock.invocationCallOrder[0]).toBeLessThan(
-      mockPendingApproval.mock.invocationCallOrder[0],
-    );
-    // And the batch project lock came before both.
+    // The batch already locked the project: no extra per-row lock.
+    expect(mockLockProject).not.toHaveBeenCalled();
     const projectLock =
       mockQuery.mock.invocationCallOrder[
         mockQuery.mock.calls.indexOf(sqlCalls("SELECT id FROM projects")[0])
       ];
-    expect(projectLock).toBeLessThan(mockLockProject.mock.invocationCallOrder[0]);
+    const approval = mockPendingApproval.mock.invocationCallOrder[0];
+    const history = mockRecordDeletion.mock.invocationCallOrder[0];
+    const deletion = mockDeleteProject.mock.invocationCallOrder[0];
+    expect(projectLock).toBeLessThan(approval);
+    expect(approval).toBeLessThan(history);
+    expect(history).toBeLessThan(deletion);
   });
 
   it("reports a link whose project changed during the request as changed", async () => {
@@ -919,7 +943,8 @@ describe("removeMissingUseCases", () => {
 
     expect(err).toBeInstanceOf(JiraUseCaseDeleteFailedError);
     expect(err).toMatchObject({ projectId: 111, title: "Credit model", objectKey: "AI-11" });
-    // Named by title and Jira key, not by internal ids.
+    // Named by the requested link's title and Jira key, not by internal ids.
+    expect(sqlCalls("SELECT p.project_title")[0][1].replacements).toMatchObject({ linkId: 11 });
     expect(err.message).toBe(
       '"Credit model" (AI-11) could not be deleted, so nothing was removed. Try again.',
     );
@@ -954,13 +979,43 @@ describe("removeMissingUseCases", () => {
     });
   });
 
-  it(`rejects more than ${IMPORT_MAX_OBJECTS} ids (same cap as an import)`, async () => {
-    const ids = Array.from({ length: IMPORT_MAX_OBJECTS + 1 }, (_, i) => i + 1);
+  it("rejects more than 1000 ids before touching the database", async () => {
+    const ids = Array.from({ length: 1001 }, (_, i) => i + 1);
 
     await expect(removeMissingUseCases(5, 8, ids)).rejects.toBeInstanceOf(
       JiraConfigValidationError,
     );
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it(`rejects ids covering more than ${IMPORT_MAX_OBJECTS} use cases, before claiming`, async () => {
+    const links = Array.from({ length: IMPORT_MAX_OBJECTS + 1 }, (_, i) => ({
+      id: i + 1,
+      project_id: 1000 + i,
+    }));
+    fakeDb({ stillFlagged: links });
+
+    await expect(
+      removeMissingUseCases(
+        5,
+        8,
+        links.map((l) => l.id),
+      ),
+    ).rejects.toBeInstanceOf(JiraConfigValidationError);
+    expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
+  });
+
+  it("accepts more than 100 links when they belong to one use case", async () => {
+    const links = Array.from({ length: 150 }, (_, i) => ({ id: i + 1, project_id: 111 }));
+    fakeDb({ stillFlagged: links });
+
+    const result = await removeMissingUseCases(
+      5,
+      8,
+      links.map((l) => l.id),
+    );
+
+    expect(result).toMatchObject({ removed: 1, links_removed: 150, skipped: 0 });
   });
 });
 
@@ -987,6 +1042,7 @@ describe("deleteUseCaseByProjectId", () => {
     expect(lockSql).toContain("project_id IN (:ids)");
     expect(mockDeleteProject).toHaveBeenCalledWith(111, 5, FAKE_TX, {
       enqueueAutomationAfterCommit: true,
+      projectLocked: true,
     });
     expect(mockRecordDeletion).toHaveBeenCalledWith(111, 8, 5, FAKE_TX);
     const [, completed] = sqlCalls("SET status = 'completed'")[0];
@@ -1405,6 +1461,7 @@ describe("removal skip reasons", () => {
       "not_found",
       "changed",
       "has_live_links",
+      "other_links_not_selected",
     ]);
     for (const reason of REMOVAL_SKIP_REASONS) {
       expect(swagger).toContain(reason);
