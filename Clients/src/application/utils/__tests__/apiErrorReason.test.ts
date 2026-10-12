@@ -111,6 +111,16 @@ describe("getGatewayErrorDetail", () => {
     ).toBe("log_retention_days must be an integer");
   });
 
+  it("reads the message of an object detail ({ message, code })", () => {
+    expect(
+      getGatewayErrorDetail({
+        response: { detail: { message: "Invalid internal key", code: "internal_key_rejected" } },
+      }),
+    ).toBe("Invalid internal key");
+    expect(getGatewayErrorDetail({ response: { detail: { code: "x" } } })).toBeNull();
+    expect(getGatewayErrorDetail({ response: { detail: { message: "" } } })).toBeNull();
+  });
+
   it("returns null when there is no string detail", () => {
     expect(getGatewayErrorDetail({ response: { detail: [{ msg: "x" }] } })).toBeNull();
     expect(getGatewayErrorDetail({ response: { detail: "" } })).toBeNull();

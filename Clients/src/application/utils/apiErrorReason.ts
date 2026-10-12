@@ -17,12 +17,15 @@ export function getApiErrorReason(error: unknown): string | null {
 
 /**
  * The AI Gateway's reason for a failed request. The gateway (FastAPI) reports
- * errors as { detail }, which the envelope readers above do not look at;
- * `apiServices` passes that body through as the error's `response`.
+ * errors as { detail }, a string or { message, code }, which the envelope
+ * readers above do not look at; `apiServices` passes that body through as the
+ * error's `response`.
  */
 export function getGatewayErrorDetail(error: unknown): string | null {
   const detail = (error as { response?: { detail?: unknown } } | null)?.response?.detail;
-  return typeof detail === "string" && detail ? detail : null;
+  if (typeof detail === "string") return detail || null;
+  const message = (detail as { message?: unknown } | null)?.message;
+  return typeof message === "string" && message ? message : null;
 }
 
 /** The standard 4xx status phrases: a message that is only one of these says nothing. */
