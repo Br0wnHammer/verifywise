@@ -14160,6 +14160,8 @@ paths:
       responses:
         '200':
           description: Success
+        '400':
+          description: 'Validation error (missing connection field, or sync_interval_hours outside 1-168)'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
         '500':
@@ -14170,7 +14172,75 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
+  /extensions/jira-assets/config/sync:
+    patch:
+      summary: 'Patch Sync Settings'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sync_enabled:
+                  type: boolean
+                sync_interval_hours:
+                  type: integer
+                  minimum: 1
+                  maximum: 168
+      responses:
+        '200':
+          description: 'Updated sync settings ({ sync_enabled, sync_interval_hours })'
+        '400':
+          description: 'Validation error (no field given, non-boolean sync_enabled, or sync_interval_hours outside 1-168)'
+        '403':
+          description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'No Jira connection saved yet'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: patchSyncSettings
+      security:
+        -
+          bearerAuth: []
+      description: 'Updates only the automatic-sync settings; connection fields are left untouched. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
+  /extensions/jira-assets/config/selection:
+    patch:
+      summary: 'Patch Selection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                selected_schema_id:
+                  type: string
+                  nullable: true
+                selected_object_type_id:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: 'Updated selection ({ selected_schema_id, selected_object_type_id })'
+        '400':
+          description: 'Validation error (no field given, or an id that is not a Jira id)'
+        '403':
+          description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'No Jira connection saved yet'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: patchSelection
+      security:
+        -
+          bearerAuth: []
+      description: 'Updates only the selected schema and/or object type; a field left out is kept, null clears it. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   /extensions/jira-assets/vw-attributes:
     get:
       summary: 'Get Vw Attributes'
@@ -14263,15 +14333,19 @@ paths:
           description: Success
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'Jira Assets is not configured'
         '500':
           description: 'Internal server error'
+        '502':
+          description: 'Jira or network failure (reason in error)'
       tags:
         - Extensions
       operationId: getObjects
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'One page (up to 1000 objects) for the import picker, as { objects, hasMore, nextStartAt }; pass nextStartAt as startAt to load more. Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
       parameters:
         -
           name: objectTypeId
@@ -14280,46 +14354,70 @@ paths:
           description: 'The objectTypeId'
           schema:
             type: string
+        -
+          name: startAt
+          in: query
+          required: false
+          description: 'Offset of the first object (default 0)'
+          schema:
+            type: integer
+            minimum: 0
   /extensions/jira-assets/import:
     post:
       summary: 'Post Import'
       responses:
         '200':
           description: Success
+        '400':
+          description: 'object_ids is empty or names more than 100 objects'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'Jira Assets is not configured'
+        '409':
+          description: 'A sync or import is already running, or this import was interrupted part-way ({ message, code: import_interrupted, imported, skipped })'
         '500':
           description: 'Internal server error'
+        '502':
+          description: 'Jira or network failure (reason in error)'
       tags:
         - Extensions
       operationId: postImport
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   /extensions/jira-assets/sync:
     post:
       summary: 'Post Sync'
       responses:
-        '200':
-          description: Success
+        '202':
+          description: 'Sync job queued ({ jobId, previousRunId }); the worker claims the run at pickup. Poll GET /extensions/jira-assets/sync/status until nothing is queued or running and latest_run is newer than previousRunId'
+        '400':
+          description: 'No object type selected'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'Jira Assets is not configured'
+        '409':
+          description: 'A run is live, or a sync job for this organization is already waiting'
         '500':
           description: 'Internal server error'
+        '503':
+          description: 'Background jobs are unavailable (the queue did not answer within 5 seconds)'
       tags:
         - Extensions
       operationId: postSync
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'Starts a manual sync in the background. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   /extensions/jira-assets/sync/status:
     get:
       summary: 'Get Sync Status Ctrl'
       responses:
         '200':
-          description: Success
+          description: 'Last-sync fields, running, latest_run (with is_live), and queued (a sync job waiting in the queue; null if the queue did not answer)'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
         '500':
@@ -14365,6 +14463,41 @@ paths:
         -
           bearerAuth: []
       description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+  /extensions/jira-assets/use-cases/remove-missing:
+    post:
+      summary: 'Remove Missing Ctrl'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - use_case_ids
+              properties:
+                use_case_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: 'Removed the listed use cases still flagged as missing in Jira ({ removed, skipped })'
+        '400':
+          description: 'use_case_ids is not a list of 1 to 100 use case ids'
+        '403':
+          description: 'Extension not enabled for this organization, or role not allowed'
+        '409':
+          description: 'A Jira Assets sync or import is running, or the removal was interrupted, nothing removed ({ message, code: removal_interrupted })'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: removeMissingCtrl
+      security:
+        -
+          bearerAuth: []
+      description: 'Deletes the listed use cases (projects and their data) that are still flagged as missing in Jira. Syncs never delete. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   '/extensions/jira-assets/use-cases/{id}':
     get:
       summary: 'Get Use Case Ctrl'
@@ -14395,8 +14528,14 @@ paths:
       responses:
         '200':
           description: Success
+        '400':
+          description: 'Invalid use case id'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'No Jira Assets use case with that project id'
+        '409':
+          description: 'A Jira Assets sync, import or removal is running'
         '500':
           description: 'Internal server error'
       tags:
@@ -14405,7 +14544,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
       parameters:
         -
           name: id

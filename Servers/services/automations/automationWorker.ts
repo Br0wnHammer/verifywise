@@ -42,6 +42,8 @@ import {
 import { suggestDirectionForComponent } from "../riskLinks/direction/direction.service";
 import { runFileExpirySweepAllOrgs } from "./actions/fileExpirySweep";
 import { aiGatewayRequest } from "../../utils/aiGatewayInternal.utils";
+import { runJiraAssetsScheduledSyncAllOrgs } from "../../extensions/jira-assets/jiraAssets.scheduler";
+import { runQueuedSync } from "../../extensions/jira-assets/jiraAssets.service";
 
 // AI Gateway budget/risk/cleanup jobs call the gateway's internal API. These
 // can run for a while, so they get a longer timeout than request-path calls.
@@ -665,6 +667,10 @@ export const createAutomationWorker = () => {
           await runAgentDiscoverySync();
         } else if (name === "ai_detection_scheduled_scan_check") {
           await processScheduledAiDetectionScans();
+        } else if (name === "jira_assets_scheduled_sync_check") {
+          await runJiraAssetsScheduledSyncAllOrgs();
+        } else if (name === "jira_assets_sync_run") {
+          await runQueuedSync(job.data);
         } else if (name === "ai_gateway_budget_reset") {
           await resetAllBudgets();
           await resetVirtualKeyBudgets();
