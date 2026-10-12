@@ -61,9 +61,11 @@ export interface UpdateIncidentOptions {
   /**
    * The incident's updated_at as the caller last saw it. When given and the
    * stored value differs, the update is refused with a ConflictException
-   * (HTTP 409). Interactive editors pass it; background writers do not.
+   * (HTTP 409). null, undefined and '' mean "no version check"; any other
+   * value that is not a date-time is a validation error (HTTP 400).
+   * Interactive editors pass it; background writers do not.
    */
-  expectedUpdatedAt?: string | Date | null;
+  expectedUpdatedAt?: unknown;
 }
 
 /** The instant of a Date or date string, or NaN when it is not one. */
@@ -72,6 +74,10 @@ const toTime = (value: unknown): number => {
   if (typeof value !== "string" || value.trim() === "") return NaN;
   return new Date(value).getTime();
 };
+
+/** No version given: null, undefined or an empty string. */
+const isAbsentVersion = (value: unknown): boolean =>
+  value === null || value === undefined || (typeof value === "string" && value.trim() === "");
 
 /**
  * Applies `updates` to incident `incidentId`. Returns the updated incident
@@ -92,9 +98,10 @@ export async function updateIncident(
   options: UpdateIncidentOptions = {},
 ): Promise<AIIncidentManagementModel | null> {
   // A version that is present but not a date-time is a bad request (400),
-  // not a conflict (409).
-  const expectedTime =
-    options.expectedUpdatedAt === undefined ? undefined : toTime(options.expectedUpdatedAt);
+  // not a conflict (409). An absent version skips the check.
+  const expectedTime = isAbsentVersion(options.expectedUpdatedAt)
+    ? undefined
+    : toTime(options.expectedUpdatedAt);
   if (expectedTime !== undefined && Number.isNaN(expectedTime)) {
     throw new IncidentUpdateValidationError([
       {
@@ -126,29 +133,31 @@ export async function updateIncident(
       throw new ConflictException(INCIDENT_CHANGED_MESSAGE, "incident", "updated_at");
     }
 
+    // Field validation first: a malformed value never reaches the reference SQL.
     const validationErrors: ValidationError[] = validateCompleteIncidentUpdate(updates, stored);
+    if (validationErrors.length > 0) throw new IncidentUpdateValidationError(validationErrors);
+
     const invalidRefs = await validateIncidentReferences(
       {
-        model_inventory_id: (updates.model_inventory_id !== undefined
-          ? updates.model_inventory_id
-          : stored.model_inventory_id) as number | string | null,
-        project_id: (updates.project_id !== undefined ? updates.project_id : stored.project_id) as
-          number | string | null,
-        assignee_id: (updates.assignee_id !== undefined
-          ? updates.assignee_id
-          : stored.assignee_id) as number | string | null,
+        model_inventory_id:
+          updates.model_inventory_id !== undefined
+            ? updates.model_inventory_id
+            : stored.model_inventory_id,
+        project_id: updates.project_id !== undefined ? updates.project_id : stored.project_id,
+        assignee_id: updates.assignee_id !== undefined ? updates.assignee_id : stored.assignee_id,
       },
       organizationId,
       transaction,
     );
-    for (const field of invalidRefs) {
-      validationErrors.push({
-        field,
-        message: `${field} does not reference an entity in your organization`,
-        code: "INVALID_REFERENCE",
-      });
+    if (invalidRefs.length > 0) {
+      throw new IncidentUpdateValidationError(
+        invalidRefs.map((field) => ({
+          field,
+          message: `${field} does not reference an entity in your organization`,
+          code: "INVALID_REFERENCE",
+        })),
+      );
     }
-    if (validationErrors.length > 0) throw new IncidentUpdateValidationError(validationErrors);
 
     const effective = applyReopenApprovalReset(stored, updates);
     const changed = diffIncidentColumns(stored, effective);

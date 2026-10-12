@@ -461,9 +461,9 @@ export const archiveIncidentByIdQuery = async (
  */
 export const validateIncidentReferences = async (
   refs: {
-    model_inventory_id?: number | string | null;
-    project_id?: number | string | null;
-    assignee_id?: number | string | null;
+    model_inventory_id?: unknown;
+    project_id?: unknown;
+    assignee_id?: unknown;
   },
   organizationId: number,
   transaction?: Transaction,
@@ -471,7 +471,7 @@ export const validateIncidentReferences = async (
   const invalidFields: string[] = [];
   const checks: Array<{
     field: string;
-    id: number | string | null | undefined;
+    id: unknown;
     table: string;
   }> = [
     { field: "model_inventory_id", id: refs.model_inventory_id, table: "model_inventories" },
@@ -482,9 +482,20 @@ export const validateIncidentReferences = async (
   for (const check of checks) {
     // null / undefined / '' all mean "no reference": nothing to check.
     if (check.id === null || check.id === undefined || check.id === "") continue;
+    // Anything that is not a positive integer id is invalid and never reaches SQL.
+    const id =
+      typeof check.id === "number"
+        ? check.id
+        : /^\d+$/.test(String(check.id).trim())
+          ? Number(String(check.id).trim())
+          : NaN;
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      invalidFields.push(check.field);
+      continue;
+    }
     const result = (await sequelize.query(
       `SELECT id FROM ${check.table} WHERE id = :id AND organization_id = :organizationId`,
-      { replacements: { id: check.id, organizationId }, transaction },
+      { replacements: { id, organizationId }, transaction },
     )) as [Array<{ id: number }>, number];
     if (!result[0].length) invalidFields.push(check.field);
   }

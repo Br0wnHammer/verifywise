@@ -53,9 +53,15 @@ export async function getEntityById({
  * @returns {Promise<any>} The updated entity data.
  * @throws Will throw an error if the update operation fails.
  */
-export async function updateEntityById({ routeUrl, body, headers }: RequestParams): Promise<any> {
+export async function updateEntityById({
+  routeUrl,
+  body,
+  headers,
+  suppressGlobalErrorToast,
+}: RequestParams): Promise<any> {
   const response = await apiServices.patch(routeUrl, body, {
     headers: { ...headers },
+    ...(suppressGlobalErrorToast ? { suppressGlobalErrorToast } : {}),
   });
   return response;
 }

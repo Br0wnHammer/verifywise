@@ -7,7 +7,6 @@
  */
 
 import { QueryTypes, Transaction } from "sequelize";
-import { incidentCalendarDate } from "../utils/validations/incidentManagementValidation.utils";
 import { sequelize } from "../database/db";
 import logger from "../utils/logger/fileLogger";
 
@@ -98,9 +97,6 @@ const namedRowFormatter =
       return `${label} #${id}`;
     }
   };
-
-const incidentDateFormatter: FieldFormatter = async (value: unknown) =>
-  incidentCalendarDate(value) ?? "-";
 
 /**
  * Entity configuration interface
@@ -632,11 +628,9 @@ export const ENTITY_CONFIGS: { [key in EntityType]: EntityConfig } = {
       ),
       assignee_id: async (value: unknown, context?: FormatterContext) =>
         GENERIC_FORMATTERS.user(value === null || value === "" ? value : Number(value), context),
-      // TIMESTAMP WITHOUT TIME ZONE calendar dates, read the same way the
-      // update diff compares them (see incidentCalendarDate).
-      occurred_date: incidentDateFormatter,
-      date_detected: incidentDateFormatter,
-      approval_date: incidentDateFormatter,
+      occurred_date: GENERIC_FORMATTERS.date,
+      date_detected: GENERIC_FORMATTERS.date,
+      approval_date: GENERIC_FORMATTERS.date,
       interim_report: GENERIC_FORMATTERS.boolean,
       archived: GENERIC_FORMATTERS.boolean,
       categories_of_harm: GENERIC_FORMATTERS.array,

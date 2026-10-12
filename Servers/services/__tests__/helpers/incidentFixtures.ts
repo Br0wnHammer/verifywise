@@ -94,38 +94,14 @@ export function storedIncident(): AIIncidentManagementModel {
 }
 
 /**
- * The exact body the edit drawer sends for an incident whose API JSON is
- * `json` (toSafeJSON), with only the status changed: IncidentManagement
- * index.tsx builds initialData from that JSON and NewIncident
- * handleSaveIncident spreads it, normalising FK pickers to numbers or null.
+ * The exact body the edit drawer sends when the user changes `edits` on an
+ * incident whose API JSON is `json` (toSafeJSON): in edit mode NewIncident
+ * sends only the fields that differ from what it loaded, plus the version it
+ * loaded as expected_updated_at.
  */
-export function drawerPayload(json: Record<string, any>, status: string) {
-  const day = (d: string) => new Date(d).toISOString().split("T")[0];
-  const toId = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
+export function drawerSave(json: Record<string, any>, edits: Record<string, unknown>) {
   return {
-    incident_id: json.incident_id || "",
-    ai_project: json.ai_project || "",
-    project_id: toId(json.project_id ?? ""),
-    model_inventory_id: toId(json.model_inventory_id ?? ""),
-    assignee_id: toId(json.assignee_id ?? ""),
-    type: json.type || "",
-    severity: json.severity || "",
-    status,
-    occurred_date: day(json.occurred_date),
-    date_detected: day(json.date_detected),
-    reporter: json.reporter,
-    categories_of_harm: json.categories_of_harm || [],
-    description: json.description,
-    affected_persons_groups: json.affected_persons_groups || "",
-    relationship_causality: json.relationship_causality || "",
-    immediate_mitigations: json.immediate_mitigations || "",
-    planned_corrective_actions: json.planned_corrective_actions || "",
-    model_system_version: json.model_system_version,
-    interim_report: json.interim_report || false,
-    approval_status: json.approval_status,
-    approved_by: json.approved_by,
-    approval_date: json.approval_date ? day(json.approval_date) : null,
-    approval_notes: json.approval_notes,
+    ...edits,
     expected_updated_at: json.updated_at ? new Date(json.updated_at).toISOString() : undefined,
   };
 }

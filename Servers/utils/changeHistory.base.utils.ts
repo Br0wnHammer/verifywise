@@ -360,6 +360,7 @@ export const trackEntityChanges = async (
   entityType: EntityType,
   oldData: any,
   newData: any,
+  context?: FormatterContext,
 ): Promise<Array<{ fieldName: string; oldValue: string; newValue: string }>> => {
   const changes: Array<{
     fieldName: string;
@@ -376,8 +377,8 @@ export const trackEntityChanges = async (
     if (newValue === undefined) continue;
 
     // Format values for comparison
-    const oldValueStr = await formatFieldValue(entityType, field, oldValue);
-    const newValueStr = await formatFieldValue(entityType, field, newValue);
+    const oldValueStr = await formatFieldValue(entityType, field, oldValue, context);
+    const newValueStr = await formatFieldValue(entityType, field, newValue, context);
 
     // Record change if values differ
     if (oldValueStr !== newValueStr) {
@@ -454,7 +455,8 @@ export const recordEntityCreation = async (
         organizationId,
         getFieldLabel(entityType, field),
         "-",
-        await formatFieldValue(entityType, field, value),
+        // Tenant-scoped name lookups, on the creating transaction.
+        await formatFieldValue(entityType, field, value, { organizationId, transaction }),
         transaction,
       );
     }

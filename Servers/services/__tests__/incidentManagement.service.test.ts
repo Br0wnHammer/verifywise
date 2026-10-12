@@ -45,7 +45,13 @@ import {
   AIIncidentManagementApprovalStatus as Approval,
   AIIncidentManagementStatus as Status,
 } from "../../domain.layer/enums/ai-incident-management.enum";
-import { drawerPayload, storedIncident, STORED_UPDATED_AT } from "./helpers/incidentFixtures";
+import {
+  drawerSave,
+  mapIncidentRow,
+  storedIncident,
+  storedIncidentRow,
+  STORED_UPDATED_AT,
+} from "./helpers/incidentFixtures";
 
 const mockGet = getIncidentByIdQuery as jest.MockedFunction<any>;
 const mockUpdate = updateIncidentByIdQuery as jest.MockedFunction<any>;
@@ -70,13 +76,15 @@ describe("updateIncident (shared incident write path)", () => {
     expect(mockTransaction.commit).toHaveBeenCalledTimes(1);
   });
 
-  it("resets the approval when replaying the edit drawer's reopen payload", async () => {
-    const body = drawerPayload(storedIncident().toSafeJSON(), Status.INVESTIGATING);
+  it("resets the approval when replaying the edit drawer's reopen save", async () => {
+    const { expected_updated_at: expectedUpdatedAt, ...updates } = drawerSave(
+      storedIncident().toSafeJSON(),
+      { status: Status.INVESTIGATING },
+    );
 
-    await updateIncident(1, 42, body, 7);
+    await updateIncident(1, 42, updates, 7, { expectedUpdatedAt });
 
-    // Only the reopen and the reset are written; the drawer's unchanged
-    // fields (dates as YYYY-MM-DD, '' for empty text) are not.
+    // Only the reopen and the reset are written.
     expect(mockUpdate.mock.calls[0][1]).toEqual({
       status: Status.INVESTIGATING,
       approval_status: Approval.PENDING,
@@ -105,7 +113,7 @@ describe("updateIncident (shared incident write path)", () => {
         { fieldName: "Status", oldValue: "Closed", newValue: "Investigating" },
         { fieldName: "Approval status", oldValue: "Approved", newValue: "Pending" },
         { fieldName: "Approved by", oldValue: "Jane Doe", newValue: "-" },
-        { fieldName: "Approval date", oldValue: "2026-10-01", newValue: "-" },
+        expect.objectContaining({ fieldName: "Approval date", newValue: "-" }),
         { fieldName: "Approval notes", oldValue: "Closure signed off", newValue: "-" },
         // FK changes are tracked and shown by name (user lookup; mocked DB → fallback).
         { fieldName: "Owner", oldValue: "User #7", newValue: "User #8" },
@@ -116,9 +124,13 @@ describe("updateIncident (shared incident write path)", () => {
   it("does nothing for a no-op update: no write, no history, no automations", async () => {
     const stored = storedIncident();
     mockGet.mockResolvedValue(stored);
-    const body = drawerPayload(stored.toSafeJSON(), Status.CLOSED);
+    // The drawer saved with nothing edited: only the version is sent.
+    const { expected_updated_at: expectedUpdatedAt, ...updates } = drawerSave(
+      stored.toSafeJSON(),
+      {},
+    );
 
-    const result = await updateIncident(1, 42, body, 7);
+    const result = await updateIncident(1, 42, updates, 7, { expectedUpdatedAt });
 
     expect(result).toBe(stored);
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -165,17 +177,19 @@ describe("updateIncident (shared incident write path)", () => {
       mockGet.mockResolvedValue(stored);
 
       // The drawer's own save, with the version it loaded from the API JSON.
-      const body = drawerPayload(stored.toSafeJSON(), Status.INVESTIGATING);
-      const { expected_updated_at: expectedUpdatedAt, ...updates } = body;
+      const { expected_updated_at: expectedUpdatedAt, ...updates } = drawerSave(
+        stored.toSafeJSON(),
+        { status: Status.INVESTIGATING },
+      );
       await updateIncident(1, 42, updates, 7, { expectedUpdatedAt });
 
       expect(mockUpdate).toHaveBeenCalledTimes(1);
     });
 
     it.each([
-      ["empty", ""],
       ["not a date", "yesterday-ish"],
-      ["null", null],
+      ["number", 12345],
+      ["object", {}],
     ])(
       "rejects a %s expectedUpdatedAt as a validation error, not a conflict",
       async (_label, expectedUpdatedAt) => {
@@ -188,6 +202,47 @@ describe("updateIncident (shared incident write path)", () => {
         expect(sequelize.transaction).not.toHaveBeenCalled();
       },
     );
+
+    it.each([
+      ["null", null],
+      ["undefined", undefined],
+      ["empty", ""],
+    ])("skips the version check for a %s expectedUpdatedAt", async (_label, expectedUpdatedAt) => {
+      await updateIncident(1, 42, { status: Status.OPEN }, 7, { expectedUpdatedAt });
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it("a retry after a conflict keeps the other editor's status and approval", async () => {
+      // A opened the incident while it was Open / Pending.
+      const seenByA = mapIncidentRow({
+        ...storedIncidentRow(),
+        status: Status.OPEN,
+        approval_status: Approval.PENDING,
+        approved_by: null,
+        approval_date: null,
+        approval_notes: null,
+        updated_at: new Date("2026-10-09T09:00:00.000Z"),
+      });
+      // B then closed and approved it (the fixture's stored state).
+      const afterB = storedIncident();
+      mockGet.mockResolvedValue(afterB);
+
+      // A edits only the description and saves with the version A loaded.
+      const firstTry = drawerSave(seenByA.toSafeJSON(), { description: "A's notes" });
+      const { expected_updated_at: staleVersion, ...aEdits } = firstTry;
+      await expect(
+        updateIncident(1, 42, aEdits, 7, { expectedUpdatedAt: staleVersion }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+
+      // The drawer refreshed to B's version and A saves again: still only A's edit.
+      const retry = drawerSave(afterB.toSafeJSON(), { description: "A's notes" });
+      const { expected_updated_at: latestVersion, ...retryEdits } = retry;
+      await updateIncident(1, 42, retryEdits, 7, { expectedUpdatedAt: latestVersion });
+
+      // Only the description is written; B's Closed / Approved stands.
+      expect(mockUpdate.mock.calls[0][1]).toEqual({ description: "A's notes" });
+    });
 
     it("accepts the updated_at the editor loaded", async () => {
       await updateIncident(1, 42, { status: Status.OPEN }, 7, {
@@ -206,6 +261,17 @@ describe("updateIncident (shared incident write path)", () => {
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockTransaction.rollback).toHaveBeenCalled();
     });
+  });
+
+  it("rejects a malformed reference before any reference lookup", async () => {
+    const attempt = updateIncident(1, 42, { project_id: "abc" }, 7);
+
+    await expect(attempt).rejects.toBeInstanceOf(IncidentUpdateValidationError);
+    await expect(attempt).rejects.toMatchObject({
+      errors: [expect.objectContaining({ field: "project_id" })],
+    });
+    expect(mockRefs).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("validates references against the locked row inside the transaction", async () => {

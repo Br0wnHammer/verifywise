@@ -8,29 +8,6 @@ import {
   Severity,
 } from "../../enums/ai-incident-management.enum";
 
-/**
- * ISO string of a TIMESTAMP WITHOUT TIME ZONE value's wall-clock time. pg
- * parses that column type as server-local time, so the local components are
- * what is stored; emitting them with a Z suffix gives every client the stored
- * date in the ISO date part, whatever the server's time zone. Identical to
- * toISOString() on a UTC server.
- */
-const wallClockISOString = (value?: Date | string | null): string | undefined => {
-  if (typeof value === "string") return value;
-  if (!(value instanceof Date) || Number.isNaN(value.getTime())) return undefined;
-  return new Date(
-    Date.UTC(
-      value.getFullYear(),
-      value.getMonth(),
-      value.getDate(),
-      value.getHours(),
-      value.getMinutes(),
-      value.getSeconds(),
-      value.getMilliseconds(),
-    ),
-  ).toISOString();
-};
-
 @Table({
   tableName: "ai_incident_managements",
   timestamps: true,
@@ -288,8 +265,8 @@ export class AIIncidentManagementModel
       type: this.type,
       severity: this.severity,
       status: this.status,
-      occurred_date: wallClockISOString(this.occurred_date),
-      date_detected: wallClockISOString(this.date_detected),
+      occurred_date: this.occurred_date?.toISOString(),
+      date_detected: this.date_detected?.toISOString(),
       reporter: this.reporter,
       categories_of_harm: this.categories_of_harm || [],
       affected_persons_groups: this.affected_persons_groups,
@@ -302,7 +279,7 @@ export class AIIncidentManagementModel
       archived: this.archived,
       approval_status: this.approval_status,
       approved_by: this.approved_by,
-      approval_date: wallClockISOString(this.approval_date) || null,
+      approval_date: this.approval_date?.toISOString() || null,
       approval_notes: this.approval_notes,
       created_at: (this.createdAt ?? this.created_at)?.toISOString(),
       updated_at: (this.updatedAt ?? this.updated_at)?.toISOString(),
@@ -335,8 +312,8 @@ export class AIIncidentManagementModel
       type: this.type,
       severity: this.severity,
       status: this.status,
-      occurred_date: wallClockISOString(this.occurred_date),
-      date_detected: wallClockISOString(this.date_detected),
+      occurred_date: this.occurred_date?.toISOString(),
+      date_detected: this.date_detected?.toISOString(),
       reporter: this.reporter,
       categories_of_harm: this.categories_of_harm || [],
       affected_persons_groups: this.affected_persons_groups,
@@ -349,7 +326,7 @@ export class AIIncidentManagementModel
       archived: this.archived,
       approval_status: this.approval_status,
       approved_by: this.approved_by,
-      approval_date: wallClockISOString(this.approval_date) || null,
+      approval_date: this.approval_date?.toISOString() || null,
       approval_notes: this.approval_notes,
       created_at: (this.createdAt ?? this.created_at)?.toISOString(),
       updated_at: (this.updatedAt ?? this.updated_at)?.toISOString(),

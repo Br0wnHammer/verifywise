@@ -12,7 +12,7 @@ import { seedTwoTenantContexts } from "./tenant-isolation/tenantIsolation.harnes
 import { getIncidentByIdQuery } from "../../utils/incidentManagement.utils";
 import { updateIncident } from "../../services/incidentManagement.service";
 import { ConflictException } from "../../domain.layer/exceptions/custom.exception";
-import { drawerPayload } from "../../services/__tests__/helpers/incidentFixtures";
+import { drawerSave } from "../../services/__tests__/helpers/incidentFixtures";
 
 afterEach(async () => {
   await cleanupDatabase();
@@ -49,10 +49,9 @@ describe("updateIncident against the database", () => {
     expect(loaded!.dataValues).not.toHaveProperty("updated_at");
     const json = loaded!.toSafeJSON();
 
-    const { expected_updated_at: expectedUpdatedAt, ...updates } = drawerPayload(
-      json,
-      "Investigating",
-    );
+    const { expected_updated_at: expectedUpdatedAt, ...updates } = drawerSave(json, {
+      status: "Investigating",
+    });
     const saved = await updateIncident(owner.orgId, incidentId, updates, owner.userId, {
       expectedUpdatedAt,
     });

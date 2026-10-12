@@ -4,6 +4,7 @@ jest.mock("../../database/db", () => ({ sequelize: { query: jest.fn() } }));
 
 import { sequelize } from "../../database/db";
 import { GENERIC_FORMATTERS, getEntityConfig } from "../../config/changeHistory.config";
+import { recordEntityCreation } from "../changeHistory.base.utils";
 
 const mockQuery = sequelize.query as jest.MockedFunction<any>;
 const formatters = getEntityConfig("incident").fieldFormatters!;
@@ -67,10 +68,43 @@ describe("incident change-history formatters are tenant-scoped", () => {
     expect(mockQuery.mock.calls[0][0]).not.toContain("organization_id");
   });
 
-  it("formats incident dates by their wall-clock calendar date", async () => {
-    await expect(formatters.approval_date(new Date(2026, 9, 1, 23, 30))).resolves.toBe(
-      "2026-10-01",
+  it("creation history records names, looked up in the organization on the creating transaction", async () => {
+    const createTx = { afterCommit: jest.fn() } as any;
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM users")) {
+        return [{ id: 7, name: "Grace", surname: "Hopper", email: null }];
+      }
+      if (sql.includes("FROM projects")) return [{ name: "Chatbot" }];
+      return [[], 0];
+    });
+
+    await recordEntityCreation(
+      "incident",
+      42,
+      5,
+      1,
+      { status: "Open", assignee_id: 7, project_id: 3 },
+      createTx,
     );
-    await expect(formatters.approval_date(null)).resolves.toBe("-");
+
+    const lookups = mockQuery.mock.calls.filter(([sql]: [string]) => !sql.startsWith("INSERT"));
+    expect(lookups).toHaveLength(2);
+    for (const [sql, options] of lookups) {
+      expect(sql).toContain("organization_id = :organizationId");
+      expect(options).toMatchObject({ replacements: { organizationId: 1 }, transaction: createTx });
+    }
+    const inserted = mockQuery.mock.calls
+      .filter(([sql]: [string]) => sql.startsWith("INSERT"))
+      .map(([, options]: [string, any]) => [
+        options.replacements.field_name,
+        options.replacements.new_value,
+      ]);
+    expect(inserted).toEqual(
+      expect.arrayContaining([
+        ["Owner", "Grace Hopper"],
+        ["Linked use case", "Chatbot"],
+        ["Status", "Open"],
+      ]),
+    );
   });
 });

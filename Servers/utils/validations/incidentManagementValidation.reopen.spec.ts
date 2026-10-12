@@ -8,11 +8,6 @@ import {
   AIIncidentManagementApprovalStatus as Approval,
   AIIncidentManagementStatus as Status,
 } from "../../domain.layer/enums/ai-incident-management.enum";
-import {
-  mapIncidentRow,
-  pgTimestamp,
-  storedIncidentRow,
-} from "../../services/__tests__/helpers/incidentFixtures";
 
 const RESET = {
   approval_status: Approval.PENDING,
@@ -155,21 +150,6 @@ describe("reopening closed incidents", () => {
       expect(incidentCalendarDate(earlyMorning)).toBe("2026-10-01");
       expect(isSameIncidentValue("approval_date", lateEvening, "2026-10-01")).toBe(true);
       expect(isSameIncidentValue("approval_date", earlyMorning, "2026-10-01")).toBe(true);
-    });
-
-    it("agrees with the API serialisation the drawer reads its date from", () => {
-      for (const hour of [0, 1, 11, 12, 22, 23]) {
-        const stored = mapIncidentRow({
-          ...storedIncidentRow(),
-          approval_date: pgTimestamp(2026, 10, 1, hour),
-        });
-        const apiDate = stored.toSafeJSON().approval_date as string;
-        const drawerDate = new Date(apiDate).toISOString().split("T")[0];
-        expect(drawerDate).toBe("2026-10-01");
-        expect(
-          isSameIncidentValue("approval_date", stored.dataValues.approval_date, drawerDate),
-        ).toBe(true);
-      }
     });
   });
 

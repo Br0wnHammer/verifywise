@@ -258,26 +258,34 @@ issue-tracker sync are meant to use it too. In order, it:
    rolls back a transaction it opened), so concurrent updates serialise.
 2. If `expectedUpdatedAt` is given and differs from the stored `updated_at`,
    throws `ConflictException`: "This incident was changed since you opened it.
-   Reload to see the latest version." The controller answers 409. A present but
-   malformed value (empty, null, not a date-time) is a 400 validation error
-   (`expected_updated_at`, `INVALID_DATE`), checked before any read.
+   Reload to see the latest version." The controller answers 409. null,
+   undefined or an empty string means "no version check"; any other value that
+   is not a date-time is a 400 validation error (`expected_updated_at`,
+   `INVALID_DATE`), checked before any read.
    `getIncidentByIdQuery` maps rows onto the model (`timestamps: true`,
    `underscored: true`), so the `updated_at` column is on `updatedAt`, not on
    `dataValues.updated_at`; the check reads `existing.updatedAt` like
    `toSafeJSON` does.
-   The edit drawer sends the `updated_at` it loaded as `expected_updated_at`. On
-   409 the page refetches the incident, merges its latest `updated_at` into the
-   open form (keeping the user's edits) and says the incident was changed by
-   someone else and that saving again overwrites their change; the next save
-   goes through. The global axios toast is suppressed for this `CONFLICT` so
-   only the page alert shows. Any other save failure also keeps the drawer
-   open with the user's edits. The page memoises the drawer's `initialData` on
-   the selected incident so re-renders never reset the form.
+   In edit mode the drawer sends **only the fields the user changed** against
+   the values it loaded, plus that version as `expected_updated_at`, so a save
+   never writes back stale copies of fields it did not touch. On 409 the page
+   refetches the incident, makes it the selected incident and refreshes the
+   list; the drawer then shows the latest value for every field the user has
+   not edited, keeps the user's edits and takes the new version, and the page
+   says the form now shows the other change with the user's edits kept. Saving
+   again applies only the user's edits on top of the other change. Any other
+   save failure keeps the drawer open with the user's edits too. The update
+   request sets `suppressGlobalErrorToast` (a per-request axios config flag
+   read by `customAxios`) because the page shows its own message. The page
+   memoises the drawer's `initialData` on the selected incident so re-renders
+   never reset the form, and Save is disabled while a save is in flight.
    Background writers (AI Advisor, sync jobs) do not pass `expectedUpdatedAt`.
 3. Validates against the locked row: `validateCompleteIncidentUpdate` and
    `validateIncidentReferences` (FKs must belong to the organization; unchanged
    FKs come from the row; `''`, null and undefined mean "no reference" and are
-   not looked up). Failures throw `IncidentUpdateValidationError`; the
+   not looked up; anything that is not a positive integer is invalid and never
+   reaches SQL). Field validation errors are thrown before the reference
+   lookups run. Failures throw `IncidentUpdateValidationError`; the
    controller keeps its 400 body (`message: "Incident update validation failed"`,
    `errors: [{ field, message, code }]`).
 4. Applies the reopen approval reset.
@@ -292,10 +300,9 @@ issue-tracker sync are meant to use it too. In order, it:
      pg type parser, so pg parses them (oid 1114) as server-local time: a stored
      Date is read by its local components (the wall-clock date stored), and a
      string starting `YYYY-MM-DD` is that date (Postgres ignores any offset for
-     this column type). The model's `toSafeJSON` / `toJSON` serialise
-     `occurred_date`, `date_detected` and `approval_date` as that wall-clock time
-     with a `Z` suffix (identical to `toISOString()` on a UTC server), so the
-     date part the drawer sends back agrees in any server time zone;
+     this column type). Known, separate issue: the API serialises these Dates
+     with `toISOString()`, which shifts the date on a non-UTC server; the fix is
+     a single pg type parser for oid 1114, not part of this change;
    - foreign keys compare as numbers, `archived` / `interim_report` treat empty
      as false, harm categories compare as lists.
    `archived` is never written as NULL.
@@ -311,8 +318,12 @@ issue-tracker sync are meant to use it too. In order, it:
    (the connection holding the row lock), via the `FormatterContext` that
    `formatEntityFieldChanges` passes to field formatters. The project and model
    formatters do not query at all without an organization. The generic user
-   formatter is scoped when given an organization; other entities' history
-   callers do not pass one yet and keep the old unscoped user lookup. History is recorded as `userId`, or, with
+   formatter is scoped when given an organization. Creation history
+   (`recordEntityCreation`, for every entity) always passes its organization
+   and transaction, so new incidents record names, not ids.
+   `trackEntityChanges` accepts the same optional context; other entities'
+   update-history callers do not pass one yet and keep the old unscoped user
+   lookup. History is recorded as `userId`, or, with
    `changedBySystem: true`, with a null actor and `changed_by_system = true`
    (shown as "System"). The AI Advisor uses the system form when its execution
    carries no user id.

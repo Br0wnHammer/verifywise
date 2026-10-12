@@ -519,19 +519,18 @@ const IncidentManagement: React.FC = () => {
   };
 
   /**
-   * Saves the drawer. Resolves true to close it; false to keep it open with
-   * the user's edits; or fields to merge into the open form (after a
-   * conflict, the incident's latest updated_at so the next save can go
-   * through).
+   * Saves the drawer. Resolves true to close it, false to keep it open with
+   * the user's edits. When editing, the drawer sends only the fields the user
+   * changed plus expected_updated_at.
    */
-  const handleIncidentSuccess = async (
-    formData: any,
-  ): Promise<boolean | Partial<NewIncidentFormValues>> => {
+  const handleIncidentSuccess = async (formData: any): Promise<boolean> => {
     try {
       if (selectedIncident) {
         await updateEntityById({
           routeUrl: `/ai-incident-managements/${selectedIncident.id}`,
           body: formData,
+          // This page shows its own message for every failure.
+          suppressGlobalErrorToast: true,
         });
         setAlert({
           variant: "success",
@@ -548,21 +547,23 @@ const IncidentManagement: React.FC = () => {
       handleCloseModal();
       return true;
     } catch (error) {
-      // Someone else saved this incident after the drawer loaded it. Keep the
-      // user's edits, move the form onto the latest version, and say that
-      // saving again will overwrite the other change.
+      // Someone else saved this incident after the drawer loaded it. Load the
+      // latest version: the drawer shows it for every field the user has not
+      // edited, keeps their edits and takes the new expected_updated_at, so
+      // saving again applies only the user's edits on top of the other change.
       if ((error as { status?: number })?.status === 409 && selectedIncident) {
         try {
           const latest = await getEntityById({
             routeUrl: `/ai-incident-managements/${selectedIncident.id}`,
           });
-          const latestUpdatedAt = latest?.data?.updated_at;
-          if (latestUpdatedAt) {
+          if (latest?.data) {
+            setSelectedIncident(new AIIncidentManagementModel(latest.data));
+            await fetchIncidentsData();
             setAlert({
               variant: "error",
-              body: "This incident was changed by someone else since you opened it. Your edits are kept: save again to overwrite their changes.",
+              body: "This incident was changed by someone else since you opened it. The form now shows their changes with your edits kept: save again to apply your edits.",
             });
-            return { expected_updated_at: new Date(latestUpdatedAt).toISOString() };
+            return false;
           }
         } catch {
           // Fall through to the generic failure below.

@@ -86,6 +86,7 @@ vi.mock("../../../components/Cards/StatusTileCards", () => ({ StatusTileCards: (
 
 import IncidentManagement from "../index";
 import {
+  getAllEntities,
   getEntityById,
   updateEntityById,
 } from "../../../../application/repository/entity.repository";
@@ -123,26 +124,34 @@ describe("IncidentManagement edit drawer", () => {
     expect(props.initialData.expected_updated_at).toBe("2026-10-10T12:34:56.789Z");
   });
 
-  it("after a 409, refetches the incident and hands the drawer the latest version", async () => {
+  it("after a 409, refetches the incident, refreshes the list and hands the drawer the latest version", async () => {
     const props = await openEditDrawer(STORED_INCIDENT);
+    const listCallsBefore = vi.mocked(getAllEntities).mock.calls.length;
     vi.mocked(updateEntityById).mockRejectedValue(
       Object.assign(new Error("Conflict"), { status: 409 }),
     );
     vi.mocked(getEntityById).mockResolvedValue({
-      data: { ...STORED_INCIDENT, updated_at: "2026-10-11T08:00:00.000Z" },
+      data: { ...STORED_INCIDENT, status: "Investigating", updated_at: "2026-10-11T08:00:00.000Z" },
     } as any);
 
     let result: unknown;
     await act(async () => {
-      result = await props.onSuccess({ ...props.initialData, status: "Investigating" });
+      result = await props.onSuccess({ description: "A's notes" });
     });
 
-    // Merged into the open form, so the next save carries the new version.
-    expect(result).toEqual({ expected_updated_at: "2026-10-11T08:00:00.000Z" });
+    expect(result).toBe(false);
     expect(getEntityById).toHaveBeenLastCalledWith({ routeUrl: "/ai-incident-managements/42" });
+    // selectedIncident moved to the latest version: the drawer gets it as initialData.
+    await waitFor(() =>
+      expect(captured.drawerProps.initialData).toMatchObject({
+        status: "Investigating",
+        expected_updated_at: "2026-10-11T08:00:00.000Z",
+      }),
+    );
+    expect(vi.mocked(getAllEntities).mock.calls.length).toBeGreaterThan(listCallsBefore);
     expect(
       await screen.findByText(
-        "This incident was changed by someone else since you opened it. Your edits are kept: save again to overwrite their changes.",
+        "This incident was changed by someone else since you opened it. The form now shows their changes with your edits kept: save again to apply your edits.",
       ),
     ).toBeInTheDocument();
   });
@@ -189,6 +198,8 @@ describe("IncidentManagement edit drawer", () => {
     expect(result).toBe(true);
     expect(updateEntityById).toHaveBeenCalledWith({
       routeUrl: "/ai-incident-managements/42",
+      // The page shows its own message for failures of this call.
+      suppressGlobalErrorToast: true,
       body: expect.objectContaining({
         status: "Investigating",
         expected_updated_at: "2026-10-10T12:34:56.789Z",

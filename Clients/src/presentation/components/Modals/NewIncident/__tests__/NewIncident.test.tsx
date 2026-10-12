@@ -2,7 +2,13 @@ import { vi, describe, it, expect, beforeAll } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("../../../Inputs/Field", () => ({
-  default: (props: any) => <input data-testid={`field-${props.id || "field"}`} />,
+  default: (props: any) => (
+    <input
+      data-testid={`field-${props.id || "field"}`}
+      value={props.value ?? ""}
+      onChange={props.onChange ?? (() => {})}
+    />
+  ),
 }));
 vi.mock("../../../Inputs/Datepicker", () => ({
   default: () => <div data-testid="datepicker" />,
@@ -99,6 +105,7 @@ describe("NewIncident (SideDrawerIncident)", () => {
   describe("save outcome", () => {
     const savable = {
       ...validInitialData,
+      incident_id: "INC-42",
       categories_of_harm: ["Economic Loss"],
       expected_updated_at: "2026-10-10T12:00:00.000Z",
     } as unknown as NewIncidentFormValues;
@@ -117,39 +124,111 @@ describe("NewIncident (SideDrawerIncident)", () => {
 
       fireEvent.click(screen.getByText("Save incident"));
       await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
-
       expect(setIsOpen).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByText("Save incident"));
-      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(2));
-      expect(onSuccess.mock.calls[1][0]).toMatchObject({
-        description: "The model ranked candidates unfairly.",
-      });
     });
 
-    it("stays open and merges returned fields into the next save (conflict refresh)", async () => {
-      const setIsOpen = vi.fn();
-      const onSuccess = vi
-        .fn()
-        .mockResolvedValueOnce({ expected_updated_at: "2026-10-11T08:00:00.000Z" })
-        .mockResolvedValueOnce(true);
+    it("when editing, sends only the fields the user changed plus the loaded version", async () => {
+      const onSuccess = vi.fn().mockResolvedValue(true);
       renderWithProviders(
         <SideDrawerIncident
           isOpen={true}
-          setIsOpen={setIsOpen}
+          isEdit={true}
+          setIsOpen={vi.fn()}
           onSuccess={onSuccess}
           initialData={savable}
         />,
       );
 
-      fireEvent.click(screen.getByText("Save incident"));
-      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
-      expect(onSuccess.mock.calls[0][0].expected_updated_at).toBe("2026-10-10T12:00:00.000Z");
-      expect(setIsOpen).not.toHaveBeenCalled();
+      fireEvent.change(screen.getByTestId("field-description"), {
+        target: { value: "A's notes" },
+      });
+      fireEvent.click(screen.getByText("Update incident"));
 
-      fireEvent.click(screen.getByText("Save incident"));
+      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+      expect(onSuccess.mock.calls[0][0]).toEqual({
+        description: "A's notes",
+        expected_updated_at: "2026-10-10T12:00:00.000Z",
+      });
+    });
+
+    it("after a conflict refresh, keeps the user's edit and never resends the other editor's fields", async () => {
+      // A opened the incident while it was Open / Pending.
+      const seenByA = {
+        ...savable,
+        status: "Open",
+        approval_status: "Pending",
+      } as NewIncidentFormValues;
+      // B then closed and approved it; the page refetches and hands the drawer B's version.
+      const afterB = {
+        ...savable,
+        status: "Closed",
+        approval_status: "Approved",
+        approved_by: "Bea",
+        expected_updated_at: "2026-10-11T08:00:00.000Z",
+      } as unknown as NewIncidentFormValues;
+      const onSuccess = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      const { rerender } = renderWithProviders(
+        <SideDrawerIncident
+          isOpen={true}
+          isEdit={true}
+          setIsOpen={vi.fn()}
+          onSuccess={onSuccess}
+          initialData={seenByA}
+        />,
+      );
+
+      fireEvent.change(screen.getByTestId("field-description"), {
+        target: { value: "A's notes" },
+      });
+      fireEvent.click(screen.getByText("Update incident"));
+      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+
+      rerender(
+        <SideDrawerIncident
+          isOpen={true}
+          isEdit={true}
+          setIsOpen={vi.fn()}
+          onSuccess={onSuccess}
+          initialData={afterB}
+        />,
+      );
+      // The user's edit survives the refresh.
+      expect(screen.getByTestId("field-description")).toHaveValue("A's notes");
+
+      fireEvent.click(screen.getByText("Update incident"));
       await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(2));
-      expect(onSuccess.mock.calls[1][0].expected_updated_at).toBe("2026-10-11T08:00:00.000Z");
-      await waitFor(() => expect(setIsOpen).toHaveBeenCalledWith(false));
+      // Only A's edit, on B's version: B's status and approval are not sent back.
+      expect(onSuccess.mock.calls[1][0]).toEqual({
+        description: "A's notes",
+        expected_updated_at: "2026-10-11T08:00:00.000Z",
+      });
+    });
+
+    it("ignores a second click while a save is in flight", async () => {
+      let finish: (value: boolean) => void = () => {};
+      const onSuccess = vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      renderWithProviders(
+        <SideDrawerIncident
+          isOpen={true}
+          setIsOpen={vi.fn()}
+          onSuccess={onSuccess}
+          initialData={savable}
+        />,
+      );
+
+      const save = screen.getByText("Save incident");
+      fireEvent.click(save);
+      fireEvent.click(save);
+      expect(onSuccess).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(save.closest("button")).toBeDisabled());
+
+      finish(true);
+      await waitFor(() => expect(save.closest("button")).not.toBeDisabled());
     });
   });
 });

@@ -88,6 +88,23 @@ describe("validateIncidentReferences", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  it("rejects anything that is not a positive integer id without running SQL", async () => {
+    const invalid = await validateIncidentReferences(
+      { project_id: "abc", model_inventory_id: 1.5, assignee_id: -3 },
+      1,
+    );
+    expect(invalid.sort()).toEqual(["assignee_id", "model_inventory_id", "project_id"]);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts a numeric string id and looks it up as a number", async () => {
+    mockQuery.mockResolvedValueOnce([[{ id: 7 }], 1]);
+    await expect(validateIncidentReferences({ assignee_id: "7" }, 1)).resolves.toEqual([]);
+    expect(mockQuery.mock.calls[0][1]).toMatchObject({
+      replacements: { id: 7, organizationId: 1 },
+    });
+  });
+
   it("checks a real id inside the organization, on the given transaction", async () => {
     mockQuery.mockResolvedValueOnce([[], 0]);
     const tx = {} as any;

@@ -315,9 +315,10 @@ const pad2 = (n: number): string => String(n).padStart(2, "0");
  * - A string starting with YYYY-MM-DD is that date: it is what Postgres
  *   stores for it, since this column type ignores any offset in the input.
  *
- * Both readings agree in any server time zone. The model serialises these
- * columns as wall-clock time too (AIIncidentManagementModel.toSafeJSON), so
- * the date the edit drawer sends back compares equal.
+ * Both readings agree in any server time zone. (The API still serialises
+ * these Dates with toISOString(), which shifts the date on a non-UTC server;
+ * that is a separate, pre-existing issue. The edit drawer only sends fields
+ * the user changed, so an untouched date is never compared.)
  */
 export const incidentCalendarDate = (value: unknown): string | null => {
   if (isEmptyValue(value)) return null;

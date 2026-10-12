@@ -47,7 +47,7 @@ import {
   validateIncidentReferences,
 } from "../../utils/incidentManagement.utils";
 import { recordMultipleFieldChanges } from "../../utils/changeHistory.base.utils";
-import { drawerPayload, storedIncident } from "../../services/__tests__/helpers/incidentFixtures";
+import { drawerSave, storedIncident } from "../../services/__tests__/helpers/incidentFixtures";
 
 const mockGet = getIncidentByIdQuery as jest.MockedFunction<any>;
 const mockUpdate = updateIncidentByIdQuery as jest.MockedFunction<any>;
@@ -83,7 +83,7 @@ describe("updateIncidentById — reopening a closed incident", () => {
 
   it("resets the approval for the exact payload the edit drawer sends", async () => {
     const res = mockRes();
-    const body = drawerPayload(storedIncident().toSafeJSON(), "Investigating");
+    const body = drawerSave(storedIncident().toSafeJSON(), { status: "Investigating" });
 
     await updateIncidentById(mockReq(body), res);
 
@@ -125,7 +125,7 @@ describe("updateIncidentById — reopening a closed incident", () => {
   it("returns 409 and writes nothing when the incident changed since the drawer loaded it", async () => {
     const res = mockRes();
     const body = {
-      ...drawerPayload(storedIncident().toSafeJSON(), "Investigating"),
+      ...drawerSave(storedIncident().toSafeJSON(), { status: "Investigating" }),
       expected_updated_at: "2026-10-09T08:00:00.000Z",
     };
 
@@ -171,7 +171,7 @@ describe("updateIncidentById — reopening a closed incident", () => {
 
   it("returns 400, not 409, for a malformed expected_updated_at", async () => {
     const res = mockRes();
-    await updateIncidentById(mockReq({ status: "Open", expected_updated_at: "" }), res);
+    await updateIncidentById(mockReq({ status: "Open", expected_updated_at: "not-a-date" }), res);
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect((res.json as jest.Mock).mock.calls[0][0]).toEqual({
@@ -189,6 +189,14 @@ describe("updateIncidentById — reopening a closed incident", () => {
       },
     });
     expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it("treats an empty expected_updated_at as no version check", async () => {
+    const res = mockRes();
+    await updateIncidentById(mockReq({ status: "Open", expected_updated_at: "" }), res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("returns 404 when the incident does not exist", async () => {
