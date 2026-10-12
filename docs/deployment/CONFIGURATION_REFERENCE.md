@@ -267,6 +267,7 @@ AI_GATEWAY_INTERNAL_KEY=$(openssl rand -hex 32)
 What happens when the key is missing or does not match:
 
 - **AI Gateway:** refuses to start when `AI_GATEWAY_INTERNAL_KEY` is empty or a placeholder.
+- **Every internal route:** the gateway authenticates all `/internal/*` calls from the backend with this key and fails closed. With no key configured it answers 503 (`internal_key_not_configured`), and a missing or wrong key gets 401 (`internal_key_rejected`). Nothing behind those routes is served without the key.
 - **Backend and worker:** each logs one startup warning when `AI_GATEWAY_INTERNAL_KEY` is not set and the gateway is in use: `AI_GATEWAY_URL` is set, or a gateway answers `/health` at the default address within 2 seconds. The daily retention job also logs a refusal once per run.
 - **Log retention:** the gateway's internal retention routes fail closed. Without a configured key they answer 503, and a key the gateway does not accept gets 401. The daily retention job then records the guardrail and spend log cleanups as failed, and **Settings > Data retention** shows "Purge refused: internal key not configured" (key missing on either side) or "Purge refused: internal key rejected" (keys differ) in the Last cleanup column. No logs are deleted until the key is fixed.
 
