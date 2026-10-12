@@ -16,7 +16,7 @@ from crud import spend as spend_crud
 from crud.guardrails import purge_guardrail_logs
 from crud.purge import PartialPurgeError
 from database.db import get_db
-from middlewares.auth import require_internal_key
+from middlewares.auth import verify_internal_key
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class PurgeRequest(BaseModel):
 
 @router.get("/config")
 async def get_retention_config(request: Request):
-    require_internal_key(request)
+    verify_internal_key(request)
     return {"mcp_audit_retention_days": settings.mcp_audit_retention_days}
 
 
@@ -86,7 +86,7 @@ async def _purge_org(org: dict) -> dict:
 async def purge_retention(request: Request, payload: PurgeRequest):
     """Purge guardrail and spend logs for one organization, when it opted in,
     with at most ORG_PURGE_MAX_BATCHES batches per log type."""
-    require_internal_key(request)
+    verify_internal_key(request)
 
     async with get_db() as db:
         result = await db.execute(

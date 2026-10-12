@@ -19,28 +19,24 @@ def keys_match(provided: str, expected: str) -> bool:
     return hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
 
 
-def verify_internal_key(request: Request):
-    """Verify the request comes from the Express backend."""
-    auth = request.headers.get("x-internal-key", "")
-    if settings.ai_gateway_internal_key and not keys_match(
-        auth, settings.ai_gateway_internal_key
-    ):
-        raise HTTPException(status_code=401, detail="Invalid internal key")
-
-
-# Machine codes in require_internal_key's error detail, so the caller can tell
-# these refusals from a 503 or 401 sent by a proxy or load balancer.
+# Machine codes in the error detail, so the caller can tell these refusals
+# from a 503 or 401 sent by a proxy or load balancer.
 INTERNAL_KEY_NOT_CONFIGURED = "internal_key_not_configured"
 INTERNAL_KEY_REJECTED = "internal_key_rejected"
 
 
-def require_internal_key(request: Request):
-    """Like verify_internal_key, but fails closed: with no internal key
-    configured the request is refused (503) instead of served. For routes
-    that delete data in bulk across organizations.
+def verify_internal_key(request: Request):
+    """Verify the request comes from the Express backend. The one check for
+    every internal route, and it fails closed:
 
-    Errors carry {"detail": {"message": ..., "code": ...}} with one of the
-    codes above."""
+    - no internal key configured (empty or whitespace, trimmed by settings):
+      503 with code internal_key_not_configured, and the request is not
+      served. The gateway already refuses to start without a key (app.py),
+      so this only guards against that check being bypassed.
+    - a missing, wrong or non-ASCII x-internal-key header: 401 with code
+      internal_key_rejected.
+
+    Errors carry {"detail": {"message": ..., "code": ...}}."""
     expected = settings.ai_gateway_internal_key
     if not expected:
         logger.error(

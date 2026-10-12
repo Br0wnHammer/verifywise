@@ -520,7 +520,7 @@ async def test_retention_routes_serve_the_right_internal_key(monkeypatch):
 
 
 async def test_config_returns_audit_retention_days_at_top_level(monkeypatch):
-    monkeypatch.setattr(retention_router, "require_internal_key", lambda r: None)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
     monkeypatch.setattr(retention_router.settings, "mcp_audit_retention_days", 45)
 
     assert await retention_router.get_retention_config(_request()) == {
@@ -531,7 +531,7 @@ async def test_config_returns_audit_retention_days_at_top_level(monkeypatch):
 async def test_purge_only_selects_opted_in_orgs(monkeypatch):
     get_db, executed = _fake_db(rows=[])
     monkeypatch.setattr(retention_router, "get_db", get_db)
-    monkeypatch.setattr(retention_router, "require_internal_key", lambda r: None)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
 
     out = await retention_router.purge_retention(
         _request(), retention_router.PurgeRequest(organization_id=1)
@@ -545,7 +545,7 @@ async def test_guardrail_failure_does_not_stop_the_spend_purge(monkeypatch):
     rows = [{"organization_id": 1, "log_retention_days": 14, "spend_log_retention_days": 60}]
     get_db, _ = _fake_db(rows=rows)
     monkeypatch.setattr(retention_router, "get_db", get_db)
-    monkeypatch.setattr(retention_router, "require_internal_key", lambda r: None)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
     monkeypatch.setattr(
         retention_router, "purge_guardrail_logs", AsyncMock(side_effect=RuntimeError("boom"))
     )
@@ -569,7 +569,7 @@ async def test_spend_failure_does_not_mark_guardrail_failed(monkeypatch):
     rows = [{"organization_id": 1, "log_retention_days": 14, "spend_log_retention_days": 60}]
     get_db, _ = _fake_db(rows=rows)
     monkeypatch.setattr(retention_router, "get_db", get_db)
-    monkeypatch.setattr(retention_router, "require_internal_key", lambda r: None)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
     monkeypatch.setattr(
         retention_router,
         "purge_guardrail_logs",
@@ -741,7 +741,7 @@ async def test_purge_for_one_org_scopes_the_query_and_caps_at_100(monkeypatch):
     guardrail_purge = AsyncMock(return_value={"deleted": 100000, "capped": True})
     spend_purge = AsyncMock(return_value={"deleted": 9, "capped": False})
     monkeypatch.setattr(retention_router, "get_db", get_db)
-    monkeypatch.setattr(retention_router, "require_internal_key", lambda r: None)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
     monkeypatch.setattr(retention_router, "purge_guardrail_logs", guardrail_purge)
     monkeypatch.setattr(retention_router.spend_crud, "purge_spend_logs", spend_purge)
 
@@ -770,7 +770,7 @@ async def test_purge_for_an_org_that_did_not_opt_in_returns_nothing(monkeypatch)
     get_db, executed = _fake_db(rows=[])
     guardrail_purge = AsyncMock()
     monkeypatch.setattr(retention_router, "get_db", get_db)
-    monkeypatch.setattr(retention_router, "require_internal_key", lambda r: None)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
     monkeypatch.setattr(retention_router, "purge_guardrail_logs", guardrail_purge)
 
     out = await retention_router.purge_retention(
@@ -850,7 +850,7 @@ async def test_purge_reports_partial_counts_and_marks_the_type_failed(monkeypatc
     rows = [{"organization_id": 3, "log_retention_days": 14, "spend_log_retention_days": 60}]
     get_db, _ = _fake_db(rows=rows)
     monkeypatch.setattr(retention_router, "get_db", get_db)
-    monkeypatch.setattr(retention_router, "require_internal_key", lambda r: None)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
     monkeypatch.setattr(
         retention_router,
         "purge_guardrail_logs",

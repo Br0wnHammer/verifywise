@@ -4,7 +4,7 @@ config fetch: no live services."""
 import os
 import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -45,10 +45,105 @@ def test_verify_internal_key_accepts_the_right_key(monkeypatch):
     assert auth.verify_internal_key(_request("right-key")) is None
 
 
-def test_verify_internal_key_still_passes_when_no_key_is_configured(monkeypatch):
-    """Fail-open when unset is unchanged here (a separate decision)."""
+@pytest.mark.parametrize("configured", ["", "   "])
+def test_verify_internal_key_refuses_every_request_when_no_key_is_configured(
+    monkeypatch, configured
+):
+    """Fail closed: without a configured key nothing is served (503 + code)."""
+    import config
+
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", configured)
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", config.Settings().ai_gateway_internal_key)
+    with pytest.raises(HTTPException) as exc:
+        auth.verify_internal_key(_request("anything"))
+    assert exc.value.status_code == 503
+    assert exc.value.detail["code"] == "internal_key_not_configured"
+
+
+@pytest.mark.parametrize("key", [None, "", "wrong-key", "clé-ü"])
+def test_verify_internal_key_rejects_a_missing_or_wrong_key_with_a_code(monkeypatch, key):
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    with pytest.raises(HTTPException) as exc:
+        auth.verify_internal_key(_request(key))
+    assert exc.value.status_code == 401
+    assert exc.value.detail["code"] == "internal_key_rejected"
+
+
+def test_there_is_one_internal_key_check():
+    assert not hasattr(auth, "require_internal_key")
+
+
+# ---------------------------------------------------------------------------
+# A non-retention internal route, end to end over HTTP
+# ---------------------------------------------------------------------------
+
+
+def _cache_client(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import routers.cache as cache_router
+
+    stats = AsyncMock(return_value={"entries": 3})
+    monkeypatch.setattr(cache_router, "get_cache_stats", stats)
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def tenant(request, call_next):  # stands in for TenantMiddleware
+        request.state.organization_id = 7
+        return await call_next(request)
+
+    app.include_router(cache_router.router, prefix="/internal")
+    return TestClient(app), stats
+
+
+def test_internal_route_answers_503_with_code_when_no_key_is_configured(monkeypatch):
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "")
-    assert auth.verify_internal_key(_request("anything")) is None
+    client, stats = _cache_client(monkeypatch)
+
+    response = client.get("/internal/cache/stats", headers={"x-internal-key": "anything"})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {"message": "Internal key not configured", "code": "internal_key_not_configured"}
+    }
+    stats.assert_not_awaited()
+
+
+@pytest.mark.parametrize("headers", [{}, {"x-internal-key": "wrong-key"}])
+def test_internal_route_answers_401_with_code_for_a_missing_or_wrong_key(monkeypatch, headers):
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    client, stats = _cache_client(monkeypatch)
+
+    response = client.get("/internal/cache/stats", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "internal_key_rejected"
+    stats.assert_not_awaited()
+
+
+def test_internal_route_rejects_a_non_ascii_key_with_401_not_500(monkeypatch):
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    client, _ = _cache_client(monkeypatch)
+
+    # HTTP headers travel as latin-1; this is a non-ASCII key on the wire.
+    response = client.get(
+        "/internal/cache/stats", headers={"x-internal-key": "clé".encode("latin-1")}
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "internal_key_rejected"
+
+
+def test_internal_route_serves_the_right_key(monkeypatch):
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    client, stats = _cache_client(monkeypatch)
+
+    response = client.get("/internal/cache/stats", headers={"x-internal-key": "right-key"})
+
+    assert response.status_code == 200
+    stats.assert_awaited_once_with(7)
 
 
 def test_observability_config_fetch_sends_the_trimmed_settings_key(monkeypatch):
