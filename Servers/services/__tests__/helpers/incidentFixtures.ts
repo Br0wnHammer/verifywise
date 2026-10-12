@@ -1,6 +1,15 @@
 /**
  * Incident fixtures shared by the incident update tests.
+ *
+ * storedIncident() is built the way getIncidentByIdQuery builds a row
+ * (sequelize.query with mapToModel): the raw SELECT columns are renamed with
+ * the model's fieldAttributeMap and passed to the real model's bulkBuild. So
+ * the timestamps land where they do in production (updated_at → updatedAt,
+ * because the model has timestamps + underscored) and this cannot drift
+ * from the real mapping.
  */
+import { Sequelize } from "sequelize-typescript";
+import { AIIncidentManagementModel } from "../../../domain.layer/models/incidentManagement/incidemtManagement.model";
 import {
   AIIncidentManagementApprovalStatus as Approval,
   AIIncidentManagementStatus as Status,
@@ -9,12 +18,40 @@ import {
 export const STORED_UPDATED_AT = new Date("2026-10-10T12:34:56.789Z");
 
 /**
- * A stored Closed + Approved incident as getIncidentByIdQuery returns it:
- * date columns are JS Dates (TIMESTAMP WITHOUT TIME ZONE through pg), and
- * the model exposes both fields and dataValues plus toSafeJSON.
+ * A TIMESTAMP WITHOUT TIME ZONE value as pg returns it: the stored
+ * wall-clock time parsed as server-local time.
  */
-export function storedIncident() {
-  const values: Record<string, any> = {
+export const pgTimestamp = (y: number, m: number, d: number, hh = 0, mm = 0): Date =>
+  new Date(y, m - 1, d, hh, mm);
+
+let modelReady = false;
+
+/** Mirrors handleSelectQuery for `mapToModel: true` (sequelize abstract/query.js). */
+export function mapIncidentRow(row: Record<string, unknown>): AIIncidentManagementModel {
+  if (!modelReady) {
+    // Registers the model's attributes; nothing connects to a database.
+    new Sequelize({ dialect: "postgres", logging: false, models: [AIIncidentManagementModel] });
+    modelReady = true;
+  }
+  const fieldMap: Record<string, string> =
+    (AIIncidentManagementModel as unknown as { fieldAttributeMap?: Record<string, string> })
+      .fieldAttributeMap ?? {};
+  const mapped: Record<string, unknown> = { ...row };
+  for (const [field, name] of Object.entries(fieldMap)) {
+    if (mapped[field] !== undefined && name !== field) {
+      mapped[name] = mapped[field];
+      delete mapped[field];
+    }
+  }
+  return AIIncidentManagementModel.bulkBuild([mapped as any], {
+    isNewRecord: false,
+    raw: true,
+  })[0];
+}
+
+/** The raw `SELECT i.*, ...` row for a stored Closed + Approved incident. */
+export function storedIncidentRow(): Record<string, unknown> {
+  return {
     id: 42,
     incident_id: "INC-42",
     ai_project: "Chatbot",
@@ -24,8 +61,8 @@ export function storedIncident() {
     type: "Malfunction",
     severity: "Serious",
     status: Status.CLOSED,
-    occurred_date: new Date("2026-09-20T00:00:00.000Z"),
-    date_detected: new Date("2026-09-21T00:00:00.000Z"),
+    occurred_date: pgTimestamp(2026, 9, 20),
+    date_detected: pgTimestamp(2026, 9, 21),
     reporter: "Ada",
     categories_of_harm: ["Economic Loss"],
     affected_persons_groups: null,
@@ -38,53 +75,57 @@ export function storedIncident() {
     archived: false,
     approval_status: Approval.APPROVED,
     approved_by: "Jane Doe",
-    approval_date: new Date("2026-10-01T00:00:00.000Z"),
+    approval_date: pgTimestamp(2026, 10, 1),
     approval_notes: "Closure signed off",
+    is_demo: false,
+    organization_id: 1,
+    created_at: new Date("2026-09-21T09:00:00.000Z"),
     updated_at: STORED_UPDATED_AT,
+    // Joined display columns from INCIDENT_SELECT.
+    model_inventory_name: null,
+    project_title: "Chatbot",
+    assignee_name: "Grace Hopper",
   };
-  const toSafeJSON = () => {
-    const json: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(values)) {
-      json[key] = value instanceof Date ? value.toISOString() : value;
-    }
-    return json;
-  };
-  return { ...values, dataValues: values, toSafeJSON };
+}
+
+/** A stored Closed + Approved incident exactly as getIncidentByIdQuery returns it. */
+export function storedIncident(): AIIncidentManagementModel {
+  return mapIncidentRow(storedIncidentRow());
 }
 
 /**
- * The exact body the edit drawer sends for `stored` with only the status
- * changed: IncidentManagement/index.tsx builds initialData from the API JSON
- * and NewIncident handleSaveIncident spreads it, normalising FK pickers to
- * numbers or null.
+ * The exact body the edit drawer sends for an incident whose API JSON is
+ * `json` (toSafeJSON), with only the status changed: IncidentManagement
+ * index.tsx builds initialData from that JSON and NewIncident
+ * handleSaveIncident spreads it, normalising FK pickers to numbers or null.
  */
-export function drawerPayload(stored: Record<string, any>, status: string) {
-  const day = (d: Date | string) => new Date(d).toISOString().split("T")[0];
+export function drawerPayload(json: Record<string, any>, status: string) {
+  const day = (d: string) => new Date(d).toISOString().split("T")[0];
   const toId = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
   return {
-    incident_id: stored.incident_id || "",
-    ai_project: stored.ai_project || "",
-    project_id: toId(stored.project_id ?? ""),
-    model_inventory_id: toId(stored.model_inventory_id ?? ""),
-    assignee_id: toId(stored.assignee_id ?? ""),
-    type: stored.type || "",
-    severity: stored.severity || "",
+    incident_id: json.incident_id || "",
+    ai_project: json.ai_project || "",
+    project_id: toId(json.project_id ?? ""),
+    model_inventory_id: toId(json.model_inventory_id ?? ""),
+    assignee_id: toId(json.assignee_id ?? ""),
+    type: json.type || "",
+    severity: json.severity || "",
     status,
-    occurred_date: day(stored.occurred_date),
-    date_detected: day(stored.date_detected),
-    reporter: stored.reporter,
-    categories_of_harm: stored.categories_of_harm || [],
-    description: stored.description,
-    affected_persons_groups: stored.affected_persons_groups || "",
-    relationship_causality: stored.relationship_causality || "",
-    immediate_mitigations: stored.immediate_mitigations || "",
-    planned_corrective_actions: stored.planned_corrective_actions || "",
-    model_system_version: stored.model_system_version,
-    interim_report: stored.interim_report || false,
-    approval_status: stored.approval_status,
-    approved_by: stored.approved_by,
-    approval_date: stored.approval_date ? day(stored.approval_date) : null,
-    approval_notes: stored.approval_notes,
-    expected_updated_at: stored.updated_at ? new Date(stored.updated_at).toISOString() : undefined,
+    occurred_date: day(json.occurred_date),
+    date_detected: day(json.date_detected),
+    reporter: json.reporter,
+    categories_of_harm: json.categories_of_harm || [],
+    description: json.description,
+    affected_persons_groups: json.affected_persons_groups || "",
+    relationship_causality: json.relationship_causality || "",
+    immediate_mitigations: json.immediate_mitigations || "",
+    planned_corrective_actions: json.planned_corrective_actions || "",
+    model_system_version: json.model_system_version,
+    interim_report: json.interim_report || false,
+    approval_status: json.approval_status,
+    approved_by: json.approved_by,
+    approval_date: json.approval_date ? day(json.approval_date) : null,
+    approval_notes: json.approval_notes,
+    expected_updated_at: json.updated_at ? new Date(json.updated_at).toISOString() : undefined,
   };
 }

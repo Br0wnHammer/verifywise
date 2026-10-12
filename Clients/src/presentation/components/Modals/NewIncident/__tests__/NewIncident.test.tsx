@@ -95,4 +95,61 @@ describe("NewIncident (SideDrawerIncident)", () => {
     });
     expect(onSuccess).not.toHaveBeenCalled();
   });
+
+  describe("save outcome", () => {
+    const savable = {
+      ...validInitialData,
+      categories_of_harm: ["Economic Loss"],
+      expected_updated_at: "2026-10-10T12:00:00.000Z",
+    } as unknown as NewIncidentFormValues;
+
+    it("stays open with the user's values when the save resolves false", async () => {
+      const setIsOpen = vi.fn();
+      const onSuccess = vi.fn().mockResolvedValue(false);
+      renderWithProviders(
+        <SideDrawerIncident
+          isOpen={true}
+          setIsOpen={setIsOpen}
+          onSuccess={onSuccess}
+          initialData={savable}
+        />,
+      );
+
+      fireEvent.click(screen.getByText("Save incident"));
+      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+
+      expect(setIsOpen).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByText("Save incident"));
+      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(2));
+      expect(onSuccess.mock.calls[1][0]).toMatchObject({
+        description: "The model ranked candidates unfairly.",
+      });
+    });
+
+    it("stays open and merges returned fields into the next save (conflict refresh)", async () => {
+      const setIsOpen = vi.fn();
+      const onSuccess = vi
+        .fn()
+        .mockResolvedValueOnce({ expected_updated_at: "2026-10-11T08:00:00.000Z" })
+        .mockResolvedValueOnce(true);
+      renderWithProviders(
+        <SideDrawerIncident
+          isOpen={true}
+          setIsOpen={setIsOpen}
+          onSuccess={onSuccess}
+          initialData={savable}
+        />,
+      );
+
+      fireEvent.click(screen.getByText("Save incident"));
+      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+      expect(onSuccess.mock.calls[0][0].expected_updated_at).toBe("2026-10-10T12:00:00.000Z");
+      expect(setIsOpen).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByText("Save incident"));
+      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(2));
+      expect(onSuccess.mock.calls[1][0].expected_updated_at).toBe("2026-10-11T08:00:00.000Z");
+      await waitFor(() => expect(setIsOpen).toHaveBeenCalledWith(false));
+    });
+  });
 });

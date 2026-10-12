@@ -303,16 +303,21 @@ export const INCIDENT_BOOLEAN_COLUMNS: ReadonlySet<string> = new Set([
 const isEmptyValue = (value: unknown): boolean =>
   value === null || value === undefined || value === "";
 
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
 /**
- * The calendar date (YYYY-MM-DD) of an incident date value.
+ * The calendar date (YYYY-MM-DD) of an incident date value, read as the
+ * wall-clock date stored in the TIMESTAMP WITHOUT TIME ZONE column.
  *
- * The date columns are TIMESTAMP WITHOUT TIME ZONE and the project installs
- * no custom pg type parser, so a stored value reaches us as a JS Date whose
- * UTC calendar date is what the API (toSafeJSON → toISOString) and the edit
- * drawer (`toISOString().split("T")[0]`) show. A Date is therefore read as
- * its UTC date. A string that starts with YYYY-MM-DD is taken at that date:
- * that is the date Postgres stores for it, since a TIMESTAMP WITHOUT TIME
- * ZONE column ignores any offset in the input.
+ * - A Date comes from pg, which parses this column type (oid 1114) as
+ *   server-local time and the project installs no custom type parser, so its
+ *   local components are the stored wall-clock time.
+ * - A string starting with YYYY-MM-DD is that date: it is what Postgres
+ *   stores for it, since this column type ignores any offset in the input.
+ *
+ * Both readings agree in any server time zone. The model serialises these
+ * columns as wall-clock time too (AIIncidentManagementModel.toSafeJSON), so
+ * the date the edit drawer sends back compares equal.
  */
 export const incidentCalendarDate = (value: unknown): string | null => {
   if (isEmptyValue(value)) return null;
@@ -321,7 +326,8 @@ export const incidentCalendarDate = (value: unknown): string | null => {
     if (match) return match[0];
   }
   const date = value instanceof Date ? value : new Date(value as string);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString().slice(0, 10);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 };
 
 const toHarmArray = (value: unknown): unknown => {

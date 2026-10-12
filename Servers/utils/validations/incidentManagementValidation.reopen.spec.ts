@@ -8,6 +8,11 @@ import {
   AIIncidentManagementApprovalStatus as Approval,
   AIIncidentManagementStatus as Status,
 } from "../../domain.layer/enums/ai-incident-management.enum";
+import {
+  mapIncidentRow,
+  pgTimestamp,
+  storedIncidentRow,
+} from "../../services/__tests__/helpers/incidentFixtures";
 
 const RESET = {
   approval_status: Approval.PENDING,
@@ -48,8 +53,8 @@ describe("reopening closed incidents", () => {
         status: Status.OPEN,
         approval_status: Approval.APPROVED,
         approved_by: "Jane Doe",
-        // Same instant, different format.
-        approval_date: new Date("2026-10-01T00:00:00.000Z"),
+        // Same calendar date, as a pg Date (local wall-clock midnight).
+        approval_date: new Date(2026, 9, 1),
         approval_notes: "Closure signed off",
       };
       expect(applyReopenApprovalReset(closedApproved, update)).toEqual({
@@ -59,9 +64,10 @@ describe("reopening closed incidents", () => {
     });
 
     it("treats the drawer's YYYY-MM-DD approval date as unchanged against the stored Date", () => {
-      // pg returns the TIMESTAMP WITHOUT TIME ZONE column as a Date; the drawer
-      // sends back toISOString().split("T")[0] of the API value.
-      const stored = { ...closedApproved, approval_date: new Date("2026-10-01T00:00:00.000Z") };
+      // pg returns the TIMESTAMP WITHOUT TIME ZONE column as a Date at the
+      // stored wall-clock time in server-local time; the drawer sends back the
+      // date part of the API value.
+      const stored = { ...closedApproved, approval_date: new Date(2026, 9, 1) };
       const update = { status: Status.OPEN, approval_date: "2026-10-01" };
       expect(applyReopenApprovalReset(stored, update)).toEqual({ ...update, ...RESET });
     });
@@ -109,7 +115,8 @@ describe("reopening closed incidents", () => {
 
   describe("isSameIncidentValue", () => {
     it("compares date columns as calendar dates", () => {
-      const stored = new Date("2026-10-01T00:00:00.000Z");
+      // pg's Date for a stored "2026-10-01 00:00:00" (server-local).
+      const stored = new Date(2026, 9, 1);
       expect(isSameIncidentValue("approval_date", stored, "2026-10-01")).toBe(true);
       expect(isSameIncidentValue("approval_date", stored, "2026-10-01T15:30:00.000Z")).toBe(true);
       expect(isSameIncidentValue("approval_date", stored, "2026-10-02")).toBe(false);
@@ -136,11 +143,44 @@ describe("reopening closed incidents", () => {
     });
   });
 
+  describe("TIMESTAMP WITHOUT TIME ZONE handling in any server time zone", () => {
+    // Jest cannot change the process time zone at runtime, so these build
+    // Dates the way pg does (from local components) and assert results that
+    // hold whatever the TZ. Run the suite with TZ=UTC / TZ=Asia/Tokyo /
+    // TZ=America/Toronto to exercise both sides of UTC.
+    it("reads a pg Date by its wall-clock date even where that differs from its UTC date", () => {
+      const lateEvening = new Date(2026, 9, 1, 23, 59);
+      const earlyMorning = new Date(2026, 9, 1, 0, 1);
+      expect(incidentCalendarDate(lateEvening)).toBe("2026-10-01");
+      expect(incidentCalendarDate(earlyMorning)).toBe("2026-10-01");
+      expect(isSameIncidentValue("approval_date", lateEvening, "2026-10-01")).toBe(true);
+      expect(isSameIncidentValue("approval_date", earlyMorning, "2026-10-01")).toBe(true);
+    });
+
+    it("agrees with the API serialisation the drawer reads its date from", () => {
+      for (const hour of [0, 1, 11, 12, 22, 23]) {
+        const stored = mapIncidentRow({
+          ...storedIncidentRow(),
+          approval_date: pgTimestamp(2026, 10, 1, hour),
+        });
+        const apiDate = stored.toSafeJSON().approval_date as string;
+        const drawerDate = new Date(apiDate).toISOString().split("T")[0];
+        expect(drawerDate).toBe("2026-10-01");
+        expect(
+          isSameIncidentValue("approval_date", stored.dataValues.approval_date, drawerDate),
+        ).toBe(true);
+      }
+    });
+  });
+
   describe("incidentCalendarDate", () => {
     it("takes the date part of YYYY-MM-DD strings and the UTC date of Dates", () => {
       expect(incidentCalendarDate("2026-10-01")).toBe("2026-10-01");
       expect(incidentCalendarDate("2026-10-01T23:30:00-05:00")).toBe("2026-10-01");
-      expect(incidentCalendarDate(new Date("2026-10-01T23:30:00.000Z"))).toBe("2026-10-01");
+      // A Date is read by its local (wall-clock) components, as pg parses
+      // TIMESTAMP WITHOUT TIME ZONE as server-local time.
+      expect(incidentCalendarDate(new Date(2026, 9, 1, 23, 30))).toBe("2026-10-01");
+      expect(incidentCalendarDate(new Date(2026, 9, 1, 0, 0))).toBe("2026-10-01");
       expect(incidentCalendarDate("")).toBeNull();
     });
   });

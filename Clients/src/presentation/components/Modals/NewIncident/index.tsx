@@ -49,15 +49,18 @@ interface SideDrawerIncidentProps {
   setIsOpen: (isOpen: boolean) => void;
   /**
    * Called with the form values on save. Resolve to `false` to keep the
-   * drawer open (for example when the save was refused); anything else
-   * closes it.
+   * drawer open with the user's values (the save failed), or to an object of
+   * fields to merge into the open form (for example the latest
+   * expected_updated_at after a conflict). Anything else closes the drawer.
    */
-  onSuccess?: (data: NewIncidentFormValues) => void | boolean | Promise<void | boolean>;
+  onSuccess?: (data: NewIncidentFormValues) => SaveOutcome | Promise<SaveOutcome>;
   initialData?: NewIncidentFormValues;
   isEdit?: boolean;
   mode?: string;
   incidentId?: number;
 }
+
+type SaveOutcome = void | boolean | Partial<NewIncidentFormValues>;
 
 export interface NewIncidentFormValues {
   incident_id?: string;
@@ -348,8 +351,13 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
         model_inventory_id: toId(values.model_inventory_id),
         assignee_id: toId(values.assignee_id),
       });
-      // Keep the drawer, and what the user typed, when the save was refused.
+      // Keep the drawer, and what the user typed, when the save failed.
       if (result === false) return;
+      // Still open, with fields from the page merged in (e.g. after a conflict).
+      if (result && typeof result === "object") {
+        setValues((prev) => ({ ...prev, ...result }));
+        return;
+      }
       handleClose();
       return;
     }

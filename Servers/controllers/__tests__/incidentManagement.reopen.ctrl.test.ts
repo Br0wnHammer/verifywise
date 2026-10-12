@@ -83,7 +83,7 @@ describe("updateIncidentById — reopening a closed incident", () => {
 
   it("resets the approval for the exact payload the edit drawer sends", async () => {
     const res = mockRes();
-    const body = drawerPayload(storedIncident().dataValues, "Investigating");
+    const body = drawerPayload(storedIncident().toSafeJSON(), "Investigating");
 
     await updateIncidentById(mockReq(body), res);
 
@@ -125,7 +125,7 @@ describe("updateIncidentById — reopening a closed incident", () => {
   it("returns 409 and writes nothing when the incident changed since the drawer loaded it", async () => {
     const res = mockRes();
     const body = {
-      ...drawerPayload(storedIncident().dataValues, "Investigating"),
+      ...drawerPayload(storedIncident().toSafeJSON(), "Investigating"),
       expected_updated_at: "2026-10-09T08:00:00.000Z",
     };
 
@@ -167,6 +167,28 @@ describe("updateIncidentById — reopening a closed incident", () => {
     });
     expect(mockGet).toHaveBeenCalledTimes(1); // only the locked read
     expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("returns 400, not 409, for a malformed expected_updated_at", async () => {
+    const res = mockRes();
+    await updateIncidentById(mockReq({ status: "Open", expected_updated_at: "" }), res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect((res.json as jest.Mock).mock.calls[0][0]).toEqual({
+      message: "Bad Request",
+      data: {
+        status: "error",
+        message: "Incident update validation failed",
+        errors: [
+          {
+            field: "expected_updated_at",
+            message: "expected_updated_at must be a valid date-time",
+            code: "INVALID_DATE",
+          },
+        ],
+      },
+    });
+    expect(mockGet).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the incident does not exist", async () => {

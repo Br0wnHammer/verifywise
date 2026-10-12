@@ -6991,8 +6991,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Incident details": "Vorfallsdetails",
     "Incident management details": "Details des Vorfallsmanagements",
     "Incident updated successfully!": "Vorfall erfolgreich aktualisiert!",
-    "This incident was changed since you opened it. Reload to see the latest version.":
-      "Dieser Vorfall wurde geändert, seit Sie ihn geöffnet haben. Laden Sie die Seite neu, um die aktuelle Version zu sehen.",
+    "This incident was changed by someone else since you opened it. Your edits are kept: save again to overwrite their changes.":
+      "Dieser Vorfall wurde von jemand anderem geändert, seit Sie ihn geöffnet haben. Ihre Änderungen bleiben erhalten: Speichern Sie erneut, um die anderen Änderungen zu überschreiben.",
     "Indefinite": "Unbestimmt",
     "Individual event records from ingestion": "Einzelne Ereignisdatensätze aus der Aufnahme",
     "Individual user AI tool usage and risk scores":
@@ -17088,8 +17088,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Incident details": "Détails de l'incident",
     "Incident management details": "Détails de la gestion des incidents",
     "Incident updated successfully!": "Incident mis à jour avec succès !",
-    "This incident was changed since you opened it. Reload to see the latest version.":
-      "Cet incident a été modifié depuis que vous l'avez ouvert. Rechargez la page pour voir la dernière version.",
+    "This incident was changed by someone else since you opened it. Your edits are kept: save again to overwrite their changes.":
+      "Cet incident a été modifié par quelqu'un d'autre depuis que vous l'avez ouvert. Vos modifications sont conservées : enregistrez à nouveau pour écraser les siennes.",
     "Indefinite": "Indéfini",
     "Individual event records from ingestion":
       "Enregistrements d'événements individuels depuis l'ingestion",
@@ -24555,8 +24555,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Incident details": "Detalles del incidente",
     "Incident management details": "Detalles de la gestión de incidentes",
     "Incident updated successfully!": "¡Incidente actualizado correctamente!",
-    "This incident was changed since you opened it. Reload to see the latest version.":
-      "Este incidente se modificó después de que lo abrieras. Recarga la página para ver la versión más reciente.",
+    "This incident was changed by someone else since you opened it. Your edits are kept: save again to overwrite their changes.":
+      "Otra persona modificó este incidente después de que lo abrieras. Tus cambios se conservan: guarda de nuevo para sobrescribir los suyos.",
     "Indefinite": "Indefinido",
     "Individual event records from ingestion": "Registros de eventos individuales de la ingesta",
     "Information security for AI systems": "Seguridad de la información para sistemas de IA",

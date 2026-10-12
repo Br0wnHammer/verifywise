@@ -119,7 +119,7 @@ const fetchIncidents = async (
       approval_status: i.approval_status,
       categories_of_harm: i.categories_of_harm,
       archived: i.archived,
-      created_at: i.created_at,
+      created_at: i.createdAt ?? i.created_at,
     }));
   } catch (error) {
     logger.error("Error fetching incidents:", error);

@@ -18,7 +18,12 @@
 
 import { sequelize } from "../database/db";
 import { Transaction, QueryTypes } from "sequelize";
-import { EntityType, getEntityConfig, GENERIC_FORMATTERS } from "../config/changeHistory.config";
+import {
+  EntityType,
+  FormatterContext,
+  getEntityConfig,
+  GENERIC_FORMATTERS,
+} from "../config/changeHistory.config";
 import { ValidationException } from "../domain.layer/exceptions/custom.exception";
 import logger from "./logger/fileLogger";
 import { appendToAuditLedger } from "./auditLedger.utils";
@@ -295,12 +300,15 @@ export const getEntityChangeHistory = async (
  * @param entityType - The type of entity
  * @param fieldName - The name of the field being formatted
  * @param value - The value to format
+ * @param context - Organization (tenant-scopes lookups) and transaction for
+ *   formatters that resolve ids to names
  * @returns Formatted string representation of the value
  */
 export const formatFieldValue = async (
   entityType: EntityType,
   fieldName: string,
   value: any,
+  context?: FormatterContext,
 ): Promise<string> => {
   if (value === null || value === undefined || value === "") {
     return "-";
@@ -311,7 +319,7 @@ export const formatFieldValue = async (
 
     // Check if entity has a custom formatter for this field
     if (config.fieldFormatters && config.fieldFormatters[fieldName]) {
-      return await config.fieldFormatters[fieldName](value);
+      return await config.fieldFormatters[fieldName](value, context);
     }
 
     // Default to text formatter
@@ -389,12 +397,15 @@ export const trackEntityChanges = async (
  * (for example from the same diff that drives its UPDATE), so the history
  * matches the write exactly. Unlike trackEntityChanges this does not compare
  * values again; it only keeps tracked fields and formats old/new values.
+ * `context` tenant-scopes any id-to-name lookups and runs them on the given
+ * transaction.
  */
 export const formatEntityFieldChanges = async (
   entityType: EntityType,
   oldData: Record<string, unknown>,
   newData: Record<string, unknown>,
   changedFields: string[],
+  context?: FormatterContext,
 ): Promise<Array<{ fieldName: string; oldValue: string; newValue: string }>> => {
   const config = getEntityConfig(entityType);
   const changes: Array<{ fieldName: string; oldValue: string; newValue: string }> = [];
@@ -402,8 +413,8 @@ export const formatEntityFieldChanges = async (
     if (!changedFields.includes(field)) continue;
     changes.push({
       fieldName: getFieldLabel(entityType, field),
-      oldValue: await formatFieldValue(entityType, field, oldData[field]),
-      newValue: await formatFieldValue(entityType, field, newData[field]),
+      oldValue: await formatFieldValue(entityType, field, oldData[field], context),
+      newValue: await formatFieldValue(entityType, field, newData[field], context),
     });
   }
   return changes;

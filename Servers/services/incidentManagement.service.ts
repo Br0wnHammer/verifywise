@@ -63,12 +63,14 @@ export interface UpdateIncidentOptions {
    * stored value differs, the update is refused with a ConflictException
    * (HTTP 409). Interactive editors pass it; background writers do not.
    */
-  expectedUpdatedAt?: string | Date;
+  expectedUpdatedAt?: string | Date | null;
 }
 
-const sameInstant = (a: unknown, b: unknown): boolean => {
-  if (a === null || a === undefined || b === null || b === undefined) return a === b;
-  return new Date(a as string).getTime() === new Date(b as string).getTime();
+/** The instant of a Date or date string, or NaN when it is not one. */
+const toTime = (value: unknown): number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value !== "string" || value.trim() === "") return NaN;
+  return new Date(value).getTime();
 };
 
 /**
@@ -89,6 +91,20 @@ export async function updateIncident(
   userId: number | null | undefined,
   options: UpdateIncidentOptions = {},
 ): Promise<AIIncidentManagementModel | null> {
+  // A version that is present but not a date-time is a bad request (400),
+  // not a conflict (409).
+  const expectedTime =
+    options.expectedUpdatedAt === undefined ? undefined : toTime(options.expectedUpdatedAt);
+  if (expectedTime !== undefined && Number.isNaN(expectedTime)) {
+    throw new IncidentUpdateValidationError([
+      {
+        field: "expected_updated_at",
+        message: "expected_updated_at must be a valid date-time",
+        code: "INVALID_DATE",
+      },
+    ]);
+  }
+
   const ownsTransaction = !options.transaction;
   const transaction = options.transaction ?? (await sequelize.transaction());
   try {
@@ -102,10 +118,11 @@ export async function updateIncident(
     }
     const stored = existing.dataValues as unknown as Record<string, unknown>;
 
-    if (
-      options.expectedUpdatedAt !== undefined &&
-      !sameInstant(stored.updated_at, options.expectedUpdatedAt)
-    ) {
+    // getIncidentByIdQuery maps rows onto the model (timestamps + underscored),
+    // so the row's updated_at column lands on `updatedAt`; read it the way
+    // toSafeJSON does.
+    const storedUpdatedAt = existing.updatedAt ?? stored.updated_at;
+    if (expectedTime !== undefined && toTime(storedUpdatedAt) !== expectedTime) {
       throw new ConflictException(INCIDENT_CHANGED_MESSAGE, "incident", "updated_at");
     }
 
@@ -114,12 +131,12 @@ export async function updateIncident(
       {
         model_inventory_id: (updates.model_inventory_id !== undefined
           ? updates.model_inventory_id
-          : stored.model_inventory_id) as number | null,
+          : stored.model_inventory_id) as number | string | null,
         project_id: (updates.project_id !== undefined ? updates.project_id : stored.project_id) as
-          number | null,
+          number | string | null,
         assignee_id: (updates.assignee_id !== undefined
           ? updates.assignee_id
-          : stored.assignee_id) as number | null,
+          : stored.assignee_id) as number | string | null,
       },
       organizationId,
       transaction,
@@ -145,7 +162,12 @@ export async function updateIncident(
     const saved = await updateIncidentByIdQuery(incidentId, changed, organizationId, transaction);
 
     if (userId || options.changedBySystem) {
-      const changes = await formatEntityFieldChanges("incident", stored, changed, changedColumns);
+      // Name lookups are tenant-scoped and run on this transaction, the
+      // connection that holds the row lock.
+      const changes = await formatEntityFieldChanges("incident", stored, changed, changedColumns, {
+        organizationId,
+        transaction,
+      });
       if (changes.length > 0) {
         await recordMultipleFieldChanges(
           "incident",

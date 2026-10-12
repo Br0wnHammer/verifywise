@@ -71,7 +71,7 @@ describe("updateIncident (shared incident write path)", () => {
   });
 
   it("resets the approval when replaying the edit drawer's reopen payload", async () => {
-    const body = drawerPayload(storedIncident().dataValues, Status.INVESTIGATING);
+    const body = drawerPayload(storedIncident().toSafeJSON(), Status.INVESTIGATING);
 
     await updateIncident(1, 42, body, 7);
 
@@ -114,11 +114,13 @@ describe("updateIncident (shared incident write path)", () => {
   });
 
   it("does nothing for a no-op update: no write, no history, no automations", async () => {
-    const body = drawerPayload(storedIncident().dataValues, Status.CLOSED);
+    const stored = storedIncident();
+    mockGet.mockResolvedValue(stored);
+    const body = drawerPayload(stored.toSafeJSON(), Status.CLOSED);
 
     const result = await updateIncident(1, 42, body, 7);
 
-    expect(result).toEqual(expect.objectContaining({ id: 42, updated_at: STORED_UPDATED_AT }));
+    expect(result).toBe(stored);
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockRecord).not.toHaveBeenCalled();
     expect(mockTransaction.afterCommit).not.toHaveBeenCalled();
@@ -138,7 +140,55 @@ describe("updateIncident (shared incident write path)", () => {
     );
   });
 
+  it("looks up history names tenant-scoped on the update transaction", async () => {
+    await updateIncident(1, 42, { assignee_id: 8 }, 7);
+
+    const userLookups = (sequelize.query as jest.MockedFunction<any>).mock.calls.filter(
+      ([sql]: [string]) => String(sql).includes("FROM users"),
+    );
+    expect(userLookups).toHaveLength(2); // old and new owner
+    for (const [sql, options] of userLookups) {
+      expect(sql).toContain("organization_id = :organizationId");
+      expect(options).toMatchObject({
+        replacements: { organizationId: 1 },
+        transaction: mockTransaction,
+      });
+    }
+  });
+
   describe("optimistic concurrency (expectedUpdatedAt)", () => {
+    it("reads the stored version from updatedAt, where mapToModel puts updated_at", async () => {
+      const stored = storedIncident();
+      // The regression: dataValues has no updated_at on a mapped row.
+      expect(stored.dataValues).not.toHaveProperty("updated_at");
+      expect(stored.dataValues).toHaveProperty("updatedAt", STORED_UPDATED_AT);
+      mockGet.mockResolvedValue(stored);
+
+      // The drawer's own save, with the version it loaded from the API JSON.
+      const body = drawerPayload(stored.toSafeJSON(), Status.INVESTIGATING);
+      const { expected_updated_at: expectedUpdatedAt, ...updates } = body;
+      await updateIncident(1, 42, updates, 7, { expectedUpdatedAt });
+
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["empty", ""],
+      ["not a date", "yesterday-ish"],
+      ["null", null],
+    ])(
+      "rejects a %s expectedUpdatedAt as a validation error, not a conflict",
+      async (_label, expectedUpdatedAt) => {
+        const attempt = updateIncident(1, 42, { status: Status.OPEN }, 7, { expectedUpdatedAt });
+
+        await expect(attempt).rejects.toBeInstanceOf(IncidentUpdateValidationError);
+        await expect(attempt).rejects.toMatchObject({
+          errors: [expect.objectContaining({ field: "expected_updated_at", code: "INVALID_DATE" })],
+        });
+        expect(sequelize.transaction).not.toHaveBeenCalled();
+      },
+    );
+
     it("accepts the updated_at the editor loaded", async () => {
       await updateIncident(1, 42, { status: Status.OPEN }, 7, {
         expectedUpdatedAt: STORED_UPDATED_AT.toISOString(),

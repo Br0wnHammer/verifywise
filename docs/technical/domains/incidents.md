@@ -258,13 +258,26 @@ issue-tracker sync are meant to use it too. In order, it:
    rolls back a transaction it opened), so concurrent updates serialise.
 2. If `expectedUpdatedAt` is given and differs from the stored `updated_at`,
    throws `ConflictException`: "This incident was changed since you opened it.
-   Reload to see the latest version." The controller answers 409. The edit
-   drawer sends the `updated_at` it loaded as `expected_updated_at` and, on 409,
-   shows that message and keeps the drawer open with the user's edits.
-   Background writers (AI Advisor, sync jobs) do not pass it.
+   Reload to see the latest version." The controller answers 409. A present but
+   malformed value (empty, null, not a date-time) is a 400 validation error
+   (`expected_updated_at`, `INVALID_DATE`), checked before any read.
+   `getIncidentByIdQuery` maps rows onto the model (`timestamps: true`,
+   `underscored: true`), so the `updated_at` column is on `updatedAt`, not on
+   `dataValues.updated_at`; the check reads `existing.updatedAt` like
+   `toSafeJSON` does.
+   The edit drawer sends the `updated_at` it loaded as `expected_updated_at`. On
+   409 the page refetches the incident, merges its latest `updated_at` into the
+   open form (keeping the user's edits) and says the incident was changed by
+   someone else and that saving again overwrites their change; the next save
+   goes through. The global axios toast is suppressed for this `CONFLICT` so
+   only the page alert shows. Any other save failure also keeps the drawer
+   open with the user's edits. The page memoises the drawer's `initialData` on
+   the selected incident so re-renders never reset the form.
+   Background writers (AI Advisor, sync jobs) do not pass `expectedUpdatedAt`.
 3. Validates against the locked row: `validateCompleteIncidentUpdate` and
    `validateIncidentReferences` (FKs must belong to the organization; unchanged
-   FKs come from the row). Failures throw `IncidentUpdateValidationError`; the
+   FKs come from the row; `''`, null and undefined mean "no reference" and are
+   not looked up). Failures throw `IncidentUpdateValidationError`; the
    controller keeps its 400 body (`message: "Incident update validation failed"`,
    `errors: [{ field, message, code }]`).
 4. Applies the reopen approval reset.
@@ -274,11 +287,15 @@ issue-tracker sync are meant to use it too. In order, it:
    (`incidentManagementValidation.utils.ts`) that the reset uses to decide
    whether an approval field was touched:
    - `''`, null and undefined are all empty;
-   - date columns compare **calendar dates** (`incidentCalendarDate`): a stored
-     value is a JS Date (TIMESTAMP WITHOUT TIME ZONE, no custom pg type parser),
-     read as its UTC date, which is what the API and the edit drawer show; a
+   - date columns compare **calendar dates** (`incidentCalendarDate`). The
+     columns are TIMESTAMP WITHOUT TIME ZONE and the project installs no custom
+     pg type parser, so pg parses them (oid 1114) as server-local time: a stored
+     Date is read by its local components (the wall-clock date stored), and a
      string starting `YYYY-MM-DD` is that date (Postgres ignores any offset for
-     this column type);
+     this column type). The model's `toSafeJSON` / `toJSON` serialise
+     `occurred_date`, `date_detected` and `approval_date` as that wall-clock time
+     with a `Z` suffix (identical to `toISOString()` on a UTC server), so the
+     date part the drawer sends back agrees in any server time zone;
    - foreign keys compare as numbers, `archived` / `interim_report` treat empty
      as false, harm categories compare as lists.
    `archived` is never written as NULL.
@@ -289,7 +306,13 @@ issue-tracker sync are meant to use it too. In order, it:
    `incident_change_history` (`formatEntityFieldChanges`). That includes
    `model_inventory_id` ("Affected model"), `project_id` ("Linked use case") and
    `assignee_id` ("Owner"), shown by name, falling back to `Model #id` /
-   `Use case #id` / `User #id`. History is recorded as `userId`, or, with
+   `Use case #id` / `User #id`. The name lookups are tenant-scoped
+   (`AND organization_id = :organizationId`) and run on the update transaction
+   (the connection holding the row lock), via the `FormatterContext` that
+   `formatEntityFieldChanges` passes to field formatters. The project and model
+   formatters do not query at all without an organization. The generic user
+   formatter is scoped when given an organization; other entities' history
+   callers do not pass one yet and keep the old unscoped user lookup. History is recorded as `userId`, or, with
    `changedBySystem: true`, with a null actor and `changed_by_system = true`
    (shown as "System"). The AI Advisor uses the system form when its execution
    carries no user id.

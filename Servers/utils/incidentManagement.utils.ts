@@ -461,9 +461,9 @@ export const archiveIncidentByIdQuery = async (
  */
 export const validateIncidentReferences = async (
   refs: {
-    model_inventory_id?: number | null;
-    project_id?: number | null;
-    assignee_id?: number | null;
+    model_inventory_id?: number | string | null;
+    project_id?: number | string | null;
+    assignee_id?: number | string | null;
   },
   organizationId: number,
   transaction?: Transaction,
@@ -471,7 +471,7 @@ export const validateIncidentReferences = async (
   const invalidFields: string[] = [];
   const checks: Array<{
     field: string;
-    id: number | null | undefined;
+    id: number | string | null | undefined;
     table: string;
   }> = [
     { field: "model_inventory_id", id: refs.model_inventory_id, table: "model_inventories" },
@@ -480,7 +480,8 @@ export const validateIncidentReferences = async (
   ];
 
   for (const check of checks) {
-    if (check.id == null) continue;
+    // null / undefined / '' all mean "no reference": nothing to check.
+    if (check.id === null || check.id === undefined || check.id === "") continue;
     const result = (await sequelize.query(
       `SELECT id FROM ${check.table} WHERE id = :id AND organization_id = :organizationId`,
       { replacements: { id: check.id, organizationId }, transaction },

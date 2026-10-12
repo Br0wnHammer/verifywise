@@ -230,6 +230,47 @@ describe("customAxios", () => {
       expect(callback).not.toHaveBeenCalled();
     });
 
+    it("does not show a toast for an incident edit CONFLICT (the incident page shows its own)", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      const error = {
+        config: { url: "/ai-incident-managements/42" },
+        response: {
+          status: 409,
+          data: {
+            message: "Conflict",
+            data: {
+              status: "error",
+              message: "This incident was changed since you opened it.",
+              code: "CONFLICT",
+            },
+          },
+        },
+        message: "Conflict",
+      };
+
+      await expect(rejected(error)).rejects.toEqual(error);
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("still toasts a CONFLICT from any other route", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      const error = {
+        config: { url: "/vendors/7" },
+        response: {
+          status: 409,
+          data: { message: "Conflict", data: { message: "Vendor changed", code: "CONFLICT" } },
+        },
+        message: "Conflict",
+      };
+
+      await expect(rejected(error)).rejects.toEqual(error);
+      expect(callback).toHaveBeenCalled();
+    });
+
     it("does not show a toast for 404 (callers handle it as empty state)", async () => {
       const callback = vi.fn();
       setShowAlertCallback(callback);

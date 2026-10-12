@@ -17,7 +17,7 @@ import { useAuth } from "../../../application/hooks/useAuth";
 import { PageHeaderExtended } from "../../components/Layout/PageHeaderExtended";
 import { addNewIncidentButton, incidentFilterRow } from "./style";
 import IncidentTable from "./IncidentTable";
-import NewIncident from "../../components/Modals/NewIncident";
+import NewIncident, { NewIncidentFormValues } from "../../components/Modals/NewIncident";
 import {
   IncidentManagementStatus,
   Severity,
@@ -518,7 +518,15 @@ const IncidentManagement: React.FC = () => {
     setArchiveId(null);
   };
 
-  const handleIncidentSuccess = async (formData: any): Promise<boolean> => {
+  /**
+   * Saves the drawer. Resolves true to close it; false to keep it open with
+   * the user's edits; or fields to merge into the open form (after a
+   * conflict, the incident's latest updated_at so the next save can go
+   * through).
+   */
+  const handleIncidentSuccess = async (
+    formData: any,
+  ): Promise<boolean | Partial<NewIncidentFormValues>> => {
     try {
       if (selectedIncident) {
         await updateEntityById({
@@ -540,22 +548,83 @@ const IncidentManagement: React.FC = () => {
       handleCloseModal();
       return true;
     } catch (error) {
-      // Someone else saved this incident after the drawer loaded it: keep the
-      // drawer open so the user's edits are not lost.
-      if ((error as { status?: number })?.status === 409) {
-        setAlert({
-          variant: "error",
-          body: "This incident was changed since you opened it. Reload to see the latest version.",
-        });
-        return false;
+      // Someone else saved this incident after the drawer loaded it. Keep the
+      // user's edits, move the form onto the latest version, and say that
+      // saving again will overwrite the other change.
+      if ((error as { status?: number })?.status === 409 && selectedIncident) {
+        try {
+          const latest = await getEntityById({
+            routeUrl: `/ai-incident-managements/${selectedIncident.id}`,
+          });
+          const latestUpdatedAt = latest?.data?.updated_at;
+          if (latestUpdatedAt) {
+            setAlert({
+              variant: "error",
+              body: "This incident was changed by someone else since you opened it. Your edits are kept: save again to overwrite their changes.",
+            });
+            return { expected_updated_at: new Date(latestUpdatedAt).toISOString() };
+          }
+        } catch {
+          // Fall through to the generic failure below.
+        }
       }
+      // Any other failure: keep the drawer open so nothing typed is lost.
       setAlert({
         variant: "error",
         body: selectedIncident ? "Failed to update incident." : "Failed to add incident.",
       });
-      return true;
+      return false;
     }
   };
+
+  /**
+   * The drawer's starting values for the selected incident. Memoised on the
+   * incident so unrelated re-renders (an alert, a refetch of the list) hand
+   * the drawer the same object and never reset what the user has typed.
+   */
+  const incidentInitialData = useMemo<NewIncidentFormValues | undefined>(
+    () =>
+      selectedIncident
+        ? {
+            incident_id: selectedIncident.incident_id || "",
+            ai_project: selectedIncident.ai_project || "",
+            project_id: selectedIncident.project_id ?? "",
+            model_inventory_id: selectedIncident.model_inventory_id ?? "",
+            assignee_id: selectedIncident.assignee_id ?? "",
+            type: selectedIncident.type || "",
+            severity: selectedIncident.severity || "",
+            status: selectedIncident.status || "",
+            occurred_date: selectedIncident.occurred_date
+              ? new Date(selectedIncident.occurred_date).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0],
+            date_detected: selectedIncident.date_detected
+              ? new Date(selectedIncident.date_detected).toISOString().split("T")[0]
+              : new Date().toISOString().split("T")[0],
+            reporter: selectedIncident.reporter,
+            categories_of_harm: selectedIncident.categories_of_harm || [],
+            description: selectedIncident.description,
+            affected_persons_groups: selectedIncident.affected_persons_groups || "",
+            relationship_causality: selectedIncident.relationship_causality || "",
+            immediate_mitigations: selectedIncident.immediate_mitigations || "",
+            planned_corrective_actions: selectedIncident.planned_corrective_actions || "",
+            model_system_version: selectedIncident.model_system_version,
+            interim_report: selectedIncident.interim_report || false,
+            approval_status: selectedIncident.approval_status,
+            approved_by: selectedIncident.approved_by,
+            // The stored approval date as a calendar date, or null when
+            // there is none: never invent one, or a save would look like
+            // an explicit approval change to the server.
+            approval_date: selectedIncident.approval_date
+              ? new Date(selectedIncident.approval_date).toISOString().split("T")[0]
+              : null,
+            approval_notes: selectedIncident.approval_notes,
+            expected_updated_at: selectedIncident.updated_at
+              ? new Date(selectedIncident.updated_at).toISOString()
+              : undefined,
+          }
+        : undefined,
+    [selectedIncident],
+  );
 
   /** -------------------- EXPORT DATA -------------------- */
   const exportColumns = useMemo(() => {
@@ -777,47 +846,7 @@ const IncidentManagement: React.FC = () => {
         isOpen={isNewIncidentModalOpen}
         setIsOpen={handleCloseModal}
         onSuccess={handleIncidentSuccess}
-        initialData={
-          selectedIncident
-            ? {
-                incident_id: selectedIncident.incident_id || "",
-                ai_project: selectedIncident.ai_project || "",
-                project_id: selectedIncident.project_id ?? "",
-                model_inventory_id: selectedIncident.model_inventory_id ?? "",
-                assignee_id: selectedIncident.assignee_id ?? "",
-                type: selectedIncident.type || "",
-                severity: selectedIncident.severity || "",
-                status: selectedIncident.status || "",
-                occurred_date: selectedIncident.occurred_date
-                  ? new Date(selectedIncident.occurred_date).toISOString().split("T")[0]
-                  : new Date().toISOString().split("T")[0],
-                date_detected: selectedIncident.date_detected
-                  ? new Date(selectedIncident.date_detected).toISOString().split("T")[0]
-                  : new Date().toISOString().split("T")[0],
-                reporter: selectedIncident.reporter,
-                categories_of_harm: selectedIncident.categories_of_harm || [],
-                description: selectedIncident.description,
-                affected_persons_groups: selectedIncident.affected_persons_groups || "",
-                relationship_causality: selectedIncident.relationship_causality || "",
-                immediate_mitigations: selectedIncident.immediate_mitigations || "",
-                planned_corrective_actions: selectedIncident.planned_corrective_actions || "",
-                model_system_version: selectedIncident.model_system_version,
-                interim_report: selectedIncident.interim_report || false,
-                approval_status: selectedIncident.approval_status,
-                approved_by: selectedIncident.approved_by,
-                // The stored approval date as a calendar date, or null when
-                // there is none: never invent one, or a save would look like
-                // an explicit approval change to the server.
-                approval_date: selectedIncident.approval_date
-                  ? new Date(selectedIncident.approval_date).toISOString().split("T")[0]
-                  : null,
-                approval_notes: selectedIncident.approval_notes,
-                expected_updated_at: selectedIncident.updated_at
-                  ? new Date(selectedIncident.updated_at).toISOString()
-                  : undefined,
-              }
-            : undefined
-        }
+        initialData={incidentInitialData}
         isEdit={!!selectedIncident}
         mode={mode}
         incidentId={selectedIncident?.id}

@@ -123,10 +123,34 @@ describe("IncidentManagement edit drawer", () => {
     expect(props.initialData.expected_updated_at).toBe("2026-10-10T12:34:56.789Z");
   });
 
-  it("keeps the drawer open (resolves false) when the save is refused with 409", async () => {
+  it("after a 409, refetches the incident and hands the drawer the latest version", async () => {
     const props = await openEditDrawer(STORED_INCIDENT);
     vi.mocked(updateEntityById).mockRejectedValue(
       Object.assign(new Error("Conflict"), { status: 409 }),
+    );
+    vi.mocked(getEntityById).mockResolvedValue({
+      data: { ...STORED_INCIDENT, updated_at: "2026-10-11T08:00:00.000Z" },
+    } as any);
+
+    let result: unknown;
+    await act(async () => {
+      result = await props.onSuccess({ ...props.initialData, status: "Investigating" });
+    });
+
+    // Merged into the open form, so the next save carries the new version.
+    expect(result).toEqual({ expected_updated_at: "2026-10-11T08:00:00.000Z" });
+    expect(getEntityById).toHaveBeenLastCalledWith({ routeUrl: "/ai-incident-managements/42" });
+    expect(
+      await screen.findByText(
+        "This incident was changed by someone else since you opened it. Your edits are kept: save again to overwrite their changes.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the drawer open (resolves false) when a save fails for another reason", async () => {
+    const props = await openEditDrawer(STORED_INCIDENT);
+    vi.mocked(updateEntityById).mockRejectedValue(
+      Object.assign(new Error("Server error"), { status: 500 }),
     );
 
     let result: unknown;
@@ -135,11 +159,22 @@ describe("IncidentManagement edit drawer", () => {
     });
 
     expect(result).toBe(false);
-    expect(
-      await screen.findByText(
-        "This incident was changed since you opened it. Reload to see the latest version.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Failed to update incident.")).toBeInTheDocument();
+  });
+
+  it("hands the drawer the same initialData object across re-renders (an alert does not reset edits)", async () => {
+    const props = await openEditDrawer(STORED_INCIDENT);
+    const first = props.initialData;
+    vi.mocked(updateEntityById).mockRejectedValue(
+      Object.assign(new Error("Server error"), { status: 500 }),
+    );
+
+    await act(async () => {
+      await props.onSuccess({ ...props.initialData, status: "Investigating" });
+    });
+    await screen.findByText("Failed to update incident.");
+
+    expect(captured.drawerProps.initialData).toBe(first);
   });
 
   it("closes the drawer (resolves true) after a successful save", async () => {

@@ -192,6 +192,15 @@ const showGlobalErrorAlert = (error: AxiosError) => {
     // a failure: the Settings page opens a dialog asking where to move answers.
     const inner = responseData.data as { code?: unknown } | undefined;
     if (status === 409 && inner?.code === "options_in_use") return;
+    // An incident edit that lost a concurrent-edit check: the incident page
+    // shows its own message and keeps the drawer open, so no global toast.
+    if (
+      status === 409 &&
+      inner?.code === "CONFLICT" &&
+      requestUrl.includes("/ai-incident-managements/")
+    ) {
+      return;
+    }
     const detail = getEnvelopeErrorMessage(responseData);
     showAlert({
       variant: "error",

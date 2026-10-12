@@ -6,7 +6,8 @@
  * database table using the migration template.
  */
 
-import { QueryTypes } from "sequelize";
+import { QueryTypes, Transaction } from "sequelize";
+import { incidentCalendarDate } from "../utils/validations/incidentManagementValidation.utils";
 import { sequelize } from "../database/db";
 import logger from "../utils/logger/fileLogger";
 
@@ -55,23 +56,41 @@ export type EntityType =
 /**
  * Field formatter function type
  */
-export type FieldFormatter = (value: unknown) => Promise<string>;
+export type FieldFormatter = (value: unknown, context?: FormatterContext) => Promise<string>;
+
+/**
+ * What a formatter that looks rows up needs to stay inside one tenant and,
+ * while an update holds a row lock, on the update's own connection.
+ */
+export interface FormatterContext {
+  /** Lookups only resolve ids that belong to this organization. */
+  organizationId?: number;
+  /** Run lookups on this transaction instead of a separate pool connection. */
+  transaction?: Transaction;
+}
 
 /**
  * Formatter for an id that references a row by name: resolves `id` with
- * `sql` (selecting a `name` column), or falls back to `${label} #id`. Used
- * for incident foreign keys so history shows names, like the user formatter.
+ * `sql` (selecting a `name` column, filtered by `:id` and `:organizationId`),
+ * or falls back to `${label} #id`. Used for incident foreign keys so history
+ * shows names, like the user formatter.
+ *
+ * The lookup is always tenant-scoped: without an organizationId in the
+ * context it does not query at all and shows the fallback, so a name from
+ * another organization can never be disclosed.
  */
 const namedRowFormatter =
   (sql: string, label: string): FieldFormatter =>
-  async (value: unknown): Promise<string> => {
+  async (value: unknown, context?: FormatterContext): Promise<string> => {
     if (value === null || value === undefined || value === "") return "-";
     const id = Number(value);
     if (!Number.isInteger(id)) return String(value);
+    if (context?.organizationId === undefined) return `${label} #${id}`;
     try {
       const rows = await sequelize.query<{ name: string | null }>(sql, {
-        replacements: { id },
+        replacements: { id, organizationId: context.organizationId },
         type: QueryTypes.SELECT,
+        transaction: context.transaction,
       });
       return rows[0]?.name || `${label} #${id}`;
     } catch (error) {
@@ -79,6 +98,9 @@ const namedRowFormatter =
       return `${label} #${id}`;
     }
   };
+
+const incidentDateFormatter: FieldFormatter = async (value: unknown) =>
+  incidentCalendarDate(value) ?? "-";
 
 /**
  * Entity configuration interface
@@ -144,15 +166,22 @@ export const GENERIC_FORMATTERS: { [key: string]: FieldFormatter } = {
   },
 
   // User lookup formatter (resolves user ID to name)
-  user: async (value: unknown): Promise<string> => {
+  // With an organizationId in the context the lookup is tenant-scoped and a
+  // user from another organization shows as "User #id". Callers that pass no
+  // context keep the previous unscoped lookup.
+  user: async (value: unknown, context?: FormatterContext): Promise<string> => {
     if (!value) return "-";
     if (typeof value === "number") {
       try {
+        const scoped = context?.organizationId !== undefined;
         const users = await sequelize.query<UserQueryResult>(
-          `SELECT id, name, surname, email FROM users WHERE id = :userId`,
+          `SELECT id, name, surname, email FROM users WHERE id = :userId${
+            scoped ? " AND organization_id = :organizationId" : ""
+          }`,
           {
-            replacements: { userId: value },
+            replacements: { userId: value, organizationId: context?.organizationId ?? null },
             type: QueryTypes.SELECT,
+            transaction: context?.transaction,
           },
         );
 
@@ -594,18 +623,20 @@ export const ENTITY_CONFIGS: { [key in EntityType]: EntityConfig } = {
     },
     fieldFormatters: {
       model_inventory_id: namedRowFormatter(
-        "SELECT CONCAT_WS(' ', provider, model) AS name FROM model_inventories WHERE id = :id",
+        "SELECT CONCAT_WS(' ', provider, model) AS name FROM model_inventories WHERE id = :id AND organization_id = :organizationId",
         "Model",
       ),
       project_id: namedRowFormatter(
-        "SELECT project_title AS name FROM projects WHERE id = :id",
+        "SELECT project_title AS name FROM projects WHERE id = :id AND organization_id = :organizationId",
         "Use case",
       ),
-      assignee_id: async (value: unknown) =>
-        GENERIC_FORMATTERS.user(value === null || value === "" ? value : Number(value)),
-      occurred_date: GENERIC_FORMATTERS.date,
-      date_detected: GENERIC_FORMATTERS.date,
-      approval_date: GENERIC_FORMATTERS.date,
+      assignee_id: async (value: unknown, context?: FormatterContext) =>
+        GENERIC_FORMATTERS.user(value === null || value === "" ? value : Number(value), context),
+      // TIMESTAMP WITHOUT TIME ZONE calendar dates, read the same way the
+      // update diff compares them (see incidentCalendarDate).
+      occurred_date: incidentDateFormatter,
+      date_detected: incidentDateFormatter,
+      approval_date: incidentDateFormatter,
       interim_report: GENERIC_FORMATTERS.boolean,
       archived: GENERIC_FORMATTERS.boolean,
       categories_of_harm: GENERIC_FORMATTERS.array,

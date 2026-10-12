@@ -11,6 +11,7 @@ import {
   diffIncidentColumns,
   enqueueIncidentUpdatedAutomations,
   updateIncidentByIdQuery,
+  validateIncidentReferences,
 } from "../incidentManagement.utils";
 
 const mockQuery = sequelize.query as jest.MockedFunction<any>;
@@ -20,9 +21,9 @@ describe("diffIncidentColumns", () => {
   const stored = {
     status: "Closed",
     description: "Unchanged",
-    // As pg returns a TIMESTAMP WITHOUT TIME ZONE value.
-    approval_date: new Date("2026-10-01T00:00:00.000Z"),
-    occurred_date: new Date("2026-09-20T00:00:00.000Z"),
+    // As pg returns a TIMESTAMP WITHOUT TIME ZONE value (server-local wall clock).
+    approval_date: new Date(2026, 9, 1),
+    occurred_date: new Date(2026, 8, 20),
     project_id: 3,
     approved_by: "Jane Doe",
     archived: false,
@@ -70,6 +71,33 @@ describe("diffIncidentColumns", () => {
     });
     expect(diffIncidentColumns({ archived: false }, { archived: null })).toEqual({});
     expect(diffIncidentColumns({ archived: null }, { archived: undefined })).toEqual({});
+  });
+});
+
+describe("validateIncidentReferences", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("treats '', null and undefined as no reference and runs no lookup", async () => {
+    const invalid = await validateIncidentReferences(
+      { project_id: "", model_inventory_id: null, assignee_id: undefined },
+      1,
+    );
+    expect(invalid).toEqual([]);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("checks a real id inside the organization, on the given transaction", async () => {
+    mockQuery.mockResolvedValueOnce([[], 0]);
+    const tx = {} as any;
+    const invalid = await validateIncidentReferences({ project_id: 9 }, 1, tx);
+    expect(invalid).toEqual(["project_id"]);
+    expect(mockQuery.mock.calls[0][0]).toContain("organization_id = :organizationId");
+    expect(mockQuery.mock.calls[0][1]).toEqual({
+      replacements: { id: 9, organizationId: 1 },
+      transaction: tx,
+    });
   });
 });
 
