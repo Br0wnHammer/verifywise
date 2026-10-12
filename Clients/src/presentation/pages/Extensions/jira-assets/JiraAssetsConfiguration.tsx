@@ -17,6 +17,7 @@ import {
   Checkbox,
   Button,
   FormControlLabel,
+  useTheme,
 } from "@mui/material";
 import { RefreshCw, Download } from "lucide-react";
 import { VWField, VWSelect, VWToggle } from "./VWComponents";
@@ -25,20 +26,27 @@ import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import StandardModal from "../../../components/Modals/StandardModal";
 import { useAuth } from "../../../../application/hooks/useAuth";
 import { getApiErrorReason } from "../../../../application/utils/apiErrorReason";
+import { CustomizableButton } from "../../../components/button/customizable-button";
+import {
+  isAbandonedRun,
+  isImportInterrupted,
+  removalConflictText,
+  SYNC_RUNNING_MESSAGE,
+} from "./runOutcome";
 
-const SYNC_RUNNING_MESSAGE = "A sync is already running. Try again when it finishes.";
 const SYNC_SLOW_MESSAGE =
   "The sync is taking longer than expected. Check the last sync result later.";
 const SELECTION_SAVE_FAILED = "Could not save the schema and object type. Try again.";
 const SYNC_STALLED_MESSAGE = "The sync stopped responding. Try again.";
 const SYNC_NOT_STARTED_MESSAGE = "The sync did not start. Try again.";
 const MISSING_REMOVED_MESSAGE = "Missing use cases removed.";
-/** 409 body when a removal lost its claim before finishing (nothing was removed). */
-const REMOVAL_INTERRUPTED_MESSAGE = "The removal was interrupted; nothing was removed. Try again.";
+/** Most objects one import may send; the server enforces the same limit. */
+const IMPORT_MAX_OBJECTS = 100;
+const IMPORT_LIMIT_MESSAGE = `Select up to ${IMPORT_MAX_OBJECTS} objects per import.`;
+/** Desktop control height for the panel's action buttons. */
+const CONTROL_HEIGHT_SX = { height: 30, minHeight: 30 };
 const MISSING_EXPLAINER =
   "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.";
-/** error_message the server writes when it closes a run that stopped heart-beating. */
-const ABANDONED_RUN_MESSAGE = "Sync stopped responding and was marked as abandoned";
 /** Polls with nothing queued, nothing running and no new run before we say it did not start. */
 const NOT_STARTED_AFTER_POLLS = 3;
 /** "Sync now" runs in the background; poll its status at this rate, up to the limit. */
@@ -84,6 +92,7 @@ interface ImportedUseCase {
 }
 
 export const JiraAssetsConfiguration: React.FC = () => {
+  const theme = useTheme();
   const formatDate = useFormattedDate();
   // The settings page already redirects non-Admins; this keeps the sync
   // controls read-only if the panel is ever shown to anyone else.
@@ -330,6 +339,10 @@ export const JiraAssetsConfiguration: React.FC = () => {
   // Import selected objects
   const handleImport = async () => {
     if (selectedObjects.size === 0) return;
+    if (selectedObjects.size > IMPORT_MAX_OBJECTS) {
+      setImportMessage({ type: "error", text: IMPORT_LIMIT_MESSAGE });
+      return;
+    }
 
     setIsImporting(true);
     setImportMessage(null);
@@ -351,9 +364,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
         setImportMessage({ type: "error", text: response?.error || "Import failed" });
       }
     } catch (error: any) {
-      // 409 with counts: the import was interrupted part-way; show how far it got.
-      const interrupted =
-        error?.status === 409 && typeof error?.response?.data?.imported === "number";
+      // 409 import_interrupted: stopped part-way; show how far it got.
+      const interrupted = isImportInterrupted(error);
       if (interrupted) {
         setSelectedObjects(new Set());
         await loadImportedUseCases();
@@ -450,7 +462,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
       setSyncMessage({ type: "error", text: SYNC_SLOW_MESSAGE });
     } else if (outcome === "not_started") {
       setSyncMessage({ type: "error", text: SYNC_NOT_STARTED_MESSAGE });
-    } else if (outcome === "stalled" || run?.error_message === ABANDONED_RUN_MESSAGE) {
+    } else if (outcome === "stalled" || isAbandonedRun(run)) {
       setSyncMessage({ type: "error", text: SYNC_STALLED_MESSAGE });
     } else if (run.status === "completed") {
       setSyncMessage({
@@ -514,15 +526,11 @@ export const JiraAssetsConfiguration: React.FC = () => {
       setIsRemoveMissingOpen(false);
       await loadImportedUseCases();
     } catch (error: any) {
-      const reason = getApiErrorReason(error);
       setSyncMessage({
         type: "error",
         text:
-          error?.status === 409
-            ? reason === REMOVAL_INTERRUPTED_MESSAGE
-              ? REMOVAL_INTERRUPTED_MESSAGE
-              : SYNC_RUNNING_MESSAGE
-            : reason || error?.message || "Failed to remove use cases",
+          removalConflictText(error) ??
+          (getApiErrorReason(error) || error?.message || "Failed to remove use cases"),
       });
       setIsRemoveMissingOpen(false);
     } finally {
@@ -1186,7 +1194,11 @@ export const JiraAssetsConfiguration: React.FC = () => {
                 <Button
                   variant="contained"
                   onClick={handleImport}
-                  disabled={isImporting || selectedObjects.size === 0}
+                  disabled={
+                    isImporting ||
+                    selectedObjects.size === 0 ||
+                    selectedObjects.size > IMPORT_MAX_OBJECTS
+                  }
                   startIcon={
                     isImporting ? (
                       <CircularProgress size={14} sx={{ color: "white" }} />
@@ -1205,9 +1217,23 @@ export const JiraAssetsConfiguration: React.FC = () => {
                 </Button>
               </Box>
 
+              {selectedObjects.size > IMPORT_MAX_OBJECTS && (
+                <Typography
+                  variant="caption"
+                  sx={{ display: "block", mb: 1, color: theme.palette.status.error.text }}
+                  data-testid="jira-import-limit"
+                >
+                  {IMPORT_LIMIT_MESSAGE} <span>{selectedObjects.size}</span> <span>selected.</span>
+                </Typography>
+              )}
+
               <TableContainer
                 component={Paper}
-                sx={{ maxHeight: 250, boxShadow: "none", border: "1px solid #e4e7ec" }}
+                sx={{
+                  maxHeight: 250,
+                  boxShadow: "none",
+                  border: `1px solid ${theme.palette.border.dark}`,
+                }}
               >
                 <Table size="small" stickyHeader>
                   <TableHead>
@@ -1255,14 +1281,14 @@ export const JiraAssetsConfiguration: React.FC = () => {
               <Typography variant="caption" color="text.secondary">
                 More objects exist in Jira than are shown here.
               </Typography>
-              <Button
+              <CustomizableButton
                 variant="text"
+                text="Load more"
                 onClick={() => loadJiraObjects(true)}
-                disabled={isLoadingObjects}
-                sx={{ textTransform: "none", fontSize: "13px", color: "#13715B" }}
-              >
-                Load more
-              </Button>
+                isDisabled={isLoadingObjects}
+                testId="jira-objects-load-more"
+                sx={CONTROL_HEIGHT_SX}
+              />
             </Box>
           )}
 
@@ -1281,25 +1307,29 @@ export const JiraAssetsConfiguration: React.FC = () => {
                 <Typography variant="subtitle2" fontWeight={600} sx={{ color: "#344054" }}>
                   <span>Missing in Jira</span> <span>({missingUseCases.length})</span>
                 </Typography>
-                <Button
+                <CustomizableButton
                   variant="outlined"
+                  color="error"
                   onClick={() => setIsRemoveMissingOpen(true)}
-                  disabled={!canManageSync || isRemovingMissing || selectedMissing.length === 0}
+                  isDisabled={!canManageSync || isRemovingMissing || selectedMissing.length === 0}
+                  testId="jira-remove-missing"
                   sx={{
-                    "borderColor": "#c62828",
-                    "color": "#c62828",
-                    "textTransform": "none",
-                    "fontSize": "13px",
+                    ...CONTROL_HEIGHT_SX,
+                    "borderColor": theme.palette.status.error.text,
+                    "color": theme.palette.status.error.text,
                     "&:hover": {
-                      borderColor: "#b71c1c",
-                      backgroundColor: "rgba(198, 40, 40, 0.04)",
+                      borderColor: theme.palette.status.error.text,
+                      backgroundColor: theme.palette.status.error.bg,
                     },
-                    "&:disabled": { borderColor: "#d0d5dd", color: "#98a2b3" },
+                    "&.Mui-disabled": {
+                      borderColor: theme.palette.border.dark,
+                      color: theme.palette.text.disabled,
+                    },
                   }}
                 >
                   <span>Remove selected use cases</span>&nbsp;
                   <span>({selectedMissing.length})</span>
-                </Button>
+                </CustomizableButton>
               </Box>
               <Typography
                 variant="body2"
@@ -1311,7 +1341,11 @@ export const JiraAssetsConfiguration: React.FC = () => {
               </Typography>
               <TableContainer
                 component={Paper}
-                sx={{ maxHeight: 250, boxShadow: "none", border: "1px solid #e4e7ec" }}
+                sx={{
+                  maxHeight: 250,
+                  boxShadow: "none",
+                  border: `1px solid ${theme.palette.border.dark}`,
+                }}
               >
                 <Table size="small" stickyHeader>
                   <TableHead>
@@ -1387,7 +1421,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
             description="These use cases and all their data in VerifyWise will be permanently deleted. This cannot be undone."
             onSubmit={handleRemoveMissing}
             submitButtonText="Remove"
-            submitButtonColor="#c62828"
+            submitButtonColor={theme.palette.status.error.text}
             isSubmitting={isRemovingMissing}
             fitContent
           >
@@ -1415,7 +1449,11 @@ export const JiraAssetsConfiguration: React.FC = () => {
               </Typography>
               <TableContainer
                 component={Paper}
-                sx={{ maxHeight: 300, boxShadow: "none", border: "1px solid #e4e7ec" }}
+                sx={{
+                  maxHeight: 300,
+                  boxShadow: "none",
+                  border: `1px solid ${theme.palette.border.dark}`,
+                }}
               >
                 <Table size="small" stickyHeader>
                   <TableHead>
