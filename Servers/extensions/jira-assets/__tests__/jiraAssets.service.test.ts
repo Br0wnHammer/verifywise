@@ -161,8 +161,9 @@ function fakeDb({
     if (sql.includes("FOR SHARE")) return owned;
     if (sql.includes("WHERE project_id = :projectId")) return linkedProject;
     if (sql.includes("SELECT id FROM projects")) {
-      const projectId = opts.replacements?.projectId;
-      return foreignProjects.includes(projectId) ? [] : [{ id: projectId }];
+      return (opts.replacements?.projectIds ?? [])
+        .filter((id: number) => !foreignProjects.includes(id))
+        .map((id: number) => ({ id }));
     }
     if (sql.includes("SET heartbeat_at")) return [heartbeat, {}];
     if (sql.includes("pg_advisory_xact_lock")) return [{}];
@@ -192,6 +193,9 @@ function fakeDb({
 
 const sqlCalls = (fragment: string) =>
   mockQuery.mock.calls.filter(([sql]) => String(sql).includes(fragment));
+
+/** The deletion flow's link reads: [0] unlocked candidates, [1] locked re-check. */
+const linkReads = () => sqlCalls("SELECT id, project_id FROM jira_assets_use_cases");
 
 function clientReturning(
   objects: ReturnType<typeof jiraObject>[],
@@ -683,10 +687,14 @@ describe("removeMissingUseCases", () => {
     expect(result).toEqual({ removed: 1, unlinked: 1, skipped: 1, skipped_ids: [13] });
     const [, insert] = sqlCalls("INSERT INTO jira_assets_sync_history")[0];
     expect(insert.replacements).toMatchObject({ syncType: "remove_missing", triggeredBy: 8 });
-    const [lockSql, lock] = sqlCalls("SELECT id, project_id FROM jira_assets_use_cases")[0];
+    const [candidateSql, candidates] = linkReads()[0];
+    expect(candidateSql).toContain("missing_in_jira_since IS NOT NULL");
+    expect(candidateSql).not.toContain("FOR UPDATE");
+    expect(candidates.replacements).toEqual({ organizationId: 5, ids: [11, 12, 13] });
+    const [lockSql, lock] = linkReads()[1];
     expect(lockSql).toContain("missing_in_jira_since IS NOT NULL");
-    expect(lockSql).toContain("FOR UPDATE");
-    expect(lock.replacements).toEqual({ organizationId: 5, ids: [11, 12, 13] });
+    expect(lockSql).toMatch(/ORDER BY id\s+FOR UPDATE/);
+    expect(lock.replacements).toEqual({ organizationId: 5, linkIds: [11, 12], ids: [11, 12, 13] });
     // The run's own row is share-locked first, so no claim can close it mid-way.
     const ownership = sqlCalls("FOR SHARE")[0];
     expect(ownership[1]).toMatchObject({
@@ -739,6 +747,53 @@ describe("removeMissingUseCases", () => {
     expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
   });
 
+  it("locks projects before link rows, each in id order (the core delete's order)", async () => {
+    fakeDb({
+      stillFlagged: [
+        { id: 12, project_id: 222 },
+        { id: 11, project_id: 111 },
+      ],
+    });
+
+    await removeMissingUseCases(5, 8, [11, 12]);
+
+    const order = (call: unknown) => mockQuery.mock.calls.indexOf(call as any);
+    const [candidates, linkLock] = linkReads();
+    const projectLock = sqlCalls("SELECT id FROM projects")[0];
+    expect(sqlCalls("SELECT id FROM projects")).toHaveLength(1);
+    expect(projectLock[0]).toMatch(/ORDER BY id\s+FOR UPDATE/);
+    expect(projectLock[1].replacements).toEqual({ organizationId: 5, projectIds: [222, 111] });
+    expect(order(candidates)).toBeLessThan(order(projectLock));
+    expect(order(projectLock)).toBeLessThan(order(linkLock));
+    // Projects are deleted in id order.
+    expect(mockDeleteProject.mock.calls.map(([id]) => id)).toEqual([111, 222]);
+  });
+
+  it("two flagged links to the same project: one delete, both counted as removed", async () => {
+    fakeDb({
+      stillFlagged: [
+        { id: 11, project_id: 111 },
+        { id: 12, project_id: 111 },
+      ],
+    });
+
+    const result = await removeMissingUseCases(5, 8, [11, 12]);
+
+    expect(result).toEqual({ removed: 2, unlinked: 0, skipped: 0, skipped_ids: [] });
+    expect(mockDeleteProject).toHaveBeenCalledTimes(1);
+    expect(sqlCalls("DELETE FROM jira_assets_use_cases")).toHaveLength(0);
+  });
+
+  it("a locked in-org project that fails to delete rolls back; its link is never unlinked", async () => {
+    fakeDb({ stillFlagged: [{ id: 11, project_id: 111 }] });
+    mockDeleteProject.mockResolvedValue(false);
+
+    await expect(removeMissingUseCases(5, 8, [11])).rejects.toThrow("could not be deleted");
+    expect(sqlCalls("DELETE FROM jira_assets_use_cases")).toHaveLength(0);
+    expect(sqlCalls("SET status = 'completed'")).toHaveLength(0);
+    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(1);
+  });
+
   it("cross-org link in a removal: approval untouched, only the link goes (unlinked)", async () => {
     fakeDb({
       stillFlagged: [
@@ -789,11 +844,11 @@ describe("deleteUseCaseByProjectId", () => {
     const [, insert] = sqlCalls("INSERT INTO jira_assets_sync_history")[0];
     expect(insert.replacements).toMatchObject({ syncType: "remove_missing", triggeredBy: 8 });
     expect(sqlCalls("FOR SHARE")[0][1]).toMatchObject({ transaction: FAKE_TX });
-    const [lockSql, lock] = sqlCalls("SELECT id, project_id FROM jira_assets_use_cases")[0];
+    const [lockSql, lock] = linkReads()[1];
     expect(lockSql).toContain("project_id IN (:ids)");
     expect(lockSql).not.toContain("missing_in_jira_since IS NOT NULL");
     expect(lockSql).toContain("FOR UPDATE");
-    expect(lock.replacements).toEqual({ organizationId: 5, ids: [111] });
+    expect(lock.replacements).toEqual({ organizationId: 5, linkIds: [11], ids: [111] });
     expect(mockDeleteProject).toHaveBeenCalledWith(111, 5, FAKE_TX, {
       enqueueAutomationAfterCommit: true,
     });
