@@ -4,10 +4,11 @@ import { Worker } from "bullmq";
 import { createNotificationWorker } from "../services/slack/slackWorker";
 import { createAutomationWorker } from "../services/automations/automationWorker";
 import logger from "../utils/logger/fileLogger";
-import { missingGatewayKeyWarning, shouldWarnMissingGatewayKey } from "../utils/aiGatewayConfig";
+import { warnIfGatewayKeyMissing } from "../utils/aiGatewayKeyCheck";
 
-// The worker runs the daily retention job, which calls the AI Gateway.
-if (shouldWarnMissingGatewayKey()) logger.warn(missingGatewayKeyWarning());
+// The worker runs the daily retention job, which calls the AI Gateway. Same
+// rule as the API server; runs in the background.
+void warnIfGatewayKeyMissing(logger);
 
 const notificationWorker = createNotificationWorker();
 const automationWorker = createAutomationWorker();

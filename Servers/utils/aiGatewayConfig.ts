@@ -36,21 +36,16 @@ export function isGatewayInternalKeyConfigured(): boolean {
   return getGatewayInternalKey() !== "";
 }
 
-/**
- * Whether to warn at startup that the key is missing. The backend calls the
- * gateway at AI_GATEWAY_URL or, when that is unset, at the default address,
- * so the gateway is always in use and a missing key always matters: every
- * internal call, including the daily retention purge, will be refused.
- */
-export function shouldWarnMissingGatewayKey(): boolean {
-  return !isGatewayInternalKeyConfigured();
+/** Whether AI_GATEWAY_URL is set explicitly (not just the default address). */
+export function isGatewayUrlConfigured(): boolean {
+  return normaliseEnvValue(process.env.AI_GATEWAY_URL) !== "";
 }
 
 /** The startup warning text, shared by the API server and the worker. */
-export function missingGatewayKeyWarning(): string {
+export function missingGatewayKeyWarning(reason: string): string {
   return (
-    `AI_GATEWAY_INTERNAL_KEY is not set. The AI Gateway at ${getGatewayUrl()} will refuse ` +
-    "this service's calls, including the daily retention purge (shown as 'Purge refused: " +
-    "internal key not configured'). Set the same value here and in the AI Gateway."
+    `AI_GATEWAY_INTERNAL_KEY is not set, but ${reason}. The AI Gateway at ${getGatewayUrl()} ` +
+    "will refuse this service's calls, including the daily retention purge (shown as " +
+    "'Purge refused: internal key not configured'). Set the same value here and in the AI Gateway."
   );
 }

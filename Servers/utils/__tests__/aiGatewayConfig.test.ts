@@ -4,8 +4,8 @@ import {
   getGatewayInternalKey,
   getGatewayUrl,
   isGatewayInternalKeyConfigured,
+  isGatewayUrlConfigured,
   missingGatewayKeyWarning,
-  shouldWarnMissingGatewayKey,
 } from "../aiGatewayConfig";
 
 const saved = {
@@ -56,15 +56,19 @@ describe("aiGatewayConfig", () => {
     expect(getGatewayUrl()).toBe(DEFAULT_AI_GATEWAY_URL);
   });
 
-  it("warns whenever the key is missing, with or without AI_GATEWAY_URL", () => {
-    setEnv("AI_GATEWAY_INTERNAL_KEY", undefined);
+  it("knows whether AI_GATEWAY_URL is set explicitly", () => {
     setEnv("AI_GATEWAY_URL", undefined);
-    expect(shouldWarnMissingGatewayKey()).toBe(true);
-    expect(missingGatewayKeyWarning()).toContain(DEFAULT_AI_GATEWAY_URL);
+    expect(isGatewayUrlConfigured()).toBe(false);
+    setEnv("AI_GATEWAY_URL", "  ");
+    expect(isGatewayUrlConfigured()).toBe(false);
     setEnv("AI_GATEWAY_URL", "http://gw:8100");
-    expect(shouldWarnMissingGatewayKey()).toBe(true);
-    expect(missingGatewayKeyWarning()).toContain("http://gw:8100");
-    setEnv("AI_GATEWAY_INTERNAL_KEY", "k");
-    expect(shouldWarnMissingGatewayKey()).toBe(false);
+    expect(isGatewayUrlConfigured()).toBe(true);
+  });
+
+  it("names the reason and the gateway URL in the warning", () => {
+    setEnv("AI_GATEWAY_URL", "http://gw:8100");
+    const text = missingGatewayKeyWarning("AI_GATEWAY_URL is set");
+    expect(text).toContain("but AI_GATEWAY_URL is set");
+    expect(text).toContain("http://gw:8100");
   });
 });
