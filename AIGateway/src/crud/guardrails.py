@@ -256,22 +256,19 @@ _PREVIOUS_RETENTION_KEYS = (
 )
 
 
-async def upsert_guardrail_settings(org_id: int, data: dict) -> dict:
-    """Upsert guardrail settings and return the saved row."""
-    settings, _previous = await upsert_guardrail_settings_with_previous(org_id, data)
-    return settings
-
-
 async def upsert_guardrail_settings_with_previous(
     org_id: int, data: dict
 ) -> tuple[dict, Optional[dict]]:
     """Upsert guardrail settings. A new row takes defaults for missing keys; an
     existing row only changes the keys present in `data`.
 
-    Returns (saved row, previous retention values). The previous values are
-    read with SELECT ... FOR UPDATE in the save's own transaction, so they are
-    exactly what this save replaced, even under concurrent saves. They are None
-    when the organization had no settings row yet.
+    Returns (saved row, previous retention values). A missing row is first
+    created with the defaults (INSERT ... ON CONFLICT DO NOTHING), so there is
+    always a row to lock; the previous values are then read with
+    SELECT ... FOR UPDATE in the save's own transaction. They are exactly what
+    this save replaced, even under concurrent saves, including two first saves
+    for the same organization (the second waits for the first's lock). For an
+    organization with no saved settings they are the defaults.
 
     The statement is static: each column's ``set_<column>`` flag decides whether
     the update takes the new value or keeps the stored one."""
@@ -282,6 +279,47 @@ async def upsert_guardrail_settings_with_previous(
         params[f"set_{column}"] = column in data
 
     async with get_db() as db:
+        # Create the row with the defaults if it is missing, so the lock below
+        # always has a row to hold. Without it, FOR UPDATE locks nothing and
+        # two first saves would both see no previous values.
+        await db.execute(
+            text(
+                """
+                INSERT INTO ai_gateway_guardrail_settings (
+                    organization_id,
+                    pii_on_error,
+                    content_filter_on_error,
+                    pii_replacement_format,
+                    content_filter_replacement,
+                    log_retention_days,
+                    spend_log_retention_days,
+                    log_request_body,
+                    log_response_body,
+                    auto_purge_enabled,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    :org_id,
+                    :default_pii_on_error,
+                    :default_content_filter_on_error,
+                    :default_pii_replacement_format,
+                    :default_content_filter_replacement,
+                    :default_log_retention_days,
+                    :default_spend_log_retention_days,
+                    :default_log_request_body,
+                    :default_log_response_body,
+                    :default_auto_purge_enabled,
+                    NOW(),
+                    NOW()
+                )
+                ON CONFLICT (organization_id) DO NOTHING
+                """
+            ),
+            {
+                "org_id": org_id,
+                **{f"default_{column}": value for column, value in _SETTINGS_DEFAULTS.items()},
+            },
+        )
         # A separate statement, not a CTE of the upsert: a CTE would be read
         # after ON CONFLICT DO UPDATE had already changed the row, and
         # FOR UPDATE skips a row the same command updated.
