@@ -31,6 +31,10 @@ jest.mock("../../utils/shadowAiConfig.utils", () => ({
   getSettingsQuery: jest.fn(),
 }));
 
+jest.mock("../../utils/dataRetention.utils", () => ({
+  recordRetentionRun: jest.fn(),
+}));
+
 import {
   runDailyRollup,
   runMonthlyRollup,
@@ -41,6 +45,7 @@ import { sequelize } from "../../database/db";
 import { calculateRiskScoresForOrganization } from "../shadowAiRiskScoring.service";
 import { getSettingsQuery } from "../../utils/shadowAiConfig.utils";
 import logger from "../../utils/logger/fileLogger";
+import { recordRetentionRun } from "../../utils/dataRetention.utils";
 
 // Cast mocks
 const mockQuery = sequelize.query as jest.MockedFunction<typeof sequelize.query>;
@@ -141,6 +146,42 @@ describe("shadowAiAggregation.service", () => {
       expect(mockGetSettings).toHaveBeenCalledWith(1);
       // 1 getAllOrgs + 3 delete queries
       expect(mockQuery).toHaveBeenCalledTimes(4);
+      expect(recordRetentionRun).toHaveBeenCalledTimes(3);
+      expect(recordRetentionRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: 1,
+          recordType: "shadow_ai_events",
+          deletedCount: 5,
+          status: "success",
+          cutoff: expect.any(String),
+        }),
+      );
+      expect(recordRetentionRun).toHaveBeenCalledWith(
+        expect.objectContaining({ recordType: "shadow_ai_daily_rollups", deletedCount: 2 }),
+      );
+      expect(recordRetentionRun).toHaveBeenCalledWith(
+        expect.objectContaining({ recordType: "shadow_ai_alert_history", deletedCount: 1 }),
+      );
+    });
+
+    it("should not fail the cleanup when recording a run fails", async () => {
+      mockOrgIds([1]);
+      mockGetSettings.mockResolvedValue({
+        retention_events_days: 30,
+        retention_daily_rollups_days: 90,
+        retention_alert_history_days: 180,
+      } as any);
+      mockQuery.mockResolvedValue([undefined, 1] as any);
+      (recordRetentionRun as jest.Mock).mockRejectedValue(new Error("record failed"));
+
+      await purgeOldEvents();
+
+      // All three deletes still ran
+      expect(mockQuery).toHaveBeenCalledTimes(4);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("retention run failed"),
+        expect.any(Error),
+      );
     });
 
     it("should skip purge when retention days is 0", async () => {
@@ -155,6 +196,7 @@ describe("shadowAiAggregation.service", () => {
 
       // 1 getAllOrgs only, no delete queries
       expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(recordRetentionRun).not.toHaveBeenCalled();
       expect(mockGetSettings).toHaveBeenCalledWith(1);
     });
 

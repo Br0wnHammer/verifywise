@@ -1,6 +1,7 @@
 import { getAllOrganizationsQuery } from "../../../utils/organization.utils";
 import { getMrmOrgSettings } from "../../../utils/mrmSettings.utils";
 import { getRetentionCutoffQuery, pruneMetricsBatchQuery } from "../../../utils/mrmRetention.utils";
+import { recordRetentionRun } from "../../../utils/dataRetention.utils";
 import logger from "../../../utils/logger/fileLogger";
 
 /**
@@ -51,6 +52,18 @@ export async function runRetentionPrune(organizationId: number): Promise<Retenti
     if (n < PRUNE_BATCH_SIZE) {
       break;
     }
+  }
+
+  try {
+    await recordRetentionRun({
+      organizationId,
+      recordType: "mrm_metrics",
+      cutoff,
+      deletedCount: deleted,
+      status: capped ? "capped" : "success",
+    });
+  } catch (error) {
+    logger.error(`Recording MRM retention run failed for org ${organizationId}:`, error);
   }
 
   return { organization_id: organizationId, cutoff, deleted, batches, capped };

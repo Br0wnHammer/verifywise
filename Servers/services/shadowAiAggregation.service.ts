@@ -14,6 +14,30 @@ import { sequelize } from "../database/db";
 import logger from "../utils/logger/fileLogger";
 import { calculateRiskScoresForOrganization } from "./shadowAiRiskScoring.service";
 import { getSettingsQuery } from "../utils/shadowAiConfig.utils";
+import { recordRetentionRun, type RetentionRecordType } from "../utils/dataRetention.utils";
+
+/** Record a cleanup run; a recording failure is logged and never breaks the cleanup. */
+async function recordShadowAiRun(
+  organizationId: number,
+  recordType: RetentionRecordType,
+  days: number,
+  deletedCount: number,
+): Promise<void> {
+  try {
+    await recordRetentionRun({
+      organizationId,
+      recordType,
+      cutoff: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
+      deletedCount,
+      status: "success",
+    });
+  } catch (error) {
+    logger.error(
+      `❌ Recording ${recordType} retention run failed for organization ${organizationId}:`,
+      error,
+    );
+  }
+}
 
 /**
  * Get all organization IDs that have shadow AI data.
@@ -136,6 +160,12 @@ export async function purgeOldEvents(): Promise<void> {
              AND event_timestamp < NOW() - INTERVAL '1 day' * :days`,
           { replacements: { organizationId, days: settings.retention_events_days } },
         );
+        await recordShadowAiRun(
+          organizationId,
+          "shadow_ai_events",
+          settings.retention_events_days,
+          Number(eventCount) || 0,
+        );
         if ((eventCount as number) > 0) {
           logger.debug(
             `✅ Purged ${eventCount} events older than ${settings.retention_events_days}d for organization ${organizationId}`,
@@ -151,6 +181,12 @@ export async function purgeOldEvents(): Promise<void> {
              AND rollup_date < NOW() - INTERVAL '1 day' * :days`,
           { replacements: { organizationId, days: settings.retention_daily_rollups_days } },
         );
+        await recordShadowAiRun(
+          organizationId,
+          "shadow_ai_daily_rollups",
+          settings.retention_daily_rollups_days,
+          Number(rollupCount) || 0,
+        );
         if ((rollupCount as number) > 0) {
           logger.debug(
             `✅ Purged ${rollupCount} daily rollups older than ${settings.retention_daily_rollups_days}d for organization ${organizationId}`,
@@ -165,6 +201,12 @@ export async function purgeOldEvents(): Promise<void> {
            WHERE organization_id = :organizationId
              AND fired_at < NOW() - INTERVAL '1 day' * :days`,
           { replacements: { organizationId, days: settings.retention_alert_history_days } },
+        );
+        await recordShadowAiRun(
+          organizationId,
+          "shadow_ai_alert_history",
+          settings.retention_alert_history_days,
+          Number(alertCount) || 0,
         );
         if ((alertCount as number) > 0) {
           logger.debug(

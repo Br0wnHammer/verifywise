@@ -9,6 +9,7 @@ import {
   getRetentionCutoffQuery,
   pruneMetricsBatchQuery,
 } from "../../../../utils/mrmRetention.utils";
+import { recordRetentionRun } from "../../../../utils/dataRetention.utils";
 import { getAllOrganizationsQuery } from "../../../../utils/organization.utils";
 
 jest.mock("../../../../utils/mrmSettings.utils", () => ({
@@ -17,6 +18,9 @@ jest.mock("../../../../utils/mrmSettings.utils", () => ({
 jest.mock("../../../../utils/mrmRetention.utils", () => ({
   getRetentionCutoffQuery: jest.fn(),
   pruneMetricsBatchQuery: jest.fn(),
+}));
+jest.mock("../../../../utils/dataRetention.utils", () => ({
+  recordRetentionRun: jest.fn(),
 }));
 jest.mock("../../../../utils/organization.utils", () => ({
   getAllOrganizationsQuery: jest.fn(),
@@ -71,6 +75,36 @@ describe("runRetentionPrune", () => {
     expect(summary.batches).toBe(PRUNE_MAX_BATCHES);
     expect(summary.deleted).toBe(PRUNE_BATCH_SIZE * PRUNE_MAX_BATCHES);
     expect(summary.capped).toBe(true);
+  });
+
+  it("records an mrm_metrics run with the cutoff and outcome", async () => {
+    mockPruneBatch.mockResolvedValueOnce(42);
+    await runRetentionPrune(1);
+    expect(recordRetentionRun).toHaveBeenCalledWith({
+      organizationId: 1,
+      recordType: "mrm_metrics",
+      cutoff: "2024-06-10 00:00:00+00",
+      deletedCount: 42,
+      status: "success",
+    });
+  });
+
+  it("records a capped run when the batch cap is hit", async () => {
+    mockPruneBatch.mockResolvedValue(PRUNE_BATCH_SIZE);
+    await runRetentionPrune(1);
+    expect(recordRetentionRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "capped",
+        deletedCount: PRUNE_BATCH_SIZE * PRUNE_MAX_BATCHES,
+      }),
+    );
+  });
+
+  it("still returns the summary when recording the run fails", async () => {
+    mockPruneBatch.mockResolvedValueOnce(3);
+    (recordRetentionRun as jest.Mock).mockRejectedValueOnce(new Error("record failed"));
+    const summary = await runRetentionPrune(1);
+    expect(summary.deleted).toBe(3);
   });
 
   it("uses the org's configured retention_months", async () => {

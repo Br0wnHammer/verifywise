@@ -18,6 +18,12 @@ import {
   verifyChain,
 } from "../../utils/auditLedger.utils";
 import { pruneAuditLedgerBatch } from "../../utils/auditLedgerRetention.utils";
+import {
+  countAuditRecordsBefore,
+  getLatestRetentionRuns,
+  setAuditRetentionMonths,
+} from "../../utils/dataRetention.utils";
+import { runDataRetentionPrune } from "../../services/automations/actions/dataRetentionPrune";
 import { createTestOrganization, cleanupDatabase } from "./helpers";
 
 jest.setTimeout(60000);
@@ -421,5 +427,35 @@ describe("audit ledger prune and checkpoint-aware verification", () => {
     expect(result.status).toBe("compromised");
     expect(Number(result.brokenAtId)).toBe((await remainingIds())[0]);
     expect(result.prunedThrough?.id).toBe(old.ids[9]);
+  });
+
+  it("runs the daily job end to end: counts, prunes, self-audits and records the run", async () => {
+    await seedOld(10);
+    await appendCurrent(2);
+
+    // No period set yet: nothing happens and nothing is recorded.
+    expect(await runDataRetentionPrune(orgId)).toBeNull();
+    expect(await count("audit_ledger")).toBe(12);
+
+    await setAuditRetentionMonths(orgId, 12, null);
+    expect(await countAuditRecordsBefore(orgId, 12)).toBe(10);
+
+    const summary = await runDataRetentionPrune(orgId);
+    expect(summary).toMatchObject({ deleted: 10, capped: false });
+
+    // Two current rows remain, plus the self-audit entry the job appended.
+    expect(await count("audit_ledger")).toBe(3);
+    const [selfAudit] = await sequelize.query<{ description: string }>(
+      `SELECT description FROM audit_ledger WHERE organization_id = :orgId ORDER BY id DESC LIMIT 1`,
+      { replacements: { orgId }, type: QueryTypes.SELECT },
+    );
+    expect(selfAudit.description).toMatch(
+      /^Retention removed 10 audit records before \d{4}-\d{2}-\d{2}$/,
+    );
+
+    const runs = await getLatestRetentionRuns(orgId);
+    expect(runs.audit_records).toMatchObject({ deleted_count: 10, status: "success" });
+    expect(await countAuditRecordsBefore(orgId, 12)).toBe(0);
+    expect((await verifyChain(orgId)).status).toBe("intact");
   });
 });

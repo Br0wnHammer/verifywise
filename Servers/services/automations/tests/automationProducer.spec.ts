@@ -42,6 +42,7 @@ import {
   scheduleAiGatewayCacheCleanup,
   scheduleMcpGatewayCleanup,
   scheduleFileExpirySweep,
+  scheduleDataRetentionPrune,
 } from "../automationProducer";
 
 const mockAdd = automationQueue.add as jest.MockedFunction<typeof automationQueue.add>;
@@ -199,6 +200,15 @@ describe("automationProducer", () => {
       await scheduleMcpGatewayCleanup();
 
       expectSchedulerCall("mcp_audit_cleanup", { type: "mcp_gateway" }, "0 3 * * *");
+    });
+  });
+
+  describe("scheduleDataRetentionPrune", () => {
+    it("should add a repeating job at 3:30 AM daily without obliterating", async () => {
+      await scheduleDataRetentionPrune();
+
+      expect(mockObliterate).not.toHaveBeenCalled();
+      expectSchedulerCall("data_retention_prune", { type: "data_retention" }, "30 3 * * *");
     });
   });
 

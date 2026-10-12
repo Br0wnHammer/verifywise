@@ -29,6 +29,7 @@ import { processScheduledAiDetectionScans } from "../aiDetection/scheduledScanPr
 import { syncAiTrustIndex } from "./actions/syncAiTrustIndex";
 import { runRevalidationSweepAllOrgs } from "./actions/mrmRevalidationSweep";
 import { runRetentionPruneAllOrgs } from "./actions/mrmRetentionPrune";
+import { runDataRetentionPruneAllOrgs } from "./actions/dataRetentionPrune";
 import { runEvidenceFreshnessSweepAllOrgs } from "./actions/evidenceFreshnessSweep";
 import { runDeadlineEscalationSweepAllOrgs } from "./actions/deadlineEscalationSweep";
 import { runStaleInheritanceNotifySweepAllOrgs } from "./actions/staleInheritanceNotifySweep";
@@ -697,6 +698,8 @@ export const createAutomationWorker = () => {
           await runRevalidationSweepAllOrgs();
         } else if (name === "mrm_retention_prune") {
           await runRetentionPruneAllOrgs();
+        } else if (name === "data_retention_prune") {
+          await runDataRetentionPruneAllOrgs();
         } else if (name === "evidence_freshness_sweep") {
           await runEvidenceFreshnessSweepAllOrgs();
         } else if (name === "deadline_escalation_sweep") {
