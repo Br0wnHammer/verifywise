@@ -454,6 +454,9 @@ describe("project.ctrl", () => {
   describe("deleteProjectById", () => {
     it("should return 202 when project is deleted", async () => {
       const project = buildProject();
+      (lockProjectForDelete as jest.MockedFunction<typeof lockProjectForDelete>).mockResolvedValue(
+        true,
+      );
       mockGetPendingApproval.mockResolvedValue(null as any);
       mockDelete.mockResolvedValue(project as any);
       const req = createReq({ params: { id: "1" } });

@@ -52,7 +52,6 @@ describe("deleteProjectWithSideEffects", () => {
     expect(record).toHaveBeenCalledWith(111, 8, 5, tx);
     expect(del).toHaveBeenCalledWith(111, 5, tx, {
       enqueueAutomationAfterCommit: false,
-      projectLocked: true,
     });
     expect(order(lock)).toBeLessThan(order(pending));
     expect(order(pending)).toBeLessThan(order(withdraw));
@@ -70,7 +69,6 @@ describe("deleteProjectWithSideEffects", () => {
     expect(lock).not.toHaveBeenCalled();
     expect(del).toHaveBeenCalledWith(111, 5, tx, {
       enqueueAutomationAfterCommit: true,
-      projectLocked: true,
     });
   });
 
@@ -84,6 +82,18 @@ describe("deleteProjectWithSideEffects", () => {
     expect(pending).not.toHaveBeenCalled();
     expect(record).not.toHaveBeenCalled();
     expect(del).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops at the lock when the project is not in the organization", async () => {
+    lock.mockResolvedValue(false);
+
+    const result = await deleteProjectWithSideEffects(111, 5, tx, { userId: 8 });
+
+    expect(result).toEqual({ deleted: false, withdrawnApprovalId: null });
+    expect(pending).not.toHaveBeenCalled();
+    expect(withdraw).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
   });
 
   it("records no history without a user", async () => {

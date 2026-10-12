@@ -24,13 +24,16 @@ export interface DeleteProjectOptions {
  * drift apart:
  *
  * 1. lock the project row (lockProjectForDelete), unless the caller already
- *    holds it — before anything that references the project;
+ *    holds it — before anything that references the project; if there is no
+ *    such project in the organization, stop here (deleted: false) and touch
+ *    nothing else;
  * 2. withdraw a pending use-case approval request;
  * 3. record the deletion in the change history (the table has no FK to
  *    projects, so recording first is safe; if the delete then fails the
  *    caller rolls back);
  * 4. deleteProjectByIdQuery: children, the project row, the project_deleted
- *    automation (after commit when asked).
+ *    automation (after commit when asked). It locks the project as its own
+ *    first statement too, a no-op here.
  *
  * Used by the core "Delete use case", Jira Assets and the demo-data driver.
  * Returns what deleteProjectByIdQuery returned (false when there was no such
@@ -50,7 +53,10 @@ export async function deleteProjectWithSideEffects(
     enqueueAutomationAfterCommit = false,
   } = options;
 
-  if (!alreadyLocked) await lockProjectForDelete(projectId, organizationId, transaction);
+  if (!alreadyLocked && !(await lockProjectForDelete(projectId, organizationId, transaction))) {
+    // No such project in this organization: touch nothing else.
+    return { deleted: false, withdrawnApprovalId: null };
+  }
 
   let withdrawnApprovalId: number | null = null;
   if (withdrawApproval) {
@@ -69,9 +75,10 @@ export async function deleteProjectWithSideEffects(
     await recordUseCaseDeletion(projectId, userId, organizationId, transaction);
   }
 
+  // deleteProjectByIdQuery takes the lock again as its first statement; the
+  // row is already locked by this transaction, so that is one cheap no-op.
   const deleted = await deleteProjectByIdQuery(projectId, organizationId, transaction, {
     enqueueAutomationAfterCommit,
-    projectLocked: true,
   });
   return { deleted, withdrawnApprovalId };
 }

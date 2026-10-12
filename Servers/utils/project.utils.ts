@@ -807,11 +807,11 @@ export const deleteProjectByIdQuery = async (
   id: number,
   organizationId: number,
   transaction: Transaction,
-  options: { enqueueAutomationAfterCommit?: boolean; projectLocked?: boolean } = {},
+  options: { enqueueAutomationAfterCommit?: boolean } = {},
 ): Promise<boolean> => {
-  // The project lock comes before any child row. Callers that already hold
-  // it (deleteProjectWithSideEffects) say so and skip the extra round trip.
-  if (!options.projectLocked) await lockProjectForDelete(id, organizationId, transaction);
+  // The project lock comes before any child row. If the caller already holds
+  // it (deleteProjectWithSideEffects), this is a cheap no-op.
+  await lockProjectForDelete(id, organizationId, transaction);
   const frameworks = await sequelize.query(
     `SELECT framework_id FROM projects_frameworks WHERE organization_id = :organizationId AND project_id = :project_id`,
     {
