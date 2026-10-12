@@ -5,11 +5,20 @@
  * The request is forwarded unchanged with the caller's own organization, user
  * and role; the gateway still enforces admin-only access and validation, and
  * its status and body are returned as they are, errors included.
+ *
+ * One exception: the gateway only knows the built-in Admin role, while the
+ * Data retention page is open to any role holding organization.admin. A save
+ * that changes only retention settings, from a caller this backend has checked
+ * holds that permission, is forwarded as Admin. Every other save keeps the
+ * caller's own role, so guardrail behaviour settings stay Admin-only.
  */
 
 import { Request, Response } from "express";
 import { AiGatewayError, aiGatewayRequest } from "../utils/aiGatewayInternal.utils";
-import { appendRetentionChangeToLedger } from "../utils/retentionAudit.utils";
+import {
+  appendRetentionChangeToLedger,
+  canChangeRetentionPeriods,
+} from "../utils/retentionAudit.utils";
 import { logFailure, logProcessing, logSuccess } from "../utils/logger/logHelper";
 import logger from "../utils/logger/fileLogger";
 
@@ -19,7 +28,7 @@ const SETTINGS_PATH = "/internal/guardrails/settings";
 const SETTINGS_UPDATE_TIMEOUT_MS = 30_000;
 
 /** The gateway's values for an organization that has not saved its own settings. */
-const GATEWAY_DEFAULTS = {
+export const GATEWAY_DEFAULTS = {
   log_retention_days: 90,
   spend_log_retention_days: 90,
   auto_purge_enabled: false,
@@ -63,6 +72,32 @@ export function describeRetentionChanges(
   return changes;
 }
 
+/** Whether a settings body touches retention settings and nothing else. */
+export function isRetentionOnlyUpdate(body: Record<string, unknown>): boolean {
+  const keys = Object.keys(body);
+  return keys.length > 0 && keys.every((key) => key in RETENTION_LABELS);
+}
+
+/**
+ * The role to send to the gateway. The gateway's admin check accepts only
+ * "Admin", so a retention-only save by a role this backend allows to change
+ * retention periods (organization.admin, including custom roles) is sent as
+ * Admin. The check is role-based: the SuperAdmin grant flag is never used.
+ */
+async function gatewayRoleFor(req: Request, body: Record<string, unknown>) {
+  if (req.role === "Admin" || !isRetentionOnlyUpdate(body)) return req.role;
+  try {
+    return (await canChangeRetentionPeriods(req.organizationId, req.role)) ? "Admin" : req.role;
+  } catch (error) {
+    // Without the permission answer the caller's own role is sent, and the
+    // gateway's admin check decides.
+    logger.warn(
+      `Checking retention permission for role ${req.role} failed: ${(error as Error)?.message ?? error}`,
+    );
+    return req.role;
+  }
+}
+
 export async function updateGuardrailSettings(req: Request, res: Response): Promise<any> {
   const fn = "updateGuardrailSettings";
   const tenant = {
@@ -92,10 +127,12 @@ export async function updateGuardrailSettings(req: Request, res: Response): Prom
     );
   }
 
+  const gatewayRole = await gatewayRoleFor(req, body);
   let updated: any;
   try {
     updated = await aiGatewayRequest("PUT", SETTINGS_PATH, {
       ...tenant,
+      role: gatewayRole,
       body,
       timeoutMs: SETTINGS_UPDATE_TIMEOUT_MS,
     });

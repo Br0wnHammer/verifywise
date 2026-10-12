@@ -18,6 +18,9 @@ jest.mock("../../utils/logger/logHelper", () => ({
   logProcessing: jest.fn<any>(),
   logSuccess: jest.fn<any>().mockResolvedValue(undefined),
 }));
+jest.mock("../../utils/rolePermissions.utils", () => ({
+  roleHasPermission: jest.fn<any>().mockResolvedValue(false),
+}));
 jest.mock("../../utils/logger/fileLogger", () => ({
   __esModule: true,
   default: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
@@ -27,6 +30,7 @@ import { describeRetentionChanges, updateGuardrailSettings } from "../aiGatewayS
 import { AiGatewayError, aiGatewayRequest } from "../../utils/aiGatewayInternal.utils";
 import { appendToAuditLedger } from "../../utils/auditLedger.utils";
 import { logFailure, logProcessing, logSuccess } from "../../utils/logger/logHelper";
+import { roleHasPermission } from "../../utils/rolePermissions.utils";
 
 const m = (fn: unknown) => fn as jest.MockedFunction<any>;
 
@@ -52,6 +56,80 @@ function gateway(before: unknown, after: unknown) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  m(roleHasPermission).mockResolvedValue(false);
+});
+
+function putRole(): string | undefined {
+  const put = m(aiGatewayRequest).mock.calls.find((call: any[]) => call[0] === "PUT");
+  return put?.[2]?.role;
+}
+
+describe("updateGuardrailSettings role sent to the gateway", () => {
+  const after = { settings: { log_retention_days: 30 } };
+
+  it("sends Admin for a retention-only save by a custom role holding organization.admin", async () => {
+    gateway({ settings: {} }, after);
+    m(roleHasPermission).mockResolvedValue(true);
+
+    await updateGuardrailSettings(
+      createReq({ log_retention_days: 30, auto_purge_enabled: true }, "Compliance lead"),
+      createRes(),
+    );
+
+    expect(m(roleHasPermission)).toHaveBeenCalledWith(2, "Compliance lead", "organization.admin");
+    expect(putRole()).toBe("Admin");
+  });
+
+  it("keeps the caller's role when the save includes a non-retention setting", async () => {
+    gateway({ settings: {} }, after);
+    m(roleHasPermission).mockResolvedValue(true);
+
+    await updateGuardrailSettings(
+      createReq({ log_retention_days: 30, pii_on_error: "allow" }, "Compliance lead"),
+      createRes(),
+    );
+
+    expect(putRole()).toBe("Compliance lead");
+  });
+
+  it("keeps the caller's role when the role lacks organization.admin", async () => {
+    gateway({ settings: {} }, after);
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }, "Editor"), createRes());
+
+    expect(putRole()).toBe("Editor");
+  });
+
+  it("does not elevate an elected SuperAdmin whose org role is Editor", async () => {
+    gateway({ settings: {} }, after);
+
+    await updateGuardrailSettings(
+      { ...createReq({ log_retention_days: 30 }, "Editor"), isSuperAdmin: true },
+      createRes(),
+    );
+
+    expect(putRole()).toBe("Editor");
+  });
+
+  it("keeps the caller's role when the permission lookup fails", async () => {
+    gateway({ settings: {} }, after);
+    m(roleHasPermission).mockRejectedValue(new Error("db down"));
+    const res = createRes();
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }, "Compliance lead"), res);
+
+    expect(putRole()).toBe("Compliance lead");
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("does not look up permissions for a built-in Admin", async () => {
+    gateway({ settings: {} }, after);
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), createRes());
+
+    expect(m(roleHasPermission)).not.toHaveBeenCalled();
+    expect(putRole()).toBe("Admin");
+  });
 });
 
 describe("updateGuardrailSettings", () => {
