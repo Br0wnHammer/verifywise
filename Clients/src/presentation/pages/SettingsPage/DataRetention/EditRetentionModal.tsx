@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, Stack, Typography } from "@mui/material";
+import { Box, Stack, Typography, useTheme } from "@mui/material";
 import { Link } from "react-router";
 import StandardModal from "../../../components/Modals/StandardModal";
 import Field from "../../../components/Inputs/Field";
@@ -31,6 +31,14 @@ export const MAX_SHADOW_AI_RETENTION_DAYS = 3650;
 
 const INDEFINITE = "";
 
+// The house Field and Select stylesheets pin their height to 34px with
+// selectors of specificity (0,2,1) and (0,3,0); repeating "&" raises these past both.
+const FIELD_HEIGHT_SX = { "&&& .MuiInputBase-root": { height: "30px" } };
+const SELECT_HEIGHT_SX = {
+  "width": "100%",
+  "&&& .MuiSelect-select": { height: "30px", minHeight: "30px", boxSizing: "border-box" },
+};
+
 const SHADOW_AI_FIELDS = {
   shadow_ai_events: "retention_events_days",
   shadow_ai_daily_rollups: "retention_daily_rollups_days",
@@ -56,6 +64,7 @@ const initialValue = (row: RetentionRow): string => {
 
 export default function EditRetentionModal({ row, onClose }: EditRetentionModalProps) {
   const { t } = useTranslation();
+  const theme = useTheme();
   const invalidate = useInvalidateDataRetention();
 
   const [value, setValue] = useState(initialValue(row));
@@ -117,11 +126,9 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
           return;
         }
         const { count } = await previewAuditRetention(months as number);
-        if (count === 0) {
-          await saveAudit(months);
-        } else {
-          setPendingDelete(count);
-        }
+        // Even with nothing to delete yet, later cleanups delete what the old
+        // period would have kept, so every shortening is confirmed.
+        setPendingDelete(count);
         return;
       }
 
@@ -184,7 +191,7 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
       description={t(ROW_TITLES[row.key].description ?? "Choose how long these records are kept")}
       onSubmit={handleSubmit}
       submitButtonText={confirming ? t("Delete records") : t("Save")}
-      submitButtonColor={confirming ? "#c62828" : undefined}
+      submitButtonColor={confirming ? theme.palette.error.main : undefined}
       isSubmitting={isSubmitting}
       maxWidth="560px"
       fitContent
@@ -194,7 +201,9 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
           <Typography sx={{ fontSize: 13 }}>
             {fill(
               t(
-                "The next cleanup will permanently delete {count} records older than {period}. Deleted records cannot be restored.",
+                pendingDelete === 0
+                  ? "No records are old enough to delete yet. From now on, records older than {period} will be deleted permanently. Deleted records cannot be restored."
+                  : "The next cleanup will permanently delete {count} records older than {period}. Deleted records cannot be restored.",
               ),
               {
                 count: (pendingDelete ?? 0).toLocaleString(),
@@ -217,7 +226,7 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
               items={auditItems}
               value={value}
               onChange={(event) => setValue(String(event.target.value))}
-              sx={{ width: "100%" }}
+              sx={SELECT_HEIGHT_SX}
             />
           )}
           {isGateway && (
@@ -228,6 +237,7 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 error={error}
+                sx={FIELD_HEIGHT_SX}
               />
               <Box sx={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Toggle
@@ -249,6 +259,7 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
               value={value}
               onChange={(event) => setValue(event.target.value)}
               error={error}
+              sx={FIELD_HEIGHT_SX}
               helperText={fill(t("At least {min} months."), { min: MIN_MRM_RETENTION_MONTHS })}
             />
           )}
@@ -260,7 +271,7 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
               value={value}
               onChange={(event) => setValue(String(event.target.value))}
               placeholder={t("No default")}
-              sx={{ width: "100%" }}
+              sx={SELECT_HEIGHT_SX}
             />
           )}
           {row.key in SHADOW_AI_FIELDS && (
@@ -270,6 +281,7 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
               value={value}
               onChange={(event) => setValue(event.target.value)}
               error={error}
+              sx={FIELD_HEIGHT_SX}
               helperText={fill(t("Leave empty or enter 0 to keep indefinitely. Maximum {max}."), {
                 max: MAX_SHADOW_AI_RETENTION_DAYS,
               })}

@@ -10225,6 +10225,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Enter a number no greater than {max}": "Geben Sie eine Zahl von höchstens {max} ein",
     "The next cleanup will permanently delete {count} records older than {period}. Deleted records cannot be restored.":
       "Die nächste Bereinigung löscht {count} Datensätze, die älter als {period} sind, dauerhaft. Gelöschte Datensätze können nicht wiederhergestellt werden.",
+    "No records are old enough to delete yet. From now on, records older than {period} will be deleted permanently. Deleted records cannot be restored.":
+      "Es sind noch keine Datensätze alt genug zum Löschen. Ab jetzt werden Datensätze, die älter als {period} sind, dauerhaft gelöscht. Gelöschte Datensätze können nicht wiederhergestellt werden.",
     "Export CSV first": "Zuerst CSV exportieren",
     "Delete records": "Datensätze löschen",
   },
@@ -20376,6 +20378,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Enter a number no greater than {max}": "Saisissez un nombre d'au plus {max}",
     "The next cleanup will permanently delete {count} records older than {period}. Deleted records cannot be restored.":
       "Le prochain nettoyage supprimera définitivement {count} enregistrements de plus de {period}. Les enregistrements supprimés ne peuvent pas être restaurés.",
+    "No records are old enough to delete yet. From now on, records older than {period} will be deleted permanently. Deleted records cannot be restored.":
+      "Aucun enregistrement n'est encore assez ancien pour être supprimé. Désormais, les enregistrements de plus de {period} seront supprimés définitivement. Les enregistrements supprimés ne peuvent pas être restaurés.",
     "Export CSV first": "Exporter d'abord en CSV",
     "Delete records": "Supprimer les enregistrements",
   },
@@ -30446,6 +30450,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Enter a number no greater than {max}": "Introduce un número no mayor que {max}",
     "The next cleanup will permanently delete {count} records older than {period}. Deleted records cannot be restored.":
       "La próxima limpieza eliminará de forma permanente {count} registros con más de {period}. Los registros eliminados no se pueden restaurar.",
+    "No records are old enough to delete yet. From now on, records older than {period} will be deleted permanently. Deleted records cannot be restored.":
+      "Ningún registro es lo bastante antiguo para eliminarse todavía. A partir de ahora, los registros con más de {period} se eliminarán de forma permanente. Los registros eliminados no se pueden restaurar.",
     "Export CSV first": "Exportar CSV primero",
     "Delete records": "Eliminar registros",
   },

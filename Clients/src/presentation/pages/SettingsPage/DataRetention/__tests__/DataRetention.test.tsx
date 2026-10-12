@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { renderWithProviders } from "../../../../../test/renderWithProviders";
 import type {
@@ -230,6 +232,46 @@ describe("Edit retention modal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete records" }));
     await waitFor(() => expect(mockUpdateAudit).toHaveBeenCalledWith(12));
+  });
+
+  it("confirms a shorter period even when no records are old enough yet", async () => {
+    mockPreview.mockResolvedValue({ count: 0 });
+    await open("audit_records");
+    chooseOption(0, "1 year");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText(
+        "No records are old enough to delete yet. From now on, records older than 1 year will be deleted permanently. Deleted records cannot be restored.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Export CSV first" })).toBeInTheDocument();
+    expect(mockUpdateAudit).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete records" }));
+    await waitFor(() => expect(mockUpdateAudit).toHaveBeenCalledWith(12));
+  });
+
+  it("renders modal fields and selects at 30px, beating the house 34px stylesheets", async () => {
+    // jsdom does not load the components' CSS files, so inject them as written.
+    const style = document.createElement("style");
+    const dir = resolve(__dirname, "../../../../components/Inputs");
+    style.textContent = ["Field", "Select"]
+      .map((c) => readFileSync(resolve(dir, c, "index.css"), "utf8"))
+      .join("\n");
+    document.head.appendChild(style);
+    try {
+      await open("mrm_metrics");
+      const input = screen.getByLabelText(/Keep for \(months\)/);
+      expect(getComputedStyle(input.closest(".MuiInputBase-root") as Element).height).toBe("30px");
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      fireEvent.click(await screen.findByTestId("retention-edit-audit_records"));
+      const select = screen.getAllByRole("combobox")[0];
+      expect(getComputedStyle(select).height).toBe("30px");
+    } finally {
+      style.remove();
+    }
   });
 
   it("treats indefinitely as the longest period when shortening", async () => {
