@@ -327,6 +327,28 @@ describe("runDataRetentionPruneAllOrgs", () => {
       expect(refusalLogs).toHaveLength(2);
     });
 
+    it("records the refusal only for orgs still opted in, without calling the gateway", async () => {
+      // First read: 5, 6, 7 opted in. By the time 5 is refused, 6 opted out.
+      mockOptedIn.mockResolvedValueOnce([5, 6, 7]).mockResolvedValueOnce([5, 7]);
+      mockGateway.mockRejectedValue(gatewayError(401, withCode("internal_key_rejected")));
+
+      await runDataRetentionPruneAllOrgs();
+
+      expect(mockGateway).toHaveBeenCalledTimes(1);
+      const recordedOrgs = new Set(mockRecord.mock.calls.map((call) => call[0].organizationId));
+      expect(recordedOrgs).toEqual(new Set([5, 7]));
+    });
+
+    it("records the refusal for every remaining org when the re-read fails", async () => {
+      mockOptedIn.mockResolvedValueOnce([5, 6]).mockRejectedValueOnce(new Error("db down"));
+      mockGateway.mockRejectedValue(gatewayError(401, withCode("internal_key_rejected")));
+
+      await runDataRetentionPruneAllOrgs();
+
+      const recordedOrgs = new Set(mockRecord.mock.calls.map((call) => call[0].organizationId));
+      expect(recordedOrgs).toEqual(new Set([5, 6]));
+    });
+
     it("keeps calling the gateway after an ordinary failure", async () => {
       mockOptedIn.mockResolvedValue([5, 6]);
       mockGateway.mockRejectedValue(gatewayError(500, { detail: "boom" }));

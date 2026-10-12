@@ -222,7 +222,10 @@ async function purgeGatewayLogs(): Promise<void> {
   for (let i = 0; i < orgIds.length; i++) {
     const refusal = await purgeGatewayLogsForOrg(orgIds[i]);
     if (!refusal) continue;
-    const remaining = orgIds.slice(i + 1);
+    // Re-read who is still opted in (a local query, no gateway call): an org
+    // that turned automatic deletion off since the list was read gets no
+    // run, exactly as on the per-org path.
+    const remaining = await stillOptedIn(orgIds.slice(i + 1));
     if (remaining.length > 0) {
       logger.error(
         `AI Gateway refused the retention purge (${GATEWAY_PURGE_REFUSALS[refusal]}); ` +
@@ -238,6 +241,21 @@ async function purgeGatewayLogs(): Promise<void> {
       });
     }
     return;
+  }
+}
+
+/**
+ * The given orgs that still have automatic gateway deletion on. If that cannot
+ * be read, all of them are kept, so a refusal is never left unrecorded.
+ */
+async function stillOptedIn(orgIds: number[]): Promise<number[]> {
+  if (orgIds.length === 0) return orgIds;
+  try {
+    const optedIn = new Set(await getGatewayAutoPurgeOrgIds());
+    return orgIds.filter((orgId) => optedIn.has(orgId));
+  } catch (error) {
+    logger.error("Re-reading AI Gateway auto-purge organizations failed:", error);
+    return orgIds;
   }
 }
 
