@@ -351,12 +351,13 @@ export async function getGatewayAutoPurgeOrgIds(): Promise<number[]> {
 
 export type LatestRetentionRuns = Record<
   RetentionRecordType,
-  { ran_at: string; deleted_count: number; status: RetentionRunStatus } | undefined
+  | { ran_at: string; deleted_count: number; status: RetentionRunStatus; error: string | null }
+  | undefined
 >;
 
 export async function getLatestRetentionRuns(organizationId: number): Promise<LatestRetentionRuns> {
   const rows = (await sequelize.query(
-    `SELECT DISTINCT ON (record_type) record_type, ran_at, deleted_count, status
+    `SELECT DISTINCT ON (record_type) record_type, ran_at, deleted_count, status, error
        FROM data_retention_runs
       WHERE organization_id = :organizationId
       ORDER BY record_type, ran_at DESC, id DESC`,
@@ -368,6 +369,7 @@ export async function getLatestRetentionRuns(organizationId: number): Promise<La
       ran_at: r.ran_at instanceof Date ? r.ran_at.toISOString() : String(r.ran_at),
       deleted_count: Number(r.deleted_count),
       status: r.status,
+      error: r.error ?? null,
     };
   }
   return result;

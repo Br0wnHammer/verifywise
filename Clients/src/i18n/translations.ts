@@ -10252,6 +10252,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Archived, not deleted": "Archiviert, nicht gelöscht",
     "Rotated daily": "Täglich rotiert",
     "{date} · {count} removed": "{date} · {count} entfernt",
+    "Purge refused: internal key not configured":
+      "Löschung abgelehnt: interner Schlüssel nicht konfiguriert",
+    "Purge refused: internal key rejected":
+      "Löschung abgelehnt: interner Schlüssel nicht akzeptiert",
     "{date} · {count} removed (more pending)": "{date} · {count} entfernt (weitere ausstehend)",
     "Records": "Datensätze",
     "Kept for": "Aufbewahrt für",
@@ -20485,6 +20489,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Archived, not deleted": "Archivé, non supprimé",
     "Rotated daily": "Rotation quotidienne",
     "{date} · {count} removed": "{date} · {count} supprimés",
+    "Purge refused: internal key not configured": "Purge refusée : clé interne non configurée",
+    "Purge refused: internal key rejected": "Purge refusée : clé interne rejetée",
     "{date} · {count} removed (more pending)": "{date} · {count} supprimés (d'autres en attente)",
     "Records": "Enregistrements",
     "Kept for": "Conservé pendant",
@@ -30638,6 +30644,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Archived, not deleted": "Archivado, no eliminado",
     "Rotated daily": "Rotación diaria",
     "{date} · {count} removed": "{date} · {count} eliminados",
+    "Purge refused: internal key not configured": "Purga rechazada: clave interna no configurada",
+    "Purge refused: internal key rejected": "Purga rechazada: clave interna rechazada",
     "{date} · {count} removed (more pending)":
       "{date} · {count} eliminados (quedan más pendientes)",
     "Records": "Registros",

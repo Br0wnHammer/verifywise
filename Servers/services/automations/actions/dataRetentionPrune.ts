@@ -14,6 +14,10 @@ import {
   safeRecordRetentionRun,
 } from "../../../utils/dataRetention.utils";
 import { aiGatewayRequest } from "../../../utils/aiGatewayInternal.utils";
+import {
+  GATEWAY_PURGE_REFUSALS,
+  gatewayPurgeRefusalFor,
+} from "../../../utils/aiGatewayRetention.constants";
 import logger from "../../../utils/logger/fileLogger";
 
 /**
@@ -233,8 +237,22 @@ async function purgeGatewayLogsForOrg(orgId: number): Promise<void> {
         ? response.results.find((r: GatewayPurgeResult) => r.organization_id === orgId)
         : undefined;
     } catch (error) {
-      logger.error(`AI Gateway retention purge failed for org ${orgId}:`, error);
-      const message = error instanceof Error ? error.message : String(error);
+      // A refusal over the internal key is recorded with a clear reason the
+      // Data retention page can show; anything else keeps its own message.
+      const refusal = gatewayPurgeRefusalFor(error);
+      if (refusal) {
+        logger.error(
+          `AI Gateway retention purge for org ${orgId}: ${GATEWAY_PURGE_REFUSALS[refusal]}. ` +
+            "Set the same AI_GATEWAY_INTERNAL_KEY on the backend and the AI Gateway.",
+        );
+      } else {
+        logger.error(`AI Gateway retention purge failed for org ${orgId}:`, error);
+      }
+      const message = refusal
+        ? GATEWAY_PURGE_REFUSALS[refusal]
+        : error instanceof Error
+          ? error.message
+          : String(error);
       guardrail.error ??= message;
       spend.error ??= message;
       answered = true;

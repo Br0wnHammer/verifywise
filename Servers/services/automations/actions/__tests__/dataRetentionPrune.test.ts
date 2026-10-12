@@ -235,6 +235,59 @@ describe("runDataRetentionPruneAllOrgs", () => {
     { body: { organization_id: organizationId }, timeoutMs: 300_000 },
   ];
 
+  describe("when the gateway refuses the purge over the internal key", () => {
+    const savedKey = process.env.AI_GATEWAY_INTERNAL_KEY;
+    afterEach(() => {
+      if (savedKey === undefined) delete process.env.AI_GATEWAY_INTERNAL_KEY;
+      else process.env.AI_GATEWAY_INTERNAL_KEY = savedKey;
+    });
+
+    const refused = (status: number) =>
+      Object.assign(new Error(`AI Gateway ${status}`), { status, body: {} });
+
+    it.each([
+      ["the gateway has no key (503)", 503, "set", "Purge refused: internal key not configured"],
+      ["this backend has no key (401)", 401, "", "Purge refused: internal key not configured"],
+      ["the keys differ (401)", 401, "set", "Purge refused: internal key rejected"],
+    ])("records both log types as failed when %s", async (_case, status, key, message) => {
+      process.env.AI_GATEWAY_INTERNAL_KEY = key === "set" ? "some-key" : "";
+      mockOptedIn.mockResolvedValue([5]);
+      mockGateway.mockRejectedValue(refused(status as number));
+
+      await runDataRetentionPruneAllOrgs();
+
+      for (const recordType of ["ai_gateway_guardrail_logs", "ai_gateway_spend_logs"]) {
+        expect(mockRecord).toHaveBeenCalledWith(
+          expect.objectContaining({
+            organizationId: 5,
+            recordType,
+            status: "failed",
+            deletedCount: 0,
+            error: message,
+          }),
+        );
+      }
+    });
+
+    it("keeps the original message for other gateway errors", async () => {
+      process.env.AI_GATEWAY_INTERNAL_KEY = "some-key";
+      mockOptedIn.mockResolvedValue([5]);
+      mockGateway.mockRejectedValue(
+        Object.assign(new Error("AI Gateway 500: boom"), { status: 500 }),
+      );
+
+      await runDataRetentionPruneAllOrgs();
+
+      expect(mockRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recordType: "ai_gateway_guardrail_logs",
+          status: "failed",
+          error: "AI Gateway 500: boom",
+        }),
+      );
+    });
+  });
+
   it("calls the gateway purge once per opted-in org and records both log types", async () => {
     mockOptedIn.mockResolvedValue([5, 6]);
     mockGateway.mockImplementation(

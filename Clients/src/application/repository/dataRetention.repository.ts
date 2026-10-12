@@ -19,6 +19,8 @@ export interface RetentionLastCleanup {
   ranAt: string;
   deletedCount: number;
   status: "success" | "capped" | "failed";
+  /** The AI Gateway refused the purge over the internal key. */
+  refusal?: "internal_key_not_configured" | "internal_key_rejected";
 }
 
 export interface RetentionRow {

@@ -171,6 +171,14 @@ describe("recordRetentionRun / getLatestRetentionRuns", () => {
         ran_at: new Date("2026-01-02T00:00:00Z"),
         deleted_count: "9",
         status: "capped",
+        error: null,
+      },
+      {
+        record_type: "ai_gateway_spend_logs",
+        ran_at: new Date("2026-01-03T00:00:00Z"),
+        deleted_count: "0",
+        status: "failed",
+        error: "Purge refused: internal key rejected",
       },
     ]);
     const runs = await getLatestRetentionRuns(1);
@@ -179,7 +187,9 @@ describe("recordRetentionRun / getLatestRetentionRuns", () => {
       ran_at: "2026-01-02T00:00:00.000Z",
       deleted_count: 9,
       status: "capped",
+      error: null,
     });
+    expect(runs.ai_gateway_spend_logs?.error).toBe("Purge refused: internal key rejected");
     expect(runs.mrm_metrics).toBeUndefined();
   });
 });

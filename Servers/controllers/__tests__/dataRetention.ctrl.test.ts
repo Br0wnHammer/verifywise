@@ -235,6 +235,34 @@ describe("dataRetention.ctrl", () => {
       });
     });
 
+    it("marks a gateway purge refused over the internal key", async () => {
+      m(retention.getLatestRetentionRuns).mockResolvedValue({
+        ai_gateway_guardrail_logs: {
+          ran_at: "2026-10-12T02:00:00Z",
+          deleted_count: 0,
+          status: "failed",
+          error: "Purge refused: internal key not configured",
+        },
+        ai_gateway_spend_logs: {
+          ran_at: "2026-10-12T02:00:00Z",
+          deleted_count: 0,
+          status: "failed",
+          error: "db down",
+        },
+      });
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+
+      expect(row(res, "ai_gateway_guardrail_logs").lastCleanup).toEqual({
+        ranAt: "2026-10-12T02:00:00Z",
+        deletedCount: 0,
+        status: "failed",
+        refusal: "internal_key_not_configured",
+      });
+      // Other failures carry no refusal.
+      expect(row(res, "ai_gateway_spend_logs").lastCleanup.refusal).toBeUndefined();
+    });
+
     it("returns 500 when an audit retention read fails", async () => {
       m(retention.getAuditRetentionMonths).mockRejectedValue(new Error("db"));
       const res = createRes();

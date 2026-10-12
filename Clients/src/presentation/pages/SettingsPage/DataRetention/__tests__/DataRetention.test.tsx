@@ -166,6 +166,28 @@ describe("DataRetention table", () => {
   });
 
   it.each([
+    ["internal_key_not_configured", "Purge refused: internal key not configured"],
+    ["internal_key_rejected", "Purge refused: internal key rejected"],
+  ] as const)("shows a gateway purge refused with %s", async (refusal, text) => {
+    respond(
+      buildRows({
+        ai_gateway_guardrail_logs: {
+          lastCleanup: {
+            ranAt: "2026-10-04T03:00:00Z",
+            deletedCount: 0,
+            status: "failed",
+            refusal,
+          },
+        },
+      }),
+    );
+    renderWithProviders(<DataRetention />);
+    const guardrail = await screen.findByTestId("retention-row-ai_gateway_guardrail_logs");
+    expect(within(guardrail).getByText(text)).toBeInTheDocument();
+    expect(within(guardrail).queryByText("Failed")).not.toBeInTheDocument();
+  });
+
+  it.each([
     ["has no period (kept indefinitely)", { period: null, automaticDeletion: "no" }],
     ["is unavailable", { period: null, automaticDeletion: "no", unavailable: true }],
   ])("shows no Agent Control cleanup schedule when it %s", async (_case, override) => {

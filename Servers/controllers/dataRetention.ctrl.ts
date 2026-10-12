@@ -26,7 +26,11 @@ import { getFileOrgSettings } from "../utils/fileOrgSettings.utils";
 import { getSettingsQuery as getShadowAiSettings } from "../utils/shadowAiConfig.utils";
 import { getServerLogRetentionDays } from "../utils/logger/logRetention";
 import logger from "../utils/logger/fileLogger";
-import { GATEWAY_DEFAULTS } from "../utils/aiGatewayRetention.constants";
+import {
+  GATEWAY_DEFAULTS,
+  GatewayPurgeRefusal,
+  gatewayPurgeRefusalFromRunError,
+} from "../utils/aiGatewayRetention.constants";
 
 const FILE_NAME = "dataRetention.ctrl.ts";
 
@@ -52,6 +56,8 @@ export interface RetentionRow {
     ranAt: string;
     deletedCount: number;
     status: "success" | "capped" | "failed";
+    /** Set when the AI Gateway refused the purge over the internal key. */
+    refusal?: GatewayPurgeRefusal;
   } | null;
   source: "app" | "deployment";
   /** Environment variable that controls the period when source is "deployment". */
@@ -127,9 +133,14 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
 
     const lastCleanup = (type: RetentionRecordType): RetentionRow["lastCleanup"] => {
       const run = runs[type];
-      return run
-        ? { ranAt: run.ran_at, deletedCount: run.deleted_count, status: run.status }
-        : null;
+      if (!run) return null;
+      const refusal = run.status === "failed" ? gatewayPurgeRefusalFromRunError(run.error) : null;
+      return {
+        ranAt: run.ran_at,
+        deletedCount: run.deleted_count,
+        status: run.status,
+        ...(refusal ? { refusal } : {}),
+      };
     };
 
     const gatewayUnavailable = guardrailSettings === null;

@@ -81,7 +81,13 @@ export function lastCleanupLabel(
   if (row.key === "server_logs") return t("Rotated daily");
   const run = row.lastCleanup;
   if (!run) return "—";
-  if (run.status === "failed") return t("Failed");
+  if (run.status === "failed") {
+    if (run.refusal === "internal_key_not_configured") {
+      return t("Purge refused: internal key not configured");
+    }
+    if (run.refusal === "internal_key_rejected") return t("Purge refused: internal key rejected");
+    return t("Failed");
+  }
   const values = { date: formatDate(new Date(run.ranAt)), count: run.deletedCount };
   return fill(
     t(
