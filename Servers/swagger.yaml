@@ -3709,6 +3709,7 @@ components:
           type: string
         description:
           type: string
+          description: 'Incident description. Lengths are measured after trimming leading and trailing whitespace.'
           minLength: 5
           maxLength: 32767
         relationship_causality:
@@ -3766,6 +3767,7 @@ components:
           type: string
         description:
           type: string
+          description: 'Incident description. Lengths are measured after trimming leading and trailing whitespace.'
           minLength: 5
           maxLength: 32767
         relationship_causality:

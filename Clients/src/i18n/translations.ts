@@ -579,6 +579,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Type is required.": "Typ ist erforderlich.",
     "Description cannot exceed 32,767 characters.":
       "Die Beschreibung darf 32.767 Zeichen nicht überschreiten.",
+    "Description is required.": "Beschreibung ist erforderlich.",
+    "Description must be at least 5 characters.":
+      "Die Beschreibung muss mindestens 5 Zeichen lang sein.",
     "Edit agent": "Agent bearbeiten",
     "Add agent manually": "Agent manuell hinzufügen",
     "Adding...": "Wird hinzugefügt...",
@@ -10731,6 +10734,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Type is required.": "Le type est obligatoire.",
     "Description cannot exceed 32,767 characters.":
       "La description ne peut pas dépasser 32 767 caractères.",
+    "Description is required.": "La description est obligatoire.",
+    "Description must be at least 5 characters.":
+      "La description doit comporter au moins 5 caractères.",
     "Edit agent": "Modifier l'agent",
     "Add agent manually": "Ajouter un agent manuellement",
     "Adding...": "Ajout...",
@@ -20617,6 +20623,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Type is required.": "El tipo es obligatorio.",
     "Description cannot exceed 32,767 characters.":
       "La descripción no puede superar los 32.767 caracteres.",
+    "Description is required.": "La descripción es obligatoria.",
+    "Description must be at least 5 characters.":
+      "La descripción debe tener al menos 5 caracteres.",
     "Edit agent": "Editar agente",
     "Add agent manually": "Añadir agente manualmente",
     "Adding...": "Añadiendo...",

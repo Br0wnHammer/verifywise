@@ -15,6 +15,7 @@ import { STATUS_CODE } from "../utils/statusCode.utils";
 import logger, { logStructured } from "../utils/logger/fileLogger";
 import { ValidationError } from "../utils/validations/validation.utils";
 import { translateError } from "../utils/i18n.utils";
+import { ValidationException } from "../domain.layer/exceptions/custom.exception";
 import {
   validateCompleteIncidentCreation,
   validateCompleteIncidentUpdate,
@@ -304,6 +305,9 @@ export async function createNewIncident(req: Request, res: Response) {
     return res.status(201).json(STATUS_CODE[201](savedIncident.toSafeJSON()));
   } catch (error) {
     await transaction.rollback();
+    if (error instanceof ValidationException) {
+      return res.status(400).json(STATUS_CODE[400](translateError(req, error)));
+    }
     logStructured(
       "error",
       "failed to create new incident",
@@ -449,6 +453,9 @@ export async function updateIncidentById(req: Request, res: Response) {
     return res.status(200).json(STATUS_CODE[200](savedIncident.toSafeJSON()));
   } catch (error) {
     await transaction.rollback();
+    if (error instanceof ValidationException) {
+      return res.status(400).json(STATUS_CODE[400](translateError(req, error)));
+    }
     logStructured(
       "error",
       "failed to update incident",

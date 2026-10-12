@@ -95,4 +95,52 @@ describe("NewIncident (SideDrawerIncident)", () => {
     });
     expect(onSuccess).not.toHaveBeenCalled();
   });
+
+  const savableData = {
+    ...validInitialData,
+    categories_of_harm: ["Health"],
+  } as unknown as NewIncidentFormValues;
+
+  it("closes only after the save resolves", async () => {
+    const setIsOpen = vi.fn();
+    const onSuccess = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SideDrawerIncident
+        isOpen={true}
+        setIsOpen={setIsOpen}
+        onSuccess={onSuccess}
+        initialData={savableData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Save incident"));
+
+    await waitFor(() => expect(setIsOpen).toHaveBeenCalledWith(false));
+    expect(onSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({ description: savableData.description }),
+    );
+  });
+
+  it("stays open with the entered values when the save fails", async () => {
+    const setIsOpen = vi.fn();
+    const onSuccess = vi.fn().mockRejectedValue(new Error("400"));
+    renderWithProviders(
+      <SideDrawerIncident
+        isOpen={true}
+        setIsOpen={setIsOpen}
+        onSuccess={onSuccess}
+        initialData={savableData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Save incident"));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(setIsOpen).not.toHaveBeenCalled();
+
+    // Retrying submits the same values, so nothing the user typed was reset.
+    fireEvent.click(screen.getByText("Save incident"));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(2));
+    expect(onSuccess.mock.calls[1][0]).toEqual(onSuccess.mock.calls[0][0]);
+    expect(setIsOpen).not.toHaveBeenCalled();
+  });
 });

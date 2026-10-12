@@ -518,6 +518,7 @@ const IncidentManagement: React.FC = () => {
     setArchiveId(null);
   };
 
+  // Rethrows on failure so the drawer stays open with the user's input.
   const handleIncidentSuccess = async (formData: any) => {
     try {
       if (selectedIncident) {
@@ -538,11 +539,12 @@ const IncidentManagement: React.FC = () => {
       }
       await fetchIncidentsData();
       handleCloseModal();
-    } catch {
+    } catch (error) {
       setAlert({
         variant: "error",
         body: selectedIncident ? "Failed to update incident." : "Failed to add incident.",
       });
+      throw error;
     }
   };
 

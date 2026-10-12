@@ -48,7 +48,11 @@ import SelectComponent from "../../Inputs/Select";
 interface SideDrawerIncidentProps {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
-  onSuccess?: (data: NewIncidentFormValues) => void;
+  /**
+   * Persists the incident. The drawer closes only after this resolves; if it
+   * rejects, the drawer stays open with the entered values so nothing is lost.
+   */
+  onSuccess?: (data: NewIncidentFormValues) => Promise<void>;
   initialData?: NewIncidentFormValues;
   isEdit?: boolean;
   mode?: string;
@@ -152,6 +156,7 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
   const [, setIsLoadingUsers] = useState(false);
   const [modelInventories, setModelInventories] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("details");
+  const [isSaving, setIsSaving] = useState(false);
 
   const validators = useMemo(
     () => ({
@@ -327,18 +332,27 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
     setActiveTab("details");
   };
 
-  const handleSaveIncident = (e?: React.FormEvent) => {
+  const handleSaveIncident = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isSaving) return;
     if (validateAll(values, INCIDENT_FORM_FIELD_ORDER)) {
       // Normalize optional FK pickers to integer ids or null (issue #4583)
       const toId = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
-      onSuccess?.({
-        ...values,
-        project_id: toId(values.project_id),
-        model_inventory_id: toId(values.model_inventory_id),
-        assignee_id: toId(values.assignee_id),
-      });
-      handleClose();
+      setIsSaving(true);
+      try {
+        await onSuccess?.({
+          ...values,
+          project_id: toId(values.project_id),
+          model_inventory_id: toId(values.model_inventory_id),
+          assignee_id: toId(values.assignee_id),
+        });
+        handleClose();
+      } catch {
+        // The caller reports the failure; keep the drawer open with the
+        // entered values so the user can correct and retry.
+      } finally {
+        setIsSaving(false);
+      }
       return;
     }
     // Validation failed — move focus to the first invalid field so the
@@ -898,6 +912,7 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
                     text={isEdit ? "Update incident" : "Save incident"}
                     icon={<SaveIconSVGWhite />}
                     onClick={handleSaveIncident as (event: unknown) => void}
+                    loading={isSaving}
                     sx={{
                       backgroundColor: theme.palette.primary.main,
                       border: `1px solid ${theme.palette.primary.main}`,

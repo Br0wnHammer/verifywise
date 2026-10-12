@@ -12,6 +12,7 @@ import {
   ValidationResult,
   ValidationError,
 } from "./validation.utils";
+import { ValidationException } from "../../domain.layer/exceptions/custom.exception";
 
 /**
  * Maximum length of an incident description. Matches Jira's text-field limit
@@ -20,6 +21,9 @@ import {
  * imposes no lower ceiling.
  */
 export const INCIDENT_DESCRIPTION_MAX_LENGTH = 32767;
+
+/** Same text as the frontend message (Clients/src/application/validations/incidentValidation.ts). */
+export const INCIDENT_DESCRIPTION_TOO_LONG_MESSAGE = `Description cannot exceed ${INCIDENT_DESCRIPTION_MAX_LENGTH.toLocaleString("en-US")} characters.`;
 
 /**
  * Validation limits for incident management
@@ -70,12 +74,30 @@ export const INCIDENT_HARM_CATEGORIES_ENUM = [
  * Validates description
  */
 export const validateDescription = (value: any): ValidationResult => {
-  return validateString(value, "Description", {
+  const result = validateString(value, "Description", {
     required: true,
     minLength: INCIDENT_VALIDATION_LIMITS.DESCRIPTION.MIN,
     maxLength: INCIDENT_VALIDATION_LIMITS.DESCRIPTION.MAX,
     trimWhitespace: true,
   });
+  if (!result.isValid && result.code === "MAX_LENGTH") {
+    return { ...result, message: INCIDENT_DESCRIPTION_TOO_LONG_MESSAGE };
+  }
+  return result;
+};
+
+/**
+ * Throws a ValidationException (HTTP 400) when the description breaks the
+ * length rule. Called from the shared incident write queries so every writer
+ * (REST controller, AI Advisor tools, future integrations) gets the same rule.
+ * The value is deliberately left out of the exception metadata: it can be
+ * tens of kilobytes.
+ */
+export const assertValidIncidentDescription = (value: unknown): void => {
+  const result = validateDescription(value);
+  if (!result.isValid) {
+    throw new ValidationException(result.message || "Invalid description", "description");
+  }
 };
 
 /**

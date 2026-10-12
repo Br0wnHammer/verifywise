@@ -308,12 +308,24 @@ The modal is organized into 4 sections:
 | occurred_date | Required |
 | date_detected | Required, >= occurred_date |
 
-The description limit is defined once per side and the two must stay in sync:
-`INCIDENT_DESCRIPTION_MAX_LENGTH` in `Servers/utils/validations/incidentManagementValidation.utils.ts`
-(enforced on create/update by the controller) and in `Clients/src/application/validations/incidentValidation.ts`
-(enforced inline by the incident modal). Length is measured after trimming. The AI Advisor
-`agent_create_incident` / `agent_update_incident` tools write through `advisor/functions/incidentFunctions.ts`
-without this validator.
+The description rule (5 to 32,767 characters, measured after trimming whitespace) is defined once per
+side and the two must stay in sync:
+
+- **Backend:** `INCIDENT_DESCRIPTION_MAX_LENGTH` and `validateDescription` in
+  `Servers/utils/validations/incidentManagementValidation.utils.ts`. Besides the controller's
+  request validation, `createNewIncidentQuery` and `updateIncidentByIdQuery`
+  (`Servers/utils/incidentManagement.utils.ts`) call `assertValidIncidentDescription`, so every
+  writer (REST API, AI Advisor `agent_create_incident` / `agent_update_incident` /
+  `agent_update_incident_status`, future integrations) gets the same rule. It throws a
+  `ValidationException`, which the controller returns as 400 and the Advisor reports as the tool
+  error. On update the description is only re-checked when it changes, so editing other fields of
+  an older row with a shorter description still works.
+- **Frontend:** `Clients/src/application/validations/incidentValidation.ts`, used inline by the
+  incident drawer. The drawer closes only after the save succeeds; on failure it stays open with the
+  entered values.
+
+The over-limit message is "Description cannot exceed 32,767 characters." on both sides
+(translated in `Clients/src/i18n/translations.ts` and `Servers/locales/*.json`).
 
 ### Business Rule Validation
 

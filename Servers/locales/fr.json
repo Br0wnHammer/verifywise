@@ -149,6 +149,7 @@
   "Demo users cannot perform admin actions": "Les utilisateurs de démonstration ne peuvent pas effectuer d'actions d'administration",
   "Demo vendors cannot be modified": "Les fournisseurs de démonstration ne peuvent pas être modifiés",
   "Department is required": "Le département est requis",
+  "Description cannot exceed 32,767 characters.": "La description ne peut pas dépasser 32 767 caractères.",
   "Description cannot exceed 5000 characters": "La description ne peut pas dépasser 5000 caractères",
   "Description is required": "Description est requis",
   "Description must be a string": "La description doit être une chaîne de caractères",
