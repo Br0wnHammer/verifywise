@@ -262,8 +262,38 @@ export const validateIncidentUpdateBusinessRules = (
   _data: any,
   _existingData?: any,
 ): ValidationError[] => {
-  // All business rules removed - incidents can now be freely updated
+  // Any status can move to any other status, including Closed back to an
+  // open status (reopening). See applyReopenApprovalReset for the approval
+  // side effect of a reopen.
   return [];
+};
+
+/**
+ * Approval on an incident is sign-off on its closure. When a Closed incident
+ * is reopened, an "Approved" sign-off no longer describes it, so the update
+ * is rewritten to put approval back to "Pending" and clear the approver and
+ * approval date. "Pending", "Rejected" and "Not Required" are left alone.
+ *
+ * An update that itself sets approval_status to a value other than the
+ * stored one is an explicit decision by the caller and is kept as sent. The
+ * edit form always sends the stored value back, so an unchanged
+ * approval_status counts as "not touched".
+ *
+ * Returns the update unchanged when no reset applies, otherwise a copy.
+ */
+export const applyReopenApprovalReset = <T extends Record<string, any>>(
+  existing: { status?: string | null; approval_status?: string | null },
+  update: T,
+): T => {
+  const isReopen =
+    existing.status === "Closed" && update.status !== undefined && update.status !== "Closed";
+  if (!isReopen || existing.approval_status !== "Approved") return update;
+
+  const callerChangedApproval =
+    update.approval_status !== undefined && update.approval_status !== existing.approval_status;
+  if (callerChangedApproval) return update;
+
+  return { ...update, approval_status: "Pending", approved_by: null, approval_date: null };
 };
 
 /**

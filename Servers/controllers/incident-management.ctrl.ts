@@ -22,6 +22,7 @@ import {
   validateModelInventoryId,
   validateProjectId,
   validateAssigneeId,
+  applyReopenApprovalReset,
 } from "../utils/validations/incidentManagementValidation.utils";
 import {
   recordIncidentCreation,
@@ -415,7 +416,10 @@ export async function updateIncidentById(req: Request, res: Response) {
     // Get the plain object for change tracking before updating
     const existingData = currentIncident.toSafeJSON();
 
-    Object.assign(currentIncident, { ...req.body, updated_at: new Date() });
+    // Reopening a Closed incident drops a stale "Approved" closure sign-off.
+    const updates = applyReopenApprovalReset(existingData, req.body);
+
+    Object.assign(currentIncident, { ...updates, updated_at: new Date() });
 
     const savedIncident = await updateIncidentByIdQuery(
       incidentId,
@@ -426,7 +430,7 @@ export async function updateIncidentById(req: Request, res: Response) {
 
     // Track and record changes
     if (req.userId) {
-      const changes = await trackIncidentChanges(existingData, req.body);
+      const changes = await trackIncidentChanges(existingData, updates);
       if (changes.length > 0) {
         await recordMultipleFieldChanges(
           incidentId,

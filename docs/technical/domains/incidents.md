@@ -6,7 +6,7 @@ Incident Management in VerifyWise provides a comprehensive system for tracking, 
 
 ## Key Features
 
-- Incident lifecycle management (Open → Investigating → Mitigated → Closed)
+- Incident lifecycle management (Open → Investigating → Mitigated → Closed, plus Suspended and Emergency action; closed incidents can be reopened)
 - Multi-level severity classification (Minor, Serious, Very Serious)
 - Approval workflow with audit trail
 - Harm category tracking
@@ -83,6 +83,8 @@ enum AIIncidentManagementStatus {
   INVESTIGATING = "Investigating"
   MITIGATED = "Mitigated"
   CLOSED = "Closed"
+  SUSPENDED = "Suspended"
+  EMERGENCY_ACTION = "Emergency action"
 }
 ```
 
@@ -182,15 +184,25 @@ POST /aiIncidentManagement/
 
 ```
 [Open] → [Investigating] → [Mitigated] → [Closed]
-                             ↓
-                      (Cannot reopen)
+   ↑                                         │
+   └──────────── reopen (any status) ────────┘
+
+[Suspended] and [Emergency action] can be entered from, and left to, any status.
 ```
+
+There is no transition table: an update may move an incident from any status to
+any other, including from Closed back to an open status (reopening). Reopening
+is needed for two-way sync with issue trackers, where a closed issue can be
+reopened.
 
 ### Business Rules
 
-- `date_detected` must be >= `occurred_date`
-- Closed incidents cannot be reopened
-- Archived incidents remain in database (soft delete)
+- `date_detected` must be >= `occurred_date` (creation only)
+- Status transitions are unrestricted; Closed incidents can be reopened
+- Reopening a Closed incident whose `approval_status` is `Approved` resets it to
+  `Pending` and clears `approved_by` and `approval_date` (see below)
+- Archived incidents remain in database (soft delete); archiving does not depend
+  on status, and reopening does not change the `archived` flag
 
 ### Approval Workflow
 
@@ -206,6 +218,22 @@ When approved:
 - `approved_by` populated with approver name
 - `approval_date` set to current timestamp
 - `approval_notes` optional comments
+
+Approval is sign-off on closing the incident. When a Closed incident is reopened
+(status moves from `Closed` to anything else), an `Approved` sign-off no longer
+describes it, so `applyReopenApprovalReset`
+(`Servers/utils/validations/incidentManagementValidation.utils.ts`) rewrites the
+update to `approval_status = Pending`, `approved_by = null`,
+`approval_date = null`. `approval_notes` is kept. `Pending`, `Rejected` and
+`Not Required` are left as they are.
+
+If the same update sets `approval_status` to a value different from the stored
+one, that explicit choice wins. Sending the stored value back unchanged (as the
+edit form does) counts as not touching it, so re-approving a reopened incident
+is a separate save. The reset runs on the HTTP update
+(`PATCH /ai-incident-managements/:id`) and on the AI Advisor tools
+`agent_update_incident` / `agent_update_incident_status`, and the cleared
+fields are recorded in change history next to the status change.
 
 ## Change Tracking
 
@@ -318,12 +346,13 @@ validateIncidentCreationBusinessRules(data) {
   }
 }
 
-// Update rules
-validateIncidentUpdateBusinessRules(old, new) {
-  if (old.status === "Closed" && new.status !== "Closed") {
-    throw Error("Cannot reopen closed incidents");
-  }
+// Update rules: none. Any status transition is allowed, including reopening.
+validateIncidentUpdateBusinessRules(data, existing) {
+  return [];
 }
+
+// Side effect of a reopen (applied before saving and change tracking)
+applyReopenApprovalReset(existing, update) // Approved → Pending on Closed → other
 ```
 
 ## CE Marking Integration

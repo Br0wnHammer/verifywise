@@ -14,6 +14,11 @@ import {
 } from "../../utils/incidentManagement.utils";
 import { AIIncidentManagementModel } from "../../domain.layer/models/incidentManagement/incidemtManagement.model";
 import { createWriteToolFn } from "../confirmation/createWriteTool";
+import { applyReopenApprovalReset } from "../../utils/validations/incidentManagementValidation.utils";
+import {
+  trackIncidentChanges,
+  recordMultipleFieldChanges,
+} from "../../utils/incidentChangeHistory.utils";
 import { sequelize } from "../../database/db";
 import logger from "../../utils/logger/fileLogger";
 
@@ -496,42 +501,63 @@ const agentCreateIncident = createWriteToolFn({
   },
 });
 
+/**
+ * Merges `fields` into an incident on behalf of an advisor write tool. Like
+ * the HTTP update, a reopen drops a stale closure approval and every changed
+ * field lands in the incident's change history (as the approving user).
+ */
+async function applyIncidentUpdate(
+  params: Record<string, unknown>,
+  organizationId: number,
+  fields: Record<string, unknown>,
+) {
+  const incidentId = params.incident_id as number;
+  const userId = params._userId as number | undefined;
+  const transaction = await sequelize.transaction();
+  try {
+    const existing = await getIncidentByIdQuery(incidentId, organizationId);
+    if (!existing) {
+      throw new Error(`Incident #${incidentId} not found`);
+    }
+
+    const existingData = existing.toSafeJSON();
+    const updates = applyReopenApprovalReset(existingData, fields);
+
+    const result = await updateIncidentByIdQuery(
+      incidentId,
+      { ...existing.dataValues, ...updates } as AIIncidentManagementModel,
+      organizationId,
+      transaction,
+    );
+
+    if (userId) {
+      const changes = await trackIncidentChanges(existingData, updates);
+      if (changes.length > 0) {
+        await recordMultipleFieldChanges(incidentId, userId, organizationId, changes, transaction);
+      }
+    }
+
+    await transaction.commit();
+    return { id: result.id, ai_project: result.ai_project, status: result.status };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
 const agentUpdateIncident = createWriteToolFn({
   toolName: "agent_update_incident",
   warningLevel: "warning",
   descriptionFn: (params) =>
     `Update incident #${params.incident_id}${params.title ? ` title to "${params.title}"` : ""}`,
   executeFn: async (params, organizationId) => {
-    const transaction = await sequelize.transaction();
-    try {
-      // Fetch existing incident to merge with updates
-      const existing = await getIncidentByIdQuery(params.incident_id as number, organizationId);
-      if (!existing) {
-        throw new Error(`Incident #${params.incident_id} not found`);
-      }
-
-      const incidentData = {
-        ...existing.dataValues,
-        ai_project: params.title !== undefined ? (params.title as string) : existing.ai_project,
-        description:
-          params.description !== undefined ? (params.description as string) : existing.description,
-        type: params.type !== undefined ? (params.type as string) : existing.type,
-        severity: params.severity !== undefined ? (params.severity as string) : existing.severity,
-        status: params.status !== undefined ? (params.status as string) : existing.status,
-      } as AIIncidentManagementModel;
-
-      const result = await updateIncidentByIdQuery(
-        params.incident_id as number,
-        incidentData,
-        organizationId,
-        transaction,
-      );
-      await transaction.commit();
-      return { id: result.id, ai_project: result.ai_project, status: result.status };
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
+    const fields: Record<string, unknown> = {};
+    if (params.title !== undefined) fields.ai_project = params.title;
+    if (params.description !== undefined) fields.description = params.description;
+    if (params.type !== undefined) fields.type = params.type;
+    if (params.severity !== undefined) fields.severity = params.severity;
+    if (params.status !== undefined) fields.status = params.status;
+    return applyIncidentUpdate(params, organizationId, fields);
   },
 });
 
@@ -539,32 +565,8 @@ const agentUpdateIncidentStatus = createWriteToolFn({
   toolName: "agent_update_incident_status",
   warningLevel: "warning",
   descriptionFn: (params) => `Update incident #${params.incident_id} status to "${params.status}"`,
-  executeFn: async (params, organizationId) => {
-    const transaction = await sequelize.transaction();
-    try {
-      const existing = await getIncidentByIdQuery(params.incident_id as number, organizationId);
-      if (!existing) {
-        throw new Error(`Incident #${params.incident_id} not found`);
-      }
-
-      const incidentData = {
-        ...existing.dataValues,
-        status: params.status as string,
-      } as AIIncidentManagementModel;
-
-      const result = await updateIncidentByIdQuery(
-        params.incident_id as number,
-        incidentData,
-        organizationId,
-        transaction,
-      );
-      await transaction.commit();
-      return { id: result.id, ai_project: result.ai_project, status: result.status };
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
-  },
+  executeFn: async (params, organizationId) =>
+    applyIncidentUpdate(params, organizationId, { status: params.status }),
 });
 
 const agentArchiveIncident = createWriteToolFn({
