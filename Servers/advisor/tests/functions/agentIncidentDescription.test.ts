@@ -40,7 +40,11 @@ describe("incident description rule on the shared write path (AI Advisor tools)"
       description: "",
     };
     existingRow.dataValues = { ...existingRow };
-    mockTransaction.mockResolvedValue({ commit: jest.fn(), rollback: jest.fn() });
+    mockTransaction.mockResolvedValue({
+      commit: jest.fn(),
+      rollback: jest.fn(),
+      afterCommit: jest.fn(),
+    });
     mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("automation_triggers")) return [[], 0];
       if (sql.includes("INSERT INTO ai_incident_managements")) {
@@ -103,6 +107,8 @@ describe("incident description rule on the shared write path (AI Advisor tools)"
     await expect(
       execute("agent_update_incident", { incident_id: 42, description: "" }),
     ).resolves.toMatchObject({ id: 42 });
-    expect(writeCalls()).toHaveLength(1);
+    // Accepted, and since "" equals NULL nothing changed: the shared write
+    // path skips the UPDATE for a no-op edit.
+    expect(writeCalls()).toHaveLength(0);
   });
 });

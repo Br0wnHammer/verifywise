@@ -278,6 +278,7 @@
   "in {days} days": "in {days} Tagen",
   "Incident deleted successfully": "Vorfall erfolgreich gelöscht",
   "Incident not found": "Vorfall nicht gefunden",
+  "This incident was changed since you opened it. Reload to see the latest version.": "Dieser Vorfall wurde geändert, seit Sie ihn geöffnet haben. Laden Sie die Seite neu, um die aktuelle Version zu sehen.",
   "Incorrect CAPTCHA answer": "Falsche CAPTCHA-Antwort",
   "Inherited risk level may be stale": "Geerbte Risikostufe möglicherweise veraltet",
   "Input type is required": "Eingabetyp ist erforderlich",

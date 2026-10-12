@@ -1720,10 +1720,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Ihre Anbieter-API-Schlüssel werden vor der Speicherung mit AES-256-GCM verschlüsselt. Sie werden nur beim Weiterleiten einer Anfrage entschlüsselt und erscheinen nie in Protokollen.",
     "Playground settings": "Playground-Einstellungen",
 
-    // ==============================
-    // Extended coverage (full app)
-    // ==============================
-
+    // =======================    // Extended coverage (full app)
+    // =======================
     // Actions / buttons (extended)
     "Add a description...": "Beschreibung hinzufügen...",
     "Add a reason for this decision...": "Grund für diese Entscheidung angeben...",
@@ -7002,6 +7000,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Incident details": "Vorfallsdetails",
     "Incident management details": "Details des Vorfallsmanagements",
     "Incident updated successfully!": "Vorfall erfolgreich aktualisiert!",
+    "This incident was changed by someone else since you opened it. The form now shows their changes with your edits kept: save again to apply your edits.":
+      "Dieser Vorfall wurde von jemand anderem geändert, seit Sie ihn geöffnet haben. Das Formular zeigt jetzt diese Änderungen, Ihre Bearbeitungen bleiben erhalten: Speichern Sie erneut, um Ihre Bearbeitungen zu übernehmen.",
+    "Someone else also changed: {fields}. Saving again will replace their values with yours.":
+      "Jemand anderes hat auch geändert: {fields}. Beim erneuten Speichern werden diese Werte durch Ihre ersetzt.",
+    "This incident was changed by someone else since you opened it. Could not load the latest version; close and reopen the incident to continue.":
+      "Dieser Vorfall wurde von jemand anderem geändert, seit Sie ihn geöffnet haben. Die aktuelle Version konnte nicht geladen werden; schließen Sie den Vorfall und öffnen Sie ihn erneut, um fortzufahren.",
     "Indefinite": "Unbestimmt",
     "Individual event records from ingestion": "Einzelne Ereignisdatensätze aus der Aufnahme",
     "Individual user AI tool usage and risk scores":
@@ -9834,6 +9838,12 @@ export const translations: Record<string, Record<string, string>> = {
     "MCP server": "MCP-Server",
     "The MCP server source was not found next to the backend. It is included from MCPServer/ at build time.":
       "Die MCP-Server-Quelle wurde nicht neben dem Backend gefunden. Sie wird zur Build-Zeit aus MCPServer/ eingebunden.",
+    "SLA (hours)": "SLA (Stunden)",
+    "Enter hours": "Stunden eingeben",
+    "Escalation user": "Eskalationsbenutzer",
+    "Select escalation user": "Eskalationsbenutzer auswählen",
+    "Auto-approve up to risk level": "Automatisch genehmigen bis zur Risikostufe",
+    "Escalated": "Eskaliert",
     // EU AI Act risk classification: questionnaire, results and reviewer panel
     "No": "Nein",
     "Another use in this area": "Eine andere Verwendung in diesem Bereich",
@@ -17108,6 +17118,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Incident details": "Détails de l'incident",
     "Incident management details": "Détails de la gestion des incidents",
     "Incident updated successfully!": "Incident mis à jour avec succès !",
+    "This incident was changed by someone else since you opened it. The form now shows their changes with your edits kept: save again to apply your edits.":
+      "Cet incident a été modifié par quelqu'un d'autre depuis que vous l'avez ouvert. Le formulaire affiche maintenant ses modifications et conserve les vôtres : enregistrez à nouveau pour appliquer vos modifications.",
+    "Someone else also changed: {fields}. Saving again will replace their values with yours.":
+      "Quelqu'un d'autre a aussi modifié : {fields}. Enregistrer à nouveau remplacera ses valeurs par les vôtres.",
+    "This incident was changed by someone else since you opened it. Could not load the latest version; close and reopen the incident to continue.":
+      "Cet incident a été modifié par quelqu'un d'autre depuis que vous l'avez ouvert. Impossible de charger la dernière version ; fermez puis rouvrez l'incident pour continuer.",
     "Indefinite": "Indéfini",
     "Individual event records from ingestion":
       "Enregistrements d'événements individuels depuis l'ingestion",
@@ -19939,6 +19955,12 @@ export const translations: Record<string, Record<string, string>> = {
     "MCP server": "Serveur MCP",
     "The MCP server source was not found next to the backend. It is included from MCPServer/ at build time.":
       "Les sources du serveur MCP n'ont pas été trouvées à côté du backend. Elles sont incluses depuis MCPServer/ au moment de la compilation.",
+    "SLA (hours)": "SLA (heures)",
+    "Enter hours": "Saisir les heures",
+    "Escalation user": "Utilisateur d'escalade",
+    "Select escalation user": "Sélectionner un utilisateur d'escalade",
+    "Auto-approve up to risk level": "Approuver automatiquement jusqu'au niveau de risque",
+    "Escalated": "Escaladé",
     // EU AI Act risk classification: questionnaire, results and reviewer panel
     "No": "Non",
     "Another use in this area": "Une autre utilisation dans ce domaine",
@@ -24584,6 +24606,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Incident details": "Detalles del incidente",
     "Incident management details": "Detalles de la gestión de incidentes",
     "Incident updated successfully!": "¡Incidente actualizado correctamente!",
+    "This incident was changed by someone else since you opened it. The form now shows their changes with your edits kept: save again to apply your edits.":
+      "Otra persona modificó este incidente después de que lo abrieras. El formulario muestra ahora sus cambios y conserva los tuyos: guarda de nuevo para aplicar tus cambios.",
+    "Someone else also changed: {fields}. Saving again will replace their values with yours.":
+      "Otra persona también cambió: {fields}. Si guardas de nuevo, sus valores se sustituirán por los tuyos.",
+    "This incident was changed by someone else since you opened it. Could not load the latest version; close and reopen the incident to continue.":
+      "Otra persona modificó este incidente después de que lo abrieras. No se pudo cargar la versión más reciente; cierra y vuelve a abrir el incidente para continuar.",
     "Indefinite": "Indefinido",
     "Individual event records from ingestion": "Registros de eventos individuales de la ingesta",
     "Information security for AI systems": "Seguridad de la información para sistemas de IA",
@@ -29967,6 +29995,12 @@ export const translations: Record<string, Record<string, string>> = {
     "MCP server": "Servidor MCP",
     "The MCP server source was not found next to the backend. It is included from MCPServer/ at build time.":
       "No se encontró el código fuente del servidor MCP junto al backend. Se incluye desde MCPServer/ en tiempo de compilación.",
+    "SLA (hours)": "SLA (horas)",
+    "Enter hours": "Introducir las horas",
+    "Escalation user": "Usuario de escalada",
+    "Select escalation user": "Seleccionar usuario de escalada",
+    "Auto-approve up to risk level": "Aprobación automática hasta el nivel de riesgo",
+    "Escalated": "Escalada",
     // EU AI Act risk classification: questionnaire, results and reviewer panel
     "No": "No",
     "Another use in this area": "Otro uso en este ámbito",

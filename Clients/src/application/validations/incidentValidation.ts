@@ -18,16 +18,6 @@ const normalizeDescription = (value: unknown): string =>
   value === undefined || value === null ? "" : String(value).trim();
 
 /**
- * True when an edited description differs from the loaded one. Both sides are
- * normalised (null/undefined → "", trimmed), mirroring the backend's
- * isIncidentDescriptionChanged: an unchanged description is not re-validated,
- * so other fields of an older incident can still be edited.
- */
-export function isIncidentDescriptionChanged(next: unknown, loaded: unknown): boolean {
-  return normalizeDescription(next) !== normalizeDescription(loaded);
-}
-
-/**
  * Returns an error message for an incident description, or "" when valid.
  */
 export function validateIncidentDescription(value: unknown): string {

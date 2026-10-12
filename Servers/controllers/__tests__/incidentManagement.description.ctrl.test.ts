@@ -2,13 +2,19 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 jest.mock("../../database/db", () => ({
   sequelize: {
-    transaction: jest.fn(async () => ({ commit: jest.fn(), rollback: jest.fn() })),
+    transaction: jest.fn(async () => ({
+      commit: jest.fn(),
+      rollback: jest.fn(),
+      afterCommit: jest.fn(),
+    })),
   },
 }));
 jest.mock("../../domain.layer/models/incidentManagement/incidemtManagement.model", () => ({
   AIIncidentManagementModel: jest.fn().mockImplementation((data: unknown) => data),
 }));
+// Real diff helpers (the shared write path uses them); the queries are stubbed.
 jest.mock("../../utils/incidentManagement.utils", () => ({
+  ...(jest.requireActual("../../utils/incidentManagement.utils") as object),
   getAllIncidentsQuery: jest.fn(),
   getIncidentByIdQuery: jest.fn(),
   createNewIncidentQuery: jest.fn(),
@@ -53,7 +59,7 @@ const makeRes = () => {
 };
 
 const makeReq = (body: Record<string, unknown>, params: Record<string, string> = {}) =>
-  ({ body, params, organizationId: 7, userId: 5 }) as any;
+  ({ body, params, organizationId: 7, userId: 5, t: (key: string) => key }) as any;
 
 /** The standard validation-failure body these handlers return. */
 const expectStandard400 = (res: any, message: string, code: string) => {
@@ -71,11 +77,9 @@ const expectStandard400 = (res: any, message: string, code: string) => {
 describe("incident controller description validation", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetById.mockResolvedValue({
-      id: 42,
-      description: "Existing description",
-      toSafeJSON: () => ({ id: 42 }),
-    });
+    // The shared write path (updateIncident) reads the locked row's dataValues.
+    const row = { id: 42, description: "Existing description", status: "Open" };
+    mockGetById.mockResolvedValue({ ...row, dataValues: row, toSafeJSON: () => ({ id: 42 }) });
   });
 
   it("rejects an over-long description on create up front, without writing", async () => {

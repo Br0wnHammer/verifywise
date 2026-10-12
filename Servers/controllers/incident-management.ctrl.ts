@@ -5,7 +5,6 @@ import {
   getAllIncidentsQuery,
   getIncidentByIdQuery,
   createNewIncidentQuery,
-  updateIncidentByIdQuery,
   deleteIncidentByIdQuery,
   archiveIncidentByIdQuery,
   validateIncidentReferences,
@@ -15,21 +14,24 @@ import { STATUS_CODE } from "../utils/statusCode.utils";
 import logger, { logStructured } from "../utils/logger/fileLogger";
 import { ValidationError } from "../utils/validations/validation.utils";
 import { translateError } from "../utils/i18n.utils";
-import { ValidationException } from "../domain.layer/exceptions/custom.exception";
 import {
   validateCompleteIncidentCreation,
-  validateCompleteIncidentUpdate,
   validateIncidentIdParam,
   validateModelInventoryId,
   validateProjectId,
   validateAssigneeId,
 } from "../utils/validations/incidentManagementValidation.utils";
-import {
-  recordIncidentCreation,
-  trackIncidentChanges,
-  recordMultipleFieldChanges,
-} from "../utils/incidentChangeHistory.utils";
+import { recordIncidentCreation } from "../utils/incidentChangeHistory.utils";
 import { triggerIncidentResponse } from "../services/workflows/triggers";
+import {
+  updateIncident,
+  IncidentUpdateValidationError,
+  INCIDENT_CHANGED_MESSAGE,
+} from "../services/incidentManagement.service";
+import {
+  ConflictException,
+  ValidationException,
+} from "../domain.layer/exceptions/custom.exception";
 
 /** Severity values that launch the critical incident_response workflow. */
 const CRITICAL_INCIDENT_SEVERITIES = new Set(["very serious", "critical"]);
@@ -361,78 +363,22 @@ export async function updateIncidentById(req: Request, res: Response) {
     );
   }
 
-  let existingIncident: AIIncidentManagementModel | null = null;
+  // The edit drawer sends the updated_at it loaded so a save over someone
+  // else's newer change is refused (409) instead of silently overwriting it.
+  const { expected_updated_at: expectedUpdatedAt, ...updates } = req.body ?? {};
+
   try {
-    existingIncident = (await getIncidentByIdQuery(
-      incidentId,
+    // Shared write path: locks the row, checks expected_updated_at, validates
+    // against the locked row, drops a stale closure approval on reopen,
+    // writes changed fields and records change history.
+    const savedIncident = await updateIncident(
       req.organizationId!,
-    )) as AIIncidentManagementModel | null;
-  } catch (error) {
-    // Don't validate against a record we could not read.
-    logger.error("❌ Error loading incident for update validation:", error);
-    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
-  }
-  if (!existingIncident) {
-    return res.status(404).json(STATUS_CODE[404](translateError(req, "Incident not found")));
-  }
-
-  const validationErrors = validateCompleteIncidentUpdate(req.body, existingIncident);
-  if (validationErrors.length > 0) {
-    const errorDetails = validationErrors.map((err: ValidationError) => ({
-      field: err.field,
-      message: translateError(req, err.message),
-      code: err.code,
-    }));
-    logStructured(
-      "error",
-      `Incident update validation failed for ID ${incidentId}: ${JSON.stringify(errorDetails)}`,
-      "updateIncidentById",
-      "incidentManagement.controller.ts",
-    );
-    return res.status(400).json(
-      STATUS_CODE[400]({
-        status: "error",
-        message: "Incident update validation failed",
-        errors: errorDetails,
-      }),
-    );
-  }
-
-  // Issue #4583 — referenced entities must exist within the caller's organization.
-  const invalidRefs = await validateIncidentReferences(
-    {
-      model_inventory_id:
-        req.body.model_inventory_id !== undefined
-          ? req.body.model_inventory_id
-          : existingIncident?.model_inventory_id,
-      project_id:
-        req.body.project_id !== undefined ? req.body.project_id : existingIncident?.project_id,
-      assignee_id:
-        req.body.assignee_id !== undefined ? req.body.assignee_id : existingIncident?.assignee_id,
-    },
-    req.organizationId!,
-  );
-  if (invalidRefs.length > 0) {
-    return res.status(400).json(
-      STATUS_CODE[400]({
-        status: "error",
-        message: "Incident update validation failed",
-        errors: invalidRefs.map((field) => ({
-          field,
-          message: `${field} does not reference an entity in your organization`,
-          code: "INVALID_REFERENCE",
-        })),
-      }),
-    );
-  }
-
-  const transaction = await sequelize.transaction();
-  try {
-    const currentIncident = (await getIncidentByIdQuery(
       incidentId,
-      req.organizationId!,
-    )) as AIIncidentManagementModel;
-    if (!currentIncident) {
+      updates,
+      req.userId,
+      { expectedUpdatedAt },
+    );
+    if (!savedIncident) {
       logStructured(
         "successful",
         "no incident found",
@@ -442,34 +388,6 @@ export async function updateIncidentById(req: Request, res: Response) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Incident not found")));
     }
 
-    // Get the plain object for change tracking before updating
-    const existingData = currentIncident.toSafeJSON();
-
-    Object.assign(currentIncident, { ...req.body, updated_at: new Date() });
-
-    const savedIncident = await updateIncidentByIdQuery(
-      incidentId,
-      currentIncident,
-      req.organizationId!,
-      transaction,
-    );
-
-    // Track and record changes
-    if (req.userId) {
-      const changes = await trackIncidentChanges(existingData, req.body);
-      if (changes.length > 0) {
-        await recordMultipleFieldChanges(
-          incidentId,
-          req.userId,
-          req.organizationId!,
-          changes,
-          transaction,
-        );
-      }
-    }
-
-    await transaction.commit();
-
     logStructured(
       "successful",
       "incident updated",
@@ -478,11 +396,46 @@ export async function updateIncidentById(req: Request, res: Response) {
     );
     return res.status(200).json(STATUS_CODE[200](savedIncident.toSafeJSON()));
   } catch (error) {
-    await transaction.rollback();
+    if (error instanceof IncidentUpdateValidationError) {
+      const errorDetails = error.errors.map((err: ValidationError) => ({
+        field: err.field,
+        message: translateError(req, err.message),
+        code: err.code,
+      }));
+      logStructured(
+        "error",
+        `Incident update validation failed for ID ${incidentId}: ${JSON.stringify(errorDetails)}`,
+        "updateIncidentById",
+        "incidentManagement.controller.ts",
+      );
+      return res.status(400).json(
+        STATUS_CODE[400]({
+          status: "error",
+          message: "Incident update validation failed",
+          errors: errorDetails,
+        }),
+      );
+    }
+    // Backstop in the write query (assertValidIncidentDescription).
     if (error instanceof ValidationException) {
       return res
         .status(400)
         .json(validationExceptionResponse(req, error, "Incident update validation failed"));
+    }
+    if (error instanceof ConflictException) {
+      logStructured(
+        "error",
+        `Incident ${incidentId} changed since the editor loaded it`,
+        "updateIncidentById",
+        "incidentManagement.controller.ts",
+      );
+      return res.status(409).json(
+        STATUS_CODE[409]({
+          status: "error",
+          message: req.t!(INCIDENT_CHANGED_MESSAGE),
+          code: "CONFLICT",
+        }),
+      );
     }
     logStructured(
       "error",

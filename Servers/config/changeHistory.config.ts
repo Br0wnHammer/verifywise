@@ -6,7 +6,7 @@
  * database table using the migration template.
  */
 
-import { QueryTypes } from "sequelize";
+import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../database/db";
 import logger from "../utils/logger/fileLogger";
 
@@ -55,7 +55,87 @@ export type EntityType =
 /**
  * Field formatter function type
  */
-export type FieldFormatter = (value: unknown) => Promise<string>;
+export type FieldFormatter = (value: unknown, context?: FormatterContext) => Promise<string>;
+
+/**
+ * What a formatter that looks rows up needs to stay inside one tenant and,
+ * while an update holds a row lock, on the update's own connection.
+ */
+export interface FormatterContext {
+  /** Lookups only resolve ids that belong to this organization. */
+  organizationId?: number;
+  /** Run lookups on this transaction instead of a separate pool connection. */
+  transaction?: Transaction;
+}
+
+let lookupSavepointSeq = 0;
+
+/**
+ * Runs a formatter's lookup SELECT. On a caller's transaction it runs inside
+ * its own SAVEPOINT: Postgres aborts the whole transaction on any error, so
+ * without one a failed name lookup would make the caller's own write fail.
+ * On success the savepoint is released; on failure it is rolled back to and
+ * released, the error is rethrown for the formatter's id-label fallback, and
+ * the caller's transaction goes on.
+ *
+ * The SQL is issued explicitly because a sequelize v6 nested transaction
+ * never releases its savepoint on commit.
+ */
+const selectInSavepoint = async <T extends object>(
+  sql: string,
+  replacements: Record<string, unknown>,
+  transaction?: Transaction,
+): Promise<T[]> => {
+  if (!transaction) {
+    return sequelize.query<T>(sql, { replacements, type: QueryTypes.SELECT });
+  }
+  lookupSavepointSeq += 1;
+  const savepoint = `history_lookup_${lookupSavepointSeq}`;
+  await sequelize.query(`SAVEPOINT ${savepoint}`, { transaction });
+  try {
+    const rows = await sequelize.query<T>(sql, {
+      replacements,
+      type: QueryTypes.SELECT,
+      transaction,
+    });
+    await sequelize.query(`RELEASE SAVEPOINT ${savepoint}`, { transaction });
+    return rows;
+  } catch (error) {
+    await sequelize.query(`ROLLBACK TO SAVEPOINT ${savepoint}`, { transaction });
+    await sequelize.query(`RELEASE SAVEPOINT ${savepoint}`, { transaction });
+    throw error;
+  }
+};
+
+/**
+ * Formatter for an id that references a row by name: resolves `id` with
+ * `sql` (selecting a `name` column, filtered by `:id` and `:organizationId`),
+ * or falls back to `${label} #id`. Used for incident foreign keys so history
+ * shows names, like the user formatter.
+ *
+ * The lookup is always tenant-scoped: without an organizationId in the
+ * context it does not query at all and shows the fallback, so a name from
+ * another organization can never be disclosed.
+ */
+const namedRowFormatter =
+  (sql: string, label: string): FieldFormatter =>
+  async (value: unknown, context?: FormatterContext): Promise<string> => {
+    if (value === null || value === undefined || value === "") return "-";
+    const id = Number(value);
+    if (!Number.isInteger(id)) return String(value);
+    if (context?.organizationId === undefined) return `${label} #${id}`;
+    try {
+      const rows = await selectInSavepoint<{ name: string | null }>(
+        sql,
+        { id, organizationId: context.organizationId },
+        context.transaction,
+      );
+      return rows[0]?.name || `${label} #${id}`;
+    } catch (error) {
+      logger.error(`Error fetching ${label} for ID ${id}: ${error}`);
+      return `${label} #${id}`;
+    }
+  };
 
 /**
  * Entity configuration interface
@@ -121,16 +201,20 @@ export const GENERIC_FORMATTERS: { [key: string]: FieldFormatter } = {
   },
 
   // User lookup formatter (resolves user ID to name)
-  user: async (value: unknown): Promise<string> => {
+  // With an organizationId in the context the lookup is tenant-scoped and a
+  // user from another organization shows as "User #id". Callers that pass no
+  // context keep the previous unscoped lookup.
+  user: async (value: unknown, context?: FormatterContext): Promise<string> => {
     if (!value) return "-";
     if (typeof value === "number") {
       try {
-        const users = await sequelize.query<UserQueryResult>(
-          `SELECT id, name, surname, email FROM users WHERE id = :userId`,
-          {
-            replacements: { userId: value },
-            type: QueryTypes.SELECT,
-          },
+        const scoped = context?.organizationId !== undefined;
+        const users = await selectInSavepoint<UserQueryResult>(
+          `SELECT id, name, surname, email FROM users WHERE id = :userId${
+            scoped ? " AND organization_id = :organizationId" : ""
+          }`,
+          { userId: value, organizationId: context?.organizationId ?? null },
+          context?.transaction,
         );
 
         if (users && users.length > 0) {
@@ -540,6 +624,9 @@ export const ENTITY_CONFIGS: { [key in EntityType]: EntityConfig } = {
       "approved_by",
       "approval_date",
       "approval_notes",
+      "model_inventory_id",
+      "project_id",
+      "assignee_id",
     ],
     fieldLabels: {
       ai_project: "AI use case or framework",
@@ -562,8 +649,21 @@ export const ENTITY_CONFIGS: { [key in EntityType]: EntityConfig } = {
       approved_by: "Approved by",
       approval_date: "Approval date",
       approval_notes: "Approval notes",
+      model_inventory_id: "Affected model",
+      project_id: "Linked use case",
+      assignee_id: "Owner",
     },
     fieldFormatters: {
+      model_inventory_id: namedRowFormatter(
+        "SELECT CONCAT_WS(' ', provider, model) AS name FROM model_inventories WHERE id = :id AND organization_id = :organizationId",
+        "Model",
+      ),
+      project_id: namedRowFormatter(
+        "SELECT project_title AS name FROM projects WHERE id = :id AND organization_id = :organizationId",
+        "Use case",
+      ),
+      assignee_id: async (value: unknown, context?: FormatterContext) =>
+        GENERIC_FORMATTERS.user(value === null || value === "" ? value : Number(value), context),
       occurred_date: GENERIC_FORMATTERS.date,
       date_detected: GENERIC_FORMATTERS.date,
       approval_date: GENERIC_FORMATTERS.date,

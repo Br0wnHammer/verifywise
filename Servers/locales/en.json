@@ -278,6 +278,7 @@
   "in {days} days": "in {days} days",
   "Incident deleted successfully": "Incident deleted successfully",
   "Incident not found": "Incident not found",
+  "This incident was changed since you opened it. Reload to see the latest version.": "This incident was changed since you opened it. Reload to see the latest version.",
   "Incorrect CAPTCHA answer": "Incorrect CAPTCHA answer",
   "Inherited risk level may be stale": "Inherited risk level may be stale",
   "Input type is required": "Input type is required",

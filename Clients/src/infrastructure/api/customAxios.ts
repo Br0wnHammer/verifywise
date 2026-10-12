@@ -169,6 +169,14 @@ const showGlobalErrorAlert = (error: AxiosError) => {
   // Without this guard, switching tabs mid-request shows a bogus error toast.
   if (axios.isCancel(error) || error.code === "ERR_CANCELED") return;
 
+  // The caller shows its own message for this request (RequestParams
+  // suppressGlobalErrorToast), so a toast would be a duplicate.
+  if (
+    (error.config as { suppressGlobalErrorToast?: boolean } | undefined)?.suppressGlobalErrorToast
+  ) {
+    return;
+  }
+
   const requestUrl = error.config?.url ?? "";
   if (ENDPOINTS_WITH_CUSTOM_ERROR_UI.some((path) => requestUrl.includes(path))) return;
 

@@ -5,7 +5,6 @@ import {
   INCIDENT_DESCRIPTION_REQUIRED_MESSAGE,
   INCIDENT_DESCRIPTION_TOO_LONG_MESSAGE,
   INCIDENT_DESCRIPTION_TOO_SHORT_MESSAGE,
-  isIncidentDescriptionChanged,
   validateIncidentDescription,
 } from "../incidentValidation";
 
@@ -53,22 +52,5 @@ describe("validateIncidentDescription", () => {
 
   it("measures length after trimming, like the backend", () => {
     expect(validateIncidentDescription(`  ${"a".repeat(32767)}  `)).toBe("");
-  });
-});
-
-describe("isIncidentDescriptionChanged", () => {
-  it("treats null, undefined and empty as the same value", () => {
-    expect(isIncidentDescriptionChanged("", null)).toBe(false);
-    expect(isIncidentDescriptionChanged(undefined, "")).toBe(false);
-    expect(isIncidentDescriptionChanged("  ", null)).toBe(false);
-  });
-
-  it("ignores surrounding whitespace", () => {
-    expect(isIncidentDescriptionChanged("  abc \n", "abc")).toBe(false);
-  });
-
-  it("detects a real change", () => {
-    expect(isIncidentDescriptionChanged("abcd", "abc")).toBe(true);
-    expect(isIncidentDescriptionChanged("", "abc")).toBe(true);
   });
 });
