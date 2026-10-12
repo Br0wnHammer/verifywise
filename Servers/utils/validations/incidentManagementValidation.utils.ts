@@ -348,7 +348,8 @@ const toHarmArray = (value: unknown): unknown => {
  * (diffIncidentColumns).
  *
  * '' / null / undefined are all "empty"; booleans treat empty as false; date
- * columns compare calendar dates; foreign keys compare numerically.
+ * columns compare calendar dates; foreign keys compare numerically; lists
+ * (harm categories) compare as sets, ignoring order.
  */
 export const isSameIncidentValue = (column: string, stored: unknown, sent: unknown): boolean => {
   if (INCIDENT_BOOLEAN_COLUMNS.has(column)) return Boolean(stored) === Boolean(sent);
@@ -359,8 +360,12 @@ export const isSameIncidentValue = (column: string, stored: unknown, sent: unkno
     return incidentCalendarDate(stored) === incidentCalendarDate(sent);
   }
   if (INCIDENT_FK_COLUMNS.has(column)) return Number(stored) === Number(sent);
-  if (column === "categories_of_harm") {
-    return JSON.stringify(toHarmArray(stored)) === JSON.stringify(toHarmArray(sent));
+  const storedList = column === "categories_of_harm" ? toHarmArray(stored) : stored;
+  const sentList = column === "categories_of_harm" ? toHarmArray(sent) : sent;
+  if (Array.isArray(storedList) && Array.isArray(sentList)) {
+    // Lists (harm categories) are sets: order does not make a change.
+    const sorted = (list: unknown[]) => JSON.stringify(list.map((item) => String(item)).sort());
+    return sorted(storedList) === sorted(sentList);
   }
   if (typeof stored === "object" || typeof sent === "object") {
     return JSON.stringify(stored) === JSON.stringify(sent);

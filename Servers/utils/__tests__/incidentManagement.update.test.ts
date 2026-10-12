@@ -65,6 +65,15 @@ describe("diffIncidentColumns", () => {
     ).toEqual({});
   });
 
+  it("does not write a reordered harm category list", () => {
+    expect(
+      diffIncidentColumns(
+        { categories_of_harm: ["Economic Loss", "Other"] },
+        { categories_of_harm: ["Other", "Economic Loss"] },
+      ),
+    ).toEqual({});
+  });
+
   it("never writes NULL to archived", () => {
     expect(diffIncidentColumns({ archived: true }, { archived: null })).toEqual({
       archived: false,

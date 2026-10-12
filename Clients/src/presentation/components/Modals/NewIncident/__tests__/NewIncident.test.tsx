@@ -34,7 +34,7 @@ vi.mock("../../../../../application/repository/user.repository", () => ({
 }));
 
 import { renderWithProviders } from "../../../../../test/renderWithProviders";
-import SideDrawerIncident, { NewIncidentFormValues } from "../index";
+import SideDrawerIncident, { NewIncidentFormValues, isSameFormValue } from "../index";
 
 // Enum values as plain strings (the enum members are string-valued); avoids a
 // test-only import of the enum module.
@@ -230,5 +230,38 @@ describe("NewIncident (SideDrawerIncident)", () => {
       finish(true);
       await waitFor(() => expect(save.closest("button")).not.toBeDisabled());
     });
+  });
+
+  it("compares lists as sets, so reordering harm categories is not an edit", () => {
+    expect(
+      isSameFormValue("categories_of_harm", ["Economic Loss", "Other"], ["Other", "Economic Loss"]),
+    ).toBe(true);
+    expect(isSameFormValue("categories_of_harm", ["Other"], ["Other", "Economic Loss"])).toBe(
+      false,
+    );
+  });
+
+  it("sends no version when the loaded incident had none (never an empty string)", async () => {
+    const onSuccess = vi.fn().mockResolvedValue(true);
+    const noVersion = {
+      ...validInitialData,
+      incident_id: "INC-42",
+      categories_of_harm: ["Economic Loss"],
+    } as unknown as NewIncidentFormValues;
+    renderWithProviders(
+      <SideDrawerIncident
+        isOpen={true}
+        isEdit={true}
+        setIsOpen={vi.fn()}
+        onSuccess={onSuccess}
+        initialData={noVersion}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("field-description"), { target: { value: "Edited" } });
+    fireEvent.click(screen.getByText("Update incident"));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(onSuccess.mock.calls[0][0]).toEqual({ description: "Edited" });
   });
 });

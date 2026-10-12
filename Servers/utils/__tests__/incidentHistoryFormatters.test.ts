@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
-jest.mock("../../database/db", () => ({ sequelize: { query: jest.fn() } }));
+// sequelize.transaction({ transaction }, cb) opens a SAVEPOINT on the parent:
+// modelled as a child transaction object handed to the callback, which
+// rejects (rolling back only the savepoint) when the callback throws.
+jest.mock("../../database/db", () => ({
+  sequelize: {
+    query: jest.fn(),
+    transaction: jest.fn(async (options: any, callback: any) =>
+      callback({ savepointOf: options?.transaction }),
+    ),
+  },
+}));
 
 import { sequelize } from "../../database/db";
 import { GENERIC_FORMATTERS, getEntityConfig } from "../../config/changeHistory.config";
@@ -13,6 +23,7 @@ const tx = { id: "tx" } as any;
 describe("incident change-history formatters are tenant-scoped", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockQuery.mockReset();
   });
 
   it.each([
@@ -31,8 +42,9 @@ describe("incident change-history formatters are tenant-scoped", () => {
       expect(sql).toContain("organization_id = :organizationId");
       expect(options).toMatchObject({
         replacements: { id: 5, organizationId: 1 },
-        transaction: tx,
+        transaction: { savepointOf: tx },
       });
+      expect(sequelize.transaction).toHaveBeenCalledWith({ transaction: tx }, expect.any(Function));
 
       // Another organization's row is not found → id fallback, no name leaked.
       mockQuery.mockResolvedValueOnce([]);
@@ -58,7 +70,7 @@ describe("incident change-history formatters are tenant-scoped", () => {
     expect(sql).toContain("organization_id = :organizationId");
     expect(options).toMatchObject({
       replacements: { userId: 7, organizationId: 1 },
-      transaction: tx,
+      transaction: { savepointOf: tx },
     });
   });
 
@@ -91,7 +103,10 @@ describe("incident change-history formatters are tenant-scoped", () => {
     expect(lookups).toHaveLength(2);
     for (const [sql, options] of lookups) {
       expect(sql).toContain("organization_id = :organizationId");
-      expect(options).toMatchObject({ replacements: { organizationId: 1 }, transaction: createTx });
+      expect(options).toMatchObject({
+        replacements: { organizationId: 1 },
+        transaction: { savepointOf: createTx },
+      });
     }
     const inserted = mockQuery.mock.calls
       .filter(([sql]: [string]) => sql.startsWith("INSERT"))
@@ -104,6 +119,42 @@ describe("incident change-history formatters are tenant-scoped", () => {
         ["Owner", "Grace Hopper"],
         ["Linked use case", "Chatbot"],
         ["Status", "Open"],
+      ]),
+    );
+  });
+
+  it("a failing lookup on a transaction falls back to the id label inside its savepoint", async () => {
+    const tx = { id: "outer" } as any;
+    mockQuery.mockRejectedValueOnce(new Error("division by zero"));
+
+    await expect(formatters.project_id(3, { organizationId: 1, transaction: tx })).resolves.toBe(
+      "Use case #3",
+    );
+    // The failing SELECT ran on the savepoint, not on the caller's transaction.
+    expect(sequelize.transaction).toHaveBeenCalledWith({ transaction: tx }, expect.any(Function));
+    expect(mockQuery.mock.calls[0][1].transaction).toEqual({ savepointOf: tx });
+  });
+
+  it("creation history still records every field when a name lookup fails", async () => {
+    const createTx = { afterCommit: jest.fn() } as any;
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM users")) throw new Error("lookup failed");
+      return [[], 0];
+    });
+
+    await recordEntityCreation("incident", 42, 5, 1, { status: "Open", assignee_id: 7 }, createTx);
+
+    const inserted = mockQuery.mock.calls
+      .filter(([sql]: [string]) => sql.startsWith("INSERT"))
+      .map(([, options]: [string, any]) => [
+        options.replacements.field_name,
+        options.replacements.new_value,
+        options.transaction,
+      ]);
+    expect(inserted).toEqual(
+      expect.arrayContaining([
+        ["Owner", "User #7", createTx],
+        ["Status", "Open", createTx],
       ]),
     );
   });

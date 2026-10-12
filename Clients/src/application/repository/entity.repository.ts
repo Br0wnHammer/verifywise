@@ -38,10 +38,12 @@ export async function getEntityById({
   routeUrl,
   signal,
   responseType = "json",
+  suppressGlobalErrorToast,
 }: GetRequestParams): Promise<any> {
   const response = await apiServices.get(routeUrl, {
     signal,
     responseType,
+    ...(suppressGlobalErrorToast ? { suppressGlobalErrorToast } : {}),
   });
   return response.data;
 }

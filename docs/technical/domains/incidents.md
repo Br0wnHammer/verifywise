@@ -258,10 +258,11 @@ issue-tracker sync are meant to use it too. In order, it:
    rolls back a transaction it opened), so concurrent updates serialise.
 2. If `expectedUpdatedAt` is given and differs from the stored `updated_at`,
    throws `ConflictException`: "This incident was changed since you opened it.
-   Reload to see the latest version." The controller answers 409. null,
-   undefined or an empty string means "no version check"; any other value that
-   is not a date-time is a 400 validation error (`expected_updated_at`,
-   `INVALID_DATE`), checked before any read.
+   Reload to see the latest version." The controller answers 409. null or
+   undefined means "no version check"; any other value that is not a
+   date-time, including `''` and whitespace, is a 400 validation error
+   (`expected_updated_at`, `INVALID_DATE`), checked before any read. The drawer
+   sends a version only when the loaded incident has one, never `''`.
    `getIncidentByIdQuery` maps rows onto the model (`timestamps: true`,
    `underscored: true`), so the `updated_at` column is on `updatedAt`, not on
    `dataValues.updated_at`; the check reads `existing.updatedAt` like
@@ -269,12 +270,19 @@ issue-tracker sync are meant to use it too. In order, it:
    In edit mode the drawer sends **only the fields the user changed** against
    the values it loaded, plus that version as `expected_updated_at`, so a save
    never writes back stale copies of fields it did not touch. On 409 the page
-   refetches the incident, makes it the selected incident and refreshes the
-   list; the drawer then shows the latest value for every field the user has
-   not edited, keeps the user's edits and takes the new version, and the page
-   says the form now shows the other change with the user's edits kept. Saving
-   again applies only the user's edits on top of the other change. Any other
-   save failure keeps the drawer open with the user's edits too. The update
+   refetches the incident (with `suppressGlobalErrorToast`), makes it the
+   selected incident and refreshes the list without the table's loading state;
+   the drawer then shows the latest value for every field the user has not
+   edited, keeps the user's edits and takes the new version, and the page says
+   the form now shows the other change with the user's edits kept. If a field
+   the user edited was also changed by the other editor, the message names
+   those fields ("Someone else also changed: Severity, Status. Saving again
+   will replace their values with yours."); the user's values are kept. If the
+   refresh fails or returns nothing, the drawer stays open and the message says
+   to close and reopen the incident. Saving again applies only the user's
+   edits on top of the other change. Any other save failure keeps the drawer
+   open with the user's edits too. Lists (harm categories) compare as sets on
+   both sides, so reordering is never an edit. The update
    request sets `suppressGlobalErrorToast` (a per-request axios config flag
    read by `customAxios`) because the page shows its own message. The page
    memoises the drawer's `initialData` on the selected incident so re-renders
@@ -316,7 +324,10 @@ issue-tracker sync are meant to use it too. In order, it:
    `Use case #id` / `User #id`. The name lookups are tenant-scoped
    (`AND organization_id = :organizationId`) and run on the update transaction
    (the connection holding the row lock), via the `FormatterContext` that
-   `formatEntityFieldChanges` passes to field formatters. The project and model
+   `formatEntityFieldChanges` passes to field formatters. On a caller's
+   transaction each lookup runs inside a SAVEPOINT (a nested transaction), so
+   a failing lookup rolls back only the savepoint and the field falls back to
+   its id label instead of aborting the caller's write. The project and model
    formatters do not query at all without an organization. The generic user
    formatter is scoped when given an organization. Creation history
    (`recordEntityCreation`, for every entity) always passes its organization

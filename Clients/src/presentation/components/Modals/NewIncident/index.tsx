@@ -129,14 +129,49 @@ const FK_FIELDS = new Set<keyof NewIncidentFormValues>([
   "assignee_id",
 ]);
 
-/** Whether two form values are the same for change detection ("" / null / undefined are all empty). */
-const isSameFormValue = (key: keyof NewIncidentFormValues, a: unknown, b: unknown): boolean => {
+/**
+ * Whether two form values are the same for change detection: "" / null /
+ * undefined are all empty, FK pickers compare as ids, and lists (harm
+ * categories) compare as sets, ignoring order.
+ */
+export const isSameFormValue = (
+  key: keyof NewIncidentFormValues,
+  a: unknown,
+  b: unknown,
+): boolean => {
   const norm = (v: unknown) => {
     if (FK_FIELDS.has(key)) return toId(v);
     if (v === undefined || v === null) return "";
+    if (Array.isArray(v)) return JSON.stringify(v.map((item) => String(item)).sort());
     return typeof v === "object" ? JSON.stringify(v) : String(v);
   };
   return norm(a) === norm(b);
+};
+
+/** The drawer's label for each editable field, as shown on the form. */
+export const INCIDENT_FIELD_LABELS: Partial<Record<keyof NewIncidentFormValues, string>> = {
+  ai_project: "AI use case or framework",
+  project_id: "AI use case or framework",
+  type: "Incident type",
+  severity: "Severity",
+  status: "Status",
+  model_inventory_id: "Affected model",
+  assignee_id: "Owner",
+  occurred_date: "Occurred date",
+  date_detected: "Detected date",
+  reporter: "Reporter",
+  model_system_version: "Model / system version",
+  categories_of_harm: "Categories of harm",
+  affected_persons_groups: "Affected persons / groups",
+  description: "Description",
+  relationship_causality: "Relationship / causality",
+  immediate_mitigations: "Immediate mitigations taken",
+  planned_corrective_actions: "Planned corrective actions",
+  approval_status: "Approval status",
+  approved_by: "Approved by",
+  approval_date: "Approval date",
+  approval_notes: "Approval notes / comments",
+  interim_report: "This incident has an interim report",
 };
 
 /** Fields the drawer never sends as edits: identity and the version token. */

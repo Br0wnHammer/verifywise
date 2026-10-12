@@ -61,8 +61,9 @@ export interface UpdateIncidentOptions {
   /**
    * The incident's updated_at as the caller last saw it. When given and the
    * stored value differs, the update is refused with a ConflictException
-   * (HTTP 409). null, undefined and '' mean "no version check"; any other
-   * value that is not a date-time is a validation error (HTTP 400).
+   * (HTTP 409). null and undefined mean "no version check"; any other value
+   * that is not a date-time, including '' and whitespace, is a validation
+   * error (HTTP 400).
    * Interactive editors pass it; background writers do not.
    */
   expectedUpdatedAt?: unknown;
@@ -75,9 +76,8 @@ const toTime = (value: unknown): number => {
   return new Date(value).getTime();
 };
 
-/** No version given: null, undefined or an empty string. */
-const isAbsentVersion = (value: unknown): boolean =>
-  value === null || value === undefined || (typeof value === "string" && value.trim() === "");
+/** No version given: null or undefined. ('' is a malformed version, not an absent one.) */
+const isAbsentVersion = (value: unknown): boolean => value === null || value === undefined;
 
 /**
  * Applies `updates` to incident `incidentId`. Returns the updated incident
@@ -98,7 +98,7 @@ export async function updateIncident(
   options: UpdateIncidentOptions = {},
 ): Promise<AIIncidentManagementModel | null> {
   // A version that is present but not a date-time is a bad request (400),
-  // not a conflict (409). An absent version skips the check.
+  // not a conflict (409). Only null / undefined skip the check.
   const expectedTime = isAbsentVersion(options.expectedUpdatedAt)
     ? undefined
     : toTime(options.expectedUpdatedAt);

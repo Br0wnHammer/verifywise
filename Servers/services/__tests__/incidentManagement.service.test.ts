@@ -7,8 +7,17 @@ const mockTransaction = {
   afterCommit: jest.fn((cb: () => void) => afterCommitCallbacks.push(cb)),
 };
 
+// sequelize.transaction() opens the update transaction; with a callback it
+// opens a SAVEPOINT on the given parent (history name lookups).
 jest.mock("../../database/db", () => ({
-  sequelize: { transaction: jest.fn(async () => mockTransaction), query: jest.fn() },
+  sequelize: {
+    transaction: jest.fn(async (options?: any, callback?: any) =>
+      typeof callback === "function"
+        ? callback({ savepointOf: options?.transaction })
+        : mockTransaction,
+    ),
+    query: jest.fn(),
+  },
 }));
 // Real diff; the queries are stubbed.
 jest.mock("../../utils/incidentManagement.utils", () => ({
@@ -163,7 +172,8 @@ describe("updateIncident (shared incident write path)", () => {
       expect(sql).toContain("organization_id = :organizationId");
       expect(options).toMatchObject({
         replacements: { organizationId: 1 },
-        transaction: mockTransaction,
+        // A savepoint of the update transaction, so a failed lookup cannot abort it.
+        transaction: { savepointOf: mockTransaction },
       });
     }
   });
@@ -187,6 +197,8 @@ describe("updateIncident (shared incident write path)", () => {
     });
 
     it.each([
+      ["empty", ""],
+      ["whitespace", "   "],
       ["not a date", "yesterday-ish"],
       ["number", 12345],
       ["object", {}],
@@ -206,7 +218,6 @@ describe("updateIncident (shared incident write path)", () => {
     it.each([
       ["null", null],
       ["undefined", undefined],
-      ["empty", ""],
     ])("skips the version check for a %s expectedUpdatedAt", async (_label, expectedUpdatedAt) => {
       await updateIncident(1, 42, { status: Status.OPEN }, 7, { expectedUpdatedAt });
       expect(mockUpdate).toHaveBeenCalledTimes(1);

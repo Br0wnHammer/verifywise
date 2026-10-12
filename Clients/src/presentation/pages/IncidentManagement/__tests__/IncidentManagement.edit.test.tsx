@@ -3,6 +3,7 @@ import { renderWithProviders } from "../../../../test/renderWithProviders";
 
 const captured = vi.hoisted(() => ({
   drawerProps: null as any,
+  tableLoading: [] as boolean[],
 }));
 
 vi.mock("../../../components/HelperIcon", () => ({ default: () => null }));
@@ -67,14 +68,19 @@ vi.mock("../../../components/Table/ExportMenu", () => ({ ExportMenu: () => null 
 vi.mock("../../../components/Table/ColumnSelector", () => ({ ColumnSelector: () => null }));
 // The table exposes an edit trigger for incident 42.
 vi.mock("../IncidentTable", () => ({
-  default: ({ onEdit }: any) => (
-    <button type="button" onClick={() => onEdit?.("42", "edit")}>
-      edit incident
-    </button>
-  ),
+  default: ({ onEdit, isLoading }: any) => {
+    captured.tableLoading.push(Boolean(isLoading));
+    return (
+      <button type="button" onClick={() => onEdit?.("42", "edit")}>
+        edit incident
+      </button>
+    );
+  },
 }));
 // The drawer is replaced by a probe that records its props.
-vi.mock("../../../components/Modals/NewIncident", () => ({
+// The real comparison helper and labels are kept; only the component is a probe.
+vi.mock("../../../components/Modals/NewIncident", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../components/Modals/NewIncident")>()),
   default: (props: any) => {
     captured.drawerProps = props;
     return null;
@@ -140,7 +146,10 @@ describe("IncidentManagement edit drawer", () => {
     });
 
     expect(result).toBe(false);
-    expect(getEntityById).toHaveBeenLastCalledWith({ routeUrl: "/ai-incident-managements/42" });
+    expect(getEntityById).toHaveBeenLastCalledWith({
+      routeUrl: "/ai-incident-managements/42",
+      suppressGlobalErrorToast: true,
+    });
     // selectedIncident moved to the latest version: the drawer gets it as initialData.
     await waitFor(() =>
       expect(captured.drawerProps.initialData).toMatchObject({
@@ -154,6 +163,85 @@ describe("IncidentManagement edit drawer", () => {
         "This incident was changed by someone else since you opened it. The form now shows their changes with your edits kept: save again to apply your edits.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("after a 409, names the user's edits that the other editor also changed", async () => {
+    const props = await openEditDrawer(STORED_INCIDENT);
+    vi.mocked(updateEntityById).mockRejectedValue(
+      Object.assign(new Error("Conflict"), { status: 409 }),
+    );
+    // The other editor changed severity and status, not the description.
+    vi.mocked(getEntityById).mockResolvedValue({
+      data: {
+        ...STORED_INCIDENT,
+        severity: "Minor",
+        status: "Investigating",
+        updated_at: "2026-10-11T08:00:00.000Z",
+      },
+    } as any);
+
+    await act(async () => {
+      await props.onSuccess({
+        severity: "Very serious",
+        status: "Open",
+        description: "A's notes",
+        expected_updated_at: "2026-10-10T12:34:56.789Z",
+      });
+    });
+
+    expect(
+      await screen.findByText(
+        /Someone else also changed: Severity, Status\. Saving again will replace their values with yours\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("refreshes the list after a 409 without putting the table into its loading state", async () => {
+    const props = await openEditDrawer(STORED_INCIDENT);
+    await waitFor(() =>
+      expect(captured.tableLoading[captured.tableLoading.length - 1]).toBe(false),
+    );
+    captured.tableLoading.length = 0;
+    const listCallsBefore = vi.mocked(getAllEntities).mock.calls.length;
+    vi.mocked(updateEntityById).mockRejectedValue(
+      Object.assign(new Error("Conflict"), { status: 409 }),
+    );
+    vi.mocked(getEntityById).mockResolvedValue({
+      data: { ...STORED_INCIDENT, updated_at: "2026-10-11T08:00:00.000Z" },
+    } as any);
+
+    await act(async () => {
+      await props.onSuccess({ description: "A's notes" });
+    });
+
+    expect(vi.mocked(getAllEntities).mock.calls.length).toBeGreaterThan(listCallsBefore);
+    expect(captured.tableLoading).not.toContain(true);
+  });
+
+  it("keeps the drawer open and says to reopen when the refresh after a 409 fails", async () => {
+    const props = await openEditDrawer(STORED_INCIDENT);
+    const firstInitialData = captured.drawerProps.initialData;
+    vi.mocked(updateEntityById).mockRejectedValue(
+      Object.assign(new Error("Conflict"), { status: 409 }),
+    );
+    vi.mocked(getEntityById).mockRejectedValue(Object.assign(new Error("Down"), { status: 500 }));
+
+    let result: unknown;
+    await act(async () => {
+      result = await props.onSuccess({ description: "A's notes" });
+    });
+
+    expect(result).toBe(false);
+    expect(getEntityById).toHaveBeenLastCalledWith({
+      routeUrl: "/ai-incident-managements/42",
+      suppressGlobalErrorToast: true,
+    });
+    expect(
+      await screen.findByText(
+        "This incident was changed by someone else since you opened it. Could not load the latest version; close and reopen the incident to continue.",
+      ),
+    ).toBeInTheDocument();
+    expect(captured.drawerProps.initialData).toBe(firstInitialData);
   });
 
   it("keeps the drawer open (resolves false) when a save fails for another reason", async () => {

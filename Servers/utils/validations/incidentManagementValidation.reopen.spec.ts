@@ -126,6 +126,15 @@ describe("reopening closed incidents", () => {
       expect(isSameIncidentValue("archived", true, null)).toBe(false);
     });
 
+    it("compares harm categories as sets, ignoring order", () => {
+      expect(
+        isSameIncidentValue("categories_of_harm", ["Other", "Health"], ["Health", "Other"]),
+      ).toBe(true);
+      expect(
+        isSameIncidentValue("categories_of_harm", '["Other","Health"]', ["Health", "Other"]),
+      ).toBe(true);
+    });
+
     it("compares harm categories as lists, whether stored as JSON text or an array", () => {
       expect(isSameIncidentValue("categories_of_harm", '["Other"]', ["Other"])).toBe(true);
       expect(isSameIncidentValue("categories_of_harm", ["Other"], ["Other", "Health"])).toBe(false);

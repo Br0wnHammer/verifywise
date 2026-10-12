@@ -13,6 +13,7 @@ import { getIncidentByIdQuery } from "../../utils/incidentManagement.utils";
 import { updateIncident } from "../../services/incidentManagement.service";
 import { ConflictException } from "../../domain.layer/exceptions/custom.exception";
 import { drawerSave } from "../../services/__tests__/helpers/incidentFixtures";
+import { recordEntityCreation } from "../../utils/changeHistory.base.utils";
 
 afterEach(async () => {
   await cleanupDatabase();
@@ -78,5 +79,63 @@ describe("updateIncident against the database", () => {
         expectedUpdatedAt,
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+// A name lookup that fails in Postgres must not abort the caller's
+// transaction: it runs in a SAVEPOINT and the history falls back to the id.
+describe("history name lookups on the caller's transaction", () => {
+  it("keeps the creating transaction usable when a lookup errors in the database", async () => {
+    const { owner } = await seedTwoTenantContexts();
+    const incidentId = await insertClosedApprovedIncident(owner.orgId);
+
+    // Turn the owner-name lookup into a real database error (division by zero).
+    const realQuery = sequelize.query.bind(sequelize);
+    const spy = jest
+      .spyOn(sequelize, "query")
+      .mockImplementation(((sql: unknown, options: unknown) =>
+        realQuery(
+          typeof sql === "string" && sql.includes("FROM users WHERE id = :userId")
+            ? "SELECT 1/0 AS name"
+            : (sql as string),
+          options as any,
+        )) as any);
+
+    try {
+      await sequelize.transaction(async (transaction) => {
+        await recordEntityCreation(
+          "incident",
+          incidentId,
+          owner.userId,
+          owner.orgId,
+          { status: "Open", assignee_id: owner.userId },
+          transaction,
+        );
+        // Still usable after the failed lookup.
+        await sequelize.query(
+          "UPDATE ai_incident_managements SET reporter = 'Ada L.' WHERE id = :incidentId",
+          { replacements: { incidentId }, transaction },
+        );
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    const rows = await sequelize.query<{ field_name: string; new_value: string }>(
+      `SELECT field_name, new_value FROM incident_change_history
+        WHERE incident_id = :incidentId AND action = 'created'`,
+      { replacements: { incidentId }, type: QueryTypes.SELECT },
+    );
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { field_name: "Owner", new_value: `User #${owner.userId}` },
+        { field_name: "Status", new_value: "Open" },
+      ]),
+    );
+    const [incident] = await sequelize.query<{ reporter: string }>(
+      "SELECT reporter FROM ai_incident_managements WHERE id = :incidentId",
+      { replacements: { incidentId }, type: QueryTypes.SELECT },
+    );
+    expect(incident.reporter).toBe("Ada L.");
   });
 });

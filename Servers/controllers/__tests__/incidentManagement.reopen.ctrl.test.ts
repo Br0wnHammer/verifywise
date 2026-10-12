@@ -191,11 +191,14 @@ describe("updateIncidentById — reopening a closed incident", () => {
     expect(mockGet).not.toHaveBeenCalled();
   });
 
-  it("treats an empty expected_updated_at as no version check", async () => {
-    const res = mockRes();
-    await updateIncidentById(mockReq({ status: "Open", expected_updated_at: "" }), res);
+  it("rejects an empty expected_updated_at with 400 and treats null as no version check", async () => {
+    const empty = mockRes();
+    await updateIncidentById(mockReq({ status: "Open", expected_updated_at: "" }), empty);
+    expect(empty.status).toHaveBeenCalledWith(400);
 
-    expect(res.status).toHaveBeenCalledWith(200);
+    const absent = mockRes();
+    await updateIncidentById(mockReq({ status: "Open", expected_updated_at: null }), absent);
+    expect(absent.status).toHaveBeenCalledWith(200);
     expect(mockUpdate).toHaveBeenCalledTimes(1);
   });
 

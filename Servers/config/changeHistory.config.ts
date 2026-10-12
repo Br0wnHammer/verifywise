@@ -69,6 +69,26 @@ export interface FormatterContext {
 }
 
 /**
+ * Runs a formatter's lookup SELECT. On a caller's transaction it runs inside
+ * a SAVEPOINT (a nested transaction): Postgres aborts the whole transaction
+ * on any error, so without one a failed name lookup would make the caller's
+ * own write fail. With it, the error rolls back only the savepoint, the
+ * formatter falls back to its id label, and the caller's transaction goes on.
+ */
+const selectInSavepoint = async <T extends object>(
+  sql: string,
+  replacements: Record<string, unknown>,
+  transaction?: Transaction,
+): Promise<T[]> => {
+  if (!transaction) {
+    return sequelize.query<T>(sql, { replacements, type: QueryTypes.SELECT });
+  }
+  return sequelize.transaction({ transaction }, (savepoint) =>
+    sequelize.query<T>(sql, { replacements, type: QueryTypes.SELECT, transaction: savepoint }),
+  );
+};
+
+/**
  * Formatter for an id that references a row by name: resolves `id` with
  * `sql` (selecting a `name` column, filtered by `:id` and `:organizationId`),
  * or falls back to `${label} #id`. Used for incident foreign keys so history
@@ -86,11 +106,11 @@ const namedRowFormatter =
     if (!Number.isInteger(id)) return String(value);
     if (context?.organizationId === undefined) return `${label} #${id}`;
     try {
-      const rows = await sequelize.query<{ name: string | null }>(sql, {
-        replacements: { id, organizationId: context.organizationId },
-        type: QueryTypes.SELECT,
-        transaction: context.transaction,
-      });
+      const rows = await selectInSavepoint<{ name: string | null }>(
+        sql,
+        { id, organizationId: context.organizationId },
+        context.transaction,
+      );
       return rows[0]?.name || `${label} #${id}`;
     } catch (error) {
       logger.error(`Error fetching ${label} for ID ${id}: ${error}`);
@@ -170,15 +190,12 @@ export const GENERIC_FORMATTERS: { [key: string]: FieldFormatter } = {
     if (typeof value === "number") {
       try {
         const scoped = context?.organizationId !== undefined;
-        const users = await sequelize.query<UserQueryResult>(
+        const users = await selectInSavepoint<UserQueryResult>(
           `SELECT id, name, surname, email FROM users WHERE id = :userId${
             scoped ? " AND organization_id = :organizationId" : ""
           }`,
-          {
-            replacements: { userId: value, organizationId: context?.organizationId ?? null },
-            type: QueryTypes.SELECT,
-            transaction: context?.transaction,
-          },
+          { userId: value, organizationId: context?.organizationId ?? null },
+          context?.transaction,
         );
 
         if (users && users.length > 0) {
