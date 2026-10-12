@@ -237,23 +237,43 @@ export interface RetentionRunInput {
   errorCode?: string | null;
 }
 
+/** Postgres "undefined_column": the error_code migration has not run yet. */
+function isMissingErrorCodeColumn(error: unknown): boolean {
+  const code =
+    (error as { parent?: { code?: string }; original?: { code?: string } } | null)?.parent?.code ??
+    (error as { original?: { code?: string } } | null)?.original?.code;
+  return code === "42703" && String((error as Error)?.message ?? "").includes("error_code");
+}
+
 export async function recordRetentionRun(row: RetentionRunInput): Promise<void> {
-  await sequelize.query(
-    `INSERT INTO data_retention_runs
-       (organization_id, record_type, cutoff, deleted_count, status, error, error_code)
-     VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error, :errorCode)`,
-    {
-      replacements: {
-        organizationId: row.organizationId,
-        recordType: row.recordType,
-        cutoff: row.cutoff,
-        deletedCount: row.deletedCount,
-        status: row.status,
-        error: row.error ?? null,
-        errorCode: row.errorCode ?? null,
-      },
-    },
-  );
+  const replacements = {
+    organizationId: row.organizationId,
+    recordType: row.recordType,
+    cutoff: row.cutoff,
+    deletedCount: row.deletedCount,
+    status: row.status,
+    error: row.error ?? null,
+    errorCode: row.errorCode ?? null,
+  };
+  try {
+    await sequelize.query(
+      `INSERT INTO data_retention_runs
+         (organization_id, record_type, cutoff, deleted_count, status, error, error_code)
+       VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error, :errorCode)`,
+      { replacements },
+    );
+  } catch (error) {
+    // The worker can start before migrations run (start.sh launches it first,
+    // and worker containers never migrate). Without the column, record the
+    // run without its code; the error text still names the reason.
+    if (!isMissingErrorCodeColumn(error)) throw error;
+    await sequelize.query(
+      `INSERT INTO data_retention_runs
+         (organization_id, record_type, cutoff, deleted_count, status, error)
+       VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error)`,
+      { replacements },
+    );
+  }
 }
 
 /**
@@ -365,13 +385,24 @@ export type LatestRetentionRuns = Record<
 >;
 
 export async function getLatestRetentionRuns(organizationId: number): Promise<LatestRetentionRuns> {
-  const rows = (await sequelize.query(
-    `SELECT DISTINCT ON (record_type) record_type, ran_at, deleted_count, status, error, error_code
-       FROM data_retention_runs
-      WHERE organization_id = :organizationId
-      ORDER BY record_type, ran_at DESC, id DESC`,
-    { replacements: { organizationId }, type: QueryTypes.SELECT },
-  )) as any[];
+  const latestRuns = (withErrorCode: boolean) =>
+    sequelize.query(
+      `SELECT DISTINCT ON (record_type) record_type, ran_at, deleted_count, status, error${
+        withErrorCode ? ", error_code" : ""
+      }
+         FROM data_retention_runs
+        WHERE organization_id = :organizationId
+        ORDER BY record_type, ran_at DESC, id DESC`,
+      { replacements: { organizationId }, type: QueryTypes.SELECT },
+    );
+  let rows: any[];
+  try {
+    rows = (await latestRuns(true)) as any[];
+  } catch (error) {
+    // Before the error_code migration has run: read the runs without codes.
+    if (!isMissingErrorCodeColumn(error)) throw error;
+    rows = (await latestRuns(false)) as any[];
+  }
   const result = {} as LatestRetentionRuns;
   for (const r of rows) {
     result[r.record_type as RetentionRecordType] = {

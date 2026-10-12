@@ -198,6 +198,66 @@ describe("recordRetentionRun / getLatestRetentionRuns", () => {
   });
 });
 
+describe("before the error_code migration has run", () => {
+  const missingColumn = () =>
+    Object.assign(
+      new Error('column "error_code" of relation "data_retention_runs" does not exist'),
+      {
+        parent: { code: "42703" },
+      },
+    );
+
+  it("records the run without its code", async () => {
+    mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValueOnce([]);
+    await recordRetentionRun({
+      organizationId: 1,
+      recordType: "ai_gateway_spend_logs",
+      cutoff: null,
+      deletedCount: 0,
+      status: "failed",
+      error: "Purge refused: internal key rejected",
+      errorCode: "internal_key_rejected",
+    });
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const retrySql = String(mockQuery.mock.calls[1][0]);
+    expect(retrySql).not.toContain("error_code");
+    expect(mockQuery.mock.calls[1][1].replacements.error).toBe(
+      "Purge refused: internal key rejected",
+    );
+  });
+
+  it("reads the latest runs without codes", async () => {
+    mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValueOnce([
+      {
+        record_type: "audit_records",
+        ran_at: "2026-01-02T00:00:00.000Z",
+        deleted_count: 1,
+        status: "success",
+        error: null,
+      },
+    ]);
+    const runs = await getLatestRetentionRuns(1);
+    expect(String(mockQuery.mock.calls[1][0])).not.toContain("error_code");
+    expect(runs.audit_records?.error_code).toBeNull();
+  });
+
+  it("does not hide other database errors", async () => {
+    mockQuery.mockRejectedValueOnce(
+      Object.assign(new Error("deadlock detected"), { parent: { code: "40P01" } }),
+    );
+    await expect(
+      recordRetentionRun({
+        organizationId: 1,
+        recordType: "audit_records",
+        cutoff: null,
+        deletedCount: 0,
+        status: "success",
+      }),
+    ).rejects.toThrow("deadlock detected");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("safeRecordRetentionRun", () => {
   const run = {
     organizationId: 3,
