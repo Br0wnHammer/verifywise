@@ -10,7 +10,7 @@ import Preferences from "./Preferences/index";
 import Features from "./Features/index";
 import allowedRoles from "../../../application/constants/permissions";
 import { useAuth } from "../../../application/hooks/useAuth";
-import { useHasPermission } from "../../../application/hooks/useMyPermissions";
+import { useHasPermission, useMyPermissions } from "../../../application/hooks/useMyPermissions";
 import ApiKeys from "./ApiKeys";
 import AuditLedger from "./AuditLedger";
 import DataRetention from "./DataRetention";
@@ -56,6 +56,7 @@ export default function ProfilePage() {
   // Data retention follows the organization.admin permission its routes
   // authorize on, so a custom role granted it gets the tab too.
   const canManageRetention = useHasPermission("organization.admin", { fallbackToAdmin: true });
+  const { isLoading: permissionsLoading } = useMyPermissions();
   const isCustomFieldsDisabled = userRoleName !== "Admin";
 
   const { tab } = useParams<{ tab?: string }>();
@@ -82,6 +83,16 @@ export default function ProfilePage() {
       setActiveTab(defaultTab);
     }
   }, [tab, validTabs, navigate]);
+
+  // The Data retention panel only renders when permitted, so a direct link
+  // without the permission would show an empty page. Once permissions are
+  // known, fall back to the default tab instead.
+  useEffect(() => {
+    if (activeTab === "data-retention" && !permissionsLoading && !canManageRetention) {
+      navigate("/settings", { replace: true });
+      setActiveTab(defaultTab);
+    }
+  }, [activeTab, permissionsLoading, canManageRetention, navigate]);
 
   // Handle navigation state from command palette
   useEffect(() => {
