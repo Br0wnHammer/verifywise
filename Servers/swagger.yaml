@@ -14531,7 +14531,7 @@ paths:
         '404':
           description: 'No Jira Assets use case with that project id'
         '409':
-          description: 'A Jira Assets sync, import or removal is running'
+          description: 'A Jira Assets sync, import or removal is running, or the deletion was interrupted, nothing removed ({ message, code: removal_interrupted })'
         '500':
           description: 'Internal server error'
       tags:

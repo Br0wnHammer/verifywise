@@ -170,6 +170,14 @@ export class JiraImportInterruptedError extends Error {
   }
 }
 
+/** No Jira Assets use case with that project id in the organization (404). */
+export class JiraUseCaseNotFoundError extends Error {
+  constructor() {
+    super("Use case not found");
+    this.name = "JiraUseCaseNotFoundError";
+  }
+}
+
 /** Thrown for bad input; the controller maps it to 400. */
 export class JiraConfigValidationError extends Error {
   constructor(message: string) {
@@ -1021,23 +1029,54 @@ export async function removeMissingUseCases(
     );
   }
   const ids = Array.from(new Set(useCaseIds as number[]));
+  const removed = await deleteUseCasesUnderClaim(organizationId, userId, {
+    by: "id",
+    ids,
+    onlyMissing: true,
+    requireAll: false,
+  });
+  return { removed, skipped: ids.length - removed };
+}
 
+/**
+ * The one flow that deletes imported use cases (missing-use-case removal and
+ * DELETE /use-cases/:id). Takes the per-org claim ('remove_missing'), then in
+ * one transaction: share-locks the run's own row (no other claim can close it
+ * mid-way), locks the matching link rows (`by` id or project id, optionally
+ * only those still flagged missing), deletes each project through
+ * deleteLinkedProject (a link with no project is deleted itself) and records
+ * the run (objects_deleted). Returns how many were removed.
+ *
+ * With `requireAll`, removing fewer than `ids` is JiraUseCaseNotFoundError:
+ * the transaction rolls back and the claimed history row is deleted (it never
+ * did anything, so it is not recorded as a failed run). Other errors close
+ * the row as failed; a lost claim (RunSupersededError) writes nothing more.
+ */
+async function deleteUseCasesUnderClaim(
+  organizationId: number,
+  userId: number,
+  target: { by: "id" | "project_id"; ids: number[]; onlyMissing: boolean; requireAll: boolean },
+): Promise<number> {
   const run = await claimSyncRun(organizationId, "remove_missing", userId);
   try {
     let removed = 0;
     await sequelize.transaction(async (transaction) => {
       await assertRunOwned(run, organizationId, transaction);
-      const flagged = (await sequelize.query(
+      const rows = (await sequelize.query(
         `SELECT id, project_id FROM jira_assets_use_cases
           WHERE organization_id = :organizationId
-            AND id IN (:ids)
-            AND missing_in_jira_since IS NOT NULL
+            AND ${target.by === "id" ? "id" : "project_id"} IN (:ids)
+            ${target.onlyMissing ? "AND missing_in_jira_since IS NOT NULL" : ""}
           FOR UPDATE;`,
-        { replacements: { organizationId, ids }, type: QueryTypes.SELECT, transaction },
+        {
+          replacements: { organizationId, ids: target.ids },
+          type: QueryTypes.SELECT,
+          transaction,
+        },
       )) as Array<{ id: number; project_id: number | null }>;
 
       const linkOnlyIds: number[] = [];
-      for (const row of flagged) {
+      for (const row of rows) {
         if (row.project_id === null) {
           linkOnlyIds.push(row.id);
         } else if (await deleteLinkedProject(row.project_id, organizationId, userId, transaction)) {
@@ -1056,6 +1095,9 @@ export async function removeMissingUseCases(
         )) as unknown as [Array<{ id: number }>, unknown];
         removed += deleted?.length ?? 0;
       }
+      if (target.requireAll && removed < target.ids.length) {
+        throw new JiraUseCaseNotFoundError();
+      }
       // Recorded in the same transaction: if this run lost its claim, the
       // deletes roll back with it.
       await finalizeSuccess(
@@ -1067,12 +1109,33 @@ export async function removeMissingUseCases(
         transaction,
       );
     });
-    return { removed, skipped: ids.length - removed };
+    return removed;
   } catch (err) {
-    if (!(err instanceof RunSupersededError)) {
+    if (err instanceof JiraUseCaseNotFoundError) {
+      await releaseClaim(run, organizationId);
+    } else if (!(err instanceof RunSupersededError)) {
       await finalizeFailure(run, organizationId, err, false);
     }
     throw err;
+  }
+}
+
+/**
+ * Delete a claimed history row that did nothing (still `started`, matched by
+ * id and token), so a request that found nothing to act on leaves no run in
+ * the history. Never throws: if it fails, the row stays `started` and is
+ * closed as abandoned after the stale window like any other.
+ */
+async function releaseClaim(run: RunRef, organizationId: number): Promise<void> {
+  try {
+    await sequelize.query(
+      `DELETE FROM jira_assets_sync_history
+        WHERE id = :id AND organization_id = :organizationId
+          AND run_token = :token AND status = 'started';`,
+      { replacements: { id: run.historyId, organizationId, token: run.token } },
+    );
+  } catch (err) {
+    logger.error(`Jira Assets: could not release claimed run ${run.historyId}:`, err);
   }
 }
 
@@ -1238,11 +1301,12 @@ export async function runClaimedSync(
                 SET project_title = :title, goal = :goal, last_updated = :now
                FROM link
               WHERE p.id = link.project_id AND p.organization_id = :organizationId
-              RETURNING p.id
            )
+           -- proj is a data-modifying CTE: it runs even though nothing reads it.
+           -- A link whose project row is gone has nothing to update; it
+           -- cannot happen in practice (the link cascades with its project).
            SELECT (SELECT COUNT(*) FROM own)::int AS owned,
-                  (SELECT COUNT(*) FROM link)::int AS links,
-                  (SELECT COUNT(*) FROM proj)::int AS projects;`,
+                  (SELECT COUNT(*) FROM link)::int AS links;`,
           {
             replacements: {
               data: JSON.stringify(obj.data),
@@ -1486,64 +1550,25 @@ export async function getUseCaseByProjectId(
   };
 }
 
-/** No Jira Assets use case with that project id in the organization (404). */
-export class JiraUseCaseNotFoundError extends Error {
-  constructor() {
-    super("Use case not found");
-    this.name = "JiraUseCaseNotFoundError";
-  }
-}
-
 /**
  * DELETE /use-cases/:id — delete one imported use case (a project linked in
- * jira_assets_use_cases) the same way as the core "Delete use case". Any other
- * project, or one already gone, is JiraUseCaseNotFoundError (404) and nothing
- * is written. Takes the same per-org claim as removals (history row
- * 'remove_missing', objects_deleted = 1), so it cannot run during a sync,
- * import or removal (JiraSyncInProgressError, 409).
+ * jira_assets_use_cases) the same way as the core "Delete use case", through
+ * the same claimed flow as removals (deleteUseCasesUnderClaim). Any other
+ * project, or one already gone, is JiraUseCaseNotFoundError (404): nothing is
+ * deleted and the claimed history row is removed, so the attempt leaves no
+ * trace. 409 while a sync, import or removal runs.
  */
 export async function deleteUseCaseByProjectId(
   projectId: number,
   organizationId: number,
   userId: number,
 ): Promise<void> {
-  const linked = (await sequelize.query(
-    `SELECT id FROM jira_assets_use_cases
-      WHERE project_id = :projectId AND organization_id = :organizationId LIMIT 1;`,
-    { replacements: { projectId, organizationId }, type: QueryTypes.SELECT },
-  )) as Array<{ id: number }>;
-  if (linked.length === 0) throw new JiraUseCaseNotFoundError();
-
-  const run = await claimSyncRun(organizationId, "remove_missing", userId);
-  try {
-    await sequelize.transaction(async (transaction) => {
-      await assertRunOwned(run, organizationId, transaction);
-      // Checked again under the claim: still a linked project of this org.
-      const stillLinked = (await sequelize.query(
-        `SELECT id FROM jira_assets_use_cases
-          WHERE project_id = :projectId AND organization_id = :organizationId
-          FOR UPDATE;`,
-        { replacements: { projectId, organizationId }, type: QueryTypes.SELECT, transaction },
-      )) as Array<{ id: number }>;
-      if (stillLinked.length === 0) throw new JiraUseCaseNotFoundError();
-      if (!(await deleteLinkedProject(projectId, organizationId, userId, transaction))) {
-        throw new JiraUseCaseNotFoundError();
-      }
-      await finalizeSuccess(
-        run,
-        organizationId,
-        { objectsFetched: 0, objectsCreated: 0, objectsUpdated: 0, objectsDeleted: 1 },
-        null,
-        false,
-        transaction,
-      );
-    });
-  } catch (err) {
-    if (!(err instanceof RunSupersededError)) {
-      await finalizeFailure(run, organizationId, err, false);
-    }
-    throw err;
-  }
+  await deleteUseCasesUnderClaim(organizationId, userId, {
+    by: "project_id",
+    ids: [projectId],
+    onlyMissing: false,
+    requireAll: true,
+  });
 }
 
 // ---------------------------------------------------------------------------

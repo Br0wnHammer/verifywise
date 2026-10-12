@@ -375,6 +375,16 @@ export const REMOVAL_INTERRUPTED_MESSAGE =
  * sync or import is running, or `{ message, code: "removal_interrupted" }`
  * when the removal lost its claim (nothing was removed).
  */
+/** 409 when a deletion lost its claim before finishing; its transaction rolled back. */
+function sendRemovalInterrupted(res: Response) {
+  return res.status(409).json(
+    STATUS_CODE[409]({
+      message: REMOVAL_INTERRUPTED_MESSAGE,
+      code: JIRA_RUN_CODES.removalInterrupted,
+    }),
+  );
+}
+
 export async function removeMissingCtrl(req: Request, res: Response): Promise<any> {
   const ctx = logContext(req, "removeMissingCtrl");
   const requested = Array.isArray(req.body?.use_case_ids) ? req.body.use_case_ids.length : 0;
@@ -396,15 +406,7 @@ export async function removeMissingCtrl(req: Request, res: Response): Promise<an
       eventType: "Delete",
       description: "Failed to remove use cases missing in Jira",
     });
-    // The removal lost its claim before finishing; its transaction rolled back.
-    if (err instanceof RunSupersededError) {
-      return res.status(409).json(
-        STATUS_CODE[409]({
-          message: REMOVAL_INTERRUPTED_MESSAGE,
-          code: JIRA_RUN_CODES.removalInterrupted,
-        }),
-      );
-    }
+    if (err instanceof RunSupersededError) return sendRemovalInterrupted(res);
     return sendError(req, res, err, "removeMissing");
   }
 }
@@ -430,6 +432,7 @@ export async function deleteUseCaseCtrl(req: Request, res: Response): Promise<an
       eventType: "Delete",
       description: `Failed to delete Jira Assets use case project ${projectId}`,
     });
+    if (err instanceof RunSupersededError) return sendRemovalInterrupted(res);
     return sendError(req, res, err, "deleteUseCase");
   }
 }

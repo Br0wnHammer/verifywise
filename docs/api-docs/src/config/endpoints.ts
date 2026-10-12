@@ -3995,7 +3995,7 @@ export const extensionEndpoints: Endpoint[] = [
       { status: 400, description: "Invalid use case id" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
       { status: 404, description: "No Jira Assets use case with that project id" },
-      { status: 409, description: "A Jira Assets sync, import or removal is running" },
+      { status: 409, description: "A Jira Assets sync, import or removal is running, or the deletion was interrupted, nothing removed ({ message, code: removal_interrupted })" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Extensions",

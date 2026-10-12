@@ -368,6 +368,23 @@ describe("DELETE /use-cases/:id", () => {
     expect(logFailure).not.toHaveBeenCalled();
   });
 
+  it("returns the same 409 removal_interrupted as a removal when it lost its claim", async () => {
+    (deleteUseCaseByProjectId as jest.Mock).mockRejectedValueOnce(new RunSupersededError("closed"));
+    const res = mockRes();
+
+    await deleteUseCaseCtrl({ ...req, params: { id: "111" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Conflict",
+      data: {
+        message: "The removal was interrupted; nothing was removed. Try again.",
+        code: "removal_interrupted",
+      },
+    });
+    expect(logFailure).not.toHaveBeenCalled();
+  });
+
   it("rejects a non-numeric id with 400 before deleting", async () => {
     const res = mockRes();
 
