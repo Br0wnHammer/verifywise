@@ -104,3 +104,29 @@ describe("aiGatewayRequest", () => {
     expect(init.headers["x-user-id"]).toBe("9");
   });
 });
+
+describe("aiGatewayRequest internal key header", () => {
+  const savedKey = process.env.AI_GATEWAY_INTERNAL_KEY;
+  afterEach(() => {
+    if (savedKey === undefined) delete process.env.AI_GATEWAY_INTERNAL_KEY;
+    else process.env.AI_GATEWAY_INTERNAL_KEY = savedKey;
+    delete (global as any).fetch;
+  });
+
+  it("sends the trimmed key, the same value the startup check reads", async () => {
+    process.env.AI_GATEWAY_INTERNAL_KEY = "  shared-key\n";
+    const fetchSpy: jest.Mock<(...args: any[]) => Promise<any>> = jest.fn();
+    fetchSpy.mockResolvedValue({ ok: true, json: async () => ({}) });
+    (global as any).fetch = fetchSpy;
+
+    let request: typeof aiGatewayRequest | undefined;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      request = require("../aiGatewayInternal.utils").aiGatewayRequest;
+    });
+    await request!("GET", "/internal/x");
+
+    const [, init] = fetchSpy.mock.calls[0] as [string, any];
+    expect(init.headers["x-internal-key"]).toBe("shared-key");
+  });
+});

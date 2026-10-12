@@ -7,8 +7,8 @@
  * from the request, never values supplied by the client.
  */
 
-const AI_GATEWAY_URL = process.env.AI_GATEWAY_URL || "http://127.0.0.1:8100";
-const AI_GATEWAY_KEY = process.env.AI_GATEWAY_INTERNAL_KEY || "";
+import { AI_GATEWAY_INTERNAL_KEY, AI_GATEWAY_URL } from "./aiGatewayConfig";
+
 const AI_GATEWAY_TIMEOUT_MS = 10_000;
 
 /** Upstream bodies are cut to this length in error messages, so logs stay readable. */
@@ -48,7 +48,7 @@ export async function aiGatewayRequest(
 ): Promise<any> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "x-internal-key": AI_GATEWAY_KEY,
+    "x-internal-key": AI_GATEWAY_INTERNAL_KEY,
   };
   if (options.organizationId !== undefined) {
     headers["x-organization-id"] = String(options.organizationId);
