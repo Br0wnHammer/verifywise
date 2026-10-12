@@ -178,6 +178,23 @@ export class JiraUseCaseNotFoundError extends Error {
   }
 }
 
+/**
+ * A use case's project was locked in this organization but could not be
+ * deleted. The whole request rolls back; the controller returns 500 with this
+ * message, which names the use case, so the panel can show it.
+ */
+export class JiraUseCaseDeleteFailedError extends Error {
+  constructor(
+    public readonly useCaseIds: number[],
+    public readonly projectId: number,
+  ) {
+    super(
+      `Use case ${useCaseIds.join(", ")} (project ${projectId}) could not be deleted, so nothing was removed. Try again.`,
+    );
+    this.name = "JiraUseCaseDeleteFailedError";
+  }
+}
+
 /** Thrown for bad input; the controller maps it to 400. */
 export class JiraConfigValidationError extends Error {
   constructor(message: string) {
@@ -987,17 +1004,17 @@ export const REMOVE_MISSING_MAX_IDS = IMPORT_MAX_OBJECTS;
  * rollback kept. The project's jira_assets_use_cases links cascade with it.
  *
  * The caller must already hold the project row FOR UPDATE and have confirmed
- * it is in this organization (deleteUseCasesUnderClaim does both, in the
- * core path's lock order). A delete that then fails is an error and throws,
- * so the caller's transaction rolls back; it never falls through to only
- * unlinking.
+ * it is in this organization (deleteUseCasesUnderClaim does both). Returns
+ * false if the delete still failed; the caller then throws
+ * JiraUseCaseDeleteFailedError so the transaction rolls back. It never falls
+ * through to only unlinking.
  */
 async function deleteLinkedProject(
   projectId: number,
   organizationId: number,
   userId: number | null,
   transaction: Transaction,
-): Promise<void> {
+): Promise<boolean> {
   const pendingApprovalId = await getPendingApprovalRequestIdQuery(
     projectId,
     "use_case",
@@ -1010,10 +1027,9 @@ async function deleteLinkedProject(
   const deleted = await deleteProjectByIdQuery(projectId, organizationId, transaction, {
     enqueueAutomationAfterCommit: true,
   });
-  if (!deleted) {
-    throw new Error(`Jira Assets: project ${projectId} was locked but could not be deleted`);
-  }
+  if (!deleted) return false;
   if (userId) await recordUseCaseDeletion(projectId, userId, organizationId, transaction);
+  return true;
 }
 
 /**
@@ -1031,7 +1047,13 @@ export async function removeMissingUseCases(
   organizationId: number,
   userId: number,
   useCaseIds: unknown,
-): Promise<{ removed: number; unlinked: number; skipped: number; skipped_ids: number[] }> {
+): Promise<{
+  removed: number;
+  links_removed: number;
+  unlinked: number;
+  skipped: number;
+  skipped_items: Array<{ id: number; reason: RemovalSkipReason }>;
+}> {
   if (
     !Array.isArray(useCaseIds) ||
     useCaseIds.length === 0 ||
@@ -1049,15 +1071,37 @@ export async function removeMissingUseCases(
     onlyMissing: true,
     requireAll: false,
   });
-  const handled = new Set([...outcome.removedIds, ...outcome.unlinkedIds]);
-  const skippedIds = ids.filter((id) => !handled.has(id));
   return {
-    removed: outcome.removedIds.length,
+    removed: outcome.removedProjectIds.length,
+    links_removed: outcome.linksRemoved,
     unlinked: outcome.unlinkedIds.length,
-    skipped: skippedIds.length,
-    skipped_ids: skippedIds,
+    skipped: outcome.skipped.length,
+    skipped_items: outcome.skipped,
   };
 }
+
+/**
+ * Why a requested use case was not removed:
+ * - no_longer_missing: a sync found it in Jira again (it leaves the list);
+ * - not_found: there is no such use case any more (it leaves the list);
+ * - changed: its link now points at another project, changed during the
+ *   request (still flagged; try again);
+ * - has_live_links: its project also backs a use case that is not missing
+ *   (or not selected), so deleting the project would remove that one too.
+ */
+export type RemovalSkipReason = "no_longer_missing" | "not_found" | "changed" | "has_live_links";
+
+interface DeletionOutcome {
+  /** Projects (use cases) deleted. */
+  removedProjectIds: number[];
+  /** Link rows that went with those projects (cascade), selected or not. */
+  linksRemoved: number;
+  /** Caller ids whose link alone was deleted (no project in this organization). */
+  unlinkedIds: number[];
+  skipped: Array<{ id: number; reason: RemovalSkipReason }>;
+}
+
+type LinkRow = { id: number; project_id: number | null; missing_in_jira_since: Date | null };
 
 /**
  * The one flow that deletes imported use cases (missing-use-case removal and
@@ -1066,56 +1110,56 @@ export async function removeMissingUseCases(
  *
  * 1. share-locks the run's own history row (no other claim can close it
  *    mid-way);
- * 2. reads the matching link rows (`by` id or project id, optionally only
- *    those still flagged) without locking, for their project ids;
- * 3. locks those projects in this organization in one statement, ordered by
- *    id, which also classifies them: locked = in this organization;
- * 4. locks the link rows, ordered by id, and re-checks they still match.
+ * 2. reads the requested links unlocked, for their project ids;
+ * 3. locks those projects (and, for a single delete, the requested project
+ *    itself) in this organization in one statement, ordered by id; what it
+ *    locks is what is in this organization;
+ * 4. locks, ordered by id, the requested links and every link of a locked
+ *    project, and decides each request from those locked rows.
  *
- * Projects before links is the core "Delete use case" order (it deletes the
- * project row, then the FK cascade locks jira_assets_use_cases), so the two
- * paths cannot deadlock; the id order keeps two removals consistent too.
+ * Lock order: a project row before its link rows. deleteProjectByIdQuery
+ * takes the project lock as its first statement too, so the core "Delete use
+ * case" also locks the project before any child row and before the cascade
+ * reaches jira_assets_use_cases; the paths take the same order.
  *
- * Each link is then handled once:
- * - its project is in this organization: the project is deleted through
- *   deleteLinkedProject (once per project) and every link of that project is
- *   removed with it by the cascade — all count as removed;
- * - it has no project, or its project is not in this organization: only the
- *   link row is deleted, no project is touched, no change history, no
- *   automation — counted as unlinked. Such a link could otherwise never
- *   leave the "Missing in Jira" list;
- * - its project changed after step 2 to one not locked in step 3: left alone
- *   (not handled), since locking it now would break the lock order.
+ * A requested link whose project is in this organization deletes that
+ * project (once) through deleteLinkedProject; every link of it goes with it
+ * (cascade). For a removal (`onlyMissing`), a project that also has a link
+ * that is not requested or not flagged is skipped (`has_live_links`): a live
+ * use case is never deleted by cascade. A single delete is an explicit action
+ * on the project and deletes it with all its links (reported in
+ * linksRemoved). A link with no project, or whose project is not in this
+ * organization, has only its link row deleted (unlinked): no project, no
+ * change history, no automation. A project that is locked here but fails to
+ * delete throws JiraUseCaseDeleteFailedError and everything rolls back.
  *
- * Returned ids are the caller's (link ids, or project ids for a single
- * delete). The run records objects_deleted = use cases removed and a note
- * counting the links cleaned up.
- *
- * With `requireAll`, handling fewer than `ids` is JiraUseCaseNotFoundError:
- * the transaction rolls back and the claimed history row is deleted (it never
- * did anything, so it is not recorded as a failed run). Other errors close
- * the row as failed; a lost claim (RunSupersededError) writes nothing more.
+ * With `requireAll` (single delete), nothing handled is
+ * JiraUseCaseNotFoundError: the transaction rolls back and the claimed history
+ * row is deleted (it never did anything). Other errors close the row as
+ * failed; a lost claim (RunSupersededError) writes nothing more. The run
+ * records objects_deleted = projects (use cases) deleted.
  */
 async function deleteUseCasesUnderClaim(
   organizationId: number,
   userId: number,
   target: { by: "id" | "project_id"; ids: number[]; onlyMissing: boolean; requireAll: boolean },
-): Promise<{ removedIds: number[]; unlinkedIds: number[] }> {
+): Promise<DeletionOutcome> {
   const run = await claimSyncRun(organizationId, "remove_missing", userId);
   const matchColumn = target.by === "id" ? "id" : "project_id";
-  const flaggedOnly = target.onlyMissing ? "AND missing_in_jira_since IS NOT NULL" : "";
   try {
-    const removed = new Set<number>();
-    const unlinked = new Set<number>();
+    const outcome: DeletionOutcome = {
+      removedProjectIds: [],
+      linksRemoved: 0,
+      unlinkedIds: [],
+      skipped: [],
+    };
     await sequelize.transaction(async (transaction) => {
       await assertRunOwned(run, organizationId, transaction);
 
-      // 2. Candidate links, unlocked: only to learn their project ids.
+      // 2. The requested links, unlocked: only to learn their project ids.
       const candidates = (await sequelize.query(
         `SELECT id, project_id FROM jira_assets_use_cases
-          WHERE organization_id = :organizationId
-            AND ${matchColumn} IN (:ids)
-            ${flaggedOnly};`,
+          WHERE organization_id = :organizationId AND ${matchColumn} IN (:ids);`,
         {
           replacements: { organizationId, ids: target.ids },
           type: QueryTypes.SELECT,
@@ -1123,81 +1167,114 @@ async function deleteUseCasesUnderClaim(
         },
       )) as Array<{ id: number; project_id: number | null }>;
 
-      if (candidates.length > 0) {
-        // 3. Lock and classify the projects first (core path order).
-        const candidateProjectIds = Array.from(
-          new Set(candidates.map((c) => c.project_id).filter((id): id is number => id !== null)),
-        );
-        const inOrg = new Set<number>();
-        if (candidateProjectIds.length > 0) {
-          const locked = (await sequelize.query(
-            `SELECT id FROM projects
-              WHERE organization_id = :organizationId AND id IN (:projectIds)
-              ORDER BY id
-              FOR UPDATE;`,
-            {
-              replacements: { organizationId, projectIds: candidateProjectIds },
-              type: QueryTypes.SELECT,
-              transaction,
-            },
-          )) as Array<{ id: number }>;
-          for (const p of locked) inOrg.add(p.id);
-        }
-        const classified = new Set(candidateProjectIds);
-
-        // 4. Then the link rows, re-checked under the lock.
-        const links = (await sequelize.query(
-          `SELECT id, project_id FROM jira_assets_use_cases
-            WHERE organization_id = :organizationId
-              AND id IN (:linkIds)
-              AND ${matchColumn} IN (:ids)
-              ${flaggedOnly}
+      // 3. Lock and classify the projects first.
+      const toLock = new Set<number>(target.by === "project_id" ? target.ids : []);
+      for (const c of candidates) if (c.project_id !== null) toLock.add(c.project_id);
+      const inOrg = new Set<number>();
+      if (toLock.size > 0) {
+        const locked = (await sequelize.query(
+          `SELECT id FROM projects
+            WHERE organization_id = :organizationId AND id IN (:projectIds)
             ORDER BY id
             FOR UPDATE;`,
           {
-            replacements: {
-              organizationId,
-              linkIds: candidates.map((c) => c.id),
-              ids: target.ids,
-            },
+            replacements: { organizationId, projectIds: [...toLock] },
             type: QueryTypes.SELECT,
             transaction,
           },
-        )) as Array<{ id: number; project_id: number | null }>;
+        )) as Array<{ id: number }>;
+        for (const p of locked) inOrg.add(p.id);
+      }
 
-        const toUnlink: Array<{ id: number; callerId: number }> = [];
-        const byProject = new Map<number, number[]>();
-        for (const link of links) {
-          const callerId = target.by === "id" ? link.id : (link.project_id as number);
-          if (link.project_id !== null && inOrg.has(link.project_id)) {
-            byProject.set(link.project_id, [...(byProject.get(link.project_id) ?? []), callerId]);
-          } else if (link.project_id === null || classified.has(link.project_id)) {
-            toUnlink.push({ id: link.id, callerId });
-          }
-          // Otherwise its project changed after step 2: not handled.
+      // 4. Then the links: the requested ones and every link of a locked
+      //    project (to see whether a project backs any other use case).
+      const lockedProjects = inOrg.size > 0 ? [...inOrg] : [-1];
+      const links = (await sequelize.query(
+        `SELECT id, project_id, missing_in_jira_since FROM jira_assets_use_cases
+          WHERE organization_id = :organizationId
+            AND (${matchColumn} IN (:ids) OR project_id IN (:lockedProjects))
+          ORDER BY id
+          FOR UPDATE;`,
+        {
+          replacements: { organizationId, ids: target.ids, lockedProjects },
+          type: QueryTypes.SELECT,
+          transaction,
+        },
+      )) as LinkRow[];
+
+      const requested = new Set(target.ids);
+      const linksByProject = new Map<number, LinkRow[]>();
+      for (const link of links) {
+        if (link.project_id === null || !inOrg.has(link.project_id)) continue;
+        const group = linksByProject.get(link.project_id);
+        if (group) group.push(link);
+        else linksByProject.set(link.project_id, [link]);
+      }
+      const isRequested = (link: LinkRow) =>
+        requested.has(target.by === "id" ? link.id : (link.project_id as number));
+
+      // Decide each requested link once, carrying its caller id.
+      const accepted = new Map<number, number[]>(); // project id -> caller ids
+      const toUnlink: Array<{ id: number; callerId: number }> = [];
+      const seen = new Set<number>();
+      for (const link of links) {
+        if (!isRequested(link)) continue;
+        const callerId = target.by === "id" ? link.id : (link.project_id as number);
+        seen.add(callerId);
+        if (target.onlyMissing && !link.missing_in_jira_since) {
+          outcome.skipped.push({ id: callerId, reason: "no_longer_missing" });
+        } else if (link.project_id !== null && inOrg.has(link.project_id)) {
+          const group = accepted.get(link.project_id);
+          if (group) group.push(callerId);
+          else accepted.set(link.project_id, [callerId]);
+        } else if (link.project_id === null || toLock.has(link.project_id)) {
+          toUnlink.push({ id: link.id, callerId });
+        } else {
+          // Its project changed after step 2; locking it now would break the
+          // lock order.
+          outcome.skipped.push({ id: callerId, reason: "changed" });
         }
-
-        // No savepoint per project: a savepoint's afterCommit hooks fire when
-        // it is released, not when this transaction commits.
-        for (const [projectId, callerIds] of [...byProject].sort(([a], [b]) => a - b)) {
-          await deleteLinkedProject(projectId, organizationId, userId, transaction);
-          // Every link of the project went with it (cascade).
-          for (const id of callerIds) removed.add(id);
-        }
-
-        if (toUnlink.length > 0) {
-          const [deleted] = (await sequelize.query(
-            `DELETE FROM jira_assets_use_cases
-              WHERE organization_id = :organizationId AND id IN (:linkIds)
-              RETURNING id;`,
-            { replacements: { organizationId, linkIds: toUnlink.map((l) => l.id) }, transaction },
-          )) as unknown as [Array<{ id: number }>, unknown];
-          const gone = new Set((deleted ?? []).map((r) => r.id));
-          for (const link of toUnlink) if (gone.has(link.id)) unlinked.add(link.callerId);
+      }
+      for (const id of target.ids) {
+        if (!seen.has(id) && !(target.by === "project_id" && accepted.has(id))) {
+          outcome.skipped.push({ id, reason: "not_found" });
         }
       }
 
-      if (target.requireAll && removed.size + unlinked.size < target.ids.length) {
+      // No savepoint per project: a savepoint's afterCommit hooks fire when
+      // it is released, not when this transaction commits.
+      for (const [projectId, callerIds] of [...accepted].sort(([a], [b]) => a - b)) {
+        const projectLinks = linksByProject.get(projectId) ?? [];
+        if (
+          target.onlyMissing &&
+          projectLinks.some((l) => !isRequested(l) || !l.missing_in_jira_since)
+        ) {
+          for (const id of callerIds) outcome.skipped.push({ id, reason: "has_live_links" });
+          continue;
+        }
+        if (!(await deleteLinkedProject(projectId, organizationId, userId, transaction))) {
+          throw new JiraUseCaseDeleteFailedError(callerIds, projectId);
+        }
+        outcome.removedProjectIds.push(projectId);
+        outcome.linksRemoved += projectLinks.length;
+      }
+
+      if (toUnlink.length > 0) {
+        const [deleted] = (await sequelize.query(
+          `DELETE FROM jira_assets_use_cases
+            WHERE organization_id = :organizationId AND id IN (:linkIds)
+            RETURNING id;`,
+          { replacements: { organizationId, linkIds: toUnlink.map((l) => l.id) }, transaction },
+        )) as unknown as [Array<{ id: number }>, unknown];
+        const gone = new Set((deleted ?? []).map((r) => r.id));
+        for (const link of toUnlink) if (gone.has(link.id)) outcome.unlinkedIds.push(link.callerId);
+      }
+
+      if (
+        target.requireAll &&
+        outcome.removedProjectIds.length === 0 &&
+        outcome.unlinkedIds.length === 0
+      ) {
         throw new JiraUseCaseNotFoundError();
       }
       // Recorded in the same transaction: if this run lost its claim, the
@@ -1209,16 +1286,16 @@ async function deleteUseCasesUnderClaim(
           objectsFetched: 0,
           objectsCreated: 0,
           objectsUpdated: 0,
-          objectsDeleted: removed.size,
+          objectsDeleted: outcome.removedProjectIds.length,
         },
-        unlinked.size > 0
-          ? `${unlinked.size} link(s) with no project in this organization were cleaned up.`
+        outcome.unlinkedIds.length > 0
+          ? `${outcome.unlinkedIds.length} link(s) with no project in this organization were cleaned up.`
           : null,
         false,
         transaction,
       );
     });
-    return { removedIds: [...removed], unlinkedIds: [...unlinked] };
+    return outcome;
   } catch (err) {
     if (err instanceof JiraUseCaseNotFoundError) {
       await releaseClaim(run, organizationId);
@@ -1662,19 +1739,22 @@ export async function getUseCaseByProjectId(
 /**
  * DELETE /use-cases/:id — delete one imported use case (a project linked in
  * jira_assets_use_cases) the same way as the core "Delete use case", through
- * the same claimed flow as removals (deleteUseCasesUnderClaim). A link whose
- * project is not in this organization has only its link row deleted
- * (`{ unlinked: true }`), so it leaves the panel; no project is touched. A
- * project id with no link is JiraUseCaseNotFoundError (404) and no run is
- * recorded: rejected before claiming, or, if the link vanished in the
- * meantime, rolled back with the claimed history row released. 409 while a
- * sync, import or removal runs.
+ * the same claimed flow as removals (deleteUseCasesUnderClaim). This is an
+ * explicit action on the project: it is deleted with all its links, and
+ * `links_removed` reports how many went. A link whose project is not in this
+ * organization has only its link row deleted (`unlinked: true`); no project
+ * is touched. A project id with no link is JiraUseCaseNotFoundError (404) and
+ * no run is recorded: rejected before claiming, or, if the link vanished in
+ * the meantime, rolled back with the claimed history row released. The
+ * requested project itself is locked, so a link that changed between the
+ * unlocked read and the lock is still found. 409 while a sync, import or
+ * removal runs.
  */
 export async function deleteUseCaseByProjectId(
   projectId: number,
   organizationId: number,
   userId: number,
-): Promise<{ unlinked: boolean }> {
+): Promise<{ unlinked: boolean; links_removed: number }> {
   // Cheap unlocked check first, so a request for a project that is not a
   // Jira Assets use case is 404 at once and never takes (or waits on) the
   // per-org claim. The flow below checks again under the claim, locked.
@@ -1691,7 +1771,7 @@ export async function deleteUseCaseByProjectId(
     onlyMissing: false,
     requireAll: true,
   });
-  return { unlinked: outcome.unlinkedIds.length > 0 };
+  return { unlinked: outcome.unlinkedIds.length > 0, links_removed: outcome.linksRemoved };
 }
 
 // ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ import {
   JiraImportInterruptedError,
   JiraNotConfiguredError,
   JiraSyncInProgressError,
+  JiraUseCaseDeleteFailedError,
   JiraUseCaseNotFoundError,
   listUseCases,
   loadFullConfig,
@@ -96,6 +97,7 @@ async function requireClient(organizationId: number): Promise<JiraAssetsClient> 
  * - JiraImportInterruptedError → 409 with { message, code: "import_interrupted", imported, skipped }
  * - JiraUpstreamError (Jira response, timeout, DNS/TLS) → 502
  * - BackgroundJobsUnavailableError (queue did not answer) → 503
+ * - JiraUseCaseDeleteFailedError → 500 with its message, which names the use case
  * - anything else → 500, logged
  */
 function sendError(req: Request, res: Response, err: unknown, functionName: string) {
@@ -120,6 +122,11 @@ function sendError(req: Request, res: Response, err: unknown, functionName: stri
   }
   if (err instanceof JiraUpstreamError) {
     return res.status(502).json(STATUS_CODE[502](err.message));
+  }
+  if (err instanceof JiraUseCaseDeleteFailedError) {
+    // Names the use case; everything was rolled back.
+    logger.error(`jira ${functionName}: ${err.message}`);
+    return res.status(500).json(STATUS_CODE[500](err.message));
   }
   if (err instanceof BackgroundJobsUnavailableError) {
     return res.status(503).json(STATUS_CODE[503](err.message));
@@ -381,8 +388,8 @@ function sendRemovalInterrupted(res: Response) {
 /**
  * POST /use-cases/remove-missing — delete the use cases the admin chose from
  * the "Missing in Jira" list (`{ use_case_ids: number[] }`). Only ids still
- * flagged as missing are removed; returns
- * `{ removed, unlinked, skipped, skipped_ids }`. 409 while a
+ * flagged as missing are removed; returns `{ removed, links_removed, unlinked,
+ * skipped, skipped_items: [{ id, reason }] }` (removed counts use cases). 409 while a
  * sync or import is running, or `{ message, code: "removal_interrupted" }`
  * when the removal lost its claim (nothing was removed).
  */
@@ -398,7 +405,7 @@ export async function removeMissingCtrl(req: Request, res: Response): Promise<an
     await logSuccess({
       ...ctx,
       eventType: "Delete",
-      description: `Removed ${result.removed} use case(s) missing in Jira (${result.unlinked} link(s) cleaned up, ${result.skipped} skipped)`,
+      description: `Removed ${result.removed} use case(s) missing in Jira (${result.links_removed} link(s) with them, ${result.unlinked} link(s) cleaned up, ${result.skipped} skipped)`,
     });
     return res.status(200).json(STATUS_CODE[200](result));
   } catch (err) {
@@ -420,7 +427,11 @@ export async function deleteUseCaseCtrl(req: Request, res: Response): Promise<an
   }
   logProcessing({ ...ctx, description: `deleting Jira Assets use case project ${projectId}` });
   try {
-    const { unlinked } = await deleteUseCaseByProjectId(projectId, orgId(req), uid(req));
+    const { unlinked, links_removed } = await deleteUseCaseByProjectId(
+      projectId,
+      orgId(req),
+      uid(req),
+    );
     await logSuccess({
       ...ctx,
       eventType: "Delete",
@@ -428,7 +439,7 @@ export async function deleteUseCaseCtrl(req: Request, res: Response): Promise<an
         ? `Removed the Jira Assets link to project ${projectId}, which is not in this organization`
         : `Deleted Jira Assets use case project ${projectId}`,
     });
-    return res.status(200).json(STATUS_CODE[200]({ success: true, unlinked }));
+    return res.status(200).json(STATUS_CODE[200]({ success: true, unlinked, links_removed }));
   } catch (err) {
     await logUnexpectedFailure(err, {
       ...ctx,
