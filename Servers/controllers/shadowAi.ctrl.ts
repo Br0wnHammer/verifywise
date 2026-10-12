@@ -56,7 +56,6 @@ import {
   appendRetentionChangeToLedger,
   canChangeRetentionPeriods,
 } from "../utils/retentionAudit.utils";
-import logger from "../utils/logger/fileLogger";
 const FILE_NAME = "shadowAi.ctrl.ts";
 
 // ─── Helpers ────────────────────────────────────────────────────────────
