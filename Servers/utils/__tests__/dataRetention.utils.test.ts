@@ -87,43 +87,62 @@ describe("deleteAuditRowsBatch", () => {
 });
 
 describe("countAuditRecordsBefore", () => {
-  it("sums the ledger bound count and each existing table", async () => {
+  const allTables = () => AUDIT_RECORD_TABLES.map((t) => ({ name: t.table }));
+
+  it("sums the ledger bound count and one count over every existing table", async () => {
     mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("AS cutoff")) return [{ cutoff: "2020-01-01 00:00:00+00" }];
       if (sql.includes("set_config")) return [{}];
       if (sql.includes("FROM audit_ledger")) return [{ n: 5 }];
-      if (sql.includes("to_regclass")) return [{ reg: "x" }];
-      return [{ n: 2 }];
+      if (sql.includes("to_regclass")) return allTables();
+      return [{ n: 40 }];
     });
     const total = await countAuditRecordsBefore(1, 24);
-    expect(total).toBe(5 + 2 * AUDIT_RECORD_TABLES.length);
+    expect(total).toBe(45);
+    // cutoff, set_config, ledger, existence, counts: a fixed number of queries.
+    expect(mockQuery).toHaveBeenCalledTimes(5);
+    const countSql = String(mockQuery.mock.calls[4][0]);
+    expect(countSql.match(/UNION ALL/g)).toHaveLength(AUDIT_RECORD_TABLES.length - 1);
   });
 
-  it("skips tables that do not exist", async () => {
-    mockQuery.mockImplementation(async (sql: string, opts: any) => {
+  it("counts only tables that exist", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("AS cutoff")) return [{ cutoff: "2020-01-01 00:00:00+00" }];
       if (sql.includes("set_config")) return [{}];
       if (sql.includes("FROM audit_ledger")) return [{ n: 5 }];
-      if (sql.includes("to_regclass")) {
-        return [{ reg: opts.replacements.table === "event_logs" ? "event_logs" : null }];
-      }
+      if (sql.includes("to_regclass")) return [{ name: "event_logs" }];
       return [{ n: 2 }];
     });
     const total = await countAuditRecordsBefore(1, 24);
     expect(total).toBe(5 + 2);
+    const countSql = String(mockQuery.mock.calls[4][0]);
+    expect(countSql).toContain("FROM event_logs");
+    expect(countSql).not.toContain("UNION ALL");
   });
 
-  it("runs every existence check inside its own transaction", async () => {
+  it("skips the count when no audit table exists", async () => {
     mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("AS cutoff")) return [{ cutoff: "2020-01-01 00:00:00+00" }];
-      if (sql.includes("to_regclass")) return [{ reg: "x" }];
+      if (sql.includes("FROM audit_ledger")) return [{ n: 3 }];
+      if (sql.includes("to_regclass")) return [];
+      return [{}];
+    });
+    expect(await countAuditRecordsBefore(1, 24)).toBe(3);
+    expect(mockQuery).toHaveBeenCalledTimes(4);
+  });
+
+  it("runs the existence check and the count inside its own transaction", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("AS cutoff")) return [{ cutoff: "2020-01-01 00:00:00+00" }];
+      if (sql.includes("to_regclass")) return allTables();
       return [{ n: 0 }];
     });
     await countAuditRecordsBefore(1, 24);
-    const checks = mockQuery.mock.calls.filter((c) => String(c[0]).includes("to_regclass"));
-    expect(checks).toHaveLength(AUDIT_RECORD_TABLES.length);
-    // A check outside the transaction would borrow a second pooled connection.
-    for (const [, opts] of checks) expect(opts.transaction).toEqual({ id: "txn" });
+    const [check, count] = mockQuery.mock.calls.slice(3);
+    expect(check[1].replacements.tables).toEqual(AUDIT_RECORD_TABLES.map((t) => t.table));
+    // A query outside the transaction would borrow a second pooled connection.
+    expect(check[1].transaction).toEqual({ id: "txn" });
+    expect(count[1].transaction).toEqual({ id: "txn" });
   });
 });
 

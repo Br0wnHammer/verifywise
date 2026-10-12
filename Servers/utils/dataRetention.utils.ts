@@ -129,7 +129,9 @@ export async function auditTableExists(
   transaction?: Transaction,
 ): Promise<boolean> {
   const { table } = resolveAuditTable(entry);
-  const exists = (await sequelize.query(`SELECT to_regclass('verifywise.' || :table) AS reg`, {
+  // Unqualified: to_regclass resolves through search_path, like the queries
+  // that then use the table.
+  const exists = (await sequelize.query(`SELECT to_regclass(:table) AS reg`, {
     replacements: { table },
     type: QueryTypes.SELECT,
     transaction,
@@ -191,19 +193,36 @@ export async function countAuditRecordsBefore(
             (SELECT MAX(id) FROM audit_ledger WHERE organization_id = :organizationId))`,
       { replacements: { organizationId, cutoff }, type: QueryTypes.SELECT, transaction },
     )) as { n: number }[];
-    let total = Number(ledger[0]?.n ?? 0);
+    const total = Number(ledger[0]?.n ?? 0);
 
-    for (const entry of AUDIT_RECORD_TABLES) {
-      if (!(await auditTableExists(entry, transaction))) continue;
-      const { table, timestampColumn } = entry;
-      const rows = (await sequelize.query(
-        `SELECT COUNT(*)::int AS n FROM ${table}
-          WHERE organization_id = :organizationId AND ${timestampColumn} < :cutoff`,
-        { replacements: { organizationId, cutoff }, type: QueryTypes.SELECT, transaction },
-      )) as { n: number }[];
-      total += Number(rows[0]?.n ?? 0);
-    }
-    return total;
+    // One existence check and one count for all tables, instead of two
+    // queries per table. Table and column names come only from
+    // AUDIT_RECORD_TABLES.
+    const present = (await sequelize.query(
+      `SELECT name FROM unnest(ARRAY[:tables]::text[]) AS name
+        WHERE to_regclass(name) IS NOT NULL`,
+      {
+        replacements: { tables: AUDIT_RECORD_TABLES.map((t) => t.table) },
+        type: QueryTypes.SELECT,
+        transaction,
+      },
+    )) as { name: string }[];
+    const presentNames = new Set(present.map((r) => r.name));
+    const tables = AUDIT_RECORD_TABLES.filter((t) => presentNames.has(t.table));
+    if (tables.length === 0) return total;
+
+    const counts = tables
+      .map(
+        ({ table, timestampColumn }) =>
+          `SELECT COUNT(*) AS n FROM ${table}
+            WHERE organization_id = :organizationId AND ${timestampColumn} < :cutoff`,
+      )
+      .join("\n UNION ALL\n ");
+    const rows = (await sequelize.query(
+      `SELECT COALESCE(SUM(n), 0)::int AS n FROM (${counts}) AS per_table`,
+      { replacements: { organizationId, cutoff }, type: QueryTypes.SELECT, transaction },
+    )) as { n: number }[];
+    return total + Number(rows[0]?.n ?? 0);
   });
 }
 
@@ -318,7 +337,7 @@ export async function pruneRetentionRunHistory(): Promise<number> {
  */
 export async function getGatewayAutoPurgeOrgIds(): Promise<number[]> {
   const exists = (await sequelize.query(
-    `SELECT to_regclass('verifywise.ai_gateway_guardrail_settings') AS reg`,
+    `SELECT to_regclass('ai_gateway_guardrail_settings') AS reg`,
     { type: QueryTypes.SELECT },
   )) as { reg: string | null }[];
   if (!exists[0]?.reg) return [];
