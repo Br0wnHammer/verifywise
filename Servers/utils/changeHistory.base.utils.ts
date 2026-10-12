@@ -49,6 +49,11 @@ function escapePgName(ident: string): string {
  * @param oldValue - Optional previous value of the field
  * @param newValue - Optional new value of the field
  * @param transaction - Optional database transaction
+ * @param changedBySystem - True for a change made by an integration or job
+ *   rather than a person: the row is stored with a null actor and
+ *   changed_by_system = true (migration
+ *   20261005130617-change-history-changed-by-system; not the ai_gateway_*
+ *   tables). changedByUserId is ignored.
  */
 export const recordEntityChange = async (
   entityType: EntityType,
@@ -60,17 +65,22 @@ export const recordEntityChange = async (
   oldValue?: string,
   newValue?: string,
   transaction?: Transaction,
+  changedBySystem = false,
 ): Promise<void> => {
   try {
     const config = getEntityConfig(entityType);
 
     const tableName = escapePgName(config.tableName);
     const foreignKey = escapePgName(config.foreignKeyField);
+    const actorId = changedBySystem ? null : changedByUserId;
+    // Only name the column when it is set, so tables without it still work.
+    const systemColumn = changedBySystem ? ", changed_by_system" : "";
+    const systemValue = changedBySystem ? ", true" : "";
 
     await sequelize.query(
       `INSERT INTO ${tableName}
-       (organization_id, ${foreignKey}, action, field_name, old_value, new_value, changed_by_user_id, changed_at)
-       VALUES (:organization_id, :entity_id, :action, :field_name, :old_value, :new_value, :changed_by_user_id, NOW())`,
+       (organization_id, ${foreignKey}, action, field_name, old_value, new_value, changed_by_user_id${systemColumn}, changed_at)
+       VALUES (:organization_id, :entity_id, :action, :field_name, :old_value, :new_value, :changed_by_user_id${systemValue}, NOW())`,
       {
         replacements: {
           organization_id: organizationId,
@@ -79,7 +89,7 @@ export const recordEntityChange = async (
           field_name: fieldName || null,
           old_value: oldValue || null,
           new_value: newValue || null,
-          changed_by_user_id: changedByUserId,
+          changed_by_user_id: actorId,
         },
         transaction,
       },
@@ -93,7 +103,7 @@ export const recordEntityChange = async (
       appendToAuditLedger({
         organizationId,
         entryType: "change_history",
-        userId: changedByUserId,
+        userId: actorId,
         entityType,
         entityId,
         action,
@@ -123,14 +133,16 @@ export const recordEntityChange = async (
  * @param organizationId - Organization ID for tenant isolation
  * @param changes - Array of field changes to record
  * @param transaction - Optional database transaction
+ * @param changedBySystem - Record the changes as made by the system (see recordEntityChange)
  */
 export const recordMultipleFieldChanges = async (
   entityType: EntityType,
   entityId: number,
-  changedByUserId: number,
+  changedByUserId: number | null,
   organizationId: number,
   changes: Array<{ fieldName: string; oldValue: string; newValue: string }>,
   transaction?: Transaction,
+  changedBySystem = false,
 ): Promise<void> => {
   for (const change of changes) {
     await recordEntityChange(
@@ -143,6 +155,7 @@ export const recordMultipleFieldChanges = async (
       change.oldValue,
       change.newValue,
       transaction,
+      changedBySystem,
     );
   }
 };

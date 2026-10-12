@@ -200,7 +200,8 @@ reopened.
 - `date_detected` must be >= `occurred_date` (creation only)
 - Status transitions are unrestricted; Closed incidents can be reopened
 - Reopening a Closed incident whose `approval_status` is `Approved` resets it to
-  `Pending` and clears `approved_by` and `approval_date` (see below)
+  `Pending` and clears `approved_by`, `approval_date` and `approval_notes`
+  (see below)
 - Archived incidents remain in database (soft delete); archiving does not depend
   on status, and reopening does not change the `archived` flag
 
@@ -211,8 +212,15 @@ reopened.
     ↓
 [Rejected]
     ↓
-[Not Required]
+[Not required]
 ```
+
+Stored values are those of `AIIncidentManagementApprovalStatus`
+(`Servers/domain.layer/enums/ai-incident-management.enum.ts`): `Pending`,
+`Approved`, `Rejected`, `Not required`. The column is `VARCHAR(20)`, not a DB
+enum. `APPROVAL_STATUS_ENUM` in the validation utils still lists
+`Not Required` (capital R) and the edit form labels the option that way, but
+the value the form saves is `Not required`.
 
 When approved:
 - `approved_by` populated with approver name
@@ -220,20 +228,44 @@ When approved:
 - `approval_notes` optional comments
 
 Approval is sign-off on closing the incident. When a Closed incident is reopened
-(status moves from `Closed` to anything else), an `Approved` sign-off no longer
-describes it, so `applyReopenApprovalReset`
+(status moves from `Closed` to anything else) and its stored approval is
+`Approved`, that sign-off no longer describes it, so `applyReopenApprovalReset`
 (`Servers/utils/validations/incidentManagementValidation.utils.ts`) rewrites the
-update to `approval_status = Pending`, `approved_by = null`,
-`approval_date = null`. `approval_notes` is kept. `Pending`, `Rejected` and
-`Not Required` are left as they are.
+update to `approval_status = Pending` with `approved_by`, `approval_date` and
+`approval_notes` set to null. Change history keeps the old values. `Pending`,
+`Rejected` and `Not required` are left as they are.
 
-If the same update sets `approval_status` to a value different from the stored
-one, that explicit choice wins. Sending the stored value back unchanged (as the
-edit form does) counts as not touching it, so re-approving a reopened incident
-is a separate save. The reset runs on the HTTP update
-(`PATCH /ai-incident-managements/:id`) and on the AI Advisor tools
-`agent_update_incident` / `agent_update_incident_status`, and the cleared
-fields are recorded in change history next to the status change.
+If the same update changes **any** approval field (`approval_status`,
+`approved_by`, `approval_date`, `approval_notes` with a value different from the
+stored one), the caller has made an explicit approval decision and the update is
+kept as sent. A field sent back with its stored value counts as "not touched"
+(the edit form always sends every field; `''` and null are treated as the same,
+dates are compared as instants). So keeping an incident `Approved` through a
+reopen is not possible by resubmitting the old approval: it needs a deliberate
+re-approval in a later update.
+
+### Shared update path
+
+All updates to an existing incident go through
+`updateIncident(organizationId, incidentId, updates, userId, { transaction?, changedBySystem? })`
+in `Servers/services/incidentManagement.service.ts`. Callers: the HTTP update
+(`PATCH /ai-incident-managements/:id`), the AI Advisor tools
+`agent_update_incident` / `agent_update_incident_status`, and integrations such
+as issue-tracker sync. It:
+
+1. Loads the incident once, `SELECT ... FOR UPDATE OF i` inside the transaction
+   (its own, or the caller's when `transaction` is passed; it only commits or
+   rolls back a transaction it opened), so concurrent updates serialise.
+2. Applies the reopen approval reset.
+3. Calls `updateIncidentByIdQuery` with the loaded row, which writes only the
+   columns whose value differs from the stored one (plus `updated_at`) and
+   ignores keys that are not updatable columns.
+4. Records every changed field in `incident_change_history` as `userId`, or,
+   with `changedBySystem: true`, with a null actor and `changed_by_system = true`
+   (shown as "System"). With neither, no history is written.
+
+It returns the updated incident, or `null` when the incident does not exist in
+the organization.
 
 ## Change Tracking
 

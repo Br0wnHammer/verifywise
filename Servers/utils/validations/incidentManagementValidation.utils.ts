@@ -4,6 +4,10 @@
  */
 
 import {
+  AIIncidentManagementStatus,
+  AIIncidentManagementApprovalStatus,
+} from "../../domain.layer/enums/ai-incident-management.enum";
+import {
   validateString,
   validateEnum,
   validateDate,
@@ -268,32 +272,67 @@ export const validateIncidentUpdateBusinessRules = (
   return [];
 };
 
+/** Approval fields a caller can set; touching any of them disables the reopen reset. */
+const APPROVAL_FIELDS = [
+  "approval_status",
+  "approved_by",
+  "approval_date",
+  "approval_notes",
+] as const;
+
+/** Compares a stored and a sent approval value; '' / null / undefined all mean "none". */
+const isSameApprovalValue = (field: string, stored: unknown, sent: unknown): boolean => {
+  const a = stored === "" || stored === undefined ? null : stored;
+  const b = sent === "" ? null : sent;
+  if (a === null || b === null) return a === b;
+  if (field === "approval_date") {
+    return new Date(a as string).getTime() === new Date(b as string).getTime();
+  }
+  return String(a) === String(b);
+};
+
 /**
  * Approval on an incident is sign-off on its closure. When a Closed incident
- * is reopened, an "Approved" sign-off no longer describes it, so the update
- * is rewritten to put approval back to "Pending" and clear the approver and
- * approval date. "Pending", "Rejected" and "Not Required" are left alone.
+ * is reopened (status moves from Closed to anything else) and its stored
+ * approval is Approved, that sign-off no longer describes it, so the update
+ * is rewritten to approval_status Pending with approved_by, approval_date and
+ * approval_notes cleared. Change history keeps the old values. Pending,
+ * Rejected and Not required approvals are left alone.
  *
- * An update that itself sets approval_status to a value other than the
- * stored one is an explicit decision by the caller and is kept as sent. The
- * edit form always sends the stored value back, so an unchanged
- * approval_status counts as "not touched".
+ * If the update itself changes any approval field (a value that differs from
+ * the stored one), the caller has made an explicit approval decision and the
+ * update is kept as sent. A field sent back with its stored value counts as
+ * "not touched" (the edit form always sends every field), so keeping an
+ * incident Approved through a reopen takes a deliberate re-approval in a
+ * later update.
  *
  * Returns the update unchanged when no reset applies, otherwise a copy.
  */
 export const applyReopenApprovalReset = <T extends Record<string, any>>(
-  existing: { status?: string | null; approval_status?: string | null },
+  existing: Record<string, any>,
   update: T,
 ): T => {
   const isReopen =
-    existing.status === "Closed" && update.status !== undefined && update.status !== "Closed";
-  if (!isReopen || existing.approval_status !== "Approved") return update;
+    existing.status === AIIncidentManagementStatus.CLOSED &&
+    update.status !== undefined &&
+    update.status !== AIIncidentManagementStatus.CLOSED;
+  if (!isReopen || existing.approval_status !== AIIncidentManagementApprovalStatus.APPROVED) {
+    return update;
+  }
 
-  const callerChangedApproval =
-    update.approval_status !== undefined && update.approval_status !== existing.approval_status;
+  const callerChangedApproval = APPROVAL_FIELDS.some(
+    (field) =>
+      update[field] !== undefined && !isSameApprovalValue(field, existing[field], update[field]),
+  );
   if (callerChangedApproval) return update;
 
-  return { ...update, approval_status: "Pending", approved_by: null, approval_date: null };
+  return {
+    ...update,
+    approval_status: AIIncidentManagementApprovalStatus.PENDING,
+    approved_by: null,
+    approval_date: null,
+    approval_notes: null,
+  };
 };
 
 /**

@@ -6,19 +6,13 @@ import {
 } from "../../domain.layer/enums/ai-incident-management.enum";
 import {
   getAllIncidentsQuery,
-  getIncidentByIdQuery,
   createNewIncidentQuery,
-  updateIncidentByIdQuery,
   deleteIncidentByIdQuery,
   archiveIncidentByIdQuery,
 } from "../../utils/incidentManagement.utils";
 import { AIIncidentManagementModel } from "../../domain.layer/models/incidentManagement/incidemtManagement.model";
 import { createWriteToolFn } from "../confirmation/createWriteTool";
-import { applyReopenApprovalReset } from "../../utils/validations/incidentManagementValidation.utils";
-import {
-  trackIncidentChanges,
-  recordMultipleFieldChanges,
-} from "../../utils/incidentChangeHistory.utils";
+import { updateIncident } from "../../services/incidentManagement.service";
 import { sequelize } from "../../database/db";
 import logger from "../../utils/logger/fileLogger";
 
@@ -502,9 +496,9 @@ const agentCreateIncident = createWriteToolFn({
 });
 
 /**
- * Merges `fields` into an incident on behalf of an advisor write tool. Like
- * the HTTP update, a reopen drops a stale closure approval and every changed
- * field lands in the incident's change history (as the approving user).
+ * Applies `fields` to an incident on behalf of an advisor write tool through
+ * the shared incident write path (reopen approval reset, change history as
+ * the approving user).
  */
 async function applyIncidentUpdate(
   params: Record<string, unknown>,
@@ -512,37 +506,16 @@ async function applyIncidentUpdate(
   fields: Record<string, unknown>,
 ) {
   const incidentId = params.incident_id as number;
-  const userId = params._userId as number | undefined;
-  const transaction = await sequelize.transaction();
-  try {
-    const existing = await getIncidentByIdQuery(incidentId, organizationId);
-    if (!existing) {
-      throw new Error(`Incident #${incidentId} not found`);
-    }
-
-    const existingData = existing.toSafeJSON();
-    const updates = applyReopenApprovalReset(existingData, fields);
-
-    const result = await updateIncidentByIdQuery(
-      incidentId,
-      { ...existing.dataValues, ...updates } as AIIncidentManagementModel,
-      organizationId,
-      transaction,
-    );
-
-    if (userId) {
-      const changes = await trackIncidentChanges(existingData, updates);
-      if (changes.length > 0) {
-        await recordMultipleFieldChanges(incidentId, userId, organizationId, changes, transaction);
-      }
-    }
-
-    await transaction.commit();
-    return { id: result.id, ai_project: result.ai_project, status: result.status };
-  } catch (error) {
-    await transaction.rollback();
-    throw error;
+  const result = await updateIncident(
+    organizationId,
+    incidentId,
+    fields,
+    params._userId as number | undefined,
+  );
+  if (!result) {
+    throw new Error(`Incident #${incidentId} not found`);
   }
+  return { id: result.id, ai_project: result.ai_project, status: result.status };
 }
 
 const agentUpdateIncident = createWriteToolFn({

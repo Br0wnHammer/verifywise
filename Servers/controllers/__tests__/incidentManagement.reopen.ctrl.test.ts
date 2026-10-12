@@ -15,10 +15,9 @@ jest.mock("../../utils/incidentManagement.utils", () => ({
   archiveIncidentByIdQuery: jest.fn(),
   validateIncidentReferences: jest.fn(async () => []),
 }));
-// Real change tracking; only the history write is stubbed.
-jest.mock("../../utils/incidentChangeHistory.utils", () => ({
-  ...(jest.requireActual("../../utils/incidentChangeHistory.utils") as object),
-  recordIncidentCreation: jest.fn(),
+// Real change tracking (through the shared service); only the history write is stubbed.
+jest.mock("../../utils/changeHistory.base.utils", () => ({
+  ...(jest.requireActual("../../utils/changeHistory.base.utils") as object),
   recordMultipleFieldChanges: jest.fn(),
 }));
 jest.mock("../../services/workflows/triggers", () => ({ triggerIncidentResponse: jest.fn() }));
@@ -36,7 +35,7 @@ import {
   getIncidentByIdQuery,
   updateIncidentByIdQuery,
 } from "../../utils/incidentManagement.utils";
-import { recordMultipleFieldChanges } from "../../utils/incidentChangeHistory.utils";
+import { recordMultipleFieldChanges } from "../../utils/changeHistory.base.utils";
 
 const mockGet = getIncidentByIdQuery as jest.MockedFunction<any>;
 const mockUpdate = updateIncidentByIdQuery as jest.MockedFunction<any>;
@@ -44,7 +43,7 @@ const mockRecord = recordMultipleFieldChanges as jest.MockedFunction<any>;
 
 /** A stored Closed incident whose closure was approved. */
 function closedApprovedIncident() {
-  const incident: Record<string, any> = {
+  const values = {
     id: 42,
     status: "Closed",
     severity: "Serious",
@@ -54,11 +53,7 @@ function closedApprovedIncident() {
     approval_date: "2026-10-01T00:00:00.000Z",
     approval_notes: "Closure signed off",
   };
-  incident.toSafeJSON = () => {
-    const { toSafeJSON: _omit, ...rest } = incident;
-    return { ...rest };
-  };
-  return incident;
+  return { ...values, toSafeJSON: () => ({ ...values }) };
 }
 
 function mockRes() {
@@ -82,12 +77,12 @@ describe("updateIncidentById — reopening a closed incident", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGet.mockImplementation(async () => closedApprovedIncident());
-    mockUpdate.mockImplementation(async (_id: number, incident: any) => ({
-      toSafeJSON: () => ({ ...incident }),
+    mockUpdate.mockImplementation(async (_id: number, changes: any) => ({
+      toSafeJSON: () => ({ id: 42, ...changes }),
     }));
   });
 
-  it("moves Closed → Investigating, resets the approval and records both in history", async () => {
+  it("moves Closed → Investigating, resets the approval and records it in history", async () => {
     const res = mockRes();
     // The edit form sends the whole record back, approval fields unchanged.
     await updateIncidentById(
@@ -96,40 +91,58 @@ describe("updateIncidentById — reopening a closed incident", () => {
         approval_status: "Approved",
         approved_by: "Jane Doe",
         approval_date: "2026-10-01T00:00:00.000Z",
+        approval_notes: "Closure signed off",
       }),
       res,
     );
 
     expect(res.status).toHaveBeenCalledWith(200);
+    expect((res.json as jest.Mock).mock.calls[0][0]).toEqual({
+      message: "OK",
+      data: expect.objectContaining({ id: 42, status: "Investigating" }),
+    });
     const saved = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
-    expect(saved.status).toBe("Investigating");
-    expect(saved.approval_status).toBe("Pending");
-    expect(saved.approved_by).toBeNull();
-    expect(saved.approval_date).toBeNull();
-    expect(saved.approval_notes).toBe("Closure signed off");
+    expect(saved).toMatchObject({
+      status: "Investigating",
+      approval_status: "Pending",
+      approved_by: null,
+      approval_date: null,
+      approval_notes: null,
+    });
 
     expect(mockRecord).toHaveBeenCalledTimes(1);
-    const [incidentId, userId, orgId, changes] = mockRecord.mock.calls[0];
-    expect([incidentId, userId, orgId]).toEqual([42, 7, 1]);
+    const [entity, incidentId, userId, orgId, changes] = mockRecord.mock.calls[0];
+    expect([entity, incidentId, userId, orgId]).toEqual(["incident", 42, 7, 1]);
     expect(changes).toEqual(
       expect.arrayContaining([
         { fieldName: "Status", oldValue: "Closed", newValue: "Investigating" },
         { fieldName: "Approval status", oldValue: "Approved", newValue: "Pending" },
         { fieldName: "Approved by", oldValue: "Jane Doe", newValue: "-" },
+        { fieldName: "Approval notes", oldValue: "Closure signed off", newValue: "-" },
         expect.objectContaining({ fieldName: "Approval date", newValue: "-" }),
       ]),
     );
     expect(mockTransaction.commit).toHaveBeenCalled();
   });
 
-  it("keeps an approval status the caller changed in the same update", async () => {
+  it("keeps the approver the caller set in the same update", async () => {
     const res = mockRes();
-    await updateIncidentById(mockReq({ status: "Open", approval_status: "Not Required" }), res);
+    await updateIncidentById(
+      mockReq({ status: "Open", approval_status: "Approved", approved_by: "Sam Lee" }),
+      res,
+    );
 
     expect(res.status).toHaveBeenCalledWith(200);
     const saved = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
-    expect(saved.status).toBe("Open");
-    expect(saved.approval_status).toBe("Not Required");
-    expect(saved.approved_by).toBe("Jane Doe");
+    expect(saved).toEqual({ status: "Open", approval_status: "Approved", approved_by: "Sam Lee" });
+  });
+
+  it("returns 404 when the incident does not exist", async () => {
+    mockGet.mockResolvedValue(null);
+    const res = mockRes();
+    await updateIncidentById(mockReq({ status: "Open" }), res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });

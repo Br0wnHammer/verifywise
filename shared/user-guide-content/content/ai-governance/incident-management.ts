@@ -211,7 +211,7 @@ export const incidentManagementContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Because approval signs off the closure, reopening a closed incident that was approved sets its approval status back to Pending and clears the approver and approval date. Approval notes are kept. Once the incident is resolved again, it can be approved again before closing.',
+      text: 'Because approval signs off the closure, reopening a closed incident that was approved sets its approval status back to Pending and clears the approver, approval date and approval notes. The previous values stay in the incident\'s activity history. Once the incident is resolved again, approve it again before closing it. If you change any approval field in the same save that reopens the incident, your approval values are kept instead.',
     },
     {
       type: 'heading',

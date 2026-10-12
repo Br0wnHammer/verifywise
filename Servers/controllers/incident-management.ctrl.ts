@@ -5,7 +5,6 @@ import {
   getAllIncidentsQuery,
   getIncidentByIdQuery,
   createNewIncidentQuery,
-  updateIncidentByIdQuery,
   deleteIncidentByIdQuery,
   archiveIncidentByIdQuery,
   validateIncidentReferences,
@@ -22,14 +21,10 @@ import {
   validateModelInventoryId,
   validateProjectId,
   validateAssigneeId,
-  applyReopenApprovalReset,
 } from "../utils/validations/incidentManagementValidation.utils";
-import {
-  recordIncidentCreation,
-  trackIncidentChanges,
-  recordMultipleFieldChanges,
-} from "../utils/incidentChangeHistory.utils";
+import { recordIncidentCreation } from "../utils/incidentChangeHistory.utils";
 import { triggerIncidentResponse } from "../services/workflows/triggers";
+import { updateIncident } from "../services/incidentManagement.service";
 
 /** Severity values that launch the critical incident_response workflow. */
 const CRITICAL_INCIDENT_SEVERITIES = new Set(["very serious", "critical"]);
@@ -397,13 +392,16 @@ export async function updateIncidentById(req: Request, res: Response) {
     );
   }
 
-  const transaction = await sequelize.transaction();
   try {
-    const currentIncident = (await getIncidentByIdQuery(
-      incidentId,
+    // Shared write path: locks the row, drops a stale closure approval on
+    // reopen, writes changed fields and records change history.
+    const savedIncident = await updateIncident(
       req.organizationId!,
-    )) as AIIncidentManagementModel;
-    if (!currentIncident) {
+      incidentId,
+      req.body,
+      req.userId,
+    );
+    if (!savedIncident) {
       logStructured(
         "successful",
         "no incident found",
@@ -413,37 +411,6 @@ export async function updateIncidentById(req: Request, res: Response) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Incident not found")));
     }
 
-    // Get the plain object for change tracking before updating
-    const existingData = currentIncident.toSafeJSON();
-
-    // Reopening a Closed incident drops a stale "Approved" closure sign-off.
-    const updates = applyReopenApprovalReset(existingData, req.body);
-
-    Object.assign(currentIncident, { ...updates, updated_at: new Date() });
-
-    const savedIncident = await updateIncidentByIdQuery(
-      incidentId,
-      currentIncident,
-      req.organizationId!,
-      transaction,
-    );
-
-    // Track and record changes
-    if (req.userId) {
-      const changes = await trackIncidentChanges(existingData, updates);
-      if (changes.length > 0) {
-        await recordMultipleFieldChanges(
-          incidentId,
-          req.userId,
-          req.organizationId!,
-          changes,
-          transaction,
-        );
-      }
-    }
-
-    await transaction.commit();
-
     logStructured(
       "successful",
       "incident updated",
@@ -452,7 +419,6 @@ export async function updateIncidentById(req: Request, res: Response) {
     );
     return res.status(200).json(STATUS_CODE[200](savedIncident.toSafeJSON()));
   } catch (error) {
-    await transaction.rollback();
     logStructured(
       "error",
       "failed to update incident",

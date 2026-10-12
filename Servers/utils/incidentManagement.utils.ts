@@ -66,14 +66,26 @@ export const getAllIncidentsQuery = async (
   return incidents;
 };
 
-export const getIncidentByIdQuery = async (id: number, organizationId: number) => {
+/**
+ * Loads one incident. With `lock` (requires `transaction`) the incident row
+ * is locked FOR UPDATE until the transaction ends, so a read-then-write
+ * update cannot interleave with another one. Only the incident row is locked,
+ * not the joined lookup rows.
+ */
+export const getIncidentByIdQuery = async (
+  id: number,
+  organizationId: number,
+  options: { transaction?: Transaction; lock?: boolean } = {},
+) => {
+  const lockClause = options.lock && options.transaction ? " FOR UPDATE OF i" : "";
   const incidents = await sequelize.query(
     `${INCIDENT_SELECT}
-     WHERE i.organization_id = :organizationId AND i.id = :id`,
+     WHERE i.organization_id = :organizationId AND i.id = :id${lockClause}`,
     {
       replacements: { organizationId, id },
       mapToModel: true,
       model: AIIncidentManagementModel,
+      transaction: options.transaction,
     },
   );
   if (!incidents.length) return null;
@@ -187,73 +199,89 @@ export const createNewIncidentQuery = async (
   }
 };
 
+/** Columns an incident update may write. Anything else in an update is ignored. */
+const UPDATABLE_INCIDENT_COLUMNS = [
+  "ai_project",
+  "model_inventory_id",
+  "project_id",
+  "assignee_id",
+  "type",
+  "severity",
+  "status",
+  "occurred_date",
+  "date_detected",
+  "reporter",
+  "approval_status",
+  "approved_by",
+  "categories_of_harm",
+  "affected_persons_groups",
+  "description",
+  "relationship_causality",
+  "immediate_mitigations",
+  "planned_corrective_actions",
+  "model_system_version",
+  "interim_report",
+  "archived",
+  "approval_date",
+  "approval_notes",
+] as const;
+
+const INCIDENT_FK_COLUMNS = new Set(["model_inventory_id", "project_id", "assignee_id"]);
+const INCIDENT_DATE_COLUMNS = new Set(["occurred_date", "date_detected", "approval_date"]);
+
+/** Normalises a column value for writing: '' FK / date values mean "none". */
+const toColumnValue = (column: string, value: unknown): unknown => {
+  if ((INCIDENT_FK_COLUMNS.has(column) || INCIDENT_DATE_COLUMNS.has(column)) && value === "") {
+    return null;
+  }
+  return value ?? null;
+};
+
+/** True when `next` would store the same value the row already holds. */
+const isSameColumnValue = (column: string, current: unknown, next: unknown): boolean => {
+  const a = current ?? null;
+  const b = toColumnValue(column, next);
+  if (a === null || b === null) return a === b;
+  if (INCIDENT_DATE_COLUMNS.has(column)) {
+    return new Date(a as string).getTime() === new Date(b as string).getTime();
+  }
+  if (INCIDENT_FK_COLUMNS.has(column)) return Number(a) === Number(b);
+  return JSON.stringify(a) === JSON.stringify(b);
+};
+
+/**
+ * Writes the columns of `changes` whose value differs from `existingIncident`
+ * (plus updated_at), then re-reads the row and fires `incident_updated`
+ * automations. `existingIncident` is the row the caller already loaded in
+ * this transaction (see services/incidentManagement.service.ts), so the
+ * write never re-reads it and never overwrites columns the caller did not
+ * change.
+ */
 export const updateIncidentByIdQuery = async (
   id: number,
-  incident: AIIncidentManagementModel,
+  changes: Partial<Record<(typeof UPDATABLE_INCIDENT_COLUMNS)[number], unknown>>,
   organizationId: number,
   transaction: Transaction,
+  existingIncident: AIIncidentManagementModel,
 ) => {
-  const existingIncident = await getIncidentByIdQuery(id, organizationId);
   const updated_at = new Date();
   try {
+    const setClauses = ["updated_at = :updated_at"];
+    const replacements: Record<string, unknown> = { organizationId, id, updated_at };
+    for (const column of UPDATABLE_INCIDENT_COLUMNS) {
+      if (changes[column] === undefined) continue;
+      const current = existingIncident.getDataValue(column as keyof AIIncidentManagementModel);
+      if (isSameColumnValue(column, current, changes[column])) continue;
+      const value = toColumnValue(column, changes[column]);
+      setClauses.push(`${column} = :${column}`);
+      replacements[column] =
+        column === "categories_of_harm" && value !== null ? JSON.stringify(value) : value;
+    }
+
     await sequelize.query(
-      `UPDATE ai_incident_managements SET
-        ai_project = :ai_project,
-        model_inventory_id = :model_inventory_id,
-        project_id = :project_id,
-        assignee_id = :assignee_id,
-        type = :type,
-        severity = :severity,
-        status = :status,
-        occurred_date = :occurred_date,
-        date_detected = :date_detected,
-        reporter = :reporter,
-        approval_status = :approval_status,
-        approved_by = :approved_by,
-        categories_of_harm = :categories_of_harm,
-        affected_persons_groups = :affected_persons_groups,
-        description = :description,
-        relationship_causality = :relationship_causality,
-        immediate_mitigations = :immediate_mitigations,
-        planned_corrective_actions = :planned_corrective_actions,
-        model_system_version = :model_system_version,
-        interim_report = :interim_report,
-        archived = :archived,
-        updated_at = :updated_at,
-        approval_date = :approval_date,
-        approval_notes = :approval_notes
+      `UPDATE ai_incident_managements SET ${setClauses.join(", ")}
       WHERE organization_id = :organizationId AND id = :id`,
-      {
-        replacements: {
-          organizationId,
-          id,
-          ai_project: incident.ai_project,
-          model_inventory_id: incident.model_inventory_id ?? null,
-          project_id: incident.project_id ?? null,
-          assignee_id: incident.assignee_id ?? null,
-          type: incident.type,
-          severity: incident.severity,
-          status: incident.status,
-          occurred_date: incident.occurred_date,
-          date_detected: incident.date_detected,
-          reporter: incident.reporter,
-          approval_status: incident.approval_status,
-          approved_by: incident.approved_by,
-          categories_of_harm: JSON.stringify(incident.categories_of_harm),
-          affected_persons_groups: incident.affected_persons_groups,
-          description: incident.description,
-          relationship_causality: incident.relationship_causality,
-          immediate_mitigations: incident.immediate_mitigations,
-          planned_corrective_actions: incident.planned_corrective_actions,
-          model_system_version: incident.model_system_version,
-          interim_report: incident.interim_report,
-          archived: incident.archived || false,
-          approval_date: incident.approval_date,
-          approval_notes: incident.approval_notes,
-          updated_at,
-        },
-        transaction,
-      },
+      { replacements, transaction },
     );
 
     const result = await sequelize.query(

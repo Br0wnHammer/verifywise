@@ -2,73 +2,97 @@ import {
   applyReopenApprovalReset,
   validateCompleteIncidentUpdate,
 } from "./incidentManagementValidation.utils";
+import {
+  AIIncidentManagementApprovalStatus as Approval,
+  AIIncidentManagementStatus as Status,
+} from "../../domain.layer/enums/ai-incident-management.enum";
+
+const RESET = {
+  approval_status: Approval.PENDING,
+  approved_by: null,
+  approval_date: null,
+  approval_notes: null,
+};
 
 describe("reopening closed incidents", () => {
   describe("validateCompleteIncidentUpdate", () => {
-    it.each(["Open", "Investigating", "Mitigated", "Suspended", "Emergency action"])(
-      "allows Closed → %s",
-      (status) => {
-        expect(validateCompleteIncidentUpdate({ status }, { status: "Closed" })).toEqual([]);
-      },
-    );
+    it.each([
+      Status.OPEN,
+      Status.INVESTIGATING,
+      Status.MITIGATED,
+      Status.SUSPENDED,
+      Status.EMERGENCY_ACTION,
+    ])("allows Closed → %s", (status) => {
+      expect(validateCompleteIncidentUpdate({ status }, { status: Status.CLOSED })).toEqual([]);
+    });
   });
 
   describe("applyReopenApprovalReset", () => {
-    const closedApproved = { status: "Closed", approval_status: "Approved" };
+    const closedApproved = {
+      status: Status.CLOSED,
+      approval_status: Approval.APPROVED,
+      approved_by: "Jane Doe",
+      approval_date: "2026-10-01T00:00:00.000Z",
+      approval_notes: "Closure signed off",
+    };
 
-    it("resets an Approved closure sign-off to Pending on reopen", () => {
-      const result = applyReopenApprovalReset(closedApproved, { status: "Investigating" });
-      expect(result).toEqual({
-        status: "Investigating",
-        approval_status: "Pending",
-        approved_by: null,
-        approval_date: null,
-      });
+    it("resets an Approved closure sign-off to Pending and clears approver, date and notes", () => {
+      const result = applyReopenApprovalReset(closedApproved, { status: Status.INVESTIGATING });
+      expect(result).toEqual({ status: Status.INVESTIGATING, ...RESET });
     });
 
-    it("treats an unchanged approval_status from the edit form as not touched", () => {
+    it("treats approval fields sent back unchanged (as the edit form does) as not touched", () => {
       const update = {
-        status: "Open",
-        approval_status: "Approved",
+        status: Status.OPEN,
+        approval_status: Approval.APPROVED,
         approved_by: "Jane Doe",
-        approval_date: "2026-10-01T00:00:00.000Z",
+        // Same instant, different format.
+        approval_date: new Date("2026-10-01T00:00:00.000Z"),
         approval_notes: "Closure signed off",
       };
-      const result = applyReopenApprovalReset(closedApproved, update);
-      expect(result).toEqual({
+      expect(applyReopenApprovalReset(closedApproved, update)).toEqual({
         ...update,
-        approval_status: "Pending",
-        approved_by: null,
-        approval_date: null,
+        ...RESET,
       });
     });
 
-    it("keeps an approval_status the caller explicitly changed in the same update", () => {
-      const update = { status: "Investigating", approval_status: "Not Required" };
+    it("treats '' and null as the same empty approval value", () => {
+      const stored = { ...closedApproved, approval_notes: null };
+      const update = { status: Status.OPEN, approval_notes: "" };
+      expect(applyReopenApprovalReset(stored, update)).toEqual({ ...update, ...RESET });
+    });
+
+    it.each([
+      ["approval_status", { approval_status: Approval.NOT_REQUIRED }],
+      ["approved_by", { approved_by: "Sam Lee" }],
+      ["approval_date", { approval_date: "2026-10-05T00:00:00.000Z" }],
+      ["approval_notes", { approval_notes: "Still approved after review" }],
+    ])("keeps the caller's approval fields when %s is changed explicitly", (_field, change) => {
+      const update = { status: Status.INVESTIGATING, ...change };
       expect(applyReopenApprovalReset(closedApproved, update)).toBe(update);
     });
 
-    it.each(["Pending", "Rejected", "Not Required"])(
+    it.each([Approval.PENDING, Approval.REJECTED, Approval.NOT_REQUIRED])(
       "leaves a %s approval alone on reopen",
       (approval_status) => {
-        const update = { status: "Investigating" };
-        expect(applyReopenApprovalReset({ status: "Closed", approval_status }, update)).toBe(
+        const update = { status: Status.INVESTIGATING };
+        expect(applyReopenApprovalReset({ ...closedApproved, approval_status }, update)).toBe(
           update,
         );
       },
     );
 
     it("does nothing when the incident stays Closed or the status is not in the update", () => {
-      const stays = { status: "Closed", description: "More detail" };
+      const stays = { status: Status.CLOSED, description: "More detail" };
       const noStatus = { description: "More detail" };
       expect(applyReopenApprovalReset(closedApproved, stays)).toBe(stays);
       expect(applyReopenApprovalReset(closedApproved, noStatus)).toBe(noStatus);
     });
 
     it("does nothing for status changes that are not a reopen", () => {
-      const update = { status: "Closed" };
+      const update = { status: Status.CLOSED };
       expect(
-        applyReopenApprovalReset({ status: "Mitigated", approval_status: "Approved" }, update),
+        applyReopenApprovalReset({ ...closedApproved, status: Status.MITIGATED }, update),
       ).toBe(update);
     });
   });
