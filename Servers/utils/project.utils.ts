@@ -774,6 +774,27 @@ export const deleteHelper = async (
 };
 
 /**
+ * Lock a project row for deletion (SELECT ... FOR UPDATE) and say whether it
+ * exists in the organization. Every path that deletes a project calls this as
+ * the first statement of its transaction, before anything that touches rows
+ * referencing the project (approval requests, change history, children), so
+ * all of them take the project lock first and cannot deadlock with each
+ * other. Calling it again in the same transaction is a no-op that returns the
+ * same answer.
+ */
+export const lockProjectForDelete = async (
+  projectId: number,
+  organizationId: number,
+  transaction: Transaction,
+): Promise<boolean> => {
+  const rows = (await sequelize.query(
+    `SELECT id FROM projects WHERE id = :id AND organization_id = :organizationId FOR UPDATE;`,
+    { replacements: { id: projectId, organizationId }, type: QueryTypes.SELECT, transaction },
+  )) as Array<{ id: number }>;
+  return rows.length > 0;
+};
+
+/**
  * Delete a project and everything that hangs off it. The project row is
  * locked (FOR UPDATE) before any child row is touched. Pass
  * `enqueueAutomationAfterCommit` when the caller's transaction may still roll
@@ -788,14 +809,10 @@ export const deleteProjectByIdQuery = async (
   transaction: Transaction,
   options: { enqueueAutomationAfterCommit?: boolean } = {},
 ): Promise<boolean> => {
-  // Lock the project row first, before touching any child row, so every
-  // deletion path takes the same lock order (project, then its children and
-  // the rows that cascade from it) and two deletes of one project cannot
-  // deadlock. Every caller runs this inside a transaction.
-  await sequelize.query(
-    `SELECT id FROM projects WHERE id = :id AND organization_id = :organizationId FOR UPDATE;`,
-    { replacements: { id, organizationId }, type: QueryTypes.SELECT, transaction },
-  );
+  // The project lock comes before any child row (callers normally took it
+  // already, as their first statement; this keeps the order for any that
+  // did not).
+  await lockProjectForDelete(id, organizationId, transaction);
   const frameworks = await sequelize.query(
     `SELECT framework_id FROM projects_frameworks WHERE organization_id = :organizationId AND project_id = :project_id`,
     {

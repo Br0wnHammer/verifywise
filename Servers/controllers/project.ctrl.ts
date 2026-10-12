@@ -8,6 +8,7 @@ import {
   countSubControlsByProjectId,
   createNewProjectQuery,
   deleteProjectByIdQuery,
+  lockProjectForDelete,
   getAllProjectsQuery,
   getProjectByIdQuery,
   updateProjectByIdQuery,
@@ -772,6 +773,11 @@ export async function deleteProjectById(req: Request, res: Response): Promise<an
   });
 
   try {
+    // Lock the project first, before the approval withdrawal and the change
+    // history row (which reference it), so every deletion path takes the
+    // project lock first (see lockProjectForDelete).
+    await lockProjectForDelete(projectId, req.organizationId!, transaction);
+
     // Check if project has a pending approval request and withdraw it
     const pendingApprovalRequestId = await getPendingApprovalRequestIdQuery(
       projectId,
