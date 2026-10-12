@@ -107,6 +107,41 @@ describe("runRetentionPrune", () => {
     expect(summary.deleted).toBe(3);
   });
 
+  it("records a failed run with the rows deleted so far and rethrows", async () => {
+    mockPruneBatch
+      .mockResolvedValueOnce(PRUNE_BATCH_SIZE)
+      .mockRejectedValueOnce(new Error("statement timeout"));
+    await expect(runRetentionPrune(1)).rejects.toThrow("statement timeout");
+    expect(recordRetentionRun).toHaveBeenCalledTimes(1);
+    expect(recordRetentionRun).toHaveBeenCalledWith({
+      organizationId: 1,
+      recordType: "mrm_metrics",
+      cutoff: "2024-06-10 00:00:00+00",
+      deletedCount: PRUNE_BATCH_SIZE,
+      status: "failed",
+      error: "statement timeout",
+    });
+  });
+
+  it("records a failed run without a cutoff when the settings read fails", async () => {
+    mockSettings.mockRejectedValueOnce(new Error("settings down"));
+    await expect(runRetentionPrune(1)).rejects.toThrow("settings down");
+    expect(recordRetentionRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cutoff: null,
+        deletedCount: 0,
+        status: "failed",
+        error: "settings down",
+      }),
+    );
+  });
+
+  it("rethrows the prune error even when recording the failed run fails", async () => {
+    mockPruneBatch.mockRejectedValueOnce(new Error("boom"));
+    (recordRetentionRun as jest.Mock).mockRejectedValueOnce(new Error("record failed"));
+    await expect(runRetentionPrune(1)).rejects.toThrow("boom");
+  });
+
   it("uses the org's configured retention_months", async () => {
     mockSettings.mockResolvedValue({ organization_id: 9, retention_months: 36 });
     mockPruneBatch.mockResolvedValueOnce(0);

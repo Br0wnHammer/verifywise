@@ -33,6 +33,7 @@ jest.mock("../../utils/shadowAiConfig.utils", () => ({
 
 jest.mock("../../utils/dataRetention.utils", () => ({
   recordRetentionRun: jest.fn(),
+  deletedRowCount: jest.requireActual("../../utils/dataRetention.utils").deletedRowCount,
 }));
 
 import {
@@ -136,10 +137,10 @@ describe("shadowAiAggregation.service", () => {
         retention_daily_rollups_days: 90,
         retention_alert_history_days: 180,
       } as any);
-      // Each delete query returns [undefined, rowCount]
-      mockQuery.mockResolvedValueOnce([undefined, 5] as any);
-      mockQuery.mockResolvedValueOnce([undefined, 2] as any);
-      mockQuery.mockResolvedValueOnce([undefined, 1] as any);
+      // A raw DELETE resolves to [rows, pgResult]; the count is pgResult.rowCount
+      mockQuery.mockResolvedValueOnce([[], { rowCount: 5 }] as any);
+      mockQuery.mockResolvedValueOnce([[], { rowCount: 2 }] as any);
+      mockQuery.mockResolvedValueOnce([[], { rowCount: 1 }] as any);
 
       await purgeOldEvents();
 
@@ -171,7 +172,7 @@ describe("shadowAiAggregation.service", () => {
         retention_daily_rollups_days: 90,
         retention_alert_history_days: 180,
       } as any);
-      mockQuery.mockResolvedValue([undefined, 1] as any);
+      mockQuery.mockResolvedValue([[], { rowCount: 1 }] as any);
       (recordRetentionRun as jest.Mock).mockRejectedValue(new Error("record failed"));
 
       await purgeOldEvents();
@@ -207,12 +208,69 @@ describe("shadowAiAggregation.service", () => {
         retention_daily_rollups_days: 0,
         retention_alert_history_days: 0,
       } as any);
-      mockQuery.mockResolvedValue([undefined, 0] as any);
+      mockQuery.mockResolvedValue([[], { rowCount: 0 }] as any);
 
       await purgeOldEvents();
 
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Data retention cleanup failed for organization 1"),
+        expect.any(Error),
+      );
+      // Org 2 still ran its events cleanup.
+      expect(recordRetentionRun).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 2, recordType: "shadow_ai_events" }),
+      );
+    });
+
+    it("records a failed run for a cleanup that fails and still runs the others", async () => {
+      mockOrgIds([1]);
+      mockGetSettings.mockResolvedValue({
+        retention_events_days: 30,
+        retention_daily_rollups_days: 90,
+        retention_alert_history_days: 0,
+      } as any);
+      mockQuery.mockRejectedValueOnce(new Error("lock timeout"));
+      mockQuery.mockResolvedValueOnce([[], { rowCount: 4 }] as any);
+
+      await purgeOldEvents();
+
+      expect(recordRetentionRun).toHaveBeenCalledTimes(2);
+      expect(recordRetentionRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: 1,
+          recordType: "shadow_ai_events",
+          deletedCount: 0,
+          status: "failed",
+          error: "lock timeout",
+        }),
+      );
+      expect(recordRetentionRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recordType: "shadow_ai_daily_rollups",
+          deletedCount: 4,
+          status: "success",
+          error: null,
+        }),
+      );
+      // Period 0 means keep forever: no run, failed or otherwise.
+      expect(recordRetentionRun).not.toHaveBeenCalledWith(
+        expect.objectContaining({ recordType: "shadow_ai_alert_history" }),
+      );
+    });
+
+    it("only logs when recording a failed run also fails", async () => {
+      mockOrgIds([1]);
+      mockGetSettings.mockResolvedValue({
+        retention_events_days: 30,
+        retention_daily_rollups_days: 0,
+        retention_alert_history_days: 0,
+      } as any);
+      mockQuery.mockRejectedValueOnce(new Error("lock timeout"));
+      (recordRetentionRun as jest.Mock).mockRejectedValueOnce(new Error("record failed"));
+
+      await expect(purgeOldEvents()).resolves.toBeUndefined();
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("retention run failed"),
         expect.any(Error),
       );
     });
