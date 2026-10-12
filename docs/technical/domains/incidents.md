@@ -297,7 +297,7 @@ The modal is organized into 4 sections:
 
 | Field | Rule |
 |-------|------|
-| description | 5-1000 characters |
+| description | 5-32,767 characters (`INCIDENT_DESCRIPTION_MAX_LENGTH`, Jira's text-field limit; column is TEXT) |
 | categories_of_harm | At least one required |
 | relationship_causality | 3-255 characters |
 | ai_project | 2-255 characters |
@@ -307,6 +307,13 @@ The modal is organized into 4 sections:
 | approval_status | Valid enum value |
 | occurred_date | Required |
 | date_detected | Required, >= occurred_date |
+
+The description limit is defined once per side and the two must stay in sync:
+`INCIDENT_DESCRIPTION_MAX_LENGTH` in `Servers/utils/validations/incidentManagementValidation.utils.ts`
+(enforced on create/update by the controller) and in `Clients/src/application/validations/incidentValidation.ts`
+(enforced inline by the incident modal). Length is measured after trimming. The AI Advisor
+`agent_create_incident` / `agent_update_incident` tools write through `advisor/functions/incidentFunctions.ts`
+without this validator.
 
 ### Business Rule Validation
 
@@ -405,6 +412,7 @@ The incident management system supports Article 73 requirements:
 | `pages/IncidentManagement/index.tsx` | Main page |
 | `pages/IncidentManagement/IncidentTable.tsx` | Table component |
 | `components/Modals/NewIncident/index.tsx` | Modal |
+| `application/validations/incidentValidation.ts` | Description length rule |
 | `domain/enums/aiIncidentManagement.enum.ts` | Client enums |
 | `domain/models/Common/incidentManagement/` | Client model |
 

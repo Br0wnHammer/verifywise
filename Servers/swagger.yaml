@@ -3709,6 +3709,8 @@ components:
           type: string
         description:
           type: string
+          minLength: 5
+          maxLength: 32767
         relationship_causality:
           type: string
         immediate_mitigations:
@@ -3764,6 +3766,8 @@ components:
           type: string
         description:
           type: string
+          minLength: 5
+          maxLength: 32767
         relationship_causality:
           type: string
         immediate_mitigations:

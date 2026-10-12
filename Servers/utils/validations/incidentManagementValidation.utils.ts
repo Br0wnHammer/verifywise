@@ -14,10 +14,18 @@ import {
 } from "./validation.utils";
 
 /**
+ * Maximum length of an incident description. Matches Jira's text-field limit
+ * (32,767 characters) so descriptions copied from Jira issues are not cut off.
+ * The `ai_incident_managements.description` column is TEXT, so the database
+ * imposes no lower ceiling.
+ */
+export const INCIDENT_DESCRIPTION_MAX_LENGTH = 32767;
+
+/**
  * Validation limits for incident management
  */
 export const INCIDENT_VALIDATION_LIMITS = {
-  DESCRIPTION: { MIN: 5, MAX: 1000 },
+  DESCRIPTION: { MIN: 5, MAX: INCIDENT_DESCRIPTION_MAX_LENGTH },
   RELATIONSHIP: { MIN: 3, MAX: 255 },
   PROJECT: { MIN: 2, MAX: 255 },
   REPORTER: { MIN: 2, MAX: 100 },

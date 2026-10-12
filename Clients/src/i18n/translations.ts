@@ -577,6 +577,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Linking...": "Wird verknüpft...",
     "Link model": "Modell verknüpfen",
     "Type is required.": "Typ ist erforderlich.",
+    "Description cannot exceed 32,767 characters.":
+      "Die Beschreibung darf 32.767 Zeichen nicht überschreiten.",
     "Edit agent": "Agent bearbeiten",
     "Add agent manually": "Agent manuell hinzufügen",
     "Adding...": "Wird hinzugefügt...",
@@ -10727,6 +10729,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Linking...": "Liaison...",
     "Link model": "Lier le modèle",
     "Type is required.": "Le type est obligatoire.",
+    "Description cannot exceed 32,767 characters.":
+      "La description ne peut pas dépasser 32 767 caractères.",
     "Edit agent": "Modifier l'agent",
     "Add agent manually": "Ajouter un agent manuellement",
     "Adding...": "Ajout...",
@@ -20611,6 +20615,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Linking...": "Vinculando...",
     "Link model": "Vincular modelo",
     "Type is required.": "El tipo es obligatorio.",
+    "Description cannot exceed 32,767 characters.":
+      "La descripción no puede superar los 32.767 caracteres.",
     "Edit agent": "Editar agente",
     "Add agent manually": "Añadir agente manualmente",
     "Adding...": "Añadiendo...",

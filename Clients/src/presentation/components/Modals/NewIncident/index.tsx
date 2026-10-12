@@ -24,6 +24,7 @@ import { Project } from "../../../../domain/types/Project";
 import { useModalKeyHandling } from "../../../../application/hooks/useModalKeyHandling";
 import { useFormValidation } from "../../../../application/hooks/useFormValidation";
 import { focusFormFieldById } from "../../../../application/utils/formValidationFocus";
+import { validateIncidentDescription } from "../../../../application/validations/incidentValidation";
 import {
   INCIDENT_FORM_FIELD_IDS,
   INCIDENT_FORM_FIELD_ORDER,
@@ -162,7 +163,7 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
       },
       date_detected: (v: unknown) => (!v ? "Detected date is required." : ""),
       reporter: (v: unknown) => (!v ? "Reporter is required." : ""),
-      description: (v: unknown) => (!v ? "Description is required." : ""),
+      description: validateIncidentDescription,
       categories_of_harm: (v: unknown) => {
         const cats = v as string[];
         return !cats || cats.length < 1 ? "Please select at least one Category of Harm." : "";
