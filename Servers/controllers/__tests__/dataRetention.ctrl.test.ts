@@ -297,6 +297,19 @@ describe("dataRetention.ctrl", () => {
       expect(body(res)).toEqual({ months: 36 });
     });
 
+    it.each([[24], [null]])(
+      "writes nothing and records no ledger entry when %p is already the period",
+      async (months) => {
+        m(retention.getAuditRetentionMonths).mockResolvedValue(months);
+        const res = createRes();
+        await updateAuditRetention(createReq({ body: { months } }), res);
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(body(res)).toEqual({ months });
+        expect(retention.setAuditRetentionMonths).not.toHaveBeenCalled();
+        expect(appendToAuditLedger).not.toHaveBeenCalled();
+      },
+    );
+
     it("accepts null to keep records indefinitely", async () => {
       m(retention.getAuditRetentionMonths).mockResolvedValue(24);
       const res = createRes();

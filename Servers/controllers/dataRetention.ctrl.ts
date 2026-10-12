@@ -297,6 +297,10 @@ export async function updateAuditRetention(req: Request, res: Response): Promise
     const newMonths = months as number | null;
 
     const oldMonths = await getAuditRetentionMonths(organizationId);
+    // Saving the current period changes nothing, so it writes no ledger entry.
+    if (oldMonths === newMonths) {
+      return res.status(200).json(STATUS_CODE[200]({ months: newMonths }));
+    }
     await setAuditRetentionMonths(organizationId, newMonths, userId);
 
     const label = (m: number | null) => (m === null ? "Indefinitely" : `${m} months`);
