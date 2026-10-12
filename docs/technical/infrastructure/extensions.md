@@ -534,12 +534,19 @@ says the projects and their data will be deleted. The panel then calls
 `POST /use-cases/remove-missing` with `{ use_case_ids }`, exactly the selected
 ids. A request may name up to 1000 ids (`REMOVE_MISSING_MAX_IDS`) but cover
 at most 100 use cases (`REMOVE_MISSING_MAX_PROJECTS`, the same number as the
-import limit, checked before claiming): the cost of a removal is one project
-deletion per use case. The panel groups the selected ids by use case
-(`planBatches`), so every link of one use case goes in the same request, and
-packs the groups into sequential requests of up to 100 ids; a single use case
-with more than 100 links goes alone. It shows "Removing use cases 101–200 /
-250", stops at the first error and reports how many were removed. Import
+import limit): the cost of a removal is one project deletion per use case. A
+request covering exactly one use case is exempt from the id cap, up to 25,000
+ids (`REMOVE_MISSING_SINGLE_USE_CASE_MAX_IDS`, the most objects a sync
+walks), so a use case with many links can always be removed. The rule is
+checked before claiming and again on the locked rows; a request that breaks
+it is a 400 and leaves no run in the history. The panel groups the selected
+ids by use case (`planBatches`), so every link of one use case goes in the
+same request, and packs the groups into sequential requests of up to 100 ids;
+a single use case with more than 100 links goes alone. It shows "Removing use
+cases 101–200 / 250" and reports how many were removed. A batch rejected as
+invalid (400) is reported ("Use cases not removed") and stays selected, and
+the next batches still go; a 409 (sync running, removal interrupted) or any
+other error stops the run. Import
 batches the same way ("Importing objects …"), 100 objects per request;
 objects a batch reports as failed make the outcome a warning with a "not
 imported" count.
@@ -567,10 +574,12 @@ import cannot bring imported objects back. Picker requests run through
 object-type change or a fresh load starts a new one, a response from an older
 one is dropped (objects and paging alike), and the loading flag is always
 cleared (a reset clears it, and so does a failed load). A refresh reloads as
-many pages as were loaded before (`loadPages`), so ticks on objects from
-"Load more" pages are kept while the objects are still there; the stored
-selection is pruned to the reloaded list in the same step, and a reset or
-type change clears it. The effective selection is also derived at render
+many pages as were loaded before, up to 5 (`loadPages`,
+`MAX_REFRESH_PAGES`), de-duplicating objects by id and stopping if the next
+offset is missing or does not move forward. Ticks on objects in the reloaded
+pages are kept; the stored selection is pruned to the reloaded list in the
+same step, so past 5 pages ticks on objects beyond them are dropped. A reset
+or type change clears the selection. The effective selection is also derived at render
 (`keepShown`), so nothing selected is ever hidden. The outcome is shown last.
 All of this lives in `jira-assets/batching.ts`.
 
@@ -611,8 +620,10 @@ history row so no other claim can close it mid-way.
 Deleting a project: every path goes through `deleteProjectWithSideEffects`
 (`Servers/utils/projectDeletion.utils.ts`), which runs, in this order: lock
 the project row (`lockProjectForDelete`, unless the caller already holds
-it), withdraw a pending approval request, record the deletion in the change
-history, then `deleteProjectByIdQuery`. The core "Delete use case" calls it
+it; if there is no such project it stops there and touches nothing else),
+withdraw a pending approval request, record the deletion in the change
+history, then `deleteProjectByIdQuery` (which takes the lock again as its
+first statement, a no-op within the transaction). The core "Delete use case" calls it
 first thing in its transaction; the Jira flow locks its projects before any
 link row and passes `alreadyLocked`; the demo-data driver locks each project
 before deleting its NIST data and skips the approval and history steps. So

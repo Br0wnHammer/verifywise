@@ -23,6 +23,8 @@ export interface BatchProgress {
 export interface BatchRun<T, R> {
   /** The batches that succeeded, with what the server answered for each. */
   done: Array<{ batch: T[]; result: R }>;
+  /** Batches that failed with an error the run was told to continue past. */
+  failed: Array<{ batch: T[]; error: unknown }>;
   /** The error that stopped the run, if any. */
   error?: unknown;
 }
@@ -41,25 +43,32 @@ export async function runInBatches<T, R>(
   return runBatches(batches, send, onProgress);
 }
 
-/** Send prepared batches one request at a time, stopping at the first error. */
+/**
+ * Send prepared batches one request at a time. An error stops the run unless
+ * `continueOn(error)` says it only concerns that batch (it is then recorded in
+ * `failed` and the next batch is sent).
+ */
 export async function runBatches<T, R>(
   batches: T[][],
   send: (batch: T[]) => Promise<R>,
   onProgress?: (progress: BatchProgress) => void,
+  continueOn: (error: unknown) => boolean = () => false,
 ): Promise<BatchRun<T, R>> {
   const total = batches.reduce((sum, b) => sum + b.length, 0);
   const done: BatchRun<T, R>["done"] = [];
+  const failed: BatchRun<T, R>["failed"] = [];
   let from = 1;
   for (const batch of batches) {
     onProgress?.({ from, to: from + batch.length - 1, total });
     try {
       done.push({ batch, result: await send(batch) });
     } catch (error) {
-      return { done, error };
+      if (!continueOn(error)) return { done, failed, error };
+      failed.push({ batch, error });
     }
     from += batch.length;
   }
-  return { done };
+  return { done, failed };
 }
 
 /**
@@ -136,6 +145,7 @@ export const REMOVAL_FINISHED_MESSAGE = "Missing use cases removed.";
 export const REMOVED_LABEL = "Use cases removed:";
 export const REMOVED_BEFORE_STOP_LABEL = "Use cases removed before it stopped:";
 export const UNLINKED_LABEL = "Links cleaned up:";
+export const NOT_REMOVED_LABEL = "Use cases not removed:";
 export const SKIPPED_GONE_LABEL = "Skipped, no longer missing or no longer there:";
 export const SKIPPED_LIVE_LABEL = "Skipped, still linked to an object in Jira:";
 export const SKIPPED_CHANGED_LABEL = "Skipped, changed during the removal:";
@@ -300,7 +310,17 @@ export async function removeInBatches(
   /** The project (use case) of each link, so all its links go in one request. */
   projectOf: (id: number) => number | null | undefined = () => null,
 ): Promise<BatchSummary<number>> {
-  const run = await runBatches(planBatches(ids, projectOf), send, onProgress);
+  // A batch the server rejects as invalid (400) only concerns that batch:
+  // report it and go on. A sync running or a lost claim (409) and anything
+  // else stop the run.
+  const run = await runBatches(
+    planBatches(ids, projectOf),
+    send,
+    onProgress,
+    (error) => (error as ApiError)?.status === 400,
+  );
+  const notRemoved = run.failed.reduce((sum, f) => sum + f.batch.length, 0);
+  const firstFailure = run.failed[0]?.error as ApiError | undefined;
   let removed = 0;
   let linksRemoved = 0;
   let unlinked = 0;
@@ -331,7 +351,17 @@ export async function removeInBatches(
       : []),
     ...(skips.changed > 0 ? [{ label: SKIPPED_CHANGED_LABEL, value: skips.changed }] : []),
     ...(skips.other > 0 ? [{ label: SKIPPED_OTHER_LABEL, value: skips.other }] : []),
+    ...(notRemoved > 0 ? [{ label: NOT_REMOVED_LABEL, value: notRemoved }] : []),
   ];
+  if (!run.error && firstFailure) {
+    // Failed batches stay selected (not in doneIds); the others went through.
+    return {
+      type: "error",
+      text: getApiErrorReason(firstFailure) || firstFailure?.message || REMOVAL_FAILED_MESSAGE,
+      counts: [...removedCounts(REMOVED_LABEL), ...extraCounts],
+      doneIds,
+    };
+  }
   if (!run.error) {
     const keptAny = skips.changed + skips.other > 0;
     const text = keptAny
@@ -451,26 +481,47 @@ export interface PickerPage<O> {
   nextStartAt: number;
 }
 
+/** Most pages a refresh reloads; ticks on objects past them are dropped. */
+export const MAX_REFRESH_PAGES = 5;
+
 /**
- * Load the picker from the start up to `depth` pages (at least one), so a
- * refresh shows as much as was loaded before and keeps the ticks on objects
- * from "Load more" pages. Stops early when there is no more.
+ * Load the picker from the start up to `depth` pages (at least one, at most
+ * MAX_REFRESH_PAGES), so a refresh shows as much as was loaded before and
+ * keeps the ticks on objects from "Load more" pages. Past MAX_REFRESH_PAGES
+ * only the first pages are reloaded, and the panel then keeps only ticks on
+ * objects in them. Objects are de-duplicated by id across pages. The walk
+ * stops when there is no more, or when the server's next offset is missing,
+ * not a number, or does not move forward.
  */
-export async function loadPages<O>(
+export async function loadPages<O extends { id: string }>(
   fetchPage: (startAt: number) => Promise<PickerPage<O>>,
   depth: number,
 ): Promise<PickerPage<O> & { pages: number }> {
+  const limit = Math.min(Math.max(1, depth), MAX_REFRESH_PAGES);
   const objects: O[] = [];
+  const seen = new Set<string>();
   let startAt = 0;
   let hasMore = false;
   let pages = 0;
-  do {
+  for (;;) {
     const page = await fetchPage(startAt);
-    objects.push(...page.objects);
-    hasMore = page.hasMore;
-    startAt = page.nextStartAt;
+    for (const obj of page.objects) {
+      if (seen.has(obj.id)) continue;
+      seen.add(obj.id);
+      objects.push(obj);
+    }
     pages++;
-  } while (hasMore && pages < Math.max(1, depth));
+    hasMore = page.hasMore;
+    const next = page.nextStartAt;
+    const advances = typeof next === "number" && Number.isFinite(next) && next > startAt;
+    if (!advances) {
+      // No usable next offset: report no more rather than loop or go back.
+      hasMore = false;
+      break;
+    }
+    startAt = next;
+    if (!hasMore || pages >= limit) break;
+  }
   return { objects, hasMore, nextStartAt: startAt, pages };
 }
 

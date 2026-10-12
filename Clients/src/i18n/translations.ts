@@ -9744,6 +9744,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Eine andere Synchronisierung oder ein Import lief bereits, daher wurde diese Synchronisierung nicht gestartet.",
     "Importing objects": "Objekte werden importiert",
+    "Use cases not removed:": "Nicht entfernte Anwendungsfälle:",
     "Skipped, other missing items of the same use case not selected:":
       "Übersprungen, andere fehlende Einträge desselben Anwendungsfalls nicht ausgewählt:",
     "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.":
@@ -20010,6 +20011,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Une autre synchronisation ou importation était en cours, cette synchronisation n'a donc pas démarré.",
     "Importing objects": "Importation des objets",
+    "Use cases not removed:": "Cas d'usage non supprimés :",
     "Skipped, other missing items of the same use case not selected:":
       "Ignorés, autres éléments absents du même cas d'usage non sélectionnés :",
     "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.":
@@ -30199,6 +30201,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Había otra sincronización o importación en curso, por lo que esta sincronización no se inició.",
     "Importing objects": "Importando objetos",
+    "Use cases not removed:": "Casos de uso no eliminados:",
     "Skipped, other missing items of the same use case not selected:":
       "Omitidos, otros elementos que faltan del mismo caso de uso no seleccionados:",
     "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.":

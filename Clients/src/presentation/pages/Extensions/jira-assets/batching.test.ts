@@ -24,6 +24,8 @@ import {
   createRequestGate,
   loadPages,
   planBatches,
+  MAX_REFRESH_PAGES,
+  NOT_REMOVED_LABEL,
   runPickerRequest,
   REMOVAL_NOT_SELECTED_MESSAGE,
   SKIPPED_NOT_SELECTED_LABEL,
@@ -590,5 +592,97 @@ describe("loadPages (refresh to the loaded depth)", () => {
 
     expect((await loadPages(fetchPage, 0)).pages).toBe(1);
     expect((await loadPages(fetchPage, 5)).pages).toBe(1);
+  });
+});
+
+describe("large use cases and failing batches", () => {
+  it("sends 1,500 links of one use case as one request", async () => {
+    const ids = nums(1500);
+    const send = vi.fn(async (batch: number[]) => ({
+      removed: 1,
+      links_removed: batch.length,
+      skipped_items: [],
+    }));
+
+    const summary = await removeInBatches(ids, send, undefined, () => 7);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0]).toHaveLength(1500);
+    expect(summary.type).toBe("success");
+  });
+
+  it("a batch rejected as invalid (400) is reported, and the later batches still go", async () => {
+    const invalid = Object.assign(new Error("Bad Request"), {
+      status: 400,
+      response: { message: "Bad Request", data: "A removal may cover at most 100 use cases" },
+    });
+    const send = vi
+      .fn<(batch: number[]) => Promise<any>>()
+      .mockRejectedValueOnce(invalid)
+      .mockImplementation(async (batch) => ({ removed: batch.length, skipped_items: [] }));
+
+    const summary = await removeInBatches(nums(250), send);
+
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(summary.type).toBe("error");
+    expect(summary.text).toBe("A removal may cover at most 100 use cases");
+    expect(summary.counts).toContainEqual({ label: NOT_REMOVED_LABEL, value: 100 });
+    // The failed batch stays selected; the other two went through.
+    expect(summary.doneIds).toEqual(nums(150, 101));
+  });
+
+  it("still stops at a 409 (sync running)", async () => {
+    const send = vi.fn<(batch: number[]) => Promise<any>>().mockRejectedValueOnce(conflict("busy"));
+
+    const summary = await removeInBatches(nums(250), send);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(summary.text).toBe(SYNC_RUNNING_MESSAGE);
+  });
+});
+
+describe("loadPages guards", () => {
+  it("de-duplicates objects that appear on more than one page", async () => {
+    const fetchPage = vi.fn(async (startAt: number) =>
+      startAt === 0
+        ? { objects: [{ id: "A" }, { id: "B" }], hasMore: true, nextStartAt: 2 }
+        : { objects: [{ id: "B" }, { id: "C" }], hasMore: false, nextStartAt: 0 },
+    );
+
+    const result = await loadPages(fetchPage, 2);
+
+    expect(result.objects.map((o) => o.id)).toEqual(["A", "B", "C"]);
+  });
+
+  it("stops when the next offset is missing or does not move forward", async () => {
+    const stuck = vi.fn(async () => ({ objects: [{ id: "A" }], hasMore: true, nextStartAt: 0 }));
+    const broken = vi.fn(async () => ({
+      objects: [{ id: "A" }],
+      hasMore: true,
+      nextStartAt: Number.NaN,
+    }));
+
+    const a = await loadPages(stuck, 5);
+    const b = await loadPages(broken, 5);
+
+    expect(stuck).toHaveBeenCalledTimes(1);
+    expect(broken).toHaveBeenCalledTimes(1);
+    expect(a.hasMore).toBe(false);
+    expect(b.hasMore).toBe(false);
+  });
+
+  it(`reloads at most ${MAX_REFRESH_PAGES} pages`, async () => {
+    let n = 0;
+    const fetchPage = vi.fn(async (startAt: number) => ({
+      objects: [{ id: `o${n++}` }],
+      hasMore: true,
+      nextStartAt: startAt + 1000,
+    }));
+
+    const result = await loadPages(fetchPage, 50);
+
+    expect(fetchPage).toHaveBeenCalledTimes(MAX_REFRESH_PAGES);
+    expect(result.pages).toBe(MAX_REFRESH_PAGES);
+    expect(result.hasMore).toBe(true);
   });
 });
