@@ -9744,10 +9744,25 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Eine andere Synchronisierung oder ein Import lief bereits, daher wurde diese Synchronisierung nicht gestartet.",
     "Importing objects": "Objekte werden importiert",
-    "Links cleaned up:": "Bereinigte Verknüpfungen:",
-    "Use cases skipped:": "Übersprungene Anwendungsfälle:",
+    "Use cases not removed:": "Nicht entfernte Anwendungsfälle:",
+    "Skipped, other missing items of the same use case not selected:":
+      "Übersprungen, andere fehlende Einträge desselben Anwendungsfalls nicht ausgewählt:",
+    "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.":
+      "Entfernen abgeschlossen, aber einige Anwendungsfälle wurden nicht entfernt, weil andere fehlende Einträge desselben Anwendungsfalls nicht ausgewählt waren. Sie bleiben ausgewählt; wählen Sie die übrigen aus, um ihn zu entfernen.",
+    "Skipped, still linked to an object in Jira:":
+      "Übersprungen, noch mit einem Objekt in Jira verknüpft:",
+    "Skipped, other reason:": "Übersprungen, anderer Grund:",
+    "Jira links removed:": "Entfernte Jira-Verknüpfungen:",
+    "Removal finished. Some use cases were not removed because their use case is still linked to an object that exists in Jira.":
+      "Entfernen abgeschlossen. Einige Anwendungsfälle wurden nicht entfernt, weil ihr Anwendungsfall noch mit einem Objekt verknüpft ist, das in Jira existiert.",
+    "Skipped, no longer missing or no longer there:":
+      "Übersprungen, fehlt nicht mehr oder existiert nicht mehr:",
+    "Skipped, changed during the removal:": "Übersprungen, während des Entfernens geändert:",
     "Removal finished, but some use cases were not removed. They are still selected.":
       "Entfernen abgeschlossen, aber einige Anwendungsfälle wurden nicht entfernt. Sie bleiben ausgewählt.",
+    "Links cleaned up:": "Bereinigte Verknüpfungen:",
+    "Removal finished. Some use cases were not removed because they are no longer missing in Jira or no longer exist.":
+      "Entfernen abgeschlossen. Einige Anwendungsfälle wurden nicht entfernt, da sie in Jira nicht mehr fehlen oder nicht mehr existieren.",
     "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
       "Import abgeschlossen, aber einige Objekte konnten nicht importiert werden. Sie bleiben ausgewählt; importieren Sie erneut, um es noch einmal zu versuchen.",
     "Objects not imported:": "Nicht importierte Objekte:",
@@ -19996,10 +20011,23 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Une autre synchronisation ou importation était en cours, cette synchronisation n'a donc pas démarré.",
     "Importing objects": "Importation des objets",
-    "Links cleaned up:": "Liens nettoyés :",
-    "Use cases skipped:": "Cas d'usage ignorés :",
+    "Use cases not removed:": "Cas d'usage non supprimés :",
+    "Skipped, other missing items of the same use case not selected:":
+      "Ignorés, autres éléments absents du même cas d'usage non sélectionnés :",
+    "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.":
+      "Suppression terminée, mais certains cas d'usage n'ont pas été supprimés, car d'autres éléments absents du même cas d'usage n'étaient pas sélectionnés. Ils restent sélectionnés ; sélectionnez les autres pour le supprimer.",
+    "Skipped, still linked to an object in Jira:": "Ignorés, encore liés à un objet dans Jira :",
+    "Skipped, other reason:": "Ignorés, autre raison :",
+    "Jira links removed:": "Liens Jira supprimés :",
+    "Removal finished. Some use cases were not removed because their use case is still linked to an object that exists in Jira.":
+      "Suppression terminée. Certains cas d'usage n'ont pas été supprimés, car leur cas d'usage est encore lié à un objet qui existe dans Jira.",
+    "Skipped, no longer missing or no longer there:": "Ignorés, plus absents ou n'existent plus :",
+    "Skipped, changed during the removal:": "Ignorés, modifiés pendant la suppression :",
     "Removal finished, but some use cases were not removed. They are still selected.":
       "Suppression terminée, mais certains cas d'usage n'ont pas été supprimés. Ils restent sélectionnés.",
+    "Links cleaned up:": "Liens nettoyés :",
+    "Removal finished. Some use cases were not removed because they are no longer missing in Jira or no longer exist.":
+      "Suppression terminée. Certains cas d'usage n'ont pas été supprimés, car ils ne sont plus absents de Jira ou n'existent plus.",
     "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
       "Importation terminée, mais certains objets n'ont pas pu être importés. Ils restent sélectionnés ; relancez l'importation pour réessayer.",
     "Objects not imported:": "Objets non importés :",
@@ -30173,10 +30201,23 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Había otra sincronización o importación en curso, por lo que esta sincronización no se inició.",
     "Importing objects": "Importando objetos",
-    "Links cleaned up:": "Vínculos depurados:",
-    "Use cases skipped:": "Casos de uso omitidos:",
+    "Use cases not removed:": "Casos de uso no eliminados:",
+    "Skipped, other missing items of the same use case not selected:":
+      "Omitidos, otros elementos que faltan del mismo caso de uso no seleccionados:",
+    "Removal finished, but some use cases were not removed because other missing items of the same use case were not selected. They are still selected; select the rest to remove it.":
+      "Eliminación finalizada, pero algunos casos de uso no se eliminaron porque no se seleccionaron otros elementos que faltan del mismo caso de uso. Siguen seleccionados; seleccione el resto para eliminarlo.",
+    "Skipped, still linked to an object in Jira:": "Omitidos, aún vinculados a un objeto en Jira:",
+    "Skipped, other reason:": "Omitidos, otro motivo:",
+    "Jira links removed:": "Vínculos de Jira eliminados:",
+    "Removal finished. Some use cases were not removed because their use case is still linked to an object that exists in Jira.":
+      "Eliminación finalizada. Algunos casos de uso no se eliminaron porque su caso de uso sigue vinculado a un objeto que existe en Jira.",
+    "Skipped, no longer missing or no longer there:": "Omitidos, ya no faltan o ya no existen:",
+    "Skipped, changed during the removal:": "Omitidos, cambiaron durante la eliminación:",
     "Removal finished, but some use cases were not removed. They are still selected.":
       "Eliminación finalizada, pero algunos casos de uso no se eliminaron. Siguen seleccionados.",
+    "Links cleaned up:": "Vínculos depurados:",
+    "Removal finished. Some use cases were not removed because they are no longer missing in Jira or no longer exist.":
+      "Eliminación finalizada. Algunos casos de uso no se eliminaron porque ya no faltan en Jira o ya no existen.",
     "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
       "Importación finalizada, pero algunos objetos no se pudieron importar. Siguen seleccionados; vuelva a importar para reintentarlo.",
     "Objects not imported:": "Objetos no importados:",

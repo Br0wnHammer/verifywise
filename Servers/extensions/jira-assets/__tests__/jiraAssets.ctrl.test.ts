@@ -4,6 +4,7 @@ jest.mock("../jiraAssets.service", () => {
   class JiraSyncInProgressError extends Error {}
   class RunSupersededError extends Error {}
   class JiraUseCaseNotFoundError extends Error {}
+  class JiraUseCaseDeleteFailedError extends Error {}
   class JiraImportInterruptedError extends Error {
     constructor(
       public imported: number,
@@ -15,6 +16,7 @@ jest.mock("../jiraAssets.service", () => {
   return {
     RunSupersededError,
     JiraUseCaseNotFoundError,
+    JiraUseCaseDeleteFailedError,
     JiraImportInterruptedError,
     getSyncStatus: jest.fn(),
     JiraConfigValidationError,
@@ -80,6 +82,7 @@ import {
   JiraConfigValidationError,
   JiraNotConfiguredError,
   JiraSyncInProgressError,
+  JiraUseCaseDeleteFailedError,
   JiraUseCaseNotFoundError,
   loadFullConfig,
   removeMissingUseCases,
@@ -346,7 +349,10 @@ describe("POST /use-cases/remove-missing", () => {
 
 describe("DELETE /use-cases/:id", () => {
   it("deletes through the service with the caller's user id, and logs it", async () => {
-    (deleteUseCaseByProjectId as jest.Mock).mockResolvedValueOnce({ unlinked: false });
+    (deleteUseCaseByProjectId as jest.Mock).mockResolvedValueOnce({
+      unlinked: false,
+      links_removed: 2,
+    });
     const res = mockRes();
 
     await deleteUseCaseCtrl({ ...req, params: { id: "111" } }, res);
@@ -355,7 +361,7 @@ describe("DELETE /use-cases/:id", () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
       message: "OK",
-      data: { success: true, unlinked: false },
+      data: { success: true, unlinked: false, links_removed: 2 },
     });
     expect(logSuccess).toHaveBeenCalledWith(expect.objectContaining({ eventType: "Delete" }));
   });
@@ -391,7 +397,10 @@ describe("DELETE /use-cases/:id", () => {
   });
 
   it("reports a link cleaned up (project not in this org) as unlinked, not removed", async () => {
-    (deleteUseCaseByProjectId as jest.Mock).mockResolvedValueOnce({ unlinked: true });
+    (deleteUseCaseByProjectId as jest.Mock).mockResolvedValueOnce({
+      unlinked: true,
+      links_removed: 0,
+    });
     const res = mockRes();
 
     await deleteUseCaseCtrl({ ...req, params: { id: "999" } }, res);
@@ -399,8 +408,23 @@ describe("DELETE /use-cases/:id", () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
       message: "OK",
-      data: { success: true, unlinked: true },
+      data: { success: true, unlinked: true, links_removed: 0 },
     });
+  });
+
+  it("returns 500 with a message naming the use case when its project could not be deleted", async () => {
+    const message =
+      "Use case 111 (project 111) could not be deleted, so nothing was removed. Try again.";
+    (deleteUseCaseByProjectId as jest.Mock).mockRejectedValueOnce(
+      new JiraUseCaseDeleteFailedError(message),
+    );
+    const res = mockRes();
+
+    await deleteUseCaseCtrl({ ...req, params: { id: "111" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: "Internal Server Error", error: message });
+    expect(logFailure).toHaveBeenCalled();
   });
 
   it("rejects a non-numeric id with 400 before deleting", async () => {

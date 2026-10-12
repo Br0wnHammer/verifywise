@@ -7,6 +7,7 @@ jest.mock("../../utils/project.utils", () => ({
   createNewProjectQuery: jest.fn(),
   updateProjectByIdQuery: jest.fn(),
   deleteProjectByIdQuery: jest.fn(),
+  lockProjectForDelete: jest.fn(),
   getCurrentProjectMembers: jest.fn(),
   hasPendingApprovalQuery: jest.fn(),
   calculateProjectRisks: jest.fn(),
@@ -118,6 +119,7 @@ import {
   deleteProjectById,
   getProjectStatsById,
 } from "../project.ctrl";
+import { lockProjectForDelete } from "../../utils/project.utils";
 import {
   getAllProjectsQuery,
   getProjectByIdQuery,
@@ -452,6 +454,9 @@ describe("project.ctrl", () => {
   describe("deleteProjectById", () => {
     it("should return 202 when project is deleted", async () => {
       const project = buildProject();
+      (lockProjectForDelete as jest.MockedFunction<typeof lockProjectForDelete>).mockResolvedValue(
+        true,
+      );
       mockGetPendingApproval.mockResolvedValue(null as any);
       mockDelete.mockResolvedValue(project as any);
       const req = createReq({ params: { id: "1" } });
@@ -459,6 +464,23 @@ describe("project.ctrl", () => {
       await deleteProjectById(req, res);
       expect(res.status).toHaveBeenCalledWith(202);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: project }));
+    });
+    it("locks the project first, before the approval withdrawal and the delete", async () => {
+      const project = buildProject();
+      mockGetPendingApproval.mockResolvedValue(42 as any);
+      mockDelete.mockResolvedValue(project as any);
+      const lock = lockProjectForDelete as jest.MockedFunction<typeof lockProjectForDelete>;
+      lock.mockResolvedValue(true);
+      const req = createReq({ params: { id: "1" } });
+      const res = createRes();
+
+      await deleteProjectById(req, res);
+
+      expect(lock).toHaveBeenCalledWith(1, expect.anything(), expect.anything());
+      const lockedAt = lock.mock.invocationCallOrder[0];
+      expect(lockedAt).toBeLessThan(mockGetPendingApproval.mock.invocationCallOrder[0]);
+      expect(lockedAt).toBeLessThan(mockWithdrawApproval.mock.invocationCallOrder[0]);
+      expect(lockedAt).toBeLessThan(mockDelete.mock.invocationCallOrder[0]);
     });
     it("should return 404 when project is not found", async () => {
       mockGetPendingApproval.mockResolvedValue(null as any);

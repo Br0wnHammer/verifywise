@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Box,
   Typography,
@@ -33,6 +33,12 @@ import {
   deselectDone,
   finishImport,
   importInBatches,
+  keepShown,
+  appendPage,
+  createRequestGate,
+  loadPages,
+  PickerPage,
+  runPickerRequest,
   PanelMessage,
   removeInBatches,
   summaryMessage,
@@ -177,13 +183,13 @@ export const JiraAssetsConfiguration: React.FC = () => {
 
   // Import state
   const [jiraObjects, setJiraObjects] = useState<JiraObject[]>([]);
-  const [selectedObjects, setSelectedObjects] = useState<Set<string>>(new Set());
-  // Latest picker state, read by handleImport after its awaits (its closure
-  // holds the values from when it started).
-  const pickerRef = useRef({ objects: jiraObjects, selected: selectedObjects });
-  useEffect(() => {
-    pickerRef.current = { objects: jiraObjects, selected: selectedObjects };
-  }, [jiraObjects, selectedObjects]);
+  const [storedSelection, setSelectedObjects] = useState<Set<string>>(new Set());
+  // The effective selection is derived at render: only ids the picker shows.
+  // A selected id is never invisible, not even for one frame.
+  const selectedObjects = useMemo(
+    () => keepShown(storedSelection, jiraObjects),
+    [storedSelection, jiraObjects],
+  );
   const [isLoadingObjects, setIsLoadingObjects] = useState(false);
   // The picker loads one page at a time; "Load more" asks for the next.
   const [jiraHasMore, setJiraHasMore] = useState(false);
@@ -194,6 +200,16 @@ export const JiraAssetsConfiguration: React.FC = () => {
 
   // Imported use cases state
   const [importedUseCases, setImportedUseCases] = useState<ImportedUseCase[]>([]);
+  // Jira object ids already imported, set where the list is fetched
+  // (loadImportedUseCases) and read when a picker page arrives (not when it
+  // was requested), so a "Load more" that lands after an import never brings
+  // the just-imported objects back.
+  const importedIdsRef = useRef<Set<string>>(new Set());
+  // Generations of picker requests: stale responses are dropped.
+  const pickerGate = useRef(createRequestGate());
+  // How many pages the picker has loaded since the last reset; a refresh
+  // reloads that many.
+  const loadedPagesRef = useRef(0);
   const [, setIsLoadingUseCases] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSettingsError, setSyncSettingsError] = useState(false);
@@ -298,6 +314,11 @@ export const JiraAssetsConfiguration: React.FC = () => {
   // Clear the import picker (list, paging, selection): its contents belong to
   // one object type and one fetch.
   const resetPicker = useCallback(() => {
+    // Any picker request still in flight belongs to the old picker; its
+    // loading state goes with it.
+    pickerGate.current.bump();
+    loadedPagesRef.current = 0;
+    setIsLoadingObjects(false);
     setJiraObjects([]);
     setJiraHasMore(false);
     setJiraNextStartAt(0);
@@ -309,47 +330,63 @@ export const JiraAssetsConfiguration: React.FC = () => {
     async (append = false) => {
       if (!localConfig.selected_object_type_id) return;
 
-      setIsLoadingObjects(true);
-      setImportMessage(null);
-      try {
-        const startAt = append ? jiraNextStartAt : 0;
+      const objectTypeId = localConfig.selected_object_type_id;
+      const fetchPage = async (startAt: number): Promise<PickerPage<JiraObject>> => {
         const response = await pluginApiCall(
           "GET",
-          `/object-types/${localConfig.selected_object_type_id}/objects?startAt=${startAt}`,
+          `/object-types/${objectTypeId}/objects?startAt=${startAt}`,
         );
-        const list: JiraObject[] | undefined = Array.isArray(response)
+        const list: JiraObject[] = Array.isArray(response)
           ? response
-          : response?.objects;
-        if (Array.isArray(list)) {
-          // Filter out already imported objects
-          const importedIds = new Set(importedUseCases.map((uc) => uc.jira_object_id));
-          const newObjects = list.filter((obj) => !importedIds.has(obj.id));
-          setJiraObjects((prev) => {
-            if (!append) return newObjects;
-            const seen = new Set(prev.map((obj) => obj.id));
-            return [...prev, ...newObjects.filter((obj) => !seen.has(obj.id))];
+          : Array.isArray(response?.objects)
+            ? response.objects
+            : [];
+        return {
+          objects: list,
+          hasMore: !!response?.hasMore,
+          nextStartAt: Number(response?.nextStartAt) || 0,
+        };
+      };
+      setImportMessage(null);
+      await runPickerRequest({
+        gate: pickerGate.current,
+        append,
+        setLoading: setIsLoadingObjects,
+        // "Load more" fetches the next page. A fresh load (refresh) reloads as
+        // many pages as were loaded before, so ticks on objects from "Load
+        // more" pages are kept as long as the objects are still there.
+        fetch: async () =>
+          append
+            ? { ...(await fetchPage(jiraNextStartAt)), pages: 1 }
+            : loadPages(fetchPage, loadedPagesRef.current),
+        onResult: (page) => {
+          // Leave out objects already imported, as known when the page lands.
+          if (append) {
+            setJiraObjects((prev) => appendPage(prev, page.objects, importedIdsRef.current));
+            loadedPagesRef.current += 1;
+          } else {
+            // The list is replaced by the same pages, reloaded: prune the
+            // stored selection to it in the same step, so a tick on an object
+            // that is gone does not come back later.
+            const next = appendPage([], page.objects, importedIdsRef.current);
+            setJiraObjects(next);
+            setSelectedObjects((prev) => keepShown(prev, next));
+            loadedPagesRef.current = page.pages;
+          }
+          setJiraHasMore(page.hasMore);
+          setJiraNextStartAt(page.nextStartAt);
+        },
+        onError: (error: any) => {
+          // A failed fresh load must not leave the previous list on screen.
+          if (!append) resetPicker();
+          setImportMessage({
+            type: "error",
+            text: getApiErrorReason(error) || error?.message || "Failed to load JIRA objects",
           });
-          setJiraHasMore(!!response?.hasMore);
-          setJiraNextStartAt(Number(response?.nextStartAt) || 0);
-        }
-      } catch (error: any) {
-        // A failed fresh load must not leave the previous list on screen.
-        if (!append) resetPicker();
-        setImportMessage({
-          type: "error",
-          text: getApiErrorReason(error) || error?.message || "Failed to load JIRA objects",
-        });
-      } finally {
-        setIsLoadingObjects(false);
-      }
+        },
+      });
     },
-    [
-      pluginApiCall,
-      localConfig.selected_object_type_id,
-      importedUseCases,
-      jiraNextStartAt,
-      resetPicker,
-    ],
+    [pluginApiCall, localConfig.selected_object_type_id, jiraNextStartAt, resetPicker],
   );
 
   // Load imported use cases
@@ -359,6 +396,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
     try {
       const response = await pluginApiCall("GET", "/use-cases");
       if (response && Array.isArray(response)) {
+        importedIdsRef.current = new Set(response.map((uc) => String(uc.jira_object_id)));
         setImportedUseCases(response);
         return response;
       }
@@ -384,14 +422,15 @@ export const JiraAssetsConfiguration: React.FC = () => {
         (batch) => pluginApiCall("POST", "/import", { object_ids: batch }),
         setImportProgress,
       );
-      // Reload the imported use cases, then apply finishImport with that fresh
-      // list (not the one this handler started with): imported objects leave
-      // the picker (pages already loaded are kept), and the selection is
-      // derived from what remains: failed and unsent ids still shown there.
-      // The outcome is set last and nothing after it clears it.
+      // Reload the imported use cases, then apply finishImport's updaters with
+      // that fresh list (not the one this handler started with) to the latest
+      // state: imported objects leave the picker (pages already loaded, or
+      // loaded meanwhile, are kept) and handled ids leave the selection; the
+      // selection derived at render then drops any id the picker no longer
+      // shows. The outcome is set last and nothing after it clears it.
       const fresh = await loadImportedUseCases();
       const importedIds = fresh ? new Set(fresh.map((uc) => String(uc.jira_object_id))) : null;
-      const next = finishImport(pickerRef.current, summary, importedIds);
+      const next = finishImport<JiraObject>(summary, importedIds);
       setJiraObjects(next.objects);
       setSelectedObjects(next.selected);
       setImportMessage(next.message);
@@ -501,6 +540,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
   // Nothing is selected by default; the Admin ticks what should go.
   const [selectedMissingIds, setSelectedMissingIds] = useState<Set<number>>(new Set());
   const selectedMissing = missingUseCases.filter((uc) => selectedMissingIds.has(uc.id));
+  const projectOfMissing = new Map(missingUseCases.map((uc) => [uc.id, uc.project_id]));
 
   // Drop selections for use cases that are no longer in the missing list
   // (removed, or found in Jira again by a sync).
@@ -543,6 +583,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
         selectedMissing.map((uc) => uc.id),
         (batch) => pluginApiCall("POST", "/use-cases/remove-missing", { use_case_ids: batch }),
         setRemoveProgress,
+        // All links of one use case go in the same request.
+        (id) => projectOfMissing.get(id),
       );
       setSelectedMissingIds((prev) => deselectDone(prev, summary.doneIds));
       await loadImportedUseCases();
@@ -556,7 +598,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
   // Toggle object selection
   const toggleObjectSelection = (objectId: string) => {
     setSelectedObjects((prev) => {
-      const next = new Set(prev);
+      // Toggle on the pruned set: nothing hidden rides along.
+      const next = new Set(keepShown(prev, jiraObjects));
       if (next.has(objectId)) {
         next.delete(objectId);
       } else {

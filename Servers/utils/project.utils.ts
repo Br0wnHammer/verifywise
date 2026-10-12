@@ -774,7 +774,29 @@ export const deleteHelper = async (
 };
 
 /**
- * Delete a project and everything that hangs off it. Pass
+ * Lock a project row for deletion (SELECT ... FOR UPDATE) and say whether it
+ * exists in the organization. Every path that deletes a project calls this as
+ * the first statement of its transaction, before anything that touches rows
+ * referencing the project (approval requests, change history, children), so
+ * all of them take the project lock first and cannot deadlock with each
+ * other. Calling it again in the same transaction is a no-op that returns the
+ * same answer.
+ */
+export const lockProjectForDelete = async (
+  projectId: number,
+  organizationId: number,
+  transaction: Transaction,
+): Promise<boolean> => {
+  const rows = (await sequelize.query(
+    `SELECT id FROM projects WHERE id = :id AND organization_id = :organizationId FOR UPDATE;`,
+    { replacements: { id: projectId, organizationId }, type: QueryTypes.SELECT, transaction },
+  )) as Array<{ id: number }>;
+  return rows.length > 0;
+};
+
+/**
+ * Delete a project and everything that hangs off it. The project row is
+ * locked (FOR UPDATE) before any child row is touched. Pass
  * `enqueueAutomationAfterCommit` when the caller's transaction may still roll
  * back after this returns (for example a batch removal): the project_deleted
  * automation is then queued only once the transaction commits, so it never
@@ -787,6 +809,9 @@ export const deleteProjectByIdQuery = async (
   transaction: Transaction,
   options: { enqueueAutomationAfterCommit?: boolean } = {},
 ): Promise<boolean> => {
+  // The project lock comes before any child row. If the caller already holds
+  // it (deleteProjectWithSideEffects), this is a cheap no-op.
+  await lockProjectForDelete(id, organizationId, transaction);
   const frameworks = await sequelize.query(
     `SELECT framework_id FROM projects_frameworks WHERE organization_id = :organizationId AND project_id = :project_id`,
     {
