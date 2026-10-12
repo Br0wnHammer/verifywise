@@ -10,9 +10,6 @@
  *   rows written before this migration simply fall back to started_at.
  * - `sync_type` gains 'import' so POST /import takes the same per-org claim
  *   as manual and scheduled syncs (an import and a sync can no longer race).
- * - `links_removed` counts link rows a manual sync removed because their
- *   object was gone from Jira and they had no project (objects_deleted only
- *   counts projects actually deleted).
  */
 module.exports = {
   async up(queryInterface) {
@@ -20,12 +17,6 @@ module.exports = {
       await queryInterface.sequelize.query(
         `ALTER TABLE verifywise.jira_assets_sync_history
            ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMP;`,
-        { transaction },
-      );
-      await queryInterface.sequelize.query(
-        `ALTER TABLE verifywise.jira_assets_sync_history
-           ADD COLUMN IF NOT EXISTS links_removed INTEGER NOT NULL DEFAULT 0
-           CONSTRAINT jira_assets_sync_history_links_removed_nonneg_chk CHECK (links_removed >= 0);`,
         { transaction },
       );
       await queryInterface.sequelize.query(
@@ -62,10 +53,6 @@ module.exports = {
       );
       await queryInterface.sequelize.query(
         `ALTER TABLE verifywise.jira_assets_sync_history DROP COLUMN IF EXISTS heartbeat_at;`,
-        { transaction },
-      );
-      await queryInterface.sequelize.query(
-        `ALTER TABLE verifywise.jira_assets_sync_history DROP COLUMN IF EXISTS links_removed;`,
         { transaction },
       );
     });

@@ -179,48 +179,53 @@ describe("data center pagination (page / resultPerPage / pageSize)", () => {
   });
 
   it.each([null, undefined, "?"])(
-    "treats pageSize/totalFilterCount=%p as unknown: a short page is not proof of the end",
+    "a partial page ends the walk whatever pageSize/totalFilterCount say (%p)",
     async (unknown) => {
-      mockFetch
-        .mockResolvedValueOnce(
-          ok({ objectEntries: objects(0, 3), pageSize: unknown, totalFilterCount: unknown }),
-        )
-        .mockResolvedValueOnce(
-          ok({ objectEntries: [], pageSize: unknown, totalFilterCount: unknown }),
-        );
+      mockFetch.mockResolvedValueOnce(
+        ok({ objectEntries: objects(0, 3), pageSize: unknown, totalFilterCount: unknown }),
+      );
 
       const result = await datacenter().getAllObjects("42");
 
-      expect(result.complete).toBe(false);
+      expect(result.complete).toBe(true);
       expect(result.objects).toHaveLength(3);
+      expect(objectCalls()).toHaveLength(1);
     },
   );
 
-  it("does not trust a reported page count whose last page is full (the count may be capped)", async () => {
+  it("exact multiple of the page size: asks for one more page, and the empty page proves the end", async () => {
     mockFetch
       .mockResolvedValueOnce(ok({ objectEntries: objects(0, PAGE_SIZE), pageSize: 2 }))
-      .mockResolvedValueOnce(ok({ objectEntries: objects(PAGE_SIZE, PAGE_SIZE), pageSize: 2 }));
+      .mockResolvedValueOnce(ok({ objectEntries: objects(PAGE_SIZE, PAGE_SIZE), pageSize: 2 }))
+      .mockResolvedValueOnce(ok({ objectEntries: [], pageSize: 2 }));
+
+    const result = await datacenter().getAllObjects("42");
+
+    expect(result.complete).toBe(true);
+    expect(result.objects).toHaveLength(2 * PAGE_SIZE);
+    expect(objectCalls()).toHaveLength(3);
+    expect(String(objectCalls()[2][0])).toContain("page=3");
+  });
+
+  it("keeps going when the page count was understated (the extra page is full)", async () => {
+    mockFetch
+      .mockResolvedValueOnce(ok({ objectEntries: objects(0, PAGE_SIZE), pageSize: 1 }))
+      .mockResolvedValueOnce(ok({ objectEntries: objects(PAGE_SIZE, PAGE_SIZE), pageSize: 1 }))
+      .mockResolvedValueOnce(ok({ objectEntries: objects(2 * PAGE_SIZE, 7), pageSize: 1 }));
+
+    const result = await datacenter().getAllObjects("42");
+
+    expect(result.complete).toBe(true);
+    expect(result.objects).toHaveLength(2 * PAGE_SIZE + 7);
+  });
+
+  it("is incomplete when the walk hits MAX_PAGES with full pages", async () => {
+    mockFetch.mockImplementation(async () => ok({ objectEntries: objects(0, PAGE_SIZE) }));
 
     const result = await datacenter().getAllObjects("42");
 
     expect(result.complete).toBe(false);
-    expect(objectCalls()).toHaveLength(2);
-  });
-
-  it("ignores totalFilterCount for completeness", async () => {
-    mockFetch
-      .mockResolvedValueOnce(ok({ objectEntries: objects(0, 10), totalFilterCount: 10 }))
-      .mockResolvedValueOnce(ok({ objectEntries: [], totalFilterCount: 10 }));
-
-    expect((await datacenter().getAllObjects("42")).complete).toBe(false);
-  });
-
-  it("is incomplete when a page comes back empty before the reported total", async () => {
-    mockFetch
-      .mockResolvedValueOnce(ok({ objectEntries: objects(0, PAGE_SIZE), totalFilterCount: 500 }))
-      .mockResolvedValueOnce(ok({ objectEntries: [], totalFilterCount: 500 }));
-
-    expect((await datacenter().getAllObjects("42")).complete).toBe(false);
+    expect(objectCalls()).toHaveLength(MAX_PAGES);
   });
 });
 
@@ -277,6 +282,45 @@ describe("errors", () => {
 
     expect(err).toBeInstanceOf(JiraUpstreamError);
     expect(err.message).toContain("Could not read Jira's response: request timed out");
+  });
+
+  it("wraps a body read aborted by the overall deadline too", async () => {
+    const controller = new AbortController();
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        controller.abort();
+        throw Object.assign(new Error("aborted"), { name: "AbortError" });
+      },
+      text: async () => "",
+    });
+
+    // Through the picker, which uses the request path directly (no deadline
+    // handling of its own), the caller sees a JiraUpstreamError.
+    const err = await datacenter()
+      .getObjectsPage("42")
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(JiraUpstreamError);
+    expect(err.message).toContain("Could not read Jira's response");
+  });
+
+  it("still reports a deadline stop from getAllObjects as an incomplete, flagged fetch", async () => {
+    const controller = new AbortController();
+    mockFetch
+      .mockResolvedValueOnce(ok({ objectEntries: objects(0, PAGE_SIZE) }))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => {
+          controller.abort();
+          throw Object.assign(new Error("aborted"), { name: "AbortError" });
+        },
+        text: async () => "",
+      });
+
+    const result = await datacenter().getAllObjects("42", { deadline: controller.signal });
+
+    expect(result).toMatchObject({ complete: false, stoppedReason: "deadline" });
   });
 
   it("turns a network failure into a JiraUpstreamError with the cause", async () => {

@@ -244,6 +244,15 @@ export const JiraAssetsConfiguration: React.FC = () => {
     [pluginApiCall],
   );
 
+  // Clear the import picker (list, paging, selection): its contents belong to
+  // one object type and one fetch.
+  const resetPicker = useCallback(() => {
+    setJiraObjects([]);
+    setJiraHasMore(false);
+    setJiraNextStartAt(0);
+    setSelectedObjects(new Set());
+  }, []);
+
   // Load JIRA objects for import, one page at a time (`append` = "Load more").
   const loadJiraObjects = useCallback(
     async (append = false) => {
@@ -273,6 +282,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
           setJiraNextStartAt(Number(response?.nextStartAt) || 0);
         }
       } catch (error: any) {
+        // A failed fresh load must not leave the previous list on screen.
+        if (!append) resetPicker();
         setImportMessage({
           type: "error",
           text: getApiErrorReason(error) || error?.message || "Failed to load JIRA objects",
@@ -281,7 +292,13 @@ export const JiraAssetsConfiguration: React.FC = () => {
         setIsLoadingObjects(false);
       }
     },
-    [pluginApiCall, localConfig.selected_object_type_id, importedUseCases, jiraNextStartAt],
+    [
+      pluginApiCall,
+      localConfig.selected_object_type_id,
+      importedUseCases,
+      jiraNextStartAt,
+      resetPicker,
+    ],
   );
 
   // Load imported use cases
@@ -546,6 +563,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
   };
 
   const handleSchemaChange = (schemaId: string) => {
+    resetPicker();
     handleChange("selected_schema_id", schemaId);
     handleChange("selected_object_type_id", "");
     setObjectTypes([]);
@@ -556,6 +574,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
   };
 
   const handleObjectTypeChange = (objectTypeId: string) => {
+    resetPicker();
     handleChange("selected_object_type_id", objectTypeId);
     if (objectTypeId) {
       persistSelection({ selected_object_type_id: objectTypeId });

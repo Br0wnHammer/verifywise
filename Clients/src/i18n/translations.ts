@@ -9711,6 +9711,7 @@ export const translations: Record<string, Record<string, string>> = {
     "The sync stopped responding. Try again.":
       "Die Synchronisierung reagiert nicht mehr. Versuchen Sie es erneut.",
     "Sync failed": "Synchronisierung fehlgeschlagen",
+    "The sync waited too long to start": "Die Synchronisierung hat zu lange auf den Start gewartet",
     "A sync is already running. Try again when it finishes.":
       "Es läuft bereits eine Synchronisierung. Versuchen Sie es erneut, wenn sie abgeschlossen ist.",
     "Error Details:": "Fehlerdetails:",
@@ -19818,6 +19819,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Load more": "Charger plus",
     "The sync stopped responding. Try again.": "La synchronisation ne répond plus. Réessayez.",
     "Sync failed": "Échec de la synchronisation",
+    "The sync waited too long to start":
+      "La synchronisation a attendu trop longtemps avant de démarrer",
     "A sync is already running. Try again when it finishes.":
       "Une synchronisation est déjà en cours. Réessayez une fois qu'elle est terminée.",
     "Error Details:": "Détails de l'erreur :",
@@ -29852,6 +29855,7 @@ export const translations: Record<string, Record<string, string>> = {
     "The sync stopped responding. Try again.":
       "La sincronización dejó de responder. Inténtelo de nuevo.",
     "Sync failed": "Error de sincronización",
+    "The sync waited too long to start": "La sincronización esperó demasiado para comenzar",
     "A sync is already running. Try again when it finishes.":
       "Ya hay una sincronización en curso. Inténtelo de nuevo cuando termine.",
     "Error Details:": "Detalles del error:",

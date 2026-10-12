@@ -326,16 +326,19 @@ export async function scheduleAiDetectionScanCheck() {
 }
 
 /**
- * Run a manual Jira Assets sync ("Sync now") in the worker. The history row is
- * already claimed by the caller; the job only carries ids. One attempt: a
- * retry would run against a row the first attempt may already have closed.
+ * Run one Jira Assets sync in the worker: a manual "Sync now", or a scheduled
+ * refresh queued by the 5-minute check (one job per due org). The history row
+ * is already claimed by the caller; the job only carries ids and the sync
+ * type. One attempt: a retry would run against a row the first attempt may
+ * already have closed.
  */
-export async function enqueueJiraAssetsManualSync(data: {
+export async function enqueueJiraAssetsSyncRun(data: {
   organizationId: number;
   historyId: number;
   triggeredBy: number | null;
+  syncType: "manual" | "scheduled";
 }) {
-  return automationQueue.add("jira_assets_manual_sync", data, {
+  return automationQueue.add("jira_assets_sync_run", data, {
     attempts: 1,
     removeOnComplete: true,
     removeOnFail: false,

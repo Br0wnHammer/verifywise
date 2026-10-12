@@ -94,7 +94,7 @@ Recurring (cron) jobs only — see [On-Demand Jobs](#on-demand-jobs) below for j
 | `send_report_notification` | `0 0 * * *` | Daily at midnight | Scheduled report generation |
 | `pmm_hourly_check` | `0 * * * *` | Every hour | PMM cycle processing |
 | `report_scheduler_tick` | `*/15 * * * *` | Every 15 minutes | Template-first scheduled report dispatch |
-| `jira_assets_scheduled_sync_check` | `*/5 * * * *` | Every 5 minutes | Refreshes imported Jira Assets use cases for orgs whose interval has elapsed; never creates or deletes (see [Extensions → Scheduled sync](./extensions.md#scheduled-sync)) |
+| `jira_assets_scheduled_sync_check` | `*/5 * * * *` | Every 5 minutes | Claims and queues one `jira_assets_sync_run` (refresh-only) per org whose interval has elapsed; returns without syncing (see [Extensions → Scheduled sync](./extensions.md#scheduled-sync)) |
 | `slack-notification-policy` | `0 9 * * *` | Daily at 9 AM | Slack policy due notifications |
 
 ### Cron Pattern Reference
@@ -211,7 +211,7 @@ Not every job on the `automation-actions` queue is scheduled. Some are enqueued 
 | Job Name | Queue | Enqueued By | Handler |
 |----------|-------|-------------|---------|
 | `generate_report_manual` | `automation-actions` | `generateReportsV2` / `generateReports` controller, when a user requests a manual report (see [Reporting Domain](../domains/reporting.md)) | `handleManualReportGeneration` → `executeManualRun` |
-| `jira_assets_manual_sync` | `automation-actions` | `startManualSync` (Jira Assets `POST /sync`, "Sync now"), after claiming the run; `{ organizationId, historyId, triggeredBy }`, one attempt (see [Extensions → Scheduled sync](./extensions.md#scheduled-sync)) | `runQueuedManualSync` → `runClaimedSync` |
+| `jira_assets_sync_run` | `automation-actions` | `startManualSync` (Jira Assets `POST /sync`, "Sync now") and `startScheduledSync` (one per due org, from `jira_assets_scheduled_sync_check`), each after claiming the run; `{ organizationId, historyId, triggeredBy, syncType }`, one attempt (see [Extensions → Scheduled sync](./extensions.md#scheduled-sync)) | `runQueuedSync` → `runClaimedSync` |
 
 **Processing Logic:**
 1. Controller creates a `report_runs` row (`status: "running"`) and enqueues `generate_report_manual` with `{ runId, request, userId, organizationId }`
@@ -220,7 +220,7 @@ Not every job on the `automation-actions` queue is scheduled. Some are enqueued 
 
 This job only runs while a worker process (`npm run worker`) is up — with no worker running, the run stays `status: "running"` indefinitely and the frontend poll never resolves.
 
-`jira_assets_manual_sync` also needs a worker. Without one, the claimed history row gets no heartbeat. After 15 minutes it counts as abandoned, and the panel's poll ends with "The sync is taking longer than expected".
+`jira_assets_sync_run` also needs a worker. Without one, the claimed history row gets no heartbeat. After 15 minutes it is no longer live, and the panel's poll ends with "The sync stopped responding". If a worker picks the job up after that, it does not run it: it closes the row as "The sync waited too long to start".
 
 ## Workers
 

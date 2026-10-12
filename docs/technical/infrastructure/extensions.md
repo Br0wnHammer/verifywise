@@ -315,13 +315,19 @@ extensions are configured per organization in the UI.
 Jira Assets is the first extension that syncs on a schedule. Follow the same
 pattern for any later one (for example a Jira incident sync).
 
-**One check job, not one job per org.** `scheduleJiraAssetsScheduledSyncCheck`
+**A quick check job, then one sync job per org.** `scheduleJiraAssetsScheduledSyncCheck`
 in `Servers/services/automations/automationProducer.ts` upserts the repeatable
 `jira_assets_scheduled_sync_check` job on the `automation-actions` queue,
 every 5 minutes (`*/5 * * * *`). It is registered in `addAllJobs()`
 (`Servers/jobs/producer.ts`) through `safeSchedule`, and `createAutomationWorker`
 (`automationWorker.ts`) dispatches it to `runJiraAssetsScheduledSyncAllOrgs`
-in `Servers/extensions/jira-assets/jiraAssets.scheduler.ts`.
+in `Servers/extensions/jira-assets/jiraAssets.scheduler.ts`. The check does
+not sync. For each due org it calls `startScheduledSync`, which claims a run
+and queues a `jira_assets_sync_run` job. The check returns quickly, and each
+org syncs independently in the worker (concurrency 10). The claim comes before
+the enqueue, so overlapping ticks cannot queue two runs for one org: the
+second claim throws `JiraSyncInProgressError` and the org is skipped. If
+queueing fails, the claimed row is closed as failed.
 
 **Candidates and timing are decided in SQL.** `getScheduledSyncCandidates`
 runs one cross-org discovery query. It selects `jira_assets_config` with
@@ -351,9 +357,9 @@ UTC. The SQL is explicit, so it would stay right if that setting changed.
 The building blocks are in `Servers/extensions/scheduledSync.utils.ts`:
 `SQL_NOW_UTC`, `sqlIntervalElapsed`, `sqlWithinLastMinutes`.
 
-**Scheduled runs only refresh.** Due orgs run
-`syncObjects(orgId, null, "scheduled")`. The history row is written with
-`sync_type = 'scheduled'` and `triggered_by = NULL`. A scheduled run updates
+**Scheduled runs only refresh.** A queued scheduled run executes
+`runClaimedSync(orgId, historyId, null, "scheduled")`. The history row is
+written with `sync_type = 'scheduled'` and `triggered_by = NULL`. A scheduled run updates
 the project and the `jira_assets_use_cases` row of every linked object. It
 never creates a use case and never deletes one. Linked objects that Jira no
 longer returns are kept and reported:
@@ -369,14 +375,26 @@ longer returns are kept and reported:
 1. checks the config: 404 if it is not configured, 400 if no object type is
    selected
 2. claims the run: 409 if a sync or import is running
-3. queues a one-off `jira_assets_manual_sync` job (one attempt), then returns
-   202 with `{ historyId }`
+3. queues a `jira_assets_sync_run` job (`syncType: "manual"`, one attempt),
+   then returns 202 with `{ historyId }`
 
-`runQueuedManualSync` runs the claimed sync. It fails closed when
-`organizationId` or `historyId` is missing or invalid, because there is then
-no row it can safely touch. An invalid `triggeredBy` only loses attribution,
-so it falls back to null. If the run throws unexpectedly, the claimed row is
-closed as failed before the error is rethrown.
+Manual and scheduled runs share the worker entry `runQueuedSync`, which
+validates the payload:
+
+- It fails closed when `organizationId` or `historyId` is missing or invalid,
+  because there is then no row it can safely touch.
+- It also fails closed on an unknown `syncType`, because guessing could turn a
+  refresh-only run into one that deletes. The row is known in that case, so it
+  is closed as failed first.
+- An invalid `triggeredBy` only loses attribution, so it falls back to null.
+
+After that, `runClaimedSync` is the single owner of the row's finalization. It
+records failures and returns a failed result rather than throwing.
+
+**Stale pickup.** A queued run first revives its heartbeat, but only if its row
+is still `started` and still live (SQL). A row that went stale while queued is
+not run. It is closed as "The sync waited too long to start", and the panel
+shows that message.
 
 The panel polls `GET /sync/status?historyId=<id>` every 3 seconds, for up to
 20 minutes. That endpoint returns `run`: that history row (this org's only)
@@ -419,13 +437,13 @@ the Assets API pages.
   walk advances by the number of rows returned.
 - **Data Center:** `GET iql/objects?...&page=&resultPerPage=`. There is no
   last-page flag, and `pageSize` (the page count) and `totalFilterCount`
-  cannot be shown to be uncapped. The end is therefore proven only when the
-  reported last page (page >= `pageSize`) is a partial page. A type whose size
-  is an exact multiple of 50 reports incomplete. That is the safe side: deletes
-  are skipped.
+  cannot be shown to be uncapped, so they are not used. The walk keeps asking
+  for pages until one comes back partial or empty, and that page proves the
+  end. A type whose size is an exact multiple of 50 costs one extra (empty)
+  request.
 
-Anything else returns `complete: false`: an empty page, the 500-page stop, or
-the deadline.
+Anything else returns `complete: false`: on cloud, an empty page without
+`isLast`; the 500-page stop; or the deadline.
 
 Every request has a 30-second timeout (`requestSignal`). The worker's walk has
 an overall deadline of `WORKER_SYNC_DEADLINE_MS` (10 minutes). That stays well
@@ -460,14 +478,19 @@ and every import (`POST /import`, `sync_type = 'import'`) starts with
 3. inserts the new `started` row only if no other is left. Otherwise it
    throws `JiraSyncInProgressError`.
 
-A run touches `heartbeat_at` at its start, after every fetched page, every 25
-objects, and before deletes. If that update affects 0 rows, another claim has
+A run touches `heartbeat_at` at pickup (live rows only), after every fetched
+page, every 25 objects, before the delete phase and every 25 deletes. If that update affects 0 rows, another claim has
 closed the run as abandoned. `touchHeartbeat` then throws `RunSupersededError`
-and the run stops at once, with no further writes. Both finalize steps update
+and the run stops at once, with no further writes. Inside the delete phase,
+that means the remaining deletes are not made. Both finalize steps update
 only their own row, by id and while it is still `started`. If that update
-affects 0 rows, they leave the config alone. `heartbeat_at` and the `'import'`
-sync type, and `links_removed`, come from migration
-`20261012003957-jira-assets-sync-heartbeat.js`.
+affects 0 rows, they leave the config alone.
+
+- `heartbeat_at` and the `'import'` sync type come from migration
+  `20261012003957-jira-assets-sync-heartbeat.js`.
+- `links_removed` comes from `20261012013720-jira-assets-sync-links-removed.js`,
+  a separate migration so databases that already ran the first one still get
+  the column.
 
 If an import is closed as abandoned part-way, it stops and `POST /import`
 returns 409 with `{ message, imported, skipped }`. Objects imported before
@@ -511,8 +534,9 @@ disabled for non-Admins.
    closed. Record every failure through a finalize step that never throws.
 3. Make the scheduled run conservative: refresh only, and never delete on an
    unconfirmed, empty or timed-out fetch.
-4. Run user-triggered syncs in the worker and return 202, then poll a status
-   endpoint.
+4. Run every sync in the worker as its own job: user-triggered ones return
+   202 and the panel polls a status endpoint, and the scheduled check only
+   claims and queues.
 5. Add a `schedule…` function with `upsertJobScheduler` and no obliterate.
    Register it in `addAllJobs()` after the obliterating schedulers, and
    dispatch it in `createAutomationWorker`.

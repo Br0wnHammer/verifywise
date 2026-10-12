@@ -244,8 +244,9 @@ export async function postSync(req: Request, res: Response): Promise<any> {
 
 export async function getSyncStatusCtrl(req: Request, res: Response): Promise<any> {
   try {
+    // Number(), not parseInt: "12abc" or "1.5" must be rejected, not truncated.
     const rawId = req.query?.historyId;
-    const historyId = rawId === undefined ? null : parseInt(String(rawId), 10);
+    const historyId = rawId === undefined ? null : Number(rawId);
     if (historyId !== null && (!Number.isInteger(historyId) || historyId <= 0)) {
       return res.status(400).json(STATUS_CODE[400]("historyId must be a positive integer"));
     }

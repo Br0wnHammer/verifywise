@@ -10,11 +10,12 @@ import {
   JiraSyncInProgressError,
   parseSyncIntervalHours,
   runClaimedSync,
-  runQueuedManualSync,
+  runQueuedSync,
   saveConfig,
   startManualSync,
+  startScheduledSync,
+  WAITED_TOO_LONG_MESSAGE,
   SQL_RUN_IS_LIVE,
-  syncObjects,
   touchHeartbeat,
   RunSupersededError,
   updateSelection,
@@ -23,8 +24,7 @@ import {
 import { sequelize } from "../../../database/db";
 import { decryptText } from "../../../tools/createSecureValue";
 import { JiraAssetsClient } from "../jira.client";
-import { enqueueJiraAssetsManualSync } from "../../../services/automations/automationProducer";
-import logger from "../../../utils/logger/fileLogger";
+import { enqueueJiraAssetsSyncRun } from "../../../services/automations/automationProducer";
 
 const FAKE_TX = { id: "tx" };
 
@@ -43,7 +43,7 @@ jest.mock("../jira.client", () => {
   return { JiraAssetsClient: jest.fn(), JiraUpstreamError, WORKER_SYNC_DEADLINE_MS: 600_000 };
 });
 jest.mock("../../../services/automations/automationProducer", () => ({
-  enqueueJiraAssetsManualSync: jest.fn(),
+  enqueueJiraAssetsSyncRun: jest.fn(),
 }));
 jest.mock("../../../utils/logger/fileLogger", () => ({
   __esModule: true,
@@ -55,7 +55,7 @@ const mockQuery = sequelize.query as jest.Mock;
 const mockTransaction = sequelize.transaction as unknown as jest.Mock;
 const mockDecrypt = decryptText as jest.Mock;
 const MockClient = JiraAssetsClient as unknown as jest.Mock;
-const mockEnqueue = enqueueJiraAssetsManualSync as jest.Mock;
+const mockEnqueue = enqueueJiraAssetsSyncRun as jest.Mock;
 
 const CONFIG_ROW = {
   id: 1,
@@ -90,6 +90,10 @@ interface FakeDb {
   running?: Array<{ id: number }>;
   /** Rows a heartbeat UPDATE affects; [] means another claim closed the run. */
   heartbeat?: Array<{ id: number }>;
+  /** How many heartbeats succeed before they start returning [] (default: all). */
+  heartbeatOkCalls?: number;
+  /** Rows the pickup revive affects; [] means the row went stale in the queue. */
+  revive?: Array<{ id: number }>;
   /** Rows the run's own finalize UPDATE affects. */
   ownRow?: Array<{ id: number }>;
   deletedProjects?: Array<{ id: number }>;
@@ -101,15 +105,22 @@ function fakeDb({
   existing = [],
   running = [],
   heartbeat = [{ id: 77 }],
+  heartbeatOkCalls = Infinity,
+  revive = [{ id: 77 }],
   ownRow = [{ id: 77 }],
   deletedProjects = [{ id: 1 }],
 }: FakeDb = {}) {
+  let heartbeats = 0;
   mockQuery.mockImplementation(async (sql: string) => {
+    if (sql.includes("RETURNING h.id")) return [revive, {}];
+    if (sql.includes("SET heartbeat_at")) {
+      heartbeats++;
+      return [heartbeats > heartbeatOkCalls ? [] : heartbeat, {}];
+    }
     if (sql.includes("pg_advisory_xact_lock")) return [{}];
     if (sql.includes("marked as abandoned")) return [[], 0];
     if (sql.includes("SELECT id FROM jira_assets_sync_history")) return running;
     if (sql.includes("INSERT INTO jira_assets_sync_history")) return [[{ id: 77 }], 1];
-    if (sql.includes("SET heartbeat_at")) return [heartbeat, {}];
     if (sql.includes("SELECT id, jira_base_url")) return config ? [config] : [];
     if (sql.includes("SELECT * FROM jira_assets_config")) return config ? [config] : [];
     if (sql.includes("SELECT jira_object_id, project_id, data")) return existing;
@@ -212,7 +223,7 @@ describe("runClaimedSync — scheduled (refresh-only)", () => {
     // "1" still in Jira, "3" is new upstream, "2" has gone from Jira.
     clientReturning([jiraObject("1"), jiraObject("3")]);
 
-    const result = await syncObjects(5, null, "scheduled");
+    const result = await runClaimedSync(5, 77, null, "scheduled");
 
     expect(result.success).toBe(true);
     expect(result.objectsUpdated).toBe(1);
@@ -225,29 +236,70 @@ describe("runClaimedSync — scheduled (refresh-only)", () => {
     expect(completed.replacements.note).toContain("missing in Jira");
   });
 
-  it("records the run as scheduled with no user", async () => {
-    fakeDb({ existing: [link("1", 101)] });
-    clientReturning([jiraObject("1")]);
+  it("is queued as its own job, claimed as scheduled with no user", async () => {
+    fakeDb();
 
-    await syncObjects(5, null, "scheduled");
+    await expect(startScheduledSync(5)).resolves.toEqual({ historyId: 77 });
 
     const [, insert] = sqlCalls("INSERT INTO jira_assets_sync_history")[0];
     expect(insert.replacements).toMatchObject({ syncType: "scheduled", triggeredBy: null });
+    expect(mockEnqueue).toHaveBeenCalledWith({
+      organizationId: 5,
+      historyId: 77,
+      triggeredBy: null,
+      syncType: "scheduled",
+    });
+  });
+
+  it("cannot be queued twice: the second claim is refused before enqueueing", async () => {
+    fakeDb({ running: [{ id: 77 }] });
+
+    await expect(startScheduledSync(5)).rejects.toBeInstanceOf(JiraSyncInProgressError);
+    expect(mockEnqueue).not.toHaveBeenCalled();
   });
 });
 
 describe("runClaimedSync — abandoned runs stop", () => {
-  it("writes nothing once another claim has closed the run", async () => {
-    fakeDb({ existing: [link("1", 101)], heartbeat: [] });
+  it("does not run a row that went stale while queued, and closes it as such", async () => {
+    fakeDb({ existing: [link("1", 101)], revive: [] });
     const getAllObjects = clientReturning([jiraObject("1")]);
 
     const result = await runClaimedSync(5, 77, 8, "manual");
 
     expect(result.success).toBe(false);
-    expect(result.status).toContain("closed by another run");
+    expect(result.status).toContain(WAITED_TOO_LONG_MESSAGE);
     expect(getAllObjects).not.toHaveBeenCalled();
+    const [reviveSql] = sqlCalls("RETURNING h.id")[0];
+    expect(reviveSql).toContain(SQL_RUN_IS_LIVE);
+    const [, failed] = sqlCalls("SET status = 'failed', error_message")[0];
+    expect(failed.replacements).toMatchObject({ id: 77, message: WAITED_TOO_LONG_MESSAGE });
+  });
+
+  it("writes nothing more once another claim has closed the run mid-way", async () => {
+    fakeDb({ existing: [link("1", 101)], heartbeat: [] });
+    clientReturning([jiraObject("1")]);
+
+    const result = await runClaimedSync(5, 77, 8, "manual");
+
+    expect(result.success).toBe(false);
+    expect(result.status).toContain("closed by another run");
     expect(sqlCalls("UPDATE projects")).toHaveLength(0);
-    expect(sqlCalls("SET status = 'failed'")).toHaveLength(0);
+    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
+  });
+
+  it("heartbeats during the delete phase and stops deleting as soon as it is superseded", async () => {
+    // 60 links gone from Jira; the 3rd heartbeat (1 after the fetch page,
+    // 1 before deletes, then 1 after 25 deletes) finds the run closed.
+    const gone = Array.from({ length: 60 }, (_, i) => link(String(100 + i), 1000 + i));
+    fakeDb({ existing: [link("1", 101), ...gone], heartbeatOkCalls: 2 });
+    clientReturning([jiraObject("1")], true);
+
+    const result = await runClaimedSync(5, 77, 8, "manual");
+
+    expect(result.success).toBe(false);
+    expect(sqlCalls("DELETE FROM projects")).toHaveLength(25);
+    expect(sqlCalls("SET status = 'completed'")).toHaveLength(0);
     expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 
@@ -391,7 +443,12 @@ describe("startManualSync (Sync now runs in the worker)", () => {
     fakeDb();
 
     await expect(startManualSync(5, 8)).resolves.toEqual({ historyId: 77 });
-    expect(mockEnqueue).toHaveBeenCalledWith({ organizationId: 5, historyId: 77, triggeredBy: 8 });
+    expect(mockEnqueue).toHaveBeenCalledWith({
+      organizationId: 5,
+      historyId: 77,
+      triggeredBy: 8,
+      syncType: "manual",
+    });
   });
 
   it("rejects without a config or an object type, before claiming", async () => {
@@ -413,41 +470,54 @@ describe("startManualSync (Sync now runs in the worker)", () => {
   });
 
   it("the worker entry fails closed without a valid org and run id", async () => {
-    await expect(runQueuedManualSync({ historyId: 1 })).rejects.toThrow("organizationId");
-    await expect(runQueuedManualSync({ organizationId: 5 })).rejects.toThrow("historyId");
+    await expect(runQueuedSync({ historyId: 1, syncType: "manual" })).rejects.toThrow(
+      "organizationId",
+    );
+    await expect(runQueuedSync({ organizationId: 5, syncType: "manual" })).rejects.toThrow(
+      "historyId",
+    );
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("closes the row and fails on an unknown sync type instead of guessing", async () => {
+    fakeDb();
+
+    await expect(
+      runQueuedSync({ organizationId: 5, historyId: 77, syncType: "full" }),
+    ).rejects.toThrow("syncType");
+    const [, failed] = sqlCalls("SET status = 'failed', error_message")[0];
+    expect(failed.replacements).toMatchObject({ id: 77, organizationId: 5 });
+    expect(MockClient).not.toHaveBeenCalled();
   });
 
   it("falls back to no user when triggeredBy is invalid, and still runs", async () => {
     fakeDb({ existing: [link("1", 101)] });
     clientReturning([jiraObject("1"), jiraObject("3")]);
 
-    const result = await runQueuedManualSync({
+    const result = await runQueuedSync({
       organizationId: 5,
       historyId: 77,
       triggeredBy: "nobody",
+      syncType: "manual",
     });
 
     expect(result.success).toBe(true);
     expect(sqlCalls("INSERT INTO projects")[0][1].replacements.owner).toBeNull();
   });
 
-  it("closes the claimed row as failed if the run throws unexpectedly", async () => {
-    fakeDb({ existing: [link("1", 101)], heartbeat: [] });
-    clientReturning([jiraObject("1")]);
-    (logger.warn as jest.Mock).mockImplementationOnce(() => {
-      throw new Error("logger broke");
+  it("runs a queued scheduled job as refresh-only", async () => {
+    fakeDb({ existing: [link("1", 101), link("2", 102)] });
+    clientReturning([jiraObject("1"), jiraObject("3")]);
+
+    const result = await runQueuedSync({
+      organizationId: 5,
+      historyId: 77,
+      triggeredBy: null,
+      syncType: "scheduled",
     });
 
-    await expect(
-      runQueuedManualSync({ organizationId: 5, historyId: 77, triggeredBy: 8 }),
-    ).rejects.toThrow("logger broke");
-    const [, failed] = sqlCalls("SET status = 'failed', error_message")[0];
-    expect(failed.replacements).toMatchObject({
-      id: 77,
-      organizationId: 5,
-      message: "Manual sync could not run: logger broke",
-    });
+    expect(result.objectsCreated).toBe(0);
+    expect(sqlCalls("DELETE FROM")).toHaveLength(0);
   });
 });
 

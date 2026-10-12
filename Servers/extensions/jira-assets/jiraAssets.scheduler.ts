@@ -2,7 +2,7 @@ import { QueryTypes } from "sequelize";
 import { sequelize } from "../../database/db";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
 import { sqlIntervalElapsed } from "../scheduledSync.utils";
-import { JiraSyncInProgressError, SQL_RUN_IS_LIVE, syncObjects } from "./jiraAssets.service";
+import { JiraSyncInProgressError, SQL_RUN_IS_LIVE, startScheduledSync } from "./jiraAssets.service";
 
 /**
  * Automatic Jira Assets sync.
@@ -14,11 +14,13 @@ import { JiraSyncInProgressError, SQL_RUN_IS_LIVE, syncObjects } from "./jiraAss
  * `running_is_live` computed in SQL against NOW(), and the pure
  * `evaluateScheduledSync` turns those flags into a decision.
  *
- * Due orgs get `syncObjects(org, null, "scheduled")`, which is refresh-only:
- * it updates already-linked use cases and never creates or deletes. The
- * service's `claimSyncRun` guard makes an org that is already syncing a no-op.
- * Orgs are processed one at a time and independently: an error in one is
- * logged and the loop moves on.
+ * For each due org the check only claims a run and queues it
+ * (`startScheduledSync` → one `jira_assets_sync_run` job per org), so it
+ * returns quickly and orgs sync independently in the worker. The claim comes
+ * before the enqueue, so overlapping ticks cannot queue two runs for one org:
+ * the second claim throws JiraSyncInProgressError and the org is skipped. A
+ * scheduled run is refresh-only: it updates already-linked use cases and never
+ * creates or deletes. An error for one org is logged and the loop moves on.
  */
 
 const fileName = "jiraAssets.scheduler.ts";
@@ -95,7 +97,7 @@ export async function getScheduledSyncCandidates(): Promise<JiraScheduledSyncSta
 
 export interface JiraScheduledSyncSummary {
   candidates: number;
-  synced: number;
+  queued: number;
   failed: number;
   skippedRunning: number;
 }
@@ -105,7 +107,7 @@ export async function runJiraAssetsScheduledSyncAllOrgs(): Promise<JiraScheduled
   const candidates = await getScheduledSyncCandidates();
   const summary: JiraScheduledSyncSummary = {
     candidates: candidates.length,
-    synced: 0,
+    queued: 0,
     failed: 0,
     skippedRunning: 0,
   };
@@ -113,44 +115,29 @@ export async function runJiraAssetsScheduledSyncAllOrgs(): Promise<JiraScheduled
   for (const state of candidates) {
     const organizationId = Number(state.organization_id);
     if (!Number.isInteger(organizationId) || organizationId <= 0) continue;
+    const decision = evaluateScheduledSync(state);
+    if (decision === "running") {
+      summary.skippedRunning++;
+      continue;
+    }
+    if (decision !== "due") continue;
     try {
-      const decision = evaluateScheduledSync(state);
-      if (decision === "running") {
-        summary.skippedRunning++;
-        continue;
-      }
-      if (decision !== "due") continue;
-
-      const result = await syncObjects(organizationId, null, "scheduled");
-      if (result.success) {
-        summary.synced++;
-        logger.info(
-          `Jira Assets scheduled sync org ${organizationId}: fetched=${result.objectsFetched} updated=${result.objectsUpdated} missingInJira=${result.objectsMissingInJira}`,
-        );
-      } else {
-        // syncObjects already wrote the failure to the history row and config.
-        summary.failed++;
-        logStructured(
-          "error",
-          `Jira Assets scheduled sync failed for org ${organizationId}: ${result.status}`,
-          "runJiraAssetsScheduledSyncAllOrgs",
-          fileName,
-        );
-      }
+      const { historyId } = await startScheduledSync(organizationId);
+      summary.queued++;
+      logger.info(`Jira Assets scheduled sync org ${organizationId}: queued run ${historyId}`);
     } catch (error) {
       if (error instanceof JiraSyncInProgressError) {
         summary.skippedRunning++;
-        logger.info(`Jira Assets scheduled sync org ${organizationId}: skipped, sync running`);
         continue;
       }
       summary.failed++;
       logStructured(
         "error",
-        `Jira Assets scheduled sync errored for org ${organizationId}`,
+        `Jira Assets scheduled sync could not be queued for org ${organizationId}`,
         "runJiraAssetsScheduledSyncAllOrgs",
         fileName,
       );
-      logger.error(`❌ Jira Assets scheduled sync failed for org ${organizationId}:`, error);
+      logger.error(`❌ Jira Assets scheduled sync queue failed for org ${organizationId}:`, error);
     }
   }
 

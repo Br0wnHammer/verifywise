@@ -143,9 +143,10 @@ export class JiraAssetsClient {
   /**
    * One call to the Assets API, with a per-request timeout and an overall
    * deadline (EXTERNAL_SYNC_DEADLINE_MS unless the caller passes its own, as
-   * getAllObjects does for the whole walk). Every failure becomes a
-   * JiraUpstreamError with a readable reason; a deadline abort is rethrown
-   * as-is so getAllObjects can tell it apart.
+   * getAllObjects does for the whole walk). Every failure — connecting,
+   * a non-2xx status, reading or parsing the body, either timeout — becomes a
+   * JiraUpstreamError with a readable reason. getAllObjects tells a deadline
+   * stop apart by checking its own signal, not the error type.
    */
   private async request<T>(
     endpoint: string,
@@ -174,7 +175,6 @@ export class JiraAssetsClient {
         signal: requestSignal(REQUEST_TIMEOUT_SECONDS, deadline),
       });
     } catch (err) {
-      if (deadline.aborted) throw err;
       throw new JiraUpstreamError(
         `Could not reach Jira: ${describeFetchError(err, REQUEST_TIMEOUT_SECONDS)}`,
       );
@@ -188,8 +188,8 @@ export class JiraAssetsClient {
     try {
       return (await response.json()) as T;
     } catch (err) {
-      // The body can time out or be cut off mid-read, or not be JSON.
-      if (deadline.aborted) throw err;
+      // The body can time out (per-request or overall deadline), be cut off
+      // mid-read, or not be JSON.
       throw new JiraUpstreamError(
         `Could not read Jira's response: ${describeFetchError(err, REQUEST_TIMEOUT_SECONDS)}`,
       );
@@ -284,14 +284,15 @@ export class JiraAssetsClient {
    *   The walk advances by the rows returned.
    * - Data Center: `GET iql/objects?...&page=&resultPerPage=`; the response
    *   carries `objectEntries`, `pageSize` (number of pages) and
-   *   `totalFilterCount`, but no last-page flag. Those counts cannot be shown
-   *   to be uncapped, so the end is proven only when the reported last page
-   *   (page >= pageSize) is a partial page. A type whose size is an exact
-   *   multiple of PAGE_SIZE therefore reports `complete: false` — the safe
-   *   side: deletes are skipped, nothing else changes.
+   *   `totalFilterCount`, but no last-page flag, and those counts cannot be
+   *   shown to be uncapped, so they are not used. The walk keeps requesting
+   *   pages until one comes back partial or empty — that page proves the end.
+   *   A type whose size is an exact multiple of PAGE_SIZE therefore costs one
+   *   extra (empty) request.
    *
-   * Anything else — an empty page, MAX_PAGES, the overall deadline — returns
-   * `complete: false`, and callers must not treat missing objects as deleted.
+   * Anything else — on cloud an empty page without isLast, MAX_PAGES, the
+   * overall deadline — returns `complete: false`, and callers must not treat
+   * missing objects as deleted.
    */
   async getAllObjects(
     objectTypeId: string,
@@ -313,11 +314,8 @@ export class JiraAssetsClient {
           const entries: JiraObject[] = result?.objectEntries || [];
           objects.push(...entries);
           if (options.onPage) await options.onPage();
-          if (entries.length === 0) return { objects, complete: false };
-          const pageCount = knownNumber(result?.pageSize);
-          if (pageCount !== null && pageCount > 0 && page >= pageCount) {
-            return { objects, complete: entries.length < PAGE_SIZE };
-          }
+          // A partial or empty page is the end; a full one means ask again.
+          if (entries.length < PAGE_SIZE) return { objects, complete: true };
         }
         return { objects, complete: false };
       }

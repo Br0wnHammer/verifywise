@@ -43,7 +43,7 @@ import {
   scheduleMcpGatewayCleanup,
   scheduleFileExpirySweep,
   scheduleJiraAssetsScheduledSyncCheck,
-  enqueueJiraAssetsManualSync,
+  enqueueJiraAssetsSyncRun,
 } from "../automationProducer";
 
 const mockAdd = automationQueue.add as jest.MockedFunction<typeof automationQueue.add>;
@@ -213,13 +213,18 @@ describe("automationProducer", () => {
     });
   });
 
-  describe("enqueueJiraAssetsManualSync", () => {
-    it("queues one attempt carrying only ids", async () => {
-      await enqueueJiraAssetsManualSync({ organizationId: 5, historyId: 77, triggeredBy: 8 });
+  describe("enqueueJiraAssetsSyncRun", () => {
+    it("queues one attempt carrying only ids and the sync type", async () => {
+      await enqueueJiraAssetsSyncRun({
+        organizationId: 5,
+        historyId: 77,
+        triggeredBy: null,
+        syncType: "scheduled",
+      });
 
       expect(mockAdd).toHaveBeenCalledWith(
-        "jira_assets_manual_sync",
-        { organizationId: 5, historyId: 77, triggeredBy: 8 },
+        "jira_assets_sync_run",
+        { organizationId: 5, historyId: 77, triggeredBy: null, syncType: "scheduled" },
         { attempts: 1, removeOnComplete: true, removeOnFail: false },
       );
     });

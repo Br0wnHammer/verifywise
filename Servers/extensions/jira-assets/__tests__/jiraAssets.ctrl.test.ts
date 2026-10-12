@@ -202,12 +202,15 @@ describe("GET /sync/status", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it("rejects a malformed historyId", async () => {
-    const res = mockRes();
+  it.each(["abc", "12abc", "1.5", "0", "-3", ""])(
+    "rejects a malformed historyId (%p)",
+    async (historyId) => {
+      const res = mockRes();
 
-    await getSyncStatusCtrl({ ...req, query: { historyId: "abc" } }, res);
+      await getSyncStatusCtrl({ ...req, query: { historyId } }, res);
 
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(getSyncStatus).not.toHaveBeenCalled();
-  });
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(getSyncStatus).not.toHaveBeenCalled();
+    },
+  );
 });

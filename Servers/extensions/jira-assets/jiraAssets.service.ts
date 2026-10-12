@@ -9,7 +9,7 @@ import {
 } from "./jira.client";
 import { transformAttributes } from "./jira.constants";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
-import { enqueueJiraAssetsManualSync } from "../../services/automations/automationProducer";
+import { enqueueJiraAssetsSyncRun } from "../../services/automations/automationProducer";
 import { SQL_NOW_UTC, sqlWithinLastMinutes } from "../scheduledSync.utils";
 
 const fileName = "jiraAssets.service.ts";
@@ -859,11 +859,35 @@ export async function importObjects(
 // Sync
 // ---------------------------------------------------------------------------
 
+/** Message recorded when a queued run is picked up after its row went stale. */
+export const WAITED_TOO_LONG_MESSAGE = "The sync waited too long to start";
+
 /**
- * Start a manual sync for the "Sync now" button: check the config, claim the
- * run, and hand it to the automation worker (`jira_assets_manual_sync`). The
- * HTTP request returns at once (202), so a long sync never runs into the
- * browser's request timeout; the panel polls GET /sync/status.
+ * Claim a run and queue it for the worker (`jira_assets_sync_run`). The claim
+ * comes first, so two callers — a double click, or two overlapping scheduler
+ * ticks — can never queue two runs for one org: the second claim throws
+ * JiraSyncInProgressError. If queueing fails, the claimed row is closed as
+ * failed.
+ */
+async function claimAndEnqueue(
+  organizationId: number,
+  syncType: "manual" | "scheduled",
+  triggeredBy: number | null,
+): Promise<number> {
+  const historyId = await claimSyncRun(organizationId, syncType, triggeredBy);
+  try {
+    await enqueueJiraAssetsSyncRun({ organizationId, historyId, triggeredBy, syncType });
+  } catch (err) {
+    await finalizeFailure(historyId, organizationId, err);
+    throw err;
+  }
+  return historyId;
+}
+
+/**
+ * Start a manual sync for the "Sync now" button: check the config, then claim
+ * and queue it. The HTTP request returns at once (202), so a long sync never
+ * runs into the browser's request timeout; the panel polls GET /sync/status.
  */
 export async function startManualSync(
   organizationId: number,
@@ -874,24 +898,33 @@ export async function startManualSync(
   if (!config.selected_object_type_id) {
     throw new JiraConfigValidationError("Select an object type before syncing");
   }
-  const historyId = await claimSyncRun(organizationId, "manual", userId);
-  try {
-    await enqueueJiraAssetsManualSync({ organizationId, historyId, triggeredBy: userId });
-  } catch (err) {
-    await finalizeFailure(historyId, organizationId, err);
-    throw err;
-  }
-  return { historyId };
+  return { historyId: await claimAndEnqueue(organizationId, "manual", userId) };
 }
 
-/** Claim and run a sync in-process (the scheduler's path). */
-export async function syncObjects(
-  organizationId: number,
-  triggeredBy: number | null,
-  syncType: "manual" | "scheduled",
-): Promise<JiraSyncResult> {
-  const historyId = await claimSyncRun(organizationId, syncType, triggeredBy);
-  return runClaimedSync(organizationId, historyId, triggeredBy, syncType);
+/**
+ * Queue a scheduled (refresh-only) sync for one org. Used by the 5-minute
+ * check, which has already decided in SQL that the org is due; each org then
+ * runs as its own job.
+ */
+export async function startScheduledSync(organizationId: number): Promise<{ historyId: number }> {
+  return { historyId: await claimAndEnqueue(organizationId, "scheduled", null) };
+}
+
+/**
+ * On pickup, revive the run's heartbeat — but only if the row is still
+ * `started` and still live. A row that went stale while queued is not revived:
+ * false means the caller must not run it.
+ */
+async function reviveIfLive(historyId: number, organizationId: number): Promise<boolean> {
+  const [rows] = (await sequelize.query(
+    `UPDATE jira_assets_sync_history h
+        SET heartbeat_at = ${SQL_NOW_UTC}
+      WHERE h.id = :id AND h.organization_id = :organizationId
+        AND h.status = 'started' AND ${SQL_RUN_IS_LIVE}
+      RETURNING h.id;`,
+    { replacements: { id: historyId, organizationId } },
+  )) as unknown as [Array<{ id: number }>, unknown];
+  return !!rows && rows.length > 0;
 }
 
 /**
@@ -908,10 +941,13 @@ export async function syncObjects(
  *   type, or if any link's type is unknown. If Jira returns no objects while
  *   links exist, the run fails without changes.
  *
- * Every failure (missing config, token decrypt, client construction, Jira and
- * network errors, the fetch deadline) is recorded on the history row and the
- * config by finalizeFailure. If another claim closed this run as abandoned,
- * the run stops at the next heartbeat and writes nothing more.
+ * This function owns finalization of its row. Every failure (missing config,
+ * token decrypt, client construction, Jira and network errors, the fetch
+ * deadline) is recorded on the history row and the config by
+ * finalizeFailure, and a failed result is returned — it does not throw for
+ * them. A row that went stale while queued is closed as "The sync waited too
+ * long to start" and not run. If another claim closes the run while it runs,
+ * it stops at the next heartbeat and writes nothing more.
  */
 export async function runClaimedSync(
   organizationId: number,
@@ -922,8 +958,16 @@ export async function runClaimedSync(
   const refreshOnly = syncType === "scheduled";
 
   try {
-    // Also confirms this run still owns its row (it may have waited in the queue).
-    await touchHeartbeat(historyId, organizationId);
+    // The run may have waited in the queue. Only a row that is still live is
+    // revived; a stale one is closed (if nobody closed it yet) and not run.
+    if (!(await reviveIfLive(historyId, organizationId))) {
+      const message = await finalizeFailure(
+        historyId,
+        organizationId,
+        new Error(WAITED_TOO_LONG_MESSAGE),
+      );
+      return failedResult(`failed: ${message}`);
+    }
     const config = await loadFullConfig(organizationId);
     if (!config) throw new JiraNotConfiguredError();
     const objectTypeId = config.selected_object_type_id;
@@ -1044,12 +1088,25 @@ export async function runClaimedSync(
         missingIds,
         refreshOnly ? "automatic sync never removes use cases" : (deletesSkippedReason as string),
       );
-      logStructured("processing", `Jira Assets run ${historyId}: ${note}`, "syncObjects", fileName);
+      logStructured(
+        "processing",
+        `Jira Assets run ${historyId}: ${note}`,
+        "runClaimedSync",
+        fileName,
+      );
     } else if (missingIds.length > 0) {
       // Manual sync with a trustworthy fetch. Confirm we still own the run
-      // before the only destructive step.
+      // before the only destructive step, and keep confirming every
+      // HEARTBEAT_EVERY_OBJECTS deletes: a superseded heartbeat throws and
+      // stops the deletes at once.
       await touchHeartbeat(historyId, organizationId);
+      let deletesSinceHeartbeat = 0;
       for (const [jiraObjectId, record] of existingMap) {
+        if (deletesSinceHeartbeat === HEARTBEAT_EVERY_OBJECTS) {
+          await touchHeartbeat(historyId, organizationId);
+          deletesSinceHeartbeat = 0;
+        }
+        deletesSinceHeartbeat++;
         if (record.project_id !== null) {
           // The jira_assets_use_cases row cascades via FK.
           const [deleted] = (await sequelize.query(
@@ -1107,40 +1164,47 @@ export async function runClaimedSync(
 }
 
 /**
- * Worker entry for `jira_assets_manual_sync`. Without a valid organizationId
- * and historyId there is no row it may safely touch, so it fails closed
- * (tenant-isolation runbook §4.3); that claimed row then goes stale and is
- * closed by the next claim. An invalid triggeredBy only loses attribution, so
- * it falls back to null. If the run itself throws unexpectedly, the claimed
- * row is closed as failed before the error is rethrown.
+ * Worker entry for `jira_assets_sync_run` (manual "Sync now" and scheduled
+ * runs, one job per org). Without a valid organizationId and historyId there
+ * is no row it may safely touch, so it fails closed (tenant-isolation runbook
+ * §4.3); that claimed row then goes stale and is closed by the next claim. An
+ * unknown syncType also fails closed — guessing could turn a refresh-only run
+ * into one that deletes — but the row is known, so it is closed as failed
+ * first. An invalid triggeredBy only loses attribution and falls back to
+ * null. Everything after that is finalized by runClaimedSync.
  */
-export async function runQueuedManualSync(data: unknown): Promise<JiraSyncResult> {
-  const payload = data as { organizationId?: unknown; historyId?: unknown; triggeredBy?: unknown };
+export async function runQueuedSync(data: unknown): Promise<JiraSyncResult> {
+  const payload = data as {
+    organizationId?: unknown;
+    historyId?: unknown;
+    triggeredBy?: unknown;
+    syncType?: unknown;
+  };
   const organizationId = Number(payload?.organizationId);
   const historyId = Number(payload?.historyId);
   if (!Number.isInteger(organizationId) || organizationId <= 0) {
-    throw new Error("jira_assets_manual_sync: organizationId missing or invalid");
+    throw new Error("jira_assets_sync_run: organizationId missing or invalid");
   }
   if (!Number.isInteger(historyId) || historyId <= 0) {
-    throw new Error("jira_assets_manual_sync: historyId missing or invalid");
+    throw new Error("jira_assets_sync_run: historyId missing or invalid");
+  }
+  const syncType = payload?.syncType;
+  if (syncType !== "manual" && syncType !== "scheduled") {
+    await finalizeFailure(
+      historyId,
+      organizationId,
+      new Error("The sync job had an unknown sync type and did not run"),
+    );
+    throw new Error("jira_assets_sync_run: syncType missing or invalid");
   }
   let triggeredBy: number | null = Number(payload?.triggeredBy);
   if (!Number.isInteger(triggeredBy) || triggeredBy <= 0) {
     if (payload?.triggeredBy !== null && payload?.triggeredBy !== undefined) {
-      logger.warn(`jira_assets_manual_sync run ${historyId}: invalid triggeredBy, using none`);
+      logger.warn(`jira_assets_sync_run run ${historyId}: invalid triggeredBy, using none`);
     }
     triggeredBy = null;
   }
-  try {
-    return await runClaimedSync(organizationId, historyId, triggeredBy, "manual");
-  } catch (err) {
-    await finalizeFailure(
-      historyId,
-      organizationId,
-      new Error(`Manual sync could not run: ${errorMessage(err)}`),
-    );
-    throw err;
-  }
+  return runClaimedSync(organizationId, historyId, triggeredBy, syncType);
 }
 
 // ---------------------------------------------------------------------------

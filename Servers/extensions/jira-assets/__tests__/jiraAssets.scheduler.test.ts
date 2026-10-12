@@ -6,7 +6,7 @@ import {
 } from "../jiraAssets.scheduler";
 import { SQL_NOW_UTC, sqlIntervalElapsed, sqlWithinLastMinutes } from "../../scheduledSync.utils";
 import { sequelize } from "../../../database/db";
-import { JiraSyncInProgressError, syncObjects } from "../jiraAssets.service";
+import { JiraSyncInProgressError, startScheduledSync } from "../jiraAssets.service";
 
 jest.mock("../../../database/db", () => ({
   sequelize: { query: jest.fn() },
@@ -19,14 +19,14 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
 jest.mock("../jiraAssets.service", () => {
   class MockInProgress extends Error {}
   return {
-    syncObjects: jest.fn(),
+    startScheduledSync: jest.fn(),
     JiraSyncInProgressError: MockInProgress,
     SQL_RUN_IS_LIVE: "(LIVE_CHECK)",
   };
 });
 
 const mockQuery = sequelize.query as jest.Mock;
-const mockSync = syncObjects as jest.Mock;
+const mockStart = startScheduledSync as jest.Mock;
 
 const candidate = (overrides: Partial<JiraScheduledSyncState> = {}): JiraScheduledSyncState => ({
   organization_id: 1,
@@ -37,23 +37,10 @@ const candidate = (overrides: Partial<JiraScheduledSyncState> = {}): JiraSchedul
   ...overrides,
 });
 
-const okResult = {
-  success: true,
-  objectsFetched: 3,
-  objectsCreated: 0,
-  objectsUpdated: 3,
-  objectsDeleted: 0,
-  linksRemoved: 0,
-  objectsMissingInJira: 0,
-  missingInJiraIds: [],
-  syncedAt: "2026-10-12T12:00:00.000Z",
-  status: "success",
-};
-
 beforeEach(() => {
   jest.clearAllMocks();
   mockQuery.mockReset();
-  mockSync.mockReset();
+  mockStart.mockReset();
 });
 
 describe("scheduledSync SQL building blocks", () => {
@@ -120,51 +107,50 @@ describe("getScheduledSyncCandidates", () => {
 });
 
 describe("runJiraAssetsScheduledSyncAllOrgs", () => {
-  it("syncs only due candidates, as a scheduled run with no user", async () => {
+  it("queues one job per due org instead of syncing in-process", async () => {
     mockQuery.mockResolvedValueOnce([
       candidate({ organization_id: 1 }),
       candidate({ organization_id: 2, is_due: false }),
       candidate({ organization_id: 3, has_use_cases: false }),
       candidate({ organization_id: 4, running_is_live: true }),
+      candidate({ organization_id: 5 }),
     ]);
-    mockSync.mockResolvedValue(okResult);
+    mockStart.mockResolvedValue({ historyId: 9 });
 
     const summary = await runJiraAssetsScheduledSyncAllOrgs();
 
     expect(mockQuery).toHaveBeenCalledTimes(1);
-    expect(mockSync).toHaveBeenCalledTimes(1);
-    expect(mockSync).toHaveBeenCalledWith(1, null, "scheduled");
-    expect(summary).toEqual({ candidates: 4, synced: 1, failed: 0, skippedRunning: 1 });
+    expect(mockStart.mock.calls).toEqual([[1], [5]]);
+    expect(summary).toEqual({ candidates: 5, queued: 2, failed: 0, skippedRunning: 1 });
   });
 
-  it("skips an org whose sync started meanwhile and carries on", async () => {
+  it("skips an org another tick already claimed, and carries on", async () => {
     mockQuery.mockResolvedValueOnce([
       candidate({ organization_id: 1 }),
       candidate({ organization_id: 2 }),
     ]);
-    mockSync.mockRejectedValueOnce(new JiraSyncInProgressError()).mockResolvedValueOnce(okResult);
+    mockStart
+      .mockRejectedValueOnce(new JiraSyncInProgressError())
+      .mockResolvedValueOnce({ historyId: 9 });
 
     const summary = await runJiraAssetsScheduledSyncAllOrgs();
 
-    expect(mockSync).toHaveBeenCalledTimes(2);
-    expect(summary).toEqual({ candidates: 2, synced: 1, failed: 0, skippedRunning: 1 });
+    expect(mockStart).toHaveBeenCalledTimes(2);
+    expect(summary).toEqual({ candidates: 2, queued: 1, failed: 0, skippedRunning: 1 });
   });
 
-  it("does not let one org's failure stop the others", async () => {
+  it("does not let one org's queueing failure stop the others", async () => {
     mockQuery.mockResolvedValueOnce([
       candidate({ organization_id: 1 }),
       candidate({ organization_id: 2 }),
-      candidate({ organization_id: 3 }),
     ]);
-    mockSync
-      .mockRejectedValueOnce(new Error("unexpected"))
-      .mockResolvedValueOnce({ ...okResult, success: false, status: "failed: 401" })
-      .mockResolvedValueOnce(okResult);
+    mockStart
+      .mockRejectedValueOnce(new Error("redis down"))
+      .mockResolvedValueOnce({ historyId: 9 });
 
     const summary = await runJiraAssetsScheduledSyncAllOrgs();
 
-    expect(mockSync).toHaveBeenCalledTimes(3);
-    expect(mockSync).toHaveBeenLastCalledWith(3, null, "scheduled");
-    expect(summary).toEqual({ candidates: 3, synced: 1, failed: 2, skippedRunning: 0 });
+    expect(mockStart).toHaveBeenLastCalledWith(2);
+    expect(summary).toEqual({ candidates: 2, queued: 1, failed: 1, skippedRunning: 0 });
   });
 });
