@@ -730,7 +730,7 @@ describe("removeMissingUseCases", () => {
     expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
   });
 
-  it("withdraws a pending approval; a link whose project is gone is removed as stale", async () => {
+  it("withdraws a pending approval and counts only projects actually deleted", async () => {
     fakeDb({
       stillFlagged: [
         { id: 11, project_id: 111 },
@@ -744,11 +744,9 @@ describe("removeMissingUseCases", () => {
 
     const result = await removeMissingUseCases(5, 8, [11, 12]);
 
-    // 112's project was already gone: its stale link row is removed too.
-    expect(result).toEqual({ removed: 2, skipped: 0 });
-    expect(sqlCalls("DELETE FROM jira_assets_use_cases")[0][1].replacements).toMatchObject({
-      linkOnlyIds: [12],
-    });
+    // 112 was not deleted (not this org's project): skipped, its link untouched.
+    expect(result).toEqual({ removed: 1, skipped: 1 });
+    expect(sqlCalls("DELETE FROM jira_assets_use_cases")).toHaveLength(0);
     expect(mockPendingApproval).toHaveBeenCalledWith(111, "use_case", 5, FAKE_TX);
     expect(mockWithdrawApproval).toHaveBeenCalledTimes(1);
     expect(mockWithdrawApproval).toHaveBeenCalledWith(900, 5, FAKE_TX);
@@ -833,18 +831,23 @@ describe("deleteUseCaseByProjectId", () => {
     expect(mockDeleteProject).not.toHaveBeenCalled();
   });
 
-  it("removes a stale link whose project is already gone", async () => {
-    fakeDb({ stillFlagged: [{ id: 11, project_id: 111 }] });
+  it("is 404 with the link untouched when the link points at another org's project", async () => {
+    // The link row is this org's, but deleteProjectByIdQuery (scoped to this
+    // org) finds no such project.
+    fakeDb({ stillFlagged: [{ id: 11, project_id: 999 }] });
     mockDeleteProject.mockResolvedValue(false);
 
-    await deleteUseCaseByProjectId(111, 5, 8);
-
-    expect(mockRecordDeletion).not.toHaveBeenCalled();
-    expect(sqlCalls("DELETE FROM jira_assets_use_cases")[0][1].replacements).toMatchObject({
-      linkOnlyIds: [11],
+    await expect(deleteUseCaseByProjectId(999, 5, 8)).rejects.toBeInstanceOf(
+      JiraUseCaseNotFoundError,
+    );
+    expect(mockDeleteProject).toHaveBeenCalledWith(999, 5, FAKE_TX, {
+      enqueueAutomationAfterCommit: true,
     });
-    const [, completed] = sqlCalls("SET status = 'completed'")[0];
-    expect(completed.replacements).toMatchObject({ objectsDeleted: 1 });
+    expect(sqlCalls("DELETE FROM jira_assets_use_cases")).toHaveLength(0);
+    expect(mockRecordDeletion).not.toHaveBeenCalled();
+    expect(sqlCalls("SET status = 'completed'")).toHaveLength(0);
+    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
+    expect(sqlCalls("DELETE FROM jira_assets_sync_history")).toHaveLength(1);
   });
 
   it("still closes the run as failed on an unexpected error", async () => {

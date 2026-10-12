@@ -1091,12 +1091,12 @@ async function deleteUseCasesUnderClaim(
           linkOnlyIds.push(row.id);
         } else if (await deleteLinkedProject(row.project_id, organizationId, userId, transaction)) {
           // No savepoint per row: a savepoint's afterCommit hooks fire when it
-          // is released, not when this transaction commits.
+          // is released, not when this transaction commits. The link rows are
+          // locked FOR UPDATE and cascade with their project (ON DELETE
+          // CASCADE), so a project cannot vanish under a locked link. A false
+          // here means the linked project is not this org's: not removed
+          // (skipped, or 404 for a single delete), and the link is untouched.
           removed++;
-        } else {
-          // The project is gone but its link row is still here: the link is
-          // stale, so it goes too (and counts as removed).
-          linkOnlyIds.push(row.id);
         }
       }
       if (linkOnlyIds.length > 0) {
@@ -1569,9 +1569,9 @@ export async function getUseCaseByProjectId(
  * the same claimed flow as removals (deleteUseCasesUnderClaim). Any other
  * project, or one already gone, is JiraUseCaseNotFoundError (404): nothing is
  * deleted and no run is recorded: a project that is not linked is rejected
- * before claiming, and one that vanished in the meantime releases the claimed
- * history row. A link whose project is already gone is stale and is removed.
- * 409 while a sync, import or removal runs.
+ * before claiming; one whose link vanished in the meantime, or whose linked
+ * project is not this organization's, rolls back and releases the claimed
+ * history row. 409 while a sync, import or removal runs.
  */
 export async function deleteUseCaseByProjectId(
   projectId: number,
