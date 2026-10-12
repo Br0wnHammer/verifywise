@@ -2,6 +2,7 @@ jest.mock("../jiraAssets.service", () => {
   class JiraConfigValidationError extends Error {}
   class JiraNotConfiguredError extends Error {}
   class JiraSyncInProgressError extends Error {}
+  class RunSupersededError extends Error {}
   class JiraImportInterruptedError extends Error {
     constructor(
       public imported: number,
@@ -11,6 +12,7 @@ jest.mock("../jiraAssets.service", () => {
     }
   }
   return {
+    RunSupersededError,
     JiraImportInterruptedError,
     getSyncStatus: jest.fn(),
     JiraConfigValidationError,
@@ -63,6 +65,7 @@ import {
   JiraSyncInProgressError,
   loadFullConfig,
   removeMissingUseCases,
+  RunSupersededError,
   startManualSync,
   updateSelection,
 } from "../jiraAssets.service";
@@ -260,6 +263,19 @@ describe("POST /use-cases/remove-missing", () => {
     expect(removeMissingUseCases).toHaveBeenCalledWith(5, 8, [11, 12, 13]);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ message: "OK", data: { removed: 2, skipped: 1 } });
+  });
+
+  it("returns 409 'interrupted, nothing removed' when the removal lost its claim", async () => {
+    (removeMissingUseCases as jest.Mock).mockRejectedValueOnce(new RunSupersededError("closed"));
+    const res = mockRes();
+
+    await removeMissingCtrl({ ...req, body: { use_case_ids: [11] } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Conflict",
+      data: "The removal was interrupted; nothing was removed. Try again.",
+    });
   });
 
   it("returns 409 while a sync is running and 400 for a bad list", async () => {

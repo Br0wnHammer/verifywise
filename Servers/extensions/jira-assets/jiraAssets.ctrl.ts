@@ -25,6 +25,7 @@ import {
   listUseCases,
   loadFullConfig,
   removeMissingUseCases,
+  RunSupersededError,
   saveConfig,
   startManualSync,
   updateSelection,
@@ -305,6 +306,9 @@ export async function getUseCaseCtrl(req: Request, res: Response): Promise<any> 
   }
 }
 
+export const REMOVAL_INTERRUPTED_MESSAGE =
+  "The removal was interrupted; nothing was removed. Try again.";
+
 /**
  * POST /use-cases/remove-missing — delete the use cases the admin chose from
  * the "Missing in Jira" list (`{ use_case_ids: number[] }`). Only ids still
@@ -316,6 +320,10 @@ export async function removeMissingCtrl(req: Request, res: Response): Promise<an
     const result = await removeMissingUseCases(orgId(req), uid(req), req.body?.use_case_ids);
     return res.status(200).json(STATUS_CODE[200](result));
   } catch (err) {
+    // The removal lost its claim before finishing; its transaction rolled back.
+    if (err instanceof RunSupersededError) {
+      return res.status(409).json(STATUS_CODE[409](REMOVAL_INTERRUPTED_MESSAGE));
+    }
     return sendError(req, res, err, "removeMissing");
   }
 }

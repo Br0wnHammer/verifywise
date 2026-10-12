@@ -33,6 +33,8 @@ const SELECTION_SAVE_FAILED = "Could not save the schema and object type. Try ag
 const SYNC_STALLED_MESSAGE = "The sync stopped responding. Try again.";
 const SYNC_NOT_STARTED_MESSAGE = "The sync did not start. Try again.";
 const MISSING_REMOVED_MESSAGE = "Missing use cases removed.";
+/** 409 body when a removal lost its claim before finishing (nothing was removed). */
+const REMOVAL_INTERRUPTED_MESSAGE = "The removal was interrupted; nothing was removed. Try again.";
 const MISSING_EXPLAINER =
   "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.";
 /** error_message the server writes when it closes a run that stopped heart-beating. */
@@ -466,25 +468,61 @@ export const JiraAssetsConfiguration: React.FC = () => {
   const missingUseCases = importedUseCases.filter((uc) => !!uc.missing_in_jira_since);
   const [isRemoveMissingOpen, setIsRemoveMissingOpen] = useState(false);
   const [isRemovingMissing, setIsRemovingMissing] = useState(false);
+  // Nothing is selected by default; the Admin ticks what should go.
+  const [selectedMissingIds, setSelectedMissingIds] = useState<Set<number>>(new Set());
+  const selectedMissing = missingUseCases.filter((uc) => selectedMissingIds.has(uc.id));
+
+  // Drop selections for use cases that are no longer in the missing list
+  // (removed, or found in Jira again by a sync).
+  useEffect(() => {
+    setSelectedMissingIds((prev) => {
+      const stillMissing = new Set(
+        importedUseCases.filter((uc) => !!uc.missing_in_jira_since).map((uc) => uc.id),
+      );
+      const next = new Set([...prev].filter((id) => stillMissing.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [importedUseCases]);
+
+  const toggleMissingSelection = (id: number) => {
+    setSelectedMissingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllMissing = () => {
+    setSelectedMissingIds((prev) =>
+      prev.size === missingUseCases.length
+        ? new Set()
+        : new Set(missingUseCases.map((uc) => uc.id)),
+    );
+  };
 
   const handleRemoveMissing = async () => {
     setIsRemovingMissing(true);
     setSyncMessage(null);
     try {
       await pluginApiCall("POST", "/use-cases/remove-missing", {
-        // Exactly the list the Admin saw; the server removes only those still flagged.
-        use_case_ids: missingUseCases.map((uc) => uc.id),
+        // Exactly what the Admin selected; the server removes only those still flagged.
+        use_case_ids: selectedMissing.map((uc) => uc.id),
       });
+      setSelectedMissingIds(new Set());
       setSyncMessage({ type: "success", text: MISSING_REMOVED_MESSAGE });
       setIsRemoveMissingOpen(false);
       await loadImportedUseCases();
     } catch (error: any) {
+      const reason = getApiErrorReason(error);
       setSyncMessage({
         type: "error",
         text:
           error?.status === 409
-            ? SYNC_RUNNING_MESSAGE
-            : getApiErrorReason(error) || error?.message || "Failed to remove use cases",
+            ? reason === REMOVAL_INTERRUPTED_MESSAGE
+              ? REMOVAL_INTERRUPTED_MESSAGE
+              : SYNC_RUNNING_MESSAGE
+            : reason || error?.message || "Failed to remove use cases",
       });
       setIsRemoveMissingOpen(false);
     } finally {
@@ -1246,7 +1284,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
                 <Button
                   variant="outlined"
                   onClick={() => setIsRemoveMissingOpen(true)}
-                  disabled={!canManageSync || isRemovingMissing}
+                  disabled={!canManageSync || isRemovingMissing || selectedMissing.length === 0}
                   sx={{
                     "borderColor": "#c62828",
                     "color": "#c62828",
@@ -1259,7 +1297,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
                     "&:disabled": { borderColor: "#d0d5dd", color: "#98a2b3" },
                   }}
                 >
-                  Remove missing use cases
+                  <span>Remove selected use cases</span>&nbsp;
+                  <span>({selectedMissing.length})</span>
                 </Button>
               </Box>
               <Typography
@@ -1277,6 +1316,22 @@ export const JiraAssetsConfiguration: React.FC = () => {
                 <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow>
+                      <TableCell padding="checkbox" sx={{ backgroundColor: "#f9fafb" }}>
+                        <Checkbox
+                          size="small"
+                          checked={
+                            missingUseCases.length > 0 &&
+                            selectedMissing.length === missingUseCases.length
+                          }
+                          indeterminate={
+                            selectedMissing.length > 0 &&
+                            selectedMissing.length < missingUseCases.length
+                          }
+                          onChange={toggleAllMissing}
+                          disabled={!canManageSync}
+                          inputProps={{ "aria-label": "Select all missing use cases" }}
+                        />
+                      </TableCell>
                       <TableCell
                         sx={{ fontWeight: 600, fontSize: "12px", backgroundColor: "#f9fafb" }}
                       >
@@ -1298,7 +1353,15 @@ export const JiraAssetsConfiguration: React.FC = () => {
                     {missingUseCases.map((uc) => {
                       const data = typeof uc.data === "string" ? JSON.parse(uc.data) : uc.data;
                       return (
-                        <TableRow key={uc.id}>
+                        <TableRow key={uc.id} selected={selectedMissingIds.has(uc.id)}>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              size="small"
+                              checked={selectedMissingIds.has(uc.id)}
+                              onChange={() => toggleMissingSelection(uc.id)}
+                              disabled={!canManageSync}
+                            />
+                          </TableCell>
                           <TableCell sx={{ fontSize: "13px", fontFamily: "monospace" }}>
                             {data?.objectKey || "-"}
                           </TableCell>
@@ -1320,7 +1383,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
           <StandardModal
             isOpen={isRemoveMissingOpen}
             onClose={() => setIsRemoveMissingOpen(false)}
-            title="Remove missing use cases"
+            title="Remove selected use cases"
             description="These use cases and all their data in VerifyWise will be permanently deleted. This cannot be undone."
             onSubmit={handleRemoveMissing}
             submitButtonText="Remove"
@@ -1329,7 +1392,10 @@ export const JiraAssetsConfiguration: React.FC = () => {
             fitContent
           >
             <Stack spacing={1}>
-              {missingUseCases.map((uc) => {
+              <Typography variant="body2" fontSize={13} fontWeight={600}>
+                <span>Use cases to remove:</span> <span>{selectedMissing.length}</span>
+              </Typography>
+              {selectedMissing.map((uc) => {
                 const data = typeof uc.data === "string" ? JSON.parse(uc.data) : uc.data;
                 return (
                   <Typography key={uc.id} variant="body2" fontSize={13}>

@@ -14476,7 +14476,7 @@ paths:
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
         '409':
-          description: 'A Jira Assets sync or import is running for this organization'
+          description: 'A Jira Assets sync or import is running, or the removal was interrupted (nothing was removed)'
         '500':
           description: 'Internal server error'
       tags:

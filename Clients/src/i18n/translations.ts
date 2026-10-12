@@ -9713,7 +9713,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Sync failed": "Synchronisierung fehlgeschlagen",
     "Missing in Jira": "Fehlt in Jira",
     "Missing since": "Fehlt seit",
-    "Remove missing use cases": "Fehlende Anwendungsfälle entfernen",
     "Failed to remove use cases": "Anwendungsfälle konnten nicht entfernt werden",
     "Missing use cases removed.": "Fehlende Anwendungsfälle wurden entfernt.",
     "The sync did not start. Try again.":
@@ -9722,6 +9721,13 @@ export const translations: Record<string, Record<string, string>> = {
       "Diese Anwendungsfälle und alle zugehörigen Daten in VerifyWise werden dauerhaft gelöscht. Dies kann nicht rückgängig gemacht werden.",
     "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.":
       "Jira liefert diese Objekte nicht mehr. Synchronisierungen behalten ihre Anwendungsfälle; entfernen Sie sie hier, wenn sie wegfallen sollen.",
+    "Remove selected use cases": "Ausgewählte Anwendungsfälle entfernen",
+    "Use cases to remove:": "Zu entfernende Anwendungsfälle:",
+    "Select all missing use cases": "Alle fehlenden Anwendungsfälle auswählen",
+    "The removal was interrupted; nothing was removed. Try again.":
+      "Das Entfernen wurde unterbrochen; es wurde nichts entfernt. Versuchen Sie es erneut.",
+    "Another sync or import was running, so this sync did not start.":
+      "Eine andere Synchronisierung oder ein Import lief bereits, daher wurde diese Synchronisierung nicht gestartet.",
     "A sync is already running. Try again when it finishes.":
       "Es läuft bereits eine Synchronisierung. Versuchen Sie es erneut, wenn sie abgeschlossen ist.",
     "Error Details:": "Fehlerdetails:",
@@ -19831,7 +19837,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Sync failed": "Échec de la synchronisation",
     "Missing in Jira": "Absent de Jira",
     "Missing since": "Absent depuis le",
-    "Remove missing use cases": "Supprimer les cas d'usage absents",
     "Failed to remove use cases": "Impossible de supprimer les cas d'usage",
     "Missing use cases removed.": "Les cas d'usage absents ont été supprimés.",
     "The sync did not start. Try again.": "La synchronisation n'a pas démarré. Réessayez.",
@@ -19839,6 +19844,13 @@ export const translations: Record<string, Record<string, string>> = {
       "Ces cas d'usage et toutes leurs données dans VerifyWise seront définitivement supprimés. Cette action est irréversible.",
     "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.":
       "Jira ne renvoie plus ces objets. Les synchronisations conservent leurs cas d'usage ; supprimez-les ici s'ils doivent disparaître.",
+    "Remove selected use cases": "Supprimer les cas d'usage sélectionnés",
+    "Use cases to remove:": "Cas d'usage à supprimer :",
+    "Select all missing use cases": "Sélectionner tous les cas d'usage absents",
+    "The removal was interrupted; nothing was removed. Try again.":
+      "La suppression a été interrompue ; rien n'a été supprimé. Réessayez.",
+    "Another sync or import was running, so this sync did not start.":
+      "Une autre synchronisation ou importation était en cours, cette synchronisation n'a donc pas démarré.",
     "A sync is already running. Try again when it finishes.":
       "Une synchronisation est déjà en cours. Réessayez une fois qu'elle est terminée.",
     "Error Details:": "Détails de l'erreur :",
@@ -29875,7 +29887,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Sync failed": "Error de sincronización",
     "Missing in Jira": "Falta en Jira",
     "Missing since": "Falta desde",
-    "Remove missing use cases": "Eliminar casos de uso que faltan",
     "Failed to remove use cases": "No se pudieron eliminar los casos de uso",
     "Missing use cases removed.": "Se eliminaron los casos de uso que faltaban.",
     "The sync did not start. Try again.": "La sincronización no se inició. Inténtelo de nuevo.",
@@ -29883,6 +29894,13 @@ export const translations: Record<string, Record<string, string>> = {
       "Estos casos de uso y todos sus datos en VerifyWise se eliminarán de forma permanente. Esta acción no se puede deshacer.",
     "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.":
       "Jira ya no devuelve estos objetos. Las sincronizaciones conservan sus casos de uso; elimínelos aquí si deben desaparecer.",
+    "Remove selected use cases": "Eliminar los casos de uso seleccionados",
+    "Use cases to remove:": "Casos de uso que se eliminarán:",
+    "Select all missing use cases": "Seleccionar todos los casos de uso que faltan",
+    "The removal was interrupted; nothing was removed. Try again.":
+      "La eliminación se interrumpió; no se eliminó nada. Inténtelo de nuevo.",
+    "Another sync or import was running, so this sync did not start.":
+      "Había otra sincronización o importación en curso, por lo que esta sincronización no se inició.",
     "A sync is already running. Try again when it finishes.":
       "Ya hay una sincronización en curso. Inténtelo de nuevo cuando termine.",
     "Error Details:": "Detalles del error:",

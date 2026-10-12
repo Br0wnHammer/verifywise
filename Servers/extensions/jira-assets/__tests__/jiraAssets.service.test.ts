@@ -16,6 +16,7 @@ import {
   saveConfig,
   startManualSync,
   startScheduledSync,
+  SKIPPED_RUN_MESSAGE,
   SQL_RUN_IS_LIVE,
   touchHeartbeat,
   RunSupersededError,
@@ -84,9 +85,10 @@ const jiraObject = (id: string) => ({
   updated: "2026-01-02",
 });
 
-const link = (id: string, projectId: number | null) => ({
+const link = (id: string, projectId: number | null, objectTypeId: string | null = "42") => ({
   jira_object_id: id,
   project_id: projectId,
+  object_type_id: objectTypeId,
 });
 
 interface FakeDb {
@@ -274,11 +276,61 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     expect(result.missingInJiraIds).toEqual(["2", "4"]);
     const [flagSql, flagOptions] = sqlCalls("SET missing_in_jira_since = (NOW()")[0];
     expect(flagSql).toContain("AND missing_in_jira_since IS NULL");
-    expect(flagOptions.replacements).toEqual({ organizationId: 5, missingIds: ["2", "4"] });
+    expect(flagSql).toContain("data->'objectType'->>'id' = :objectTypeId");
+    expect(flagSql).toMatch(/own\.run_token = :runToken\s+AND own\.status = 'started'/);
+    expect(flagOptions.replacements).toEqual({
+      organizationId: 5,
+      missingIds: ["2", "4"],
+      objectTypeId: "42",
+      historyId: 77,
+      runToken: "tok-77",
+    });
     expect(sqlCalls("DELETE FROM")).toHaveLength(0);
     const [, completed] = sqlCalls("SET status = 'completed'")[0];
     expect(completed.replacements).toMatchObject({ objectsDeleted: 0 });
     expect(completed.replacements.note).toContain("flagged as missing (nothing was removed)");
+  });
+
+  it("never flags links from another object type (type switched A → B)", async () => {
+    // Links imported from type "7" (A); the config now walks type "42" (B).
+    fakeDb({ existing: [link("a1", 201, "7"), link("a2", 202, "7"), link("b1", 101)] });
+    clientReturning([jiraObject("b1")], true);
+
+    const result = await runClaimedSync(5, RUN, 8, "manual");
+
+    expect(result.success).toBe(true);
+    expect(result.objectsMissingInJira).toBe(0);
+    expect(sqlCalls("SET missing_in_jira_since = (NOW()")).toHaveLength(0);
+    const [, completed] = sqlCalls("SET status = 'completed'")[0];
+    expect(completed.replacements.note).toContain(
+      "2 use case(s) from another or an unknown object type were left as they were",
+    );
+  });
+
+  it("flags only same-type links when types are mixed; unknown types are left alone", async () => {
+    fakeDb({
+      existing: [link("1", 101), link("2", 102), link("a1", 201, "7"), link("u1", 301, null)],
+      flagged: [{ id: 2 }],
+    });
+    clientReturning([jiraObject("1")], true);
+
+    const result = await runClaimedSync(5, RUN, 8, "manual");
+
+    expect(result.missingInJiraIds).toEqual(["2"]);
+    expect(sqlCalls("SET missing_in_jira_since = (NOW()")[0][1].replacements.missingIds).toEqual([
+      "2",
+    ]);
+  });
+
+  it("clears a seen object's flag only while the run owns its claim", async () => {
+    fakeDb({ existing: [link("1", 101)] });
+    clientReturning([jiraObject("1")], true);
+
+    await runClaimedSync(5, RUN, 8, "manual");
+
+    const [clearSql, clear] = sqlCalls("missing_in_jira_since = NULL")[0];
+    expect(clearSql).toContain("own.run_token = :runToken");
+    expect(clear.replacements).toMatchObject({ historyId: 77, runToken: "tok-77" });
   });
 
   it("sets no flags after an incomplete walk, but still clears flags for objects it saw", async () => {
@@ -460,7 +512,7 @@ describe("runQueuedSync (worker claims at pickup)", () => {
     expect(insert.replacements).toMatchObject({ syncType: "manual", triggeredBy: 8 });
   });
 
-  it("skips quietly when another run is live", async () => {
+  it("skips a scheduled run quietly when another run is live", async () => {
     fakeDb({ running: [{ id: 3 }] });
     const getAllObjects = clientReturning([jiraObject("1")]);
 
@@ -468,6 +520,27 @@ describe("runQueuedSync (worker claims at pickup)", () => {
       runQueuedSync({ organizationId: 5, triggeredBy: null, syncType: "scheduled" }),
     ).resolves.toBeNull();
     expect(getAllObjects).not.toHaveBeenCalled();
+    expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
+  });
+
+  it("records a skipped manual run so the panel can say why it did not start", async () => {
+    fakeDb({ running: [{ id: 3 }] });
+
+    await expect(
+      runQueuedSync({ organizationId: 5, triggeredBy: 8, syncType: "manual" }),
+    ).resolves.toBeNull();
+
+    const inserts = sqlCalls("INSERT INTO jira_assets_sync_history");
+    expect(inserts).toHaveLength(1);
+    const [sql, options] = inserts[0];
+    expect(sql).toContain("'manual', 'failed'");
+    expect(sql).not.toContain("run_token");
+    expect(options.replacements).toEqual({
+      organizationId: 5,
+      triggeredBy: 8,
+      message: SKIPPED_RUN_MESSAGE,
+    });
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 
   it("falls back to no user when triggeredBy is invalid", async () => {

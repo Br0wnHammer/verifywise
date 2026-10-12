@@ -96,6 +96,8 @@ describe("getScheduledSyncCandidates", () => {
     expect(sql).toContain("u.organization_id = c.organization_id");
     // Imports do not reset the refresh interval.
     expect(sql).toContain("h.sync_type IN ('manual', 'scheduled')");
+    // A manual sync the worker skipped (no token) does not delay the schedule.
+    expect(sql).toContain("AND h.run_token IS NOT NULL");
     expect(sql).toContain("(LIVE_CHECK)) AS running_is_live");
     expect(sql).toMatch(/CROSS JOIN LATERAL[\s\S]*GREATEST\(\s*c\.last_sync_at/);
     expect(sql).toContain(

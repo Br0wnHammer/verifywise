@@ -82,7 +82,10 @@ export async function getScheduledSyncCandidates(): Promise<JiraScheduledSyncSta
                   (SELECT MAX(h.started_at)
                      FROM jira_assets_sync_history h
                     WHERE h.organization_id = c.organization_id
-                      AND h.sync_type IN ('manual', 'scheduled'))) AS last_run
+                      AND h.sync_type IN ('manual', 'scheduled')
+                      -- Claimed runs only: a manual sync the worker skipped
+                      -- (no token) must not delay the schedule.
+                      AND h.run_token IS NOT NULL)) AS last_run
        ) lr
        JOIN extensions e ON e.key = 'jira-assets'
        JOIN extension_enablements ee

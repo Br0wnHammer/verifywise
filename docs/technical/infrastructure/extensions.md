@@ -341,19 +341,30 @@ the job under a job id that is fixed per org (`jira-assets-sync-<orgId>`), with
 one attempt and `removeOnComplete` / `removeOnFail`.
 
 - If a job for the org is already waiting or running, nothing is added
-  (`queued: false`). A finished job left behind is removed first.
+  (`queued: false`). A finished job left behind is removed first. If that
+  removal fails, the job is looked up again:
+  - gone: the add goes ahead
+  - now waiting: `queued: false`
+  - still there and finished: a genuine queue failure (503)
 - So overlapping scheduler ticks, or a tick plus a "Sync now", never queue two
   jobs for one org.
 - Every queue call made for an HTTP request has a 5-second limit
   (`QUEUE_CALL_TIMEOUT_MS`). Past it, or on any queue error, it throws
   `BackgroundJobsUnavailableError` and the route returns 503 "Background jobs
-  are unavailable".
+  are unavailable". Known edge: if the 5-second limit fires after Redis has
+  already accepted the add, the caller gets 503 although the job is queued.
+  The next attempt finds it waiting (409), and it runs normally.
 
 The worker entry `runQueuedSync` validates the payload. It fails closed
 without a valid `organizationId` or `syncType`, and falls back to no user for
 an invalid `triggeredBy`. Then it claims the run. Time spent waiting in the
 queue therefore never counts against the run's heartbeat. If another run is
-live, the job is skipped. `runClaimedSync` then owns finalization of the row:
+live, the job is skipped. For a manual sync, someone is waiting on the
+result, so a closed `failed` history row (no token) is recorded with "Another
+sync or import was running, so this sync did not start." The panel's poll
+reports it. Scheduled skips are not recorded. The scheduler's last-run lookup
+only counts claimed runs (`run_token IS NOT NULL`), so a skipped row never
+delays the schedule. `runClaimedSync` then owns finalization of the row:
 it records failures and returns a failed result instead of throwing.
 
 **Candidates and timing are decided in SQL.** `getScheduledSyncCandidates`
@@ -394,6 +405,14 @@ SQL does not rely on that setting. The building blocks are in
   - After a walk that was complete and returned at least one object, both set
     the flag on linked objects that were not returned. An existing flag keeps
     its earlier date.
+  - The flag is set only on links whose stored object type
+    (`data.objectType.id`) is the type that was just walked. The query checks
+    this again in SQL. A link from another or an unknown type is never flagged
+    by that walk, and is left exactly as it was. Switching the selected type
+    therefore never flags the old type's use cases.
+  - Setting and clearing flags happens only while the run still owns its
+    claim. Both statements carry an `EXISTS` guard on the run's history row
+    (id, token, `started`).
   - After an incomplete or empty walk, no flag is set. A false "complete"
     would only mis-flag, which the next complete sync clears.
 - The run's note (`error_message` on the completed row, and
@@ -483,10 +502,12 @@ panel lists the flagged use cases under "Missing in Jira", with key, name and
 the date they were flagged. The use case's overview shows a "Missing in Jira"
 chip.
 
-An Admin clicks **Remove missing use cases** and confirms in a
-`StandardModal` that the projects and their data will be deleted. The panel
-then calls `POST /use-cases/remove-missing` with `{ use_case_ids }`, the exact
-list shown (1 to 1000 ids). `removeMissingUseCases`:
+Each row has a checkbox, all unchecked by default, plus a select-all. An Admin
+ticks the use cases to delete and clicks **Remove selected use cases (N)**.
+They confirm in a `StandardModal` that shows the count and the list, and that
+says the projects and their data will be deleted. The panel then calls
+`POST /use-cases/remove-missing` with `{ use_case_ids }`, exactly the selected
+ids (1 to 1000). `removeMissingUseCases`:
 
 1. takes the same claim, so it cannot race a sync or import (409)
 2. locks the listed rows that are still flagged (`FOR UPDATE`)
@@ -496,7 +517,9 @@ list shown (1 to 1000 ids). `removeMissingUseCases`:
 
 Steps 2 to 4 run in one transaction. A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is
-`{ removed, skipped }`.
+`{ removed, skipped }`. If the removal loses its claim before it finishes, the
+transaction rolls back and the route returns 409 "The removal was interrupted;
+nothing was removed. Try again."
 
 **Settings and validation.**
 

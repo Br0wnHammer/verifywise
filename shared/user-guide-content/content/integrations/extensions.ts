@@ -320,7 +320,7 @@ export const extensionsContent: ArticleContent = {
       type: 'callout',
       variant: 'warning',
       title: 'Syncs never delete use cases',
-      text: 'No sync, manual or automatic, removes a use case. When a sync has received every object of the type from Jira and an imported object is no longer there, the use case is flagged instead: it appears under **Missing in Jira** in the panel, with the date it went missing, and its overview shows a **Missing in Jira** chip. If the object comes back in Jira, the next sync clears the flag. To delete flagged use cases, an Admin clicks **Remove missing use cases** and confirms; this permanently deletes those use cases and their data in VerifyWise. A use case that a sync found again in the meantime is not removed.',
+      text: 'No sync, manual or automatic, removes a use case. When a sync has received every object of the type from Jira and an imported object is no longer there, the use case is flagged instead: it appears under **Missing in Jira** in the panel, with the date it went missing, and its overview shows a **Missing in Jira** chip. If the object comes back in Jira, the next sync clears the flag. To delete flagged use cases, an Admin ticks them in the list (nothing is selected by default; there is also a select-all), clicks **Remove selected use cases** and confirms; this permanently deletes those use cases and their data in VerifyWise. A use case that a sync found again in the meantime is not removed. A sync only flags use cases imported from the object type it is syncing, so changing the object type never flags the use cases imported from the previous one.',
     },
     {
       type: 'heading',

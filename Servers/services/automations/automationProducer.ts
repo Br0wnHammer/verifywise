@@ -388,7 +388,9 @@ export async function hasPendingJiraAssetsSyncJob(organizationId: number): Promi
  * added and `queued` is false. Finished jobs are removed (complete or failed)
  * so they never block the next one. One attempt: a retry is the next tick or
  * click. Throws BackgroundJobsUnavailableError if the queue does not answer
- * within QUEUE_CALL_TIMEOUT_MS.
+ * within QUEUE_CALL_TIMEOUT_MS. Known edge: if the timeout fires after Redis
+ * accepted the add, the caller sees 503 although the job is queued; the next
+ * attempt then finds it waiting (409), and it runs normally.
  */
 export async function enqueueJiraAssetsSyncRun(data: {
   organizationId: number;
@@ -401,7 +403,18 @@ export async function enqueueJiraAssetsSyncRun(data: {
     if (existing) {
       if (PENDING_JOB_STATES.has(await existing.getState())) return { jobId, queued: false };
       // A finished job left behind would make BullMQ ignore the add.
-      await existing.remove();
+      try {
+        await existing.remove();
+      } catch (err) {
+        // Lost a race: another caller (or BullMQ's own cleanup) may have
+        // removed it, or re-queued under the same id, in the meantime. Look
+        // again before treating this as a queue failure.
+        const again = await automationQueue.getJob(jobId);
+        if (again) {
+          if (PENDING_JOB_STATES.has(await again.getState())) return { jobId, queued: false };
+          throw err;
+        }
+      }
     }
     await automationQueue.add("jira_assets_sync_run", data, {
       jobId,

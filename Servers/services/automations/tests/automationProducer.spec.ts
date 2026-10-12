@@ -261,6 +261,43 @@ describe("automationProducer", () => {
       expect(mockAdd).toHaveBeenCalled();
     });
 
+    it("queues anyway when the finished job vanished while being removed (race)", async () => {
+      const remove = jest.fn().mockRejectedValue(new Error("Missing key for job"));
+      mockGetJob
+        .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue("completed"), remove })
+        .mockResolvedValueOnce(undefined); // already cleaned up by someone else
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
+        jobId: "jira-assets-sync-5",
+        queued: true,
+      });
+      expect(mockAdd).toHaveBeenCalled();
+    });
+
+    it("reports 'already waiting' when another caller re-queued it during the race", async () => {
+      const remove = jest.fn().mockRejectedValue(new Error("Job is locked"));
+      mockGetJob
+        .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue("failed"), remove })
+        .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue("waiting") });
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
+        jobId: "jira-assets-sync-5",
+        queued: false,
+      });
+      expect(mockAdd).not.toHaveBeenCalled();
+    });
+
+    it("fails as unavailable only when the finished job genuinely cannot be removed", async () => {
+      const remove = jest.fn().mockRejectedValue(new Error("ECONNRESET"));
+      const finished = { getState: jest.fn().mockResolvedValue("failed"), remove };
+      mockGetJob.mockResolvedValueOnce(finished).mockResolvedValueOnce(finished);
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).rejects.toBeInstanceOf(
+        BackgroundJobsUnavailableError,
+      );
+      expect(mockAdd).not.toHaveBeenCalled();
+    });
+
     it("reports pending jobs", async () => {
       mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("active") });
       await expect(hasPendingJiraAssetsSyncJob(5)).resolves.toBe(true);

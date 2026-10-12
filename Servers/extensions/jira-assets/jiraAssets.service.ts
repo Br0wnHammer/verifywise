@@ -554,6 +554,19 @@ async function createLinkedUseCase(
   }
 }
 
+/**
+ * SQL guard: the run (:historyId, :runToken) still owns a `started` row for
+ * :organizationId. Added to writes that must not land after the run lost its
+ * claim (the missing-flag updates), so they happen only while it is owned.
+ */
+const SQL_RUN_STILL_OWNED = `EXISTS (SELECT 1 FROM jira_assets_sync_history own
+                WHERE own.id = :historyId AND own.run_token = :runToken
+                  AND own.status = 'started' AND own.organization_id = :organizationId)`;
+
+/** Recorded (manual runs only) when the worker skipped a queued sync because another run held the org. */
+export const SKIPPED_RUN_MESSAGE =
+  "Another sync or import was running, so this sync did not start.";
+
 /** A claimed run: its history row and the random token only this run holds. */
 export interface RunRef {
   historyId: number;
@@ -1061,11 +1074,15 @@ export async function runClaimedSync(
     const objectsFetched = jiraObjects.length;
 
     const existingRows = (await sequelize.query(
-      `SELECT jira_object_id, project_id
+      `SELECT jira_object_id, project_id, data->'objectType'->>'id' AS object_type_id
          FROM jira_assets_use_cases
         WHERE organization_id = :organizationId;`,
       { replacements: { organizationId }, type: QueryTypes.SELECT },
-    )) as Array<{ jira_object_id: string; project_id: number | null }>;
+    )) as Array<{
+      jira_object_id: string;
+      project_id: number | null;
+      object_type_id: string | null;
+    }>;
     const existingMap = new Map(existingRows.map((r) => [r.jira_object_id, r]));
 
     let objectsCreated = 0;
@@ -1100,7 +1117,8 @@ export async function runClaimedSync(
               },
             );
           }
-          // Seen in Jira again: clear any missing flag.
+          // Seen in Jira again: clear any missing flag — only while this
+          // run still owns its claim.
           await sequelize.query(
             `UPDATE jira_assets_use_cases
                 SET data = CAST(:data AS JSONB),
@@ -1108,13 +1126,16 @@ export async function runClaimedSync(
                     sync_status = 'synced',
                     missing_in_jira_since = NULL,
                     updated_at = NOW()
-              WHERE jira_object_id = :jiraObjectId AND organization_id = :organizationId;`,
+              WHERE jira_object_id = :jiraObjectId AND organization_id = :organizationId
+                AND ${SQL_RUN_STILL_OWNED};`,
             {
               replacements: {
                 data: JSON.stringify(obj.data),
                 now,
                 jiraObjectId: obj.jiraObjectId,
                 organizationId,
+                historyId: run.historyId,
+                runToken: run.token,
               },
               transaction,
             },
@@ -1128,30 +1149,53 @@ export async function runClaimedSync(
       }
     }
 
-    // Whatever is left in existingMap was not returned by Jira.
-    const missingIds = Array.from(existingMap.keys());
+    // Whatever is left in existingMap was not returned by Jira. Only links
+    // imported from the object type just walked can be judged missing; links
+    // from another or an unknown type are left exactly as they are.
+    const missingIds = Array.from(existingMap.values())
+      .filter((r) => r.object_type_id !== null && r.object_type_id === String(objectTypeId))
+      .map((r) => r.jira_object_id);
+    const otherTypeCount = existingMap.size - missingIds.length;
     let objectsNewlyMissing = 0;
     let note: string | null = null;
-    if (missingIds.length > 0) {
+    const otherTypeNote =
+      otherTypeCount > 0
+        ? ` ${otherTypeCount} use case(s) from another or an unknown object type were left as they were.`
+        : "";
+    if (missingIds.length === 0 && otherTypeCount > 0) {
+      note = otherTypeNote.trim();
+    } else if (missingIds.length > 0) {
       if (complete && objectsFetched > 0) {
         await touchHeartbeat(run, organizationId);
+        // Same type only (checked again in SQL), still unflagged, and only
+        // while this run owns its claim.
         const [flagged] = (await sequelize.query(
           `UPDATE jira_assets_use_cases
               SET missing_in_jira_since = ${SQL_NOW_UTC}, updated_at = NOW()
             WHERE organization_id = :organizationId
               AND jira_object_id IN (:missingIds)
+              AND data->'objectType'->>'id' = :objectTypeId
               AND missing_in_jira_since IS NULL
+              AND ${SQL_RUN_STILL_OWNED}
             RETURNING id;`,
-          { replacements: { organizationId, missingIds } },
+          {
+            replacements: {
+              organizationId,
+              missingIds,
+              objectTypeId: String(objectTypeId),
+              historyId: run.historyId,
+              runToken: run.token,
+            },
+          },
         )) as unknown as [Array<{ id: number }>, unknown];
         objectsNewlyMissing = flagged?.length ?? 0;
-        note = `${missingIds.length} use case(s) not found in Jira are flagged as missing (nothing was removed): ${idList(missingIds)}`;
+        note = `${missingIds.length} use case(s) not found in Jira are flagged as missing (nothing was removed): ${idList(missingIds)}.${otherTypeNote}`;
       } else {
         const why =
           objectsFetched === 0
             ? "Jira returned no objects for the selected object type"
             : "Jira did not confirm it returned every object";
-        note = `${why}, so ${missingIds.length} use case(s) not seen this time were not flagged as missing: ${idList(missingIds)}`;
+        note = `${why}, so ${missingIds.length} use case(s) not seen this time were not flagged as missing: ${idList(missingIds)}.${otherTypeNote}`;
       }
       logStructured(
         "processing",
@@ -1188,6 +1232,25 @@ export async function runClaimedSync(
     }
     const message = await finalizeFailure(run, organizationId, err);
     return failedResult(`failed: ${message}`);
+  }
+}
+
+/**
+ * A closed (failed) manual history row explaining that the queued sync did
+ * not start because another run held the org. It is never `started`, so it
+ * blocks nothing; it does not touch the config's last_sync_* fields.
+ */
+async function recordSkippedRun(organizationId: number, triggeredBy: number | null): Promise<void> {
+  try {
+    await sequelize.query(
+      `INSERT INTO jira_assets_sync_history
+         (organization_id, sync_type, status, started_at, completed_at, triggered_by, error_message)
+       VALUES (:organizationId, 'manual', 'failed', ${SQL_NOW_UTC}, ${SQL_NOW_UTC},
+               :triggeredBy, :message);`,
+      { replacements: { organizationId, triggeredBy, message: SKIPPED_RUN_MESSAGE } },
+    );
+  } catch (err) {
+    logger.error(`Jira Assets: could not record a skipped sync for org ${organizationId}:`, err);
   }
 }
 
@@ -1230,6 +1293,10 @@ export async function runQueuedSync(data: unknown): Promise<JiraSyncResult | nul
   } catch (err) {
     if (err instanceof JiraSyncInProgressError) {
       logger.info(`jira_assets_sync_run org ${organizationId}: skipped, another run is live`);
+      // A user is waiting on "Sync now": leave a closed history row saying
+      // why, so the panel's status poll can report it. Scheduled skips are
+      // not recorded (they would also count as a run for the interval).
+      if (syncType === "manual") await recordSkippedRun(organizationId, triggeredBy);
       return null;
     }
     throw err;
