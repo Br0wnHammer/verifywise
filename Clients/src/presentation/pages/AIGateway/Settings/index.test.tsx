@@ -374,12 +374,107 @@ describe("AIGateway - Settings", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Delete automatically" }));
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
 
+    // Turning automatic deletion on is confirmed first, naming both periods.
+    expect(
+      await screen.findByText(
+        "Guardrail logs older than 90 days and spend logs older than 14 days will be deleted permanently every day. Deleted logs cannot be restored.",
+      ),
+    ).toBeInTheDocument();
+    expect(mockPut).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Delete records" }));
+
     await waitFor(() => {
       expect(mockPut).toHaveBeenCalledWith(
         "/ai-gateway/guardrails/settings",
         expect.objectContaining({ spend_log_retention_days: 14, auto_purge_enabled: true }),
       );
     });
+  });
+
+  it("does not save when the automatic deletion confirmation is cancelled", async () => {
+    mockParams = { tab: "guardrails" };
+    renderWithProviders(<AIGatewaySettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Spend log retention (days)")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("switch", { name: "Delete automatically" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  it("confirms shortening a period while automatic deletion is on", async () => {
+    mockParams = { tab: "guardrails" };
+    mockLoad({
+      gs: { log_retention_days: 60, spend_log_retention_days: 30, auto_purge_enabled: true },
+    });
+    renderWithProviders(<AIGatewaySettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Retention period (days)")).toHaveValue("60");
+    });
+
+    fireEvent.change(screen.getByLabelText("Retention period (days)"), {
+      target: { value: "20" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    expect(
+      await screen.findByText(
+        "Guardrail logs older than 20 days and spend logs older than 30 days will be deleted permanently every day. Deleted logs cannot be restored.",
+      ),
+    ).toBeInTheDocument();
+    expect(mockPut).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Delete records" }));
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        "/ai-gateway/guardrails/settings",
+        expect.objectContaining({ log_retention_days: 20, auto_purge_enabled: true }),
+      );
+    });
+  });
+
+  it("saves a longer period without confirmation while automatic deletion is on", async () => {
+    mockParams = { tab: "guardrails" };
+    mockLoad({
+      gs: { log_retention_days: 60, spend_log_retention_days: 30, auto_purge_enabled: true },
+    });
+    renderWithProviders(<AIGatewaySettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Spend log retention (days)")).toHaveValue("30");
+    });
+
+    fireEvent.change(screen.getByLabelText("Spend log retention (days)"), {
+      target: { value: "45" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        "/ai-gateway/guardrails/settings",
+        expect.objectContaining({ spend_log_retention_days: 45 }),
+      );
+    });
+    expect(screen.queryByText(/will be deleted permanently every day/)).not.toBeInTheDocument();
+  });
+
+  it("rejects more than 3650 days without calling the server", async () => {
+    mockParams = { tab: "guardrails" };
+    renderWithProviders(<AIGatewaySettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Spend log retention (days)")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Spend log retention (days)"), {
+      target: { value: "3651" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    expect(
+      await screen.findByText("Retention periods must be whole numbers from 1 to 3650 days"),
+    ).toBeInTheDocument();
+    expect(mockPut).not.toHaveBeenCalled();
   });
 
   it("defaults to 90 days and no automatic deletion when settings are missing", async () => {
@@ -404,7 +499,7 @@ describe("AIGateway - Settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
 
     expect(
-      await screen.findByText("Retention periods must be whole numbers of at least 1 day"),
+      await screen.findByText("Retention periods must be whole numbers from 1 to 3650 days"),
     ).toBeInTheDocument();
     expect(mockPut).not.toHaveBeenCalled();
   });

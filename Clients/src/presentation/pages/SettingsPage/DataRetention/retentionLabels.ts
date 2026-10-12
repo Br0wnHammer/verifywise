@@ -74,7 +74,10 @@ export function lastCleanupLabel(
   row: RetentionRow,
   formatDate: (date: Date) => string,
 ): string {
-  if (row.key === "agent_control_logs") return t("Daily");
+  // Agent Control cleans up daily, but only when it has a period to apply.
+  if (row.key === "agent_control_logs") {
+    return !row.unavailable && row.automaticDeletion === "yes" ? t("Daily") : "—";
+  }
   if (row.key === "server_logs") return t("Rotated daily");
   const run = row.lastCleanup;
   if (!run) return "—";

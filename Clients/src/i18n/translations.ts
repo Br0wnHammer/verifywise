@@ -10223,8 +10223,9 @@ export const translations: Record<string, Record<string, string>> = {
       "Dies kann nicht rückgängig gemacht werden. Es gilt die gespeicherte Aufbewahrungsfrist, speichern Sie daher zuerst jede Änderung daran.",
     "Delete old spend log entries based on the spend log retention period above.":
       "Alte Ausgabenprotokolleinträge anhand der oben festgelegten Aufbewahrungsfrist für Ausgabenprotokolle löschen.",
-    "Retention periods must be whole numbers of at least 1 day":
-      "Aufbewahrungsfristen müssen ganze Zahlen von mindestens 1 Tag sein",
+    "Retention periods must be whole numbers from {min} to {max} days":
+      "Aufbewahrungsfristen müssen ganze Zahlen von {min} bis {max} Tagen sein",
+    "Confirm automatic deletion": "Automatisches Löschen bestätigen",
     "Failed to purge logs": "Protokolle konnten nicht gelöscht werden",
     "Audit records before {date} were removed by the retention policy.":
       "Auditdatensätze vor dem {date} wurden durch die Aufbewahrungsrichtlinie entfernt.",
@@ -20401,8 +20402,9 @@ export const translations: Record<string, Record<string, string>> = {
       "Cette action est irréversible. La durée de conservation enregistrée est utilisée, enregistrez donc d'abord toute modification.",
     "Delete old spend log entries based on the spend log retention period above.":
       "Supprimer les anciennes entrées du journal des dépenses selon la durée de conservation des journaux de dépenses ci-dessus.",
-    "Retention periods must be whole numbers of at least 1 day":
-      "Les durées de conservation doivent être des nombres entiers d'au moins 1 jour",
+    "Retention periods must be whole numbers from {min} to {max} days":
+      "Les durées de conservation doivent être des nombres entiers de {min} à {max} jours",
+    "Confirm automatic deletion": "Confirmer la suppression automatique",
     "Failed to purge logs": "Échec de la purge des journaux",
     "Audit records before {date} were removed by the retention policy.":
       "Les enregistrements d'audit antérieurs au {date} ont été supprimés par la politique de conservation.",
@@ -30499,8 +30501,9 @@ export const translations: Record<string, Record<string, string>> = {
       "Esta acción no se puede deshacer. Se usa el periodo de retención guardado, así que guarda primero cualquier cambio.",
     "Delete old spend log entries based on the spend log retention period above.":
       "Eliminar las entradas antiguas del registro de gasto según el periodo de retención de registros de gasto indicado arriba.",
-    "Retention periods must be whole numbers of at least 1 day":
-      "Los periodos de retención deben ser números enteros de al menos 1 día",
+    "Retention periods must be whole numbers from {min} to {max} days":
+      "Los periodos de retención deben ser números enteros de {min} a {max} días",
+    "Confirm automatic deletion": "Confirmar la eliminación automática",
     "Failed to purge logs": "No se pudieron purgar los registros",
     "Audit records before {date} were removed by the retention policy.":
       "Los registros de auditoría anteriores al {date} se eliminaron por la política de retención.",

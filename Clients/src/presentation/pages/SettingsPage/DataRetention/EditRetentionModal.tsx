@@ -22,6 +22,12 @@ import {
   type RetentionPolicy,
 } from "../../../../domain/enums/retention.enum";
 import { fill } from "../../../../i18n/fill";
+import {
+  GatewayPurgeWarning,
+  MAX_GATEWAY_RETENTION_DAYS,
+  MIN_GATEWAY_RETENTION_DAYS,
+  needsGatewayPurgeConfirmation,
+} from "../../../components/GatewayPurgeConfirmation";
 import { AUDIT_PERIOD_MONTHS, ROW_TITLES, monthsLabel } from "./retentionLabels";
 
 /** Lowest value the MRM settings endpoint accepts. */
@@ -39,9 +45,6 @@ const SELECT_HEIGHT_SX = {
   "&&& .MuiSelect-select": { height: "30px", minHeight: "30px", boxSizing: "border-box" },
 };
 
-/** The gateway's period for an organization that has not saved its own settings. */
-const GATEWAY_DEFAULT_DAYS = 90;
-
 const SHADOW_AI_FIELDS = {
   shadow_ai_events: "retention_events_days",
   shadow_ai_daily_rollups: "retention_daily_rollups_days",
@@ -51,7 +54,7 @@ const SHADOW_AI_FIELDS = {
 interface EditRetentionModalProps {
   row: RetentionRow;
   /** Every row on the page; the gateway confirmation names the other log type's period. */
-  rows?: RetentionRow[];
+  rows: RetentionRow[];
   onClose: () => void;
 }
 
@@ -74,7 +77,7 @@ const initialValue = (row: RetentionRow): string => {
   return String(period.value);
 };
 
-export default function EditRetentionModal({ row, rows = [], onClose }: EditRetentionModalProps) {
+export default function EditRetentionModal({ row, rows, onClose }: EditRetentionModalProps) {
   const { t } = useTranslation();
   const theme = useTheme();
   const invalidate = useInvalidateDataRetention();
@@ -96,10 +99,10 @@ export default function EditRetentionModal({ row, rows = [], onClose }: EditRete
   const title = t(ROW_TITLES[row.key].title);
   const isGateway = row.key === "ai_gateway_guardrail_logs" || row.key === "ai_gateway_spend_logs";
 
-  /** Current days of a gateway log type, from the page's rows. */
-  const gatewayDays = (key: RetentionRow["key"]): number => {
-    const other = rows.find((r) => r.key === key);
-    return other?.period?.unit === "days" ? other.period.value : GATEWAY_DEFAULT_DAYS;
+  /** Current days of a gateway log type, from the page's rows; null if not shown. */
+  const gatewayDays = (key: RetentionRow["key"]): number | null => {
+    const found = rows.find((r) => r.key === key);
+    return found?.period?.unit === "days" ? found.period.value : null;
   };
 
   const auditItems = [
@@ -175,27 +178,37 @@ export default function EditRetentionModal({ row, rows = [], onClose }: EditRete
           await saveGateway(pendingGateway.update);
           return;
         }
-        const days = validateNumber(1);
+        const days = validateNumber(MIN_GATEWAY_RETENTION_DAYS, MAX_GATEWAY_RETENTION_DAYS);
         if (days === null) return;
+        const currentGuardrail = gatewayDays("ai_gateway_guardrail_logs");
+        const currentSpend = gatewayDays("ai_gateway_spend_logs");
+        if (currentGuardrail === null || currentSpend === null) {
+          setError(t("Retention settings could not be loaded."));
+          return;
+        }
+        const isGuardrail = row.key === "ai_gateway_guardrail_logs";
         const update: GatewayRetentionUpdate = {};
-        const daysKey =
-          row.key === "ai_gateway_guardrail_logs"
-            ? "log_retention_days"
-            : "spend_log_retention_days";
-        if (row.period?.unit !== "days" || row.period.value !== days) update[daysKey] = days;
+        const daysKey = isGuardrail ? "log_retention_days" : "spend_log_retention_days";
+        if ((isGuardrail ? currentGuardrail : currentSpend) !== days) update[daysKey] = days;
         const wasAutoDelete = row.automaticDeletion === "yes";
         if (autoDelete !== wasAutoDelete) update.auto_purge_enabled = autoDelete;
-        // Turning on daily deletion, or shortening the period while it is on,
-        // deletes logs permanently, so it is confirmed first. Automatic
-        // deletion covers both log types, so the confirmation names both.
-        const currentDays = row.period?.unit === "days" ? row.period.value : null;
-        const shortening = currentDays !== null && days < currentDays;
-        if (autoDelete && (!wasAutoDelete || shortening)) {
-          const isGuardrail = row.key === "ai_gateway_guardrail_logs";
+        // Turning on daily deletion, or shortening a period while it is on,
+        // deletes logs permanently, so it is confirmed first.
+        const next = {
+          guardrailDays: isGuardrail ? days : currentGuardrail,
+          spendDays: isGuardrail ? currentSpend : days,
+          autoPurge: autoDelete,
+        };
+        const current = {
+          guardrailDays: currentGuardrail,
+          spendDays: currentSpend,
+          autoPurge: wasAutoDelete,
+        };
+        if (needsGatewayPurgeConfirmation(current, next)) {
           setPendingGateway({
             update,
-            guardrailDays: isGuardrail ? days : gatewayDays("ai_gateway_guardrail_logs"),
-            spendDays: isGuardrail ? gatewayDays("ai_gateway_spend_logs") : days,
+            guardrailDays: next.guardrailDays,
+            spendDays: next.spendDays,
           });
           return;
         }
@@ -256,14 +269,10 @@ export default function EditRetentionModal({ row, rows = [], onClose }: EditRete
       fitContent
     >
       {pendingGateway !== null ? (
-        <Typography sx={{ fontSize: 13 }}>
-          {fill(
-            t(
-              "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.",
-            ),
-            { guardrailDays: pendingGateway.guardrailDays, spendDays: pendingGateway.spendDays },
-          )}
-        </Typography>
+        <GatewayPurgeWarning
+          guardrailDays={pendingGateway.guardrailDays}
+          spendDays={pendingGateway.spendDays}
+        />
       ) : confirming ? (
         <Stack sx={{ gap: "16px" }}>
           <Typography sx={{ fontSize: 13 }}>

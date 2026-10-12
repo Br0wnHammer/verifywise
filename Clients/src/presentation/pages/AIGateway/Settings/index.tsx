@@ -36,6 +36,13 @@ import CustomizableSkeleton from "../../../components/Skeletons";
 import VirtualKeysTab from "../VirtualKeys/index";
 import { validateApiKeyFormat } from "../../../../application/utils/apiKeyValidation";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
+import {
+  GATEWAY_DEFAULT_RETENTION_DAYS,
+  GatewayPurgeWarning,
+  MAX_GATEWAY_RETENTION_DAYS,
+  MIN_GATEWAY_RETENTION_DAYS,
+  needsGatewayPurgeConfirmation,
+} from "../../../components/GatewayPurgeConfirmation";
 
 const TABS = [
   { label: "API keys", value: "api-keys", icon: "Key" as const },
@@ -177,6 +184,11 @@ export default function AIGatewaySettingsPage() {
   });
   const [gsSaving, setGsSaving] = useState(false);
   const [gsError, setGsError] = useState("");
+  // Set while a save that deletes logs every day waits for the user's go-ahead.
+  const [pendingGsSave, setPendingGsSave] = useState<{
+    guardrailDays: number;
+    spendDays: number;
+  } | null>(null);
   const [isPurgeModalOpen, setIsPurgeModalOpen] = useState(false);
   const [purging, setPurging] = useState(false);
   const [purgeMessage, setPurgeMessage] = useState<{ text: string; isError: boolean } | null>(null);
@@ -371,16 +383,37 @@ export default function AIGatewaySettingsPage() {
     setIsBudgetModalOpen(true);
   };
 
-  const handleSaveGuardrailSettings = async () => {
+  const handleSaveGuardrailSettings = async (confirmed = false) => {
     const logDays = Number(gsForm.log_retention_days);
     const spendDays = Number(gsForm.spend_log_retention_days);
-    if (
-      !Number.isInteger(logDays) ||
-      logDays < 1 ||
-      !Number.isInteger(spendDays) ||
-      spendDays < 1
-    ) {
-      setGsError(t("Retention periods must be whole numbers of at least 1 day"));
+    const inRange = (days: number) =>
+      Number.isInteger(days) &&
+      days >= MIN_GATEWAY_RETENTION_DAYS &&
+      days <= MAX_GATEWAY_RETENTION_DAYS;
+    if (!inRange(logDays) || !inRange(spendDays)) {
+      setGsError(
+        fill(t("Retention periods must be whole numbers from {min} to {max} days"), {
+          min: MIN_GATEWAY_RETENTION_DAYS,
+          max: MAX_GATEWAY_RETENTION_DAYS,
+        }),
+      );
+      return;
+    }
+    // Turning on daily deletion, or shortening a period while it is on,
+    // deletes logs permanently: confirm first, as the Data retention tab does.
+    const current = {
+      guardrailDays: guardrailSettings?.log_retention_days ?? GATEWAY_DEFAULT_RETENTION_DAYS,
+      spendDays: guardrailSettings?.spend_log_retention_days ?? GATEWAY_DEFAULT_RETENTION_DAYS,
+      autoPurge: guardrailSettings?.auto_purge_enabled ?? false,
+    };
+    const next = {
+      guardrailDays: logDays,
+      spendDays,
+      autoPurge: gsForm.auto_purge_enabled,
+    };
+    if (!confirmed && needsGatewayPurgeConfirmation(current, next)) {
+      setGsError("");
+      setPendingGsSave({ guardrailDays: logDays, spendDays });
       return;
     }
     setGsError("");
@@ -396,6 +429,7 @@ export default function AIGatewaySettingsPage() {
       setGsError(apiErrorText(err, t("Failed to save settings")));
     } finally {
       setGsSaving(false);
+      setPendingGsSave(null);
     }
   };
 
@@ -767,7 +801,7 @@ export default function AIGatewaySettingsPage() {
                   )}
                   <CustomizableButton
                     text={gsSaving ? "Saving..." : "Save settings"}
-                    onClick={handleSaveGuardrailSettings}
+                    onClick={() => handleSaveGuardrailSettings()}
                     isDisabled={gsSaving}
                   />
                 </Stack>
@@ -1420,6 +1454,25 @@ export default function AIGatewaySettingsPage() {
             </Typography>
           )}
         </Stack>
+      </StandardModal>
+
+      <StandardModal
+        isOpen={pendingGsSave !== null}
+        onClose={() => setPendingGsSave(null)}
+        title={t("Confirm automatic deletion")}
+        description={t("This setting applies to both AI Gateway log types.")}
+        onSubmit={() => handleSaveGuardrailSettings(true)}
+        submitButtonText={t("Delete records")}
+        submitButtonColor={theme.palette.error.main}
+        isSubmitting={gsSaving}
+        maxWidth="480px"
+      >
+        {pendingGsSave && (
+          <GatewayPurgeWarning
+            guardrailDays={pendingGsSave.guardrailDays}
+            spendDays={pendingGsSave.spendDays}
+          />
+        )}
       </StandardModal>
 
       <StandardModal

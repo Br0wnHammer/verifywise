@@ -165,6 +165,17 @@ describe("DataRetention table", () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    ["has no period (kept indefinitely)", { period: null, automaticDeletion: "no" }],
+    ["is unavailable", { period: null, automaticDeletion: "no", unavailable: true }],
+  ])("shows no Agent Control cleanup schedule when it %s", async (_case, override) => {
+    respond(buildRows({ agent_control_logs: override as Partial<RetentionRow> }));
+    renderWithProviders(<DataRetention />);
+    const row = await screen.findByTestId("retention-row-agent_control_logs");
+    expect(within(row).queryByText("Daily")).not.toBeInTheDocument();
+    expect(within(row).getAllByText("—").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("shows the removed-through notice when records were pruned", async () => {
     respond(buildRows(), { cutoff: "2025-06-01T00:00:00Z" });
     renderWithProviders(<DataRetention />);
@@ -393,13 +404,11 @@ describe("Edit retention modal", () => {
   });
 
   it("shows the gateway's validation detail on the form", async () => {
-    mockUpdateGateway.mockRejectedValue({
-      response: { detail: "log_retention_days must be at most 3650" },
-    });
+    mockUpdateGateway.mockRejectedValue({ response: { detail: "Admin access required" } });
     await open("ai_gateway_guardrail_logs");
-    fireEvent.change(screen.getByLabelText(/Keep for \(days\)/), { target: { value: "5000" } });
+    fireEvent.change(screen.getByLabelText(/Keep for \(days\)/), { target: { value: "120" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText("log_retention_days must be at most 3650")).toBeInTheDocument();
+    expect(await screen.findByText("Admin access required")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
   });
 
@@ -419,6 +428,21 @@ describe("Edit retention modal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Enter a number of at least 1")).toBeInTheDocument();
     expect(mockUpdateGateway).not.toHaveBeenCalled();
+  });
+
+  it("caps gateway days at 3650 (10 years)", async () => {
+    await open("ai_gateway_spend_logs");
+    const field = screen.getByLabelText(/Keep for \(days\)/);
+    fireEvent.change(field, { target: { value: "3651" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Enter a number no greater than 3650")).toBeInTheDocument();
+    expect(mockUpdateGateway).not.toHaveBeenCalled();
+
+    fireEvent.change(field, { target: { value: "3650" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(mockUpdateGateway).toHaveBeenCalledWith({ spend_log_retention_days: 3650 }),
+    );
   });
 
   it("blocks MRM retention below 13 months and saves 13", async () => {
