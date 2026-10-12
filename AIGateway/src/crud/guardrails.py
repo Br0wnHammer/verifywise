@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from database.db import get_db
+from fastapi import HTTPException
 from sqlalchemy import text
 
 def _text(sql: str):
@@ -207,61 +208,69 @@ async def get_guardrail_settings(org_id: int) -> Optional[dict]:
     return None
 
 
+# Settings columns a caller may write, with the value used when an organization
+# has no settings row yet. Column names come from this table, never from input.
+_SETTINGS_DEFAULTS: dict[str, Any] = {
+    "pii_on_error": "block",
+    "content_filter_on_error": "allow",
+    "pii_replacement_format": "<ENTITY_TYPE>",
+    "content_filter_replacement": "[REDACTED]",
+    "log_retention_days": 90,
+    "spend_log_retention_days": 90,
+    "log_request_body": False,
+    "log_response_body": False,
+    "auto_purge_enabled": False,
+}
+_RETENTION_DAY_KEYS = ("log_retention_days", "spend_log_retention_days")
+
+
+def _validate_settings_input(data: dict) -> None:
+    for key in _RETENTION_DAY_KEYS:
+        if key in data:
+            value = data[key]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise HTTPException(
+                    status_code=400, detail=f"{key} must be an integer of at least 1"
+                )
+    if "auto_purge_enabled" in data and not isinstance(data["auto_purge_enabled"], bool):
+        raise HTTPException(status_code=400, detail="auto_purge_enabled must be a boolean")
+
+
 async def upsert_guardrail_settings(org_id: int, data: dict) -> dict:
-    """INSERT ON CONFLICT (upsert) guardrail settings."""
+    """Upsert guardrail settings. A new row takes defaults for missing keys; an
+    existing row only changes the keys present in `data`."""
+    _validate_settings_input(data)
+    columns = list(_SETTINGS_DEFAULTS)
+    present = [c for c in columns if c in data]
+    params: dict[str, Any] = {"org_id": org_id}
+    for column in columns:
+        params[column] = data.get(column, _SETTINGS_DEFAULTS[column])
+
+    insert_columns = ",\n                    ".join(columns)
+    insert_values = ",\n                    ".join(f":{c}" for c in columns)
+    updates = "".join(f"{c} = EXCLUDED.{c},\n                    " for c in present)
+
     async with get_db() as db:
         result = await db.execute(
             text(
-                """
+                f"""
                 INSERT INTO ai_gateway_guardrail_settings (
                     organization_id,
-                    pii_on_error,
-                    content_filter_on_error,
-                    pii_replacement_format,
-                    content_filter_replacement,
-                    log_retention_days,
-                    log_request_body,
-                    log_response_body,
+                    {insert_columns},
                     created_at,
                     updated_at
                 ) VALUES (
                     :org_id,
-                    :pii_on_error,
-                    :content_filter_on_error,
-                    :pii_replacement_format,
-                    :content_filter_replacement,
-                    :log_retention_days,
-                    :log_request_body,
-                    :log_response_body,
+                    {insert_values},
                     NOW(),
                     NOW()
                 )
                 ON CONFLICT (organization_id) DO UPDATE SET
-                    pii_on_error               = EXCLUDED.pii_on_error,
-                    content_filter_on_error    = EXCLUDED.content_filter_on_error,
-                    pii_replacement_format     = EXCLUDED.pii_replacement_format,
-                    content_filter_replacement = EXCLUDED.content_filter_replacement,
-                    log_retention_days         = EXCLUDED.log_retention_days,
-                    log_request_body           = EXCLUDED.log_request_body,
-                    log_response_body          = EXCLUDED.log_response_body,
-                    updated_at                 = NOW()
+                    {updates}updated_at = NOW()
                 RETURNING *
                 """
             ),
-            {
-                "org_id": org_id,
-                "pii_on_error": data.get("pii_on_error", "block"),
-                "content_filter_on_error": data.get("content_filter_on_error", "allow"),
-                "pii_replacement_format": data.get(
-                    "pii_replacement_format", "<ENTITY_TYPE>"
-                ),
-                "content_filter_replacement": data.get(
-                    "content_filter_replacement", "[REDACTED]"
-                ),
-                "log_retention_days": data.get("log_retention_days", 90),
-                "log_request_body": data.get("log_request_body", False),
-                "log_response_body": data.get("log_response_body", False),
-            },
+            params,
         )
         await db.commit()
         row = result.mappings().first()

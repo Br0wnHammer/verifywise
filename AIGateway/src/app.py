@@ -21,6 +21,7 @@ from routers.virtual_keys import router as virtual_keys_router
 from routers.prompts import router as prompts_router
 from routers.risk import router as risk_router
 from routers.cache import router as cache_router
+from routers.retention import router as retention_router
 from routers.mcp_agent_keys import router as mcp_agent_keys_router
 from routers.mcp_servers import router as mcp_servers_router
 from routers.mcp_approvals import router as mcp_approvals_router
@@ -90,6 +91,7 @@ app.include_router(virtual_keys_router, prefix="/internal", tags=["CRUD"])
 app.include_router(prompts_router, prefix="/internal", tags=["CRUD"])
 app.include_router(risk_router, prefix="/internal", tags=["CRUD"])
 app.include_router(cache_router, prefix="/internal", tags=["CRUD"])
+app.include_router(retention_router, prefix="/internal", tags=["CRUD"])
 
 # MCP Gateway CRUD routes (internal)
 app.include_router(mcp_agent_keys_router, prefix="/internal", tags=["MCP CRUD"])

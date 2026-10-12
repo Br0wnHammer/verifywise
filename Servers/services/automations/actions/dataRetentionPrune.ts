@@ -9,7 +9,9 @@ import {
   getAuditCutoff,
   getAuditRetentionMonths,
   recordRetentionRun,
+  type RetentionRecordType,
 } from "../../../utils/dataRetention.utils";
+import { aiGatewayRequest } from "../../../utils/aiGatewayInternal.utils";
 import logger from "../../../utils/logger/fileLogger";
 
 /**
@@ -104,11 +106,12 @@ async function safeRecordRun(
   deletedCount: number,
   status: "success" | "capped" | "failed",
   error?: unknown,
+  recordType: RetentionRecordType = "audit_records",
 ): Promise<void> {
   try {
     await recordRetentionRun({
       organizationId,
-      recordType: "audit_records",
+      recordType,
       cutoff,
       deletedCount,
       status,
@@ -134,5 +137,48 @@ export async function runDataRetentionPruneAllOrgs(): Promise<void> {
     } catch (error) {
       logger.error(`Audit retention prune failed for org ${org.id}:`, error);
     }
+  }
+  await purgeGatewayLogs();
+}
+
+interface GatewayPurgeResult {
+  organization_id: number;
+  guardrail_deleted?: number;
+  spend_deleted?: number;
+  error?: string;
+}
+
+/**
+ * Ask the AI Gateway to purge logs for every org that opted in to automatic
+ * deletion, and record one run per log type per org. A gateway or recording
+ * failure is logged and never fails the job.
+ */
+async function purgeGatewayLogs(): Promise<void> {
+  let results: GatewayPurgeResult[];
+  try {
+    const response = await aiGatewayRequest("POST", "/internal/retention/purge");
+    results = Array.isArray(response?.results) ? response.results : [];
+  } catch (error) {
+    logger.error("AI Gateway retention purge failed:", error);
+    return;
+  }
+  for (const result of results) {
+    const status = result.error ? "failed" : "success";
+    await safeRecordRun(
+      result.organization_id,
+      null,
+      result.guardrail_deleted ?? 0,
+      status,
+      result.error,
+      "ai_gateway_guardrail_logs",
+    );
+    await safeRecordRun(
+      result.organization_id,
+      null,
+      result.spend_deleted ?? 0,
+      status,
+      result.error,
+      "ai_gateway_spend_logs",
+    );
   }
 }
