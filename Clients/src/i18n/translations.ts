@@ -9712,6 +9712,39 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Aktivieren und konfigurieren Sie Integrationen für Ihre Organisation.",
     "Enable automatic sync": "Automatische Synchronisierung aktivieren",
+    "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
+      "Die automatische Synchronisierung aktualisiert importierte Anwendungsfälle. Sie importiert keine neuen Objekte und entfernt keine.",
+    "Could not save the sync settings. Try again.":
+      "Die Synchronisierungseinstellungen konnten nicht gespeichert werden. Versuchen Sie es erneut.",
+    "The sync is taking longer than expected. Check the last sync result later.":
+      "Die Synchronisierung dauert länger als erwartet. Prüfen Sie das Ergebnis der letzten Synchronisierung später.",
+    "Could not save the schema and object type. Try again.":
+      "Schema und Objekttyp konnten nicht gespeichert werden. Versuchen Sie es erneut.",
+    "More objects exist in Jira than are shown here.":
+      "In Jira gibt es mehr Objekte, als hier angezeigt werden.",
+    "Load more": "Mehr laden",
+    "The sync stopped responding. Try again.":
+      "Die Synchronisierung reagiert nicht mehr. Versuchen Sie es erneut.",
+    "Sync failed": "Synchronisierung fehlgeschlagen",
+    "Missing in Jira": "Fehlt in Jira",
+    "Missing since": "Fehlt seit",
+    "Failed to remove use cases": "Anwendungsfälle konnten nicht entfernt werden",
+    "Missing use cases removed.": "Fehlende Anwendungsfälle wurden entfernt.",
+    "The sync did not start. Try again.":
+      "Die Synchronisierung wurde nicht gestartet. Versuchen Sie es erneut.",
+    "These use cases and all their data in VerifyWise will be permanently deleted. This cannot be undone.":
+      "Diese Anwendungsfälle und alle zugehörigen Daten in VerifyWise werden dauerhaft gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.":
+      "Jira liefert diese Objekte nicht mehr. Synchronisierungen behalten ihre Anwendungsfälle; entfernen Sie sie hier, wenn sie wegfallen sollen.",
+    "Remove selected use cases": "Ausgewählte Anwendungsfälle entfernen",
+    "Use cases to remove:": "Zu entfernende Anwendungsfälle:",
+    "Select all missing use cases": "Alle fehlenden Anwendungsfälle auswählen",
+    "The removal was interrupted; nothing was removed. Try again.":
+      "Das Entfernen wurde unterbrochen; es wurde nichts entfernt. Versuchen Sie es erneut.",
+    "Another sync or import was running, so this sync did not start.":
+      "Eine andere Synchronisierung oder ein Import lief bereits, daher wurde diese Synchronisierung nicht gestartet.",
+    "A sync is already running. Try again when it finishes.":
+      "Es läuft bereits eine Synchronisierung. Versuchen Sie es erneut, wenn sie abgeschlossen ist.",
     "Error Details:": "Fehlerdetails:",
     "Every 12 hours": "Alle 12 Stunden",
     "Every 24 hours": "Alle 24 Stunden",
@@ -19827,6 +19860,37 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Activez et configurez des intégrations pour votre organisation.",
     "Enable automatic sync": "Activer la synchronisation automatique",
+    "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
+      "La synchronisation automatique met à jour les cas d'usage importés. Elle n'importe pas de nouveaux objets et n'en supprime aucun.",
+    "Could not save the sync settings. Try again.":
+      "Impossible d'enregistrer les paramètres de synchronisation. Réessayez.",
+    "The sync is taking longer than expected. Check the last sync result later.":
+      "La synchronisation prend plus de temps que prévu. Consultez le résultat de la dernière synchronisation plus tard.",
+    "Could not save the schema and object type. Try again.":
+      "Impossible d'enregistrer le schéma et le type d'objet. Réessayez.",
+    "More objects exist in Jira than are shown here.":
+      "Jira contient plus d'objets que ceux affichés ici.",
+    "Load more": "Charger plus",
+    "The sync stopped responding. Try again.": "La synchronisation ne répond plus. Réessayez.",
+    "Sync failed": "Échec de la synchronisation",
+    "Missing in Jira": "Absent de Jira",
+    "Missing since": "Absent depuis le",
+    "Failed to remove use cases": "Impossible de supprimer les cas d'usage",
+    "Missing use cases removed.": "Les cas d'usage absents ont été supprimés.",
+    "The sync did not start. Try again.": "La synchronisation n'a pas démarré. Réessayez.",
+    "These use cases and all their data in VerifyWise will be permanently deleted. This cannot be undone.":
+      "Ces cas d'usage et toutes leurs données dans VerifyWise seront définitivement supprimés. Cette action est irréversible.",
+    "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.":
+      "Jira ne renvoie plus ces objets. Les synchronisations conservent leurs cas d'usage ; supprimez-les ici s'ils doivent disparaître.",
+    "Remove selected use cases": "Supprimer les cas d'usage sélectionnés",
+    "Use cases to remove:": "Cas d'usage à supprimer :",
+    "Select all missing use cases": "Sélectionner tous les cas d'usage absents",
+    "The removal was interrupted; nothing was removed. Try again.":
+      "La suppression a été interrompue ; rien n'a été supprimé. Réessayez.",
+    "Another sync or import was running, so this sync did not start.":
+      "Une autre synchronisation ou importation était en cours, cette synchronisation n'a donc pas démarré.",
+    "A sync is already running. Try again when it finishes.":
+      "Une synchronisation est déjà en cours. Réessayez une fois qu'elle est terminée.",
     "Error Details:": "Détails de l'erreur :",
     "Every 12 hours": "Toutes les 12 heures",
     "Every 24 hours": "Toutes les 24 heures",
@@ -29868,6 +29932,38 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Active y configure integraciones para su organización.",
     "Enable automatic sync": "Activar sincronización automática",
+    "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
+      "La sincronización automática actualiza los casos de uso importados. No importa objetos nuevos ni elimina ninguno.",
+    "Could not save the sync settings. Try again.":
+      "No se pudo guardar la configuración de sincronización. Inténtelo de nuevo.",
+    "The sync is taking longer than expected. Check the last sync result later.":
+      "La sincronización está tardando más de lo esperado. Consulte el resultado de la última sincronización más tarde.",
+    "Could not save the schema and object type. Try again.":
+      "No se pudieron guardar el esquema y el tipo de objeto. Inténtelo de nuevo.",
+    "More objects exist in Jira than are shown here.":
+      "Hay más objetos en Jira de los que se muestran aquí.",
+    "Load more": "Cargar más",
+    "The sync stopped responding. Try again.":
+      "La sincronización dejó de responder. Inténtelo de nuevo.",
+    "Sync failed": "Error de sincronización",
+    "Missing in Jira": "Falta en Jira",
+    "Missing since": "Falta desde",
+    "Failed to remove use cases": "No se pudieron eliminar los casos de uso",
+    "Missing use cases removed.": "Se eliminaron los casos de uso que faltaban.",
+    "The sync did not start. Try again.": "La sincronización no se inició. Inténtelo de nuevo.",
+    "These use cases and all their data in VerifyWise will be permanently deleted. This cannot be undone.":
+      "Estos casos de uso y todos sus datos en VerifyWise se eliminarán de forma permanente. Esta acción no se puede deshacer.",
+    "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.":
+      "Jira ya no devuelve estos objetos. Las sincronizaciones conservan sus casos de uso; elimínelos aquí si deben desaparecer.",
+    "Remove selected use cases": "Eliminar los casos de uso seleccionados",
+    "Use cases to remove:": "Casos de uso que se eliminarán:",
+    "Select all missing use cases": "Seleccionar todos los casos de uso que faltan",
+    "The removal was interrupted; nothing was removed. Try again.":
+      "La eliminación se interrumpió; no se eliminó nada. Inténtelo de nuevo.",
+    "Another sync or import was running, so this sync did not start.":
+      "Había otra sincronización o importación en curso, por lo que esta sincronización no se inició.",
+    "A sync is already running. Try again when it finishes.":
+      "Ya hay una sincronización en curso. Inténtelo de nuevo cuando termine.",
     "Error Details:": "Detalles del error:",
     "Every 12 hours": "Cada 12 horas",
     "Every 24 hours": "Cada 24 horas",

@@ -10,11 +10,13 @@ jest.mock("bullmq", () => {
   const mockAdd = jest.fn().mockResolvedValue({ id: "job-1" });
   const mockObliterate = jest.fn().mockResolvedValue(undefined);
   const mockUpsertJobScheduler = jest.fn().mockResolvedValue({ id: "job-1" });
+  const mockGetJob = jest.fn().mockResolvedValue(undefined);
   return {
     Queue: jest.fn().mockImplementation(() => ({
       add: mockAdd,
       obliterate: mockObliterate,
       upsertJobScheduler: mockUpsertJobScheduler,
+      getJob: mockGetJob,
     })),
   };
 });
@@ -42,6 +44,11 @@ import {
   scheduleAiGatewayCacheCleanup,
   scheduleMcpGatewayCleanup,
   scheduleFileExpirySweep,
+  scheduleJiraAssetsScheduledSyncCheck,
+  enqueueJiraAssetsSyncRun,
+  hasPendingJiraAssetsSyncJob,
+  BackgroundJobsUnavailableError,
+  QUEUE_CALL_TIMEOUT_MS,
 } from "../automationProducer";
 
 const mockAdd = automationQueue.add as jest.MockedFunction<typeof automationQueue.add>;
@@ -208,6 +215,125 @@ describe("automationProducer", () => {
 
       expect(mockObliterate).not.toHaveBeenCalled();
       expectSchedulerCall("file_expiry_sweep", { type: "file_expiry" }, "30 4 * * *");
+    });
+  });
+
+  describe("enqueueJiraAssetsSyncRun", () => {
+    const mockGetJob = automationQueue.getJob as unknown as jest.Mock;
+    const payload = { organizationId: 5, triggeredBy: null, syncType: "scheduled" as const };
+
+    beforeEach(() => {
+      mockGetJob.mockReset();
+      mockGetJob.mockResolvedValue(undefined);
+    });
+
+    it("queues one attempt under a fixed per-org job id, removed when done", async () => {
+      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
+        jobId: "jira-assets-sync-5",
+        queued: true,
+      });
+
+      expect(mockAdd).toHaveBeenCalledWith("jira_assets_sync_run", payload, {
+        jobId: "jira-assets-sync-5",
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+    });
+
+    it("does not queue a second job while one is waiting or running", async () => {
+      mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("waiting") });
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
+        jobId: "jira-assets-sync-5",
+        queued: false,
+      });
+      expect(mockAdd).not.toHaveBeenCalled();
+    });
+
+    it("clears a finished job left behind before queueing", async () => {
+      const remove = jest.fn().mockResolvedValue(undefined);
+      mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("failed"), remove });
+
+      await enqueueJiraAssetsSyncRun(payload);
+
+      expect(remove).toHaveBeenCalled();
+      expect(mockAdd).toHaveBeenCalled();
+    });
+
+    it("queues anyway when the finished job vanished while being removed (race)", async () => {
+      const remove = jest.fn().mockRejectedValue(new Error("Missing key for job"));
+      mockGetJob
+        .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue("completed"), remove })
+        .mockResolvedValueOnce(undefined); // already cleaned up by someone else
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
+        jobId: "jira-assets-sync-5",
+        queued: true,
+      });
+      expect(mockAdd).toHaveBeenCalled();
+    });
+
+    it("reports 'already waiting' when another caller re-queued it during the race", async () => {
+      const remove = jest.fn().mockRejectedValue(new Error("Job is locked"));
+      mockGetJob
+        .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue("failed"), remove })
+        .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue("waiting") });
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
+        jobId: "jira-assets-sync-5",
+        queued: false,
+      });
+      expect(mockAdd).not.toHaveBeenCalled();
+    });
+
+    it("fails as unavailable only when the finished job genuinely cannot be removed", async () => {
+      const remove = jest.fn().mockRejectedValue(new Error("ECONNRESET"));
+      const finished = { getState: jest.fn().mockResolvedValue("failed"), remove };
+      mockGetJob.mockResolvedValueOnce(finished).mockResolvedValueOnce(finished);
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).rejects.toBeInstanceOf(
+        BackgroundJobsUnavailableError,
+      );
+      expect(mockAdd).not.toHaveBeenCalled();
+    });
+
+    it("reports pending jobs", async () => {
+      mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("active") });
+      await expect(hasPendingJiraAssetsSyncJob(5)).resolves.toBe(true);
+
+      mockGetJob.mockResolvedValue(undefined);
+      await expect(hasPendingJiraAssetsSyncJob(5)).resolves.toBe(false);
+    });
+
+    it("gives up after QUEUE_CALL_TIMEOUT_MS with BackgroundJobsUnavailableError", async () => {
+      jest.useFakeTimers();
+      try {
+        mockGetJob.mockReturnValue(new Promise(() => undefined)); // Redis never answers
+        const pending = enqueueJiraAssetsSyncRun(payload);
+        const assertion = expect(pending).rejects.toBeInstanceOf(BackgroundJobsUnavailableError);
+        jest.advanceTimersByTime(QUEUE_CALL_TIMEOUT_MS);
+        await assertion;
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("turns a queue error into BackgroundJobsUnavailableError", async () => {
+      mockGetJob.mockRejectedValue(new Error("ECONNREFUSED"));
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).rejects.toBeInstanceOf(
+        BackgroundJobsUnavailableError,
+      );
+    });
+  });
+
+  describe("scheduleJiraAssetsScheduledSyncCheck", () => {
+    it("should add a repeating job every 5 minutes without obliterating", async () => {
+      await scheduleJiraAssetsScheduledSyncCheck();
+
+      expect(mockObliterate).not.toHaveBeenCalled();
+      expectSchedulerCall("jira_assets_scheduled_sync_check", {}, "*/5 * * * *");
     });
   });
 });
