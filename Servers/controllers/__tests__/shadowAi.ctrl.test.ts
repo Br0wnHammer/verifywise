@@ -55,7 +55,7 @@ jest.mock("../../utils/retentionAudit.utils", () => ({
   appendRetentionChangeToLedger: jest.fn<any>().mockResolvedValue(undefined),
   // "Compliance lead" stands for a custom role granted organization.admin.
   canChangeRetentionPeriods: jest.fn(
-    async (_orgId: number, role: string) => role === "Compliance lead",
+    async (caller: { role?: string }) => caller.role === "Compliance lead",
   ),
 }));
 jest.mock("../../utils/logger/fileLogger", () => ({

@@ -3,18 +3,20 @@ import { logFailure } from "./logger/logHelper";
 import { roleHasPermission } from "./rolePermissions.utils";
 
 /**
- * Whether a role may change organization-wide retention periods: the same
+ * Whether a caller may change organization-wide retention periods: the same
  * `organization.admin` permission the Data retention routes authorize on, so
- * a custom role granted it qualifies. SuperAdmin keeps the access these
- * handlers always gave it.
+ * a custom role granted it qualifies. A SuperAdmin (pure or elected, which
+ * the auth middleware flags as req.isSuperAdmin whatever the org role) keeps
+ * the access these handlers always gave it.
  */
-export async function canChangeRetentionPeriods(
-  organizationId: number | null | undefined,
-  role: string | undefined,
-): Promise<boolean> {
-  if (!role) return false;
-  if (role === "SuperAdmin") return true;
-  return roleHasPermission(organizationId ?? null, role, "organization.admin");
+export async function canChangeRetentionPeriods(caller: {
+  organizationId: number | null | undefined;
+  role: string | undefined;
+  isSuperAdmin: boolean | undefined;
+}): Promise<boolean> {
+  if (caller.isSuperAdmin) return true;
+  if (!caller.role) return false;
+  return roleHasPermission(caller.organizationId ?? null, caller.role, "organization.admin");
 }
 
 /**

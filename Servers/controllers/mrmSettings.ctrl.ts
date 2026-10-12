@@ -59,7 +59,11 @@ export async function updateMrmSettingsHandler(req: Request, res: Response) {
     // permissions.
     if (
       has("retention_months") &&
-      !(await canChangeRetentionPeriods(req.organizationId, req.role))
+      !(await canChangeRetentionPeriods({
+        organizationId: req.organizationId,
+        role: req.role,
+        isSuperAdmin: req.isSuperAdmin,
+      }))
     ) {
       return res
         .status(403)

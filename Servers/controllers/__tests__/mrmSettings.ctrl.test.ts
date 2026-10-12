@@ -71,7 +71,10 @@ describe("updateMrmSettingsHandler retention permission", () => {
 
   it("rejects an Editor changing retention_months", async () => {
     const res = createRes();
-    await updateMrmSettingsHandler(createReq("Editor", { retention_months: 36 }), res);
+    await updateMrmSettingsHandler(
+      { ...createReq("Editor", { retention_months: 36 }), isSuperAdmin: false },
+      res,
+    );
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json.mock.calls[0][0].data).toBe("Only admins can change retention periods");
@@ -110,9 +113,13 @@ describe("updateMrmSettingsHandler retention permission", () => {
     expect(upsert).not.toHaveBeenCalled();
   });
 
-  it("keeps letting a SuperAdmin change retention_months", async () => {
+  it("lets an elected SuperAdmin whose org role is Editor change retention_months", async () => {
+    // req.role is the org role; the SuperAdmin grant is the req.isSuperAdmin flag.
     const res = createRes();
-    await updateMrmSettingsHandler(createReq("SuperAdmin", { retention_months: 36 }), res);
+    await updateMrmSettingsHandler(
+      { ...createReq("Editor", { retention_months: 36 }), isSuperAdmin: true },
+      res,
+    );
 
     expect(res.status).toHaveBeenCalledWith(200);
     expect(upsert).toHaveBeenCalled();

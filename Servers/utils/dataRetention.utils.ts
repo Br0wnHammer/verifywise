@@ -1,4 +1,4 @@
-import { QueryTypes } from "sequelize";
+import { QueryTypes, type Transaction } from "sequelize";
 import { sequelize } from "../database/db";
 import logger from "./logger/fileLogger";
 
@@ -119,15 +119,20 @@ function resolveAuditTable(entry: { table: string; timestampColumn: string }): A
   return found;
 }
 
-/** Whether an audit table exists in this deployment (some are created by optional features). */
-export async function auditTableExists(entry: {
-  table: string;
-  timestampColumn: string;
-}): Promise<boolean> {
+/**
+ * Whether an audit table exists in this deployment (some are created by
+ * optional features). Inside a transaction, pass it so the check runs on the
+ * same connection instead of borrowing a second one from the pool.
+ */
+export async function auditTableExists(
+  entry: { table: string; timestampColumn: string },
+  transaction?: Transaction,
+): Promise<boolean> {
   const { table } = resolveAuditTable(entry);
   const exists = (await sequelize.query(`SELECT to_regclass('verifywise.' || :table) AS reg`, {
     replacements: { table },
     type: QueryTypes.SELECT,
+    transaction,
   })) as { reg: string | null }[];
   return Boolean(exists[0]?.reg);
 }
@@ -189,7 +194,7 @@ export async function countAuditRecordsBefore(
     let total = Number(ledger[0]?.n ?? 0);
 
     for (const entry of AUDIT_RECORD_TABLES) {
-      if (!(await auditTableExists(entry))) continue;
+      if (!(await auditTableExists(entry, transaction))) continue;
       const { table, timestampColumn } = entry;
       const rows = (await sequelize.query(
         `SELECT COUNT(*)::int AS n FROM ${table}

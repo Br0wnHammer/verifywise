@@ -112,6 +112,19 @@ describe("countAuditRecordsBefore", () => {
     const total = await countAuditRecordsBefore(1, 24);
     expect(total).toBe(5 + 2);
   });
+
+  it("runs every existence check inside its own transaction", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("AS cutoff")) return [{ cutoff: "2020-01-01 00:00:00+00" }];
+      if (sql.includes("to_regclass")) return [{ reg: "x" }];
+      return [{ n: 0 }];
+    });
+    await countAuditRecordsBefore(1, 24);
+    const checks = mockQuery.mock.calls.filter((c) => String(c[0]).includes("to_regclass"));
+    expect(checks).toHaveLength(AUDIT_RECORD_TABLES.length);
+    // A check outside the transaction would borrow a second pooled connection.
+    for (const [, opts] of checks) expect(opts.transaction).toEqual({ id: "txn" });
+  });
 });
 
 describe("recordRetentionRun / getLatestRetentionRuns", () => {

@@ -1394,14 +1394,20 @@ export async function updateSettings(req: Request, res: Response) {
       (key) => body[key] !== undefined,
     );
 
-    // Settings are admin-only. A save that changes only retention periods is
-    // also open to any role holding organization.admin (as on the Data
-    // retention page), so a custom role granted it can save them too.
+    // Settings, including the rate limit, are admin-only. A save that changes
+    // only retention periods is also open to any role holding
+    // organization.admin (as on the Data retention page), so a custom role
+    // granted it can save those, never the rate limit.
     const retentionOnly = setsRetention && rate_limit_max_events_per_hour === undefined;
     const allowed =
       req.role === "Admin" ||
       req.role === "SuperAdmin" ||
-      (retentionOnly && (await canChangeRetentionPeriods(organizationId, req.role)));
+      (retentionOnly &&
+        (await canChangeRetentionPeriods({
+          organizationId,
+          role: req.role,
+          isSuperAdmin: req.isSuperAdmin,
+        })));
     if (!allowed) {
       return res.status(403).json(STATUS_CODE[403](req.t!("Only admins can manage settings")));
     }
