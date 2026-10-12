@@ -59,7 +59,7 @@ def test_purge_sql_has_no_bind_param_inside_a_literal():
     source = inspect.getsource(guardrails_crud.purge_guardrail_logs)
     sql = text(re.findall(r'"""(.*?)"""', source, re.S)[1])
     compiled = str(sql.compile(dialect=postgresql.dialect()))
-    assert _compiled_params(sql) == {"org_id", "retention_days", "batch_size"}
+    assert _compiled_params(sql) == {"org_id", "cutoff", "batch_size"}
     assert not re.search(r"'[^']*%\(\w+\)s[^']*'", compiled)
 
 

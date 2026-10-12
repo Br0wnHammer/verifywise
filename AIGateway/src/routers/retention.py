@@ -43,7 +43,7 @@ def _deleted_before(error: Exception) -> int:
     return error.deleted if isinstance(error, PartialPurgeError) else 0
 
 
-async def _purge_org(org: dict, max_batches: int) -> dict:
+async def _purge_org(org: dict) -> dict:
     org_id = org["organization_id"]
     entry = {
         "organization_id": org_id,
@@ -56,7 +56,7 @@ async def _purge_org(org: dict, max_batches: int) -> dict:
     # does not mark the other as failed too.
     try:
         guardrail = await purge_guardrail_logs(
-            org_id, org["log_retention_days"], max_batches=max_batches
+            org_id, org["log_retention_days"], max_batches=ORG_PURGE_MAX_BATCHES
         )
         entry["guardrail_deleted"] = guardrail["deleted"]
         entry["guardrail_capped"] = guardrail["capped"]
@@ -70,7 +70,7 @@ async def _purge_org(org: dict, max_batches: int) -> dict:
                 db,
                 org_id,
                 org["spend_log_retention_days"],
-                max_batches=max_batches,
+                max_batches=ORG_PURGE_MAX_BATCHES,
             )
         entry["spend_deleted"] = spend["deleted"]
         entry["spend_capped"] = spend["capped"]
@@ -98,9 +98,9 @@ async def purge_retention(request: Request, payload: PurgeRequest):
             ),
             {"org_id": payload.organization_id},
         )
-        orgs = [dict(row) for row in result.mappings().all()]
+        org = result.mappings().first()
 
-    results = []
-    for org in orgs:
-        results.append(await _purge_org(org, ORG_PURGE_MAX_BATCHES))
-    return {"results": results}
+    # An organization that did not opt in has nothing to purge.
+    if org is None:
+        return {"results": []}
+    return {"results": [await _purge_org(dict(org))]}

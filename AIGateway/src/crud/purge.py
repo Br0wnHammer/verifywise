@@ -24,10 +24,9 @@ class PartialPurgeError(Exception):
     """A purge failed after committing some batches.
 
     `deleted` is the number of rows already deleted (and committed) before the
-    failure; the original error is chained as `__cause__`.
+    failure. Raise it `from` the original error so that error is chained.
     """
 
     def __init__(self, deleted: int, cause: BaseException):
         super().__init__(str(cause))
         self.deleted = deleted
-        self.__cause__ = cause

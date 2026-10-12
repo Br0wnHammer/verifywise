@@ -10,6 +10,8 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
@@ -27,7 +29,7 @@ def _fake_db(rows=None):
     executed = []
 
     result = MagicMock()
-    result.mappings.return_value.first.return_value = {}
+    result.mappings.return_value.first.return_value = rows[0] if rows else None
     result.mappings.return_value.all.return_value = rows or []
 
     db = MagicMock()
@@ -471,7 +473,24 @@ async def test_purges_with_the_longest_period_do_not_overflow(monkeypatch):
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
     out = await guardrails_crud.purge_guardrail_logs(7, MAX_RETENTION_DAYS)
     assert out == {"deleted": 0, "capped": False}
-    assert gcalls[0]["retention_days"] == MAX_RETENTION_DAYS
+    expected = datetime.now(tz=timezone.utc) - timedelta(days=MAX_RETENTION_DAYS)
+    assert abs(gcalls[0]["cutoff"] - expected) < timedelta(minutes=1)
+
+
+async def test_guardrail_purge_binds_the_python_cutoff(monkeypatch):
+    db, calls = _counting_db([0])
+
+    @asynccontextmanager
+    async def get_db():
+        yield db
+
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+    before = datetime.now(tz=timezone.utc)
+    await guardrails_crud.purge_guardrail_logs(7, 30)
+
+    assert set(calls[0]) == {"org_id", "cutoff", "batch_size"}
+    assert isinstance(calls[0]["cutoff"], datetime)
+    assert abs(calls[0]["cutoff"] - (before - timedelta(days=30))) < timedelta(minutes=1)
 
 
 async def test_a_period_saved_before_the_cap_deletes_nothing_instead_of_failing(monkeypatch):

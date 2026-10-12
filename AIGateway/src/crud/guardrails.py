@@ -401,7 +401,8 @@ async def purge_guardrail_logs(
     so older rows may remain>}. Each batch is committed on its own; a failure
     after some batches raises PartialPurgeError carrying the rows deleted so far.
     """
-    if retention_cutoff(retention_days) is None:
+    cutoff = retention_cutoff(retention_days)
+    if cutoff is None:
         return {"deleted": 0, "capped": False}
     total_deleted = 0
     batch_size = 1000
@@ -418,14 +419,14 @@ async def purge_guardrail_logs(
                             SELECT id
                             FROM ai_gateway_guardrail_logs
                             WHERE organization_id = :org_id
-                              AND created_at < NOW() - make_interval(days => :retention_days)
+                              AND created_at < :cutoff
                             LIMIT :batch_size
                         )
                         """
                     ),
                     {
                         "org_id": org_id,
-                        "retention_days": retention_days,
+                        "cutoff": cutoff,
                         "batch_size": batch_size,
                     },
                 )
