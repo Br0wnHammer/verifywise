@@ -12,17 +12,19 @@ const setEnv = (name: string, value: string | undefined) => {
 };
 const log = { warn: jest.fn() };
 const fetchMock: jest.Mock<(...args: any[]) => Promise<any>> = jest.fn();
+let originalFetch: typeof globalThis.fetch;
 
 beforeEach(() => {
   log.warn.mockReset();
   fetchMock.mockReset();
-  (global as any).fetch = fetchMock;
+  originalFetch = globalThis.fetch;
+  (globalThis as any).fetch = fetchMock;
   resetGatewayKeyWarning();
   setEnv("AI_GATEWAY_INTERNAL_KEY", undefined);
   setEnv("AI_GATEWAY_URL", undefined);
 });
 afterEach(() => {
-  delete (global as any).fetch;
+  globalThis.fetch = originalFetch;
   setEnv("AI_GATEWAY_INTERNAL_KEY", saved.key);
   setEnv("AI_GATEWAY_URL", saved.url);
 });
