@@ -142,6 +142,11 @@ const deferredScopedTables: SharedTableEntry[] = [
       "Extension-owned table (jira-assets). Every query in Servers/extensions/jira-assets/jiraAssets.service.ts filters by organization_id. UNIQUE(organization_id, jira_object_id). project_id references projects through a composite FK (project_id, organization_id), so a link cannot point at another organization's project. Deferred pending matrix coverage.",
   },
   {
+    name: "jira_assets_use_cases_fk_cleanup_backup",
+    justification:
+      "Backup written once by migration 20261012165625-jira-assets-link-same-org-fk (links whose project was missing or in another organization, deleted when the composite FK was added) and read only by its down(). No app code reads or writes it. Dropped by down().",
+  },
+  {
     name: "model_lifecycle_change_history",
     justification:
       "Extension-owned table (model-lifecycle). Every INSERT/SELECT in Servers/extensions/model-lifecycle/modelLifecycle.service.ts filters by organization_id. Deferred pending matrix coverage.",

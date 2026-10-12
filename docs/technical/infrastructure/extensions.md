@@ -612,9 +612,9 @@ All of this lives in `jira-assets/batching.ts`.
    It is reported as `unlinked`, not as a removed use case. Without this,
    such a link could never leave the "Missing in Jira" list. The database
    now enforces same-organization links (see below), so in practice this
-   handles links with a NULL `project_id`, including legacy cross-organization
-   links that the migration cleared; the cross-organization check stays as a
-   safeguard.
+   only handles links with a NULL `project_id`; the cross-organization check
+   is unreachable and stays only until that migration's rollback window has
+   passed.
 5. records the run (`objects_deleted` = use cases, that is projects,
    removed; a note counts the links cleaned up)
 
@@ -657,11 +657,21 @@ DELETE CASCADE` (`projects` has `UNIQUE (id, organization_id)` as its
 target), so a link can only point at a project in its own organization; a
 NULL `project_id` is allowed. The app only ever creates a link together with
 its project, in one transaction, and never changes `project_id` afterwards.
-Migration `20261012165625-jira-assets-link-same-org-fk.js` added the key: it
-first set `project_id` to NULL on existing links whose project was missing or
-in another organization (the count is logged), and those links show up for
-removal under "Links cleaned up". `down()` restores the single-column key but
-cannot restore those NULLed ids.
+Migration `20261012165625-jira-assets-link-same-org-fk.js` added the key. It
+first copied existing links whose project was missing or in another
+organization into `jira_assets_use_cases_fk_cleanup_backup` (all columns plus
+`cleaned_at`) and deleted them, logging the count; no project was touched,
+and their Jira objects can be imported again. It reuses an existing unique
+index on `projects (id, organization_id)` if there is one, otherwise it adds
+its own (`projects_id_org_for_jira_link_fk_key`), and replaces the old
+`project_id` index with one on `(project_id, organization_id)`. It locks
+`projects` then `jira_assets_use_cases` up front (`ACCESS EXCLUSIVE`, 10 s
+`lock_timeout`), so deploy it with the worker stopped or idle (no sync
+running), as API and worker deploy together. `down()` restores the
+single-column key and the old index, drops only its own unique constraint,
+puts the backed-up links back where the old key allows it (a link whose
+project no longer exists at all cannot be restored), and drops the backup
+table.
 
 A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is
