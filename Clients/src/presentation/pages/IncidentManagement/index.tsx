@@ -518,7 +518,7 @@ const IncidentManagement: React.FC = () => {
     setArchiveId(null);
   };
 
-  const handleIncidentSuccess = async (formData: any) => {
+  const handleIncidentSuccess = async (formData: any): Promise<boolean> => {
     try {
       if (selectedIncident) {
         await updateEntityById({
@@ -538,11 +538,22 @@ const IncidentManagement: React.FC = () => {
       }
       await fetchIncidentsData();
       handleCloseModal();
-    } catch {
+      return true;
+    } catch (error) {
+      // Someone else saved this incident after the drawer loaded it: keep the
+      // drawer open so the user's edits are not lost.
+      if ((error as { status?: number })?.status === 409) {
+        setAlert({
+          variant: "error",
+          body: "This incident was changed since you opened it. Reload to see the latest version.",
+        });
+        return false;
+      }
       setAlert({
         variant: "error",
         body: selectedIncident ? "Failed to update incident." : "Failed to add incident.",
       });
+      return true;
     }
   };
 
@@ -794,10 +805,16 @@ const IncidentManagement: React.FC = () => {
                 interim_report: selectedIncident.interim_report || false,
                 approval_status: selectedIncident.approval_status,
                 approved_by: selectedIncident.approved_by,
+                // The stored approval date as a calendar date, or null when
+                // there is none: never invent one, or a save would look like
+                // an explicit approval change to the server.
                 approval_date: selectedIncident.approval_date
                   ? new Date(selectedIncident.approval_date).toISOString().split("T")[0]
-                  : new Date().toISOString().split("T")[0],
+                  : null,
                 approval_notes: selectedIncident.approval_notes,
+                expected_updated_at: selectedIncident.updated_at
+                  ? new Date(selectedIncident.updated_at).toISOString()
+                  : undefined,
               }
             : undefined
         }

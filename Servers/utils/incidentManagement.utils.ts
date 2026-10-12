@@ -8,6 +8,11 @@ import {
 } from "./automation/incident.automation.utils";
 import { replaceTemplateVariables } from "./automation/automation.utils";
 import { enqueueAutomationAction } from "../services/automations/automationProducer";
+import {
+  INCIDENT_DATE_COLUMNS,
+  INCIDENT_FK_COLUMNS,
+  isSameIncidentValue,
+} from "./validations/incidentManagementValidation.utils";
 
 /**
  * Base SELECT for incident queries. LEFT JOINs resolve the issue #4583
@@ -200,7 +205,7 @@ export const createNewIncidentQuery = async (
 };
 
 /** Columns an incident update may write. Anything else in an update is ignored. */
-const UPDATABLE_INCIDENT_COLUMNS = [
+export const UPDATABLE_INCIDENT_COLUMNS = [
   "ai_project",
   "model_inventory_id",
   "project_id",
@@ -226,123 +231,123 @@ const UPDATABLE_INCIDENT_COLUMNS = [
   "approval_notes",
 ] as const;
 
-const INCIDENT_FK_COLUMNS = new Set(["model_inventory_id", "project_id", "assignee_id"]);
-const INCIDENT_DATE_COLUMNS = new Set(["occurred_date", "date_detected", "approval_date"]);
+export type IncidentColumn = (typeof UPDATABLE_INCIDENT_COLUMNS)[number];
 
-/** Normalises a column value for writing: '' FK / date values mean "none". */
-const toColumnValue = (column: string, value: unknown): unknown => {
+/**
+ * Normalises a value for writing: '' means "none" for FK and date columns,
+ * and archived is never NULL (empty means not archived).
+ */
+const toColumnValue = (column: IncidentColumn, value: unknown): unknown => {
+  if (column === "archived") return Boolean(value);
   if ((INCIDENT_FK_COLUMNS.has(column) || INCIDENT_DATE_COLUMNS.has(column)) && value === "") {
     return null;
   }
   return value ?? null;
 };
 
-/** True when `next` would store the same value the row already holds. */
-const isSameColumnValue = (column: string, current: unknown, next: unknown): boolean => {
-  const a = current ?? null;
-  const b = toColumnValue(column, next);
-  if (a === null || b === null) return a === b;
-  if (INCIDENT_DATE_COLUMNS.has(column)) {
-    return new Date(a as string).getTime() === new Date(b as string).getTime();
+/**
+ * The columns of `updates` whose value differs from `stored` (the row's
+ * current values), mapped to the normalised value to write. Keys that are
+ * not updatable columns, and undefined values, are ignored. Both the write
+ * and the change history are derived from this one diff.
+ */
+export const diffIncidentColumns = (
+  stored: Record<string, unknown>,
+  updates: Record<string, unknown>,
+): Partial<Record<IncidentColumn, unknown>> => {
+  const changed: Partial<Record<IncidentColumn, unknown>> = {};
+  for (const column of UPDATABLE_INCIDENT_COLUMNS) {
+    if (updates[column] === undefined) continue;
+    if (isSameIncidentValue(column, stored[column], updates[column])) continue;
+    changed[column] = toColumnValue(column, updates[column]);
   }
-  if (INCIDENT_FK_COLUMNS.has(column)) return Number(a) === Number(b);
-  return JSON.stringify(a) === JSON.stringify(b);
+  return changed;
 };
 
 /**
- * Writes the columns of `changes` whose value differs from `existingIncident`
- * (plus updated_at), then re-reads the row and fires `incident_updated`
- * automations. `existingIncident` is the row the caller already loaded in
- * this transaction (see services/incidentManagement.service.ts), so the
- * write never re-reads it and never overwrites columns the caller did not
- * change.
+ * Writes `changed` (from diffIncidentColumns) plus updated_at and returns
+ * the re-read row. Callers lock the row first and only call this when
+ * something changed (see services/incidentManagement.service.ts).
  */
 export const updateIncidentByIdQuery = async (
   id: number,
-  changes: Partial<Record<(typeof UPDATABLE_INCIDENT_COLUMNS)[number], unknown>>,
+  changed: Partial<Record<IncidentColumn, unknown>>,
   organizationId: number,
   transaction: Transaction,
-  existingIncident: AIIncidentManagementModel,
 ) => {
-  const updated_at = new Date();
-  try {
-    const setClauses = ["updated_at = :updated_at"];
-    const replacements: Record<string, unknown> = { organizationId, id, updated_at };
-    for (const column of UPDATABLE_INCIDENT_COLUMNS) {
-      if (changes[column] === undefined) continue;
-      const current = existingIncident.getDataValue(column as keyof AIIncidentManagementModel);
-      if (isSameColumnValue(column, current, changes[column])) continue;
-      const value = toColumnValue(column, changes[column]);
-      setClauses.push(`${column} = :${column}`);
-      replacements[column] =
-        column === "categories_of_harm" && value !== null ? JSON.stringify(value) : value;
-    }
-
-    await sequelize.query(
-      `UPDATE ai_incident_managements SET ${setClauses.join(", ")}
-      WHERE organization_id = :organizationId AND id = :id`,
-      { replacements, transaction },
-    );
-
-    const result = await sequelize.query(
-      `${INCIDENT_SELECT}
-       WHERE i.organization_id = :organizationId AND i.id = :id`,
-      {
-        replacements: { organizationId, id },
-        mapToModel: true,
-        model: AIIncidentManagementModel,
-        transaction,
-      },
-    );
-    const updatedIncident = result[0];
-    const automations = (await sequelize.query(
-      `SELECT
-              pat.key AS trigger_key,
-              paa.key AS action_key,
-              a.id AS automation_id,
-              aa.*
-            FROM automation_triggers pat JOIN automations a ON a.trigger_id = pat.id AND a.organization_id = :organizationId JOIN automation_actions_data aa ON a.id = aa.automation_id AND aa.organization_id = :organizationId JOIN automation_actions paa ON aa.action_type_id = paa.id WHERE pat.key = 'incident_updated' AND a.is_active ORDER BY aa."order" ASC;`,
-      { replacements: { organizationId }, transaction },
-    )) as [
-      (TenantAutomationActionModel & {
-        trigger_key: string;
-        action_key: string;
-        automation_id: number;
-      })[],
-      number,
-    ];
-    if (automations[0].length > 0) {
-      const automation = automations[0][0];
-      if (automation["trigger_key"] === "incident_updated") {
-        const params = automation.params!;
-
-        // Build replacements
-        const replacements = buildIncidentUpdateReplacements(existingIncident, {
-          ...updatedIncident.dataValues,
-        });
-
-        // Replace variables in subject and body
-        const processedParams = {
-          ...params,
-          subject: replaceTemplateVariables(params.subject || "", replacements),
-          body: replaceTemplateVariables(params.body || "", replacements),
-          automation_id: automation.automation_id,
-        };
-
-        // Enqueue with processed params
-        await enqueueAutomationAction(automation.action_key, {
-          ...processedParams,
-          organizationId,
-        });
-      } else {
-        console.warn(`No matching trigger found for key: ${automation["trigger_key"]}`);
-      }
-    }
-    return updatedIncident;
-  } catch (error) {
-    console.error("Error updating incident:", error);
-    throw error;
+  const setClauses = ["updated_at = :updated_at"];
+  const replacements: Record<string, unknown> = { organizationId, id, updated_at: new Date() };
+  for (const column of UPDATABLE_INCIDENT_COLUMNS) {
+    if (!(column in changed)) continue;
+    const value = changed[column];
+    setClauses.push(`${column} = :${column}`);
+    replacements[column] =
+      column === "categories_of_harm" && value !== null ? JSON.stringify(value) : value;
   }
+
+  await sequelize.query(
+    `UPDATE ai_incident_managements SET ${setClauses.join(", ")}
+    WHERE organization_id = :organizationId AND id = :id`,
+    { replacements, transaction },
+  );
+
+  const result = await sequelize.query(
+    `${INCIDENT_SELECT}
+     WHERE i.organization_id = :organizationId AND i.id = :id`,
+    {
+      replacements: { organizationId, id },
+      mapToModel: true,
+      model: AIIncidentManagementModel,
+      transaction,
+    },
+  );
+  return result[0];
+};
+
+/**
+ * Enqueues the organization's active `incident_updated` automation for an
+ * update from `oldIncident` to `newIncident`. Call it only after the update
+ * has committed, so an action is never sent for a change that rolled back.
+ */
+export const enqueueIncidentUpdatedAutomations = async (
+  organizationId: number,
+  oldIncident: AIIncidentManagementModel,
+  newIncident: AIIncidentManagementModel,
+) => {
+  const automations = (await sequelize.query(
+    `SELECT
+            pat.key AS trigger_key,
+            paa.key AS action_key,
+            a.id AS automation_id,
+            aa.*
+          FROM automation_triggers pat JOIN automations a ON a.trigger_id = pat.id AND a.organization_id = :organizationId JOIN automation_actions_data aa ON a.id = aa.automation_id AND aa.organization_id = :organizationId JOIN automation_actions paa ON aa.action_type_id = paa.id WHERE pat.key = 'incident_updated' AND a.is_active ORDER BY aa."order" ASC;`,
+    { replacements: { organizationId } },
+  )) as [
+    (TenantAutomationActionModel & {
+      trigger_key: string;
+      action_key: string;
+      automation_id: number;
+    })[],
+    number,
+  ];
+  if (automations[0].length === 0) return;
+
+  const automation = automations[0][0];
+  if (automation["trigger_key"] !== "incident_updated") {
+    console.warn(`No matching trigger found for key: ${automation["trigger_key"]}`);
+    return;
+  }
+  const params = automation.params!;
+  const replacements = buildIncidentUpdateReplacements(oldIncident, {
+    ...newIncident.dataValues,
+  });
+  await enqueueAutomationAction(automation.action_key, {
+    ...params,
+    subject: replaceTemplateVariables(params.subject || "", replacements),
+    body: replaceTemplateVariables(params.body || "", replacements),
+    automation_id: automation.automation_id,
+    organizationId,
+  });
 };
 
 export const deleteIncidentByIdQuery = async (
@@ -461,6 +466,7 @@ export const validateIncidentReferences = async (
     assignee_id?: number | null;
   },
   organizationId: number,
+  transaction?: Transaction,
 ): Promise<string[]> => {
   const invalidFields: string[] = [];
   const checks: Array<{
@@ -477,7 +483,7 @@ export const validateIncidentReferences = async (
     if (check.id == null) continue;
     const result = (await sequelize.query(
       `SELECT id FROM ${check.table} WHERE id = :id AND organization_id = :organizationId`,
-      { replacements: { id: check.id, organizationId } },
+      { replacements: { id: check.id, organizationId }, transaction },
     )) as [Array<{ id: number }>, number];
     if (!result[0].length) invalidFields.push(check.field);
   }

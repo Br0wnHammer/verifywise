@@ -58,6 +58,29 @@ export type EntityType =
 export type FieldFormatter = (value: unknown) => Promise<string>;
 
 /**
+ * Formatter for an id that references a row by name: resolves `id` with
+ * `sql` (selecting a `name` column), or falls back to `${label} #id`. Used
+ * for incident foreign keys so history shows names, like the user formatter.
+ */
+const namedRowFormatter =
+  (sql: string, label: string): FieldFormatter =>
+  async (value: unknown): Promise<string> => {
+    if (value === null || value === undefined || value === "") return "-";
+    const id = Number(value);
+    if (!Number.isInteger(id)) return String(value);
+    try {
+      const rows = await sequelize.query<{ name: string | null }>(sql, {
+        replacements: { id },
+        type: QueryTypes.SELECT,
+      });
+      return rows[0]?.name || `${label} #${id}`;
+    } catch (error) {
+      logger.error(`Error fetching ${label} for ID ${id}: ${error}`);
+      return `${label} #${id}`;
+    }
+  };
+
+/**
  * Entity configuration interface
  */
 export interface EntityConfig {
@@ -540,6 +563,9 @@ export const ENTITY_CONFIGS: { [key in EntityType]: EntityConfig } = {
       "approved_by",
       "approval_date",
       "approval_notes",
+      "model_inventory_id",
+      "project_id",
+      "assignee_id",
     ],
     fieldLabels: {
       ai_project: "AI use case or framework",
@@ -562,8 +588,21 @@ export const ENTITY_CONFIGS: { [key in EntityType]: EntityConfig } = {
       approved_by: "Approved by",
       approval_date: "Approval date",
       approval_notes: "Approval notes",
+      model_inventory_id: "Affected model",
+      project_id: "Linked use case",
+      assignee_id: "Owner",
     },
     fieldFormatters: {
+      model_inventory_id: namedRowFormatter(
+        "SELECT CONCAT_WS(' ', provider, model) AS name FROM model_inventories WHERE id = :id",
+        "Model",
+      ),
+      project_id: namedRowFormatter(
+        "SELECT project_title AS name FROM projects WHERE id = :id",
+        "Use case",
+      ),
+      assignee_id: async (value: unknown) =>
+        GENERIC_FORMATTERS.user(value === null || value === "" ? value : Number(value)),
       occurred_date: GENERIC_FORMATTERS.date,
       date_detected: GENERIC_FORMATTERS.date,
       approval_date: GENERIC_FORMATTERS.date,

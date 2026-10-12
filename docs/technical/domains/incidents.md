@@ -247,22 +247,54 @@ re-approval in a later update.
 ### Shared update path
 
 All updates to an existing incident go through
-`updateIncident(organizationId, incidentId, updates, userId, { transaction?, changedBySystem? })`
-in `Servers/services/incidentManagement.service.ts`. Callers: the HTTP update
-(`PATCH /ai-incident-managements/:id`), the AI Advisor tools
-`agent_update_incident` / `agent_update_incident_status`, and integrations such
-as issue-tracker sync. It:
+`updateIncident(organizationId, incidentId, updates, userId, { transaction?, changedBySystem?, expectedUpdatedAt? })`
+in `Servers/services/incidentManagement.service.ts`. Callers today: the HTTP
+update (`PATCH /ai-incident-managements/:id`) and the AI Advisor tools
+`agent_update_incident` / `agent_update_incident_status`. Integrations such as
+issue-tracker sync are meant to use it too. In order, it:
 
 1. Loads the incident once, `SELECT ... FOR UPDATE OF i` inside the transaction
    (its own, or the caller's when `transaction` is passed; it only commits or
    rolls back a transaction it opened), so concurrent updates serialise.
-2. Applies the reopen approval reset.
-3. Calls `updateIncidentByIdQuery` with the loaded row, which writes only the
-   columns whose value differs from the stored one (plus `updated_at`) and
-   ignores keys that are not updatable columns.
-4. Records every changed field in `incident_change_history` as `userId`, or,
-   with `changedBySystem: true`, with a null actor and `changed_by_system = true`
-   (shown as "System"). With neither, no history is written.
+2. If `expectedUpdatedAt` is given and differs from the stored `updated_at`,
+   throws `ConflictException`: "This incident was changed since you opened it.
+   Reload to see the latest version." The controller answers 409. The edit
+   drawer sends the `updated_at` it loaded as `expected_updated_at` and, on 409,
+   shows that message and keeps the drawer open with the user's edits.
+   Background writers (AI Advisor, sync jobs) do not pass it.
+3. Validates against the locked row: `validateCompleteIncidentUpdate` and
+   `validateIncidentReferences` (FKs must belong to the organization; unchanged
+   FKs come from the row). Failures throw `IncidentUpdateValidationError`; the
+   controller keeps its 400 body (`message: "Incident update validation failed"`,
+   `errors: [{ field, message, code }]`).
+4. Applies the reopen approval reset.
+5. Diffs the update against the row with `diffIncidentColumns`
+   (`Servers/utils/incidentManagement.utils.ts`). Keys that are not updatable
+   columns are ignored. Values go through the same `isSameIncidentValue` helper
+   (`incidentManagementValidation.utils.ts`) that the reset uses to decide
+   whether an approval field was touched:
+   - `''`, null and undefined are all empty;
+   - date columns compare **calendar dates** (`incidentCalendarDate`): a stored
+     value is a JS Date (TIMESTAMP WITHOUT TIME ZONE, no custom pg type parser),
+     read as its UTC date, which is what the API and the edit drawer show; a
+     string starting `YYYY-MM-DD` is that date (Postgres ignores any offset for
+     this column type);
+   - foreign keys compare as numbers, `archived` / `interim_report` treat empty
+     as false, harm categories compare as lists.
+   `archived` is never written as NULL.
+6. If nothing changed, returns the row as it is: no UPDATE, no `updated_at`
+   bump, no history, no automations.
+7. Otherwise writes exactly the changed columns plus `updated_at`
+   (`updateIncidentByIdQuery`) and records exactly those columns in
+   `incident_change_history` (`formatEntityFieldChanges`). That includes
+   `model_inventory_id` ("Affected model"), `project_id` ("Linked use case") and
+   `assignee_id` ("Owner"), shown by name, falling back to `Model #id` /
+   `Use case #id` / `User #id`. History is recorded as `userId`, or, with
+   `changedBySystem: true`, with a null actor and `changed_by_system = true`
+   (shown as "System"). The AI Advisor uses the system form when its execution
+   carries no user id.
+8. Enqueues the `incident_updated` automation (`enqueueIncidentUpdatedAutomations`)
+   in `transaction.afterCommit`, so nothing is sent for a rolled-back change.
 
 It returns the updated incident, or `null` when the incident does not exist in
 the organization.

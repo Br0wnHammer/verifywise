@@ -280,15 +280,85 @@ const APPROVAL_FIELDS = [
   "approval_notes",
 ] as const;
 
-/** Compares a stored and a sent approval value; '' / null / undefined all mean "none". */
-const isSameApprovalValue = (field: string, stored: unknown, sent: unknown): boolean => {
-  const a = stored === "" || stored === undefined ? null : stored;
-  const b = sent === "" ? null : sent;
-  if (a === null || b === null) return a === b;
-  if (field === "approval_date") {
-    return new Date(a as string).getTime() === new Date(b as string).getTime();
+/** Incident date columns. Compared as calendar dates (see incidentCalendarDate). */
+export const INCIDENT_DATE_COLUMNS: ReadonlySet<string> = new Set([
+  "occurred_date",
+  "date_detected",
+  "approval_date",
+]);
+
+/** Incident foreign-key columns (issue #4583). Compared as numbers. */
+export const INCIDENT_FK_COLUMNS: ReadonlySet<string> = new Set([
+  "model_inventory_id",
+  "project_id",
+  "assignee_id",
+]);
+
+/** Incident boolean columns. null / undefined count as false. */
+export const INCIDENT_BOOLEAN_COLUMNS: ReadonlySet<string> = new Set([
+  "archived",
+  "interim_report",
+]);
+
+const isEmptyValue = (value: unknown): boolean =>
+  value === null || value === undefined || value === "";
+
+/**
+ * The calendar date (YYYY-MM-DD) of an incident date value.
+ *
+ * The date columns are TIMESTAMP WITHOUT TIME ZONE and the project installs
+ * no custom pg type parser, so a stored value reaches us as a JS Date whose
+ * UTC calendar date is what the API (toSafeJSON → toISOString) and the edit
+ * drawer (`toISOString().split("T")[0]`) show. A Date is therefore read as
+ * its UTC date. A string that starts with YYYY-MM-DD is taken at that date:
+ * that is the date Postgres stores for it, since a TIMESTAMP WITHOUT TIME
+ * ZONE column ignores any offset in the input.
+ */
+export const incidentCalendarDate = (value: unknown): string | null => {
+  if (isEmptyValue(value)) return null;
+  if (typeof value === "string") {
+    const match = /^\d{4}-\d{2}-\d{2}/.exec(value);
+    if (match) return match[0];
   }
-  return String(a) === String(b);
+  const date = value instanceof Date ? value : new Date(value as string);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString().slice(0, 10);
+};
+
+const toHarmArray = (value: unknown): unknown => {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
+/**
+ * Whether `sent` would store the same value incident column `column` already
+ * holds (`stored`). This is the one comparison used both to decide whether a
+ * caller touched an approval field (applyReopenApprovalReset) and to decide
+ * which columns an update writes and records in history
+ * (diffIncidentColumns).
+ *
+ * '' / null / undefined are all "empty"; booleans treat empty as false; date
+ * columns compare calendar dates; foreign keys compare numerically.
+ */
+export const isSameIncidentValue = (column: string, stored: unknown, sent: unknown): boolean => {
+  if (INCIDENT_BOOLEAN_COLUMNS.has(column)) return Boolean(stored) === Boolean(sent);
+  if (isEmptyValue(stored) || isEmptyValue(sent)) {
+    return isEmptyValue(stored) && isEmptyValue(sent);
+  }
+  if (INCIDENT_DATE_COLUMNS.has(column)) {
+    return incidentCalendarDate(stored) === incidentCalendarDate(sent);
+  }
+  if (INCIDENT_FK_COLUMNS.has(column)) return Number(stored) === Number(sent);
+  if (column === "categories_of_harm") {
+    return JSON.stringify(toHarmArray(stored)) === JSON.stringify(toHarmArray(sent));
+  }
+  if (typeof stored === "object" || typeof sent === "object") {
+    return JSON.stringify(stored) === JSON.stringify(sent);
+  }
+  return String(stored) === String(sent);
 };
 
 /**
@@ -322,7 +392,7 @@ export const applyReopenApprovalReset = <T extends Record<string, any>>(
 
   const callerChangedApproval = APPROVAL_FIELDS.some(
     (field) =>
-      update[field] !== undefined && !isSameApprovalValue(field, existing[field], update[field]),
+      update[field] !== undefined && !isSameIncidentValue(field, existing[field], update[field]),
   );
   if (callerChangedApproval) return update;
 

@@ -1,5 +1,7 @@
 import {
   applyReopenApprovalReset,
+  incidentCalendarDate,
+  isSameIncidentValue,
   validateCompleteIncidentUpdate,
 } from "./incidentManagementValidation.utils";
 import {
@@ -56,6 +58,14 @@ describe("reopening closed incidents", () => {
       });
     });
 
+    it("treats the drawer's YYYY-MM-DD approval date as unchanged against the stored Date", () => {
+      // pg returns the TIMESTAMP WITHOUT TIME ZONE column as a Date; the drawer
+      // sends back toISOString().split("T")[0] of the API value.
+      const stored = { ...closedApproved, approval_date: new Date("2026-10-01T00:00:00.000Z") };
+      const update = { status: Status.OPEN, approval_date: "2026-10-01" };
+      expect(applyReopenApprovalReset(stored, update)).toEqual({ ...update, ...RESET });
+    });
+
     it("treats '' and null as the same empty approval value", () => {
       const stored = { ...closedApproved, approval_notes: null };
       const update = { status: Status.OPEN, approval_notes: "" };
@@ -94,6 +104,44 @@ describe("reopening closed incidents", () => {
       expect(
         applyReopenApprovalReset({ ...closedApproved, status: Status.MITIGATED }, update),
       ).toBe(update);
+    });
+  });
+
+  describe("isSameIncidentValue", () => {
+    it("compares date columns as calendar dates", () => {
+      const stored = new Date("2026-10-01T00:00:00.000Z");
+      expect(isSameIncidentValue("approval_date", stored, "2026-10-01")).toBe(true);
+      expect(isSameIncidentValue("approval_date", stored, "2026-10-01T15:30:00.000Z")).toBe(true);
+      expect(isSameIncidentValue("approval_date", stored, "2026-10-02")).toBe(false);
+      expect(isSameIncidentValue("approval_date", null, "")).toBe(true);
+      expect(isSameIncidentValue("approval_date", null, "2026-10-01")).toBe(false);
+    });
+
+    it("compares foreign keys numerically and booleans with empty as false", () => {
+      expect(isSameIncidentValue("project_id", 3, "3")).toBe(true);
+      expect(isSameIncidentValue("project_id", 3, null)).toBe(false);
+      expect(isSameIncidentValue("archived", false, null)).toBe(true);
+      expect(isSameIncidentValue("archived", true, null)).toBe(false);
+    });
+
+    it("compares harm categories as lists, whether stored as JSON text or an array", () => {
+      expect(isSameIncidentValue("categories_of_harm", '["Other"]', ["Other"])).toBe(true);
+      expect(isSameIncidentValue("categories_of_harm", ["Other"], ["Other", "Health"])).toBe(false);
+    });
+
+    it("treats '', null and undefined as the same empty text", () => {
+      expect(isSameIncidentValue("approval_notes", null, "")).toBe(true);
+      expect(isSameIncidentValue("approval_notes", undefined, null)).toBe(true);
+      expect(isSameIncidentValue("approval_notes", "x", "")).toBe(false);
+    });
+  });
+
+  describe("incidentCalendarDate", () => {
+    it("takes the date part of YYYY-MM-DD strings and the UTC date of Dates", () => {
+      expect(incidentCalendarDate("2026-10-01")).toBe("2026-10-01");
+      expect(incidentCalendarDate("2026-10-01T23:30:00-05:00")).toBe("2026-10-01");
+      expect(incidentCalendarDate(new Date("2026-10-01T23:30:00.000Z"))).toBe("2026-10-01");
+      expect(incidentCalendarDate("")).toBeNull();
     });
   });
 });

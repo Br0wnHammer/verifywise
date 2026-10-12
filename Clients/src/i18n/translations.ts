@@ -6991,6 +6991,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Incident details": "Vorfallsdetails",
     "Incident management details": "Details des Vorfallsmanagements",
     "Incident updated successfully!": "Vorfall erfolgreich aktualisiert!",
+    "This incident was changed since you opened it. Reload to see the latest version.":
+      "Dieser Vorfall wurde geändert, seit Sie ihn geöffnet haben. Laden Sie die Seite neu, um die aktuelle Version zu sehen.",
     "Indefinite": "Unbestimmt",
     "Individual event records from ingestion": "Einzelne Ereignisdatensätze aus der Aufnahme",
     "Individual user AI tool usage and risk scores":
@@ -17086,6 +17088,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Incident details": "Détails de l'incident",
     "Incident management details": "Détails de la gestion des incidents",
     "Incident updated successfully!": "Incident mis à jour avec succès !",
+    "This incident was changed since you opened it. Reload to see the latest version.":
+      "Cet incident a été modifié depuis que vous l'avez ouvert. Rechargez la page pour voir la dernière version.",
     "Indefinite": "Indéfini",
     "Individual event records from ingestion":
       "Enregistrements d'événements individuels depuis l'ingestion",
@@ -24551,6 +24555,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Incident details": "Detalles del incidente",
     "Incident management details": "Detalles de la gestión de incidentes",
     "Incident updated successfully!": "¡Incidente actualizado correctamente!",
+    "This incident was changed since you opened it. Reload to see the latest version.":
+      "Este incidente se modificó después de que lo abrieras. Recarga la página para ver la versión más reciente.",
     "Indefinite": "Indefinido",
     "Individual event records from ingestion": "Registros de eventos individuales de la ingesta",
     "Information security for AI systems": "Seguridad de la información para sistemas de IA",

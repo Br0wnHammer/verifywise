@@ -385,6 +385,31 @@ export const trackEntityChanges = async (
 };
 
 /**
+ * Build history entries for fields the caller has already decided changed
+ * (for example from the same diff that drives its UPDATE), so the history
+ * matches the write exactly. Unlike trackEntityChanges this does not compare
+ * values again; it only keeps tracked fields and formats old/new values.
+ */
+export const formatEntityFieldChanges = async (
+  entityType: EntityType,
+  oldData: Record<string, unknown>,
+  newData: Record<string, unknown>,
+  changedFields: string[],
+): Promise<Array<{ fieldName: string; oldValue: string; newValue: string }>> => {
+  const config = getEntityConfig(entityType);
+  const changes: Array<{ fieldName: string; oldValue: string; newValue: string }> = [];
+  for (const field of config.fieldsToTrack) {
+    if (!changedFields.includes(field)) continue;
+    changes.push({
+      fieldName: getFieldLabel(entityType, field),
+      oldValue: await formatFieldValue(entityType, field, oldData[field]),
+      newValue: await formatFieldValue(entityType, field, newData[field]),
+    });
+  }
+  return changes;
+};
+
+/**
  * Record entity creation with initial field values
  *
  * Records each non-empty initial field as a 'created' change entry.

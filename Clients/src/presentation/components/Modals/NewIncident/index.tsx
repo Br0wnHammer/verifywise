@@ -47,7 +47,12 @@ import SelectComponent from "../../Inputs/Select";
 interface SideDrawerIncidentProps {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
-  onSuccess?: (data: NewIncidentFormValues) => void;
+  /**
+   * Called with the form values on save. Resolve to `false` to keep the
+   * drawer open (for example when the save was refused); anything else
+   * closes it.
+   */
+  onSuccess?: (data: NewIncidentFormValues) => void | boolean | Promise<void | boolean>;
   initialData?: NewIncidentFormValues;
   isEdit?: boolean;
   mode?: string;
@@ -79,8 +84,14 @@ export interface NewIncidentFormValues {
   interim_report: boolean;
   approval_status: AIIncidentManagementApprovalStatus;
   approved_by?: string;
-  approval_date?: string;
+  /** YYYY-MM-DD, or empty/null when the incident has no approval date. */
+  approval_date?: string | null;
   approval_notes?: string;
+  /**
+   * The incident's updated_at when the drawer loaded it (edit only). Sent
+   * back so the server can refuse the save if someone changed it since.
+   */
+  expected_updated_at?: string;
 }
 
 const initialState: NewIncidentFormValues = {
@@ -326,17 +337,19 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
     setActiveTab("details");
   };
 
-  const handleSaveIncident = (e?: React.FormEvent) => {
+  const handleSaveIncident = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (validateAll(values, INCIDENT_FORM_FIELD_ORDER)) {
       // Normalize optional FK pickers to integer ids or null (issue #4583)
       const toId = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
-      onSuccess?.({
+      const result = await onSuccess?.({
         ...values,
         project_id: toId(values.project_id),
         model_inventory_id: toId(values.model_inventory_id),
         assignee_id: toId(values.assignee_id),
       });
+      // Keep the drawer, and what the user typed, when the save was refused.
+      if (result === false) return;
       handleClose();
       return;
     }

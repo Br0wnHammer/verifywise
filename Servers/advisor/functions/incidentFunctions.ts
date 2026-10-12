@@ -497,8 +497,10 @@ const agentCreateIncident = createWriteToolFn({
 
 /**
  * Applies `fields` to an incident on behalf of an advisor write tool through
- * the shared incident write path (reopen approval reset, change history as
- * the approving user).
+ * the shared incident write path (reopen approval reset, change history).
+ * History is recorded as the approving user, or as the system when the
+ * execution carries no user id. No expectedUpdatedAt: the tool is a
+ * background writer, not an editor holding a loaded copy.
  */
 async function applyIncidentUpdate(
   params: Record<string, unknown>,
@@ -506,12 +508,10 @@ async function applyIncidentUpdate(
   fields: Record<string, unknown>,
 ) {
   const incidentId = params.incident_id as number;
-  const result = await updateIncident(
-    organizationId,
-    incidentId,
-    fields,
-    params._userId as number | undefined,
-  );
+  const userId = (params._userId as number | undefined) || null;
+  const result = await updateIncident(organizationId, incidentId, fields, userId, {
+    changedBySystem: userId === null,
+  });
   if (!result) {
     throw new Error(`Incident #${incidentId} not found`);
   }
