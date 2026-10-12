@@ -368,10 +368,21 @@ export async function getUseCaseCtrl(req: Request, res: Response): Promise<any> 
 export const REMOVAL_INTERRUPTED_MESSAGE =
   "The removal was interrupted; nothing was removed. Try again.";
 
+/** 409 when a deletion lost its claim before finishing; its transaction rolled back. */
+function sendRemovalInterrupted(res: Response) {
+  return res.status(409).json(
+    STATUS_CODE[409]({
+      message: REMOVAL_INTERRUPTED_MESSAGE,
+      code: JIRA_RUN_CODES.removalInterrupted,
+    }),
+  );
+}
+
 /**
  * POST /use-cases/remove-missing — delete the use cases the admin chose from
  * the "Missing in Jira" list (`{ use_case_ids: number[] }`). Only ids still
- * flagged as missing are removed; returns `{ removed, skipped }`. 409 while a
+ * flagged as missing are removed; returns
+ * `{ removed, unlinked, skipped, skipped_ids }`. 409 while a
  * sync or import is running, or `{ message, code: "removal_interrupted" }`
  * when the removal lost its claim (nothing was removed).
  */
@@ -387,7 +398,7 @@ export async function removeMissingCtrl(req: Request, res: Response): Promise<an
     await logSuccess({
       ...ctx,
       eventType: "Delete",
-      description: `Removed ${result.removed} use case(s) missing in Jira (${result.skipped} skipped)`,
+      description: `Removed ${result.removed} use case(s) missing in Jira (${result.unlinked} link(s) cleaned up, ${result.skipped} skipped)`,
     });
     return res.status(200).json(STATUS_CODE[200](result));
   } catch (err) {
@@ -396,15 +407,7 @@ export async function removeMissingCtrl(req: Request, res: Response): Promise<an
       eventType: "Delete",
       description: "Failed to remove use cases missing in Jira",
     });
-    // The removal lost its claim before finishing; its transaction rolled back.
-    if (err instanceof RunSupersededError) {
-      return res.status(409).json(
-        STATUS_CODE[409]({
-          message: REMOVAL_INTERRUPTED_MESSAGE,
-          code: JIRA_RUN_CODES.removalInterrupted,
-        }),
-      );
-    }
+    if (err instanceof RunSupersededError) return sendRemovalInterrupted(res);
     return sendError(req, res, err, "removeMissing");
   }
 }
@@ -417,19 +420,22 @@ export async function deleteUseCaseCtrl(req: Request, res: Response): Promise<an
   }
   logProcessing({ ...ctx, description: `deleting Jira Assets use case project ${projectId}` });
   try {
-    await deleteUseCaseByProjectId(projectId, orgId(req), uid(req));
+    const { unlinked } = await deleteUseCaseByProjectId(projectId, orgId(req), uid(req));
     await logSuccess({
       ...ctx,
       eventType: "Delete",
-      description: `Deleted Jira Assets use case project ${projectId}`,
+      description: unlinked
+        ? `Removed the Jira Assets link to project ${projectId}, which is not in this organization`
+        : `Deleted Jira Assets use case project ${projectId}`,
     });
-    return res.status(200).json(STATUS_CODE[200]({ success: true }));
+    return res.status(200).json(STATUS_CODE[200]({ success: true, unlinked }));
   } catch (err) {
     await logUnexpectedFailure(err, {
       ...ctx,
       eventType: "Delete",
       description: `Failed to delete Jira Assets use case project ${projectId}`,
     });
+    if (err instanceof RunSupersededError) return sendRemovalInterrupted(res);
     return sendError(req, res, err, "deleteUseCase");
   }
 }

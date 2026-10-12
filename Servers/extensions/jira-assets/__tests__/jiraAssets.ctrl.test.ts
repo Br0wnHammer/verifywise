@@ -346,12 +346,17 @@ describe("POST /use-cases/remove-missing", () => {
 
 describe("DELETE /use-cases/:id", () => {
   it("deletes through the service with the caller's user id, and logs it", async () => {
+    (deleteUseCaseByProjectId as jest.Mock).mockResolvedValueOnce({ unlinked: false });
     const res = mockRes();
 
     await deleteUseCaseCtrl({ ...req, params: { id: "111" } }, res);
 
     expect(deleteUseCaseByProjectId).toHaveBeenCalledWith(111, 5, 8);
     expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "OK",
+      data: { success: true, unlinked: false },
+    });
     expect(logSuccess).toHaveBeenCalledWith(expect.objectContaining({ eventType: "Delete" }));
   });
 
@@ -366,6 +371,36 @@ describe("DELETE /use-cases/:id", () => {
 
     expect(res.status).toHaveBeenCalledWith(status);
     expect(logFailure).not.toHaveBeenCalled();
+  });
+
+  it("returns the same 409 removal_interrupted as a removal when it lost its claim", async () => {
+    (deleteUseCaseByProjectId as jest.Mock).mockRejectedValueOnce(new RunSupersededError("closed"));
+    const res = mockRes();
+
+    await deleteUseCaseCtrl({ ...req, params: { id: "111" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Conflict",
+      data: {
+        message: "The removal was interrupted; nothing was removed. Try again.",
+        code: "removal_interrupted",
+      },
+    });
+    expect(logFailure).not.toHaveBeenCalled();
+  });
+
+  it("reports a link cleaned up (project not in this org) as unlinked, not removed", async () => {
+    (deleteUseCaseByProjectId as jest.Mock).mockResolvedValueOnce({ unlinked: true });
+    const res = mockRes();
+
+    await deleteUseCaseCtrl({ ...req, params: { id: "999" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "OK",
+      data: { success: true, unlinked: true },
+    });
   });
 
   it("rejects a non-numeric id with 400 before deleting", async () => {

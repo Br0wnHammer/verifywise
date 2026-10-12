@@ -460,14 +460,16 @@ the Assets API pages. Completeness now only decides whether flags may be set.
   proves the end, because `total` can be capped. The walk advances by the
   number of rows returned.
 - **Data Center:** `GET iql/objects?...&page=&resultPerPage=`. The server may
-  cap `resultPerPage`, so a short page alone proves nothing. The walk is
-  complete on an empty page, on `isLast === true`, on as many distinct objects
-  as `totalFilterCount` (on a short or repeated page only, since a count
-  reached on a full page could be capped), on a short page that is the
-  reported last page (`page >= pageSize`, the number of pages), or on a
-  repeated page (some servers answer past the end with their last page) once
-  `pageSize` says the walk is past the last page. A repeated page with no
-  such signal ends the walk incomplete.
+  cap `resultPerPage`, so a short page alone proves nothing, and `pageSize`
+  (the page count) is never used: a capping server may compute it from the
+  size that was asked for. The walk is complete on an empty page, on
+  `isLast === true`, or on as many distinct objects as `totalFilterCount`
+  (on a short or repeated page only, since a count reached on a full page
+  could be capped). A repeated page (some servers answer past the end with
+  their last page) with none of these ends the walk incomplete. The accepted
+  trade-off: a server that reports only `pageSize` and repeats its last page
+  past the end never gets a complete walk, so its syncs refresh what they see
+  but never flag anything as missing in Jira.
 
 Every request has a 30-second timeout. The worker's walk has a 10-minute
 deadline (`WORKER_SYNC_DEADLINE_MS`). When it passes, the run fails with
@@ -477,8 +479,13 @@ claim) propagates as itself and is not reported as a deadline stop. The
 import picker (`GET /object-types/:id/objects?startAt=`) returns one page of up
 to 1000 as `{ objects, hasMore, nextStartAt }`, with **Load more** in the
 panel. `POST /import` takes at most 100 `object_ids` per request
-(`IMPORT_MAX_OBJECTS`, 400 above that; the panel disables Import and says so),
-because it runs inside the request and fetches each object from Jira in turn.
+(`IMPORT_MAX_OBJECTS`, 400 above that), because it runs inside the request and
+fetches each object from Jira in turn. The panel sends a bigger selection as
+sequential batches of 100.
+
+The import result carries `errors` for objects that could not be imported,
+and `failed_ids` with their ids, so the panel can keep exactly those objects
+selected for a retry.
 An import that loses its claim returns 409 with
 `{ message, code: "import_interrupted", imported, skipped }`.
 
@@ -525,33 +532,58 @@ ticks the use cases to delete and clicks **Remove selected use cases (N)**.
 They confirm in a `StandardModal` that shows the count and the list, and that
 says the projects and their data will be deleted. The panel then calls
 `POST /use-cases/remove-missing` with `{ use_case_ids }`, exactly the selected
-ids (1 to 100, the same limit as an import, `REMOVE_MISSING_MAX_IDS`; the
-panel disables the button above it). `removeMissingUseCases`:
+ids, at most 100 per request (the same limit as an import,
+`REMOVE_MISSING_MAX_IDS`). For a bigger selection the panel sends sequential
+requests of up to 100, shows "Removing use cases 101–200 / 250", stops at the
+first error and reports how many were removed. Import batches the same way
+("Importing objects …"); objects a batch reports as failed make the outcome a
+warning with a "not imported" count. A removal whose response lists
+`skipped_ids` (no longer flagged, or not found) is a warning with a "skipped"
+count, and links cleaned up are counted separately ("Links cleaned up").
+Handled ids leave the selection; failed, skipped and unsent ones stay
+selected, so a retry is one click. After an import the panel reloads the
+imported use cases and applies `finishImport` with that fresh list: imported
+objects leave the picker, and the selection is derived from the objects that
+remain (an id stays only if it is still shown and was not handled), so
+nothing selected is ever hidden. The outcome is shown last. Both live in
+`jira-assets/batching.ts`.
+`removeMissingUseCases` (through `deleteUseCasesUnderClaim`):
 
 1. takes the same claim, so it cannot race a sync or import (409)
 2. locks the listed rows that are still flagged (`FOR UPDATE`)
-3. deletes each project the way the core "Delete use case" does
-   (`deleteLinkedProject`): withdraws a pending approval request, then
-   `deleteProjectByIdQuery` (files, risks, members, per-framework rows,
-   custom-field values), and records the deletion in the change history only
-   if the project was deleted. The `project_deleted` automation is queued
-   after the transaction commits (`enqueueAutomationAfterCommit`), so a
-   rolled-back removal fires none. The link row cascades. Link rows with no
-   project are deleted directly.
-4. records the run (`objects_deleted` = number removed)
+3. for each link whose project is in this organization, deletes the project
+   the way the core "Delete use case" does (`deleteLinkedProject`): locks the
+   project row first (so nothing happens to a project that is not here), then
+   withdraws a pending approval request, runs `deleteProjectByIdQuery` (files,
+   risks, members, per-framework rows, custom-field values) and records the
+   deletion in the change history. The `project_deleted` automation is
+   queued after the transaction commits (`enqueueAutomationAfterCommit`), so
+   a rolled-back removal fires none. The link row cascades.
+4. for a link with no project, or whose project is not in this organization
+   (another organization's, or a bad id), deletes only the link row: no
+   project is touched, no change history is written and no automation fires.
+   It is reported as `unlinked`, not as a removed use case. Without this,
+   such a link could never leave the "Missing in Jira" list.
+5. records the run (`objects_deleted` = use cases removed; a note counts the
+   links cleaned up)
 
 Steps 2 to 4 run in one transaction, which first share-locks the run's own
 history row so no other claim can close it mid-way.
 
-`DELETE /use-cases/:id` deletes one imported use case the same way. It is 404
-for a project that is not linked in `jira_assets_use_cases` (or is already
-gone; nothing is written then), takes the same claim (409 while a sync, import
-or removal runs; its history row is `'remove_missing'` with
-`objects_deleted = 1`) and runs in one transaction.
+`DELETE /use-cases/:id` deletes one imported use case through the same
+`deleteUseCasesUnderClaim` flow (409 while a sync, import or removal runs; its
+history row is `'remove_missing'` with `objects_deleted = 1`; 409
+`removal_interrupted` if it lost its claim). A project that is not linked in
+`jira_assets_use_cases` is 404 from an unlocked check before claiming, so it
+never takes or waits on the claim (404, not 409, during a sync). If the link
+vanished between that check and the locked one under the claim, the
+transaction rolls back and the claimed history row is deleted, so nothing is
+recorded. A link whose project is not in this organization has only its link
+row deleted and returns 200 with `{ success: true, unlinked: true }`.
 
 A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is
-`{ removed, skipped }`. If the removal loses its claim before it finishes, the
+`{ removed, unlinked, skipped, skipped_ids }`. If the removal loses its claim before it finishes, the
 transaction rolls back and the route returns 409 with
 `{ message: "The removal was interrupted; nothing was removed. Try again.",
 code: "removal_interrupted" }`. The panel switches on `code`, never on the
