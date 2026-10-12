@@ -10252,8 +10252,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Failed to save settings": "Einstellungen konnten nicht gespeichert werden",
     "Retention settings could not be loaded.":
       "Die Aufbewahrungseinstellungen konnten nicht geladen werden.",
-    "Logs older than {days} days will be deleted permanently every day. Deleted logs cannot be restored.":
-      "Protokolle, die älter als {days} Tage sind, werden täglich dauerhaft gelöscht. Gelöschte Protokolle können nicht wiederhergestellt werden.",
+    "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
+      "Guardrail-Protokolle, die älter als {guardrailDays} Tage sind, und Kostenprotokolle, die älter als {spendDays} Tage sind, werden täglich dauerhaft gelöscht. Gelöschte Protokolle können nicht wiederhergestellt werden.",
   },
 
   fr: {
@@ -20430,8 +20430,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Failed to save settings": "Impossible d'enregistrer les paramètres",
     "Retention settings could not be loaded.":
       "Les paramètres de conservation n'ont pas pu être chargés.",
-    "Logs older than {days} days will be deleted permanently every day. Deleted logs cannot be restored.":
-      "Les journaux de plus de {days} jours seront supprimés définitivement chaque jour. Les journaux supprimés ne peuvent pas être restaurés.",
+    "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
+      "Les journaux des garde-fous de plus de {guardrailDays} jours et les journaux de dépenses de plus de {spendDays} jours seront supprimés définitivement chaque jour. Les journaux supprimés ne peuvent pas être restaurés.",
   },
   es: {
     "Deployment name": "Nombre del despliegue",
@@ -30526,7 +30526,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Delete records": "Eliminar registros",
     "Failed to save settings": "No se pudo guardar la configuración",
     "Retention settings could not be loaded.": "No se pudo cargar la configuración de retención.",
-    "Logs older than {days} days will be deleted permanently every day. Deleted logs cannot be restored.":
-      "Los registros con más de {days} días se eliminarán de forma permanente cada día. Los registros eliminados no se pueden restaurar.",
+    "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
+      "Los registros de guardrails con más de {guardrailDays} días y los registros de gasto con más de {spendDays} días se eliminarán de forma permanente cada día. Los registros eliminados no se pueden restaurar.",
   },
 };

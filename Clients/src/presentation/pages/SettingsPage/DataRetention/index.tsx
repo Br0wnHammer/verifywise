@@ -145,7 +145,7 @@ export default function DataRetention() {
           </TableBody>
         </Table>
       </TableContainer>
-      {editing && <EditRetentionModal row={editing} onClose={() => setEditing(null)} />}
+      {editing && <EditRetentionModal row={editing} rows={rows} onClose={() => setEditing(null)} />}
     </Stack>
   );
 }

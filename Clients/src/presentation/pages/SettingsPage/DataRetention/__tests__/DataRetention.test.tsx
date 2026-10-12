@@ -334,7 +334,9 @@ describe("Edit retention modal", () => {
 
     expect(
       await screen.findByText(
-        "Logs older than 60 days will be deleted permanently every day. Deleted logs cannot be restored.",
+        // Automatic deletion covers both log types, so both periods are named:
+        // the guardrail row's current 90 days and the spend row's 60 days.
+        "Guardrail logs older than 90 days and spend logs older than 60 days will be deleted permanently every day. Deleted logs cannot be restored.",
       ),
     ).toBeInTheDocument();
     expect(mockUpdateGateway).not.toHaveBeenCalled();
@@ -354,7 +356,8 @@ describe("Edit retention modal", () => {
 
     expect(
       await screen.findByText(
-        "Logs older than 30 days will be deleted permanently every day. Deleted logs cannot be restored.",
+        // The new guardrail value and the spend row's current value.
+        "Guardrail logs older than 30 days and spend logs older than 60 days will be deleted permanently every day. Deleted logs cannot be restored.",
       ),
     ).toBeInTheDocument();
     expect(mockUpdateGateway).not.toHaveBeenCalled();
@@ -387,6 +390,27 @@ describe("Edit retention modal", () => {
         auto_purge_enabled: true,
       }),
     );
+  });
+
+  it("shows the gateway's validation detail on the form", async () => {
+    mockUpdateGateway.mockRejectedValue({
+      response: { detail: "log_retention_days must be at most 3650" },
+    });
+    await open("ai_gateway_guardrail_logs");
+    fireEvent.change(screen.getByLabelText(/Keep for \(days\)/), { target: { value: "5000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("log_retention_days must be at most 3650")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("returns from the confirmation to the form with the gateway's detail", async () => {
+    mockUpdateGateway.mockRejectedValue({ response: { detail: "Admin role required" } });
+    await open("ai_gateway_spend_logs");
+    fireEvent.click(screen.getByRole("switch"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete records" }));
+    expect(await screen.findByText("Admin role required")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Keep for \(days\)/)).toBeInTheDocument();
   });
 
   it("blocks invalid gateway days", async () => {
