@@ -5,6 +5,7 @@ import { translateError } from "../utils/i18n.utils";
 import { CustomException } from "../domain.layer/exceptions/custom.exception";
 import {
   getMrmOrgSettings,
+  lockMrmOrgSettings,
   MIN_RETENTION_MONTHS,
   upsertMrmOrgSettings,
 } from "../utils/mrmSettings.utils";
@@ -114,13 +115,16 @@ export async function updateMrmSettingsHandler(req: Request, res: Response) {
       }
     }
 
-    const previousRetention = has("retention_months")
-      ? (await getMrmOrgSettings(req.organizationId!)).retention_months
-      : undefined;
-
     const transaction = await sequelize.transaction();
     let settings;
+    let previousRetention: number | undefined;
     try {
+      // Read the old period under a row lock in the same transaction, so a
+      // concurrent save cannot make the ledger's "from" value stale.
+      if (has("retention_months")) {
+        previousRetention = (await lockMrmOrgSettings(req.organizationId!, transaction))
+          .retention_months;
+      }
       settings = await upsertMrmOrgSettings(
         req.organizationId!,
         {

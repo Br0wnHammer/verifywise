@@ -17,6 +17,7 @@ jest.mock("../../utils/i18n.utils", () => ({ translateError: jest.fn(() => "err"
 jest.mock("../../utils/mrmSettings.utils", () => ({
   MIN_RETENTION_MONTHS: 13,
   getMrmOrgSettings: jest.fn<any>(),
+  lockMrmOrgSettings: jest.fn<any>(),
   upsertMrmOrgSettings: jest.fn<any>(),
 }));
 jest.mock("../../utils/auditLedger.utils", () => ({
@@ -40,12 +41,13 @@ jest.mock("../../utils/mrmAlerts.utils", () => ({
 }));
 
 import { updateMrmSettingsHandler } from "../mrmSettings.ctrl";
-import { getMrmOrgSettings, upsertMrmOrgSettings } from "../../utils/mrmSettings.utils";
+import { lockMrmOrgSettings, upsertMrmOrgSettings } from "../../utils/mrmSettings.utils";
+import { sequelize } from "../../database/db";
 import { appendToAuditLedger } from "../../utils/auditLedger.utils";
 import { logFailure } from "../../utils/logger/logHelper";
 
 const upsert = upsertMrmOrgSettings as jest.MockedFunction<any>;
-const getSettings = getMrmOrgSettings as jest.MockedFunction<any>;
+const getSettings = lockMrmOrgSettings as jest.MockedFunction<any>;
 const append = appendToAuditLedger as jest.MockedFunction<any>;
 const failureLog = logFailure as jest.MockedFunction<any>;
 
@@ -162,6 +164,33 @@ describe("updateMrmSettingsHandler retention audit trail", () => {
     await updateMrmSettingsHandler(createReq("Admin", { alert_email_enabled: true }), createRes());
 
     expect(append).not.toHaveBeenCalled();
+  });
+
+  it("reads the previous period under a lock in the update's transaction", async () => {
+    const tx = { commit: jest.fn<any>(), rollback: jest.fn<any>() };
+    (sequelize.transaction as jest.MockedFunction<any>).mockResolvedValueOnce(tx);
+    const order: string[] = [];
+    getSettings.mockImplementation(async () => {
+      order.push("lock");
+      return { organization_id: 1, retention_months: 24 };
+    });
+    upsert.mockImplementation(async () => {
+      order.push("upsert");
+      return { organization_id: 1, retention_months: 36 };
+    });
+
+    await updateMrmSettingsHandler(createReq("Admin", { retention_months: 36 }), createRes());
+
+    expect(getSettings).toHaveBeenCalledWith(1, tx);
+    expect(upsert).toHaveBeenCalledWith(1, expect.anything(), tx);
+    expect(order).toEqual(["lock", "upsert"]);
+    expect(tx.commit).toHaveBeenCalled();
+  });
+
+  it("does not lock the row when retention_months is absent", async () => {
+    await updateMrmSettingsHandler(createReq("Admin", { alert_email_enabled: true }), createRes());
+
+    expect(getSettings).not.toHaveBeenCalled();
   });
 
   it("logs a failed append and still succeeds", async () => {
