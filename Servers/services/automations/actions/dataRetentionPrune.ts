@@ -16,6 +16,7 @@ import {
 import { aiGatewayRequest } from "../../../utils/aiGatewayInternal.utils";
 import {
   GATEWAY_PURGE_REFUSALS,
+  GatewayPurgeRefusal,
   gatewayPurgeRefusalFor,
 } from "../../../utils/aiGatewayRetention.constants";
 import logger from "../../../utils/logger/fileLogger";
@@ -204,6 +205,11 @@ function gatewayRunStatus(total: GatewayTypeTotal) {
  * Ask the AI Gateway to purge logs for each org that opted in to automatic
  * deletion, one org at a time. A gateway or recording failure is logged and
  * never fails the job, and one org's failure never affects another's.
+ *
+ * Exception: a refusal over the internal key applies to the whole
+ * deployment, so after the first one the remaining orgs are not sent to the
+ * gateway this run. Each of them gets the same failed runs and code, and the
+ * refusal is logged once.
  */
 async function purgeGatewayLogs(): Promise<void> {
   let orgIds: number[];
@@ -213,20 +219,65 @@ async function purgeGatewayLogs(): Promise<void> {
     logger.error("Reading AI Gateway auto-purge organizations failed:", error);
     return;
   }
-  for (const orgId of orgIds) {
-    await purgeGatewayLogsForOrg(orgId);
+  for (let i = 0; i < orgIds.length; i++) {
+    const refusal = await purgeGatewayLogsForOrg(orgIds[i]);
+    if (!refusal) continue;
+    const remaining = orgIds.slice(i + 1);
+    if (remaining.length > 0) {
+      logger.error(
+        `AI Gateway refused the retention purge (${GATEWAY_PURGE_REFUSALS[refusal]}); ` +
+          `not calling it for the ${remaining.length} remaining organization(s) this run.`,
+      );
+    }
+    for (const orgId of remaining) {
+      await recordGatewayRuns(orgId, {
+        deleted: 0,
+        capped: false,
+        error: GATEWAY_PURGE_REFUSALS[refusal],
+        errorCode: refusal,
+      });
+    }
+    return;
   }
+}
+
+/** Record one run per gateway log type with the same outcome. */
+async function recordGatewayRuns(
+  orgId: number,
+  guardrail: GatewayTypeTotal,
+  spend: GatewayTypeTotal = guardrail,
+): Promise<void> {
+  await safeRecordRetentionRun({
+    organizationId: orgId,
+    recordType: "ai_gateway_guardrail_logs",
+    cutoff: null,
+    deletedCount: guardrail.deleted,
+    status: gatewayRunStatus(guardrail),
+    error: guardrail.error,
+    errorCode: guardrail.errorCode,
+  });
+  await safeRecordRetentionRun({
+    organizationId: orgId,
+    recordType: "ai_gateway_spend_logs",
+    cutoff: null,
+    deletedCount: spend.deleted,
+    status: gatewayRunStatus(spend),
+    error: spend.error,
+    errorCode: spend.errorCode,
+  });
 }
 
 /**
  * Call the per-org purge, repeating while a log type is still capped (up to
  * five calls), then record one run per log type: failed if any call errored
  * for that type, capped if still capped after the last call, else success.
+ * Returns the refusal when the gateway refused a call over the internal key.
  */
-async function purgeGatewayLogsForOrg(orgId: number): Promise<void> {
+async function purgeGatewayLogsForOrg(orgId: number): Promise<GatewayPurgeRefusal | null> {
   const guardrail: GatewayTypeTotal = { deleted: 0, capped: false };
   const spend: GatewayTypeTotal = { deleted: 0, capped: false };
   let answered = false;
+  let refused: GatewayPurgeRefusal | null = null;
 
   for (let call = 0; call < GATEWAY_PURGE_MAX_CALLS; call++) {
     let result: GatewayPurgeResult | undefined;
@@ -242,6 +293,7 @@ async function purgeGatewayLogsForOrg(orgId: number): Promise<void> {
       // A refusal over the internal key is recorded with a clear reason the
       // Data retention page can show; anything else keeps its own message.
       const refusal = gatewayPurgeRefusalFor(error);
+      refused = refusal;
       if (refusal) {
         logger.error(
           `AI Gateway retention purge for org ${orgId}: ${GATEWAY_PURGE_REFUSALS[refusal]}. ` +
@@ -275,24 +327,8 @@ async function purgeGatewayLogsForOrg(orgId: number): Promise<void> {
     const more = (t: GatewayTypeTotal) => t.capped && !t.error;
     if (!more(guardrail) && !more(spend)) break;
   }
-  if (!answered) return;
+  if (!answered) return refused;
 
-  await safeRecordRetentionRun({
-    organizationId: orgId,
-    recordType: "ai_gateway_guardrail_logs",
-    cutoff: null,
-    deletedCount: guardrail.deleted,
-    status: gatewayRunStatus(guardrail),
-    error: guardrail.error,
-    errorCode: guardrail.errorCode,
-  });
-  await safeRecordRetentionRun({
-    organizationId: orgId,
-    recordType: "ai_gateway_spend_logs",
-    cutoff: null,
-    deletedCount: spend.deleted,
-    status: gatewayRunStatus(spend),
-    error: spend.error,
-    errorCode: spend.errorCode,
-  });
+  await recordGatewayRuns(orgId, guardrail, spend);
+  return refused;
 }
