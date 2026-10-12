@@ -43,6 +43,10 @@ import { ColumnSelector } from "../../components/Table/ColumnSelector";
 import { useColumnVisibility, ColumnConfig } from "../../../application/hooks/useColumnVisibility";
 
 import Alert from "../../components/Alert";
+import {
+  getApiValidationMessage,
+  UserFacingFieldErrors,
+} from "../../../application/utils/apiErrorReason";
 
 type IncidentColumnKey =
   | "incident_id"
@@ -68,6 +72,19 @@ const INCIDENT_TABLE_COLUMNS: ColumnConfig<IncidentColumnKey>[] = [
   { key: "approved_by", label: "Approved by", defaultVisible: true },
   { key: "actions", label: "Actions", defaultVisible: true, alwaysVisible: true },
 ];
+
+/**
+ * Server field errors that may appear in the save-failure toast. Reference
+ * fields name database columns, so they get a sentence instead.
+ */
+const INCIDENT_SAVE_ERROR_FIELDS: UserFacingFieldErrors = {
+  passThrough: ["description"],
+  replace: {
+    project_id: "The selected use case is no longer available.",
+    model_inventory_id: "The selected affected model is no longer available.",
+    assignee_id: "The selected owner is no longer available.",
+  },
+};
 
 /**
  * The edit drawer's values for an incident. Used for the drawer's initialData
@@ -653,7 +670,9 @@ const IncidentManagement: React.FC = () => {
       // Any other failure: keep the drawer open so nothing typed is lost.
       setAlert({
         variant: "error",
-        body: selectedIncident ? "Failed to update incident." : "Failed to add incident.",
+        body:
+          getApiValidationMessage(error, INCIDENT_SAVE_ERROR_FIELDS) ??
+          (selectedIncident ? "Failed to update incident." : "Failed to add incident."),
       });
       return false;
     }

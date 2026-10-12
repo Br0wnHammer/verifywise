@@ -9,6 +9,7 @@ import {
 import { replaceTemplateVariables } from "./automation/automation.utils";
 import { enqueueAutomationAction } from "../services/automations/automationProducer";
 import {
+  assertValidIncidentDescription,
   INCIDENT_DATE_COLUMNS,
   INCIDENT_FK_COLUMNS,
   isSameIncidentValue,
@@ -102,6 +103,7 @@ export const createNewIncidentQuery = async (
   organizationId: number,
   transaction: Transaction,
 ) => {
+  assertValidIncidentDescription(incident.description);
   const created_at = new Date();
   try {
     const result = await sequelize.query(
@@ -275,6 +277,12 @@ export const updateIncidentByIdQuery = async (
   organizationId: number,
   transaction: Transaction,
 ) => {
+  // Backstop for any writer: a description that reaches the write must meet
+  // the length rule. The service has already validated changed descriptions
+  // against the locked row (validateIncidentUpdateBusinessRules).
+  if ("description" in changed) {
+    assertValidIncidentDescription(changed.description);
+  }
   const setClauses = ["updated_at = :updated_at"];
   const replacements: Record<string, unknown> = { organizationId, id, updated_at: new Date() };
   for (const column of UPDATABLE_INCIDENT_COLUMNS) {

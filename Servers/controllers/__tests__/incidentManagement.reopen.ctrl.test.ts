@@ -37,7 +37,7 @@ jest.mock("../../utils/logger/fileLogger", () => ({
   logStructured: jest.fn(),
 }));
 jest.mock("../../utils/i18n.utils", () => ({
-  translateError: jest.fn((_req, err) => (err as Error).message),
+  translateError: jest.fn((_req, err) => (typeof err === "string" ? err : (err as Error).message)),
 }));
 
 import { updateIncidentById } from "../incident-management.ctrl";

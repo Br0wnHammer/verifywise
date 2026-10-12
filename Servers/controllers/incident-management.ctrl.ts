@@ -28,7 +28,10 @@ import {
   IncidentUpdateValidationError,
   INCIDENT_CHANGED_MESSAGE,
 } from "../services/incidentManagement.service";
-import { ConflictException } from "../domain.layer/exceptions/custom.exception";
+import {
+  ConflictException,
+  ValidationException,
+} from "../domain.layer/exceptions/custom.exception";
 
 /** Severity values that launch the critical incident_response workflow. */
 const CRITICAL_INCIDENT_SEVERITIES = new Set(["very serious", "critical"]);
@@ -59,6 +62,23 @@ const parseIncidentListFilters = (
   }
   return { filters };
 };
+
+/**
+ * 400 body for a ValidationException thrown by the write path, in the same
+ * shape as the up-front validation failures in these handlers.
+ */
+const validationExceptionResponse = (req: Request, error: ValidationException, message: string) =>
+  STATUS_CODE[400]({
+    status: "error",
+    message,
+    errors: [
+      {
+        field: (error.metadata.field as string | undefined) ?? "unknown",
+        message: translateError(req, error),
+        code: (error.metadata.validationCode as string | undefined) ?? error.code,
+      },
+    ],
+  });
 
 /**
  * Get all incidents
@@ -204,7 +224,7 @@ export async function createNewIncident(req: Request, res: Response) {
         message: "Incident creation validation failed",
         errors: validationErrors.map((err: ValidationError) => ({
           field: err.field,
-          message: err.message,
+          message: translateError(req, err.message),
           code: err.code,
         })),
       }),
@@ -304,6 +324,11 @@ export async function createNewIncident(req: Request, res: Response) {
     return res.status(201).json(STATUS_CODE[201](savedIncident.toSafeJSON()));
   } catch (error) {
     await transaction.rollback();
+    if (error instanceof ValidationException) {
+      return res
+        .status(400)
+        .json(validationExceptionResponse(req, error, "Incident creation validation failed"));
+    }
     logStructured(
       "error",
       "failed to create new incident",
@@ -374,7 +399,7 @@ export async function updateIncidentById(req: Request, res: Response) {
     if (error instanceof IncidentUpdateValidationError) {
       const errorDetails = error.errors.map((err: ValidationError) => ({
         field: err.field,
-        message: err.message,
+        message: translateError(req, err.message),
         code: err.code,
       }));
       logStructured(
@@ -390,6 +415,12 @@ export async function updateIncidentById(req: Request, res: Response) {
           errors: errorDetails,
         }),
       );
+    }
+    // Backstop in the write query (assertValidIncidentDescription).
+    if (error instanceof ValidationException) {
+      return res
+        .status(400)
+        .json(validationExceptionResponse(req, error, "Incident update validation failed"));
     }
     if (error instanceof ConflictException) {
       logStructured(

@@ -16,12 +16,32 @@ import {
   ValidationResult,
   ValidationError,
 } from "./validation.utils";
+import { ValidationException } from "../../domain.layer/exceptions/custom.exception";
+
+/**
+ * Maximum length of an incident description. Matches Jira's text-field limit
+ * (32,767 characters) so descriptions copied from Jira issues are not cut off.
+ * The `ai_incident_managements.description` column is TEXT, so the database
+ * imposes no lower ceiling.
+ */
+export const INCIDENT_DESCRIPTION_MAX_LENGTH = 32767;
+
+export const INCIDENT_DESCRIPTION_MIN_LENGTH = 5;
+
+/*
+ * Same text as the frontend messages
+ * (Clients/src/application/validations/incidentValidation.ts) and the
+ * Servers/locales keys.
+ */
+export const INCIDENT_DESCRIPTION_REQUIRED_MESSAGE = "Description is required.";
+export const INCIDENT_DESCRIPTION_TOO_SHORT_MESSAGE = `Description must be at least ${INCIDENT_DESCRIPTION_MIN_LENGTH} characters.`;
+export const INCIDENT_DESCRIPTION_TOO_LONG_MESSAGE = `Description cannot exceed ${INCIDENT_DESCRIPTION_MAX_LENGTH.toLocaleString("en-US")} characters.`;
 
 /**
  * Validation limits for incident management
  */
 export const INCIDENT_VALIDATION_LIMITS = {
-  DESCRIPTION: { MIN: 5, MAX: 1000 },
+  DESCRIPTION: { MIN: INCIDENT_DESCRIPTION_MIN_LENGTH, MAX: INCIDENT_DESCRIPTION_MAX_LENGTH },
   RELATIONSHIP: { MIN: 3, MAX: 255 },
   PROJECT: { MIN: 2, MAX: 255 },
   REPORTER: { MIN: 2, MAX: 100 },
@@ -66,12 +86,58 @@ export const INCIDENT_HARM_CATEGORIES_ENUM = [
  * Validates description
  */
 export const validateDescription = (value: any): ValidationResult => {
-  return validateString(value, "Description", {
+  const result = validateString(value, "Description", {
     required: true,
     minLength: INCIDENT_VALIDATION_LIMITS.DESCRIPTION.MIN,
     maxLength: INCIDENT_VALIDATION_LIMITS.DESCRIPTION.MAX,
     trimWhitespace: true,
   });
+  if (result.isValid) return result;
+  const message =
+    result.code === "MAX_LENGTH"
+      ? INCIDENT_DESCRIPTION_TOO_LONG_MESSAGE
+      : result.code === "MIN_LENGTH"
+        ? INCIDENT_DESCRIPTION_TOO_SHORT_MESSAGE
+        : result.code === "REQUIRED_FIELD" || result.code === "EMPTY_STRING"
+          ? INCIDENT_DESCRIPTION_REQUIRED_MESSAGE
+          : result.message;
+  return { ...result, message };
+};
+
+const normalizeDescription = (value: unknown): string =>
+  value === undefined || value === null ? "" : String(value).trim();
+
+/**
+ * True when an update sets a description that differs from the stored one.
+ * Both sides are normalised (null/undefined → "", trimmed), so "" vs NULL on
+ * an older row, or added surrounding whitespace, is not a change. Unchanged
+ * descriptions are not re-validated, so editing other fields of an older row
+ * whose description predates the current rule still works.
+ */
+export const isIncidentDescriptionChanged = (next: unknown, existing: unknown): boolean =>
+  next !== undefined && normalizeDescription(next) !== normalizeDescription(existing);
+
+/**
+ * Throws a ValidationException (HTTP 400) when the description breaks the
+ * length rule. Called from the shared incident write queries so every writer
+ * (REST controller, AI Advisor tools, future integrations) gets the same rule.
+ * The value is deliberately left out of the exception metadata: it can be
+ * tens of kilobytes.
+ */
+export const assertValidIncidentDescription = (value: unknown): void => {
+  const result = validateDescription(value);
+  if (!result.isValid) {
+    // `field` is repeated inside metadata: ValidationException lets
+    // options.metadata replace the metadata it builds from its arguments.
+    throw new ValidationException(
+      result.message || "Invalid description",
+      "description",
+      undefined,
+      {
+        metadata: { field: "description", validationCode: result.code },
+      },
+    );
+  }
 };
 
 /**
@@ -210,6 +276,7 @@ export const validateAssigneeId = (value: any): ValidationResult =>
  * Validation schema for creating an incident
  */
 export const createIncidentSchema = {
+  description: validateDescription,
   model_inventory_id: validateModelInventoryId,
   project_id: validateProjectId,
   assignee_id: validateAssigneeId,
@@ -263,13 +330,27 @@ export const validateIncidentCreationBusinessRules = (data: any): ValidationErro
  * Business rule validation for incident updates
  */
 export const validateIncidentUpdateBusinessRules = (
-  _data: any,
-  _existingData?: any,
+  data: any,
+  existingData?: any,
 ): ValidationError[] => {
   // Any status can move to any other status, including Closed back to an
   // open status (reopening). See applyReopenApprovalReset for the approval
   // side effect of a reopen.
-  return [];
+  const errors: ValidationError[] = [];
+  // The description is checked only when the update changes it (see
+  // isIncidentDescriptionChanged), against the row the service has locked.
+  // The write query applies the same rule as a backstop.
+  if (isIncidentDescriptionChanged(data?.description, existingData?.description)) {
+    const result = validateDescription(data.description);
+    if (!result.isValid) {
+      errors.push({
+        field: "description",
+        message: result.message || "Invalid value",
+        code: result.code || "INVALID_VALUE",
+      });
+    }
+  }
+  return errors;
 };
 
 /** Approval fields a caller can set; touching any of them disables the reopen reset. */

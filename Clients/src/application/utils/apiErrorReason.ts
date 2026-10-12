@@ -87,3 +87,52 @@ export function getClientErrorReason(error: unknown): string | null {
   }
   return message;
 }
+
+/** Which field errors of a validation response may be shown to the user, and how. */
+export interface UserFacingFieldErrors {
+  /** Fields whose server message is already user-facing; shown as sent. */
+  passThrough?: readonly string[];
+  /**
+   * Fields whose server message names internals (column names, ids); shown
+   * as this text instead.
+   */
+  replace?: Readonly<Record<string, string>>;
+}
+
+/**
+ * The message to show for a rejected (4xx) request.
+ *
+ * For a validation response (`{ data: { errors: [{ field, message, code }] } }`)
+ * only the fields listed in `fields` are surfaced: `passThrough` fields with
+ * the server's message, `replace` fields with the given text. Other field
+ * errors are skipped; if none are left, returns null so the caller shows its
+ * own generic text. Without field errors, falls back to the general 4xx reason
+ * (getClientErrorReason). Returns null for 5xx and non-API errors.
+ */
+export function getApiValidationMessage(
+  error: unknown,
+  fields: UserFacingFieldErrors,
+): string | null {
+  if (!isClientError(error)) return null;
+  const body = error.response as { data?: { errors?: unknown }; errors?: unknown } | undefined;
+  const errors = body?.data?.errors ?? body?.errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const messages: string[] = [];
+    for (const entry of errors as Array<{ field?: unknown; message?: unknown } | null>) {
+      const field = typeof entry?.field === "string" ? entry.field : "";
+      const replacement = fields.replace?.[field];
+      if (replacement) {
+        messages.push(replacement);
+      } else if (
+        fields.passThrough?.includes(field) &&
+        typeof entry?.message === "string" &&
+        entry.message.trim()
+      ) {
+        messages.push(entry.message.trim());
+      }
+    }
+    const unique = [...new Set(messages)];
+    return unique.length > 0 ? unique.join(" ") : null;
+  }
+  return getClientErrorReason(error);
+}
