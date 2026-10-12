@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Only Admins change retention periods. Server-side checks: `authorize("organization.admin")` on new routes; role check `req.role === "Admin" || req.role === "SuperAdmin"` inside existing handlers; gateway `require_admin`. Error text: "Only admins can change retention periods".
+- Only Admins change organization-wide retention periods (per-file evidence retention keeps today's permissions: project members and the file's owner). Server-side checks: `authorize("organization.admin")` on new routes; role check `req.role === "Admin" || req.role === "SuperAdmin"` inside existing handlers; gateway `require_admin`. Error text: "Only admins can change retention periods".
 - Audit record periods (months): `null` (keep indefinitely, the default), 12, 24, 36, 60, 84, 120. Anything else is a 400.
 - AI Gateway automatic deletion is off by default. Shipping this deletes nothing until an Admin turns something on.
 - Ledger rows are deleted only as a contiguous oldest prefix per org, under `pg_advisory_xact_lock(9001, orgId)`, never the newest row, always with a checkpoint inserted first in the same transaction.
@@ -30,7 +30,7 @@
 1. A ledger pruned in several batches across several days still verifies `intact`, and appends made between batches link correctly.
 2. A DELETE on `audit_ledger` without the job's flag, or above the latest checkpoint, is rejected even for rows older than the cutoff.
 3. A ledger whose every row is older than the cutoff keeps its newest row, and the next append still verifies.
-4. A non-Admin cannot change any retention period through any API (MRM `retention_months`, per-file `retention_policy`, audit records, gateway), while their other edits on those same endpoints keep working.
+4. A non-Admin cannot change any organization-wide retention period through any API (MRM `retention_months`, audit records, gateway, evidence org default), while their other edits on those endpoints, and per-file evidence retention, keep working.
 5. Saving one AI Gateway retention value from the Data retention tab leaves every other guardrail setting unchanged.
 
 ---
@@ -312,9 +312,9 @@ interface RetentionRow {
 
 - [ ] **Step 3: MRM, test first.** In `updateMrmSettingsHandler`, before validation: `if (has("retention_months") && req.role !== "Admin" && req.role !== "SuperAdmin") return 403 "Only admins can change retention periods"`. Tests: Editor + `retention_months` → 403; Editor + alert fields only → 200; Admin + `retention_months` → 200.
 
-- [ ] **Step 4: Evidence files, test first.** In the file metadata update (`fileManager.ctrl.ts` ~1156), after loading `currentFile`: non-Admin with `retention_policy !== undefined && retention_policy !== currentFile.retention_policy` → 403 same message. Also check the upload path: if any upload/create controller reads `retention_policy` from the request, apply the same rule; if not, note that in the report. Tests: Editor changing policy → 403; Editor sending the unchanged policy plus a new `expiry_date` → 200; Admin changing → 200.
+- [ ] **Step 4: Evidence files stay as they are.** Per-file `retention_policy` keeps today's permissions (project members, file owner). Add one regression test: an Editor who is a project member changes a file's `retention_policy` → 200.
 
-- [ ] **Step 5: Docs, gates, commit.** Regenerate swagger + endpoints (set summaries/descriptions for the new routes by hand, regenerate again). Commit `feat(retention): data retention API; only admins change retention periods`.
+- [ ] **Step 5: Docs, gates, commit.** Regenerate swagger + endpoints (set summaries/descriptions for the new routes by hand, regenerate again). Commit `feat(retention): data retention API; only admins change org retention periods`.
 
 ### Task 5: AI Gateway — spend period, automatic purge, partial settings update
 
@@ -376,12 +376,11 @@ interface RetentionRow {
 
 **Files:**
 - Modify: `Clients/src/presentation/pages/ModelInventory/mrm/RetentionSection.tsx`
-- Modify: `Clients/src/presentation/pages/FileManager/components/FileMetadataEditor/index.tsx`
 - Modify: `Clients/src/presentation/pages/AIGateway/Settings/index.tsx` (+ `index.test.tsx`)
 - Modify: `Clients/src/presentation/pages/SettingsPage/AuditLedger/index.tsx` (+ test)
 - Modify: `Clients/src/i18n/translations.ts`; tests next to each file
 
-- [ ] **Step 1: Read-only for non-Admins.** `RetentionSection` and the `FileMetadataEditor` retention `Select` are disabled for non-Admins (`useAuth().userRoleName !== "Admin"`) with helper text "Only admins can change retention periods". Tests for both roles.
+- [ ] **Step 1: Read-only for non-Admins.** `RetentionSection` (model risk management) is disabled for non-Admins (`useAuth().userRoleName !== "Admin"`) with helper text "Only admins can change retention periods". Tests for both roles. `FileMetadataEditor` is not changed: per-file retention stays editable as today.
 - [ ] **Step 2: AI Gateway settings.** Add "Spend log retention (days)" `Field` and a "Delete automatically" `Toggle` to the retention card; save includes them. "Purge old logs" opens a `StandardModal` confirm ("Permanently delete guardrail logs older than N days?") and afterwards shows "N logs deleted" or the error message (no swallowed catch). Update `index.test.tsx` (purge now requires confirm).
 - [ ] **Step 3: Audit ledger page.** When the verify result has `prunedThrough`, show "Records before <date> removed by retention policy" next to the result. Test.
 - [ ] **Step 4: i18n, gates, commit** `feat(retention): admin-only retention controls, purge confirmation, ledger retention note`.

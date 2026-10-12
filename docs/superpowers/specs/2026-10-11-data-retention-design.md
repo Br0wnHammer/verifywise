@@ -30,8 +30,9 @@ breaking the audit ledger's tamper evidence.
    product decision).
 7. A new **Settings → Data retention** tab (Admin only) lists every kind of
    record in one table.
-8. **Only Admins change retention periods**, everywhere, enforced on the
-   server (section 8).
+8. **Only Admins change organization-wide retention periods**, enforced on
+   the server (section 8). Per-file evidence retention stays with whoever
+   can edit the file today (project members, the file's owner).
 
 ## Current state (verified on develop ba7bf9059)
 
@@ -231,7 +232,7 @@ rows); server logs.
 `LOG_RETENTION_DAYS` env (default 14, minimum 1) replaces the hard-coded
 `maxFiles: "14d"`; documented in `.env.example` and the deployment guide.
 
-### 8. Only Admins change retention periods
+### 8. Only Admins change organization-wide retention periods
 
 Enforced on the server; the UI disables the control for non-Admins with
 "Only admins can change retention periods".
@@ -241,12 +242,9 @@ Enforced on the server; the UI disables the control for non-Admins with
   when the body contains `retention_months`. Alert settings in the same
   endpoint keep today's behavior. `RetentionSection.tsx` is read-only for
   non-Admins.
-- Evidence files: `PATCH` file metadata returns 403 for a non-Admin when
-  `retention_policy` differs from the file's current value. `expiry_date`
-  (evidence validity, set by reviewers) keeps today's behavior. Uploads by
-  non-Admins get the org default, as today (upload takes no
-  `retention_policy` from the request). `FileMetadataEditor` shows the
-  policy read-only for non-Admins.
+- Evidence files: per-file `retention_policy` and `expiry_date` keep today's
+  permissions (project members and the file's owner). Only the org default
+  is an Admin setting, which it already is.
 - AI Gateway, file org default, Shadow AI: already Admin only; the new
   columns go through the same checks.
 - Data retention tab and `GET /api/data-retention`: Admin only.
@@ -273,9 +271,9 @@ Enforced on the server; the UI disables the control for non-Admins with
   above the checkpoint is rejected; checkpoint UPDATE/DELETE rejected;
   appends after a prune link correctly.
 - Controller: Admin only, validation of allowed periods, upsert of a missing
-  `feature_settings` row, ledger entry on change; non-Admin 403 on MRM
-  `retention_months` and on a changed per-file `retention_policy`, while
-  alert settings and `expiry_date` still work for them.
+  `data_retention_settings` row, ledger entry on change; non-Admin 403 on
+  MRM `retention_months` while MRM alert settings still work for them;
+  per-file retention edits by project members unchanged (regression test).
 - AI Gateway pytest: new columns, partial settings update keeps other
   keys, internal purge only touches orgs with the switch on.
 - The new real-DB integration test file is added to the explicit allow-list
