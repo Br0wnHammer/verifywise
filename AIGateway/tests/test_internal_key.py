@@ -259,25 +259,42 @@ def test_a_route_without_its_own_check_is_still_protected(monkeypatch):
     assert served.json() == {"ok": True}
 
 
-def test_every_registered_internal_route_has_the_key_dependency():
-    """Inspect the real app: every route under /internal must carry
-    verify_internal_key in its dependencies."""
-    from fastapi.routing import APIRoute
+def test_every_registered_internal_route_refuses_a_request_without_the_key(monkeypatch):
+    """Every operation the real app exposes under /internal must refuse a
+    request without the key with the gateway's 401 code.
+
+    This checks behaviour rather than route objects: how included routers are
+    stored differs between FastAPI versions (newer versions keep them as one
+    lazily expanded entry in app.routes). The operations come from the app's
+    OpenAPI schema; path parameters are filled with "1". The key is checked
+    before body validation, so no body is needed."""
+    import re
+
+    from fastapi.testclient import TestClient
 
     import app as gateway_app
 
-    internal = [
-        route
-        for route in gateway_app.app.routes
-        if isinstance(route, APIRoute) and route.path.startswith("/internal")
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    client = TestClient(gateway_app.app, raise_server_exceptions=False)
+    operations = [
+        (method.upper(), path)
+        for path, item in gateway_app.app.openapi()["paths"].items()
+        if path.startswith("/internal")
+        for method in item
+        if method in ("get", "post", "put", "patch", "delete")
     ]
-    assert internal, "no /internal routes registered"
-    missing = [
-        f"{sorted(route.methods)} {route.path}"
-        for route in internal
-        if auth.verify_internal_key not in [dep.call for dep in route.dependant.dependencies]
-    ]
-    assert missing == [], f"internal routes without the key check: {missing}"
+    assert len(operations) > 100, f"expected the internal API, found {len(operations)} operations"
+
+    not_refused = []
+    for method, path in operations:
+        response = client.request(method, re.sub(r"\{[^}]+\}", "1", path))
+        try:
+            code = response.json()["detail"]["code"]
+        except (ValueError, KeyError, TypeError):
+            code = None
+        if response.status_code != 401 or code != "internal_key_rejected":
+            not_refused.append(f"{method} {path} -> {response.status_code}")
+    assert not_refused == [], f"internal routes served without the key: {not_refused}"
 
 
 # ---------------------------------------------------------------------------
