@@ -17,7 +17,11 @@ import {
   removeInBatches,
   SKIPPED_CHANGED_LABEL,
   SKIPPED_GONE_LABEL,
-  SKIPPED_SHARED_LABEL,
+  SKIPPED_LIVE_LABEL,
+  SKIPPED_OTHER_LABEL,
+  LINKS_REMOVED_LABEL,
+  REMOVAL_LIVE_LINK_MESSAGE,
+  createRequestGate,
   REMOVAL_KEPT_MESSAGE,
   appendPage,
   UNLINKED_LABEL,
@@ -184,33 +188,65 @@ describe("removeInBatches", () => {
     });
   });
 
-  it("keeps changed and shared-project skips selected, and says they are", async () => {
+  it("deselects use cases still linked to a Jira object, with their own message", async () => {
     const send = vi.fn(async () => ({
       removed: 1,
-      unlinked: 0,
+      links_removed: 1,
+      skipped_items: [{ id: 2, reason: "has_live_links" }],
+    }));
+
+    const summary = await removeInBatches([1, 2], send);
+
+    expect(summary).toEqual({
+      type: "warning",
+      text: REMOVAL_LIVE_LINK_MESSAGE,
+      counts: [
+        { label: REMOVED_LABEL, value: 1 },
+        { label: SKIPPED_LIVE_LABEL, value: 1 },
+      ],
+      doneIds: [1, 2],
+    });
+  });
+
+  it("keeps only changed (and unknown) skips selected, and says they are", async () => {
+    const send = vi.fn(async () => ({
+      removed: 1,
       skipped_items: [
-        { id: 2, reason: "has_live_links" as const },
-        { id: 3, reason: "changed" as const },
-        { id: 4, reason: "no_longer_missing" as const },
+        { id: 2, reason: "has_live_links" },
+        { id: 3, reason: "changed" },
+        { id: 4, reason: "no_longer_missing" },
+        { id: 5, reason: "something_new" },
       ],
     }));
 
-    const summary = await removeInBatches([1, 2, 3, 4], send);
+    const summary = await removeInBatches([1, 2, 3, 4, 5], send);
 
     expect(summary.type).toBe("warning");
     expect(summary.text).toBe(REMOVAL_KEPT_MESSAGE);
     expect(summary.counts).toEqual([
       { label: REMOVED_LABEL, value: 1 },
       { label: SKIPPED_GONE_LABEL, value: 1 },
-      { label: SKIPPED_SHARED_LABEL, value: 1 },
+      { label: SKIPPED_LIVE_LABEL, value: 1 },
       { label: SKIPPED_CHANGED_LABEL, value: 1 },
+      { label: SKIPPED_OTHER_LABEL, value: 1 },
     ]);
-    expect(summary.doneIds).toEqual([1, 4]);
+    expect(summary.doneIds).toEqual([1, 2, 4]);
+  });
+
+  it("shows Jira links removed next to use cases removed when they differ", async () => {
+    const send = vi.fn(async () => ({ removed: 1, links_removed: 2, skipped_items: [] }));
+
+    const summary = await removeInBatches([1, 2], send);
+
+    expect(summary.counts).toEqual([
+      { label: REMOVED_LABEL, value: 1 },
+      { label: LINKS_REMOVED_LABEL, value: 2 },
+    ]);
   });
 
   it("shows the server's message naming the use case when a delete failed (500)", async () => {
     const message =
-      "Use case 7 (project 70) could not be deleted, so nothing was removed. Try again.";
+      '"Credit model" (AI-7) could not be deleted, so nothing was removed. Try again.';
     const send = vi
       .fn<(batch: number[]) => Promise<any>>()
       .mockResolvedValueOnce({ removed: 100, skipped_items: [] })
@@ -391,5 +427,32 @@ describe("appendPage (Load more)", () => {
     const next = appendPage(prev, [obj("2"), obj("3"), obj("4")], new Set(["3"]));
 
     expect(next.map((o) => o.id)).toEqual(["1", "2", "4"]);
+  });
+});
+
+describe("createRequestGate (stale picker responses)", () => {
+  it("drops a Load more that resolves after a reset or a fresh load", () => {
+    const gate = createRequestGate();
+    const loadMore = gate.current(); // "Load more" sent
+    gate.bump(); // object type changed / picker reset / refresh
+
+    expect(gate.isCurrent(loadMore)).toBe(false);
+    const fresh = gate.current();
+    expect(gate.isCurrent(fresh)).toBe(true);
+  });
+});
+
+describe("selection pruning when the picker list is replaced", () => {
+  it("refresh hides X; a Load more that brings X back does not tick it", () => {
+    const obj = (id: string) => ({ id });
+    // X and Y are ticked; a refresh returns only Y.
+    let stored = new Set(["X", "Y"]);
+    let objects = appendPage([], [obj("Y")], new Set());
+    stored = keepShown(stored, objects);
+    expect(stored).toEqual(new Set(["Y"]));
+
+    // "Load more" brings X back.
+    objects = appendPage(objects, [obj("X")], new Set());
+    expect(keepShown(stored, objects)).toEqual(new Set(["Y"]));
   });
 });

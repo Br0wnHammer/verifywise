@@ -81,8 +81,12 @@ export const REMOVED_LABEL = "Use cases removed:";
 export const REMOVED_BEFORE_STOP_LABEL = "Use cases removed before it stopped:";
 export const UNLINKED_LABEL = "Links cleaned up:";
 export const SKIPPED_GONE_LABEL = "Skipped, no longer missing or no longer there:";
-export const SKIPPED_SHARED_LABEL = "Skipped, project also used by another use case:";
+export const SKIPPED_LIVE_LABEL = "Skipped, still linked to an object in Jira:";
 export const SKIPPED_CHANGED_LABEL = "Skipped, changed during the removal:";
+export const SKIPPED_OTHER_LABEL = "Skipped, other reason:";
+export const LINKS_REMOVED_LABEL = "Jira links removed:";
+export const REMOVAL_LIVE_LINK_MESSAGE =
+  "Removal finished. Some use cases were not removed because their use case is still linked to an object that exists in Jira.";
 export const REMOVAL_PARTLY_SKIPPED_MESSAGE =
   "Removal finished. Some use cases were not removed because they are no longer missing in Jira or no longer exist.";
 export const REMOVAL_KEPT_MESSAGE =
@@ -186,23 +190,43 @@ export async function importInBatches(
   };
 }
 
-/** Why the server did not remove a requested use case (jiraAssets.service RemovalSkipReason). */
+/**
+ * Why the server did not remove a requested use case. Mirrors
+ * REMOVAL_SKIP_REASONS in Servers/extensions/jira-assets/jiraAssets.service.ts
+ * (there is no package shared by Servers and Clients); a reason this list does
+ * not know is handled explicitly below (kept selected, generic message).
+ */
 export type RemovalSkipReason = "no_longer_missing" | "not_found" | "changed" | "has_live_links";
 
 interface RemoveResponse {
   /** Use cases (projects) deleted. */
   removed?: number;
+  /** Jira links that went with them; more than `removed` when a project had several. */
+  links_removed?: number;
   /** Links whose project is not in this organization; only the link was deleted. */
   unlinked?: number;
-  skipped_items?: Array<{ id: number; reason: RemovalSkipReason }>;
+  skipped_items?: Array<{ id: number; reason: RemovalSkipReason | string }>;
 }
 
 /**
- * Skips that settle the id: it is no longer missing (a sync found it) or no
- * longer there, so it leaves the "Missing in Jira" list on reload. The other
- * reasons leave it flagged, so it stays selected for another try.
+ * What a skip means for the selection. no_longer_missing, not_found and
+ * has_live_links settle the id (it leaves the "Missing in Jira" list, or is
+ * backed by an object Jira still has): deselected. changed is still flagged
+ * and worth another try: kept selected. An unknown reason is kept too.
  */
-const SETTLING_SKIPS = new Set<RemovalSkipReason>(["no_longer_missing", "not_found"]);
+function skipBucket(reason: string): "gone" | "live" | "changed" | "other" {
+  switch (reason) {
+    case "no_longer_missing":
+    case "not_found":
+      return "gone";
+    case "has_live_links":
+      return "live";
+    case "changed":
+      return "changed";
+    default:
+      return "other";
+  }
+}
 
 /** Remove the use cases `ids` in batches through `send` (POST /use-cases/remove-missing). */
 export async function removeInBatches(
@@ -212,39 +236,46 @@ export async function removeInBatches(
 ): Promise<BatchSummary<number>> {
   const run = await runInBatches(ids, send, onProgress);
   let removed = 0;
+  let linksRemoved = 0;
   let unlinked = 0;
-  const skips: Record<"gone" | "shared" | "changed", number> = { gone: 0, shared: 0, changed: 0 };
+  const skips = { gone: 0, live: 0, changed: 0, other: 0 };
   const doneIds: number[] = [];
   for (const { batch, result } of run.done) {
     removed += result?.removed ?? 0;
+    linksRemoved += result?.links_removed ?? result?.removed ?? 0;
     unlinked += result?.unlinked ?? 0;
     const kept = new Set<number>();
     for (const { id, reason } of result?.skipped_items ?? []) {
-      if (SETTLING_SKIPS.has(reason)) skips.gone++;
-      else {
-        kept.add(id);
-        if (reason === "has_live_links") skips.shared++;
-        else skips.changed++;
-      }
+      const bucket = skipBucket(reason);
+      skips[bucket]++;
+      if (bucket === "changed" || bucket === "other") kept.add(id);
     }
     doneIds.push(...batch.filter((id) => !kept.has(id)));
   }
+  const removedCounts = (label: string): MessageCount[] => [
+    { label, value: removed },
+    ...(linksRemoved !== removed ? [{ label: LINKS_REMOVED_LABEL, value: linksRemoved }] : []),
+  ];
   const extraCounts: MessageCount[] = [
     ...(unlinked > 0 ? [{ label: UNLINKED_LABEL, value: unlinked }] : []),
     ...(skips.gone > 0 ? [{ label: SKIPPED_GONE_LABEL, value: skips.gone }] : []),
-    ...(skips.shared > 0 ? [{ label: SKIPPED_SHARED_LABEL, value: skips.shared }] : []),
+    ...(skips.live > 0 ? [{ label: SKIPPED_LIVE_LABEL, value: skips.live }] : []),
     ...(skips.changed > 0 ? [{ label: SKIPPED_CHANGED_LABEL, value: skips.changed }] : []),
+    ...(skips.other > 0 ? [{ label: SKIPPED_OTHER_LABEL, value: skips.other }] : []),
   ];
   if (!run.error) {
-    const keptAny = skips.shared + skips.changed > 0;
-    return {
-      type: keptAny || skips.gone > 0 ? "warning" : "success",
-      text: keptAny
-        ? REMOVAL_KEPT_MESSAGE
+    const keptAny = skips.changed + skips.other > 0;
+    const text = keptAny
+      ? REMOVAL_KEPT_MESSAGE
+      : skips.live > 0
+        ? REMOVAL_LIVE_LINK_MESSAGE
         : skips.gone > 0
           ? REMOVAL_PARTLY_SKIPPED_MESSAGE
-          : REMOVAL_FINISHED_MESSAGE,
-      counts: [{ label: REMOVED_LABEL, value: removed }, ...extraCounts],
+          : REMOVAL_FINISHED_MESSAGE;
+    return {
+      type: keptAny || skips.live + skips.gone > 0 ? "warning" : "success",
+      text,
+      counts: [...removedCounts(REMOVED_LABEL), ...extraCounts],
       doneIds,
     };
   }
@@ -261,7 +292,7 @@ export async function removeInBatches(
   return {
     type: "error",
     text,
-    counts: [{ label: REMOVED_BEFORE_STOP_LABEL, value: removed }, ...extraCounts],
+    counts: [...removedCounts(REMOVED_BEFORE_STOP_LABEL), ...extraCounts],
     doneIds,
   };
 }
@@ -292,6 +323,23 @@ export function withoutImported<O extends { id: string }>(
   if (!importedObjectIds) return objects;
   const next = objects.filter((obj) => !importedObjectIds.has(obj.id));
   return next.length === objects.length ? objects : next;
+}
+
+/**
+ * Generations of picker requests. A reset, an object-type change or a fresh
+ * load starts a new generation; a response from an older one (a "Load more"
+ * still in flight) is dropped, objects and paging state alike.
+ */
+export function createRequestGate() {
+  let generation = 0;
+  return {
+    /** Start a new generation (reset, type change, refresh). */
+    bump: () => ++generation,
+    /** The generation a request belongs to; call when it is sent. */
+    current: () => generation,
+    /** Whether a response from `token`'s generation may still be applied. */
+    isCurrent: (token: number) => token === generation,
+  };
 }
 
 /**
@@ -342,7 +390,13 @@ export function finishImport<O extends { id: string }>(
 } {
   return {
     objects: (prev) => withoutImported(prev, importedObjectIds),
-    selected: (prev) => deselectDone(prev, summary.doneIds),
+    // Pruned in the same step as the objects: imported ids leave both.
+    selected: (prev) => {
+      const next = deselectDone(prev, summary.doneIds);
+      return importedObjectIds
+        ? new Set([...next].filter((id) => !importedObjectIds.has(id)))
+        : next;
+    },
     message: summaryMessage(summary),
   };
 }

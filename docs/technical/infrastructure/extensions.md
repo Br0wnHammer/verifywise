@@ -539,39 +539,49 @@ first error and reports how many were removed. Import batches the same way
 ("Importing objects …"); objects a batch reports as failed make the outcome a
 warning with a "not imported" count. A removal reports each skipped id with a
 reason (`skipped_items`): `no_longer_missing` and `not_found` leave the list
-on reload and are deselected; `has_live_links` and `changed` stay flagged and
-stay selected for another try. The message and the counts say which. Links
-cleaned up are counted separately ("Links cleaned up"). A delete that failed
-shows the server's message, which names the use case. Failed and unsent ids
+on reload, and `has_live_links` (still linked to an object Jira returns) has
+its own message; all three are deselected. Only `changed` (and a reason the
+panel does not know) stays selected for another try. The message and the
+counts say which. "Use cases removed" counts projects; "Jira links removed"
+is shown next to it when it differs. Links cleaned up are counted
+separately ("Links cleaned up"). A delete that failed shows the server's
+message, which names the use case by its title and Jira key. Failed and unsent ids
 stay selected, so a retry is one click. After an import the panel reloads the
 imported use cases and applies `finishImport`'s updaters with that fresh list
 to the latest state (a "Load more" or toggle made meanwhile is kept):
 imported objects leave the picker and handled ids leave the selection. A
 "Load more" page is filtered against the imported ids known when it lands
-(`appendPage`), so one still in flight during an import cannot bring
-imported objects back. The effective selection is derived at render as the
-stored selection restricted to the objects the picker shows (`keepShown`),
-so nothing selected is ever hidden, not even for a frame. The outcome is
+(`appendPage`, with the ids set where the imported list is fetched), so one
+still in flight during an import cannot bring imported objects back.
+Picker requests carry a generation (`createRequestGate`): a reset, an
+object-type change or a fresh load starts a new one, and a response from an
+older one is dropped, objects and paging alike. The stored selection is
+pruned in the same step whenever the list is replaced or filtered, so an id
+hidden by a refresh does not come back ticked; the effective selection is
+also derived at render (`keepShown`), so nothing selected is ever hidden. The outcome is
 shown last. Both live in `jira-assets/batching.ts`.
 `removeMissingUseCases` (through `deleteUseCasesUnderClaim`):
 
 1. takes the same claim, so it cannot race a sync or import (409)
 2. reads the listed links, unlocked, for their project ids; locks those
    projects in this organization in one statement (`ORDER BY id FOR UPDATE`),
-   which also classifies them as in this organization or not; then locks,
-   ordered by id, the listed links and every link of a locked project, and
-   decides each listed id from those locked rows.
+   which also classifies them as in this organization or not; then locks the
+   listed links, then every link of a locked project (two queries, each
+   ordered by id), and decides each listed id from those locked rows.
 3. for each project in this organization, deletes it once the way the core
    "Delete use case" does (`deleteLinkedProject`): withdraws a pending
    approval request, runs `deleteProjectByIdQuery` (files, risks, members,
    per-framework rows, custom-field values) and records the deletion in the
    change history. Its links go with it (cascade): two flagged links to one
    project make one removed use case and two `links_removed`. A project that
-   also backs a link that is not listed or not flagged is not deleted
-   (skipped, `has_live_links`): a live use case is never removed by cascade.
-   A locked project that fails to delete throws
-   `JiraUseCaseDeleteFailedError`, which names the use case; the whole
-   removal rolls back and the route returns 500 with that message. The
+   also backs a link that is not flagged missing (an object Jira still
+   returns) is not deleted (skipped, `has_live_links`): a live use case is
+   never removed by cascade. Its other flagged links, listed or not (for
+   example in a later batch), do not block it; they go with it, and a later
+   request for them is `not_found`. A locked project that fails to delete
+   throws `JiraUseCaseDeleteFailedError`, which names the use case by its
+   title and Jira key; the whole removal rolls back and the route returns
+   500 with that message. The
    `project_deleted` automation is queued after the transaction commits
    (`enqueueAutomationAfterCommit`), so a rolled-back removal fires none.
 4. for a link with no project, or whose project is not in this organization
@@ -585,12 +595,15 @@ shown last. Both live in `jira-assets/batching.ts`.
 Steps 2 to 4 run in one transaction, which first share-locks the run's own
 history row so no other claim can close it mid-way.
 
-Lock order: `deleteProjectByIdQuery` locks the project row as its first
-statement, before any child row (files, risks, members, framework rows) and
-before the FK cascade reaches `jira_assets_use_cases`. The Jira flow also
-locks projects before link rows. So every deletion path takes a project's
-lock before its children's, and a Jira removal and a core "Delete use case"
-on the same project wait for each other instead of deadlocking.
+Lock order: every path that deletes a project locks its row first, with
+`lockProjectForDelete` (`Servers/utils/project.utils.ts`). The core "Delete
+use case" calls it as the first statement of its transaction, before the
+approval withdrawal and the change-history row that reference the project;
+`deleteProjectByIdQuery` and the Jira `deleteLinkedProject` call it again
+(a no-op within the transaction) before touching anything; the Jira flow
+locks its projects before any link row. So a Jira removal and a core
+"Delete use case" on the same project wait for each other instead of
+deadlocking.
 
 `DELETE /use-cases/:id` deletes one imported use case through the same
 `deleteUseCasesUnderClaim` flow (409 while a sync, import or removal runs; its
