@@ -250,7 +250,7 @@ SLACK_BOT_TOKEN=xoxb-...
 
 ### AI Gateway
 
-The backend calls the AI Gateway's internal API with a shared key. Set the same value on both services.
+The backend calls the AI Gateway's internal API with a shared key. Set the same value on both services, including any separate worker process or container (it runs the daily retention job). Both sides trim surrounding whitespace, and a whitespace-only value counts as not set.
 
 | Variable | Description | Required |
 |----------|-------------|----------|
@@ -265,7 +265,7 @@ AI_GATEWAY_INTERNAL_KEY=$(openssl rand -hex 32)
 What happens when the key is missing or does not match:
 
 - **AI Gateway:** refuses to start when `AI_GATEWAY_INTERNAL_KEY` is empty or a placeholder.
-- **Backend:** logs a startup warning when `AI_GATEWAY_INTERNAL_KEY` is not set.
+- **Backend and worker:** each logs a startup warning when `AI_GATEWAY_INTERNAL_KEY` is not set.
 - **Log retention:** the gateway's internal retention routes fail closed. Without a configured key they answer 503, and a key the gateway does not accept gets 401. The daily retention job then records the guardrail and spend log cleanups as failed, and **Settings > Data retention** shows "Purge refused: internal key not configured" (key missing on either side) or "Purge refused: internal key rejected" (keys differ) in the Last cleanup column. No logs are deleted until the key is fixed.
 
 ### BrandFetch (frontend)
