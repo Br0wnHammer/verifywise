@@ -12,6 +12,7 @@ import allowedRoles from "../../../application/constants/permissions";
 import { useAuth } from "../../../application/hooks/useAuth";
 import ApiKeys from "./ApiKeys";
 import AuditLedger from "./AuditLedger";
+import DataRetention from "./DataRetention";
 import EntraIdConfig from "./EntraIdConfig";
 import { useSsoFeatureEnabled } from "../../../application/hooks/useSsoFeatureEnabled";
 import CustomFieldsTab from "./CustomFields";
@@ -36,6 +37,7 @@ const BUILT_IN_TABS = [
   "features",
   "apikeys",
   "audit-ledger",
+  "data-retention",
   "sso",
   "custom-fields",
   ...(SHOW_AI_APPROVAL_RULES ? ["ai-approval-rules"] : []),
@@ -169,6 +171,16 @@ export default function ProfilePage() {
                   },
                 ]
               : []),
+            ...(!isAuditLedgerDisabled
+              ? [
+                  {
+                    label: "Data retention",
+                    value: "data-retention",
+                    icon: "Archive" as TabItem["icon"],
+                    tooltip: "How long each kind of record is kept",
+                  },
+                ]
+              : []),
             ...(ssoFeatureEnabled
               ? [
                   {
@@ -238,6 +250,11 @@ export default function ProfilePage() {
         {!isAuditLedgerDisabled && (
           <TabPanel sx={{ p: 0 }} value="audit-ledger">
             <AuditLedger />
+          </TabPanel>
+        )}
+        {!isAuditLedgerDisabled && (
+          <TabPanel sx={{ p: 0 }} value="data-retention">
+            <DataRetention />
           </TabPanel>
         )}
 
