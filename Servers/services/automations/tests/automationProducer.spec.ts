@@ -42,6 +42,7 @@ import {
   scheduleAiGatewayCacheCleanup,
   scheduleMcpGatewayCleanup,
   scheduleFileExpirySweep,
+  scheduleJiraAssetsScheduledSyncCheck,
 } from "../automationProducer";
 
 const mockAdd = automationQueue.add as jest.MockedFunction<typeof automationQueue.add>;
@@ -208,6 +209,15 @@ describe("automationProducer", () => {
 
       expect(mockObliterate).not.toHaveBeenCalled();
       expectSchedulerCall("file_expiry_sweep", { type: "file_expiry" }, "30 4 * * *");
+    });
+  });
+
+  describe("scheduleJiraAssetsScheduledSyncCheck", () => {
+    it("should add a repeating job every 5 minutes without obliterating", async () => {
+      await scheduleJiraAssetsScheduledSyncCheck();
+
+      expect(mockObliterate).not.toHaveBeenCalled();
+      expectSchedulerCall("jira_assets_scheduled_sync_check", {}, "*/5 * * * *");
     });
   });
 });

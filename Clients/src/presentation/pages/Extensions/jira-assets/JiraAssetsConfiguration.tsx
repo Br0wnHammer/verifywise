@@ -437,6 +437,17 @@ export const JiraAssetsConfiguration: React.FC = () => {
     }
   };
 
+  // Sync settings sit below the Save Configuration button, so persist them on
+  // change (same as schema and object type) — otherwise switching automatic
+  // sync on would silently do nothing until the user scrolled up and saved.
+  const handleSyncSettingChange = (
+    key: "sync_enabled" | "sync_interval_hours",
+    value: boolean | number,
+  ) => {
+    handleChange(key, value);
+    void persistConfigPatch({ [key]: value });
+  };
+
   // Load schemas on mount only if already configured (has_api_token indicates saved config)
   useEffect(() => {
     console.log("[JiraConfig] Schema load check:", {
@@ -744,7 +755,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
         <Box>
           <VWToggle
             checked={localConfig.sync_enabled || false}
-            onChange={(e) => handleChange("sync_enabled", e.target.checked)}
+            onChange={(e) => handleSyncSettingChange("sync_enabled", e.target.checked)}
             label="Enable automatic sync"
             description="Automatically sync data from JIRA on a schedule"
           />
@@ -756,12 +767,17 @@ export const JiraAssetsConfiguration: React.FC = () => {
               id="sync_interval_hours"
               label="Sync Interval"
               value={localConfig.sync_interval_hours || 24}
-              onChange={(e) => handleChange("sync_interval_hours", e.target.value)}
+              onChange={(e) =>
+                handleSyncSettingChange("sync_interval_hours", Number(e.target.value))
+              }
               items={syncIntervalOptions.map((option) => ({
                 _id: option.value,
                 name: option.label,
               }))}
             />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+              Automatic sync starts once at least one use case has been imported.
+            </Typography>
           </Box>
         )}
       </Stack>

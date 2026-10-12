@@ -14150,6 +14150,8 @@ paths:
       responses:
         '200':
           description: Success
+        '400':
+          description: 'Validation error (missing connection field, or sync_interval_hours outside 1-168)'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
         '500':
@@ -14160,7 +14162,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   /extensions/jira-assets/vw-attributes:
     get:
       summary: 'Get Vw Attributes'
@@ -14286,7 +14288,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   /extensions/jira-assets/sync:
     post:
       summary: 'Post Sync'
@@ -14295,6 +14297,8 @@ paths:
           description: Success
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '409':
+          description: 'A Jira Assets sync (manual or scheduled) is already running for this organization'
         '500':
           description: 'Internal server error'
       tags:
@@ -14303,7 +14307,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   /extensions/jira-assets/sync/status:
     get:
       summary: 'Get Sync Status Ctrl'
@@ -14395,7 +14399,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
       parameters:
         -
           name: id

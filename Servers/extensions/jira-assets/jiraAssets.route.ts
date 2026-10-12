@@ -1,5 +1,6 @@
 import express from "express";
 import authenticateJWT from "../../middleware/auth.middleware";
+import authorize from "../../middleware/accessControl.middleware";
 import { requireExtensionEnabled } from "../../middleware/requireExtensionEnabled.middleware";
 import {
   deleteUseCaseCtrl,
@@ -23,6 +24,11 @@ const router = express.Router();
 router.use(authenticateJWT);
 router.use(requireExtensionEnabled("jira-assets"));
 
+// Writes (config, import, sync, use-case delete) need "extension.admin" — the
+// same permission as enabling or configuring an extension in the catalog.
+// Reads stay open to any member of an org with the extension enabled, because
+// the use-case views in the project pages call them.
+
 // Configuration.
 //
 // Note: POST /test-connection is served by the generic
@@ -31,7 +37,7 @@ router.use(requireExtensionEnabled("jira-assets"));
 // mounted before this per-extension router in app.ts, a dedicated
 // /test-connection route here would be shadowed and never fire.
 router.get("/config", getConfig);
-router.post("/config", postConfig);
+router.post("/config", authorize("extension.admin"), postConfig);
 router.get("/vw-attributes", getVwAttributes);
 
 // Schema / object-type discovery
@@ -41,15 +47,15 @@ router.get("/object-types/:objectTypeId/attributes", getAttributes);
 router.get("/object-types/:objectTypeId/objects", getObjects);
 
 // Import + sync
-router.post("/import", postImport);
-router.post("/sync", postSync);
+router.post("/import", authorize("extension.admin"), postImport);
+router.post("/sync", authorize("extension.admin"), postSync);
 router.get("/sync/status", getSyncStatusCtrl);
 router.get("/sync/history", getSyncHistoryCtrl);
 
 // Use cases
 router.get("/use-cases", listUseCasesCtrl);
 router.get("/use-cases/:id", getUseCaseCtrl);
-router.delete("/use-cases/:id", deleteUseCaseCtrl);
+router.delete("/use-cases/:id", authorize("extension.admin"), deleteUseCaseCtrl);
 
 // Custom frameworks progress (rendered inside a JIRA use-case Overview tab)
 router.get("/projects/:projectId/custom-frameworks-progress", getCustomFrameworksProgressCtrl);

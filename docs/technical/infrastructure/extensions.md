@@ -276,7 +276,7 @@ enabled can call the route.
 | `/api/extensions/azure-ai-foundry` | `GET /models`, `GET /models/:deploymentId`, `POST /sync`, `GET /discover` | |
 | `/api/extensions/model-lifecycle` | `GET /config`; phases CRUD and reorder; items CRUD and reorder; `GET /models/:id/lifecycle`, `/progress`; item values, files, people and approvals under `/models/:id/lifecycle/items/:itemId/...` | |
 | `/api/extensions/risk-import` | `GET /template`, `POST /import` | Admin, Editor |
-| `/api/extensions/jira-assets` | `GET/POST /config`, `GET /vw-attributes`, schema and object-type discovery, `POST /import`, `POST /sync`, `GET /sync/status`, `GET /sync/history`, `GET/DELETE /use-cases/:id`, `GET /use-cases`, `GET /projects/:projectId/custom-frameworks-progress` | |
+| `/api/extensions/jira-assets` | `GET/POST /config`, `GET /vw-attributes`, schema and object-type discovery, `POST /import`, `POST /sync`, `GET /sync/status`, `GET /sync/history`, `GET/DELETE /use-cases/:id`, `GET /use-cases`, `GET /projects/:projectId/custom-frameworks-progress` | `extension.admin` (Admin) on `POST /config`, `POST /import`, `POST /sync`, `DELETE /use-cases/:id`. `POST /sync` returns 409 while a sync is running. |
 | `/api/extensions/dataset-bulk-upload` | `POST /upload` (multipart, one file per request, 30 MB, CSV/XLS/XLSX; 413/415 on error) | Admin, Editor |
 
 The full list is in `Servers/swagger.yaml` under `/extensions/...`.
@@ -303,9 +303,81 @@ extensions are configured per organization in the UI.
   UI or API.
 - While disabled, the gate returns 403 on every `/api/extensions/<key>/...`
   route and the client hides the extension's entry points.
-- Sync is manual only. No scheduler runs MLflow, Azure AI Foundry or Jira
-  Assets sync. The Jira panel offers "Enable automatic sync" and "Sync
-  Interval", but nothing reads those settings.
+- MLflow and Azure AI Foundry sync is manual only. Jira Assets also syncs on
+  its configured interval (see [Scheduled sync](#scheduled-sync)). The
+  scheduler skips organizations where the extension is disabled.
+
+---
+
+## Scheduled sync
+
+Jira Assets is the first extension that syncs on a schedule. Follow the same
+pattern for any later one (for example a Jira incident sync).
+
+**One check job, not one job per org.** `scheduleJiraAssetsScheduledSyncCheck`
+in `Servers/services/automations/automationProducer.ts` upserts the repeatable
+`jira_assets_scheduled_sync_check` job on the `automation-actions` queue,
+every 5 minutes (`*/5 * * * *`). It is registered in `addAllJobs()`
+(`Servers/jobs/producer.ts`) through `safeSchedule`, and `createAutomationWorker`
+(`automationWorker.ts`) dispatches it to `runJiraAssetsScheduledSyncAllOrgs`
+in `Servers/extensions/jira-assets/jiraAssets.scheduler.ts`. Each org's own
+interval decides whether that tick does anything for it.
+
+**Per-org due check.** The runner loops `getAllOrganizationsQuery()`. For each
+org it loads one state row with `getScheduledSyncState` (every table filtered
+on `organization_id`) and passes it to the pure `evaluateScheduledSync`. A sync
+is due when all of these hold:
+
+- the extension is enabled in `extension_enablements` (read directly; the HTTP
+  gate does not apply to jobs)
+- a `jira_assets_config` row exists with `sync_enabled = true` and a
+  `selected_object_type_id`
+- at least one `jira_assets_use_cases` row exists. This matches the panel,
+  where **Sync now** stays disabled until something is imported. Without it,
+  switching automatic sync on before the first import would pull in every
+  object of the type.
+- `sync_interval_hours` have passed since the later of `last_sync_at` (finish,
+  success or failure) and the newest `jira_assets_sync_history.started_at`.
+  "Never synced" counts as due. A manual sync therefore resets the clock.
+
+The timing rule is `isIntervalElapsed` in `Servers/extensions/scheduledSync.utils.ts`.
+It is shared, so later extensions reuse it with their own state query.
+
+Due orgs run `syncObjects(orgId, null, "scheduled")`, which writes the history
+row as `sync_type = 'scheduled'`, `triggered_by = NULL`. Use cases created by a
+scheduled run have no `projects.owner`. Orgs are handled one at a time. One
+org's error is logged (`logStructured` plus `logger.error`) and the loop moves
+on.
+
+**No overlap.** Every sync, manual or scheduled, starts with `claimSyncRun`
+in `jiraAssets.service.ts`. In one transaction it takes
+`pg_advisory_xact_lock(hashtext('jira_assets_sync'), orgId)`, marks `started`
+rows older than `SYNC_STALE_AFTER_MS` (1 hour) as `failed` ("Sync did not
+finish and was marked as abandoned"), and then inserts the new `started` row
+only if no other `started` row is left. Otherwise it throws
+`JiraSyncInProgressError`. `POST /sync` maps that to 409 and the scheduler
+skips the org until the next tick. The advisory lock is released at commit,
+before any Jira call. The long-lived guard is the `started` row.
+
+**Validation.** `POST /config` rejects a `sync_interval_hours` that is not a
+whole number from 1 to 168 (400). The same range is enforced by
+`jira_assets_config_sync_interval_range_chk`. The panel offers 1, 6, 12, 24
+and 48 hours. It saves the toggle and the interval as soon as they change,
+the same way it saves the schema and object type.
+
+**Adding a scheduled sync to another extension:**
+
+1. Add a pure `evaluate…` function and a per-org state query. Read
+   `extension_enablements.enabled` yourself, because jobs bypass
+   `requireExtensionEnabled`.
+2. Guard the sync itself against overlap, so manual and scheduled runs share
+   the guard.
+3. Add a `schedule…` function with `upsertJobScheduler` and no obliterate.
+   Register it in `addAllJobs()` after the obliterating schedulers and
+   dispatch it in `createAutomationWorker`.
+4. Add a case to `services/automations/tests/automationProducer.spec.ts`, plus
+   unit tests for the due check and the guard (see
+   `extensions/jira-assets/__tests__/`).
 
 ---
 
@@ -407,7 +479,7 @@ for live features.
 - The legacy `custom_framework_*` tables remain.
   `GET /api/extensions/jira-assets/projects/:projectId/custom-frameworks-progress`
   (`jiraAssets.service.ts`) still reads them.
-- No scheduler exists for Jira Assets, MLflow or Azure AI Foundry sync.
+- No scheduler exists for MLflow or Azure AI Foundry sync.
 - The Frameworks page **Settings** tab
   (`Clients/src/presentation/pages/Framework/Settings`) only lists ISO 27001,
   ISO 42001 and NIST AI RMF. The bundled organizational frameworks are added

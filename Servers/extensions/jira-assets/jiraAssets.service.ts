@@ -54,6 +54,54 @@ export interface JiraSyncResult {
   status: string;
 }
 
+/** Bounds for `sync_interval_hours`; mirrors jira_assets_config_sync_interval_range_chk. */
+export const SYNC_INTERVAL_MIN_HOURS = 1;
+export const SYNC_INTERVAL_MAX_HOURS = 168;
+const DEFAULT_SYNC_INTERVAL_HOURS = 24;
+
+/**
+ * A `started` history row older than this is treated as abandoned (worker
+ * crash, deploy mid-sync) and closed as failed, so it cannot block every
+ * later sync for the organization.
+ */
+export const SYNC_STALE_AFTER_MS = 60 * 60 * 1000;
+
+/** Thrown when a manual or scheduled sync is already running for the organization. */
+export class JiraSyncInProgressError extends Error {
+  constructor() {
+    super("A Jira Assets sync is already running for this organization");
+    this.name = "JiraSyncInProgressError";
+  }
+}
+
+/** Thrown by `saveConfig` for bad input; the controller maps it to 400. */
+export class JiraConfigValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "JiraConfigValidationError";
+  }
+}
+
+/**
+ * Validate `sync_interval_hours` from a request body. Missing → default (24).
+ * Accepts numeric strings because the UI select can hand back a string.
+ */
+export function parseSyncIntervalHours(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === "") return DEFAULT_SYNC_INTERVAL_HOURS;
+  const value = typeof raw === "string" ? Number(raw.trim()) : raw;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < SYNC_INTERVAL_MIN_HOURS ||
+    value > SYNC_INTERVAL_MAX_HOURS
+  ) {
+    throw new JiraConfigValidationError(
+      `Sync interval must be a whole number of hours between ${SYNC_INTERVAL_MIN_HOURS} and ${SYNC_INTERVAL_MAX_HOURS}`,
+    );
+  }
+  return value;
+}
+
 // ---------------------------------------------------------------------------
 // Config CRUD
 // ---------------------------------------------------------------------------
@@ -124,10 +172,16 @@ export async function saveConfig(
   const row = existing[0];
   const hasExistingToken = !!(row && row.api_token_encrypted);
 
-  if (!body.jira_base_url) throw new Error("JIRA Base URL is required");
-  if (!body.workspace_id) throw new Error("Workspace ID is required");
-  if (!body.email) throw new Error("Email is required");
-  if (!body.api_token && !hasExistingToken) throw new Error("API Token is required");
+  if (!body.jira_base_url) throw new JiraConfigValidationError("JIRA Base URL is required");
+  if (!body.workspace_id) throw new JiraConfigValidationError("Workspace ID is required");
+  if (!body.email) throw new JiraConfigValidationError("Email is required");
+  if (!body.api_token && !hasExistingToken) {
+    throw new JiraConfigValidationError("API Token is required");
+  }
+  if (body.sync_enabled !== undefined && typeof body.sync_enabled !== "boolean") {
+    throw new JiraConfigValidationError("sync_enabled must be true or false");
+  }
+  const syncIntervalHours = parseSyncIntervalHours(body.sync_interval_hours);
 
   const commonReplacements = {
     organizationId,
@@ -138,7 +192,7 @@ export async function saveConfig(
     selectedSchemaId: body.selected_schema_id ?? null,
     selectedObjectTypeId: body.selected_object_type_id ?? null,
     syncEnabled: body.sync_enabled ?? false,
-    syncIntervalHours: body.sync_interval_hours ?? 24,
+    syncIntervalHours,
     userId,
   };
 
@@ -343,6 +397,79 @@ export async function importObjects(
 // Sync (delta: create/update JIRA objects, delete removed ones)
 // ---------------------------------------------------------------------------
 
+/**
+ * Atomically record a sync start for the organization, or refuse if one is
+ * already running. Manual and scheduled syncs both come through here, so they
+ * can never overlap for the same organization.
+ *
+ * A transaction-scoped advisory lock keyed on the organization serialises the
+ * check-then-insert (two READ COMMITTED transactions could otherwise both see
+ * "nothing running" and both insert). The lock is released at commit, before
+ * any Jira call, so it is held for milliseconds — the long-running guard is
+ * the `started` history row itself. Rows older than SYNC_STALE_AFTER_MS are
+ * closed as failed first so an abandoned sync cannot block forever.
+ *
+ * Returns the new history row id. Throws JiraSyncInProgressError on overlap.
+ */
+export async function claimSyncRun(
+  organizationId: number,
+  syncType: "manual" | "scheduled",
+  triggeredBy: number | null,
+  startedAt: Date,
+): Promise<number> {
+  return sequelize.transaction(async (transaction) => {
+    await sequelize.query(
+      `SELECT pg_advisory_xact_lock(hashtext('jira_assets_sync'), :organizationId);`,
+      { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
+    );
+
+    await sequelize.query(
+      `UPDATE jira_assets_sync_history
+          SET status = 'failed', completed_at = :now,
+              error_message = 'Sync did not finish and was marked as abandoned'
+        WHERE organization_id = :organizationId
+          AND status = 'started'
+          AND started_at < :staleBefore;`,
+      {
+        replacements: {
+          organizationId,
+          now: startedAt,
+          staleBefore: new Date(startedAt.getTime() - SYNC_STALE_AFTER_MS),
+        },
+        transaction,
+      },
+    );
+
+    const running = (await sequelize.query(
+      `SELECT id FROM jira_assets_sync_history
+        WHERE organization_id = :organizationId AND status = 'started'
+        LIMIT 1;`,
+      { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
+    )) as Array<{ id: number }>;
+    if (running.length > 0) throw new JiraSyncInProgressError();
+
+    const historyRows = (await sequelize.query(
+      `INSERT INTO jira_assets_sync_history
+         (organization_id, sync_type, status, started_at, triggered_by)
+       VALUES (:organizationId, :syncType, 'started', :startedAt, :triggeredBy)
+       RETURNING id;`,
+      {
+        replacements: { organizationId, syncType, startedAt, triggeredBy },
+        type: QueryTypes.INSERT,
+        transaction,
+      },
+    )) as unknown as [Array<{ id: number }>, number];
+    return (historyRows[0] as any)[0].id as number;
+  });
+}
+
+/**
+ * Run a delta sync for the organization.
+ *
+ * `triggeredBy` is the user for a manual sync and null for a scheduled one
+ * (the history row then reads sync_type = 'scheduled', triggered_by = NULL).
+ * Throws JiraSyncInProgressError if another sync is running for the org.
+ */
 export async function syncObjects(
   organizationId: number,
   triggeredBy: number | null,
@@ -354,18 +481,7 @@ export async function syncObjects(
   if (!config.selected_object_type_id) throw new Error("No object type selected for sync");
   const client = clientFromConfig(config);
 
-  // Record sync-start
-  const historyRows = (await sequelize.query(
-    `INSERT INTO jira_assets_sync_history
-       (organization_id, sync_type, status, started_at, triggered_by)
-     VALUES (:organizationId, :syncType, 'started', :startedAt, :triggeredBy)
-     RETURNING id;`,
-    {
-      replacements: { organizationId, syncType, startedAt, triggeredBy },
-      type: QueryTypes.INSERT,
-    },
-  )) as unknown as [Array<{ id: number }>, number];
-  const historyId = (historyRows[0] as any)[0].id;
+  const historyId = await claimSyncRun(organizationId, syncType, triggeredBy, startedAt);
 
   const finalizeFailure = async (message: string) => {
     await sequelize.query(

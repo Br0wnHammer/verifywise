@@ -312,9 +312,9 @@ export const extensionsContent: ArticleContent = {
     },
     {
       type: 'callout',
-      variant: 'warning',
-      title: 'Syncing is manual',
-      text: 'The panel shows an "Enable automatic sync" setting with a "Sync Interval", but scheduled syncing doesn\'t run yet. Click **Sync Now** whenever you want to pull changes from Jira.',
+      variant: 'info',
+      title: 'Automatic sync',
+      text: 'Under **Step 3: Sync Settings**, turn on **Enable automatic sync** and pick a **Sync Interval** (every hour up to every 48 hours). Both are saved as soon as you change them. VerifyWise then pulls changes from Jira on that interval, counted from the last sync, and **Sync Now** still works at any time. Automatic sync starts only after at least one use case has been imported, and it stops while the extension is disabled. A sync never starts while another one is still running. Each sync updates the "Last sync" line in the panel. Only Admins can change these settings or run a sync.',
     },
     {
       type: 'heading',

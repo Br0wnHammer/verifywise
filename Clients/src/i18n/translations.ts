@@ -9697,6 +9697,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Aktivieren und konfigurieren Sie Integrationen für Ihre Organisation.",
     "Enable automatic sync": "Automatische Synchronisierung aktivieren",
+    "Automatic sync starts once at least one use case has been imported.":
+      "Die automatische Synchronisierung beginnt, sobald mindestens ein Anwendungsfall importiert wurde.",
     "Error Details:": "Fehlerdetails:",
     "Every 12 hours": "Alle 12 Stunden",
     "Every 24 hours": "Alle 24 Stunden",
@@ -19789,6 +19791,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Activez et configurez des intégrations pour votre organisation.",
     "Enable automatic sync": "Activer la synchronisation automatique",
+    "Automatic sync starts once at least one use case has been imported.":
+      "La synchronisation automatique démarre dès qu'au moins un cas d'usage a été importé.",
     "Error Details:": "Détails de l'erreur :",
     "Every 12 hours": "Toutes les 12 heures",
     "Every 24 hours": "Toutes les 24 heures",
@@ -29807,6 +29811,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Active y configure integraciones para su organización.",
     "Enable automatic sync": "Activar sincronización automática",
+    "Automatic sync starts once at least one use case has been imported.":
+      "La sincronización automática comienza cuando se ha importado al menos un caso de uso.",
     "Error Details:": "Detalles del error:",
     "Every 12 hours": "Cada 12 horas",
     "Every 24 hours": "Cada 24 horas",

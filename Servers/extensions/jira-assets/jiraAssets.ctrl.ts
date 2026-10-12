@@ -14,6 +14,8 @@ import {
   getUseCaseByProjectId,
   importObjects,
   JiraAssetsConfig,
+  JiraConfigValidationError,
+  JiraSyncInProgressError,
   listUseCases,
   loadFullConfig,
   saveConfig,
@@ -65,7 +67,7 @@ export async function postConfig(req: Request, res: Response): Promise<any> {
       .json(STATUS_CODE[200]({ success: true, message: "Configuration saved successfully" }));
   } catch (err: any) {
     // Validation errors surface as 400 so the UI can render them inline.
-    const bad = /required/i.test(err.message);
+    const bad = err instanceof JiraConfigValidationError;
     const status = bad ? 400 : 500;
     if (!bad) {
       logStructured("error", "jira postConfig failed", "postConfig", fileName);
@@ -157,6 +159,9 @@ export async function postSync(req: Request, res: Response): Promise<any> {
     const result = await syncObjects(orgId(req), uid(req), "manual");
     return res.status(result.success ? 200 : 500).json(STATUS_CODE[200](result));
   } catch (err: any) {
+    if (err instanceof JiraSyncInProgressError) {
+      return res.status(409).json(STATUS_CODE[409](err.message));
+    }
     logStructured("error", "jira sync failed", "postSync", fileName);
     logger.error("❌ Error in jira postSync:", err);
     return res.status(500).json(STATUS_CODE[500](err.message));
