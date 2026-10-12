@@ -75,3 +75,22 @@ def test_observability_config_fetch_skips_the_call_without_a_key(monkeypatch):
     observability._fetch_config()
 
     get.assert_not_called()
+
+
+def test_observability_config_falls_back_to_env_when_settings_fail(monkeypatch):
+    """A settings error must not block startup: the env config is used."""
+    import types
+
+    monkeypatch.setenv("BACKEND_URL", "http://backend:3000")
+    monkeypatch.setenv("OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel:4318")
+    # A config module whose settings cannot be imported.
+    monkeypatch.setitem(sys.modules, "config", types.ModuleType("config"))
+    get = MagicMock()
+    monkeypatch.setattr(httpx, "get", get)
+
+    result = observability._fetch_config()
+
+    get.assert_not_called()
+    assert result["enabled"] is True
+    assert result["otlp_endpoint"] == "http://otel:4318"
