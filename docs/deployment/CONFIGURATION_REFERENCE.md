@@ -254,8 +254,10 @@ The backend calls the AI Gateway's internal API with a shared key. Set the same 
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `AI_GATEWAY_URL` | Internal URL of the AI Gateway | No (default `http://127.0.0.1:8100`) |
+| `AI_GATEWAY_URL` | Internal URL of the AI Gateway, used for every gateway call and the `/health` check | No (default `http://127.0.0.1:8100`) |
 | `AI_GATEWAY_INTERNAL_KEY` | Shared secret sent as `x-internal-key` from the backend to the AI Gateway. Set the same value in `Servers/.env` and the AI Gateway's environment | Yes, when the AI Gateway runs |
+
+The default is the IPv4 loopback address. If the AI Gateway listens only on the IPv6 loopback (`::1`), set `AI_GATEWAY_URL=http://[::1]:8100`.
 
 ```bash
 # Generate once and set on both the backend and the AI Gateway
@@ -265,7 +267,7 @@ AI_GATEWAY_INTERNAL_KEY=$(openssl rand -hex 32)
 What happens when the key is missing or does not match:
 
 - **AI Gateway:** refuses to start when `AI_GATEWAY_INTERNAL_KEY` is empty or a placeholder.
-- **Backend and worker:** each logs a startup warning when `AI_GATEWAY_INTERNAL_KEY` is not set.
+- **Backend and worker:** each logs a startup warning when `AI_GATEWAY_INTERNAL_KEY` is not set and the gateway is in use (`AI_GATEWAY_URL` is set, or an organization has automatic AI Gateway log deletion on).
 - **Log retention:** the gateway's internal retention routes fail closed. Without a configured key they answer 503, and a key the gateway does not accept gets 401. The daily retention job then records the guardrail and spend log cleanups as failed, and **Settings > Data retention** shows "Purge refused: internal key not configured" (key missing on either side) or "Purge refused: internal key rejected" (keys differ) in the Last cleanup column. No logs are deleted until the key is fixed.
 
 ### BrandFetch (frontend)
