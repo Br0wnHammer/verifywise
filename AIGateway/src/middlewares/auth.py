@@ -19,10 +19,19 @@ def verify_internal_key(request: Request):
         raise HTTPException(status_code=401, detail="Invalid internal key")
 
 
+# Machine codes in require_internal_key's error detail, so the caller can tell
+# these refusals from a 503 or 401 sent by a proxy or load balancer.
+INTERNAL_KEY_NOT_CONFIGURED = "internal_key_not_configured"
+INTERNAL_KEY_REJECTED = "internal_key_rejected"
+
+
 def require_internal_key(request: Request):
     """Like verify_internal_key, but fails closed: with no internal key
     configured the request is refused (503) instead of served. For routes
-    that delete data in bulk across organizations."""
+    that delete data in bulk across organizations.
+
+    Errors carry {"detail": {"message": ..., "code": ...}} with one of the
+    codes above."""
     expected = settings.ai_gateway_internal_key
     if not expected:
         logger.error(
@@ -30,7 +39,16 @@ def require_internal_key(request: Request):
             request.method,
             request.url.path,
         )
-        raise HTTPException(status_code=503, detail="Internal key not configured")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "Internal key not configured",
+                "code": INTERNAL_KEY_NOT_CONFIGURED,
+            },
+        )
     auth = request.headers.get("x-internal-key", "")
     if not hmac.compare_digest(auth, expected):
-        raise HTTPException(status_code=401, detail="Invalid internal key")
+        raise HTTPException(
+            status_code=401,
+            detail={"message": "Invalid internal key", "code": INTERNAL_KEY_REJECTED},
+        )

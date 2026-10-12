@@ -1,3 +1,5 @@
+import { isGatewayInternalKeyConfigured } from "./aiGatewayConfig";
+
 /**
  * The AI Gateway's retention values for an organization that has not saved
  * its own settings (they match the gateway's _SETTINGS_DEFAULTS).
@@ -10,8 +12,9 @@ export const GATEWAY_DEFAULTS = {
 
 /**
  * Why the AI Gateway refused a retention purge, and the error recorded on the
- * failed run. The gateway's retention routes fail closed: with no internal
- * key configured they answer 503, and a key it does not accept gets 401.
+ * failed run. The gateway's retention routes fail closed and say why with a
+ * machine code: "internal_key_not_configured" (503) or
+ * "internal_key_rejected" (401).
  */
 export const GATEWAY_PURGE_REFUSALS = {
   internal_key_not_configured: "Purge refused: internal key not configured",
@@ -20,30 +23,45 @@ export const GATEWAY_PURGE_REFUSALS = {
 
 export type GatewayPurgeRefusal = keyof typeof GATEWAY_PURGE_REFUSALS;
 
-/** Whether this backend has AI_GATEWAY_INTERNAL_KEY set. */
-export function isGatewayInternalKeyConfigured(): boolean {
-  return Boolean((process.env.AI_GATEWAY_INTERNAL_KEY ?? "").trim());
+function isRefusalCode(value: unknown): value is GatewayPurgeRefusal {
+  return (
+    typeof value === "string" && Object.prototype.hasOwnProperty.call(GATEWAY_PURGE_REFUSALS, value)
+  );
+}
+
+/** The machine code in a gateway error body: { detail: { code } } or { code }. */
+function gatewayErrorCode(body: unknown): unknown {
+  if (!body || typeof body !== "object") return undefined;
+  const { code, detail } = body as { code?: unknown; detail?: unknown };
+  if (code !== undefined) return code;
+  return detail && typeof detail === "object" ? (detail as { code?: unknown }).code : undefined;
 }
 
 /**
- * The refusal behind a failed gateway call, or null when it failed for
- * another reason. Without a key here the gateway can only refuse, so that is
- * "not configured" whatever it answered; a 503 means the gateway has none.
+ * The refusal behind a failed gateway call, or null when it failed for any
+ * other reason (including a 503 or 401 from a proxy or load balancer while the
+ * gateway is down, which carries no gateway code). Without a key here the
+ * gateway can only refuse, so a 401 is then "not configured".
  */
 export function gatewayPurgeRefusalFor(error: unknown): GatewayPurgeRefusal | null {
-  const status = (error as { status?: unknown } | null)?.status;
-  if (typeof status !== "number" || (status !== 401 && status !== 503)) return null;
-  if (status === 503 || !isGatewayInternalKeyConfigured()) {
-    return "internal_key_not_configured";
-  }
-  return "internal_key_rejected";
+  const { status, body } = (error ?? {}) as { status?: unknown; body?: unknown };
+  if (status !== 401 && status !== 503) return null;
+  const code = gatewayErrorCode(body);
+  if (status === 503) return code === "internal_key_not_configured" ? code : null;
+  if (!isGatewayInternalKeyConfigured()) return "internal_key_not_configured";
+  return code === "internal_key_rejected" ? code : null;
 }
 
-/** Read the refusal back from a recorded run's error text. */
-export function gatewayPurgeRefusalFromRunError(
-  error: string | null | undefined,
-): GatewayPurgeRefusal | null {
-  if (!error) return null;
-  const entry = Object.entries(GATEWAY_PURGE_REFUSALS).find(([, text]) => text === error);
+/**
+ * The refusal recorded on a run: its error_code, or for runs recorded before
+ * that column existed, a match on the stored error text.
+ */
+export function gatewayPurgeRefusalFromRun(run: {
+  error_code?: string | null;
+  error?: string | null;
+}): GatewayPurgeRefusal | null {
+  if (isRefusalCode(run.error_code)) return run.error_code;
+  if (!run.error) return null;
+  const entry = Object.entries(GATEWAY_PURGE_REFUSALS).find(([, text]) => text === run.error);
   return entry ? (entry[0] as GatewayPurgeRefusal) : null;
 }

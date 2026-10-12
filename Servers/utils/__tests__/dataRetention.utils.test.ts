@@ -179,6 +179,7 @@ describe("recordRetentionRun / getLatestRetentionRuns", () => {
         deleted_count: "0",
         status: "failed",
         error: "Purge refused: internal key rejected",
+        error_code: "internal_key_rejected",
       },
     ]);
     const runs = await getLatestRetentionRuns(1);
@@ -188,8 +189,11 @@ describe("recordRetentionRun / getLatestRetentionRuns", () => {
       deleted_count: 9,
       status: "capped",
       error: null,
+      error_code: null,
     });
     expect(runs.ai_gateway_spend_logs?.error).toBe("Purge refused: internal key rejected");
+    expect(runs.ai_gateway_spend_logs?.error_code).toBe("internal_key_rejected");
+    expect(mockQuery.mock.calls[0][0]).toContain("error_code");
     expect(runs.mrm_metrics).toBeUndefined();
   });
 });
@@ -217,7 +221,20 @@ describe("safeRecordRetentionRun", () => {
       deletedCount: 4,
       status: "failed",
       error: stored,
+      errorCode: null,
     });
+  });
+
+  it("stores the machine-readable error code", async () => {
+    mockQuery.mockResolvedValue([]);
+    await safeRecordRetentionRun({
+      ...run,
+      error: "Purge refused: internal key rejected",
+      errorCode: "internal_key_rejected",
+    });
+    const [sql, opts] = mockQuery.mock.calls[0];
+    expect(String(sql)).toContain("error_code");
+    expect(opts.replacements.errorCode).toBe("internal_key_rejected");
   });
 
   it("logs a recording failure instead of throwing", async () => {

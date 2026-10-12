@@ -191,6 +191,8 @@ interface GatewayTypeTotal {
   deleted: number;
   capped: boolean;
   error?: string;
+  /** Machine-readable reason, set when the gateway refused the purge. */
+  errorCode?: string;
 }
 
 function gatewayRunStatus(total: GatewayTypeTotal) {
@@ -253,6 +255,8 @@ async function purgeGatewayLogsForOrg(orgId: number): Promise<void> {
         : error instanceof Error
           ? error.message
           : String(error);
+      if (guardrail.error === undefined && refusal) guardrail.errorCode = refusal;
+      if (spend.error === undefined && refusal) spend.errorCode = refusal;
       guardrail.error ??= message;
       spend.error ??= message;
       answered = true;
@@ -280,6 +284,7 @@ async function purgeGatewayLogsForOrg(orgId: number): Promise<void> {
     deletedCount: guardrail.deleted,
     status: gatewayRunStatus(guardrail),
     error: guardrail.error,
+    errorCode: guardrail.errorCode,
   });
   await safeRecordRetentionRun({
     organizationId: orgId,
@@ -288,5 +293,6 @@ async function purgeGatewayLogsForOrg(orgId: number): Promise<void> {
     deletedCount: spend.deleted,
     status: gatewayRunStatus(spend),
     error: spend.error,
+    errorCode: spend.errorCode,
   });
 }

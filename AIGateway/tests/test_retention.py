@@ -54,8 +54,8 @@ def _sql(stmt) -> str:
 
 def _upserts(executed):
     """The settings upserts among the executed statements (each save first
-    reads the previous values with a locked SELECT)."""
-    return [entry for entry in executed if "INSERT INTO" in str(entry[0])]
+    creates a missing row and reads the previous values with a locked SELECT)."""
+    return [entry for entry in executed if "DO UPDATE" in str(entry[0])]
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ async def test_partial_update_only_sets_present_keys(monkeypatch):
     get_db, executed = _fake_db()
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
-    await guardrails_crud.upsert_guardrail_settings(
+    await guardrails_crud.upsert_guardrail_settings_with_previous(
         7, {"spend_log_retention_days": 30}
     )
 
@@ -89,7 +89,7 @@ async def test_full_update_sets_every_whitelisted_key(monkeypatch):
     get_db, executed = _fake_db()
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
-    await guardrails_crud.upsert_guardrail_settings(
+    await guardrails_crud.upsert_guardrail_settings_with_previous(
         7,
         {
             "pii_on_error": "allow",
@@ -115,8 +115,8 @@ async def test_upsert_statement_is_static(monkeypatch):
     get_db, executed = _fake_db()
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
-    await guardrails_crud.upsert_guardrail_settings(7, {"log_retention_days": 30})
-    await guardrails_crud.upsert_guardrail_settings(
+    await guardrails_crud.upsert_guardrail_settings_with_previous(7, {"log_retention_days": 30})
+    await guardrails_crud.upsert_guardrail_settings_with_previous(
         7, {"pii_on_error": "allow", "auto_purge_enabled": True}
     )
 
@@ -149,7 +149,8 @@ def _sequenced_db(*firsts):
 async def test_save_returns_the_retention_values_it_replaced(monkeypatch):
     stored = {"log_retention_days": 60, "spend_log_retention_days": 90, "auto_purge_enabled": False}
     saved = {"organization_id": 7, "log_retention_days": 30, "auto_purge_enabled": True}
-    get_db, executed, db = _sequenced_db(stored, saved)
+    # Statements in turn: create-if-missing, locked read, upsert.
+    get_db, executed, db = _sequenced_db(None, stored, saved)
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
     settings, previous = await guardrails_crud.upsert_guardrail_settings_with_previous(
@@ -158,25 +159,37 @@ async def test_save_returns_the_retention_values_it_replaced(monkeypatch):
 
     assert previous == stored
     assert settings == saved
-    # The previous values are read under a row lock, before the save, and both
-    # statements commit together.
-    lock_sql, lock_params = executed[0]
+    create_sql, create_params = executed[0]
+    lock_sql, lock_params = executed[1]
+    assert "ON CONFLICT (organization_id) DO NOTHING" in str(create_sql)
     assert "FOR UPDATE" in str(lock_sql)
     assert lock_params == {"org_id": 7}
-    assert "INSERT INTO ai_gateway_guardrail_settings" in str(executed[1][0])
+    assert "DO UPDATE" in str(executed[2][0])
     db.commit.assert_awaited_once()
 
 
-async def test_save_reports_no_previous_values_for_a_new_row(monkeypatch):
+async def test_first_save_creates_the_row_with_defaults_before_locking(monkeypatch):
+    """Sequential simulation of a first save: the row is created with the
+    defaults (ON CONFLICT DO NOTHING), so the locked read finds a row and a
+    concurrent first save waits on its lock instead of also seeing nothing.
+    The real concurrent behaviour needs Postgres; see the PR notes."""
+    defaults = {"log_retention_days": 90, "spend_log_retention_days": 90, "auto_purge_enabled": False}
     saved = {"organization_id": 7, "log_retention_days": 30}
-    get_db, _, _ = _sequenced_db(None, saved)
+    get_db, executed, _ = _sequenced_db(None, defaults, saved)
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
     settings, previous = await guardrails_crud.upsert_guardrail_settings_with_previous(
         7, {"log_retention_days": 30}
     )
 
-    assert previous is None
+    create_sql, create_params = executed[0]
+    assert str(create_sql).index("INSERT INTO") < str(create_sql).index("DO NOTHING")
+    # The created row takes the defaults, never the submitted values.
+    assert create_params["default_log_retention_days"] == 90
+    assert create_params["default_auto_purge_enabled"] is False
+    assert create_params["org_id"] == 7
+    # The previous values are the defaults the organization was running with.
+    assert previous == defaults
     assert settings == saved
 
 
@@ -199,7 +212,7 @@ async def test_invalid_values_are_rejected(monkeypatch, body):
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
     with pytest.raises(HTTPException) as exc:
-        await guardrails_crud.upsert_guardrail_settings(7, body)
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, body)
     assert exc.value.status_code == 400
     assert executed == []
 
@@ -208,7 +221,7 @@ async def test_ten_years_is_the_longest_accepted_period(monkeypatch):
     get_db, executed = _fake_db()
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
-    await guardrails_crud.upsert_guardrail_settings(
+    await guardrails_crud.upsert_guardrail_settings_with_previous(
         7, {"log_retention_days": 3650, "spend_log_retention_days": 3650}
     )
 
@@ -221,7 +234,7 @@ async def test_out_of_range_error_names_the_range(monkeypatch):
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
     with pytest.raises(HTTPException) as exc:
-        await guardrails_crud.upsert_guardrail_settings(7, {"log_retention_days": 3651})
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, {"log_retention_days": 3651})
     assert exc.value.detail == "log_retention_days must be an integer from 1 to 3650"
 
 
@@ -267,6 +280,8 @@ async def test_retention_routes_refuse_when_no_internal_key_is_configured(monkey
     with pytest.raises(HTTPException) as exc:
         await retention_router.get_retention_config(_keyed_request("anything"))
     assert exc.value.status_code == 503
+    # A machine code lets the backend tell this from a proxy's 503.
+    assert exc.value.detail["code"] == "internal_key_not_configured"
 
     with pytest.raises(HTTPException) as exc:
         await retention_router.purge_retention(
@@ -289,6 +304,7 @@ async def test_retention_routes_reject_a_wrong_internal_key(monkeypatch, key):
     with pytest.raises(HTTPException) as exc:
         await retention_router.get_retention_config(_keyed_request(key))
     assert exc.value.status_code == 401
+    assert exc.value.detail["code"] == "internal_key_rejected"
 
 
 async def test_retention_routes_serve_the_right_internal_key(monkeypatch):

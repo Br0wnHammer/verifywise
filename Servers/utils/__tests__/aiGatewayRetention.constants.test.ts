@@ -1,40 +1,88 @@
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+
+let mockKeyConfigured = true;
+jest.mock("../aiGatewayConfig", () => ({
+  isGatewayInternalKeyConfigured: () => mockKeyConfigured,
+}));
+
 import {
   gatewayPurgeRefusalFor,
-  gatewayPurgeRefusalFromRunError,
-  isGatewayInternalKeyConfigured,
+  gatewayPurgeRefusalFromRun,
 } from "../aiGatewayRetention.constants";
 
-const savedKey = process.env.AI_GATEWAY_INTERNAL_KEY;
-afterEach(() => {
-  if (savedKey === undefined) delete process.env.AI_GATEWAY_INTERNAL_KEY;
-  else process.env.AI_GATEWAY_INTERNAL_KEY = savedKey;
+const gatewayError = (status: number, body: unknown) => ({ status, body });
+
+beforeEach(() => {
+  mockKeyConfigured = true;
 });
 
-describe("gateway purge refusals", () => {
-  it("reads whether this backend has the internal key", () => {
-    process.env.AI_GATEWAY_INTERNAL_KEY = "  ";
-    expect(isGatewayInternalKeyConfigured()).toBe(false);
-    process.env.AI_GATEWAY_INTERNAL_KEY = "k";
-    expect(isGatewayInternalKeyConfigured()).toBe(true);
+describe("gatewayPurgeRefusalFor", () => {
+  it("trusts a 503 only when the gateway says the key is not configured", () => {
+    expect(
+      gatewayPurgeRefusalFor(
+        gatewayError(503, {
+          detail: { message: "Internal key not configured", code: "internal_key_not_configured" },
+        }),
+      ),
+    ).toBe("internal_key_not_configured");
+    expect(gatewayPurgeRefusalFor(gatewayError(503, { code: "internal_key_not_configured" }))).toBe(
+      "internal_key_not_configured",
+    );
   });
 
-  it("classifies 503 and 401 responses", () => {
-    process.env.AI_GATEWAY_INTERNAL_KEY = "k";
-    expect(gatewayPurgeRefusalFor({ status: 503 })).toBe("internal_key_not_configured");
-    expect(gatewayPurgeRefusalFor({ status: 401 })).toBe("internal_key_rejected");
-    expect(gatewayPurgeRefusalFor({ status: 500 })).toBeNull();
+  it("treats a 503 without the gateway's code (proxy, load balancer) as a normal failure", () => {
+    expect(gatewayPurgeRefusalFor(gatewayError(503, "Service Unavailable"))).toBeNull();
+    expect(gatewayPurgeRefusalFor(gatewayError(503, { detail: "upstream down" }))).toBeNull();
+    expect(gatewayPurgeRefusalFor(gatewayError(503, null))).toBeNull();
+  });
+
+  it("classifies a 401 with the gateway's code as a rejected key", () => {
+    expect(
+      gatewayPurgeRefusalFor(
+        gatewayError(401, { detail: { message: "Invalid", code: "internal_key_rejected" } }),
+      ),
+    ).toBe("internal_key_rejected");
+    expect(gatewayPurgeRefusalFor(gatewayError(401, { detail: "Unauthorized" }))).toBeNull();
+  });
+
+  it("calls any 401 'not configured' when this backend has no key", () => {
+    mockKeyConfigured = false;
+    expect(gatewayPurgeRefusalFor(gatewayError(401, "Unauthorized"))).toBe(
+      "internal_key_not_configured",
+    );
+    // A 503 still needs the gateway's code.
+    expect(gatewayPurgeRefusalFor(gatewayError(503, "Service Unavailable"))).toBeNull();
+  });
+
+  it("ignores other statuses and non-HTTP errors", () => {
+    expect(
+      gatewayPurgeRefusalFor(gatewayError(500, { code: "internal_key_not_configured" })),
+    ).toBeNull();
     expect(gatewayPurgeRefusalFor(new Error("ECONNREFUSED"))).toBeNull();
     expect(gatewayPurgeRefusalFor(null)).toBeNull();
-    delete process.env.AI_GATEWAY_INTERNAL_KEY;
-    expect(gatewayPurgeRefusalFor({ status: 401 })).toBe("internal_key_not_configured");
+  });
+});
+
+describe("gatewayPurgeRefusalFromRun", () => {
+  it("reads the stored error_code", () => {
+    expect(
+      gatewayPurgeRefusalFromRun({ error_code: "internal_key_rejected", error: "anything" }),
+    ).toBe("internal_key_rejected");
   });
 
-  it("reads the refusal back from a run's error text", () => {
-    expect(gatewayPurgeRefusalFromRunError("Purge refused: internal key rejected")).toBe(
-      "internal_key_rejected",
-    );
-    expect(gatewayPurgeRefusalFromRunError("db down")).toBeNull();
-    expect(gatewayPurgeRefusalFromRunError(null)).toBeNull();
+  it("ignores an unknown error_code and inherited names", () => {
+    expect(gatewayPurgeRefusalFromRun({ error_code: "constructor", error: "db down" })).toBeNull();
+    expect(gatewayPurgeRefusalFromRun({ error_code: "something_else", error: null })).toBeNull();
+  });
+
+  it("falls back to the error text for runs recorded before error_code existed", () => {
+    expect(
+      gatewayPurgeRefusalFromRun({
+        error_code: null,
+        error: "Purge refused: internal key not configured",
+      }),
+    ).toBe("internal_key_not_configured");
+    expect(gatewayPurgeRefusalFromRun({ error: "db down" })).toBeNull();
+    expect(gatewayPurgeRefusalFromRun({})).toBeNull();
   });
 });

@@ -16,7 +16,8 @@ import {
   startAiDetectionProgressCleanup,
   stopAiDetectionProgressCleanup,
 } from "./services/aiDetection.service";
-import { isGatewayInternalKeyConfigured } from "./utils/aiGatewayRetention.constants";
+import { shouldWarnMissingGatewayKey } from "./utils/aiGatewayConfig";
+import logger from "./utils/logger/fileLogger";
 
 const DEFAULT_PORT = "3000";
 const DEFAULT_HOST = "localhost";
@@ -107,13 +108,14 @@ try {
   registerAllWorkflows();
   startAiDetectionProgressCleanup();
 
-  // The AI Gateway refuses internal calls without the shared key; its
-  // retention routes fail closed, so the daily log purge would be refused.
-  if (!isGatewayInternalKeyConfigured()) {
-    console.warn(
-      "⚠️  AI_GATEWAY_INTERNAL_KEY is not set. Calls to the AI Gateway will be refused, " +
-        "including the daily retention purge (recorded as 'Purge refused: internal key not " +
-        "configured'). Set the same value here and in the AI Gateway.",
+  // An AI Gateway is configured but the shared key is not: it refuses every
+  // internal call, and its retention routes fail closed, so the daily log
+  // purge would be refused.
+  if (shouldWarnMissingGatewayKey()) {
+    logger.warn(
+      "AI_GATEWAY_INTERNAL_KEY is not set but AI_GATEWAY_URL is. Calls to the AI Gateway will be " +
+        "refused, including the daily retention purge (shown as 'Purge refused: internal key " +
+        "not configured'). Set the same value here and in the AI Gateway.",
     );
   }
 

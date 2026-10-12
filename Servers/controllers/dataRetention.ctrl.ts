@@ -29,7 +29,7 @@ import logger from "../utils/logger/fileLogger";
 import {
   GATEWAY_DEFAULTS,
   GatewayPurgeRefusal,
-  gatewayPurgeRefusalFromRunError,
+  gatewayPurgeRefusalFromRun,
 } from "../utils/aiGatewayRetention.constants";
 
 const FILE_NAME = "dataRetention.ctrl.ts";
@@ -134,7 +134,7 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
     const lastCleanup = (type: RetentionRecordType): RetentionRow["lastCleanup"] => {
       const run = runs[type];
       if (!run) return null;
-      const refusal = run.status === "failed" ? gatewayPurgeRefusalFromRunError(run.error) : null;
+      const refusal = run.status === "failed" ? gatewayPurgeRefusalFromRun(run) : null;
       return {
         ranAt: run.ran_at,
         deletedCount: run.deleted_count,
