@@ -257,19 +257,9 @@ def _validate_settings_input(data: dict) -> None:
                 status_code=400,
                 detail=f"{key} cannot be null; leave it out to keep the current value",
             )
-    for key in _ON_ERROR_KEYS:
-        if key in data and data[key] not in _ON_ERROR_VALUES:
-            raise HTTPException(
-                status_code=400, detail=f"{key} must be one of: {', '.join(_ON_ERROR_VALUES)}"
-            )
-    for key in _REPLACEMENT_KEYS:
-        if key in data and (
-            not isinstance(data[key], str) or len(data[key]) > _REPLACEMENT_MAX_LENGTH
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=f"{key} must be text of at most {_REPLACEMENT_MAX_LENGTH} characters",
-            )
+    for key in (*_ON_ERROR_KEYS, *_REPLACEMENT_KEYS):
+        if key in data and not isinstance(data[key], str):
+            raise HTTPException(status_code=400, detail=f"{key} must be text")
     for key in _BOOLEAN_SETTING_KEYS:
         if key not in data:
             continue
@@ -293,6 +283,28 @@ def _validate_settings_input(data: dict) -> None:
                 )
 
 
+def _validate_changed_text_settings(data: dict, current: dict) -> None:
+    """Check the on-error choices and replacement lengths, but only for values
+    that change. A row saved before these checks may hold another value; the
+    settings page sends the stored value back on every save, so validating an
+    unchanged value would make every save of that organization fail."""
+
+    def changed(key: str) -> bool:
+        return key in data and data[key] != current.get(key)
+
+    for key in _ON_ERROR_KEYS:
+        if changed(key) and data[key] not in _ON_ERROR_VALUES:
+            raise HTTPException(
+                status_code=400, detail=f"{key} must be one of: {', '.join(_ON_ERROR_VALUES)}"
+            )
+    for key in _REPLACEMENT_KEYS:
+        if changed(key) and len(data[key]) > _REPLACEMENT_MAX_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{key} must be text of at most {_REPLACEMENT_MAX_LENGTH} characters",
+            )
+
+
 # Retention values returned alongside a save as they were just before it.
 _PREVIOUS_RETENTION_KEYS = (
     "log_retention_days",
@@ -312,7 +324,9 @@ async def upsert_guardrail_settings_with_previous(
     1. A missing row is created (INSERT ... ON CONFLICT DO NOTHING). Only
        organization_id is given: every other column takes its column default,
        which equals _SETTINGS_DEFAULTS, so the defaults are not listed twice.
-    2. The previous values are read with SELECT ... FOR UPDATE, so they are
+    2. The stored row is read with SELECT ... FOR UPDATE. Changed on-error
+       choices and replacement lengths are validated against it (unchanged
+       values are not). The previous retention values from it are
        exactly what this save replaces, even under concurrent saves, including
        two first saves for the same organization (the second waits for the
        first's lock). For an organization with nothing saved they are the
@@ -333,6 +347,11 @@ async def upsert_guardrail_settings_with_previous(
         # the same command has already updated.
         previous_result = await db.execute(_LOCK_PREVIOUS_RETENTION_SQL, {"org_id": org_id})
         previous_row = previous_result.mappings().first()
+        try:
+            _validate_changed_text_settings(data, dict(previous_row) if previous_row else {})
+        except HTTPException:
+            await db.rollback()
+            raise
         previous = (
             {key: previous_row[key] for key in _PREVIOUS_RETENTION_KEYS}
             if previous_row
@@ -355,7 +374,9 @@ _CREATE_SETTINGS_ROW_SQL = text(
 
 _LOCK_PREVIOUS_RETENTION_SQL = text(
     """
-    SELECT log_retention_days, spend_log_retention_days, auto_purge_enabled
+    SELECT log_retention_days, spend_log_retention_days, auto_purge_enabled,
+           pii_on_error, content_filter_on_error,
+           pii_replacement_format, content_filter_replacement
     FROM ai_gateway_guardrail_settings
     WHERE organization_id = :org_id
     FOR UPDATE

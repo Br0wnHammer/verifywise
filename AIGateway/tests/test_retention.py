@@ -152,6 +152,7 @@ def _sequenced_db(*firsts):
 
     db.execute = execute
     db.commit = AsyncMock()
+    db.rollback = AsyncMock()
 
     @asynccontextmanager
     async def get_db():
@@ -269,22 +270,13 @@ async def test_null_is_stored_for_the_nullable_body_logging_columns(monkeypatch,
 @pytest.mark.parametrize(
     "body, detail",
     [
-        ({"pii_on_error": "drop"}, "pii_on_error must be one of: block, allow"),
-        ({"pii_on_error": 5}, "pii_on_error must be one of: block, allow"),
-        ({"content_filter_on_error": "BLOCK"}, "content_filter_on_error must be one of: block, allow"),
-        (
-            {"pii_replacement_format": "x" * 51},
-            "pii_replacement_format must be text of at most 50 characters",
-        ),
-        (
-            {"content_filter_replacement": ["x"]},
-            "content_filter_replacement must be text of at most 50 characters",
-        ),
+        ({"pii_on_error": 5}, "pii_on_error must be text"),
+        ({"content_filter_replacement": ["x"]}, "content_filter_replacement must be text"),
         ({"log_request_body": "yes"}, "log_request_body must be a boolean"),
         ({"auto_purge_enabled": "yes"}, "auto_purge_enabled must be a boolean"),
     ],
 )
-async def test_invalid_text_and_boolean_settings_are_rejected_with_400(monkeypatch, body, detail):
+async def test_wrong_types_are_rejected_before_any_query(monkeypatch, body, detail):
     get_db, executed = _fake_db()
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
 
@@ -293,6 +285,77 @@ async def test_invalid_text_and_boolean_settings_are_rejected_with_400(monkeypat
     assert exc.value.status_code == 400
     assert exc.value.detail == detail
     assert executed == []
+
+
+_STORED = {
+    "log_retention_days": 90,
+    "spend_log_retention_days": 90,
+    "auto_purge_enabled": False,
+    "pii_on_error": "block",
+    "content_filter_on_error": "allow",
+    "pii_replacement_format": "<ENTITY_TYPE>",
+    "content_filter_replacement": "[REDACTED]",
+}
+
+
+@pytest.mark.parametrize(
+    "body, detail",
+    [
+        ({"pii_on_error": "drop"}, "pii_on_error must be one of: block, allow"),
+        ({"content_filter_on_error": "BLOCK"}, "content_filter_on_error must be one of: block, allow"),
+        (
+            {"pii_replacement_format": "x" * 51},
+            "pii_replacement_format must be text of at most 50 characters",
+        ),
+    ],
+)
+async def test_invalid_changed_text_settings_are_rejected_without_saving(
+    monkeypatch, body, detail
+):
+    get_db, executed, db = _sequenced_db(None, dict(_STORED), {})
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(HTTPException) as exc:
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, body)
+    assert exc.value.status_code == 400
+    assert exc.value.detail == detail
+    assert _upserts(executed) == []
+    db.commit.assert_not_awaited()
+    db.rollback.assert_awaited_once()
+
+
+async def test_an_unchanged_legacy_value_does_not_block_a_save(monkeypatch):
+    """A row saved before the checks holds 'fail_closed'; the settings page
+    sends it back with a retention change, and the save goes through."""
+    stored = {**_STORED, "pii_on_error": "fail_closed", "content_filter_replacement": "y" * 60}
+    saved = {"organization_id": 7, "log_retention_days": 30}
+    get_db, executed, db = _sequenced_db(None, stored, saved)
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    settings, _ = await guardrails_crud.upsert_guardrail_settings_with_previous(
+        7,
+        {
+            "pii_on_error": "fail_closed",
+            "content_filter_replacement": "y" * 60,
+            "log_retention_days": 30,
+        },
+    )
+
+    assert settings == saved
+    assert len(_upserts(executed)) == 1
+    db.commit.assert_awaited_once()
+
+
+async def test_changing_a_legacy_value_to_an_invalid_one_is_rejected(monkeypatch):
+    stored = {**_STORED, "pii_on_error": "fail_closed"}
+    get_db, executed, _ = _sequenced_db(None, stored, {})
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(HTTPException) as exc:
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, {"pii_on_error": "foo"})
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "pii_on_error must be one of: block, allow"
+    assert _upserts(executed) == []
 
 
 async def test_valid_text_settings_are_accepted(monkeypatch):
