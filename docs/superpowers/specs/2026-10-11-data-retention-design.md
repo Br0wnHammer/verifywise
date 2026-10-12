@@ -30,6 +30,8 @@ breaking the audit ledger's tamper evidence.
    product decision).
 7. A new **Settings → Data retention** tab (Admin only) lists every kind of
    record in one table.
+8. **Only Admins change retention periods**, everywhere, enforced on the
+   server (section 8).
 
 ## Current state (verified on develop ba7bf9059)
 
@@ -45,16 +47,33 @@ breaking the audit ledger's tamper evidence.
 | Agent Control tool-call logs and approvals | `mcp_audit_retention_days` env (default 30), deployment-wide | daily job `mcp_audit_cleanup` |
 | Model risk management metrics | `mrm_org_settings.retention_months` (default 25, min 13) | daily job `mrm_retention_prune` |
 | Evidence files | per-file `retention_policy` + org default (`file_org_settings`) | daily `file_expiry_sweep` notifies and optionally archives; never deletes |
+| Shadow AI events, daily rollups, alert history | `retention_events_days`, `retention_daily_rollups_days`, `retention_alert_history_days` (Shadow AI settings) | `shadowAiAggregation.service.ts` deletes past each period |
 | Server logs (self-hosted) | hard-coded 14 days (`Servers/utils/logger/fileLogger.ts`) | winston daily rotation |
+
+Who can change each period today:
+
+| Setting | Today |
+|---|---|
+| AI Gateway guardrail settings | Admin (`require_admin`) |
+| File org default | Admin (`authorize("organization.admin")`) |
+| Shadow AI settings | Admin (controller check) |
+| Model risk management `retention_months` | **anyone signed in** (`PUT /api/mrm/settings`, `Servers/routes/mrm.route.ts:111`) |
+| Per-file `retention_policy` | **any project member or the file's owner** (`fileManager.ctrl.ts:1156`) |
 
 ## Design
 
 ### 1. Audit records setting
 
-- New column `feature_settings.audit_retention_months INT NULL`
-  (`NULL` = keep indefinitely), `CHECK (audit_retention_months IN (12, 24, 36, 60, 84, 120))`.
-- Saving upserts the `feature_settings` row (the read path already tolerates
-  a missing row; the update path does not).
+- New table `data_retention_settings`:
+  `organization_id INT PRIMARY KEY REFERENCES organizations ON DELETE CASCADE,
+  audit_retention_months INT NULL CHECK (audit_retention_months IN (12, 24, 36, 60, 84, 120)),
+  updated_at TIMESTAMPTZ DEFAULT now(), updated_by INT REFERENCES users ON DELETE SET NULL`.
+  `NULL` or a missing row = keep indefinitely. Saving is an
+  `INSERT ... ON CONFLICT (organization_id) DO UPDATE`. Registered in the
+  tenant-isolation and RLS registries.
+- Not a `feature_settings` column: that table has no unique key on
+  `organization_id` and no code ever inserts a row, so only orgs migrated
+  from the old per-tenant schemas have one (see "Found while designing").
 - Read and written through new Data retention endpoints (section 5), Admin
   only (`authorize("organization.admin")`, same as file org settings).
 - A change writes an audit ledger `event_log` entry: "Audit record retention
@@ -120,9 +139,10 @@ worker branch and an action module modeled on `mrmRetentionPrune.ts`.
 
 - Organization by organization, try/catch per org; capped per run (500
   batches per table); the remainder goes to the next day.
-- Each org's work runs in a transaction with `SET LOCAL app.current_org`, so
-  it still works when row-level security enforcement is on. (The existing
-  MRM prune does not do this; out of scope here, noted.)
+- Every transaction the job opens sets `SET LOCAL app.current_org`, so it
+  still works when row-level security enforcement is on (the ledger delete
+  trigger's checkpoint lookup then also sees the org's rows). The existing
+  MRM prune does not do this; out of scope here, noted.
 - After an org's audit records are pruned and at least one row was deleted,
   append one ledger entry: "Retention removed N audit records before <date>".
 - AI Gateway: for orgs with "Delete automatically" on, the job calls a new
@@ -131,8 +151,10 @@ worker branch and an action module modeled on `mrmRetentionPrune.ts`.
 - Every run writes a row per org and record type to `data_retention_runs`
   (`organization_id`, `record_type`, `ran_at`, `cutoff`, `deleted_count`,
   `status`, `error`), which the Data retention tab reads for "Last cleanup".
-  The existing MRM prune and Agent Control cleanup also record their runs
-  there (Agent Control as deployment-wide, `organization_id NULL`).
+  `organization_id` is NOT NULL (an RLS policy hides NULL rows from the app
+  role). The existing MRM prune and the Shadow AI cleanup also record their
+  runs there. Agent Control cleanup is deployment-wide with no per-org
+  counts, so it is not recorded; its row shows "Daily" without a count.
 
 ### 5. Settings → Data retention tab
 
@@ -148,11 +170,12 @@ Admin only (the same gate as the Audit ledger tab). One table:
 
 Rows: audit records; AI Gateway guardrail logs; AI Gateway spend logs; Agent
 Control tool-call logs and approvals; model risk management metrics; evidence
-files (org default); server logs.
+files (org default); Shadow AI events, daily rollups and alert history (three
+rows); server logs.
 
 - **Editable here:** audit records, AI Gateway guardrail and spend logs
   (period and "Delete automatically"), model risk management metrics,
-  evidence file default. Each row saves through its feature's existing
+  evidence file default, the three Shadow AI periods. Each row saves through its feature's existing
   endpoint (or the new one for audit records); nothing is stored twice.
   Existing pages keep their own controls.
 - **Read only:** Agent Control and server logs, showing the value and the
@@ -182,6 +205,27 @@ files (org default); server logs.
 `LOG_RETENTION_DAYS` env (default 14, minimum 1) replaces the hard-coded
 `maxFiles: "14d"`; documented in `.env.example` and the deployment guide.
 
+### 8. Only Admins change retention periods
+
+Enforced on the server; the UI disables the control for non-Admins with
+"Only admins can change retention periods".
+
+- New audit records endpoint: `authorize("organization.admin")`.
+- Model risk management: `PUT /api/mrm/settings` returns 403 for a non-Admin
+  when the body contains `retention_months`. Alert settings in the same
+  endpoint keep today's behavior. `RetentionSection.tsx` is read-only for
+  non-Admins.
+- Evidence files: `PATCH` file metadata returns 403 for a non-Admin when
+  `retention_policy` differs from the file's current value. `expiry_date`
+  (evidence validity, set by reviewers) keeps today's behavior. Uploads by
+  non-Admins get the org default, as today (upload takes no
+  `retention_policy` from the request). `FileMetadataEditor` shows the
+  policy read-only for non-Admins.
+- AI Gateway, file org default, Shadow AI: already Admin only; the new
+  columns go through the same checks.
+- Data retention tab and `GET /api/data-retention`: Admin only.
+- Deployment settings (Agent Control, server logs) are outside the app.
+
 ## Errors and edge cases
 
 - The job never throws out of one org into another; failures are recorded
@@ -203,21 +247,26 @@ files (org default); server logs.
   above the checkpoint is rejected; checkpoint UPDATE/DELETE rejected;
   appends after a prune link correctly.
 - Controller: Admin only, validation of allowed periods, upsert of a missing
-  `feature_settings` row, ledger entry on change.
+  `feature_settings` row, ledger entry on change; non-Admin 403 on MRM
+  `retention_months` and on a changed per-file `retention_policy`, while
+  alert settings and `expiry_date` still work for them.
 - AI Gateway pytest: new columns, internal purge only touches orgs with the
   switch on.
 - Client: Data retention tab rows, read-only rows, confirmation on
   shortening, purge button confirmation and result.
 - i18n de/fr/es for every new string.
 
+## Found while designing (not fixed here)
+
+- `feature_settings` rows are never inserted (only the initial multi-tenant
+  migration copied them), and `updateFeatureSettingsQuery` is an UPDATE
+  only. For an org created after that migration, saving the audit ledger
+  on/off switch updates nothing. Needs its own small fix (unique key +
+  upsert).
+- Shadow AI treats a period of 0 as "keep indefinitely"; the Data retention
+  tab shows it that way.
+
 ## Out of scope
 
 AI Advisor conversations; legal hold; per-type audit periods; moving existing
 module settings; RLS context in the existing MRM prune.
-
-## Noted, not fixed here
-
-`PUT /api/mrm/settings` has no role check: any signed-in user can change
-model risk management retention (`Servers/routes/mrm.route.ts:111`). The
-Data retention tab writes through it, so the tab itself is Admin only, but
-the endpoint stays open until decided.
