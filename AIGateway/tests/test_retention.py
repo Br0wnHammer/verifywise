@@ -397,6 +397,8 @@ def _counting_db(rowcounts, remaining=True):
         result = MagicMock()
         if "SELECT EXISTS" in str(stmt):
             db.exists_checks += 1
+            if isinstance(remaining, Exception):
+                raise remaining
             result.scalar.return_value = remaining
             return result
         calls.append(params)
@@ -485,6 +487,27 @@ async def test_spend_purge_not_capped_when_the_last_full_batch_emptied_it():
     out = await spend_crud.purge_spend_logs(db, 7, 30, max_batches=2)
     assert out == {"deleted": 2000, "batches": 2, "capped": False}
     assert db.exists_checks == 1
+
+
+async def test_guardrail_purge_failing_remaining_check_reports_capped(monkeypatch):
+    db, calls = _counting_db([1000, 1000], remaining=RuntimeError("read timeout"))
+
+    @asynccontextmanager
+    async def get_db():
+        yield db
+
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    # The deletes succeeded: no PartialPurgeError, and capped stays True so
+    # the caller runs the purge again.
+    out = await guardrails_crud.purge_guardrail_logs(7, 30, max_batches=2)
+    assert out == {"deleted": 2000, "capped": True}
+
+
+async def test_spend_purge_failing_remaining_check_reports_capped():
+    db, calls = _counting_db([1000, 1000], remaining=RuntimeError("read timeout"))
+    out = await spend_crud.purge_spend_logs(db, 7, 30, max_batches=2)
+    assert out == {"deleted": 2000, "batches": 2, "capped": True}
 
 
 async def test_spend_purge_commits_each_batch():

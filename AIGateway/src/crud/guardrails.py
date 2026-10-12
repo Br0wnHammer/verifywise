@@ -7,7 +7,12 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from crud.purge import MAX_RETENTION_DAYS, PartialPurgeError, retention_cutoff
+from crud.purge import (
+    MAX_RETENTION_DAYS,
+    PartialPurgeError,
+    older_rows_remain,
+    retention_cutoff,
+)
 from database.db import get_db
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -456,6 +461,18 @@ async def get_guardrail_stats_by_day(
     return []
 
 
+_GUARDRAIL_LOGS_REMAIN_SQL = text(
+    """
+    SELECT EXISTS (
+        SELECT 1
+        FROM ai_gateway_guardrail_logs
+        WHERE organization_id = :org_id
+          AND created_at < :cutoff
+    )
+    """
+)
+
+
 async def purge_guardrail_logs(
     org_id: int, retention_days: int, max_batches: int = 50
 ) -> dict:
@@ -471,7 +488,7 @@ async def purge_guardrail_logs(
         return {"deleted": 0, "capped": False}
     total_deleted = 0
     batch_size = 1000
-    capped = False
+    hit_batch_limit = False
 
     try:
         async with get_db() as db:
@@ -501,23 +518,22 @@ async def purge_guardrail_logs(
                 if deleted < batch_size:
                     break
                 if batch == max_batches - 1:
-                    # The last allowed batch was full: capped only if older
-                    # rows are actually left.
-                    remaining = await db.execute(
-                        text(
-                            """
-                            SELECT EXISTS (
-                                SELECT 1
-                                FROM ai_gateway_guardrail_logs
-                                WHERE organization_id = :org_id
-                                  AND created_at < :cutoff
-                            )
-                            """
-                        ),
-                        {"org_id": org_id, "cutoff": cutoff},
-                    )
-                    capped = bool(remaining.scalar())
+                    hit_batch_limit = True
     except Exception as error:
         raise PartialPurgeError(total_deleted, error) from error
+
+    # The last allowed batch was full: capped only if older rows are actually
+    # left. Outside the try above, so a failing check never fails the purge.
+    capped = False
+    if hit_batch_limit:
+
+        async def check():
+            async with get_db() as db:
+                result = await db.execute(
+                    _GUARDRAIL_LOGS_REMAIN_SQL, {"org_id": org_id, "cutoff": cutoff}
+                )
+                return result.scalar()
+
+        capped = await older_rows_remain(check, "guardrail logs", org_id)
 
     return {"deleted": total_deleted, "capped": capped}

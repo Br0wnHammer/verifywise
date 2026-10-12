@@ -1,7 +1,10 @@
 """Shared pieces of the batched log purges (guardrail and spend logs)."""
 
+import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Awaitable, Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 # Longest retention period the settings accept: 10 years.
 MAX_RETENTION_DAYS = 3650
@@ -30,3 +33,25 @@ class PartialPurgeError(Exception):
     def __init__(self, deleted: int, cause: BaseException):
         super().__init__(str(cause))
         self.deleted = deleted
+
+
+async def older_rows_remain(
+    check: Callable[[], Awaitable[object]], label: str, org_id: int
+) -> bool:
+    """Run a purge's read-only "are rows older than the cutoff left?" check,
+    after its last allowed batch was full.
+
+    The deletes have already succeeded, so a failing check must not mark the
+    purge failed: it is logged and reported as capped (rows may remain), the
+    conservative answer that makes the caller run the purge again.
+    """
+    try:
+        return bool(await check())
+    except Exception as error:
+        logger.warning(
+            "Checking for remaining %s after a capped purge failed for org %s: %s",
+            label,
+            org_id,
+            error,
+        )
+        return True

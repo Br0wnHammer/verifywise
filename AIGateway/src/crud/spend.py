@@ -17,7 +17,7 @@ def _text(sql: str):
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from crud.purge import PartialPurgeError, retention_cutoff
+from crud.purge import PartialPurgeError, older_rows_remain, retention_cutoff
 from database.db import get_db
 
 
@@ -586,7 +586,7 @@ async def purge_spend_logs(
     total_deleted = 0
     batches = 0
     batch_size = 1000
-    capped = False
+    hit_batch_limit = False
 
     delete_sql = text("""
         DELETE FROM ai_gateway_spend_logs
@@ -624,14 +624,20 @@ async def purge_spend_logs(
                 # No more rows to delete
                 break
             if batches == max_batches:
-                # The last allowed batch was full: capped only if older rows
-                # are actually left.
-                remaining = await db.execute(
-                    remaining_sql, {"org_id": org_id, "cutoff": cutoff}
-                )
-                capped = bool(remaining.scalar())
+                hit_batch_limit = True
     except Exception as error:
         # Report what the committed batches already deleted.
         raise PartialPurgeError(total_deleted, error) from error
+
+    # The last allowed batch was full: capped only if older rows are actually
+    # left. Outside the try above, so a failing check never fails the purge.
+    capped = False
+    if hit_batch_limit:
+
+        async def check():
+            result = await db.execute(remaining_sql, {"org_id": org_id, "cutoff": cutoff})
+            return result.scalar()
+
+        capped = await older_rows_remain(check, "spend logs", org_id)
 
     return {"deleted": total_deleted, "batches": batches, "capped": capped}
