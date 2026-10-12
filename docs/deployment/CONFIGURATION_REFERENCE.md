@@ -302,8 +302,8 @@ LOG_RETENTION_DAYS=30
 **Notes:**
 - Must be a whole number >= 1
 - Invalid values (0, negative, decimals, non-numeric) fall back to the default of 14 days
-- Self-hosted deployments only; does not apply to cloud-hosted instances
-- Log file sizes are also limited by `maxSize: "10m"` per rotation
+- Intended for self-hosted deployments, where you control the environment
+- Each daily file also rolls over to a new file when it reaches 10 MB; retention counts days, not files
 
 ---
 
