@@ -49,12 +49,18 @@ function createRes(): any {
   return res;
 }
 
-/** GET returns `before`, PUT returns `after` (or throws it when it is an Error). */
+/**
+ * The gateway's PUT returns `after` plus `previous_retention`, the values the
+ * save replaced (`before.settings`; null when the org had none). PUT throws
+ * `after` when it is an Error.
+ */
 function gateway(before: unknown, after: unknown) {
-  m(aiGatewayRequest).mockImplementation(async (method: string) => {
-    const value = method === "GET" ? before : after;
-    if (value instanceof Error) throw value;
-    return value;
+  m(aiGatewayRequest).mockImplementation(async () => {
+    if (after instanceof Error) throw after;
+    return {
+      ...(after as object),
+      previous_retention: (before as { settings?: unknown } | null)?.settings ?? null,
+    };
   });
 }
 
@@ -144,12 +150,8 @@ describe("updateGuardrailSettings", () => {
 
     await updateGuardrailSettings(createReq({ log_retention_days: 30 }), res);
 
-    expect(m(aiGatewayRequest)).toHaveBeenCalledWith("GET", "/internal/guardrails/settings", {
-      organizationId: 2,
-      role: "Admin",
-      userId: 5,
-      requestId: "req-1",
-    });
+    // No separate read: the "from" values come back with the save.
+    expect(m(aiGatewayRequest)).toHaveBeenCalledTimes(1);
     expect(m(aiGatewayRequest)).toHaveBeenCalledWith("PUT", "/internal/guardrails/settings", {
       organizationId: 2,
       role: "Admin",
@@ -317,6 +319,29 @@ describe("updateGuardrailSettings", () => {
         description: "AI Gateway retention changed: guardrail log retention set to 30 days",
       }),
     );
+  });
+
+  it("says 'set to' when the gateway does not return the previous values", async () => {
+    m(aiGatewayRequest).mockResolvedValue({ settings: { log_retention_days: 30 } });
+    const res = createRes();
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), res);
+
+    expect(m(appendToAuditLedger)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "AI Gateway retention changed: guardrail log retention set to 30 days",
+      }),
+    );
+    expect(res.json).toHaveBeenCalledWith({ settings: { log_retention_days: 30 } });
+  });
+
+  it("does not pass previous_retention on to the client", async () => {
+    gateway({ settings: { log_retention_days: 90 } }, { settings: { log_retention_days: 30 } });
+    const res = createRes();
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), res);
+
+    expect(res.json).toHaveBeenCalledWith({ settings: { log_retention_days: 30 } });
   });
 
   it("logs a failed ledger append and still succeeds", async () => {

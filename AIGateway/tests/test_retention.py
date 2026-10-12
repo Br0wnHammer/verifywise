@@ -52,6 +52,12 @@ def _sql(stmt) -> str:
     return str(stmt.compile(dialect=postgresql.dialect()))
 
 
+def _upserts(executed):
+    """The settings upserts among the executed statements (each save first
+    reads the previous values with a locked SELECT)."""
+    return [entry for entry in executed if "INSERT INTO" in str(entry[0])]
+
+
 # ---------------------------------------------------------------------------
 # Partial settings update
 # ---------------------------------------------------------------------------
@@ -65,7 +71,7 @@ async def test_partial_update_only_sets_present_keys(monkeypatch):
         7, {"spend_log_retention_days": 30}
     )
 
-    stmt, params = executed[0]
+    stmt, params = _upserts(executed)[0]
     # Only keys present in the body are flagged for update; the rest keep the
     # stored value on conflict.
     assert params["set_spend_log_retention_days"] is True
@@ -93,7 +99,7 @@ async def test_full_update_sets_every_whitelisted_key(monkeypatch):
         },
     )
 
-    stmt, params = executed[0]
+    stmt, params = _upserts(executed)[0]
     sql = _sql(stmt)
     assert params["set_pii_on_error"] is True
     assert params["set_log_retention_days"] is True
@@ -114,9 +120,64 @@ async def test_upsert_statement_is_static(monkeypatch):
         7, {"pii_on_error": "allow", "auto_purge_enabled": True}
     )
 
-    assert _sql(executed[0][0]) == _sql(executed[1][0])
-    conflict = _sql(executed[0][0]).split("ON CONFLICT")[1]
+    assert _sql(_upserts(executed)[0][0]) == _sql(_upserts(executed)[1][0])
+    conflict = _sql(_upserts(executed)[0][0]).split("ON CONFLICT")[1]
     assert "ELSE s.pii_on_error" in conflict
+
+
+def _sequenced_db(*firsts):
+    """A get_db replacement whose statements return the given rows in turn."""
+    executed = []
+    db = MagicMock()
+
+    async def execute(stmt, params=None):
+        executed.append((stmt, params))
+        result = MagicMock()
+        result.mappings.return_value.first.return_value = firsts[len(executed) - 1]
+        return result
+
+    db.execute = execute
+    db.commit = AsyncMock()
+
+    @asynccontextmanager
+    async def get_db():
+        yield db
+
+    return get_db, executed, db
+
+
+async def test_save_returns_the_retention_values_it_replaced(monkeypatch):
+    stored = {"log_retention_days": 60, "spend_log_retention_days": 90, "auto_purge_enabled": False}
+    saved = {"organization_id": 7, "log_retention_days": 30, "auto_purge_enabled": True}
+    get_db, executed, db = _sequenced_db(stored, saved)
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    settings, previous = await guardrails_crud.upsert_guardrail_settings_with_previous(
+        7, {"log_retention_days": 30, "auto_purge_enabled": True}
+    )
+
+    assert previous == stored
+    assert settings == saved
+    # The previous values are read under a row lock, before the save, and both
+    # statements commit together.
+    lock_sql, lock_params = executed[0]
+    assert "FOR UPDATE" in str(lock_sql)
+    assert lock_params == {"org_id": 7}
+    assert "INSERT INTO ai_gateway_guardrail_settings" in str(executed[1][0])
+    db.commit.assert_awaited_once()
+
+
+async def test_save_reports_no_previous_values_for_a_new_row(monkeypatch):
+    saved = {"organization_id": 7, "log_retention_days": 30}
+    get_db, _, _ = _sequenced_db(None, saved)
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    settings, previous = await guardrails_crud.upsert_guardrail_settings_with_previous(
+        7, {"log_retention_days": 30}
+    )
+
+    assert previous is None
+    assert settings == saved
 
 
 @pytest.mark.parametrize(
@@ -151,8 +212,8 @@ async def test_ten_years_is_the_longest_accepted_period(monkeypatch):
         7, {"log_retention_days": 3650, "spend_log_retention_days": 3650}
     )
 
-    assert executed[0][1]["log_retention_days"] == 3650
-    assert executed[0][1]["spend_log_retention_days"] == 3650
+    assert _upserts(executed)[0][1]["log_retention_days"] == 3650
+    assert _upserts(executed)[0][1]["spend_log_retention_days"] == 3650
 
 
 async def test_out_of_range_error_names_the_range(monkeypatch):

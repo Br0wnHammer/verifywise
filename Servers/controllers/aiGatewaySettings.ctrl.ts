@@ -115,17 +115,6 @@ export async function updateGuardrailSettings(req: Request, res: Response): Prom
     organizationId: req.organizationId,
   });
 
-  let before: Record<string, unknown> | null = null;
-  try {
-    const current = await aiGatewayRequest("GET", SETTINGS_PATH, tenant);
-    before = current?.settings ?? {};
-  } catch (error) {
-    // The update still goes through; the ledger entry will say "set to".
-    logger.warn(
-      `AI Gateway request ${SETTINGS_PATH} failed: ${(error as Error)?.message ?? error}`,
-    );
-  }
-
   const gatewayRole = await gatewayRoleFor(req, body);
   let updated: any;
   try {
@@ -160,7 +149,15 @@ export async function updateGuardrailSettings(req: Request, res: Response): Prom
     });
   }
 
-  const changes = describeRetentionChanges(before, updated?.settings ?? {}, body);
+  // The "from" values come from the gateway's own save: it reads them under a
+  // row lock in the same statement, so concurrent saves cannot make them
+  // stale (a lock cannot span this backend and the gateway). null means the
+  // organization had no settings row, so the gateway defaults applied; a
+  // response without the field (an older gateway) gives "set to" wording.
+  const { previous_retention: previous, ...gatewayResponse } = updated ?? {};
+  const before: Record<string, unknown> | null =
+    updated && "previous_retention" in updated ? (previous ?? {}) : null;
+  const changes = describeRetentionChanges(before, gatewayResponse.settings ?? {}, body);
   if (changes.length > 0) {
     await appendRetentionChangeToLedger({
       organizationId: req.organizationId!,
@@ -179,5 +176,5 @@ export async function updateGuardrailSettings(req: Request, res: Response): Prom
     userId: req.userId!,
     organizationId: req.organizationId,
   });
-  return res.status(200).json(updated);
+  return res.status(200).json(gatewayResponse);
 }

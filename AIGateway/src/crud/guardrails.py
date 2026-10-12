@@ -243,9 +243,30 @@ def _validate_settings_input(data: dict) -> None:
         raise HTTPException(status_code=400, detail="auto_purge_enabled must be a boolean")
 
 
+# Retention values returned alongside a save as they were just before it.
+_PREVIOUS_RETENTION_KEYS = (
+    "log_retention_days",
+    "spend_log_retention_days",
+    "auto_purge_enabled",
+)
+
+
 async def upsert_guardrail_settings(org_id: int, data: dict) -> dict:
+    """Upsert guardrail settings and return the saved row."""
+    settings, _previous = await upsert_guardrail_settings_with_previous(org_id, data)
+    return settings
+
+
+async def upsert_guardrail_settings_with_previous(
+    org_id: int, data: dict
+) -> tuple[dict, Optional[dict]]:
     """Upsert guardrail settings. A new row takes defaults for missing keys; an
     existing row only changes the keys present in `data`.
+
+    Returns (saved row, previous retention values). The previous values are
+    read with SELECT ... FOR UPDATE in the save's own transaction, so they are
+    exactly what this save replaced, even under concurrent saves. They are None
+    when the organization had no settings row yet.
 
     The statement is static: each column's ``set_<column>`` flag decides whether
     the update takes the new value or keeps the stored one."""
@@ -256,6 +277,26 @@ async def upsert_guardrail_settings(org_id: int, data: dict) -> dict:
         params[f"set_{column}"] = column in data
 
     async with get_db() as db:
+        # A separate statement, not a CTE of the upsert: a CTE would be read
+        # after ON CONFLICT DO UPDATE had already changed the row, and
+        # FOR UPDATE skips a row the same command updated.
+        previous_result = await db.execute(
+            text(
+                """
+                SELECT log_retention_days, spend_log_retention_days, auto_purge_enabled
+                FROM ai_gateway_guardrail_settings
+                WHERE organization_id = :org_id
+                FOR UPDATE
+                """
+            ),
+            {"org_id": org_id},
+        )
+        previous_row = previous_result.mappings().first()
+        previous = (
+            {key: previous_row[key] for key in _PREVIOUS_RETENTION_KEYS}
+            if previous_row
+            else None
+        )
         result = await db.execute(
             text(
                 """
@@ -304,8 +345,8 @@ async def upsert_guardrail_settings(org_id: int, data: dict) -> dict:
         )
         await db.commit()
         row = result.mappings().first()
-        return dict(row) if row else {}
-    return {}
+        return (dict(row) if row else {}), previous
+    return {}, None
 
 
 async def get_guardrail_logs(
