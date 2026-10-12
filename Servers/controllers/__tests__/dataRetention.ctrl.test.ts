@@ -235,11 +235,53 @@ describe("dataRetention.ctrl", () => {
       });
     });
 
-    it("returns 500 when a database read fails", async () => {
+    it("returns 500 when an audit retention read fails", async () => {
       m(retention.getAuditRetentionMonths).mockRejectedValue(new Error("db"));
       const res = createRes();
       await getDataRetention(createReq(), res);
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it("marks only the MRM row unavailable when its settings read fails", async () => {
+      m(getMrmOrgSettings).mockRejectedValue(new Error("db"));
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(row(res, "mrm_metrics")).toMatchObject({ period: null, unavailable: true });
+      expect(row(res, "evidence_files").unavailable).toBeUndefined();
+      expect(row(res, "shadow_ai_events").unavailable).toBeUndefined();
+      expect(m(logger.warn)).toHaveBeenCalled();
+    });
+
+    it("marks only the evidence row unavailable when file settings cannot be read", async () => {
+      m(getFileOrgSettings).mockRejectedValue(new Error("db"));
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(row(res, "evidence_files")).toMatchObject({ period: null, unavailable: true });
+      expect(row(res, "mrm_metrics").unavailable).toBeUndefined();
+    });
+
+    it("marks the three Shadow AI rows unavailable, keeping their last cleanup", async () => {
+      m(getSettingsQuery).mockRejectedValue(new Error("db"));
+      m(retention.getLatestRetentionRuns).mockResolvedValue({
+        shadow_ai_events: { ran_at: "2026-10-01T02:00:00Z", deleted_count: 3, status: "success" },
+      });
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      for (const key of [
+        "shadow_ai_events",
+        "shadow_ai_daily_rollups",
+        "shadow_ai_alert_history",
+      ]) {
+        expect(row(res, key)).toMatchObject({ period: null, unavailable: true });
+      }
+      expect(row(res, "shadow_ai_events").lastCleanup).toMatchObject({ deletedCount: 3 });
+      expect(row(res, "mrm_metrics").unavailable).toBeUndefined();
     });
   });
 

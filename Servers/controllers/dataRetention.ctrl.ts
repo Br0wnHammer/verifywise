@@ -26,11 +26,9 @@ import { getFileOrgSettings } from "../utils/fileOrgSettings.utils";
 import { getSettingsQuery as getShadowAiSettings } from "../utils/shadowAiConfig.utils";
 import { getServerLogRetentionDays } from "../utils/logger/logRetention";
 import logger from "../utils/logger/fileLogger";
+import { GATEWAY_DEFAULTS } from "./aiGatewaySettings.ctrl";
 
 const FILE_NAME = "dataRetention.ctrl.ts";
-
-/** Used by the AI Gateway until an organization saves its own values. */
-const GATEWAY_DEFAULT_RETENTION_DAYS = 90;
 
 export type RetentionRecordKey =
   | "audit_records"
@@ -58,7 +56,7 @@ export interface RetentionRow {
   source: "app" | "deployment";
   /** Environment variable that controls the period when source is "deployment". */
   deploymentSetting?: string;
-  /** The AI Gateway could not be reached, so the values are unknown. */
+  /** The source (AI Gateway, or a module's settings) could not be read, so the values are unknown. */
   unavailable?: boolean;
 }
 
@@ -74,6 +72,21 @@ async function safeGateway(req: Request, path: string): Promise<any | null> {
     });
   } catch (error) {
     logger.warn(`AI Gateway request ${path} failed: ${(error as Error)?.message ?? error}`);
+    return null;
+  }
+}
+
+/**
+ * Read one module's settings for the overview. A failure is logged and
+ * returns null, so that row shows as unavailable instead of failing the page.
+ */
+async function softRead<T>(source: string, read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await read();
+  } catch (error) {
+    logger.warn(
+      `Reading ${source} settings for the data retention overview failed: ${(error as Error)?.message ?? error}`,
+    );
     return null;
   }
 }
@@ -105,9 +118,9 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
       getAuditRetentionMonths(organizationId),
       getLatestRetentionRuns(organizationId),
       getLatestLedgerCheckpoint(organizationId),
-      getMrmOrgSettings(organizationId),
-      getFileOrgSettings(organizationId),
-      getShadowAiSettings(organizationId),
+      softRead("MRM", () => getMrmOrgSettings(organizationId)),
+      softRead("evidence file", () => getFileOrgSettings(organizationId)),
+      softRead("Shadow AI", () => getShadowAiSettings(organizationId)),
       safeGateway(req, "/internal/guardrails/settings"),
       safeGateway(req, "/internal/retention/config"),
     ]);
@@ -122,10 +135,10 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
     const gatewayUnavailable = guardrailSettings === null;
     const gatewaySettings = guardrailSettings?.settings ?? {};
     const guardrailDays = Number(
-      gatewaySettings.log_retention_days ?? GATEWAY_DEFAULT_RETENTION_DAYS,
+      gatewaySettings.log_retention_days ?? GATEWAY_DEFAULTS.log_retention_days,
     );
     const spendDays = Number(
-      gatewaySettings.spend_log_retention_days ?? GATEWAY_DEFAULT_RETENTION_DAYS,
+      gatewaySettings.spend_log_retention_days ?? GATEWAY_DEFAULTS.spend_log_retention_days,
     );
     const autoPurge = gatewaySettings.auto_purge_enabled === true;
 
@@ -135,17 +148,34 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
         : null;
     const agentUnavailable = agentDays === null;
 
-    const shadowRow = (
+    /** A row whose settings could not be read: shown as unavailable. */
+    const unavailableRow = (
       key: RetentionRecordKey,
-      days: number,
-      type: RetentionRecordType,
+      type: RetentionRecordType | null,
     ): RetentionRow => ({
       key,
-      period: daysPeriod(Number(days)),
-      automaticDeletion: Number(days) > 0 ? "yes" : "no",
-      lastCleanup: lastCleanup(type),
+      period: null,
+      automaticDeletion: "no",
+      lastCleanup: type ? lastCleanup(type) : null,
       source: "app",
+      unavailable: true,
     });
+
+    const shadowRow = (
+      key: RetentionRecordKey & RetentionRecordType,
+      setting:
+        "retention_events_days" | "retention_daily_rollups_days" | "retention_alert_history_days",
+    ): RetentionRow => {
+      if (!shadowAi) return unavailableRow(key, key);
+      const days = Number(shadowAi[setting]);
+      return {
+        key,
+        period: daysPeriod(days),
+        automaticDeletion: days > 0 ? "yes" : "no",
+        lastCleanup: lastCleanup(key),
+        source: "app",
+      };
+    };
 
     const rows: RetentionRow[] = [
       {
@@ -180,31 +210,27 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
         deploymentSetting: "MCP_AUDIT_RETENTION_DAYS",
         ...(agentUnavailable ? { unavailable: true } : {}),
       },
-      {
-        key: "mrm_metrics",
-        period: { unit: "months", value: mrm.retention_months },
-        automaticDeletion: "yes",
-        lastCleanup: lastCleanup("mrm_metrics"),
-        source: "app",
-      },
-      {
-        key: "evidence_files",
-        period: { unit: "policy", value: fileSettings.default_retention_policy },
-        automaticDeletion: "archive",
-        lastCleanup: null,
-        source: "app",
-      },
-      shadowRow("shadow_ai_events", shadowAi.retention_events_days, "shadow_ai_events"),
-      shadowRow(
-        "shadow_ai_daily_rollups",
-        shadowAi.retention_daily_rollups_days,
-        "shadow_ai_daily_rollups",
-      ),
-      shadowRow(
-        "shadow_ai_alert_history",
-        shadowAi.retention_alert_history_days,
-        "shadow_ai_alert_history",
-      ),
+      mrm
+        ? {
+            key: "mrm_metrics",
+            period: { unit: "months", value: mrm.retention_months },
+            automaticDeletion: "yes",
+            lastCleanup: lastCleanup("mrm_metrics"),
+            source: "app",
+          }
+        : unavailableRow("mrm_metrics", "mrm_metrics"),
+      fileSettings
+        ? {
+            key: "evidence_files",
+            period: { unit: "policy", value: fileSettings.default_retention_policy },
+            automaticDeletion: "archive",
+            lastCleanup: null,
+            source: "app",
+          }
+        : unavailableRow("evidence_files", null),
+      shadowRow("shadow_ai_events", "retention_events_days"),
+      shadowRow("shadow_ai_daily_rollups", "retention_daily_rollups_days"),
+      shadowRow("shadow_ai_alert_history", "retention_alert_history_days"),
       {
         key: "server_logs",
         period: { unit: "days", value: getServerLogRetentionDays() },
