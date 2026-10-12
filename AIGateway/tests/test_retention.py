@@ -230,6 +230,51 @@ async def test_invalid_values_are_rejected(monkeypatch, body):
     assert executed == []
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        "pii_on_error",
+        "content_filter_on_error",
+        "pii_replacement_format",
+        "content_filter_replacement",
+        "log_retention_days",
+        "spend_log_retention_days",
+        "log_request_body",
+        "log_response_body",
+        "auto_purge_enabled",
+    ],
+)
+async def test_explicit_null_is_rejected_with_400(monkeypatch, key):
+    """Leaving a key out keeps it; null is not a value any setting can take."""
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(HTTPException) as exc:
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, {key: None})
+    assert exc.value.status_code == 400
+    assert exc.value.detail == f"{key} cannot be null; leave it out to keep the current value"
+    assert executed == []
+
+
+@pytest.mark.parametrize(
+    "body, detail",
+    [
+        ({"pii_on_error": 5}, "pii_on_error must be a string"),
+        ({"content_filter_replacement": ["x"]}, "content_filter_replacement must be a string"),
+        ({"log_request_body": "yes"}, "log_request_body must be a boolean"),
+    ],
+)
+async def test_wrong_types_are_rejected_with_400(monkeypatch, body, detail):
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(HTTPException) as exc:
+        await guardrails_crud.upsert_guardrail_settings_with_previous(7, body)
+    assert exc.value.status_code == 400
+    assert exc.value.detail == detail
+    assert executed == []
+
+
 async def test_ten_years_is_the_longest_accepted_period(monkeypatch):
     get_db, executed = _fake_db()
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)

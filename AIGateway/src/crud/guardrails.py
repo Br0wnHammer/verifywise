@@ -231,7 +231,34 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
 _RETENTION_DAY_KEYS = ("log_retention_days", "spend_log_retention_days")
 
 
+_TEXT_SETTING_KEYS = (
+    "pii_on_error",
+    "content_filter_on_error",
+    "pii_replacement_format",
+    "content_filter_replacement",
+)
+_BOOLEAN_SETTING_KEYS = ("log_request_body", "log_response_body", "auto_purge_enabled")
+
+
 def _validate_settings_input(data: dict) -> None:
+    """Reject values the settings columns cannot hold, as a 400.
+
+    Saves are partial: a key that is left out keeps its stored value. An
+    explicit null is not "leave it", so it is rejected rather than silently
+    ignored; the text and retention columns are NOT NULL, and storing it would
+    otherwise fail as a 500."""
+    for key in _SETTINGS_DEFAULTS:
+        if key in data and data[key] is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{key} cannot be null; leave it out to keep the current value",
+            )
+    for key in _TEXT_SETTING_KEYS:
+        if key in data and not isinstance(data[key], str):
+            raise HTTPException(status_code=400, detail=f"{key} must be a string")
+    for key in _BOOLEAN_SETTING_KEYS:
+        if key in data and not isinstance(data[key], bool):
+            raise HTTPException(status_code=400, detail=f"{key} must be a boolean")
     for key in _RETENTION_DAY_KEYS:
         if key in data:
             value = data[key]
@@ -245,8 +272,6 @@ def _validate_settings_input(data: dict) -> None:
                     status_code=400,
                     detail=f"{key} must be an integer from 1 to {MAX_RETENTION_DAYS}",
                 )
-    if "auto_purge_enabled" in data and not isinstance(data["auto_purge_enabled"], bool):
-        raise HTTPException(status_code=400, detail="auto_purge_enabled must be a boolean")
 
 
 # Retention values returned alongside a save as they were just before it.
