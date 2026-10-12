@@ -62,6 +62,23 @@ const parseIncidentListFilters = (
 };
 
 /**
+ * 400 body for a ValidationException thrown by the write path, in the same
+ * shape as the up-front validation failures in these handlers.
+ */
+const validationExceptionResponse = (req: Request, error: ValidationException, message: string) =>
+  STATUS_CODE[400]({
+    status: "error",
+    message,
+    errors: [
+      {
+        field: (error.metadata.field as string | undefined) ?? "unknown",
+        message: translateError(req, error),
+        code: (error.metadata.validationCode as string | undefined) ?? error.code,
+      },
+    ],
+  });
+
+/**
  * Get all incidents
  */
 export async function getAllIncidents(req: Request, res: Response) {
@@ -306,7 +323,9 @@ export async function createNewIncident(req: Request, res: Response) {
   } catch (error) {
     await transaction.rollback();
     if (error instanceof ValidationException) {
-      return res.status(400).json(STATUS_CODE[400](translateError(req, error)));
+      return res
+        .status(400)
+        .json(validationExceptionResponse(req, error, "Incident creation validation failed"));
     }
     logStructured(
       "error",
@@ -454,7 +473,9 @@ export async function updateIncidentById(req: Request, res: Response) {
   } catch (error) {
     await transaction.rollback();
     if (error instanceof ValidationException) {
-      return res.status(400).json(STATUS_CODE[400](translateError(req, error)));
+      return res
+        .status(400)
+        .json(validationExceptionResponse(req, error, "Incident update validation failed"));
     }
     logStructured(
       "error",

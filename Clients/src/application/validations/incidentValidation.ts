@@ -14,11 +14,24 @@ export const INCIDENT_DESCRIPTION_REQUIRED_MESSAGE = "Description is required.";
 export const INCIDENT_DESCRIPTION_TOO_SHORT_MESSAGE = `Description must be at least ${INCIDENT_DESCRIPTION_MIN_LENGTH} characters.`;
 export const INCIDENT_DESCRIPTION_TOO_LONG_MESSAGE = `Description cannot exceed ${INCIDENT_DESCRIPTION_MAX_LENGTH.toLocaleString("en-US")} characters.`;
 
+const normalizeDescription = (value: unknown): string =>
+  value === undefined || value === null ? "" : String(value).trim();
+
+/**
+ * True when an edited description differs from the loaded one. Both sides are
+ * normalised (null/undefined → "", trimmed), mirroring the backend's
+ * isIncidentDescriptionChanged: an unchanged description is not re-validated,
+ * so other fields of an older incident can still be edited.
+ */
+export function isIncidentDescriptionChanged(next: unknown, loaded: unknown): boolean {
+  return normalizeDescription(next) !== normalizeDescription(loaded);
+}
+
 /**
  * Returns an error message for an incident description, or "" when valid.
  */
 export function validateIncidentDescription(value: unknown): string {
-  const trimmed = value === undefined || value === null ? "" : String(value).trim();
+  const trimmed = normalizeDescription(value);
   if (!trimmed) return INCIDENT_DESCRIPTION_REQUIRED_MESSAGE;
   if (trimmed.length < INCIDENT_DESCRIPTION_MIN_LENGTH) {
     return INCIDENT_DESCRIPTION_TOO_SHORT_MESSAGE;

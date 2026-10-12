@@ -311,21 +311,30 @@ The modal is organized into 4 sections:
 The description rule (5 to 32,767 characters, measured after trimming whitespace) is defined once per
 side and the two must stay in sync:
 
-- **Backend:** `INCIDENT_DESCRIPTION_MAX_LENGTH` and `validateDescription` in
-  `Servers/utils/validations/incidentManagementValidation.utils.ts`. Besides the controller's
-  request validation, `createNewIncidentQuery` and `updateIncidentByIdQuery`
-  (`Servers/utils/incidentManagement.utils.ts`) call `assertValidIncidentDescription`, so every
-  writer (REST API, AI Advisor `agent_create_incident` / `agent_update_incident` /
-  `agent_update_incident_status`, future integrations) gets the same rule. It throws a
-  `ValidationException`, which the controller returns as 400 and the Advisor reports as the tool
-  error. On update the description is only re-checked when it changes, so editing other fields of
-  an older row with a shorter description still works.
+- **Backend:** `INCIDENT_DESCRIPTION_MAX_LENGTH`, `validateDescription` and
+  `isIncidentDescriptionChanged` in `Servers/utils/validations/incidentManagementValidation.utils.ts`.
+  - The controller rejects up front: `createIncidentSchema` includes `description`, and
+    `validateIncidentUpdateBusinessRules` checks it when an update changes it. Failures return the
+    standard 400 body `{ status, message, errors: [{ field: "description", message, code }] }`.
+  - As a backstop for writers that skip the controller (AI Advisor `agent_create_incident` /
+    `agent_update_incident` / `agent_update_incident_status`, future integrations),
+    `createNewIncidentQuery` and `updateIncidentByIdQuery` (`Servers/utils/incidentManagement.utils.ts`)
+    call `assertValidIncidentDescription`, which throws a `ValidationException`. The controller maps
+    it to the same 400 body; the Advisor reports its message as the tool error.
+  - On update the description is only checked when it changes. Both sides are normalised first
+    (null/undefined → "", trimmed), so "" vs NULL on an older row is not a change, and editing
+    other fields of an older row with a shorter description still works.
+  - `agent_create_incident` requires `description`; both Advisor tool schemas state the rule.
 - **Frontend:** `Clients/src/application/validations/incidentValidation.ts`, used inline by the
-  incident drawer. The drawer closes only after the save succeeds; on failure it stays open with the
-  entered values.
+  incident drawer. In edit mode the drawer skips the check when the description is unchanged from
+  the loaded value, as the backend does. The drawer closes only after the save succeeds; while
+  saving, Esc, Cancel, the close icon and the backdrop are ignored, and a save that settles after a
+  newer draft was opened does not touch it. On failure the page toast shows the server's field
+  messages when present (`getApiValidationMessage` in `application/utils/apiErrorReason.ts`).
 
-The over-limit message is "Description cannot exceed 32,767 characters." on both sides
-(translated in `Clients/src/i18n/translations.ts` and `Servers/locales/*.json`).
+The messages are identical on both sides: "Description is required.", "Description must be at least
+5 characters." and "Description cannot exceed 32,767 characters." (translated in
+`Clients/src/i18n/translations.ts` and `Servers/locales/*.json`).
 
 ### Business Rule Validation
 

@@ -94,7 +94,8 @@ export const toolsDefinition: any[] = [
           },
           description: {
             type: "string",
-            description: "Detailed description of the incident.",
+            description:
+              "Detailed description of the incident. Required. Must be 5 to 32,767 characters after trimming leading and trailing whitespace.",
           },
           type: {
             type: "string",
@@ -119,7 +120,7 @@ export const toolsDefinition: any[] = [
             description: "Associated AI project ID.",
           },
         },
-        required: ["title"],
+        required: ["title", "description"],
       },
     },
   },
@@ -142,7 +143,8 @@ export const toolsDefinition: any[] = [
           },
           description: {
             type: "string",
-            description: "Updated description.",
+            description:
+              "Updated description. If provided, must be 5 to 32,767 characters after trimming leading and trailing whitespace.",
           },
           type: {
             type: "string",

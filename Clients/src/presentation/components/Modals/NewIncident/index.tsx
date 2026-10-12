@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { FC, useState, useEffect, useMemo, Suspense, useCallback } from "react";
+import React, { FC, useState, useEffect, useMemo, Suspense, useCallback, useRef } from "react";
 import {
   Drawer,
   Stack,
@@ -24,7 +24,10 @@ import { Project } from "../../../../domain/types/Project";
 import { useModalKeyHandling } from "../../../../application/hooks/useModalKeyHandling";
 import { useFormValidation } from "../../../../application/hooks/useFormValidation";
 import { focusFormFieldById } from "../../../../application/utils/formValidationFocus";
-import { validateIncidentDescription } from "../../../../application/validations/incidentValidation";
+import {
+  isIncidentDescriptionChanged,
+  validateIncidentDescription,
+} from "../../../../application/validations/incidentValidation";
 import {
   INCIDENT_FORM_FIELD_IDS,
   INCIDENT_FORM_FIELD_ORDER,
@@ -157,6 +160,12 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
   const [modelInventories, setModelInventories] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("details");
   const [isSaving, setIsSaving] = useState(false);
+  // Refs so close handlers captured by other hooks (Esc) see the current state.
+  const isSavingRef = useRef(false);
+  // Bumped whenever a new draft starts (drawer opened or reset), so a save
+  // that resolves late cannot close or reset a newer draft.
+  const draftSeqRef = useRef(0);
+  const loadedDescription = initialData?.description;
 
   const validators = useMemo(
     () => ({
@@ -168,13 +177,18 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
       },
       date_detected: (v: unknown) => (!v ? "Detected date is required." : ""),
       reporter: (v: unknown) => (!v ? "Reporter is required." : ""),
-      description: validateIncidentDescription,
+      // In edit mode an unchanged description is not re-validated, matching
+      // the backend, so older incidents can still be edited.
+      description: (v: unknown) =>
+        isEdit && !isIncidentDescriptionChanged(v, loadedDescription)
+          ? ""
+          : validateIncidentDescription(v),
       categories_of_harm: (v: unknown) => {
         const cats = v as string[];
         return !cats || cats.length < 1 ? "Please select at least one Category of Harm." : "";
       },
     }),
-    [],
+    [isEdit, loadedDescription],
   );
 
   const { errors, validateAll, clearFieldError, resetErrors, getFirstInvalidField } =
@@ -182,6 +196,15 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
 
   // Use the useProjects hook to get approved projects only
   const { approvedProjects } = useProjects();
+
+  // A newly opened drawer is a new draft: forget any save still in flight.
+  useEffect(() => {
+    if (isOpen) {
+      draftSeqRef.current += 1;
+      isSavingRef.current = false;
+      setIsSaving(false);
+    }
+  }, [isOpen]);
 
   // Fetch Users
   useEffect(() => {
@@ -325,20 +348,31 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
     [clearFieldError],
   );
 
-  const handleClose = () => {
+  const resetAndClose = () => {
+    draftSeqRef.current += 1;
     setIsOpen(false);
     setValues(initialState);
     resetErrors();
     setActiveTab("details");
   };
 
+  // Every user close path (Esc, Cancel, X, backdrop) goes through here and is
+  // ignored while a save is in flight.
+  const handleClose = () => {
+    if (isSavingRef.current) return;
+    resetAndClose();
+  };
+
   const handleSaveIncident = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (isSaving) return;
+    if (isSavingRef.current) return;
     if (validateAll(values, INCIDENT_FORM_FIELD_ORDER)) {
       // Normalize optional FK pickers to integer ids or null (issue #4583)
       const toId = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
+      const draftSeq = draftSeqRef.current;
+      isSavingRef.current = true;
       setIsSaving(true);
+      let saved = false;
       try {
         await onSuccess?.({
           ...values,
@@ -346,13 +380,16 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
           model_inventory_id: toId(values.model_inventory_id),
           assignee_id: toId(values.assignee_id),
         });
-        handleClose();
+        saved = true;
       } catch {
         // The caller reports the failure; keep the drawer open with the
         // entered values so the user can correct and retry.
-      } finally {
-        setIsSaving(false);
       }
+      // A newer draft has started since this save began; leave it alone.
+      if (draftSeq !== draftSeqRef.current) return;
+      isSavingRef.current = false;
+      setIsSaving(false);
+      if (saved) resetAndClose();
       return;
     }
     // Validation failed — move focus to the first invalid field so the
@@ -906,7 +943,12 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
                 <CustomizableButton variant="contained" text="Close" onClick={handleClose} />
               ) : (
                 <>
-                  <CustomizableButton variant="outlined" text="Cancel" onClick={handleClose} />
+                  <CustomizableButton
+                    variant="outlined"
+                    text="Cancel"
+                    onClick={handleClose}
+                    isDisabled={isSaving}
+                  />
                   <CustomizableButton
                     variant="contained"
                     text={isEdit ? "Update incident" : "Save incident"}

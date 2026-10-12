@@ -77,3 +77,23 @@ export function getClientErrorReason(error: unknown): string | null {
   }
   return message;
 }
+
+/**
+ * The message to show for a rejected (4xx) request. Prefers the field-level
+ * messages of a validation response (`{ data: { errors: [{ field, message,
+ * code }] } }`), joined into one line, then the general reason from
+ * getClientErrorReason. Returns null for anything else (including 5xx), so
+ * the caller shows its own generic text.
+ */
+export function getApiValidationMessage(error: unknown): string | null {
+  if (!isClientError(error)) return null;
+  const body = error.response as { data?: { errors?: unknown }; errors?: unknown } | undefined;
+  const errors = body?.data?.errors ?? body?.errors;
+  if (Array.isArray(errors)) {
+    const messages = errors
+      .map((e: { message?: unknown } | null) => e?.message)
+      .filter((m): m is string => typeof m === "string" && m.trim().length > 0);
+    if (messages.length > 0) return messages.join(" ");
+  }
+  return getClientErrorReason(error);
+}

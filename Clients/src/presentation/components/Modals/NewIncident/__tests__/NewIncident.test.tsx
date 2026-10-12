@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeAll } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 vi.mock("../../../Inputs/Field", () => ({
   default: (props: any) => <input data-testid={`field-${props.id || "field"}`} />,
@@ -29,6 +29,7 @@ vi.mock("../../../../../application/repository/user.repository", () => ({
 
 import { renderWithProviders } from "../../../../../test/renderWithProviders";
 import SideDrawerIncident, { NewIncidentFormValues } from "../index";
+import { useModalKeyHandling } from "../../../../../application/hooks/useModalKeyHandling";
 
 // Enum values as plain strings (the enum members are string-valued); avoids a
 // test-only import of the enum module.
@@ -142,5 +143,112 @@ describe("NewIncident (SideDrawerIncident)", () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(2));
     expect(onSuccess.mock.calls[1][0]).toEqual(onSuccess.mock.calls[0][0]);
     expect(setIsOpen).not.toHaveBeenCalled();
+  });
+
+  /** A save the test resolves by hand. */
+  const deferredSave = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    return { onSuccess: vi.fn(() => promise), resolve };
+  };
+
+  /** The onClose the drawer last handed to useModalKeyHandling (the Esc path). */
+  const latestEscHandler = () => {
+    const calls = vi.mocked(useModalKeyHandling).mock.calls;
+    return (calls[calls.length - 1][0] as { onClose: () => void }).onClose;
+  };
+
+  it("ignores Esc and disables Cancel while a save is in flight", async () => {
+    const setIsOpen = vi.fn();
+    const save = deferredSave();
+    renderWithProviders(
+      <SideDrawerIncident
+        isOpen={true}
+        setIsOpen={setIsOpen}
+        onSuccess={save.onSuccess}
+        initialData={savableData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Save incident"));
+    await waitFor(() => expect(save.onSuccess).toHaveBeenCalledTimes(1));
+
+    expect(screen.getByText("Cancel").closest("button")).toBeDisabled();
+    act(() => latestEscHandler()());
+    expect(setIsOpen).not.toHaveBeenCalled();
+
+    // A second click on Save while saving does not submit twice.
+    fireEvent.click(screen.getByText("Save incident"));
+    expect(save.onSuccess).toHaveBeenCalledTimes(1);
+
+    await act(async () => save.resolve());
+    await waitFor(() => expect(setIsOpen).toHaveBeenCalledWith(false));
+  });
+
+  it("does not let a late save close a newer draft", async () => {
+    const setIsOpen = vi.fn();
+    const save = deferredSave();
+    const view = renderWithProviders(
+      <SideDrawerIncident
+        isOpen={true}
+        setIsOpen={setIsOpen}
+        onSuccess={save.onSuccess}
+        initialData={savableData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Save incident"));
+    await waitFor(() => expect(save.onSuccess).toHaveBeenCalledTimes(1));
+
+    // The page closes the drawer and the user opens a new draft before the
+    // first save settles.
+    const props = { setIsOpen, onSuccess: save.onSuccess, initialData: savableData };
+    view.rerender(<SideDrawerIncident isOpen={false} {...props} />);
+    view.rerender(<SideDrawerIncident isOpen={true} {...props} />);
+
+    await act(async () => save.resolve());
+    expect(setIsOpen).not.toHaveBeenCalled();
+    // The new draft is not stuck in a saving state.
+    expect(screen.getByText("Cancel").closest("button")).not.toBeDisabled();
+  });
+
+  const legacyShortDescription = {
+    ...savableData,
+    description: "abc",
+  } as unknown as NewIncidentFormValues;
+
+  it("does not re-validate an unchanged description in edit mode", async () => {
+    const onSuccess = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <SideDrawerIncident
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        onSuccess={onSuccess}
+        initialData={legacyShortDescription}
+        isEdit
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Update incident"));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+  });
+
+  it("validates the same short description when creating", () => {
+    const onSuccess = vi.fn();
+    renderWithProviders(
+      <SideDrawerIncident
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        onSuccess={onSuccess}
+        initialData={legacyShortDescription}
+      />,
+    );
+
+    // Field is mocked here, so the inline message itself is covered by the
+    // validator tests; this checks the submit is blocked.
+    fireEvent.click(screen.getByText("Save incident"));
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 });

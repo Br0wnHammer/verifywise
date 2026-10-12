@@ -8,7 +8,10 @@ import {
 } from "./automation/incident.automation.utils";
 import { replaceTemplateVariables } from "./automation/automation.utils";
 import { enqueueAutomationAction } from "../services/automations/automationProducer";
-import { assertValidIncidentDescription } from "./validations/incidentManagementValidation.utils";
+import {
+  assertValidIncidentDescription,
+  isIncidentDescriptionChanged,
+} from "./validations/incidentManagementValidation.utils";
 
 /**
  * Base SELECT for incident queries. LEFT JOINs resolve the issue #4583
@@ -198,10 +201,7 @@ export const updateIncidentByIdQuery = async (
   const existingIncident = await getIncidentByIdQuery(id, organizationId);
   // Callers pass the merged record, so only re-check the description when it
   // actually changes; status-only edits of older rows are not blocked.
-  if (
-    incident.description !== undefined &&
-    incident.description !== existingIncident?.description
-  ) {
+  if (isIncidentDescriptionChanged(incident.description, existingIncident?.description)) {
     assertValidIncidentDescription(incident.description);
   }
   const updated_at = new Date();

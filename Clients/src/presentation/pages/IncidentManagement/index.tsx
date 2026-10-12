@@ -37,6 +37,7 @@ import { ColumnSelector } from "../../components/Table/ColumnSelector";
 import { useColumnVisibility, ColumnConfig } from "../../../application/hooks/useColumnVisibility";
 
 import Alert from "../../components/Alert";
+import { getApiValidationMessage } from "../../../application/utils/apiErrorReason";
 
 type IncidentColumnKey =
   | "incident_id"
@@ -542,7 +543,9 @@ const IncidentManagement: React.FC = () => {
     } catch (error) {
       setAlert({
         variant: "error",
-        body: selectedIncident ? "Failed to update incident." : "Failed to add incident.",
+        body:
+          getApiValidationMessage(error) ??
+          (selectedIncident ? "Failed to update incident." : "Failed to add incident."),
       });
       throw error;
     }

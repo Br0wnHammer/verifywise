@@ -149,6 +149,8 @@
   "Demo users cannot perform admin actions": "Demo users cannot perform admin actions",
   "Demo vendors cannot be modified": "Demo vendors cannot be modified",
   "Department is required": "Department is required",
+  "Description is required.": "Description is required.",
+  "Description must be at least 5 characters.": "Description must be at least 5 characters.",
   "Description cannot exceed 32,767 characters.": "Description cannot exceed 32,767 characters.",
   "Description cannot exceed 5000 characters": "Description cannot exceed 5000 characters",
   "Description is required": "Description is required",

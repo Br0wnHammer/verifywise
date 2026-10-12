@@ -89,4 +89,20 @@ describe("incident description rule on the shared write path (AI Advisor tools)"
     ).resolves.toMatchObject({ id: 42 });
     expect(writeCalls()).toHaveLength(1);
   });
+
+  it("agent_create_incident rejects a missing description instead of saving an empty one", async () => {
+    await expect(execute("agent_create_incident", { title: "New" })).rejects.toThrow(
+      "Description is required.",
+    );
+    expect(writeCalls()).toHaveLength(0);
+  });
+
+  it('treats "" and NULL as the same description on a legacy row', async () => {
+    existingRow.description = null;
+    existingRow.dataValues = { ...existingRow };
+    await expect(
+      execute("agent_update_incident", { incident_id: 42, description: "" }),
+    ).resolves.toMatchObject({ id: 42 });
+    expect(writeCalls()).toHaveLength(1);
+  });
 });

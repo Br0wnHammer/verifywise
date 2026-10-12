@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getApiErrorReason, getClientErrorReason, isClientError } from "../apiErrorReason";
+import {
+  getApiErrorReason,
+  getApiValidationMessage,
+  getClientErrorReason,
+  isClientError,
+} from "../apiErrorReason";
 import CustomException from "../../../infrastructure/exceptions/customeException";
 
 describe("getApiErrorReason", () => {
@@ -95,5 +100,50 @@ describe("isClientError", () => {
     expect(isClientError(apiError("x", 500))).toBe(false);
     expect(isClientError(apiError("x", undefined))).toBe(false);
     expect(isClientError(new Error("x"))).toBe(false);
+  });
+});
+
+describe("getApiValidationMessage", () => {
+  const validation400 = (errors: unknown) =>
+    new CustomException("Incident creation validation failed", 400, {
+      message: "Bad Request",
+      data: { status: "error", message: "Incident creation validation failed", errors },
+    });
+
+  it("returns the field-level messages of a 400 validation response", () => {
+    expect(
+      getApiValidationMessage(
+        validation400([
+          {
+            field: "description",
+            message: "Description cannot exceed 32,767 characters.",
+            code: "MAX_LENGTH",
+          },
+        ]),
+      ),
+    ).toBe("Description cannot exceed 32,767 characters.");
+  });
+
+  it("joins several field messages", () => {
+    expect(
+      getApiValidationMessage(
+        validation400([
+          { field: "description", message: "Description is required." },
+          { field: "project_id", message: "project_id does not reference an entity" },
+        ]),
+      ),
+    ).toBe("Description is required. project_id does not reference an entity");
+  });
+
+  it("falls back to the general 4xx reason when there are no field messages", () => {
+    expect(getApiValidationMessage(validation400([]))).toBe("Incident creation validation failed");
+  });
+
+  it("returns null for 5xx and non-API errors", () => {
+    expect(
+      getApiValidationMessage(new CustomException("database exploded", 500, { error: "x" })),
+    ).toBeNull();
+    expect(getApiValidationMessage(new Error("network down"))).toBeNull();
+    expect(getApiValidationMessage(null)).toBeNull();
   });
 });

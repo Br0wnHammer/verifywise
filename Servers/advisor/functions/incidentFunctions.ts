@@ -464,7 +464,8 @@ const agentCreateIncident = createWriteToolFn({
     try {
       const incidentData = {
         ai_project: (params.title as string) || "",
-        description: (params.description as string) || "",
+        // Required by the tool schema; the write query enforces the length rule.
+        description: params.description as string,
         type: (params.type as string) || "Malfunction",
         severity: (params.severity as string) || "Minor",
         status: "Open",
