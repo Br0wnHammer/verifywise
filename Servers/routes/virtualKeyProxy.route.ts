@@ -14,6 +14,9 @@ function virtualKeyProxyRoutes() {
 
   const proxy = createProxyMiddleware({
     target: getGatewayUrl(),
+    // Resolve the gateway URL per request, so it follows AI_GATEWAY_URL as
+    // read now rather than when the router was built.
+    router: () => getGatewayUrl(),
     changeOrigin: true,
     // /v1/* → /v1/* (no rewrite — AIGateway already handles /v1/*)
     on: {

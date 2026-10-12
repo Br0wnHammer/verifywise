@@ -19,6 +19,9 @@ function aiGatewayRoutes() {
 
   const proxy = createProxyMiddleware({
     target: getGatewayUrl(),
+    // Resolve the gateway URL per request, so it follows AI_GATEWAY_URL as
+    // read now rather than when the router was built.
+    router: () => getGatewayUrl(),
     changeOrigin: true,
     timeout: 30_000, // 30s — abort if AI Gateway doesn't respond
     proxyTimeout: 30_000, // 30s — abort if connection takes too long
