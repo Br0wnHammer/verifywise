@@ -24,6 +24,7 @@ import { Project } from "../../../../domain/types/Project";
 import { useModalKeyHandling } from "../../../../application/hooks/useModalKeyHandling";
 import { useFormValidation } from "../../../../application/hooks/useFormValidation";
 import { focusFormFieldById } from "../../../../application/utils/formValidationFocus";
+import { validateIncidentDescription } from "../../../../application/validations/incidentValidation";
 import {
   INCIDENT_FORM_FIELD_IDS,
   INCIDENT_FORM_FIELD_ORDER,
@@ -50,8 +51,9 @@ interface SideDrawerIncidentProps {
   /**
    * Called on save. When editing (isEdit with initialData) it receives only
    * the fields the user changed, plus expected_updated_at; when creating, the
-   * whole form. Resolve to `false` to keep the drawer open with the user's
-   * values (the save failed); anything else closes it.
+   * whole form. The drawer closes once this settles successfully. Resolving
+   * to `false` or rejecting means the save failed: the drawer stays open with
+   * the user's values.
    */
   onSuccess?: (data: Partial<NewIncidentFormValues>) => void | boolean | Promise<void | boolean>;
   initialData?: NewIncidentFormValues;
@@ -226,6 +228,16 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
   const [, setIsLoadingUsers] = useState(false);
   const [modelInventories, setModelInventories] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState("details");
+  const [isSaving, setIsSaving] = useState(false);
+  // Refs so close handlers captured by other hooks (Esc) see the current state.
+  const isSavingRef = useRef(false);
+  // Bumped whenever a new draft starts (drawer opened or reset), so a save
+  // that resolves late cannot close or reset a newer draft.
+  const draftSeqRef = useRef(0);
+
+  // The initialData the form was last filled from: the baseline that tells the
+  // user's edits apart from untouched fields.
+  const baselineRef = useRef<NewIncidentFormValues | null>(null);
 
   const validators = useMemo(
     () => ({
@@ -237,13 +249,22 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
       },
       date_detected: (v: unknown) => (!v ? "Detected date is required." : ""),
       reporter: (v: unknown) => (!v ? "Reporter is required." : ""),
-      description: (v: unknown) => (!v ? "Description is required." : ""),
+      // In edit mode the description is validated only when it is one of the
+      // fields the user changed (the ones the save sends), so other fields of
+      // an older incident with a shorter description can still be edited.
+      description: (v: unknown) => {
+        const baseline = baselineRef.current;
+        if (isEdit && baseline && isSameFormValue("description", v, baseline.description)) {
+          return "";
+        }
+        return validateIncidentDescription(v);
+      },
       categories_of_harm: (v: unknown) => {
         const cats = v as string[];
         return !cats || cats.length < 1 ? "Please select at least one Category of Harm." : "";
       },
     }),
-    [],
+    [isEdit],
   );
 
   const { errors, validateAll, clearFieldError, resetErrors, getFirstInvalidField } =
@@ -252,6 +273,15 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
   // Use the useProjects hook to get approved projects only
   const { approvedProjects } = useProjects();
 
+  // A newly opened drawer is a new draft: forget any save still in flight.
+  useEffect(() => {
+    if (isOpen) {
+      draftSeqRef.current += 1;
+      isSavingRef.current = false;
+      setIsSaving(false);
+    }
+  }, [isOpen]);
+
   // Fetch Users
   useEffect(() => {
     if (isOpen) {
@@ -259,10 +289,6 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
       fetchModelInventories();
     }
   }, [isOpen]);
-
-  // The initialData the form was last filled from: the baseline that tells the
-  // user's edits apart from untouched fields.
-  const baselineRef = useRef<NewIncidentFormValues | null>(null);
 
   useEffect(() => {
     if (!initialData) return;
@@ -409,7 +435,8 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
     [clearFieldError],
   );
 
-  const handleClose = () => {
+  const resetAndClose = () => {
+    draftSeqRef.current += 1;
     setIsOpen(false);
     baselineRef.current = null;
     setValues(initialState);
@@ -417,13 +444,17 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
     setActiveTab("details");
   };
 
-  // In-flight guard: a second click while a save is pending does nothing.
-  const savingRef = useRef(false);
-  const [isSaving, setIsSaving] = useState(false);
+  // Every user close path (Esc, Cancel, X, backdrop) goes through here and is
+  // ignored while a save is in flight.
+  const handleClose = () => {
+    if (isSavingRef.current) return;
+    resetAndClose();
+  };
 
   const handleSaveIncident = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (savingRef.current) return;
+    // In-flight guard: a second click while a save is pending does nothing.
+    if (isSavingRef.current) return;
     if (validateAll(values, INCIDENT_FORM_FIELD_ORDER)) {
       const formData: NewIncidentFormValues = {
         ...values,
@@ -445,18 +476,21 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
         body = changed as Partial<NewIncidentFormValues>;
       }
 
-      savingRef.current = true;
+      const draftSeq = draftSeqRef.current;
+      isSavingRef.current = true;
       setIsSaving(true);
-      let result: void | boolean;
+      let saved = false;
       try {
-        result = await onSuccess?.(body);
-      } finally {
-        savingRef.current = false;
-        setIsSaving(false);
+        saved = (await onSuccess?.(body)) !== false;
+      } catch {
+        // The caller reports the failure; keep the drawer open with the
+        // entered values so the user can correct and retry.
       }
-      // Keep the drawer, and what the user typed, when the save failed.
-      if (result === false) return;
-      handleClose();
+      // A newer draft has started since this save began; leave it alone.
+      if (draftSeq !== draftSeqRef.current) return;
+      isSavingRef.current = false;
+      setIsSaving(false);
+      if (saved) resetAndClose();
       return;
     }
     // Validation failed — move focus to the first invalid field so the
@@ -1010,12 +1044,18 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
                 <CustomizableButton variant="contained" text="Close" onClick={handleClose} />
               ) : (
                 <>
-                  <CustomizableButton variant="outlined" text="Cancel" onClick={handleClose} />
+                  <CustomizableButton
+                    variant="outlined"
+                    text="Cancel"
+                    onClick={handleClose}
+                    isDisabled={isSaving}
+                  />
                   <CustomizableButton
                     variant="contained"
                     text={isEdit ? "Update incident" : "Save incident"}
                     icon={<SaveIconSVGWhite />}
                     onClick={handleSaveIncident as (event: unknown) => void}
+                    loading={isSaving}
                     isDisabled={isSaving}
                     sx={{
                       backgroundColor: theme.palette.primary.main,

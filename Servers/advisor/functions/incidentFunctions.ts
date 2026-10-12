@@ -12,7 +12,10 @@ import {
 } from "../../utils/incidentManagement.utils";
 import { AIIncidentManagementModel } from "../../domain.layer/models/incidentManagement/incidemtManagement.model";
 import { createWriteToolFn } from "../confirmation/createWriteTool";
-import { updateIncident } from "../../services/incidentManagement.service";
+import {
+  IncidentUpdateValidationError,
+  updateIncident,
+} from "../../services/incidentManagement.service";
 import { sequelize } from "../../database/db";
 import logger from "../../utils/logger/fileLogger";
 
@@ -463,7 +466,8 @@ const agentCreateIncident = createWriteToolFn({
     try {
       const incidentData = {
         ai_project: (params.title as string) || "",
-        description: (params.description as string) || "",
+        // Required by the tool schema; the write query enforces the length rule.
+        description: params.description as string,
         type: (params.type as string) || "Malfunction",
         severity: (params.severity as string) || "Minor",
         status: "Open",
@@ -509,9 +513,19 @@ async function applyIncidentUpdate(
 ) {
   const incidentId = params.incident_id as number;
   const userId = (params._userId as number | undefined) || null;
-  const result = await updateIncident(organizationId, incidentId, fields, userId, {
-    changedBySystem: userId === null,
-  });
+  let result;
+  try {
+    result = await updateIncident(organizationId, incidentId, fields, userId, {
+      changedBySystem: userId === null,
+    });
+  } catch (error) {
+    // Surface the field messages (for example the description length rule)
+    // as the tool error instead of the generic summary.
+    if (error instanceof IncidentUpdateValidationError) {
+      throw new Error(error.errors.map((e) => e.message).join(" "));
+    }
+    throw error;
+  }
   if (!result) {
     throw new Error(`Incident #${incidentId} not found`);
   }
