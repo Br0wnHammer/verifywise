@@ -66,13 +66,12 @@ async def test_partial_update_only_sets_present_keys(monkeypatch):
     )
 
     stmt, params = executed[0]
-    sql = _sql(stmt)
-    conflict = sql.split("ON CONFLICT")[1]
-    assert "spend_log_retention_days" in conflict
-    # Keys absent from the body are not touched on update.
-    assert "pii_on_error" not in conflict
-    assert "log_retention_days" not in conflict.replace("spend_log_retention_days", "")
-    assert "auto_purge_enabled" not in conflict
+    # Only keys present in the body are flagged for update; the rest keep the
+    # stored value on conflict.
+    assert params["set_spend_log_retention_days"] is True
+    assert params["set_pii_on_error"] is False
+    assert params["set_log_retention_days"] is False
+    assert params["set_auto_purge_enabled"] is False
     assert params["spend_log_retention_days"] == 30
     # The INSERT still fills the missing keys with defaults.
     assert params["pii_on_error"] == "block"
@@ -96,11 +95,28 @@ async def test_full_update_sets_every_whitelisted_key(monkeypatch):
 
     stmt, params = executed[0]
     sql = _sql(stmt)
-    conflict = sql.split("ON CONFLICT")[1]
-    assert "pii_on_error" in conflict
-    assert "auto_purge_enabled" in conflict
+    assert params["set_pii_on_error"] is True
+    assert params["set_log_retention_days"] is True
+    assert params["set_auto_purge_enabled"] is True
+    assert params["set_spend_log_retention_days"] is False
     assert "unknown_column" not in sql
     assert "unknown_column" not in params
+    assert "set_unknown_column" not in params
+
+
+async def test_upsert_statement_is_static(monkeypatch):
+    """The SQL text must not depend on which keys the caller sent."""
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    await guardrails_crud.upsert_guardrail_settings(7, {"log_retention_days": 30})
+    await guardrails_crud.upsert_guardrail_settings(
+        7, {"pii_on_error": "allow", "auto_purge_enabled": True}
+    )
+
+    assert _sql(executed[0][0]) == _sql(executed[1][0])
+    conflict = _sql(executed[0][0]).split("ON CONFLICT")[1]
+    assert "ELSE s.pii_on_error" in conflict
 
 
 @pytest.mark.parametrize(

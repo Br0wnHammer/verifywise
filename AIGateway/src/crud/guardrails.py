@@ -210,7 +210,7 @@ async def get_guardrail_settings(org_id: int) -> Optional[dict]:
 
 
 # Settings columns a caller may write, with the value used when an organization
-# has no settings row yet. Column names come from this table, never from input.
+# has no settings row yet. Keys outside this table are ignored.
 _SETTINGS_DEFAULTS: dict[str, Any] = {
     "pii_on_error": "block",
     "content_filter_on_error": "allow",
@@ -245,35 +245,58 @@ def _validate_settings_input(data: dict) -> None:
 
 async def upsert_guardrail_settings(org_id: int, data: dict) -> dict:
     """Upsert guardrail settings. A new row takes defaults for missing keys; an
-    existing row only changes the keys present in `data`."""
-    _validate_settings_input(data)
-    columns = list(_SETTINGS_DEFAULTS)
-    present = [c for c in columns if c in data]
-    params: dict[str, Any] = {"org_id": org_id}
-    for column in columns:
-        params[column] = data.get(column, _SETTINGS_DEFAULTS[column])
+    existing row only changes the keys present in `data`.
 
-    insert_columns = ",\n                    ".join(columns)
-    insert_values = ",\n                    ".join(f":{c}" for c in columns)
-    updates = "".join(f"{c} = EXCLUDED.{c},\n                    " for c in present)
+    The statement is static: each column's ``set_<column>`` flag decides whether
+    the update takes the new value or keeps the stored one."""
+    _validate_settings_input(data)
+    params: dict[str, Any] = {"org_id": org_id}
+    for column, default in _SETTINGS_DEFAULTS.items():
+        params[column] = data.get(column, default)
+        params[f"set_{column}"] = column in data
 
     async with get_db() as db:
         result = await db.execute(
             text(
-                f"""
-                INSERT INTO ai_gateway_guardrail_settings (
+                """
+                INSERT INTO ai_gateway_guardrail_settings AS s (
                     organization_id,
-                    {insert_columns},
+                    pii_on_error,
+                    content_filter_on_error,
+                    pii_replacement_format,
+                    content_filter_replacement,
+                    log_retention_days,
+                    spend_log_retention_days,
+                    log_request_body,
+                    log_response_body,
+                    auto_purge_enabled,
                     created_at,
                     updated_at
                 ) VALUES (
                     :org_id,
-                    {insert_values},
+                    :pii_on_error,
+                    :content_filter_on_error,
+                    :pii_replacement_format,
+                    :content_filter_replacement,
+                    :log_retention_days,
+                    :spend_log_retention_days,
+                    :log_request_body,
+                    :log_response_body,
+                    :auto_purge_enabled,
                     NOW(),
                     NOW()
                 )
                 ON CONFLICT (organization_id) DO UPDATE SET
-                    {updates}updated_at = NOW()
+                    pii_on_error = CASE WHEN :set_pii_on_error THEN EXCLUDED.pii_on_error ELSE s.pii_on_error END,
+                    content_filter_on_error = CASE WHEN :set_content_filter_on_error THEN EXCLUDED.content_filter_on_error ELSE s.content_filter_on_error END,
+                    pii_replacement_format = CASE WHEN :set_pii_replacement_format THEN EXCLUDED.pii_replacement_format ELSE s.pii_replacement_format END,
+                    content_filter_replacement = CASE WHEN :set_content_filter_replacement THEN EXCLUDED.content_filter_replacement ELSE s.content_filter_replacement END,
+                    log_retention_days = CASE WHEN :set_log_retention_days THEN EXCLUDED.log_retention_days ELSE s.log_retention_days END,
+                    spend_log_retention_days = CASE WHEN :set_spend_log_retention_days THEN EXCLUDED.spend_log_retention_days ELSE s.spend_log_retention_days END,
+                    log_request_body = CASE WHEN :set_log_request_body THEN EXCLUDED.log_request_body ELSE s.log_request_body END,
+                    log_response_body = CASE WHEN :set_log_response_body THEN EXCLUDED.log_response_body ELSE s.log_response_body END,
+                    auto_purge_enabled = CASE WHEN :set_auto_purge_enabled THEN EXCLUDED.auto_purge_enabled ELSE s.auto_purge_enabled END,
+                    updated_at = NOW()
                 RETURNING *
                 """
             ),
