@@ -2596,6 +2596,51 @@ export const dashboardEndpoints: Endpoint[] = [
   },
 ];
 
+// Data Retention endpoints
+export const dataRetentionEndpoints: Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/data-retention',
+    summary: "List data retention settings",
+    description: "Returns how long each kind of record is kept for the organization (audit records, AI gateway logs, Agent Control logs, model risk management metrics, evidence files, Shadow AI data, server logs), the latest cleanup per type, and the point the audit ledger has been pruned through. Admin only.",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 403, description: "Admin access required" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Data Retention",
+  },
+  {
+    method: 'GET',
+    path: '/data-retention/audit-records/preview',
+    summary: "Preview audit record cleanup",
+    description: "Returns how many audit records would be deleted now if the given retention period (months: 12, 24, 36, 60, 84 or 120) were applied. Read-only. Admin only.",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 400, description: "Invalid retention period" },
+      { status: 403, description: "Admin access required" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Data Retention",
+  },
+  {
+    method: 'PUT',
+    path: '/data-retention/audit-records',
+    summary: "Set audit record retention",
+    description: "Sets how long audit records are kept. Body: { months: 12 | 24 | 36 | 60 | 84 | 120 | null }, where null keeps records indefinitely. The change is recorded in the audit ledger. Admin only.",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 400, description: "Invalid retention period" },
+      { status: 403, description: "Admin access required" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Data Retention",
+  },
+];
+
 // Datasets endpoints
 export const datasetEndpoints: Endpoint[] = [
   {
@@ -11787,6 +11832,7 @@ export const allEndpoints = {
   compliance: complianceEndpoints,
   customFields: customFieldsEndpoints,
   dashboard: dashboardEndpoints,
+  dataRetention: dataRetentionEndpoints,
   dataset: datasetEndpoints,
   deadlines: deadlinesEndpoints,
   demoData: demoDataEndpoints,

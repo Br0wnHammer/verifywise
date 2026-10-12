@@ -50,6 +50,14 @@ export async function updateMrmSettingsHandler(req: Request, res: Response) {
     const body = req.body ?? {};
     const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
 
+    // Retention is an organization-wide policy: only admins may change it.
+    // Alert fields keep their existing permissions.
+    if (has("retention_months") && req.role !== "Admin" && req.role !== "SuperAdmin") {
+      return res
+        .status(403)
+        .json(STATUS_CODE[403](req.t!("Only admins can change retention periods")));
+    }
+
     // PARTIAL semantics: only fields present in the body are validated and
     // updated (RetentionSection PUTs only retention_months; AlertsSection
     // PUTs only its three fields).

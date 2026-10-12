@@ -112,6 +112,7 @@ import aiAppRoutes from "./routes/aiApp.route";
 import aiAuditRoutes from "./routes/aiAudit.route";
 import observabilityRouter from "./routes/observability.route";
 import featureSettingsRoutes from "./routes/featureSettings.route";
+import dataRetentionRoutes from "./routes/dataRetention.route";
 import friaRoutes from "./routes/fria.route";
 import riskBenchmarkRoutes from "./routes/riskBenchmark.route";
 import quantitativeRiskRoutes from "./routes/quantitativeRisk.route";
@@ -408,6 +409,7 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   app.use("/api/version", versionRoutes);
   app.use("/api/audit-ledger", auditLedgerRoutes);
   app.use("/api/feature-settings", featureSettingsRoutes);
+  app.use("/api/data-retention", dataRetentionRoutes);
   app.use("/api/fria", friaRoutes);
   app.use("/api/governance-os", governanceOsRoutes);
   app.use("/api/risk-benchmarks", riskBenchmarkRoutes);
