@@ -20,9 +20,14 @@ logger = logging.getLogger(__name__)
 INTERNAL_KEY_NOT_CONFIGURED = "internal_key_not_configured"
 INTERNAL_KEY_REJECTED = "internal_key_rejected"
 
-# A rejected key is logged at most once per path in this window.
+# A rejected key is logged at most once per route in this window. The limiter
+# is keyed on the matched route template (never the raw path, query or
+# headers), so callers cannot create new keys, and it is capped as well.
 REJECTED_KEY_LOG_INTERVAL_SECONDS = 60.0
+REJECTED_KEY_LOG_MAX_ROUTES = 256
+_UNMATCHED_ROUTE = "<unmatched>"
 _rejected_logged_at: dict[str, float] = {}
+# A single flag: the missing-key error is logged once per process.
 _missing_key_logged = False
 
 
@@ -48,16 +53,28 @@ def _log_missing_key_once(request: Request) -> None:
     )
 
 
+def _route_template(request: Request) -> str:
+    """The matched route's path template (e.g. /internal/keys/{key_id})."""
+    route = request.scope.get("route") if hasattr(request, "scope") else None
+    template = getattr(route, "path", None)
+    return template if isinstance(template, str) and template else _UNMATCHED_ROUTE
+
+
 def _log_rejected_key(request: Request) -> None:
-    """Warn about a rejected key, at most once a minute per path. Only the
-    method and path are logged, never the key or the header value."""
-    path = request.url.path
+    """Warn about a rejected key, at most once a minute per route template.
+    Only the method and the template are logged, never the key, the header
+    value or the raw path."""
+    route = _route_template(request)
     now = time.monotonic()
-    last = _rejected_logged_at.get(path)
+    last = _rejected_logged_at.get(route)
     if last is not None and now - last < REJECTED_KEY_LOG_INTERVAL_SECONDS:
         return
-    _rejected_logged_at[path] = now
-    logger.warning("Rejected internal request %s %s: invalid internal key", request.method, path)
+    if route not in _rejected_logged_at and len(_rejected_logged_at) >= REJECTED_KEY_LOG_MAX_ROUTES:
+        # Hard cap: drop the oldest entry (dicts keep insertion order).
+        _rejected_logged_at.pop(next(iter(_rejected_logged_at)))
+    _rejected_logged_at.pop(route, None)
+    _rejected_logged_at[route] = now
+    logger.warning("Rejected internal request %s %s: invalid internal key", request.method, route)
 
 
 def verify_internal_key(request: Request) -> None:

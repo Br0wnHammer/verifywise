@@ -271,7 +271,17 @@ def test_every_internal_mount_in_app_uses_the_dependency():
 # ---------------------------------------------------------------------------
 
 
-def test_rejected_keys_are_logged_at_most_once_a_minute_per_path(monkeypatch, caplog):
+def _rejected(route_template=None, path="/internal/x"):
+    scope = {"route": SimpleNamespace(path=route_template)} if route_template else {}
+    return SimpleNamespace(
+        headers={"x-internal-key": "secret-wrong-key"},
+        method="POST",
+        url=SimpleNamespace(path=path),
+        scope=scope,
+    )
+
+
+def test_rejected_keys_are_logged_at_most_once_a_minute_per_route(monkeypatch, caplog):
     import logging
 
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
@@ -280,29 +290,63 @@ def test_rejected_keys_are_logged_at_most_once_a_minute_per_path(monkeypatch, ca
     monkeypatch.setattr(auth.time, "monotonic", lambda: clock["now"])
     caplog.set_level(logging.WARNING, logger=auth.logger.name)
 
-    def reject(path):
-        request = SimpleNamespace(
-            headers={"x-internal-key": "secret-wrong-key"},
-            method="POST",
-            url=SimpleNamespace(path=path),
-        )
+    def reject(template, path):
         with pytest.raises(HTTPException):
-            auth.verify_internal_key(request)
+            auth.verify_internal_key(_rejected(template, path))
 
-    reject("/internal/a")
-    reject("/internal/a")  # same path inside the window: not logged
-    reject("/internal/b")  # another path: logged
+    reject("/internal/keys/{key_id}", "/internal/keys/1")
+    reject("/internal/keys/{key_id}", "/internal/keys/2")  # same route: not logged
+    reject("/internal/budget", "/internal/budget")  # another route: logged
     clock["now"] += auth.REJECTED_KEY_LOG_INTERVAL_SECONDS
-    reject("/internal/a")  # window passed: logged again
+    reject("/internal/keys/{key_id}", "/internal/keys/3")  # window passed: logged
 
     messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert messages == [
-        "Rejected internal request POST /internal/a: invalid internal key",
-        "Rejected internal request POST /internal/b: invalid internal key",
-        "Rejected internal request POST /internal/a: invalid internal key",
+        "Rejected internal request POST /internal/keys/{key_id}: invalid internal key",
+        "Rejected internal request POST /internal/budget: invalid internal key",
+        "Rejected internal request POST /internal/keys/{key_id}: invalid internal key",
     ]
-    # Never the key or the header value.
-    assert all("secret-wrong-key" not in m for m in messages)
+    # Never the key, the header value or the raw path.
+    assert all("secret-wrong-key" not in m and "/keys/1" not in m for m in messages)
+
+
+def test_unique_paths_do_not_grow_the_limiter(monkeypatch):
+    """10,000 rejected requests with unique paths (unmatched, or one route with
+    a path parameter) keep the limiter within its cap."""
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    monkeypatch.setattr(auth, "_rejected_logged_at", {})
+
+    for i in range(10_000):
+        with pytest.raises(HTTPException):
+            auth.verify_internal_key(_rejected(None, f"/internal/{i}"))
+        with pytest.raises(HTTPException):
+            auth.verify_internal_key(_rejected("/internal/keys/{key_id}", f"/internal/keys/{i}"))
+
+    assert set(auth._rejected_logged_at) == {"<unmatched>", "/internal/keys/{key_id}"}
+
+
+def test_the_limiter_is_capped_even_with_many_route_templates(monkeypatch):
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    monkeypatch.setattr(auth, "_rejected_logged_at", {})
+
+    for i in range(auth.REJECTED_KEY_LOG_MAX_ROUTES * 4):
+        with pytest.raises(HTTPException):
+            auth.verify_internal_key(_rejected(f"/internal/route-{i}", f"/internal/route-{i}"))
+
+    assert len(auth._rejected_logged_at) == auth.REJECTED_KEY_LOG_MAX_ROUTES
+
+
+def test_unknown_internal_paths_never_reach_the_check(monkeypatch):
+    """Over HTTP an unknown /internal path is a 404 before the dependency runs."""
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    monkeypatch.setattr(auth, "_rejected_logged_at", {})
+    client, _ = _cache_client(monkeypatch)
+
+    assert client.get("/internal/no-such-route-123").status_code == 404
+    assert auth._rejected_logged_at == {}
+
+    assert client.get("/internal/cache/stats").status_code == 401
+    assert set(auth._rejected_logged_at) == {"/internal/cache/stats"}
 
 
 def test_missing_key_is_logged_once_per_process(monkeypatch, caplog):
@@ -319,4 +363,6 @@ def test_missing_key_is_logged_once_per_process(monkeypatch, caplog):
 
     errors = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert len(errors) == 1
+    # One boolean, not a per-request or per-path structure.
+    assert auth._missing_key_logged is True
     assert "AI_GATEWAY_INTERNAL_KEY is not configured" in errors[0].getMessage()
