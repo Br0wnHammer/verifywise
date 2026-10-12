@@ -11,6 +11,7 @@ import {
   JiraImportInterruptedError,
   JiraNotConfiguredError,
   JiraSyncInProgressError,
+  JiraUseCaseNotFoundError,
   parseSyncIntervalHours,
   removeMissingUseCases,
   RunRef,
@@ -120,6 +121,10 @@ interface FakeDb {
   heartbeat?: Array<{ id: number }>;
   /** Rows the in-transaction ownership check (FOR SHARE) finds; [] means the claim was lost. */
   owned?: Array<{ id: number }>;
+  /** Whether the per-object update finds the link row (false: deleted since the walk). */
+  linkExists?: boolean;
+  /** Link rows found for DELETE /use-cases/:id (by project id). */
+  linkedProject?: Array<{ id: number }>;
   /** Rows the run's own finalize UPDATE affects. */
   ownRow?: Array<{ id: number }>;
   /** Rows the missing-flag UPDATE returns (newly flagged). */
@@ -137,6 +142,8 @@ function fakeDb({
   running = [],
   heartbeat = [{ id: 77 }],
   owned = [{ id: 77 }],
+  linkExists = true,
+  linkedProject = [{ id: 11 }],
   ownRow = [{ id: 77 }],
   flagged = [],
   stillFlagged = [],
@@ -144,7 +151,12 @@ function fakeDb({
   latestRunId = 40,
 }: FakeDb = {}) {
   mockQuery.mockImplementation(async (sql: string) => {
+    if (sql.includes("WITH own AS")) {
+      const isOwned = owned.length > 0;
+      return [{ owned: owned.length, links: isOwned && linkExists ? 1 : 0, projects: 0 }];
+    }
     if (sql.includes("FOR SHARE")) return owned;
+    if (sql.includes("WHERE project_id = :projectId")) return linkedProject;
     if (sql.includes("SET heartbeat_at")) return [heartbeat, {}];
     if (sql.includes("pg_advisory_xact_lock")) return [{}];
     if (sql.includes("SET status = 'failed', completed_at")) return [[], 0];
@@ -351,7 +363,9 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     await runClaimedSync(5, RUN, 8, "manual");
 
     const [clearSql, clear] = sqlCalls("missing_in_jira_since = NULL")[0];
-    expect(clearSql).toContain("own.run_token = :runToken");
+    expect(clearSql).toMatch(/run_token = :runToken\s+AND status = 'started'/);
+    expect(clearSql).toContain("FOR SHARE");
+    expect(clearSql).toContain("AND EXISTS (SELECT 1 FROM own)");
     expect(clear.replacements).toMatchObject({ historyId: 77, runToken: "tok-77" });
   });
 
@@ -417,23 +431,38 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 
-  it("checks ownership inside each object's transaction before updating the project", async () => {
-    fakeDb({ existing: [link("1", 101)] });
+  it("updates each linked object in one statement that locks and checks the claim", async () => {
+    fakeDb({ existing: [link("1", 101), link("2", 102)] });
+    clientReturning([jiraObject("1"), jiraObject("2")]);
+
+    const result = await runClaimedSync(5, RUN, 8, "manual");
+
+    expect(result.objectsUpdated).toBe(2);
+    // One round trip per object: no separate ownership query or transaction.
+    const updates = sqlCalls("WITH own AS");
+    expect(updates).toHaveLength(2);
+    expect(mockTransaction).not.toHaveBeenCalled();
+    const [sql, options] = updates[0];
+    expect(sql).toContain("UPDATE jira_assets_use_cases");
+    expect(sql).toContain("UPDATE projects p");
+    expect(sql).toContain("FROM link");
+    expect(options.replacements).toMatchObject({
+      jiraObjectId: "1",
+      title: "System 1",
+      historyId: 77,
+      runToken: "tok-77",
+      organizationId: 5,
+    });
+  });
+
+  it("does not count an object whose link row was deleted since the walk began", async () => {
+    fakeDb({ existing: [link("1", 101)], linkExists: false });
     clientReturning([jiraObject("1")]);
 
-    await runClaimedSync(5, RUN, 8, "manual");
+    const result = await runClaimedSync(5, RUN, 8, "manual");
 
-    const ownership = sqlCalls("FOR SHARE")[0];
-    expect(ownership[0]).toContain("run_token = :token AND status = 'started'");
-    expect(ownership[1]).toMatchObject({
-      replacements: { id: 77, organizationId: 5, token: "tok-77" },
-      transaction: FAKE_TX,
-    });
-    const projectUpdate = sqlCalls("UPDATE projects")[0];
-    expect(projectUpdate[1].transaction).toBe(FAKE_TX);
-    expect(mockQuery.mock.calls.indexOf(ownership)).toBeLessThan(
-      mockQuery.mock.calls.indexOf(projectUpdate),
-    );
+    expect(result.success).toBe(true);
+    expect(result.objectsUpdated).toBe(0);
   });
 
   it("stops at the next object, writing nothing, once another claim closed the run", async () => {
@@ -445,9 +474,9 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toContain("closed by another run");
-    expect(sqlCalls("FOR SHARE")).toHaveLength(1);
-    expect(sqlCalls("UPDATE projects")).toHaveLength(0);
-    expect(sqlCalls("UPDATE jira_assets_use_cases")).toHaveLength(0);
+    // The first object's guarded statement found no claim (so wrote nothing);
+    // no later object was tried.
+    expect(sqlCalls("WITH own AS")).toHaveLength(1);
     expect(sqlCalls("INSERT INTO projects")).toHaveLength(0);
     expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
     expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
@@ -661,8 +690,14 @@ describe("removeMissingUseCases", () => {
     // Projects go through the core deletion path, never a bare DELETE.
     expect(sqlCalls("DELETE FROM projects")).toHaveLength(0);
     expect(mockDeleteProject).toHaveBeenCalledTimes(1);
-    expect(mockDeleteProject).toHaveBeenCalledWith(111, 5, FAKE_TX);
+    expect(mockDeleteProject).toHaveBeenCalledWith(111, 5, FAKE_TX, {
+      enqueueAutomationAfterCommit: true,
+    });
     expect(mockRecordDeletion).toHaveBeenCalledWith(111, 8, 5, FAKE_TX);
+    // History is written only after the project was deleted.
+    expect(mockRecordDeletion.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockDeleteProject.mock.invocationCallOrder[0],
+    );
     expect(sqlCalls("DELETE FROM jira_assets_use_cases")[0][1]).toMatchObject({
       replacements: { organizationId: 5, linkOnlyIds: [12] },
       transaction: FAKE_TX,
@@ -712,17 +747,69 @@ describe("removeMissingUseCases", () => {
     expect(mockPendingApproval).toHaveBeenCalledWith(111, "use_case", 5, FAKE_TX);
     expect(mockWithdrawApproval).toHaveBeenCalledTimes(1);
     expect(mockWithdrawApproval).toHaveBeenCalledWith(900, 5, FAKE_TX);
+    // No change-history "deleted" row for the project that was not deleted.
+    expect(mockRecordDeletion).toHaveBeenCalledTimes(1);
+    expect(mockRecordDeletion).toHaveBeenCalledWith(111, 8, 5, FAKE_TX);
+  });
+
+  it(`rejects more than ${IMPORT_MAX_OBJECTS} ids (same cap as an import)`, async () => {
+    const ids = Array.from({ length: IMPORT_MAX_OBJECTS + 1 }, (_, i) => i + 1);
+
+    await expect(removeMissingUseCases(5, 8, ids)).rejects.toBeInstanceOf(
+      JiraConfigValidationError,
+    );
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
 
 describe("deleteUseCaseByProjectId", () => {
-  it("deletes through the core project deletion path in one transaction", async () => {
+  it("deletes a linked use case through the core path, under the run claim", async () => {
+    fakeDb();
+
     await deleteUseCaseByProjectId(111, 5, 8);
 
-    expect(mockTransaction).toHaveBeenCalledTimes(1);
-    expect(mockDeleteProject).toHaveBeenCalledWith(111, 5, FAKE_TX);
+    const [, insert] = sqlCalls("INSERT INTO jira_assets_sync_history")[0];
+    expect(insert.replacements).toMatchObject({ syncType: "remove_missing", triggeredBy: 8 });
+    expect(mockDeleteProject).toHaveBeenCalledWith(111, 5, FAKE_TX, {
+      enqueueAutomationAfterCommit: true,
+    });
     expect(mockRecordDeletion).toHaveBeenCalledWith(111, 8, 5, FAKE_TX);
     expect(sqlCalls("DELETE FROM projects")).toHaveLength(0);
+    const [, completed] = sqlCalls("SET status = 'completed'")[0];
+    expect(completed).toMatchObject({ transaction: FAKE_TX });
+    expect(completed.replacements).toMatchObject({ objectsDeleted: 1 });
+  });
+
+  it("is 404 for a project that is not a Jira Assets use case, before claiming", async () => {
+    fakeDb({ linkedProject: [] });
+
+    await expect(deleteUseCaseByProjectId(111, 5, 8)).rejects.toBeInstanceOf(
+      JiraUseCaseNotFoundError,
+    );
+    expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
+    expect(mockDeleteProject).not.toHaveBeenCalled();
+  });
+
+  it("is 409 while a sync, import or removal runs", async () => {
+    fakeDb({ running: [{ id: 3 }] });
+
+    await expect(deleteUseCaseByProjectId(111, 5, 8)).rejects.toBeInstanceOf(
+      JiraSyncInProgressError,
+    );
+    expect(mockDeleteProject).not.toHaveBeenCalled();
+  });
+
+  it("rolls back and is 404, with no history row, when the project is already gone", async () => {
+    fakeDb();
+    mockDeleteProject.mockResolvedValue(false);
+
+    await expect(deleteUseCaseByProjectId(111, 5, 8)).rejects.toBeInstanceOf(
+      JiraUseCaseNotFoundError,
+    );
+    expect(mockRecordDeletion).not.toHaveBeenCalled();
+    expect(sqlCalls("SET status = 'completed'")).toHaveLength(0);
+    // Its claimed row is closed, not left started.
+    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(1);
   });
 });
 

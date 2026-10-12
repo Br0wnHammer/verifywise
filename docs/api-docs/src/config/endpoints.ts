@@ -3958,7 +3958,7 @@ export const extensionEndpoints: Endpoint[] = [
     },
     responses: [
       { status: 200, description: "Removed the listed use cases still flagged as missing in Jira ({ removed, skipped })" },
-      { status: 400, description: "use_case_ids is not a list of 1 to 1000 use case ids" },
+      { status: 400, description: "use_case_ids is not a list of 1 to 100 use case ids" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
       { status: 409, description: "A Jira Assets sync or import is running, or the removal was interrupted, nothing removed ({ message, code: removal_interrupted })" },
       { status: 500, description: "Internal server error" },
@@ -3992,7 +3992,10 @@ export const extensionEndpoints: Endpoint[] = [
     ],
     responses: [
       { status: 200, description: "Success" },
+      { status: 400, description: "Invalid use case id" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 404, description: "No Jira Assets use case with that project id" },
+      { status: 409, description: "A Jira Assets sync, import or removal is running" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Extensions",

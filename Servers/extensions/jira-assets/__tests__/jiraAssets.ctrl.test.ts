@@ -3,6 +3,7 @@ jest.mock("../jiraAssets.service", () => {
   class JiraNotConfiguredError extends Error {}
   class JiraSyncInProgressError extends Error {}
   class RunSupersededError extends Error {}
+  class JiraUseCaseNotFoundError extends Error {}
   class JiraImportInterruptedError extends Error {
     constructor(
       public imported: number,
@@ -13,6 +14,7 @@ jest.mock("../jiraAssets.service", () => {
   }
   return {
     RunSupersededError,
+    JiraUseCaseNotFoundError,
     JiraImportInterruptedError,
     getSyncStatus: jest.fn(),
     JiraConfigValidationError,
@@ -78,6 +80,7 @@ import {
   JiraConfigValidationError,
   JiraNotConfiguredError,
   JiraSyncInProgressError,
+  JiraUseCaseNotFoundError,
   loadFullConfig,
   removeMissingUseCases,
   RunSupersededError,
@@ -309,6 +312,17 @@ describe("POST /use-cases/remove-missing", () => {
         code: "removal_interrupted",
       },
     });
+    // An expected outcome, explained to the user: not event-logged as an error.
+    expect(logFailure).not.toHaveBeenCalled();
+  });
+
+  it("event-logs only unexpected failures", async () => {
+    (removeMissingUseCases as jest.Mock).mockRejectedValueOnce(new Error("db down"));
+    const res = mockRes();
+
+    await removeMissingCtrl({ ...req, body: { use_case_ids: [11] } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
     expect(logFailure).toHaveBeenCalledWith(expect.objectContaining({ eventType: "Delete" }));
   });
 
@@ -326,6 +340,7 @@ describe("POST /use-cases/remove-missing", () => {
     const res400 = mockRes();
     await removeMissingCtrl({ ...req, body: {} }, res400);
     expect(res400.status).toHaveBeenCalledWith(400);
+    expect(logFailure).not.toHaveBeenCalled();
   });
 });
 
@@ -338,6 +353,19 @@ describe("DELETE /use-cases/:id", () => {
     expect(deleteUseCaseByProjectId).toHaveBeenCalledWith(111, 5, 8);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(logSuccess).toHaveBeenCalledWith(expect.objectContaining({ eventType: "Delete" }));
+  });
+
+  it.each([
+    [() => new JiraUseCaseNotFoundError("Use case not found"), 404],
+    [() => new JiraSyncInProgressError("running"), 409],
+  ])("maps %p to its status without event-logging a failure", async (makeErr, status) => {
+    (deleteUseCaseByProjectId as jest.Mock).mockRejectedValueOnce(makeErr());
+    const res = mockRes();
+
+    await deleteUseCaseCtrl({ ...req, params: { id: "111" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(status);
+    expect(logFailure).not.toHaveBeenCalled();
   });
 
   it("rejects a non-numeric id with 400 before deleting", async () => {

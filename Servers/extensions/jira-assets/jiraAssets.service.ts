@@ -953,16 +953,22 @@ export async function importObjects(
 // Removing use cases flagged as missing in Jira (explicit, admin only)
 // ---------------------------------------------------------------------------
 
-/** Most use-case ids one removal request may name. */
-export const REMOVE_MISSING_MAX_IDS = 1000;
+/**
+ * Most use-case ids one removal request may name. Same limit as an import:
+ * each removal is a full project deletion inside one transaction that holds
+ * the run's row lock, so the request has to stay short.
+ */
+export const REMOVE_MISSING_MAX_IDS = IMPORT_MAX_OBJECTS;
 
 /**
  * Delete one imported use case's native project the way the core "Delete use
- * case" does: withdraw a pending approval request, record the deletion in the
- * change history, then deleteProjectByIdQuery (files, risks, members,
- * per-framework rows, custom-field values, the project_deleted automation).
- * The jira_assets_use_cases link cascades with the project. Returns false if
- * the project was already gone.
+ * case" does: withdraw a pending approval request, deleteProjectByIdQuery
+ * (files, risks, members, per-framework rows, custom-field values), then
+ * record the deletion in the change history — only once the project was
+ * actually deleted. The project_deleted automation is queued after the
+ * caller's transaction commits, never for a project a rollback kept. The
+ * jira_assets_use_cases link cascades with the project. Returns false if the
+ * project was already gone (no history row is written then).
  */
 async function deleteLinkedProject(
   projectId: number,
@@ -979,8 +985,13 @@ async function deleteLinkedProject(
   if (pendingApprovalId) {
     await withdrawApprovalRequestQuery(pendingApprovalId, organizationId, transaction);
   }
-  if (userId) await recordUseCaseDeletion(projectId, userId, organizationId, transaction);
-  return deleteProjectByIdQuery(projectId, organizationId, transaction);
+  const deleted = await deleteProjectByIdQuery(projectId, organizationId, transaction, {
+    enqueueAutomationAfterCommit: true,
+  });
+  if (deleted && userId) {
+    await recordUseCaseDeletion(projectId, userId, organizationId, transaction);
+  }
+  return deleted;
 }
 
 /**
@@ -1030,6 +1041,9 @@ export async function removeMissingUseCases(
         if (row.project_id === null) {
           linkOnlyIds.push(row.id);
         } else if (await deleteLinkedProject(row.project_id, organizationId, userId, transaction)) {
+          // No savepoint per row: a savepoint's afterCommit hooks fire when it
+          // is released, not when this transaction commits. The link rows are
+          // locked FOR UPDATE, so their projects cannot vanish mid-removal.
           removed++;
         }
       }
@@ -1198,51 +1212,54 @@ export async function runClaimedSync(
           if (outcome === "created") objectsCreated++;
         }
       } else {
-        await sequelize.transaction(async (transaction) => {
-          // Nothing below may land once another claim has closed this run.
-          await assertRunOwned(run, organizationId, transaction);
-          if (existing.project_id !== null) {
-            await sequelize.query(
-              `UPDATE projects
-                  SET project_title = :title, goal = :goal, last_updated = :now
-                WHERE id = :projectId AND organization_id = :organizationId;`,
-              {
-                replacements: {
-                  title: obj.name,
-                  goal: obj.goal,
-                  now,
-                  projectId: existing.project_id,
-                  organizationId,
-                },
-                transaction,
-              },
-            );
-          }
-          // Seen in Jira again: clear any missing flag. The ownership check is
-          // repeated in SQL as a second line of defence.
-          await sequelize.query(
-            `UPDATE jira_assets_use_cases
+        // One statement: share-lock this run's own history row, then update
+        // the link (clearing any missing flag) and its project. Ownership and
+        // both writes share one snapshot and commit together, and a claim
+        // closing the row must wait for this statement, so nothing lands
+        // after the run lost its claim.
+        const [outcome] = (await sequelize.query(
+          `WITH own AS (
+             SELECT id FROM jira_assets_sync_history
+              WHERE id = :historyId AND run_token = :runToken
+                AND status = 'started' AND organization_id = :organizationId
+              FOR SHARE
+           ), link AS (
+             UPDATE jira_assets_use_cases
                 SET data = CAST(:data AS JSONB),
                     last_synced_at = :now,
                     sync_status = 'synced',
                     missing_in_jira_since = NULL,
                     updated_at = NOW()
               WHERE jira_object_id = :jiraObjectId AND organization_id = :organizationId
-                AND ${SQL_RUN_STILL_OWNED};`,
-            {
-              replacements: {
-                data: JSON.stringify(obj.data),
-                now,
-                jiraObjectId: obj.jiraObjectId,
-                organizationId,
-                historyId: run.historyId,
-                runToken: run.token,
-              },
-              transaction,
+                AND EXISTS (SELECT 1 FROM own)
+              RETURNING project_id
+           ), proj AS (
+             UPDATE projects p
+                SET project_title = :title, goal = :goal, last_updated = :now
+               FROM link
+              WHERE p.id = link.project_id AND p.organization_id = :organizationId
+              RETURNING p.id
+           )
+           SELECT (SELECT COUNT(*) FROM own)::int AS owned,
+                  (SELECT COUNT(*) FROM link)::int AS links,
+                  (SELECT COUNT(*) FROM proj)::int AS projects;`,
+          {
+            replacements: {
+              data: JSON.stringify(obj.data),
+              now,
+              title: obj.name,
+              goal: obj.goal,
+              jiraObjectId: obj.jiraObjectId,
+              organizationId,
+              historyId: run.historyId,
+              runToken: run.token,
             },
-          );
-        });
-        objectsUpdated++;
+            type: QueryTypes.SELECT,
+          },
+        )) as Array<{ owned: number; links: number }>;
+        if (!outcome || outcome.owned === 0) throw new RunSupersededError(run.historyId);
+        // Owned but no link row: it was deleted since the walk began; skip it.
+        if (outcome.links > 0) objectsUpdated++;
       }
       existingMap.delete(obj.jiraObjectId);
       if ((index + 1) % HEARTBEAT_EVERY_OBJECTS === 0) {
@@ -1469,15 +1486,64 @@ export async function getUseCaseByProjectId(
   };
 }
 
-/** DELETE /use-cases/:id — the same full project deletion as the core "Delete use case". */
+/** No Jira Assets use case with that project id in the organization (404). */
+export class JiraUseCaseNotFoundError extends Error {
+  constructor() {
+    super("Use case not found");
+    this.name = "JiraUseCaseNotFoundError";
+  }
+}
+
+/**
+ * DELETE /use-cases/:id — delete one imported use case (a project linked in
+ * jira_assets_use_cases) the same way as the core "Delete use case". Any other
+ * project, or one already gone, is JiraUseCaseNotFoundError (404) and nothing
+ * is written. Takes the same per-org claim as removals (history row
+ * 'remove_missing', objects_deleted = 1), so it cannot run during a sync,
+ * import or removal (JiraSyncInProgressError, 409).
+ */
 export async function deleteUseCaseByProjectId(
   projectId: number,
   organizationId: number,
-  userId: number | null,
+  userId: number,
 ): Promise<void> {
-  await sequelize.transaction((transaction) =>
-    deleteLinkedProject(projectId, organizationId, userId, transaction),
-  );
+  const linked = (await sequelize.query(
+    `SELECT id FROM jira_assets_use_cases
+      WHERE project_id = :projectId AND organization_id = :organizationId LIMIT 1;`,
+    { replacements: { projectId, organizationId }, type: QueryTypes.SELECT },
+  )) as Array<{ id: number }>;
+  if (linked.length === 0) throw new JiraUseCaseNotFoundError();
+
+  const run = await claimSyncRun(organizationId, "remove_missing", userId);
+  try {
+    await sequelize.transaction(async (transaction) => {
+      await assertRunOwned(run, organizationId, transaction);
+      // Checked again under the claim: still a linked project of this org.
+      const stillLinked = (await sequelize.query(
+        `SELECT id FROM jira_assets_use_cases
+          WHERE project_id = :projectId AND organization_id = :organizationId
+          FOR UPDATE;`,
+        { replacements: { projectId, organizationId }, type: QueryTypes.SELECT, transaction },
+      )) as Array<{ id: number }>;
+      if (stillLinked.length === 0) throw new JiraUseCaseNotFoundError();
+      if (!(await deleteLinkedProject(projectId, organizationId, userId, transaction))) {
+        throw new JiraUseCaseNotFoundError();
+      }
+      await finalizeSuccess(
+        run,
+        organizationId,
+        { objectsFetched: 0, objectsCreated: 0, objectsUpdated: 0, objectsDeleted: 1 },
+        null,
+        false,
+        transaction,
+      );
+    });
+  } catch (err) {
+    if (!(err instanceof RunSupersededError)) {
+      await finalizeFailure(run, organizationId, err, false);
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------

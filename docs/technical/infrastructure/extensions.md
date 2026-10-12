@@ -410,13 +410,16 @@ SQL does not rely on that setting. The building blocks are in
     this again in SQL. A link from another or an unknown type is never flagged
     by that walk, and is left exactly as it was. Switching the selected type
     therefore never flags the old type's use cases.
-  - Every per-object write (project update, link update, new use case)
-    happens only while the run still owns its claim. Each object's transaction
-    first selects the run's history row (id, token, `started`) `FOR SHARE`;
-    a claim closing that row as abandoned must wait for the transaction, and
-    once the row is closed the next object's check fails with
-    `RunSupersededError` and the run stops with nothing more written. Setting
-    and clearing flags also carry an `EXISTS` guard on the same row.
+  - Every per-object write happens only while the run still owns its claim.
+    A linked object is updated in one statement: a CTE selects the run's
+    history row (id, token, `started`) `FOR SHARE`, and the link update
+    (which clears any missing flag) and the project update run only if it
+    found the row. Ownership and both writes share one snapshot and commit
+    together, and a claim closing the row as abandoned must wait for the
+    statement. If the row is no longer the run's, nothing is written and the
+    run stops with `RunSupersededError`. A new use case is created in a
+    transaction that first takes the same `FOR SHARE` lock. Setting flags
+    carries an `EXISTS` guard on the same row.
   - After an incomplete or empty walk, no flag is set. A false "complete"
     would only mis-flag, which the next complete sync clears.
 - The run's note (`error_message` on the completed row, and
@@ -457,10 +460,14 @@ the Assets API pages. Completeness now only decides whether flags may be set.
   proves the end, because `total` can be capped. The walk advances by the
   number of rows returned.
 - **Data Center:** `GET iql/objects?...&page=&resultPerPage=`. The server may
-  cap `resultPerPage`, so a short page proves nothing. The walk asks until a
-  page comes back empty; only that proves the end. A non-empty page with no
-  new object (a server repeating its last page) stops the walk as incomplete.
-  `pageSize` and `totalFilterCount` are not used.
+  cap `resultPerPage`, so a short page alone proves nothing. The walk is
+  complete on an empty page, on `isLast === true`, on as many distinct objects
+  as `totalFilterCount` (on a short or repeated page only, since a count
+  reached on a full page could be capped), on a short page that is the
+  reported last page (`page >= pageSize`, the number of pages), or on a
+  repeated page (some servers answer past the end with their last page) once
+  `pageSize` says the walk is past the last page. A repeated page with no
+  such signal ends the walk incomplete.
 
 Every request has a 30-second timeout. The worker's walk has a 10-minute
 deadline (`WORKER_SYNC_DEADLINE_MS`). When it passes, the run fails with
@@ -518,21 +525,31 @@ ticks the use cases to delete and clicks **Remove selected use cases (N)**.
 They confirm in a `StandardModal` that shows the count and the list, and that
 says the projects and their data will be deleted. The panel then calls
 `POST /use-cases/remove-missing` with `{ use_case_ids }`, exactly the selected
-ids (1 to 1000). `removeMissingUseCases`:
+ids (1 to 100, the same limit as an import, `REMOVE_MISSING_MAX_IDS`; the
+panel disables the button above it). `removeMissingUseCases`:
 
 1. takes the same claim, so it cannot race a sync or import (409)
 2. locks the listed rows that are still flagged (`FOR UPDATE`)
 3. deletes each project the way the core "Delete use case" does
-   (`deleteLinkedProject`): withdraws a pending approval request, records the
-   deletion in the change history, then `deleteProjectByIdQuery` (files,
-   risks, members, per-framework rows, custom-field values, the
-   `project_deleted` automation). The link row cascades. Link rows with no
+   (`deleteLinkedProject`): withdraws a pending approval request, then
+   `deleteProjectByIdQuery` (files, risks, members, per-framework rows,
+   custom-field values), and records the deletion in the change history only
+   if the project was deleted. The `project_deleted` automation is queued
+   after the transaction commits (`enqueueAutomationAfterCommit`), so a
+   rolled-back removal fires none. The link row cascades. Link rows with no
    project are deleted directly.
 4. records the run (`objects_deleted` = number removed)
 
 Steps 2 to 4 run in one transaction, which first share-locks the run's own
-history row so no other claim can close it mid-way. `DELETE /use-cases/:id`
-uses the same `deleteLinkedProject`. A use case a sync found again in the
+history row so no other claim can close it mid-way.
+
+`DELETE /use-cases/:id` deletes one imported use case the same way. It is 404
+for a project that is not linked in `jira_assets_use_cases` (or is already
+gone; nothing is written then), takes the same claim (409 while a sync, import
+or removal runs; its history row is `'remove_missing'` with
+`objects_deleted = 1`) and runs in one transaction.
+
+A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is
 `{ removed, skipped }`. If the removal loses its claim before it finishes, the
 transaction rolls back and the route returns 409 with

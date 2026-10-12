@@ -24,6 +24,7 @@ import {
   JiraImportInterruptedError,
   JiraNotConfiguredError,
   JiraSyncInProgressError,
+  JiraUseCaseNotFoundError,
   listUseCases,
   loadFullConfig,
   removeMissingUseCases,
@@ -55,8 +56,25 @@ function logContext(req: Request, functionName: string) {
   return { functionName, fileName, userId: uid(req), organizationId: orgId(req) };
 }
 
-function asError(err: unknown): Error {
-  return err instanceof Error ? err : new Error(String(err));
+/** Outcomes the panel expects and explains (4xx); they are not failures to event-log. */
+function isExpectedError(err: unknown): boolean {
+  return (
+    err instanceof JiraConfigValidationError ||
+    err instanceof JiraNotConfiguredError ||
+    err instanceof JiraUseCaseNotFoundError ||
+    err instanceof JiraSyncInProgressError ||
+    err instanceof JiraImportInterruptedError ||
+    err instanceof RunSupersededError
+  );
+}
+
+/** logFailure for unexpected errors and upstream/queue failures (5xx) only. */
+async function logUnexpectedFailure(
+  err: unknown,
+  params: Omit<Parameters<typeof logFailure>[0], "error">,
+): Promise<void> {
+  if (isExpectedError(err)) return;
+  await logFailure({ ...params, error: err instanceof Error ? err : new Error(String(err)) });
 }
 
 async function requireClient(organizationId: number): Promise<JiraAssetsClient> {
@@ -73,7 +91,7 @@ async function requireClient(organizationId: number): Promise<JiraAssetsClient> 
  * getApiErrorReason, as the MLflow tab does.
  *
  * - JiraConfigValidationError → 400
- * - JiraNotConfiguredError → 404
+ * - JiraNotConfiguredError, JiraUseCaseNotFoundError → 404
  * - JiraSyncInProgressError → 409
  * - JiraImportInterruptedError → 409 with { message, code: "import_interrupted", imported, skipped }
  * - JiraUpstreamError (Jira response, timeout, DNS/TLS) → 502
@@ -84,7 +102,7 @@ function sendError(req: Request, res: Response, err: unknown, functionName: stri
   if (err instanceof JiraConfigValidationError) {
     return res.status(400).json(STATUS_CODE[400](err.message));
   }
-  if (err instanceof JiraNotConfiguredError) {
+  if (err instanceof JiraNotConfiguredError || err instanceof JiraUseCaseNotFoundError) {
     return res.status(404).json(STATUS_CODE[404](err.message));
   }
   if (err instanceof JiraSyncInProgressError) {
@@ -151,11 +169,10 @@ export async function patchSyncSettings(req: Request, res: Response): Promise<an
     });
     return res.status(200).json(STATUS_CODE[200](settings));
   } catch (err) {
-    await logFailure({
+    await logUnexpectedFailure(err, {
       ...ctx,
       eventType: "Update",
       description: "Failed to update Jira Assets sync settings",
-      error: asError(err),
     });
     return sendError(req, res, err, "patchSyncSettings");
   }
@@ -178,11 +195,10 @@ export async function patchSelection(req: Request, res: Response): Promise<any> 
     });
     return res.status(200).json(STATUS_CODE[200](selection));
   } catch (err) {
-    await logFailure({
+    await logUnexpectedFailure(err, {
       ...ctx,
       eventType: "Update",
       description: "Failed to update Jira Assets selection",
-      error: asError(err),
     });
     return sendError(req, res, err, "patchSelection");
   }
@@ -375,11 +391,10 @@ export async function removeMissingCtrl(req: Request, res: Response): Promise<an
     });
     return res.status(200).json(STATUS_CODE[200](result));
   } catch (err) {
-    await logFailure({
+    await logUnexpectedFailure(err, {
       ...ctx,
       eventType: "Delete",
       description: "Failed to remove use cases missing in Jira",
-      error: asError(err),
     });
     // The removal lost its claim before finishing; its transaction rolled back.
     if (err instanceof RunSupersededError) {
@@ -402,21 +417,20 @@ export async function deleteUseCaseCtrl(req: Request, res: Response): Promise<an
   }
   logProcessing({ ...ctx, description: `deleting Jira Assets use case project ${projectId}` });
   try {
-    await deleteUseCaseByProjectId(projectId, orgId(req), uid(req) ?? null);
+    await deleteUseCaseByProjectId(projectId, orgId(req), uid(req));
     await logSuccess({
       ...ctx,
       eventType: "Delete",
       description: `Deleted Jira Assets use case project ${projectId}`,
     });
     return res.status(200).json(STATUS_CODE[200]({ success: true }));
-  } catch (err: any) {
-    await logFailure({
+  } catch (err) {
+    await logUnexpectedFailure(err, {
       ...ctx,
       eventType: "Delete",
       description: `Failed to delete Jira Assets use case project ${projectId}`,
-      error: asError(err),
     });
-    return res.status(500).json(STATUS_CODE[500](err.message));
+    return sendError(req, res, err, "deleteUseCase");
   }
 }
 

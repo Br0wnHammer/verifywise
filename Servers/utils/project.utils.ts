@@ -773,10 +773,19 @@ export const deleteHelper = async (
   );
 };
 
+/**
+ * Delete a project and everything that hangs off it. Pass
+ * `enqueueAutomationAfterCommit` when the caller's transaction may still roll
+ * back after this returns (for example a batch removal): the project_deleted
+ * automation is then queued only once the transaction commits, so it never
+ * fires for a project that survived a rollback. Without it the automation is
+ * queued right away, as before.
+ */
 export const deleteProjectByIdQuery = async (
   id: number,
   organizationId: number,
   transaction: Transaction,
+  options: { enqueueAutomationAfterCommit?: boolean } = {},
 ): Promise<boolean> => {
   const frameworks = await sequelize.query(
     `SELECT framework_id FROM projects_frameworks WHERE organization_id = :organizationId AND project_id = :project_id`,
@@ -877,10 +886,23 @@ export const deleteProjectByIdQuery = async (
           };
 
           // Enqueue with processed params
-          await enqueueAutomationAction(automation.action_key, {
-            ...processedParams,
-            organizationId,
-          });
+          const enqueue = () =>
+            enqueueAutomationAction(automation.action_key, {
+              ...processedParams,
+              organizationId,
+            });
+          if (options.enqueueAutomationAfterCommit) {
+            transaction.afterCommit(() => {
+              enqueue().catch((err) =>
+                console.warn(
+                  `[deleteProjectByIdQuery] Automation enqueue after commit failed for project ${id}:`,
+                  err instanceof Error ? err.message : err,
+                ),
+              );
+            });
+          } else {
+            await enqueue();
+          }
         } else {
           console.warn(`No matching trigger found for key: ${automation["trigger_key"]}`);
         }
