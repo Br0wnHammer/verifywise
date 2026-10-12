@@ -7,8 +7,6 @@ import {
   countAnswersByProjectId,
   countSubControlsByProjectId,
   createNewProjectQuery,
-  deleteProjectByIdQuery,
-  lockProjectForDelete,
   getAllProjectsQuery,
   getProjectByIdQuery,
   updateProjectByIdQuery,
@@ -43,13 +41,9 @@ import {
   recordUseCaseCreation,
   trackUseCaseChanges,
   recordMultipleFieldChanges,
-  recordUseCaseDeletion,
 } from "../utils/useCaseChangeHistory.utils";
-import {
-  hasPendingApprovalQuery,
-  getPendingApprovalRequestIdQuery,
-  withdrawApprovalRequestQuery,
-} from "../utils/approvalRequest.utils";
+import { hasPendingApprovalQuery } from "../utils/approvalRequest.utils";
+import { deleteProjectWithSideEffects } from "../utils/projectDeletion.utils";
 // SSE notifications disabled for now - can be re-enabled later if needed
 // import { notifyStepApprovers } from "../services/notification.service";
 import { createUseCaseApprovalRequest } from "../services/projects/approvalRequest.service";
@@ -773,53 +767,24 @@ export async function deleteProjectById(req: Request, res: Response): Promise<an
   });
 
   try {
-    // Lock the project first, before the approval withdrawal and the change
-    // history row (which reference it), so every deletion path takes the
-    // project lock first (see lockProjectForDelete).
-    await lockProjectForDelete(projectId, req.organizationId!, transaction);
-
-    // Check if project has a pending approval request and withdraw it
-    const pendingApprovalRequestId = await getPendingApprovalRequestIdQuery(
+    // Lock, withdraw a pending approval, record the deletion, delete: one
+    // shared order for every path that deletes a project.
+    const { deleted: deletedProject, withdrawnApprovalId } = await deleteProjectWithSideEffects(
       projectId,
-      "use_case",
       req.organizationId!,
       transaction,
+      { userId: req.userId ?? null },
     );
-
-    if (pendingApprovalRequestId) {
-      logProcessing({
-        description: `withdrawing approval request ${pendingApprovalRequestId} for project ${projectId} before deletion`,
-        functionName: "deleteProjectById",
-        fileName: "project.ctrl.ts",
-        userId: req.userId!,
-        organizationId: req.organizationId!,
-      });
-      await withdrawApprovalRequestQuery(
-        pendingApprovalRequestId,
-        req.organizationId!,
-        transaction,
-      );
+    if (withdrawnApprovalId) {
       await logSuccess({
         eventType: "Update",
-        description: `withdrew approval request ${pendingApprovalRequestId} for project ${projectId}`,
+        description: `withdrew approval request ${withdrawnApprovalId} for project ${projectId}`,
         functionName: "deleteProjectById",
         fileName: "project.ctrl.ts",
         userId: req.userId!,
         organizationId: req.organizationId!,
       });
     }
-
-    // Record deletion in change history BEFORE deleting the project
-    // (due to foreign key constraint on use_case_change_history table)
-    if (req.userId) {
-      await recordUseCaseDeletion(projectId, req.userId, req.organizationId!, transaction);
-    }
-
-    const deletedProject = await deleteProjectByIdQuery(
-      projectId,
-      req.organizationId!,
-      transaction,
-    );
 
     if (deletedProject) {
       await transaction.commit();
