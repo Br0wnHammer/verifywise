@@ -10249,6 +10249,11 @@ export const translations: Record<string, Record<string, string>> = {
       "Es sind noch keine Datensätze alt genug zum Löschen. Ab jetzt werden Datensätze, die älter als {period} sind, dauerhaft gelöscht. Gelöschte Datensätze können nicht wiederhergestellt werden.",
     "Export CSV first": "Zuerst CSV exportieren",
     "Delete records": "Datensätze löschen",
+    "Failed to save settings": "Einstellungen konnten nicht gespeichert werden",
+    "Retention settings could not be loaded.":
+      "Die Aufbewahrungseinstellungen konnten nicht geladen werden.",
+    "Logs older than {days} days will be deleted permanently every day. Deleted logs cannot be restored.":
+      "Protokolle, die älter als {days} Tage sind, werden täglich dauerhaft gelöscht. Gelöschte Protokolle können nicht wiederhergestellt werden.",
   },
 
   fr: {
@@ -20422,6 +20427,11 @@ export const translations: Record<string, Record<string, string>> = {
       "Aucun enregistrement n'est encore assez ancien pour être supprimé. Désormais, les enregistrements de plus de {period} seront supprimés définitivement. Les enregistrements supprimés ne peuvent pas être restaurés.",
     "Export CSV first": "Exporter d'abord en CSV",
     "Delete records": "Supprimer les enregistrements",
+    "Failed to save settings": "Impossible d'enregistrer les paramètres",
+    "Retention settings could not be loaded.":
+      "Les paramètres de conservation n'ont pas pu être chargés.",
+    "Logs older than {days} days will be deleted permanently every day. Deleted logs cannot be restored.":
+      "Les journaux de plus de {days} jours seront supprimés définitivement chaque jour. Les journaux supprimés ne peuvent pas être restaurés.",
   },
   es: {
     "Deployment name": "Nombre del despliegue",
@@ -30514,5 +30524,9 @@ export const translations: Record<string, Record<string, string>> = {
       "Ningún registro es lo bastante antiguo para eliminarse todavía. A partir de ahora, los registros con más de {period} se eliminarán de forma permanente. Los registros eliminados no se pueden restaurar.",
     "Export CSV first": "Exportar CSV primero",
     "Delete records": "Eliminar registros",
+    "Failed to save settings": "No se pudo guardar la configuración",
+    "Retention settings could not be loaded.": "No se pudo cargar la configuración de retención.",
+    "Logs older than {days} days will be deleted permanently every day. Deleted logs cannot be restored.":
+      "Los registros con más de {days} días se eliminarán de forma permanente cada día. Los registros eliminados no se pueden restaurar.",
   },
 };

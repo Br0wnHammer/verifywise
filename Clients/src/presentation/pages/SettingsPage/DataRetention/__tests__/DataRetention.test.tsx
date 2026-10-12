@@ -175,6 +175,17 @@ describe("DataRetention table", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows an error state, not an empty table, when loading fails", async () => {
+    mockGetDataRetention.mockRejectedValue(new Error("network"));
+    renderWithProviders(<DataRetention />);
+    expect(await screen.findByText("Retention settings could not be loaded.")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    respond(buildRows());
+    fireEvent.click(screen.getByTestId("retention-retry"));
+    expect(await screen.findByTestId("retention-row-audit_records")).toBeInTheDocument();
+  });
+
   it("gives deployment rows no Edit button", async () => {
     respond(buildRows());
     renderWithProviders(<DataRetention />);
@@ -316,13 +327,52 @@ describe("Edit retention modal", () => {
     await waitFor(() => expect(mockUpdateGateway).toHaveBeenCalledWith({ log_retention_days: 30 }));
   });
 
-  it("sends only the toggle when only automatic deletion changed", async () => {
+  it("confirms before turning on automatic deletion, then sends only the toggle", async () => {
     await open("ai_gateway_spend_logs");
     fireEvent.click(screen.getByRole("switch"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText(
+        "Logs older than 60 days will be deleted permanently every day. Deleted logs cannot be restored.",
+      ),
+    ).toBeInTheDocument();
+    expect(mockUpdateGateway).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete records" }));
     await waitFor(() =>
       expect(mockUpdateGateway).toHaveBeenCalledWith({ auto_purge_enabled: true }),
     );
+  });
+
+  it("confirms before shortening a gateway period while automatic deletion is on", async () => {
+    await open("ai_gateway_guardrail_logs", {
+      ai_gateway_guardrail_logs: { automaticDeletion: "yes" },
+    });
+    fireEvent.change(screen.getByLabelText(/Keep for \(days\)/), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText(
+        "Logs older than 30 days will be deleted permanently every day. Deleted logs cannot be restored.",
+      ),
+    ).toBeInTheDocument();
+    expect(mockUpdateGateway).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete records" }));
+    await waitFor(() => expect(mockUpdateGateway).toHaveBeenCalledWith({ log_retention_days: 30 }));
+  });
+
+  it("saves a longer gateway period without confirmation while automatic deletion is on", async () => {
+    await open("ai_gateway_guardrail_logs", {
+      ai_gateway_guardrail_logs: { automaticDeletion: "yes" },
+    });
+    fireEvent.change(screen.getByLabelText(/Keep for \(days\)/), { target: { value: "120" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(mockUpdateGateway).toHaveBeenCalledWith({ log_retention_days: 120 }),
+    );
+    expect(screen.queryByText(/will be deleted permanently every day/)).not.toBeInTheDocument();
   });
 
   it("uses the spend key for the spend logs row", async () => {
@@ -330,6 +380,7 @@ describe("Edit retention modal", () => {
     fireEvent.change(screen.getByLabelText(/Keep for \(days\)/), { target: { value: "45" } });
     fireEvent.click(screen.getByRole("switch"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete records" }));
     await waitFor(() =>
       expect(mockUpdateGateway).toHaveBeenCalledWith({
         spend_log_retention_days: 45,

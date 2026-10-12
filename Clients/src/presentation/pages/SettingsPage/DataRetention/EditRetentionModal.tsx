@@ -73,6 +73,11 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Set once a shortening has been previewed and is waiting for the user's go-ahead.
   const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  // Set once a gateway change that deletes logs daily is waiting for the user's go-ahead.
+  const [pendingGateway, setPendingGateway] = useState<{
+    update: GatewayRetentionUpdate;
+    days: number;
+  } | null>(null);
 
   const currentAuditMonths = row.period?.unit === "months" ? row.period.value : null;
   const title = t(ROW_TITLES[row.key].title);
@@ -133,6 +138,11 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
       }
 
       if (isGateway) {
+        if (pendingGateway !== null) {
+          await updateGatewayRetention(pendingGateway.update);
+          await finish();
+          return;
+        }
         const days = validateNumber(1);
         if (days === null) return;
         const update: GatewayRetentionUpdate = {};
@@ -141,8 +151,16 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
             ? "log_retention_days"
             : "spend_log_retention_days";
         if (row.period?.unit !== "days" || row.period.value !== days) update[daysKey] = days;
-        if (autoDelete !== (row.automaticDeletion === "yes"))
-          update.auto_purge_enabled = autoDelete;
+        const wasAutoDelete = row.automaticDeletion === "yes";
+        if (autoDelete !== wasAutoDelete) update.auto_purge_enabled = autoDelete;
+        // Turning on daily deletion, or shortening the period while it is on,
+        // deletes logs permanently, so it is confirmed first.
+        const currentDays = row.period?.unit === "days" ? row.period.value : null;
+        const shortening = currentDays !== null && days < currentDays;
+        if (autoDelete && (!wasAutoDelete || shortening)) {
+          setPendingGateway({ update, days });
+          return;
+        }
         if (Object.keys(update).length > 0) await updateGatewayRetention(update);
         await finish();
         return;
@@ -180,7 +198,7 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
     }
   };
 
-  const confirming = pendingDelete !== null;
+  const confirming = pendingDelete !== null || pendingGateway !== null;
   const selectedMonths = value === INDEFINITE ? null : Number(value);
 
   return (
@@ -196,7 +214,16 @@ export default function EditRetentionModal({ row, onClose }: EditRetentionModalP
       maxWidth="560px"
       fitContent
     >
-      {confirming ? (
+      {pendingGateway !== null ? (
+        <Typography sx={{ fontSize: 13 }}>
+          {fill(
+            t(
+              "Logs older than {days} days will be deleted permanently every day. Deleted logs cannot be restored.",
+            ),
+            { days: pendingGateway.days },
+          )}
+        </Typography>
+      ) : confirming ? (
         <Stack sx={{ gap: "16px" }}>
           <Typography sx={{ fontSize: 13 }}>
             {fill(

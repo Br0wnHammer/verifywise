@@ -35,6 +35,8 @@ API (all `authorize("organization.admin")`, `Servers/routes/dataRetention.route.
 
 Only Admins change organization-wide periods, checked on the server. Non-Admins get 403 "Only admins can change retention periods". `PUT /api/mrm/settings` returns 403 when the body contains `retention_months` and the caller is not an Admin or SuperAdmin; alert settings in the same endpoint are unchanged. AI Gateway settings use `require_admin`; file org default and Shadow AI settings were already Admin only. Per-file evidence retention (`retention_policy`, `expiry_date`) keeps today's permissions: project members and the file's owner.
 
+Every retention change leaves a ledger entry (`entity_type` `data_retention`, `event_type` `Update`): the audit period (`PUT /api/data-retention/audit-records`), the MRM metric period (`updateMrmSettingsHandler`, only when `retention_months` actually changes) and the AI Gateway periods. For the gateway, Express handles `PUT /api/ai-gateway/guardrails/settings` itself (`controllers/aiGatewaySettings.ctrl.ts`, registered before the proxy in `routes/aiGateway.route.ts`): it reads the current settings, forwards the PUT with the caller's org, user and role, returns the gateway's status and body unchanged (errors included), and appends one entry when `log_retention_days`, `spend_log_retention_days` or `auto_purge_enabled` changed. A failed append is logged and never fails the request.
+
 ## Daily job
 
 `data_retention_prune`, cron `30 3 * * *` (`automationProducer.ts`), action `services/automations/actions/dataRetentionPrune.ts`.
@@ -60,9 +62,9 @@ The ledger is a per-org hash chain: each row's `prev_hash` is the previous row's
 
 The delete trigger (migration `20261011150100`) allows a delete only when the org no longer exists (cascade), or when all of these hold: the flag is on; a checkpoint for the org was written in the same transaction (`created_txid = txid_current()`); `OLD.id <= pruned_through_id`; `OLD.occurred_at < cutoff`; and the cutoff is at least 12 months old, the shortest period an Admin can pick. Everything else raises. This guards against mistakes, not against someone with full database access.
 
-The checkpoint table is append-only: triggers reject UPDATE and DELETE except on organization cascade.
+The checkpoint table is append-only: triggers reject UPDATE and DELETE except on organization cascade. The migration's `down()` refuses to run once any checkpoint exists, because dropping the table would lose the prune record and make every pruned ledger fail verification.
 
-`verifyChain` (`utils/auditLedger.utils.ts`) opens one `REPEATABLE READ` read-only transaction, reads the latest checkpoint, and walks the chain by keyset paging inside that snapshot. With a checkpoint it starts from `prevHash = anchor_hash` and requires the first remaining row to have `id > pruned_through_id`; without one it starts from the genesis hash. So the remaining rows are still checked end to end: the first row must link to the recorded hash of the last deleted row, and every later row must link to its predecessor. Editing a remaining row, or changing the anchor, breaks the match and reports `compromised`. The single snapshot means a prune committing during verification cannot move the anchor under the walk. The result carries `prunedThrough: { id, cutoff }`, and the Audit ledger page shows "Records before <date> removed by retention policy".
+`verifyChain` (`utils/auditLedger.utils.ts`) opens one `REPEATABLE READ` read-only transaction, reads the latest checkpoint, and walks the chain by keyset paging inside that snapshot. With a checkpoint it first checks that no row with `id <= pruned_through_id` remains (a legitimate prune deletes them all, so a leftover row means a forged checkpoint hid a deletion from the middle, reported as `compromised` at that row), then starts from `prevHash = anchor_hash`; without one it starts from the genesis hash. So the remaining rows are still checked end to end: the first row must link to the recorded hash of the last deleted row, and every later row must link to its predecessor. Editing a remaining row, or changing the anchor, breaks the match and reports `compromised`. The single snapshot means a prune committing during verification cannot move the anchor under the walk. The result carries `prunedThrough: { id, cutoff }`, and the Audit ledger page shows "Records before <date> removed by retention policy".
 
 What verification cannot prove is the content of deleted rows. The checkpoints record that a prune happened and up to which row, and the self-audit ledger entry records how many rows were removed.
 
@@ -79,9 +81,11 @@ Alembic `a0011_retention.py`, on `ai_gateway_guardrail_settings`:
 Internal endpoints (internal key auth only, `AIGateway/src/routers/retention.py`):
 
 - `GET /internal/retention/config` returns `{ mcp_audit_retention_days }`.
-- `POST /internal/retention/purge` purges guardrail and spend logs for every org with `auto_purge_enabled`, using that org's own periods, and returns `{ results: [{ organization_id, guardrail_deleted, spend_deleted, error? }] }`.
+- `POST /internal/retention/purge` purges guardrail and spend logs for every org with `auto_purge_enabled`, using that org's own periods, up to 500 batches of 1,000 rows per log type per org (the manual purge keeps 50), and returns `{ results: [{ organization_id, guardrail_deleted, guardrail_capped, spend_deleted, spend_capped, guardrail_error?, spend_error? }] }`. Each log type is purged and reported on its own, so one failing does not mark the other failed; `*_capped` means the last allowed batch was full.
 
-The Node job calls the purge endpoint after the audit work with a 5-minute timeout (`GATEWAY_PURGE_TIMEOUT_MS`) and records a run per org for `ai_gateway_guardrail_logs` and `ai_gateway_spend_logs`. A gateway failure is logged and never fails the job.
+The Node job calls the purge endpoint after the audit work with a 5-minute timeout (`GATEWAY_PURGE_TIMEOUT_MS`) and records a run per org for `ai_gateway_guardrail_logs` and `ai_gateway_spend_logs` with status `success`, `capped` or `failed` per type. If the call itself fails, every org with `auto_purge_enabled` (read from `ai_gateway_guardrail_settings`, skipped if the table does not exist) gets a `failed` run for both types. A gateway failure is logged and never fails the job.
+
+The Data retention tab asks for confirmation before a gateway save that turns automatic deletion on, or shortens a period while it is on.
 
 ## Tests
 

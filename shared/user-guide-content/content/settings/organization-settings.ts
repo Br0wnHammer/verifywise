@@ -183,8 +183,9 @@ export const organizationSettingsContent: ArticleContent = {
       type: 'bullet-list',
       items: [
         { bold: 'Audit records', text: 'Includes the audit ledger, event log, change history, AI Advisor actions and file access logs. They are kept indefinitely until you pick a period of 1, 2, 3, 5, 7 or 10 years. A daily cleanup then removes older records.' },
-        { bold: 'AI Gateway logs', text: 'Guardrail and spend logs have their own periods. Turn on Delete automatically to remove old logs every day. It is off by default.' },
-        { bold: 'Other records', text: 'Model risk metrics, evidence file defaults and Shadow AI data can be changed here too. Agent Control and server logs are set by your deployment and shown read only.' },
+        { bold: 'AI Gateway logs', text: 'Guardrail and spend logs have their own periods. Turn on Delete automatically to remove old logs every day. It is off by default, and VerifyWise asks you to confirm before turning it on or shortening a period while it is on.' },
+        { bold: 'Evidence files', text: 'The default retention policy for new files is set here; each file can set its own. Evidence files are archived, not deleted, when their retention ends: they are marked as expired and stay available under Expired files in the file manager.' },
+        { bold: 'Other records', text: 'Model risk metrics and Shadow AI data can be changed here too. Agent Control and server logs are set by your deployment and shown read only.' },
       ],
     },
     {

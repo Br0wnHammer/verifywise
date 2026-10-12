@@ -11,7 +11,9 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
+import { AlertTriangle } from "lucide-react";
 import { CustomizableButton } from "../../../components/button/customizable-button";
+import { EmptyState } from "../../../components/EmptyState";
 import singleTheme from "../../../themes/v1SingleTheme";
 import { useDataRetention } from "../../../../application/hooks/useDataRetention";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
@@ -33,7 +35,7 @@ export default function DataRetention() {
   const theme = useTheme();
   const { t } = useTranslation();
   const formatDate = useFormattedDate();
-  const { data, isLoading } = useDataRetention();
+  const { data, isLoading, isError, refetch } = useDataRetention();
   const [editing, setEditing] = useState<RetentionRow | null>(null);
 
   if (isLoading) {
@@ -41,6 +43,27 @@ export default function DataRetention() {
       <Stack sx={{ alignItems: "center", py: "32px" }}>
         <CircularProgress size={20} />
       </Stack>
+    );
+  }
+
+  // A failed load must not look like an empty table.
+  if (isError) {
+    return (
+      <EmptyState
+        icon={AlertTriangle}
+        message={t("Retention settings could not be loaded.")}
+        imageAlt={t("Retention settings could not be loaded.")}
+      >
+        <Stack sx={{ alignItems: "center" }}>
+          <CustomizableButton
+            variant="outlined"
+            text={t("Try again")}
+            onClick={() => refetch()}
+            sx={{ height: "30px" }}
+            testId="retention-retry"
+          />
+        </Stack>
+      </EmptyState>
     );
   }
 

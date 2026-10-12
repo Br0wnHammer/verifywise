@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router";
-import { Box, Typography, Stack, IconButton, Collapse } from "@mui/material";
+import { Box, Typography, Stack, IconButton, Collapse, useTheme } from "@mui/material";
 import TabContext from "@mui/lab/TabContext";
 import {
   CirclePlus,
@@ -133,6 +133,7 @@ const apiErrorText = (err: any, fallback: string): string =>
 
 export default function AIGatewaySettingsPage() {
   const { t } = useTranslation();
+  const theme = useTheme();
   const formatDate = useFormattedDate();
   const cardSx = useCardSx();
   const { tab: urlTab } = useParams<{ tab: string }>();
@@ -379,7 +380,7 @@ export default function AIGatewaySettingsPage() {
       !Number.isInteger(spendDays) ||
       spendDays < 1
     ) {
-      setGsError("Retention periods must be whole numbers of at least 1 day");
+      setGsError(t("Retention periods must be whole numbers of at least 1 day"));
       return;
     }
     setGsError("");
@@ -392,7 +393,7 @@ export default function AIGatewaySettingsPage() {
       });
       await loadData();
     } catch (err: any) {
-      setGsError(apiErrorText(err, "Failed to save settings"));
+      setGsError(apiErrorText(err, t("Failed to save settings")));
     } finally {
       setGsSaving(false);
     }
@@ -405,7 +406,7 @@ export default function AIGatewaySettingsPage() {
       const count = res?.data?.total_deleted ?? res?.data?.data?.total_deleted ?? 0;
       setPurgeMessage({ text: fill(t("{count} logs deleted"), { count }), isError: false });
     } catch (err: any) {
-      setPurgeMessage({ text: apiErrorText(err, "Failed to purge logs"), isError: true });
+      setPurgeMessage({ text: apiErrorText(err, t("Failed to purge logs")), isError: true });
     } finally {
       setPurging(false);
       setIsPurgeModalOpen(false);
@@ -872,7 +873,7 @@ export default function AIGatewaySettingsPage() {
                     </Box>
                     <Box sx={{ maxWidth: 200, mt: "8px" }}>
                       <Field
-                        label="Spend log retention (days)"
+                        label={t("Spend log retention (days)")}
                         placeholder="90"
                         value={gsForm.spend_log_retention_days}
                         onChange={(e) =>
@@ -886,10 +887,10 @@ export default function AIGatewaySettingsPage() {
                       alignItems="center"
                       sx={{ mt: "8px" }}
                     >
-                      <Typography sx={{ fontSize: 13 }}>Delete automatically</Typography>
+                      <Typography sx={{ fontSize: 13 }}>{t("Delete automatically")}</Typography>
                       <Toggle
                         checked={gsForm.auto_purge_enabled}
-                        ariaLabel="Delete automatically"
+                        ariaLabel={t("Delete automatically")}
                         onChange={() =>
                           setGsForm((p) => ({ ...p, auto_purge_enabled: !p.auto_purge_enabled }))
                         }
@@ -902,7 +903,7 @@ export default function AIGatewaySettingsPage() {
                     </Typography>
                     <Box sx={{ mt: "8px" }}>
                       <CustomizableButton
-                        text="Purge old logs"
+                        text={t("Purge old logs")}
                         variant="outlined"
                         onClick={() => {
                           setPurgeMessage(null);
@@ -965,7 +966,9 @@ export default function AIGatewaySettingsPage() {
                   <Stack gap="8px">
                     <Typography sx={sectionTitleSx}>Spend log cleanup</Typography>
                     <Typography sx={{ fontSize: 13, color: palette.text.tertiary }}>
-                      Delete old spend log entries based on the spend log retention period above.
+                      {t(
+                        "Delete old spend log entries based on the spend log retention period above.",
+                      )}
                     </Typography>
                     <Box sx={{ mt: "8px" }}>
                       <CustomizableButton
@@ -1422,18 +1425,20 @@ export default function AIGatewaySettingsPage() {
       <StandardModal
         isOpen={isPurgeModalOpen}
         onClose={() => setIsPurgeModalOpen(false)}
-        title="Purge old logs"
+        title={t("Purge old logs")}
         description={fill(t("Permanently delete guardrail logs older than {days} days?"), {
           days: guardrailSettings?.log_retention_days ?? 90,
         })}
         onSubmit={handlePurgeGuardrailLogs}
-        submitButtonText="Purge logs"
-        submitButtonColor="#D32F2F"
+        submitButtonText={t("Purge logs")}
+        submitButtonColor={theme.palette.error.main}
         isSubmitting={purging}
         maxWidth="480px"
       >
         <Typography sx={{ fontSize: 13, color: palette.text.secondary }}>
-          This cannot be undone. The saved retention period is used, so save any change to it first.
+          {t(
+            "This cannot be undone. The saved retention period is used, so save any change to it first.",
+          )}
         </Typography>
       </StandardModal>
 
@@ -1445,7 +1450,7 @@ export default function AIGatewaySettingsPage() {
         description={`Are you sure you want to remove "${keyDeleteTarget?.key_name}"?`}
         onSubmit={handleDeleteKeyConfirm}
         submitButtonText="Remove key"
-        submitButtonColor="#D32F2F"
+        submitButtonColor={theme.palette.error.main}
         isSubmitting={keyDeleting}
         maxWidth="480px"
       >
