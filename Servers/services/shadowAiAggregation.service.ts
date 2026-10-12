@@ -14,16 +14,7 @@ import { sequelize } from "../database/db";
 import logger from "../utils/logger/fileLogger";
 import { calculateRiskScoresForOrganization } from "./shadowAiRiskScoring.service";
 import { getSettingsQuery } from "../utils/shadowAiConfig.utils";
-import {
-  deletedRowCount,
-  safeRecordRetentionRun,
-  type RetentionRecordType,
-} from "../utils/dataRetention.utils";
-
-/** The cutoff a cleanup with this period uses, for the run record. */
-function cutoffForDays(days: number): string {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-}
+import { safeRecordRetentionRun, type RetentionRecordType } from "../utils/dataRetention.utils";
 
 /**
  * Get all organization IDs that have shadow AI data.
@@ -193,17 +184,29 @@ export async function purgeOldEvents(): Promise<void> {
       const days = settings[purge.setting];
       if (!(days > 0)) continue;
       try {
-        const [, meta] = await sequelize.query(
-          `DELETE FROM ${purge.table}
-           WHERE organization_id = :organizationId
-             AND ${purge.timestampColumn} < NOW() - INTERVAL '1 day' * :days`,
+        // The cutoff is computed once, in the database, and the run record
+        // stores exactly the value the DELETE used.
+        const [rows] = await sequelize.query(
+          `WITH params AS (
+             SELECT NOW() - INTERVAL '1 day' * :days AS cutoff
+           ),
+           removed AS (
+             DELETE FROM ${purge.table} t
+             USING params
+             WHERE t.organization_id = :organizationId
+               AND t.${purge.timestampColumn} < params.cutoff
+             RETURNING 1
+           )
+           SELECT (SELECT cutoff::text FROM params) AS cutoff,
+                  (SELECT COUNT(*) FROM removed)::int AS deleted_count`,
           { replacements: { organizationId, days } },
         );
-        const deleted = deletedRowCount(meta);
+        const result = (rows as { cutoff: string; deleted_count: number }[])[0];
+        const deleted = Number(result?.deleted_count ?? 0);
         await safeRecordRetentionRun({
           organizationId,
           recordType: purge.recordType,
-          cutoff: cutoffForDays(days),
+          cutoff: result?.cutoff ?? null,
           deletedCount: deleted,
           status: "success",
         });
@@ -217,10 +220,11 @@ export async function purgeOldEvents(): Promise<void> {
           `❌ Data retention cleanup failed for organization ${organizationId} (${purge.table}):`,
           error,
         );
+        // The statement failed, so it produced no cutoff to record.
         await safeRecordRetentionRun({
           organizationId,
           recordType: purge.recordType,
-          cutoff: cutoffForDays(days),
+          cutoff: null,
           deletedCount: 0,
           status: "failed",
           error,

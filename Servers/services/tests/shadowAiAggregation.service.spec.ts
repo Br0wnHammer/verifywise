@@ -33,7 +33,6 @@ jest.mock("../../utils/shadowAiConfig.utils", () => ({
 
 jest.mock("../../utils/dataRetention.utils", () => ({
   safeRecordRetentionRun: jest.fn(),
-  deletedRowCount: jest.requireActual("../../utils/dataRetention.utils").deletedRowCount,
 }));
 
 import {
@@ -59,6 +58,10 @@ describe("shadowAiAggregation.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
+
+  // A purge statement returns one row: the database's cutoff and the count.
+  const CUTOFF = "2026-09-12 02:00:00.123+00";
+  const purged = (count: number) => [[{ cutoff: CUTOFF, deleted_count: count }], 1] as any;
 
   // Helper: mock getAllOrganizationIds to return specified org IDs
   const mockOrgIds = (orgIds: number[]) => {
@@ -137,16 +140,19 @@ describe("shadowAiAggregation.service", () => {
         retention_daily_rollups_days: 90,
         retention_alert_history_days: 180,
       } as any);
-      // A raw DELETE resolves to [rows, pgResult]; the count is pgResult.rowCount
-      mockQuery.mockResolvedValueOnce([[], { rowCount: 5 }] as any);
-      mockQuery.mockResolvedValueOnce([[], { rowCount: 2 }] as any);
-      mockQuery.mockResolvedValueOnce([[], { rowCount: 1 }] as any);
+      mockQuery.mockResolvedValueOnce(purged(5));
+      mockQuery.mockResolvedValueOnce(purged(2));
+      mockQuery.mockResolvedValueOnce(purged(1));
 
       await purgeOldEvents();
 
       expect(mockGetSettings).toHaveBeenCalledWith(1);
       // 1 getAllOrgs + 3 delete queries
       expect(mockQuery).toHaveBeenCalledTimes(4);
+      // The cutoff is computed in SQL and the DELETE compares against it.
+      const deleteSql = String(mockQuery.mock.calls[1][0]);
+      expect(deleteSql).toContain("SELECT NOW() - INTERVAL '1 day' * :days AS cutoff");
+      expect(deleteSql).toContain("t.event_timestamp < params.cutoff");
       expect(recordRetentionRun).toHaveBeenCalledTimes(3);
       expect(recordRetentionRun).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -154,7 +160,7 @@ describe("shadowAiAggregation.service", () => {
           recordType: "shadow_ai_events",
           deletedCount: 5,
           status: "success",
-          cutoff: expect.any(String),
+          cutoff: CUTOFF,
         }),
       );
       expect(recordRetentionRun).toHaveBeenCalledWith(
@@ -188,7 +194,7 @@ describe("shadowAiAggregation.service", () => {
         retention_daily_rollups_days: 0,
         retention_alert_history_days: 0,
       } as any);
-      mockQuery.mockResolvedValue([[], { rowCount: 0 }] as any);
+      mockQuery.mockResolvedValue(purged(0));
 
       await purgeOldEvents();
 
@@ -230,7 +236,7 @@ describe("shadowAiAggregation.service", () => {
         retention_alert_history_days: 0,
       } as any);
       mockQuery.mockRejectedValueOnce(new Error("lock timeout"));
-      mockQuery.mockResolvedValueOnce([[], { rowCount: 4 }] as any);
+      mockQuery.mockResolvedValueOnce(purged(4));
 
       await purgeOldEvents();
 
@@ -241,6 +247,7 @@ describe("shadowAiAggregation.service", () => {
           recordType: "shadow_ai_events",
           deletedCount: 0,
           status: "failed",
+          cutoff: null,
           error: expect.objectContaining({ message: "lock timeout" }),
         }),
       );
