@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Query, Request
-from middlewares.auth import verify_internal_key
 from utils.auth import get_org_id, get_user_id, require_admin
 from utils.change_history import record_guardrail_change
 from utils.notifications import notify_config_change
@@ -71,7 +70,6 @@ def _validate_regex(pattern: str) -> bool:
 
 @router.get("")
 async def list_guardrails(request: Request):
-    verify_internal_key(request)
     org_id = get_org_id(request)
 
     rules = await get_all_guardrails(org_id)
@@ -85,7 +83,6 @@ async def list_guardrails(request: Request):
 
 @router.post("")
 async def create_guardrail_rule(request: Request):
-    verify_internal_key(request)
     org_id = get_org_id(request)
     user_id = get_user_id(request)
     require_admin(request)
@@ -148,7 +145,6 @@ async def create_guardrail_rule(request: Request):
 
 @router.patch("/{rule_id}")
 async def update_guardrail_rule(rule_id: int, request: Request):
-    verify_internal_key(request)
     org_id = get_org_id(request)
     user_id = get_user_id(request)
     require_admin(request)
@@ -213,7 +209,6 @@ async def update_guardrail_rule(rule_id: int, request: Request):
 
 @router.delete("/{rule_id}")
 async def delete_guardrail_rule(rule_id: int, request: Request):
-    verify_internal_key(request)
     org_id = get_org_id(request)
     user_id = get_user_id(request)
     require_admin(request)
@@ -244,7 +239,6 @@ async def delete_guardrail_rule(rule_id: int, request: Request):
 
 @router.get("/settings")
 async def read_guardrail_settings(request: Request):
-    verify_internal_key(request)
     org_id = get_org_id(request)
 
     settings = await get_guardrail_settings(org_id)
@@ -258,7 +252,6 @@ async def read_guardrail_settings(request: Request):
 
 @router.put("/settings")
 async def write_guardrail_settings(request: Request):
-    verify_internal_key(request)
     org_id = get_org_id(request)
     user_id = get_user_id(request)
     require_admin(request)
@@ -294,7 +287,6 @@ async def read_guardrail_logs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    verify_internal_key(request)
     org_id = get_org_id(request)
 
     logs = await get_guardrail_logs(org_id, limit=limit, offset=offset)
@@ -311,7 +303,6 @@ async def read_guardrail_stats(
     request: Request,
     period: str = Query(default="30d"),
 ):
-    verify_internal_key(request)
     org_id = get_org_id(request)
 
     start_date, end_date = get_date_range(period)
@@ -349,7 +340,6 @@ async def _gather_stats(
 
 @router.post("/logs/purge")
 async def purge_logs(request: Request):
-    verify_internal_key(request)
     org_id = get_org_id(request)
     user_id = get_user_id(request)
     require_admin(request)

@@ -10,7 +10,6 @@ from crud.mcp_guardrails import (
     update_mcp_guardrail,
 )
 from crud.mcp_agent_keys import get_active_org_agent_key_ids
-from middlewares.auth import verify_internal_key
 from utils.auth import get_org_id, get_user_id, require_admin
 from utils.notifications import notify_config_change
 
@@ -90,7 +89,6 @@ VALID_ACTIONS = {"block", "mask"}
 @router.get("", status_code=status.HTTP_200_OK)
 async def list_mcp_guardrails(request: Request):
     """List all MCP guardrail rules for the organization."""
-    verify_internal_key(request)
     org_id = get_org_id(request)
 
     rules = await get_all_mcp_guardrails(org_id)
@@ -104,7 +102,6 @@ async def list_mcp_guardrails(request: Request):
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_guardrail(request: Request):
     """Create a new MCP guardrail rule (admin only)."""
-    verify_internal_key(request)
     require_admin(request)
 
     body: dict[str, Any] = await request.json()
@@ -243,7 +240,6 @@ async def create_guardrail(request: Request):
 @router.patch("/{rule_id}", status_code=status.HTTP_200_OK)
 async def update_guardrail(rule_id: int, request: Request):
     """Update an existing MCP guardrail rule (admin only)."""
-    verify_internal_key(request)
     require_admin(request)
 
     body: dict[str, Any] = await request.json()
@@ -383,7 +379,6 @@ async def update_guardrail(rule_id: int, request: Request):
 @router.delete("/{rule_id}", status_code=status.HTTP_200_OK)
 async def delete_guardrail(rule_id: int, request: Request):
     """Delete an MCP guardrail rule (admin only)."""
-    verify_internal_key(request)
     require_admin(request)
 
     org_id = get_org_id(request)
