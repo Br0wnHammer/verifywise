@@ -25,6 +25,14 @@ jest.mock("../../utils/auditLedger.utils", () => ({
 jest.mock("../../utils/logger/logHelper", () => ({
   logFailure: jest.fn<any>(),
 }));
+// Built-in Admin holds organization.admin; "Compliance lead" is a custom role
+// granted it, "Risk analyst" a custom role without it.
+jest.mock("../../utils/rolePermissions.utils", () => ({
+  roleHasPermission: jest.fn(
+    async (_orgId: number | null, role: string, key: string) =>
+      key === "organization.admin" && (role === "Admin" || role === "Compliance lead"),
+  ),
+}));
 jest.mock("../../utils/mrmAlerts.utils", () => ({
   getAlertExtraRecipientsQuery: jest.fn<any>().mockResolvedValue([]),
   getOrgMemberIdsQuery: jest.fn<any>(),
@@ -81,6 +89,30 @@ describe("updateMrmSettingsHandler retention permission", () => {
   it("lets an Admin change retention_months", async () => {
     const res = createRes();
     await updateMrmSettingsHandler(createReq("Admin", { retention_months: 36 }), res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(upsert).toHaveBeenCalled();
+  });
+
+  it("lets a custom role granted organization.admin change retention_months", async () => {
+    const res = createRes();
+    await updateMrmSettingsHandler(createReq("Compliance lead", { retention_months: 36 }), res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(upsert).toHaveBeenCalled();
+  });
+
+  it("rejects a custom role without organization.admin", async () => {
+    const res = createRes();
+    await updateMrmSettingsHandler(createReq("Risk analyst", { retention_months: 36 }), res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("keeps letting a SuperAdmin change retention_months", async () => {
+    const res = createRes();
+    await updateMrmSettingsHandler(createReq("SuperAdmin", { retention_months: 36 }), res);
 
     expect(res.status).toHaveBeenCalledWith(200);
     expect(upsert).toHaveBeenCalled();

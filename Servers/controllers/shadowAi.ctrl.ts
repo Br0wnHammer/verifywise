@@ -51,7 +51,10 @@ import {
 import { ShadowAiToolStatus } from "../domain.layer/interfaces/i.shadowAi";
 
 import { translateError } from "../utils/i18n.utils";
-import { appendRetentionChangeToLedger } from "../utils/retentionAudit.utils";
+import {
+  appendRetentionChangeToLedger,
+  canChangeRetentionPeriods,
+} from "../utils/retentionAudit.utils";
 import logger from "../utils/logger/fileLogger";
 const FILE_NAME = "shadowAi.ctrl.ts";
 
@@ -1379,10 +1382,6 @@ export async function updateSettings(req: Request, res: Response) {
   });
 
   try {
-    if (req.role !== "Admin" && req.role !== "SuperAdmin") {
-      return res.status(403).json(STATUS_CODE[403](req.t!("Only admins can manage settings")));
-    }
-
     const {
       rate_limit_max_events_per_hour,
       retention_events_days,
@@ -1394,6 +1393,18 @@ export async function updateSettings(req: Request, res: Response) {
     const setsRetention = (Object.keys(SHADOW_AI_RETENTION_LABELS) as ShadowAiRetentionKey[]).some(
       (key) => body[key] !== undefined,
     );
+
+    // Settings are admin-only. A save that changes only retention periods is
+    // also open to any role holding organization.admin (as on the Data
+    // retention page), so a custom role granted it can save them too.
+    const retentionOnly = setsRetention && rate_limit_max_events_per_hour === undefined;
+    const allowed =
+      req.role === "Admin" ||
+      req.role === "SuperAdmin" ||
+      (retentionOnly && (await canChangeRetentionPeriods(organizationId, req.role)));
+    if (!allowed) {
+      return res.status(403).json(STATUS_CODE[403](req.t!("Only admins can manage settings")));
+    }
     let before: Awaited<ReturnType<typeof getSettingsQuery>> | null = null;
     if (setsRetention) {
       try {

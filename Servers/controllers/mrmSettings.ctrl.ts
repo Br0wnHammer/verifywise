@@ -9,7 +9,10 @@ import {
   upsertMrmOrgSettings,
 } from "../utils/mrmSettings.utils";
 import { sequelize } from "../database/db";
-import { appendRetentionChangeToLedger } from "../utils/retentionAudit.utils";
+import {
+  appendRetentionChangeToLedger,
+  canChangeRetentionPeriods,
+} from "../utils/retentionAudit.utils";
 import {
   getAlertExtraRecipientsQuery,
   getOrgMemberIdsQuery,
@@ -51,9 +54,13 @@ export async function updateMrmSettingsHandler(req: Request, res: Response) {
     const body = req.body ?? {};
     const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
 
-    // Retention is an organization-wide policy: only admins may change it.
-    // Alert fields keep their existing permissions.
-    if (has("retention_months") && req.role !== "Admin" && req.role !== "SuperAdmin") {
+    // Retention is an organization-wide policy: only roles holding
+    // organization.admin may change it. Alert fields keep their existing
+    // permissions.
+    if (
+      has("retention_months") &&
+      !(await canChangeRetentionPeriods(req.organizationId, req.role))
+    ) {
       return res
         .status(403)
         .json(STATUS_CODE[403](req.t!("Only admins can change retention periods")));

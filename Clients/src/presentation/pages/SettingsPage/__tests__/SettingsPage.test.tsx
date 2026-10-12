@@ -1,11 +1,18 @@
+import { screen } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
+
+let mockRole = "Admin";
+let mockHasOrganizationAdmin = true;
 
 // Mock hooks
 vi.mock("../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({
-    userRoleName: "Admin",
+    userRoleName: mockRole,
     isSuperAdmin: false,
   }),
+}));
+vi.mock("../../../../application/hooks/useMyPermissions", () => ({
+  useHasPermission: (key: string) => key === "organization.admin" && mockHasOrganizationAdmin,
 }));
 
 // Mock child tab components
@@ -51,6 +58,23 @@ import ProfilePage from "../index";
 describe("SettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRole = "Admin";
+    mockHasOrganizationAdmin = true;
+  });
+
+  it("shows the Data retention tab to a custom role granted organization.admin", () => {
+    mockRole = "Compliance lead";
+    renderWithProviders(<ProfilePage />, { route: "/settings" });
+    expect(screen.getByText("Data retention")).toBeInTheDocument();
+    // The audit ledger tab still follows the Admin role.
+    expect(screen.queryByText("Audit ledger")).not.toBeInTheDocument();
+  });
+
+  it("hides the Data retention tab without organization.admin", () => {
+    mockRole = "Editor";
+    mockHasOrganizationAdmin = false;
+    renderWithProviders(<ProfilePage />, { route: "/settings" });
+    expect(screen.queryByText("Data retention")).not.toBeInTheDocument();
   });
 
   it("renders without crashing", () => {

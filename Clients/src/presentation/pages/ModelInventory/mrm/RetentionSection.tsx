@@ -4,6 +4,7 @@ import { CustomizableButton } from "../../../components/button/customizable-butt
 import Field from "../../../components/Inputs/Field";
 import { useMrmSettings, useUpdateMrmSettings } from "../../../../application/hooks/useMrm";
 import { useAuth } from "../../../../application/hooks/useAuth";
+import { useHasPermission } from "../../../../application/hooks/useMyPermissions";
 import { mrmErrorMessage } from "./constants";
 import { mrmSectionIntroStyle } from "./mrmStyles";
 
@@ -17,8 +18,10 @@ const MIN_RETENTION_MONTHS = 13;
 const RetentionSection = ({ onError, onSuccess }: RetentionSectionProps) => {
   const { data: settings } = useMrmSettings();
   const updateSettings = useUpdateMrmSettings();
-  const { userRoleName, isSuperAdmin } = useAuth();
-  const canEdit = userRoleName === "Admin" || isSuperAdmin;
+  const { isSuperAdmin } = useAuth();
+  // The server allows any role holding organization.admin (custom roles too).
+  const canManageRetention = useHasPermission("organization.admin", { fallbackToAdmin: true });
+  const canEdit = canManageRetention || isSuperAdmin;
   const [months, setMonths] = useState<string>("");
 
   // Seed the input from the loaded settings; keep user edits afterwards.

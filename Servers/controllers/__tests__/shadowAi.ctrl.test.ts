@@ -53,6 +53,10 @@ jest.mock("../../utils/statusCode.utils", () => ({
 }));
 jest.mock("../../utils/retentionAudit.utils", () => ({
   appendRetentionChangeToLedger: jest.fn<any>().mockResolvedValue(undefined),
+  // "Compliance lead" stands for a custom role granted organization.admin.
+  canChangeRetentionPeriods: jest.fn(
+    async (_orgId: number, role: string) => role === "Compliance lead",
+  ),
 }));
 jest.mock("../../utils/logger/fileLogger", () => ({
   __esModule: true,
@@ -1039,6 +1043,37 @@ describe("shadowAi.ctrl", () => {
       const res = createRes();
       await updateSettings(req, res);
       expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("lets a custom role granted organization.admin save retention periods", async () => {
+      mockUpdateSettings.mockResolvedValue({ retention_events_days: 60 });
+      const res = createRes();
+      await updateSettings(
+        createReq({ role: "Compliance lead", body: { retention_events_days: 60 } }),
+        res,
+      );
+      expect(mockUpdateSettings).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("keeps the rate limit admin-only, even for a role granted organization.admin", async () => {
+      const res = createRes();
+      await updateSettings(
+        createReq({
+          role: "Compliance lead",
+          body: { retention_events_days: 60, rate_limit_max_events_per_hour: 5 },
+        }),
+        res,
+      );
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(mockUpdateSettings).not.toHaveBeenCalled();
+    });
+
+    it("rejects a retention change from a role without organization.admin", async () => {
+      const res = createRes();
+      await updateSettings(createReq({ role: "Editor", body: { retention_events_days: 60 } }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(mockUpdateSettings).not.toHaveBeenCalled();
     });
 
     it("should return 200 on success", async () => {

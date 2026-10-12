@@ -17,6 +17,11 @@ let mockIsSuperAdmin = false;
 vi.mock("../../../../application/hooks/useAuth", () => ({
   useAuth: () => ({ userRoleName: mockRole, isSuperAdmin: mockIsSuperAdmin }),
 }));
+// Admin holds organization.admin; "Compliance lead" is a custom role granted it.
+vi.mock("../../../../application/hooks/useMyPermissions", () => ({
+  useHasPermission: (key: string) =>
+    key === "organization.admin" && (mockRole === "Admin" || mockRole === "Compliance lead"),
+}));
 
 const settings: IMrmOrgSettings = {
   organization_id: 1,
@@ -103,6 +108,15 @@ describe("RetentionSection", () => {
 
     expect(screen.getByDisplayValue("24")).not.toBeDisabled();
     expect(screen.queryByText("Only admins can change retention periods")).not.toBeInTheDocument();
+    expect(screen.getByText("Save retention").closest("button")).not.toBeDisabled();
+  });
+
+  it("is editable for a custom role granted organization.admin", () => {
+    mockRole = "Compliance lead";
+    mockUseMrmSettings.mockReturnValue({ data: settings });
+    renderWithProviders(<RetentionSection onError={onError} onSuccess={onSuccess} />);
+
+    expect(screen.getByDisplayValue("24")).not.toBeDisabled();
     expect(screen.getByText("Save retention").closest("button")).not.toBeDisabled();
   });
 

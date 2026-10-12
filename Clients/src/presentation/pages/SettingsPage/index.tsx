@@ -10,6 +10,7 @@ import Preferences from "./Preferences/index";
 import Features from "./Features/index";
 import allowedRoles from "../../../application/constants/permissions";
 import { useAuth } from "../../../application/hooks/useAuth";
+import { useHasPermission } from "../../../application/hooks/useMyPermissions";
 import ApiKeys from "./ApiKeys";
 import AuditLedger from "./AuditLedger";
 import DataRetention from "./DataRetention";
@@ -52,6 +53,9 @@ export default function ProfilePage() {
   const isApiKeysDisabled = !allowedRoles.apiKeys?.view?.includes(userRoleName);
   const isFeaturesDisabled = !allowedRoles.features?.manage?.includes(userRoleName);
   const isAuditLedgerDisabled = userRoleName !== "Admin";
+  // Data retention follows the organization.admin permission its routes
+  // authorize on, so a custom role granted it gets the tab too.
+  const canManageRetention = useHasPermission("organization.admin", { fallbackToAdmin: true });
   const isCustomFieldsDisabled = userRoleName !== "Admin";
 
   const { tab } = useParams<{ tab?: string }>();
@@ -171,7 +175,7 @@ export default function ProfilePage() {
                   },
                 ]
               : []),
-            ...(!isAuditLedgerDisabled
+            ...(canManageRetention
               ? [
                   {
                     label: "Data retention",
@@ -252,7 +256,7 @@ export default function ProfilePage() {
             <AuditLedger />
           </TabPanel>
         )}
-        {!isAuditLedgerDisabled && (
+        {canManageRetention && (
           <TabPanel sx={{ p: 0 }} value="data-retention">
             <DataRetention />
           </TabPanel>

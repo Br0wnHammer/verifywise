@@ -1,5 +1,21 @@
 import { appendToAuditLedger } from "./auditLedger.utils";
 import { logFailure } from "./logger/logHelper";
+import { roleHasPermission } from "./rolePermissions.utils";
+
+/**
+ * Whether a role may change organization-wide retention periods: the same
+ * `organization.admin` permission the Data retention routes authorize on, so
+ * a custom role granted it qualifies. SuperAdmin keeps the access these
+ * handlers always gave it.
+ */
+export async function canChangeRetentionPeriods(
+  organizationId: number | null | undefined,
+  role: string | undefined,
+): Promise<boolean> {
+  if (!role) return false;
+  if (role === "SuperAdmin") return true;
+  return roleHasPermission(organizationId ?? null, role, "organization.admin");
+}
 
 /**
  * Leave a durable trace of a retention period change in the audit ledger.
