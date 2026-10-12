@@ -20,13 +20,15 @@ import {
   postConfig,
   postImport,
   postSync,
+  removeMissingCtrl,
 } from "./jiraAssets.ctrl";
 
 const router = express.Router();
 router.use(authenticateJWT);
 router.use(requireExtensionEnabled("jira-assets"));
 
-// Writes (config, sync settings, selection, import, sync, use-case delete) need "extension.admin" — the
+// Writes (config, sync settings, selection, import, sync, removing missing use
+// cases, use-case delete) need "extension.admin" — the
 // same permission as enabling or configuring an extension in the catalog.
 // Reads stay open to any member of an org with the extension enabled, because
 // the use-case views in the project pages call them.
@@ -61,6 +63,8 @@ router.get("/sync/history", getSyncHistoryCtrl);
 
 // Use cases
 router.get("/use-cases", listUseCasesCtrl);
+// Explicit removal of use cases flagged as missing in Jira (syncs never delete).
+router.post("/use-cases/remove-missing", authorize("extension.admin"), removeMissingCtrl);
 router.get("/use-cases/:id", getUseCaseCtrl);
 router.delete("/use-cases/:id", authorize("extension.admin"), deleteUseCaseCtrl);
 

@@ -158,6 +158,26 @@ describe("cloud pagination (startAt / maxResults / isLast)", () => {
   });
 });
 
+describe("errors thrown by onPage", () => {
+  it("propagate unchanged, even after the deadline fired (not a deadline stop)", async () => {
+    class Superseded extends Error {}
+    const controller = new AbortController();
+    cloudPages({ values: objects(0, PAGE_SIZE), isLast: false });
+
+    const err = await cloud()
+      .getAllObjects("42", {
+        deadline: controller.signal,
+        onPage: async () => {
+          controller.abort();
+          throw new Superseded("run closed");
+        },
+      })
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(Superseded);
+  });
+});
+
 describe("data center pagination (page / resultPerPage / pageSize)", () => {
   it("is complete when the reported last page is a partial page", async () => {
     mockFetch

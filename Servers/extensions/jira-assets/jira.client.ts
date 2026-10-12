@@ -291,8 +291,8 @@ export class JiraAssetsClient {
    *   extra (empty) request.
    *
    * Anything else — on cloud an empty page without isLast, MAX_PAGES, the
-   * overall deadline — returns `complete: false`, and callers must not treat
-   * missing objects as deleted.
+   * overall deadline — returns `complete: false`, and callers must not flag
+   * objects missing from the result as gone from Jira.
    */
   async getAllObjects(
     objectTypeId: string,
@@ -339,7 +339,12 @@ export class JiraAssetsClient {
       }
       return { objects, complete: false };
     } catch (err) {
-      if (deadline.aborted) return { objects, complete: false, stoppedReason: "deadline" };
+      // Only a request the deadline cut off is a deadline stop. Anything else
+      // — notably an error thrown by onPage (the sync's heartbeat finding the
+      // run superseded) — propagates unchanged.
+      if (err instanceof JiraUpstreamError && deadline.aborted) {
+        return { objects, complete: false, stoppedReason: "deadline" };
+      }
       throw err;
     }
   }

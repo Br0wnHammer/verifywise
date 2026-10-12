@@ -22,6 +22,7 @@ import { RefreshCw, Download } from "lucide-react";
 import { VWField, VWSelect, VWToggle } from "./VWComponents";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
+import StandardModal from "../../../components/Modals/StandardModal";
 import { useAuth } from "../../../../application/hooks/useAuth";
 import { getApiErrorReason } from "../../../../application/utils/apiErrorReason";
 
@@ -30,8 +31,14 @@ const SYNC_SLOW_MESSAGE =
   "The sync is taking longer than expected. Check the last sync result later.";
 const SELECTION_SAVE_FAILED = "Could not save the schema and object type. Try again.";
 const SYNC_STALLED_MESSAGE = "The sync stopped responding. Try again.";
+const SYNC_NOT_STARTED_MESSAGE = "The sync did not start. Try again.";
+const MISSING_REMOVED_MESSAGE = "Missing use cases removed.";
+const MISSING_EXPLAINER =
+  "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.";
 /** error_message the server writes when it closes a run that stopped heart-beating. */
 const ABANDONED_RUN_MESSAGE = "Sync stopped responding and was marked as abandoned";
+/** Polls with nothing queued, nothing running and no new run before we say it did not start. */
+const NOT_STARTED_AFTER_POLLS = 3;
 /** "Sync now" runs in the background; poll its status at this rate, up to the limit. */
 const SYNC_POLL_MS = 3000;
 const SYNC_POLL_LIMIT_MS = 20 * 60 * 1000;
@@ -70,6 +77,8 @@ interface ImportedUseCase {
   data: any;
   last_synced_at: string;
   sync_status: string;
+  /** Set by a sync that did not find the object in Jira; cleared when it reappears. */
+  missing_in_jira_since?: string | null;
 }
 
 export const JiraAssetsConfiguration: React.FC = () => {
@@ -362,36 +371,32 @@ export const JiraAssetsConfiguration: React.FC = () => {
 
   // Re-read the last-sync fields (not the connection form, which may hold
   // unsaved edits) so the "Last sync" line shows what the server recorded.
-  // With `historyId`, the response also carries that run as `run`.
-  const readSyncStatus = useCallback(
-    async (historyId?: number) => {
-      const status = await pluginApiCall(
-        "GET",
-        historyId ? `/sync/status?historyId=${historyId}` : "/sync/status",
-      );
-      if (status) {
-        setLocalConfig((prev) => ({
-          ...prev,
-          last_sync_at: status.last_sync_at,
-          last_sync_status: status.last_sync_status,
-          last_sync_message: status.last_sync_message,
-        }));
-      }
-      return status;
-    },
-    [pluginApiCall],
-  );
+  const readSyncStatus = useCallback(async () => {
+    const status = await pluginApiCall("GET", "/sync/status");
+    if (status) {
+      setLocalConfig((prev) => ({
+        ...prev,
+        last_sync_at: status.last_sync_at,
+        last_sync_status: status.last_sync_status,
+        last_sync_message: status.last_sync_message,
+      }));
+    }
+    return status;
+  }, [pluginApiCall]);
 
-  // "Sync now" returns 202 with the run's id and runs in the worker. Poll that
-  // run until it is no longer `started` — or no longer live, which means it
-  // stopped responding — then report that run's own result.
+  // "Sync now" queues a job (202) and the worker claims the run when it picks
+  // it up. The response names the newest run before the click; poll until
+  // nothing is queued or running and a newer run has finished, then report
+  // that run. A newer run that stopped heart-beating is reported as stalled;
+  // if nothing new appears while nothing is queued or running, the job never
+  // started.
   const handleSyncNow = async () => {
     setIsSyncing(true);
     setSyncMessage(null);
-    let historyId: number | undefined;
+    let previousRunId: number | null = null;
     try {
       const started = await pluginApiCall("POST", "/sync");
-      historyId = Number(started?.historyId) || undefined;
+      previousRunId = started?.previousRunId ?? null;
     } catch (error: any) {
       setSyncMessage({
         type: "error",
@@ -403,47 +408,87 @@ export const JiraAssetsConfiguration: React.FC = () => {
       setIsSyncing(false);
       return;
     }
-    if (!historyId) {
-      setSyncMessage({ type: "error", text: "Sync failed" });
-      setIsSyncing(false);
-      return;
-    }
 
     const giveUpAt = Date.now() + SYNC_POLL_LIMIT_MS;
     let run: any = null;
-    let settled = false;
+    let outcome: "done" | "stalled" | "not_started" | "timeout" = "timeout";
+    let idlePolls = 0;
     while (mountedRef.current && Date.now() < giveUpAt) {
       await sleep(SYNC_POLL_MS);
+      let status: any;
       try {
-        const status = await readSyncStatus(historyId);
-        run = status?.run ?? null;
+        status = await readSyncStatus();
       } catch (error) {
         console.warn("[JiraConfig] could not read sync status:", error);
         continue;
       }
-      if (!run || run.status !== "started" || !run.is_live) {
-        settled = true;
+      const latest = status?.latest_run ?? null;
+      const isNew = !!latest && latest.id !== previousRunId;
+      if (isNew && latest.status !== "started") {
+        run = latest;
+        outcome = "done";
+        break;
+      }
+      if (isNew && !latest.is_live) {
+        outcome = "stalled";
+        break;
+      }
+      // `queued` is null when the queue state is unknown: keep waiting.
+      const idle = !isNew && status?.queued === false && !status?.running;
+      idlePolls = idle ? idlePolls + 1 : 0;
+      if (idlePolls >= NOT_STARTED_AFTER_POLLS) {
+        outcome = "not_started";
         break;
       }
     }
     if (!mountedRef.current) return;
     setIsSyncing(false);
 
-    if (!settled) {
+    if (outcome === "timeout") {
       setSyncMessage({ type: "error", text: SYNC_SLOW_MESSAGE });
-    } else if (!run) {
-      setSyncMessage({ type: "error", text: "Sync failed" });
+    } else if (outcome === "not_started") {
+      setSyncMessage({ type: "error", text: SYNC_NOT_STARTED_MESSAGE });
+    } else if (outcome === "stalled" || run?.error_message === ABANDONED_RUN_MESSAGE) {
+      setSyncMessage({ type: "error", text: SYNC_STALLED_MESSAGE });
     } else if (run.status === "completed") {
-      const unlinked = run.links_removed ? `, ${run.links_removed} unlinked` : "";
       setSyncMessage({
         type: "success",
-        text: `Sync completed: ${run.objects_created || 0} created, ${run.objects_updated || 0} updated, ${run.objects_deleted || 0} deleted${unlinked}`,
+        text: `Sync completed: ${run.objects_created || 0} created, ${run.objects_updated || 0} updated`,
       });
       await loadImportedUseCases();
-    } else if (run.status === "started" || run.error_message === ABANDONED_RUN_MESSAGE) {
-      setSyncMessage({ type: "error", text: SYNC_STALLED_MESSAGE });
     } else {
       setSyncMessage({ type: "error", text: run.error_message || "Sync failed" });
+    }
+  };
+
+  // Use cases a sync flagged as missing in Jira. Syncs never delete; an
+  // Admin removes them here, after confirming.
+  const missingUseCases = importedUseCases.filter((uc) => !!uc.missing_in_jira_since);
+  const [isRemoveMissingOpen, setIsRemoveMissingOpen] = useState(false);
+  const [isRemovingMissing, setIsRemovingMissing] = useState(false);
+
+  const handleRemoveMissing = async () => {
+    setIsRemovingMissing(true);
+    setSyncMessage(null);
+    try {
+      await pluginApiCall("POST", "/use-cases/remove-missing", {
+        // Exactly the list the Admin saw; the server removes only those still flagged.
+        use_case_ids: missingUseCases.map((uc) => uc.id),
+      });
+      setSyncMessage({ type: "success", text: MISSING_REMOVED_MESSAGE });
+      setIsRemoveMissingOpen(false);
+      await loadImportedUseCases();
+    } catch (error: any) {
+      setSyncMessage({
+        type: "error",
+        text:
+          error?.status === 409
+            ? SYNC_RUNNING_MESSAGE
+            : getApiErrorReason(error) || error?.message || "Failed to remove use cases",
+      });
+      setIsRemoveMissingOpen(false);
+    } finally {
+      setIsRemovingMissing(false);
     }
   };
 
@@ -1182,6 +1227,119 @@ export const JiraAssetsConfiguration: React.FC = () => {
               </Button>
             </Box>
           )}
+
+          {/* Use cases flagged as missing in Jira: listed, removed only on request */}
+          {missingUseCases.length > 0 && (
+            <Box sx={{ mt: 3 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "8px",
+                  mb: 1,
+                }}
+              >
+                <Typography variant="subtitle2" fontWeight={600} sx={{ color: "#344054" }}>
+                  <span>Missing in Jira</span> <span>({missingUseCases.length})</span>
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={() => setIsRemoveMissingOpen(true)}
+                  disabled={!canManageSync || isRemovingMissing}
+                  sx={{
+                    "borderColor": "#c62828",
+                    "color": "#c62828",
+                    "textTransform": "none",
+                    "fontSize": "13px",
+                    "&:hover": {
+                      borderColor: "#b71c1c",
+                      backgroundColor: "rgba(198, 40, 40, 0.04)",
+                    },
+                    "&:disabled": { borderColor: "#d0d5dd", color: "#98a2b3" },
+                  }}
+                >
+                  Remove missing use cases
+                </Button>
+              </Box>
+              <Typography
+                variant="body2"
+                fontSize={12}
+                color="text.secondary"
+                sx={{ mb: 1.5, display: "block" }}
+              >
+                {MISSING_EXPLAINER}
+              </Typography>
+              <TableContainer
+                component={Paper}
+                sx={{ maxHeight: 250, boxShadow: "none", border: "1px solid #e4e7ec" }}
+              >
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell
+                        sx={{ fontWeight: 600, fontSize: "12px", backgroundColor: "#f9fafb" }}
+                      >
+                        Key
+                      </TableCell>
+                      <TableCell
+                        sx={{ fontWeight: 600, fontSize: "12px", backgroundColor: "#f9fafb" }}
+                      >
+                        Name
+                      </TableCell>
+                      <TableCell
+                        sx={{ fontWeight: 600, fontSize: "12px", backgroundColor: "#f9fafb" }}
+                      >
+                        Missing since
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {missingUseCases.map((uc) => {
+                      const data = typeof uc.data === "string" ? JSON.parse(uc.data) : uc.data;
+                      return (
+                        <TableRow key={uc.id}>
+                          <TableCell sx={{ fontSize: "13px", fontFamily: "monospace" }}>
+                            {data?.objectKey || "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "13px" }}>
+                            {uc.name || data?.label || "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "13px" }}>
+                            {formatDate(new Date(uc.missing_in_jira_since as string))}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+
+          <StandardModal
+            isOpen={isRemoveMissingOpen}
+            onClose={() => setIsRemoveMissingOpen(false)}
+            title="Remove missing use cases"
+            description="These use cases and all their data in VerifyWise will be permanently deleted. This cannot be undone."
+            onSubmit={handleRemoveMissing}
+            submitButtonText="Remove"
+            submitButtonColor="#c62828"
+            isSubmitting={isRemovingMissing}
+            fitContent
+          >
+            <Stack spacing={1}>
+              {missingUseCases.map((uc) => {
+                const data = typeof uc.data === "string" ? JSON.parse(uc.data) : uc.data;
+                return (
+                  <Typography key={uc.id} variant="body2" fontSize={13}>
+                    {data?.objectKey ? `${data.objectKey} · ` : ""}
+                    {uc.name || data?.label || "-"}
+                  </Typography>
+                );
+              })}
+            </Stack>
+          </StandardModal>
 
           {/* Imported Use Cases Table */}
           {importedUseCases.length > 0 && (

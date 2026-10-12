@@ -3,6 +3,10 @@ import { STATUS_CODE } from "../../utils/statusCode.utils";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
 import { translateError } from "../../utils/i18n.utils";
 import { JiraAssetsClient, JiraUpstreamError } from "./jira.client";
+import {
+  BackgroundJobsUnavailableError,
+  hasPendingJiraAssetsSyncJob,
+} from "../../services/automations/automationProducer";
 import { VW_AI_SYSTEM_ATTRIBUTES, transformAttributes } from "./jira.constants";
 import {
   clientFromConfig,
@@ -20,6 +24,7 @@ import {
   JiraSyncInProgressError,
   listUseCases,
   loadFullConfig,
+  removeMissingUseCases,
   saveConfig,
   startManualSync,
   updateSelection,
@@ -60,6 +65,7 @@ async function requireClient(organizationId: number): Promise<JiraAssetsClient> 
  * - JiraSyncInProgressError → 409
  * - JiraImportInterruptedError → 409 with { message, imported, skipped }
  * - JiraUpstreamError (Jira response, timeout, DNS/TLS) → 502
+ * - BackgroundJobsUnavailableError (queue did not answer) → 503
  * - anything else → 500, logged
  */
 function sendError(req: Request, res: Response, err: unknown, functionName: string) {
@@ -81,6 +87,9 @@ function sendError(req: Request, res: Response, err: unknown, functionName: stri
   }
   if (err instanceof JiraUpstreamError) {
     return res.status(502).json(STATUS_CODE[502](err.message));
+  }
+  if (err instanceof BackgroundJobsUnavailableError) {
+    return res.status(503).json(STATUS_CODE[503](err.message));
   }
   logStructured("error", `jira ${functionName} failed`, functionName, fileName);
   logger.error(`❌ Error in jira ${functionName}:`, err);
@@ -242,18 +251,24 @@ export async function postSync(req: Request, res: Response): Promise<any> {
   }
 }
 
+/**
+ * GET /sync/status — last-sync fields, `running`, `latest_run` (with
+ * `is_live`), plus `queued`: whether a sync job for the org is waiting in the
+ * queue. If the queue does not answer, `queued` is null rather than failing
+ * the whole response.
+ */
 export async function getSyncStatusCtrl(req: Request, res: Response): Promise<any> {
   try {
-    // Number(), not parseInt: "12abc" or "1.5" must be rejected, not truncated.
-    const rawId = req.query?.historyId;
-    const historyId = rawId === undefined ? null : Number(rawId);
-    if (historyId !== null && (!Number.isInteger(historyId) || historyId <= 0)) {
-      return res.status(400).json(STATUS_CODE[400]("historyId must be a positive integer"));
+    const status = await getSyncStatus(orgId(req));
+    let queued: boolean | null = null;
+    try {
+      queued = await hasPendingJiraAssetsSyncJob(orgId(req));
+    } catch (err) {
+      logger.warn(`jira sync status: queue state unavailable: ${(err as Error).message}`);
     }
-    const status = await getSyncStatus(orgId(req), historyId);
-    return res.status(200).json(STATUS_CODE[200](status));
-  } catch (err: any) {
-    return res.status(500).json(STATUS_CODE[500](err.message));
+    return res.status(200).json(STATUS_CODE[200](status ? { ...status, queued } : status));
+  } catch (err) {
+    return sendError(req, res, err, "getSyncStatus");
   }
 }
 
@@ -287,6 +302,21 @@ export async function getUseCaseCtrl(req: Request, res: Response): Promise<any> 
     return res.status(200).json(STATUS_CODE[200](useCase));
   } catch (err: any) {
     return res.status(500).json(STATUS_CODE[500](err.message));
+  }
+}
+
+/**
+ * POST /use-cases/remove-missing — delete the use cases the admin chose from
+ * the "Missing in Jira" list (`{ use_case_ids: number[] }`). Only ids still
+ * flagged as missing are removed; returns `{ removed, skipped }`. 409 while a
+ * sync or import is running.
+ */
+export async function removeMissingCtrl(req: Request, res: Response): Promise<any> {
+  try {
+    const result = await removeMissingUseCases(orgId(req), uid(req), req.body?.use_case_ids);
+    return res.status(200).json(STATUS_CODE[200](result));
+  } catch (err) {
+    return sendError(req, res, err, "removeMissing");
   }
 }
 

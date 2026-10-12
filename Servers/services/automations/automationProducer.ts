@@ -325,23 +325,91 @@ export async function scheduleAiDetectionScanCheck() {
   );
 }
 
+/** The queue (Redis) did not answer in time, or refused the call. Controllers map it to 503. */
+export class BackgroundJobsUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super("Background jobs are unavailable");
+    this.name = "BackgroundJobsUnavailableError";
+    if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
+  }
+}
+
+/** Upper bound for one queue call made on behalf of an HTTP request. */
+export const QUEUE_CALL_TIMEOUT_MS = 5000;
+
+/** Run a queue call with QUEUE_CALL_TIMEOUT_MS; any failure becomes BackgroundJobsUnavailableError. */
+async function withQueueTimeout<T>(op: () => Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      op(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new BackgroundJobsUnavailableError()),
+          QUEUE_CALL_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } catch (err) {
+    if (err instanceof BackgroundJobsUnavailableError) throw err;
+    throw new BackgroundJobsUnavailableError(err);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** One Jira Assets sync job per org at a time: the job id is fixed per org. */
+export function jiraAssetsSyncJobId(organizationId: number): string {
+  return `jira-assets-sync-${organizationId}`;
+}
+
+const PENDING_JOB_STATES = new Set([
+  "waiting",
+  "delayed",
+  "active",
+  "prioritized",
+  "waiting-children",
+]);
+
+/** True when a Jira Assets sync job for the org is waiting or running in the queue. */
+export async function hasPendingJiraAssetsSyncJob(organizationId: number): Promise<boolean> {
+  return withQueueTimeout(async () => {
+    const job = await automationQueue.getJob(jiraAssetsSyncJobId(organizationId));
+    return !!job && PENDING_JOB_STATES.has(await job.getState());
+  });
+}
+
 /**
- * Run one Jira Assets sync in the worker: a manual "Sync now", or a scheduled
- * refresh queued by the 5-minute check (one job per due org). The history row
- * is already claimed by the caller; the job only carries ids and the sync
- * type. One attempt: a retry would run against a row the first attempt may
- * already have closed.
+ * Queue one Jira Assets sync for the worker: a manual "Sync now" or a
+ * scheduled refresh. The worker claims the run when it picks the job up, so
+ * time spent waiting in the queue never counts against the run's heartbeat.
+ * The job id is fixed per org, so a double click or overlapping scheduler
+ * ticks cannot queue two: if one is already waiting or running, nothing is
+ * added and `queued` is false. Finished jobs are removed (complete or failed)
+ * so they never block the next one. One attempt: a retry is the next tick or
+ * click. Throws BackgroundJobsUnavailableError if the queue does not answer
+ * within QUEUE_CALL_TIMEOUT_MS.
  */
 export async function enqueueJiraAssetsSyncRun(data: {
   organizationId: number;
-  historyId: number;
   triggeredBy: number | null;
   syncType: "manual" | "scheduled";
-}) {
-  return automationQueue.add("jira_assets_sync_run", data, {
-    attempts: 1,
-    removeOnComplete: true,
-    removeOnFail: false,
+}): Promise<{ jobId: string; queued: boolean }> {
+  const jobId = jiraAssetsSyncJobId(data.organizationId);
+  return withQueueTimeout(async () => {
+    const existing = await automationQueue.getJob(jobId);
+    if (existing) {
+      if (PENDING_JOB_STATES.has(await existing.getState())) return { jobId, queued: false };
+      // A finished job left behind would make BullMQ ignore the add.
+      await existing.remove();
+    }
+    await automationQueue.add("jira_assets_sync_run", data, {
+      jobId,
+      attempts: 1,
+      removeOnComplete: true,
+      removeOnFail: true,
+    });
+    return { jobId, queued: true };
   });
 }
 

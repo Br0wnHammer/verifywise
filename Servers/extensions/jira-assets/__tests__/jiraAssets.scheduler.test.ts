@@ -6,7 +6,7 @@ import {
 } from "../jiraAssets.scheduler";
 import { SQL_NOW_UTC, sqlIntervalElapsed, sqlWithinLastMinutes } from "../../scheduledSync.utils";
 import { sequelize } from "../../../database/db";
-import { JiraSyncInProgressError, startScheduledSync } from "../jiraAssets.service";
+import { startScheduledSync } from "../jiraAssets.service";
 
 jest.mock("../../../database/db", () => ({
   sequelize: { query: jest.fn() },
@@ -17,10 +17,8 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
   logStructured: jest.fn(),
 }));
 jest.mock("../jiraAssets.service", () => {
-  class MockInProgress extends Error {}
   return {
     startScheduledSync: jest.fn(),
-    JiraSyncInProgressError: MockInProgress,
     SQL_RUN_IS_LIVE: "(LIVE_CHECK)",
   };
 });
@@ -115,7 +113,7 @@ describe("runJiraAssetsScheduledSyncAllOrgs", () => {
       candidate({ organization_id: 4, running_is_live: true }),
       candidate({ organization_id: 5 }),
     ]);
-    mockStart.mockResolvedValue({ historyId: 9 });
+    mockStart.mockResolvedValue({ jobId: "j", queued: true });
 
     const summary = await runJiraAssetsScheduledSyncAllOrgs();
 
@@ -124,14 +122,14 @@ describe("runJiraAssetsScheduledSyncAllOrgs", () => {
     expect(summary).toEqual({ candidates: 5, queued: 2, failed: 0, skippedRunning: 1 });
   });
 
-  it("skips an org another tick already claimed, and carries on", async () => {
+  it("skips an org whose job is already waiting (overlapping ticks)", async () => {
     mockQuery.mockResolvedValueOnce([
       candidate({ organization_id: 1 }),
       candidate({ organization_id: 2 }),
     ]);
     mockStart
-      .mockRejectedValueOnce(new JiraSyncInProgressError())
-      .mockResolvedValueOnce({ historyId: 9 });
+      .mockResolvedValueOnce({ jobId: "jira-assets-sync-1", queued: false })
+      .mockResolvedValueOnce({ jobId: "jira-assets-sync-2", queued: true });
 
     const summary = await runJiraAssetsScheduledSyncAllOrgs();
 
@@ -145,8 +143,8 @@ describe("runJiraAssetsScheduledSyncAllOrgs", () => {
       candidate({ organization_id: 2 }),
     ]);
     mockStart
-      .mockRejectedValueOnce(new Error("redis down"))
-      .mockResolvedValueOnce({ historyId: 9 });
+      .mockRejectedValueOnce(new Error("Background jobs are unavailable"))
+      .mockResolvedValueOnce({ jobId: "j", queued: true });
 
     const summary = await runJiraAssetsScheduledSyncAllOrgs();
 

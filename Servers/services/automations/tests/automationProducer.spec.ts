@@ -10,11 +10,13 @@ jest.mock("bullmq", () => {
   const mockAdd = jest.fn().mockResolvedValue({ id: "job-1" });
   const mockObliterate = jest.fn().mockResolvedValue(undefined);
   const mockUpsertJobScheduler = jest.fn().mockResolvedValue({ id: "job-1" });
+  const mockGetJob = jest.fn().mockResolvedValue(undefined);
   return {
     Queue: jest.fn().mockImplementation(() => ({
       add: mockAdd,
       obliterate: mockObliterate,
       upsertJobScheduler: mockUpsertJobScheduler,
+      getJob: mockGetJob,
     })),
   };
 });
@@ -44,6 +46,9 @@ import {
   scheduleFileExpirySweep,
   scheduleJiraAssetsScheduledSyncCheck,
   enqueueJiraAssetsSyncRun,
+  hasPendingJiraAssetsSyncJob,
+  BackgroundJobsUnavailableError,
+  QUEUE_CALL_TIMEOUT_MS,
 } from "../automationProducer";
 
 const mockAdd = automationQueue.add as jest.MockedFunction<typeof automationQueue.add>;
@@ -214,18 +219,74 @@ describe("automationProducer", () => {
   });
 
   describe("enqueueJiraAssetsSyncRun", () => {
-    it("queues one attempt carrying only ids and the sync type", async () => {
-      await enqueueJiraAssetsSyncRun({
-        organizationId: 5,
-        historyId: 77,
-        triggeredBy: null,
-        syncType: "scheduled",
+    const mockGetJob = automationQueue.getJob as unknown as jest.Mock;
+    const payload = { organizationId: 5, triggeredBy: null, syncType: "scheduled" as const };
+
+    beforeEach(() => {
+      mockGetJob.mockReset();
+      mockGetJob.mockResolvedValue(undefined);
+    });
+
+    it("queues one attempt under a fixed per-org job id, removed when done", async () => {
+      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
+        jobId: "jira-assets-sync-5",
+        queued: true,
       });
 
-      expect(mockAdd).toHaveBeenCalledWith(
-        "jira_assets_sync_run",
-        { organizationId: 5, historyId: 77, triggeredBy: null, syncType: "scheduled" },
-        { attempts: 1, removeOnComplete: true, removeOnFail: false },
+      expect(mockAdd).toHaveBeenCalledWith("jira_assets_sync_run", payload, {
+        jobId: "jira-assets-sync-5",
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+    });
+
+    it("does not queue a second job while one is waiting or running", async () => {
+      mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("waiting") });
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
+        jobId: "jira-assets-sync-5",
+        queued: false,
+      });
+      expect(mockAdd).not.toHaveBeenCalled();
+    });
+
+    it("clears a finished job left behind before queueing", async () => {
+      const remove = jest.fn().mockResolvedValue(undefined);
+      mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("failed"), remove });
+
+      await enqueueJiraAssetsSyncRun(payload);
+
+      expect(remove).toHaveBeenCalled();
+      expect(mockAdd).toHaveBeenCalled();
+    });
+
+    it("reports pending jobs", async () => {
+      mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("active") });
+      await expect(hasPendingJiraAssetsSyncJob(5)).resolves.toBe(true);
+
+      mockGetJob.mockResolvedValue(undefined);
+      await expect(hasPendingJiraAssetsSyncJob(5)).resolves.toBe(false);
+    });
+
+    it("gives up after QUEUE_CALL_TIMEOUT_MS with BackgroundJobsUnavailableError", async () => {
+      jest.useFakeTimers();
+      try {
+        mockGetJob.mockReturnValue(new Promise(() => undefined)); // Redis never answers
+        const pending = enqueueJiraAssetsSyncRun(payload);
+        const assertion = expect(pending).rejects.toBeInstanceOf(BackgroundJobsUnavailableError);
+        jest.advanceTimersByTime(QUEUE_CALL_TIMEOUT_MS);
+        await assertion;
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("turns a queue error into BackgroundJobsUnavailableError", async () => {
+      mockGetJob.mockRejectedValue(new Error("ECONNREFUSED"));
+
+      await expect(enqueueJiraAssetsSyncRun(payload)).rejects.toBeInstanceOf(
+        BackgroundJobsUnavailableError,
       );
     });
   });

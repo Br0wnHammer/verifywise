@@ -9711,7 +9711,17 @@ export const translations: Record<string, Record<string, string>> = {
     "The sync stopped responding. Try again.":
       "Die Synchronisierung reagiert nicht mehr. Versuchen Sie es erneut.",
     "Sync failed": "Synchronisierung fehlgeschlagen",
-    "The sync waited too long to start": "Die Synchronisierung hat zu lange auf den Start gewartet",
+    "Missing in Jira": "Fehlt in Jira",
+    "Missing since": "Fehlt seit",
+    "Remove missing use cases": "Fehlende Anwendungsfälle entfernen",
+    "Failed to remove use cases": "Anwendungsfälle konnten nicht entfernt werden",
+    "Missing use cases removed.": "Fehlende Anwendungsfälle wurden entfernt.",
+    "The sync did not start. Try again.":
+      "Die Synchronisierung wurde nicht gestartet. Versuchen Sie es erneut.",
+    "These use cases and all their data in VerifyWise will be permanently deleted. This cannot be undone.":
+      "Diese Anwendungsfälle und alle zugehörigen Daten in VerifyWise werden dauerhaft gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.":
+      "Jira liefert diese Objekte nicht mehr. Synchronisierungen behalten ihre Anwendungsfälle; entfernen Sie sie hier, wenn sie wegfallen sollen.",
     "A sync is already running. Try again when it finishes.":
       "Es läuft bereits eine Synchronisierung. Versuchen Sie es erneut, wenn sie abgeschlossen ist.",
     "Error Details:": "Fehlerdetails:",
@@ -19819,8 +19829,16 @@ export const translations: Record<string, Record<string, string>> = {
     "Load more": "Charger plus",
     "The sync stopped responding. Try again.": "La synchronisation ne répond plus. Réessayez.",
     "Sync failed": "Échec de la synchronisation",
-    "The sync waited too long to start":
-      "La synchronisation a attendu trop longtemps avant de démarrer",
+    "Missing in Jira": "Absent de Jira",
+    "Missing since": "Absent depuis le",
+    "Remove missing use cases": "Supprimer les cas d'usage absents",
+    "Failed to remove use cases": "Impossible de supprimer les cas d'usage",
+    "Missing use cases removed.": "Les cas d'usage absents ont été supprimés.",
+    "The sync did not start. Try again.": "La synchronisation n'a pas démarré. Réessayez.",
+    "These use cases and all their data in VerifyWise will be permanently deleted. This cannot be undone.":
+      "Ces cas d'usage et toutes leurs données dans VerifyWise seront définitivement supprimés. Cette action est irréversible.",
+    "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.":
+      "Jira ne renvoie plus ces objets. Les synchronisations conservent leurs cas d'usage ; supprimez-les ici s'ils doivent disparaître.",
     "A sync is already running. Try again when it finishes.":
       "Une synchronisation est déjà en cours. Réessayez une fois qu'elle est terminée.",
     "Error Details:": "Détails de l'erreur :",
@@ -29855,7 +29873,16 @@ export const translations: Record<string, Record<string, string>> = {
     "The sync stopped responding. Try again.":
       "La sincronización dejó de responder. Inténtelo de nuevo.",
     "Sync failed": "Error de sincronización",
-    "The sync waited too long to start": "La sincronización esperó demasiado para comenzar",
+    "Missing in Jira": "Falta en Jira",
+    "Missing since": "Falta desde",
+    "Remove missing use cases": "Eliminar casos de uso que faltan",
+    "Failed to remove use cases": "No se pudieron eliminar los casos de uso",
+    "Missing use cases removed.": "Se eliminaron los casos de uso que faltaban.",
+    "The sync did not start. Try again.": "La sincronización no se inició. Inténtelo de nuevo.",
+    "These use cases and all their data in VerifyWise will be permanently deleted. This cannot be undone.":
+      "Estos casos de uso y todos sus datos en VerifyWise se eliminarán de forma permanente. Esta acción no se puede deshacer.",
+    "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.":
+      "Jira ya no devuelve estos objetos. Las sincronizaciones conservan sus casos de uso; elimínelos aquí si deben desaparecer.",
     "A sync is already running. Try again when it finishes.":
       "Ya hay una sincronización en curso. Inténtelo de nuevo cuando termine.",
     "Error Details:": "Detalles del error:",

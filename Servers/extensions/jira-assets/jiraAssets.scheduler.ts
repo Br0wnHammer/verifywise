@@ -2,7 +2,7 @@ import { QueryTypes } from "sequelize";
 import { sequelize } from "../../database/db";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
 import { sqlIntervalElapsed } from "../scheduledSync.utils";
-import { JiraSyncInProgressError, SQL_RUN_IS_LIVE, startScheduledSync } from "./jiraAssets.service";
+import { SQL_RUN_IS_LIVE, startScheduledSync } from "./jiraAssets.service";
 
 /**
  * Automatic Jira Assets sync.
@@ -14,13 +14,13 @@ import { JiraSyncInProgressError, SQL_RUN_IS_LIVE, startScheduledSync } from "./
  * `running_is_live` computed in SQL against NOW(), and the pure
  * `evaluateScheduledSync` turns those flags into a decision.
  *
- * For each due org the check only claims a run and queues it
- * (`startScheduledSync` → one `jira_assets_sync_run` job per org), so it
- * returns quickly and orgs sync independently in the worker. The claim comes
- * before the enqueue, so overlapping ticks cannot queue two runs for one org:
- * the second claim throws JiraSyncInProgressError and the org is skipped. A
- * scheduled run is refresh-only: it updates already-linked use cases and never
- * creates or deletes. An error for one org is logged and the loop moves on.
+ * For each due org the check only queues a job (`startScheduledSync` → one
+ * `jira_assets_sync_run` job per org), so it returns quickly and orgs sync
+ * independently in the worker, which claims the run at pickup. The job id is
+ * fixed per org, so overlapping ticks cannot queue two: the second finds the
+ * first waiting and the org is skipped. A scheduled run is refresh-only: it
+ * updates already-linked use cases, flags missing ones, and never creates or
+ * deletes. An error for one org is logged and the loop moves on.
  */
 
 const fileName = "jiraAssets.scheduler.ts";
@@ -122,14 +122,14 @@ export async function runJiraAssetsScheduledSyncAllOrgs(): Promise<JiraScheduled
     }
     if (decision !== "due") continue;
     try {
-      const { historyId } = await startScheduledSync(organizationId);
-      summary.queued++;
-      logger.info(`Jira Assets scheduled sync org ${organizationId}: queued run ${historyId}`);
-    } catch (error) {
-      if (error instanceof JiraSyncInProgressError) {
+      const { jobId, queued } = await startScheduledSync(organizationId);
+      if (!queued) {
         summary.skippedRunning++;
         continue;
       }
+      summary.queued++;
+      logger.info(`Jira Assets scheduled sync org ${organizationId}: queued job ${jobId}`);
+    } catch (error) {
       summary.failed++;
       logStructured(
         "error",

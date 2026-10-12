@@ -14380,7 +14380,7 @@ paths:
       summary: 'Post Sync'
       responses:
         '202':
-          description: 'Sync claimed and queued for the worker ({ historyId }); poll GET /extensions/jira-assets/sync/status for the outcome'
+          description: 'Sync job queued ({ jobId, previousRunId }); the worker claims the run at pickup. Poll GET /extensions/jira-assets/sync/status until nothing is queued or running and latest_run is newer than previousRunId'
         '400':
           description: 'No object type selected'
         '403':
@@ -14388,9 +14388,11 @@ paths:
         '404':
           description: 'Jira Assets is not configured'
         '409':
-          description: 'A Jira Assets sync or import is already running for this organization'
+          description: 'A run is live, or a sync job for this organization is already waiting'
         '500':
           description: 'Internal server error'
+        '503':
+          description: 'Background jobs are unavailable (the queue did not answer within 5 seconds)'
       tags:
         - Extensions
       operationId: postSync
@@ -14403,9 +14405,7 @@ paths:
       summary: 'Get Sync Status Ctrl'
       responses:
         '200':
-          description: 'Last-sync fields, running, latest_run, and with historyId the run as run (with is_live)'
-        '400':
-          description: 'historyId is not a positive integer'
+          description: 'Last-sync fields, running, latest_run (with is_live), and queued (a sync job waiting in the queue; null if the queue did not answer)'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
         '500':
@@ -14417,15 +14417,6 @@ paths:
         -
           bearerAuth: []
       description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
-      parameters:
-        -
-          name: historyId
-          in: query
-          required: false
-          description: 'A sync history id (from POST /sync) to return as run'
-          schema:
-            type: integer
-            minimum: 1
   /extensions/jira-assets/sync/history:
     get:
       summary: 'Get Sync History Ctrl'
@@ -14460,6 +14451,41 @@ paths:
         -
           bearerAuth: []
       description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+  /extensions/jira-assets/use-cases/remove-missing:
+    post:
+      summary: 'Remove Missing Ctrl'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - use_case_ids
+              properties:
+                use_case_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: 'Removed the listed use cases still flagged as missing in Jira ({ removed, skipped })'
+        '400':
+          description: 'use_case_ids is not a list of 1 to 1000 use case ids'
+        '403':
+          description: 'Extension not enabled for this organization, or role not allowed'
+        '409':
+          description: 'A Jira Assets sync or import is running for this organization'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: removeMissingCtrl
+      security:
+        -
+          bearerAuth: []
+      description: 'Deletes the listed use cases (projects and their data) that are still flagged as missing in Jira. Syncs never delete. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   '/extensions/jira-assets/use-cases/{id}':
     get:
       summary: 'Get Use Case Ctrl'
