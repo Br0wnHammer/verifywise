@@ -15,6 +15,7 @@ jest.mock("../../database/db", () => ({
 
 import {
   getSettingsQuery,
+  lockShadowAiSettings,
   updateSettingsQuery,
   SHADOW_AI_SETTINGS_DEFAULTS,
 } from "../shadowAiConfig.utils";
@@ -90,5 +91,24 @@ describe("getSettingsQuery", () => {
     mockQuery.mockResolvedValueOnce([[], 0]);
 
     await expect(getSettingsQuery(7)).resolves.toEqual(SHADOW_AI_SETTINGS_DEFAULTS);
+  });
+});
+
+describe("lockShadowAiSettings", () => {
+  it("creates a missing row, then reads it FOR UPDATE in the caller's transaction", async () => {
+    const tx = {} as any;
+    mockQuery
+      .mockResolvedValueOnce([[], 0])
+      .mockResolvedValueOnce([[{ organization_id: 7, retention_events_days: 30 }], 1]);
+
+    const row = await lockShadowAiSettings(7, tx);
+
+    const [insertSql, insertOpts] = mockQuery.mock.calls[0] as [string, any];
+    const [selectSql, selectOpts] = mockQuery.mock.calls[1] as [string, any];
+    expect(insertSql.replace(/\s+/g, " ")).toContain("ON CONFLICT (organization_id) DO NOTHING");
+    expect(selectSql).toContain("FOR UPDATE");
+    expect(insertOpts.transaction).toBe(tx);
+    expect(selectOpts.transaction).toBe(tx);
+    expect(row).toEqual({ organization_id: 7, retention_events_days: 30 });
   });
 });

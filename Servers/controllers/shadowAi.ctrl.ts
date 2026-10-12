@@ -46,6 +46,7 @@ import {
   updateSyslogConfigQuery,
   deleteSyslogConfigQuery,
   getSettingsQuery,
+  lockShadowAiSettings,
   updateSettingsQuery,
 } from "../utils/shadowAiConfig.utils";
 import { ShadowAiToolStatus } from "../domain.layer/interfaces/i.shadowAi";
@@ -1406,25 +1407,30 @@ export async function updateSettings(req: Request, res: Response) {
     if (!allowed) {
       return res.status(403).json(STATUS_CODE[403](req.t!("Only admins can manage settings")));
     }
-    let before: Awaited<ReturnType<typeof getSettingsQuery>> | null = null;
-    if (setsRetention) {
-      try {
-        before = (await getSettingsQuery(organizationId)) ?? null;
-      } catch (readError) {
-        // The update still goes through; the ledger entry will say "set to".
-        logger.warn(
-          `Reading Shadow AI settings before an update failed: ${(readError as Error)?.message ?? readError}`,
-        );
-      }
-    }
-
-    const updated = await updateSettingsQuery(organizationId, {
+    const settingsUpdate = {
       rate_limit_max_events_per_hour,
       retention_events_days,
       retention_daily_rollups_days,
       retention_alert_history_days,
       updated_by: userId,
-    });
+    };
+    let before: Awaited<ReturnType<typeof getSettingsQuery>> | null = null;
+    let updated: Awaited<ReturnType<typeof updateSettingsQuery>>;
+    if (setsRetention) {
+      // Read the old periods under a row lock in the save's transaction, so a
+      // concurrent save cannot make the ledger's "from" values stale.
+      const transaction = await sequelize.transaction();
+      try {
+        before = (await lockShadowAiSettings(organizationId, transaction)) ?? null;
+        updated = await updateSettingsQuery(organizationId, settingsUpdate, transaction);
+        await transaction.commit();
+      } catch (saveError) {
+        await transaction.rollback();
+        throw saveError;
+      }
+    } else {
+      updated = await updateSettingsQuery(organizationId, settingsUpdate);
+    }
 
     if (setsRetention && updated) {
       const changes = describeShadowAiRetentionChanges(before, updated, body);

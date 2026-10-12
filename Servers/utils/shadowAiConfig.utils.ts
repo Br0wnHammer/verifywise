@@ -151,6 +151,31 @@ export async function getSettingsQuery(organizationId: number): Promise<IShadowA
   return (rows as IShadowAiSettings[])[0];
 }
 
+/**
+ * Read the organization's settings inside `transaction`, holding a row lock
+ * until it ends, so a concurrent save cannot change them between this read and
+ * the caller's update. A missing row is first created with the column
+ * defaults, so there is always a row to lock.
+ */
+export async function lockShadowAiSettings(
+  organizationId: number,
+  transaction: Transaction,
+): Promise<IShadowAiSettings> {
+  await sequelize.query(
+    `INSERT INTO shadow_ai_settings (organization_id)
+     VALUES (:organizationId)
+     ON CONFLICT (organization_id) DO NOTHING`,
+    { replacements: { organizationId }, transaction },
+  );
+  const [rows] = await sequelize.query(
+    `SELECT * FROM shadow_ai_settings
+      WHERE organization_id = :organizationId
+      FOR UPDATE`,
+    { replacements: { organizationId }, transaction },
+  );
+  return (rows as IShadowAiSettings[])[0];
+}
+
 /** Clamp a submitted value at 0; undefined (not submitted) becomes null. */
 function nonNegativeOrNull(value: number | undefined): number | null {
   return value === undefined ? null : Math.max(0, value);

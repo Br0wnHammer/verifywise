@@ -31,6 +31,7 @@ jest.mock("../../utils/shadowAiConfig.utils", () => ({
   updateSyslogConfigQuery: jest.fn(),
   deleteSyslogConfigQuery: jest.fn(),
   getSettingsQuery: jest.fn(),
+  lockShadowAiSettings: jest.fn(),
   updateSettingsQuery: jest.fn(),
 }));
 jest.mock("../../utils/logger/logHelper", () => ({
@@ -76,6 +77,7 @@ import {
   deleteSyslogConfigQuery,
   getSettingsQuery,
   getSyslogConfigsQuery,
+  lockShadowAiSettings,
   updateSettingsQuery,
   updateSyslogConfigQuery,
 } from "../../utils/shadowAiConfig.utils";
@@ -155,6 +157,7 @@ const mockCreateSyslogConfig = createSyslogConfigQuery as jest.MockedFunction<an
 const mockUpdateSyslogConfig = updateSyslogConfigQuery as jest.MockedFunction<any>;
 const mockDeleteSyslogConfig = deleteSyslogConfigQuery as jest.MockedFunction<any>;
 const mockGetSettings = getSettingsQuery as jest.MockedFunction<any>;
+const mockLockSettings = lockShadowAiSettings as jest.MockedFunction<any>;
 const mockUpdateSettings = updateSettingsQuery as jest.MockedFunction<any>;
 const mockSequelizeQuery = sequelize.query as jest.MockedFunction<any>;
 const mockTransaction = sequelize.transaction as jest.MockedFunction<any>;
@@ -1132,7 +1135,7 @@ describe("shadowAi.ctrl", () => {
     };
 
     it("records a changed retention period in the audit ledger", async () => {
-      mockGetSettings.mockResolvedValue({ ...retention, rate_limit_max_events_per_hour: 100 });
+      mockLockSettings.mockResolvedValue({ ...retention, rate_limit_max_events_per_hour: 100 });
       mockUpdateSettings.mockResolvedValue({ ...retention, retention_events_days: 90 });
       const res = createRes();
       await updateSettings(createReq({ body: { retention_events_days: 90 } }), res);
@@ -1149,28 +1152,41 @@ describe("shadowAi.ctrl", () => {
     it("records nothing when only the rate limit changes", async () => {
       mockUpdateSettings.mockResolvedValue({ ...retention, rate_limit_max_events_per_hour: 5 });
       await updateSettings(createReq({ body: { rate_limit_max_events_per_hour: 5 } }), createRes());
-      expect(mockGetSettings).not.toHaveBeenCalled();
+      expect(mockLockSettings).not.toHaveBeenCalled();
       expect(appendRetentionChangeToLedger).not.toHaveBeenCalled();
     });
 
     it("records nothing when a retention value is sent unchanged", async () => {
-      mockGetSettings.mockResolvedValue(retention);
+      mockLockSettings.mockResolvedValue(retention);
       mockUpdateSettings.mockResolvedValue(retention);
       await updateSettings(createReq({ body: { retention_events_days: 30 } }), createRes());
       expect(appendRetentionChangeToLedger).not.toHaveBeenCalled();
     });
 
-    it("still saves and records 'set to' when reading the old settings fails", async () => {
-      mockGetSettings.mockRejectedValue(new Error("read failed"));
-      mockUpdateSettings.mockResolvedValue({ ...retention, retention_alert_history_days: 0 });
+    it("reads the old periods under a lock in the save's transaction", async () => {
+      const tx = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as jest.MockedFunction<any>).mockResolvedValueOnce(tx);
+      mockLockSettings.mockResolvedValue(retention);
+      mockUpdateSettings.mockResolvedValue({ ...retention, retention_events_days: 60 });
+      await updateSettings(createReq({ body: { retention_events_days: 60 } }), createRes());
+      expect(mockLockSettings).toHaveBeenCalledWith(1, tx);
+      expect(mockUpdateSettings).toHaveBeenCalledWith(1, expect.anything(), tx);
+      expect(tx.commit).toHaveBeenCalled();
+      expect(mockLockSettings.mock.invocationCallOrder[0]).toBeLessThan(
+        mockUpdateSettings.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("rolls back and saves nothing when the locked read fails", async () => {
+      const tx = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as jest.MockedFunction<any>).mockResolvedValueOnce(tx);
+      mockLockSettings.mockRejectedValue(new Error("read failed"));
       const res = createRes();
       await updateSettings(createReq({ body: { retention_alert_history_days: 0 } }), res);
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(appendRetentionChangeToLedger).toHaveBeenCalledWith(
-        expect.objectContaining({
-          description: "Shadow AI retention changed: alert history retention set to indefinitely",
-        }),
-      );
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(tx.rollback).toHaveBeenCalled();
+      expect(mockUpdateSettings).not.toHaveBeenCalled();
+      expect(appendRetentionChangeToLedger).not.toHaveBeenCalled();
     });
   });
 
