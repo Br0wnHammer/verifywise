@@ -139,7 +139,8 @@ export async function importInBatches(
     const errorCount = result.errors?.length ?? 0;
     failed += Math.max(failedIds.size, errorCount);
     // Without per-object ids the failed ones cannot be told apart: keep the
-    // whole batch selected (a retry skips the ones already imported).
+    // whole batch here. finishImport then drops the ones that were imported
+    // (they leave the picker), so only the failed ones stay selected.
     if (failedIds.size === 0 && errorCount > 0) continue;
     doneIds.push(...batch.filter((id) => !failedIds.has(id)));
   }
@@ -230,27 +231,30 @@ export function deselectDone<T>(selected: Set<T>, doneIds: T[]): Set<T> {
   return new Set([...selected].filter((id) => !done.has(id)));
 }
 
-/** Picker objects without those now imported (from a fresh /use-cases load). */
-export function withoutImported<O extends { id: string }>(
-  objects: O[],
-  importedObjectIds: Set<string> | null,
-): O[] {
-  return importedObjectIds ? objects.filter((obj) => !importedObjectIds.has(obj.id)) : objects;
-}
-
 /**
- * The panel's state after an import, from the summary and the freshly loaded
- * imported use cases (not the ones the import started with). The handler
- * applies it once, after reloading, so no reload can clear the outcome.
+ * How the panel's state changes after an import, from the summary and the
+ * freshly loaded imported use cases (not the ones the import started with).
+ * `objects` and `selected` are state updaters, so they apply to the latest
+ * state. Imported objects leave the picker, and the selection keeps only ids
+ * still shown there that were not handled: failed and unsent ones. That also
+ * covers a batch kept whole (errors without ids, or interrupted part-way):
+ * those of its objects that did get imported leave the picker and the
+ * selection together, so nothing selected is ever invisible. The handler
+ * applies this once, after reloading, so no reload can clear the outcome.
  */
 export function finishImport<O extends { id: string }>(
-  state: { objects: O[]; selected: Set<string> },
   summary: BatchSummary<string>,
   importedObjectIds: Set<string> | null,
-): { objects: O[]; selected: Set<string>; message: PanelMessage } {
+): {
+  objects: (prev: O[]) => O[];
+  selected: (prev: Set<string>) => Set<string>;
+  message: PanelMessage;
+} {
+  const imported = importedObjectIds ?? new Set<string>();
   return {
-    objects: withoutImported(state.objects, importedObjectIds),
-    selected: deselectDone(state.selected, summary.doneIds),
+    objects: (prev) => prev.filter((obj) => !imported.has(obj.id)),
+    selected: (prev) =>
+      new Set([...deselectDone(prev, summary.doneIds)].filter((id) => !imported.has(id))),
     message: summaryMessage(summary),
   };
 }

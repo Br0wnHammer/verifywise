@@ -196,55 +196,55 @@ describe("removeInBatches", () => {
 describe("finishImport (the panel's state after an import)", () => {
   const picker = (list: string[]) => list.map((id) => ({ id, key: `K-${id}` }));
 
-  it("keeps the summary of an interrupted batch as the message", async () => {
+  it("interrupted batch, 30 of 50 imported: only the 20 still shown stay selected", async () => {
     const send = vi
       .fn<(batch: string[]) => Promise<any>>()
-      .mockImplementationOnce(async (batch) => ok(batch))
       .mockRejectedValueOnce(conflict({ code: "import_interrupted", imported: 30 }));
-    const summary = await importInBatches(ids(250), send);
+    const summary = await importInBatches(ids(50), send);
+    // Fresh /use-cases after the import: objects 1..30 are imported now.
+    const next = finishImport<{ id: string; key: string }>(summary, new Set(ids(30)));
 
-    const next = finishImport(
-      { objects: picker(ids(250)), selected: new Set(ids(250)) },
-      summary,
-      new Set(ids(130)),
-    );
+    const objects = next.objects(picker(ids(50)));
+    const selected = next.selected(new Set(ids(50)));
 
+    expect(objects.map((o) => o.id)).toEqual(ids(20, 31));
+    expect(selected).toEqual(new Set(ids(20, 31)));
+    // The "Import N selected" count matches what the user can see.
+    expect(selected.size).toBe(objects.length);
     expect(next.message).toEqual({
       type: "error",
       text: IMPORT_INTERRUPTED_MESSAGE,
-      counts: [{ label: IMPORTED_BEFORE_STOP_LABEL, value: 130 }],
+      counts: [{ label: IMPORTED_BEFORE_STOP_LABEL, value: 30 }],
     });
-    // Unsent and interrupted-batch ids stay selected for a retry.
-    expect(next.selected).toEqual(new Set(ids(150, 101)));
   });
 
-  it("drops imported objects using the fresh imported list, not a stale one", () => {
+  it("a batch kept whole (errors without ids) keeps only its failed objects selected", async () => {
+    const send = vi.fn(async () => ({ success: true, imported: 3, errors: ["Failed: x"] }));
+    const summary = await importInBatches(ids(4), send);
+    const next = finishImport<{ id: string; key: string }>(summary, new Set(["1", "2", "3"]));
+
+    expect(next.selected(new Set(ids(4)))).toEqual(new Set(["4"]));
+    expect(next.objects(picker(ids(4))).map((o) => o.id)).toEqual(["4"]);
+  });
+
+  it("drops handled ids and imported objects using the fresh imported list", () => {
     const summary = {
       type: "success" as const,
       text: "Import finished.",
       counts: [],
       doneIds: ["1", "2"],
     };
-    // Fresh /use-cases after the import: "1" and "2" are imported now.
-    const next = finishImport(
-      { objects: picker(["1", "2", "3"]), selected: new Set(["1", "2"]) },
-      summary,
-      new Set(["1", "2"]),
-    );
+    const next = finishImport<{ id: string; key: string }>(summary, new Set(["1", "2"]));
 
-    expect(next.objects.map((o) => o.id)).toEqual(["3"]);
-    expect(next.selected).toEqual(new Set());
+    expect(next.objects(picker(["1", "2", "3"])).map((o) => o.id)).toEqual(["3"]);
+    expect(next.selected(new Set(["1", "2"]))).toEqual(new Set());
   });
 
   it("leaves the picker alone when the fresh list could not be read", () => {
     const summary = { type: "success" as const, text: "", counts: [], doneIds: ["1"] };
+    const next = finishImport<{ id: string; key: string }>(summary, null);
 
-    const next = finishImport(
-      { objects: picker(["1", "2"]), selected: new Set(["1"]) },
-      summary,
-      null,
-    );
-
-    expect(next.objects.map((o) => o.id)).toEqual(["1", "2"]);
+    expect(next.objects(picker(["1", "2"])).map((o) => o.id)).toEqual(["1", "2"]);
+    expect(next.selected(new Set(["1", "2"]))).toEqual(new Set(["2"]));
   });
 });

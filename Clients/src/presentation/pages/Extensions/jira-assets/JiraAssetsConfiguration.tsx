@@ -31,11 +31,11 @@ import { isAbandonedRun, SYNC_RUNNING_MESSAGE } from "./runOutcome";
 import {
   BatchProgress,
   deselectDone,
+  finishImport,
   importInBatches,
   PanelMessage,
   removeInBatches,
   summaryMessage,
-  withoutImported,
 } from "./batching";
 
 /** A panel message: the text, then each count with its own label (each translatable). */
@@ -378,16 +378,17 @@ export const JiraAssetsConfiguration: React.FC = () => {
         (batch) => pluginApiCall("POST", "/import", { object_ids: batch }),
         setImportProgress,
       );
-      // Reload the imported use cases, then drop the now-imported objects from
-      // the picker using that fresh list (not the one this handler started
-      // with), keeping the pages already loaded. Only handled ids leave the
-      // selection; failed and unsent ones stay for a retry. The outcome is set
-      // last and nothing after it clears it.
+      // Reload the imported use cases, then apply finishImport with that fresh
+      // list (not the one this handler started with): imported objects leave
+      // the picker (pages already loaded are kept), and the selection keeps
+      // only failed and unsent ids still shown there. The outcome is set last
+      // and nothing after it clears it.
       const fresh = await loadImportedUseCases();
       const importedIds = fresh ? new Set(fresh.map((uc) => String(uc.jira_object_id))) : null;
-      setJiraObjects((prev) => withoutImported(prev, importedIds));
-      setSelectedObjects((prev) => deselectDone(prev, summary.doneIds));
-      setImportMessage(summaryMessage(summary));
+      const next = finishImport<JiraObject>(summary, importedIds);
+      setJiraObjects(next.objects);
+      setSelectedObjects(next.selected);
+      setImportMessage(next.message);
     } finally {
       setImportProgress(null);
       setIsImporting(false);

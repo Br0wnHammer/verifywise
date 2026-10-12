@@ -479,10 +479,13 @@ claim) propagates as itself and is not reported as a deadline stop. The
 import picker (`GET /object-types/:id/objects?startAt=`) returns one page of up
 to 1000 as `{ objects, hasMore, nextStartAt }`, with **Load more** in the
 panel. `POST /import` takes at most 100 `object_ids` per request
-(`IMPORT_MAX_OBJECTS`, 400 above that; the panel sends a bigger selection as
-sequential batches of 100). The result carries `errors` and, for those,
-`failed_ids`, so the panel can keep the failed objects selected for a retry
-because it runs inside the request and fetches each object from Jira in turn.
+(`IMPORT_MAX_OBJECTS`, 400 above that), because it runs inside the request and
+fetches each object from Jira in turn. The panel sends a bigger selection as
+sequential batches of 100.
+
+The import result carries `errors` for objects that could not be imported,
+and `failed_ids` with their ids, so the panel can keep exactly those objects
+selected for a retry.
 An import that loses its claim returns 409 with
 `{ message, code: "import_interrupted", imported, skipped }`.
 
@@ -534,11 +537,12 @@ ids, at most 100 per request (the same limit as an import,
 requests of up to 100, shows "Removing use cases 101–200 / 250", stops at the
 first error and reports how many were removed. Import batches the same way
 ("Importing objects …"); objects a batch reports as failed make the outcome a
-warning with a "not imported" count. Only handled ids leave the selection
-(imported or already imported, removed or no longer flagged); failed and
-unsent ones stay selected, so a retry is one click. After an import the panel
-reloads the imported use cases and drops those objects from the picker using
-that fresh list, then shows the outcome. Both live in
+warning with a "not imported" count. Handled ids leave the selection (imported
+or already imported, removed or no longer flagged); failed and unsent ones
+stay selected, so a retry is one click. After an import the panel reloads the
+imported use cases and applies `finishImport` with that fresh list: imported
+objects leave the picker, and the selection keeps only ids still shown there,
+so nothing selected is ever hidden. The outcome is shown last. Both live in
 `jira-assets/batching.ts`.
 `removeMissingUseCases` (through `deleteUseCasesUnderClaim`):
 
@@ -565,8 +569,11 @@ history row is `'remove_missing'` with `objects_deleted = 1`; 409
 never takes or waits on the claim (404, not 409, during a sync). If the link
 vanished between that check and the locked one under the claim, the
 transaction rolls back and the claimed history row is deleted, so nothing is
-recorded. A link whose project is already gone is stale: both flows delete the
-link row and count it as removed.
+recorded. The same happens if the linked project is not this organization's.
+A link cannot outlive its project (it cascades with it, and the flow holds it
+`FOR UPDATE`), so a project that cannot be deleted is never removed: it is
+skipped by a removal and is 404 for a single delete, and its link is left
+untouched.
 
 A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is
