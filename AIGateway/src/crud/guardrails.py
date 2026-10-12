@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from crud.purge import MAX_RETENTION_DAYS, PartialPurgeError, retention_cutoff
 from database.db import get_db
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -228,9 +229,15 @@ def _validate_settings_input(data: dict) -> None:
     for key in _RETENTION_DAY_KEYS:
         if key in data:
             value = data[key]
-            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+                or value > MAX_RETENTION_DAYS
+            ):
                 raise HTTPException(
-                    status_code=400, detail=f"{key} must be an integer of at least 1"
+                    status_code=400,
+                    detail=f"{key} must be an integer from 1 to {MAX_RETENTION_DAYS}",
                 )
     if "auto_purge_enabled" in data and not isinstance(data["auto_purge_enabled"], bool):
         raise HTTPException(status_code=400, detail="auto_purge_enabled must be a boolean")
@@ -391,40 +398,45 @@ async def purge_guardrail_logs(
     """Batch DELETE 1000 rows at a time, up to max_batches.
 
     Returns {"deleted": <total>, "capped": <the last allowed batch was full,
-    so older rows may remain>}.
+    so older rows may remain>}. Each batch is committed on its own; a failure
+    after some batches raises PartialPurgeError carrying the rows deleted so far.
     """
+    if retention_cutoff(retention_days) is None:
+        return {"deleted": 0, "capped": False}
     total_deleted = 0
     batch_size = 1000
     capped = False
 
-    async with get_db() as db:
-        for batch in range(max_batches):
-            result = await db.execute(
-                text(
-                    """
-                    DELETE FROM ai_gateway_guardrail_logs
-                    WHERE id IN (
-                        SELECT id
-                        FROM ai_gateway_guardrail_logs
-                        WHERE organization_id = :org_id
-                          AND created_at < NOW() - make_interval(days => :retention_days)
-                        LIMIT :batch_size
-                    )
-                    """
-                ),
-                {
-                    "org_id": org_id,
-                    "retention_days": retention_days,
-                    "batch_size": batch_size,
-                },
-            )
-            await db.commit()
-            deleted = result.rowcount
-            total_deleted += deleted
-            if deleted < batch_size:
-                break
-            if batch == max_batches - 1:
-                capped = True
+    try:
+        async with get_db() as db:
+            for batch in range(max_batches):
+                result = await db.execute(
+                    text(
+                        """
+                        DELETE FROM ai_gateway_guardrail_logs
+                        WHERE id IN (
+                            SELECT id
+                            FROM ai_gateway_guardrail_logs
+                            WHERE organization_id = :org_id
+                              AND created_at < NOW() - make_interval(days => :retention_days)
+                            LIMIT :batch_size
+                        )
+                        """
+                    ),
+                    {
+                        "org_id": org_id,
+                        "retention_days": retention_days,
+                        "batch_size": batch_size,
+                    },
+                )
+                await db.commit()
+                deleted = result.rowcount or 0
+                total_deleted += deleted
+                if deleted < batch_size:
+                    break
+                if batch == max_batches - 1:
+                    capped = True
+    except Exception as error:
+        raise PartialPurgeError(total_deleted, error) from error
 
-        return {"deleted": total_deleted, "capped": capped}
-    return {"deleted": 0, "capped": False}
+    return {"deleted": total_deleted, "capped": capped}

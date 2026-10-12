@@ -6,7 +6,7 @@ Translated from Servers/utils/aiGatewaySpendLog.utils.ts
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from typing import Any, Optional
 
 from sqlalchemy import text
@@ -17,6 +17,7 @@ def _text(sql: str):
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from crud.purge import PartialPurgeError, retention_cutoff
 from database.db import get_db
 
 
@@ -577,9 +578,10 @@ async def purge_spend_logs(
     Returns {"deleted": <total_deleted>, "batches": <batches_run>,
     "capped": <last allowed batch was full, so older rows may remain>}.
     """
-    cutoff = (
-        datetime.now(tz=timezone.utc) - timedelta(days=retention_days)
-    ).isoformat()
+    cutoff_at = retention_cutoff(retention_days)
+    if cutoff_at is None:
+        return {"deleted": 0, "batches": 0, "capped": False}
+    cutoff = cutoff_at.isoformat()
 
     total_deleted = 0
     batches = 0
@@ -597,22 +599,26 @@ async def purge_spend_logs(
         )
     """)
 
-    while batches < max_batches:
-        result = await db.execute(
-            delete_sql,
-            {"org_id": org_id, "cutoff": cutoff, "batch_size": batch_size},
-        )
-        # Commit each batch so a long purge never holds one big transaction
-        # and a later failure keeps the batches already deleted.
-        await db.commit()
-        deleted_this_batch = result.rowcount or 0
-        total_deleted += deleted_this_batch
-        batches += 1
+    try:
+        while batches < max_batches:
+            result = await db.execute(
+                delete_sql,
+                {"org_id": org_id, "cutoff": cutoff, "batch_size": batch_size},
+            )
+            # Commit each batch so a long purge never holds one big transaction
+            # and a later failure keeps the batches already deleted.
+            await db.commit()
+            deleted_this_batch = result.rowcount or 0
+            total_deleted += deleted_this_batch
+            batches += 1
 
-        if deleted_this_batch < batch_size:
-            # No more rows to delete
-            break
-        if batches == max_batches:
-            capped = True
+            if deleted_this_batch < batch_size:
+                # No more rows to delete
+                break
+            if batches == max_batches:
+                capped = True
+    except Exception as error:
+        # Report what the committed batches already deleted.
+        raise PartialPurgeError(total_deleted, error) from error
 
     return {"deleted": total_deleted, "batches": batches, "capped": capped}

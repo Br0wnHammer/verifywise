@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import crud.guardrails as guardrails_crud
 import crud.spend as spend_crud
 import routers.retention as retention_router
+from crud.purge import MAX_RETENTION_DAYS, PartialPurgeError, retention_cutoff
 
 
 def _fake_db(rows=None):
@@ -108,6 +109,8 @@ async def test_full_update_sets_every_whitelisted_key(monkeypatch):
         {"spend_log_retention_days": "30"},
         {"log_retention_days": True},
         {"log_retention_days": 1.5},
+        {"log_retention_days": MAX_RETENTION_DAYS + 1},
+        {"spend_log_retention_days": 10**9},
         {"auto_purge_enabled": "yes"},
         {"auto_purge_enabled": 1},
     ],
@@ -120,6 +123,27 @@ async def test_invalid_values_are_rejected(monkeypatch, body):
         await guardrails_crud.upsert_guardrail_settings(7, body)
     assert exc.value.status_code == 400
     assert executed == []
+
+
+async def test_ten_years_is_the_longest_accepted_period(monkeypatch):
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    await guardrails_crud.upsert_guardrail_settings(
+        7, {"log_retention_days": 3650, "spend_log_retention_days": 3650}
+    )
+
+    assert executed[0][1]["log_retention_days"] == 3650
+    assert executed[0][1]["spend_log_retention_days"] == 3650
+
+
+async def test_out_of_range_error_names_the_range(monkeypatch):
+    get_db, _ = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(HTTPException) as exc:
+        await guardrails_crud.upsert_guardrail_settings(7, {"log_retention_days": 3651})
+    assert exc.value.detail == "log_retention_days must be an integer from 1 to 3650"
 
 
 # ---------------------------------------------------------------------------
@@ -145,92 +169,36 @@ async def test_purge_only_selects_opted_in_orgs(monkeypatch):
     monkeypatch.setattr(retention_router, "get_db", get_db)
     monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
 
-    out = await retention_router.purge_retention(_request())
+    out = await retention_router.purge_retention(
+        _request(), retention_router.PurgeRequest(organization_id=1)
+    )
 
     assert out == {"results": []}
-    assert "auto_purge_enabled" in _sql(executed[0][0]) or "auto_purge_enabled" in str(
-        executed[0][0]
-    )
+    assert "auto_purge_enabled" in str(executed[0][0])
 
 
-async def test_purge_uses_each_orgs_periods(monkeypatch):
-    rows = [
-        {"organization_id": 1, "log_retention_days": 14, "spend_log_retention_days": 60},
-        {"organization_id": 2, "log_retention_days": 90, "spend_log_retention_days": 7},
-    ]
+async def test_guardrail_failure_does_not_stop_the_spend_purge(monkeypatch):
+    rows = [{"organization_id": 1, "log_retention_days": 14, "spend_log_retention_days": 60}]
     get_db, _ = _fake_db(rows=rows)
-    guardrail_purge = AsyncMock(
-        side_effect=[{"deleted": 3, "capped": False}, {"deleted": 5, "capped": True}]
-    )
-    spend_purge = AsyncMock(
-        side_effect=[{"deleted": 11, "capped": True}, {"deleted": 13, "capped": False}]
-    )
     monkeypatch.setattr(retention_router, "get_db", get_db)
     monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
-    monkeypatch.setattr(retention_router, "purge_guardrail_logs", guardrail_purge)
+    monkeypatch.setattr(
+        retention_router, "purge_guardrail_logs", AsyncMock(side_effect=RuntimeError("boom"))
+    )
+    spend_purge = AsyncMock(return_value={"deleted": 2, "capped": False})
     monkeypatch.setattr(retention_router.spend_crud, "purge_spend_logs", spend_purge)
 
-    out = await retention_router.purge_retention(_request())
+    (entry,) = (
+        await retention_router.purge_retention(
+            _request(), retention_router.PurgeRequest(organization_id=1)
+        )
+    )["results"]
 
-    assert out["results"] == [
-        {
-            "organization_id": 1,
-            "guardrail_deleted": 3,
-            "guardrail_capped": False,
-            "spend_deleted": 11,
-            "spend_capped": True,
-        },
-        {
-            "organization_id": 2,
-            "guardrail_deleted": 5,
-            "guardrail_capped": True,
-            "spend_deleted": 13,
-            "spend_capped": False,
-        },
-    ]
-    guardrail_purge.assert_any_await(1, 14, max_batches=500)
-    guardrail_purge.assert_any_await(2, 90, max_batches=500)
+    assert entry["guardrail_error"] == "boom"
+    assert entry["guardrail_deleted"] == 0
+    assert "spend_error" not in entry
+    assert entry["spend_deleted"] == 2
     assert spend_purge.await_args_list[0].args[1:] == (1, 60)
-    assert spend_purge.await_args_list[1].args[1:] == (2, 7)
-    assert spend_purge.await_args_list[0].kwargs == {"max_batches": 500}
-
-
-async def test_one_failing_org_does_not_stop_the_others(monkeypatch):
-    rows = [
-        {"organization_id": 1, "log_retention_days": 14, "spend_log_retention_days": 60},
-        {"organization_id": 2, "log_retention_days": 14, "spend_log_retention_days": 60},
-    ]
-    get_db, _ = _fake_db(rows=rows)
-
-    async def guardrail_purge(org_id, days, max_batches=50):
-        if org_id == 1:
-            raise RuntimeError("boom")
-        return {"deleted": 4, "capped": False}
-
-    monkeypatch.setattr(retention_router, "get_db", get_db)
-    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
-    monkeypatch.setattr(retention_router, "purge_guardrail_logs", guardrail_purge)
-    monkeypatch.setattr(
-        retention_router.spend_crud,
-        "purge_spend_logs",
-        AsyncMock(return_value={"deleted": 2, "capped": False}),
-    )
-
-    out = await retention_router.purge_retention(_request())
-
-    first, second = out["results"]
-    # The guardrail failure is reported on its own; spend still ran for org 1.
-    assert first["organization_id"] == 1
-    assert first["guardrail_error"] == "boom"
-    assert "spend_error" not in first
-    assert first["spend_deleted"] == 2
-    assert second == {
-        "organization_id": 2,
-        "guardrail_deleted": 4,
-        "guardrail_capped": False,
-        "spend_deleted": 2,
-        "spend_capped": False,
-    }
 
 
 async def test_spend_failure_does_not_mark_guardrail_failed(monkeypatch):
@@ -249,7 +217,11 @@ async def test_spend_failure_does_not_mark_guardrail_failed(monkeypatch):
         AsyncMock(side_effect=RuntimeError("spend down")),
     )
 
-    (entry,) = (await retention_router.purge_retention(_request()))["results"]
+    (entry,) = (
+        await retention_router.purge_retention(
+            _request(), retention_router.PurgeRequest(organization_id=1)
+        )
+    )["results"]
 
     assert entry["guardrail_deleted"] == 7
     assert "guardrail_error" not in entry
@@ -397,3 +369,121 @@ def test_purge_request_requires_an_integer_org_id():
 
     with pytest.raises(ValidationError):
         retention_router.PurgeRequest(organization_id="4")
+    with pytest.raises(ValidationError):
+        retention_router.PurgeRequest()
+
+
+def test_purge_route_requires_a_body():
+    import inspect
+
+    payload = inspect.signature(retention_router.purge_retention).parameters["payload"]
+    assert payload.default is inspect.Parameter.empty
+    assert not hasattr(retention_router, "AUTO_PURGE_MAX_BATCHES")
+
+
+# ---------------------------------------------------------------------------
+# Partial purges and long periods
+# ---------------------------------------------------------------------------
+
+
+def _failing_db(rowcounts):
+    """A fake session whose DELETEs report the given rowcounts, then fail."""
+    calls = []
+    db = MagicMock()
+
+    async def execute(stmt, params=None):
+        calls.append(params)
+        if len(calls) > len(rowcounts):
+            raise RuntimeError("connection lost")
+        result = MagicMock()
+        result.rowcount = rowcounts[len(calls) - 1]
+        return result
+
+    db.execute = execute
+    db.commit = AsyncMock()
+    return db, calls
+
+
+async def test_spend_purge_failure_carries_the_rows_already_deleted():
+    db, _ = _failing_db([1000, 1000])
+
+    with pytest.raises(PartialPurgeError) as exc:
+        await spend_crud.purge_spend_logs(db, 7, 30, max_batches=5)
+
+    assert exc.value.deleted == 2000
+    assert str(exc.value) == "connection lost"
+    assert isinstance(exc.value.__cause__, RuntimeError)
+
+
+async def test_guardrail_purge_failure_carries_the_rows_already_deleted(monkeypatch):
+    db, _ = _failing_db([1000])
+
+    @asynccontextmanager
+    async def get_db():
+        yield db
+
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+
+    with pytest.raises(PartialPurgeError) as exc:
+        await guardrails_crud.purge_guardrail_logs(7, 30, max_batches=5)
+    assert exc.value.deleted == 1000
+
+
+async def test_purge_reports_partial_counts_and_marks_the_type_failed(monkeypatch):
+    rows = [{"organization_id": 3, "log_retention_days": 14, "spend_log_retention_days": 60}]
+    get_db, _ = _fake_db(rows=rows)
+    monkeypatch.setattr(retention_router, "get_db", get_db)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
+    monkeypatch.setattr(
+        retention_router,
+        "purge_guardrail_logs",
+        AsyncMock(side_effect=PartialPurgeError(4000, RuntimeError("timeout"))),
+    )
+    monkeypatch.setattr(
+        retention_router.spend_crud,
+        "purge_spend_logs",
+        AsyncMock(side_effect=PartialPurgeError(1500, RuntimeError("disk full"))),
+    )
+
+    (entry,) = (
+        await retention_router.purge_retention(
+            _request(), retention_router.PurgeRequest(organization_id=3)
+        )
+    )["results"]
+
+    assert entry["guardrail_deleted"] == 4000
+    assert entry["guardrail_error"] == "timeout"
+    assert entry["spend_deleted"] == 1500
+    assert entry["spend_error"] == "disk full"
+
+
+async def test_purges_with_the_longest_period_do_not_overflow(monkeypatch):
+    db, calls = _counting_db([0])
+    out = await spend_crud.purge_spend_logs(db, 7, MAX_RETENTION_DAYS)
+    assert out == {"deleted": 0, "batches": 1, "capped": False}
+
+    gdb, gcalls = _counting_db([0])
+
+    @asynccontextmanager
+    async def get_db():
+        yield gdb
+
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+    out = await guardrails_crud.purge_guardrail_logs(7, MAX_RETENTION_DAYS)
+    assert out == {"deleted": 0, "capped": False}
+    assert gcalls[0]["retention_days"] == MAX_RETENTION_DAYS
+
+
+async def test_a_period_saved_before_the_cap_deletes_nothing_instead_of_failing(monkeypatch):
+    assert retention_cutoff(10**9) is None
+
+    db, calls = _counting_db([])
+    out = await spend_crud.purge_spend_logs(db, 7, 10**9)
+    assert out == {"deleted": 0, "batches": 0, "capped": False}
+    assert calls == []
+
+    get_db, executed = _fake_db()
+    monkeypatch.setattr(guardrails_crud, "get_db", get_db)
+    out = await guardrails_crud.purge_guardrail_logs(7, 10**9)
+    assert out == {"deleted": 0, "capped": False}
+    assert executed == []
