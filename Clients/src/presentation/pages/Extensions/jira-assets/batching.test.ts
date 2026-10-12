@@ -3,6 +3,7 @@ import {
   BATCH_SIZE,
   deselectDone,
   finishImport,
+  keepShown,
   IMPORT_INTERRUPTED_MESSAGE,
   IMPORT_PARTLY_FAILED_MESSAGE,
   IMPORTED_BEFORE_STOP_LABEL,
@@ -156,7 +157,7 @@ describe("importInBatches", () => {
 });
 
 describe("removeInBatches", () => {
-  it("does not call it finished when the server skipped some; keeps the skipped selected", async () => {
+  it("says why some were skipped (no longer missing or gone), without claiming they stay selected", async () => {
     const send = vi.fn(async () => ({ removed: 2, unlinked: 0, skipped: 1, skipped_ids: [3] }));
 
     const summary = await removeInBatches([1, 2, 3], send);
@@ -168,9 +169,11 @@ describe("removeInBatches", () => {
         { label: REMOVED_LABEL, value: 2 },
         { label: SKIPPED_LABEL, value: 1 },
       ],
-      doneIds: [1, 2],
+      // A skipped id is no longer missing (or gone), so it leaves the list too.
+      doneIds: [1, 2, 3],
     });
-    expect(deselectDone(new Set([1, 2, 3]), summary.doneIds)).toEqual(new Set([3]));
+    expect(summary.text).toContain("no longer missing in Jira or no longer exist");
+    expect(summary.text).not.toContain("still selected");
   });
 
   it("reports links cleaned up separately from use cases removed", async () => {
@@ -230,25 +233,32 @@ describe("removeInBatches", () => {
 });
 
 describe("finishImport (the panel's state after an import)", () => {
-  const picker = (list: string[]) => list.map((id) => ({ id, key: `K-${id}` }));
+  type Obj = { id: string; key: string };
+  const picker = (list: string[]): Obj[] => list.map((id) => ({ id, key: `K-${id}` }));
+
+  /** What the panel does: apply the updaters to the latest state, then keepShown. */
+  function apply(
+    latest: { objects: Obj[]; selected: Set<string> },
+    next: ReturnType<typeof finishImport<Obj>>,
+  ) {
+    const objects = next.objects(latest.objects);
+    const selected = keepShown(next.selected(latest.selected), objects);
+    return { objects, selected };
+  }
 
   it("interrupted batch, 30 of 50 imported: only the 20 still shown stay selected", async () => {
     const send = vi
       .fn<(batch: string[]) => Promise<any>>()
       .mockRejectedValueOnce(conflict({ code: "import_interrupted", imported: 30 }));
     const summary = await importInBatches(ids(50), send);
-
     // Fresh /use-cases after the import: objects 1..30 are imported now.
-    const next = finishImport(
-      { objects: picker(ids(50)), selected: new Set(ids(50)) },
-      summary,
-      new Set(ids(30)),
-    );
+    const next = finishImport<Obj>(summary, new Set(ids(30)));
 
-    expect(next.objects.map((o) => o.id)).toEqual(ids(20, 31));
-    expect(next.selected).toEqual(new Set(ids(20, 31)));
-    // The "Import N selected" count matches what the user can see.
-    expect(next.selected.size).toBe(next.objects.length);
+    const state = apply({ objects: picker(ids(50)), selected: new Set(ids(50)) }, next);
+
+    expect(state.objects.map((o) => o.id)).toEqual(ids(20, 31));
+    expect(state.selected).toEqual(new Set(ids(20, 31)));
+    expect(state.selected.size).toBe(state.objects.length);
     expect(next.message).toEqual({
       type: "error",
       text: IMPORT_INTERRUPTED_MESSAGE,
@@ -265,53 +275,54 @@ describe("finishImport (the panel's state after an import)", () => {
     expect(send).toHaveBeenCalledTimes(2);
 
     // Batch 1 (1..100) and the first 40 of batch 2 (101..140) are imported.
-    const next = finishImport(
-      { objects: picker(ids(250)), selected: new Set(ids(250)) },
-      summary,
-      new Set(ids(140)),
-    );
+    const next = finishImport<Obj>(summary, new Set(ids(140)));
+    const state = apply({ objects: picker(ids(250)), selected: new Set(ids(250)) }, next);
 
-    expect(next.selected).toEqual(new Set([...ids(60, 141), ...ids(50, 201)]));
-    expect(next.selected.size).toBe(next.objects.length);
-    expect(next.message.counts).toEqual([{ label: IMPORTED_BEFORE_STOP_LABEL, value: 140 }]);
+    expect(state.selected).toEqual(new Set([...ids(60, 141), ...ids(50, 201)]));
+    expect(state.selected.size).toBe(state.objects.length);
+  });
+
+  it("keeps a page loaded, and a toggle made, while the import was running", async () => {
+    const send = vi.fn(async (batch: string[]) => ok(batch));
+    const summary = await importInBatches(ids(2), send);
+    const next = finishImport<Obj>(summary, new Set(ids(2)));
+
+    // Meanwhile "Load more" appended 3..4 and the user ticked 4.
+    const state = apply({ objects: picker(ids(4)), selected: new Set(["1", "2", "4"]) }, next);
+
+    expect(state.objects.map((o) => o.id)).toEqual(["3", "4"]);
+    expect(state.selected).toEqual(new Set(["4"]));
   });
 
   it("a batch kept whole (errors without ids) keeps only its failed objects selected", async () => {
     const send = vi.fn(async () => ({ success: true, imported: 3, errors: ["Failed: x"] }));
     const summary = await importInBatches(ids(4), send);
+    const next = finishImport<Obj>(summary, new Set(["1", "2", "3"]));
 
-    const next = finishImport(
-      { objects: picker(ids(4)), selected: new Set(ids(4)) },
-      summary,
-      new Set(["1", "2", "3"]),
-    );
+    const state = apply({ objects: picker(ids(4)), selected: new Set(ids(4)) }, next);
 
-    expect(next.selected).toEqual(new Set(["4"]));
-    expect(next.objects.map((o) => o.id)).toEqual(["4"]);
-  });
-
-  it("never keeps an id selected that is not in the picker", () => {
-    const summary = { type: "success" as const, text: "", counts: [], doneIds: [] };
-
-    const next = finishImport(
-      { objects: picker(["1", "2"]), selected: new Set(["1", "2", "99"]) },
-      summary,
-      new Set<string>(),
-    );
-
-    expect(next.selected).toEqual(new Set(["1", "2"]));
+    expect(state.selected).toEqual(new Set(["4"]));
+    expect(state.objects.map((o) => o.id)).toEqual(["4"]);
   });
 
   it("leaves the picker alone when the fresh list could not be read", () => {
     const summary = { type: "success" as const, text: "", counts: [], doneIds: ["1"] };
+    const next = finishImport<Obj>(summary, null);
 
-    const next = finishImport(
-      { objects: picker(["1", "2"]), selected: new Set(["1", "2"]) },
-      summary,
-      null,
-    );
+    const latest = picker(["1", "2"]);
+    const state = apply({ objects: latest, selected: new Set(["1", "2"]) }, next);
 
-    expect(next.objects.map((o) => o.id)).toEqual(["1", "2"]);
-    expect(next.selected).toEqual(new Set(["2"]));
+    expect(state.objects).toBe(latest);
+    expect(state.selected).toEqual(new Set(["2"]));
+  });
+});
+
+describe("keepShown", () => {
+  it("drops selected ids the picker does not show, and keeps the same set otherwise", () => {
+    const objects = [{ id: "1" }, { id: "2" }];
+    const same = new Set(["1"]);
+
+    expect(keepShown(new Set(["1", "2", "99"]), objects)).toEqual(new Set(["1", "2"]));
+    expect(keepShown(same, objects)).toBe(same);
   });
 });

@@ -82,7 +82,7 @@ export const REMOVED_BEFORE_STOP_LABEL = "Use cases removed before it stopped:";
 export const UNLINKED_LABEL = "Links cleaned up:";
 export const SKIPPED_LABEL = "Use cases skipped:";
 export const REMOVAL_PARTLY_SKIPPED_MESSAGE =
-  "Removal finished, but some use cases were not removed. They are still selected.";
+  "Removal finished. Some use cases were not removed because they are no longer missing in Jira or no longer exist.";
 export const REMOVAL_FAILED_MESSAGE = "Failed to remove use cases";
 /** An interrupted batch after earlier batches removed some ("nothing was removed" would mislead). */
 export const REMOVAL_INTERRUPTED_PARTIAL_MESSAGE =
@@ -186,7 +186,11 @@ interface RemoveResponse {
   removed?: number;
   /** Links whose project is not in this organization; only the link was deleted. */
   unlinked?: number;
-  /** Ids the server did not remove (no longer flagged, or not found). */
+  /**
+   * Ids the server did not remove: no longer flagged (a sync found them in
+   * Jira again) or no longer there. Either way they leave the "Missing in
+   * Jira" list on reload, so they are not kept selected.
+   */
   skipped_ids?: number[];
 }
 
@@ -200,15 +204,14 @@ export async function removeInBatches(
   let removed = 0;
   let unlinked = 0;
   let skipped = 0;
-  const doneIds: number[] = [];
-  for (const { batch, result } of run.done) {
+  for (const { result } of run.done) {
     removed += result?.removed ?? 0;
     unlinked += result?.unlinked ?? 0;
-    const skippedIds = new Set(result?.skipped_ids ?? []);
-    skipped += skippedIds.size;
-    // Skipped ids stay selected; only what the server handled leaves.
-    doneIds.push(...batch.filter((id) => !skippedIds.has(id)));
+    skipped += result?.skipped_ids?.length ?? 0;
   }
+  // Every id of a finished batch is settled: removed, cleaned up, or skipped
+  // because it is no longer missing or no longer exists.
+  const doneIds = run.done.flatMap(({ batch }) => batch);
   const extraCounts = [
     ...(unlinked > 0 ? [{ label: UNLINKED_LABEL, value: unlinked }] : []),
     ...(skipped > 0 ? [{ label: SKIPPED_LABEL, value: skipped }] : []),
@@ -256,28 +259,49 @@ export function deselectDone<T>(selected: Set<T>, doneIds: T[]): Set<T> {
   return new Set([...selected].filter((id) => !done.has(id)));
 }
 
+/** Picker objects without those now imported (from a fresh /use-cases load). */
+export function withoutImported<O extends { id: string }>(
+  objects: O[],
+  importedObjectIds: Set<string> | null,
+): O[] {
+  if (!importedObjectIds) return objects;
+  const next = objects.filter((obj) => !importedObjectIds.has(obj.id));
+  return next.length === objects.length ? objects : next;
+}
+
 /**
- * The panel's state after an import, from the latest state, the summary and
- * the freshly loaded imported use cases (not the ones the import started
- * with). Imported objects leave the picker; the selection is then derived
- * from the objects that remain: an id stays selected only if it is still in
- * the picker and was not handled. So nothing selected is ever invisible, by
- * construction, including the ids of a batch kept whole (errors without ids,
- * or interrupted part-way) that did get imported. The handler applies this
- * once, after reloading, so no reload can clear the outcome.
+ * The selection restricted to the objects shown in the picker. The panel
+ * applies it whenever the picker changes, so a selected id is never
+ * invisible: this is the one place the selection is derived from the
+ * objects. Returns the same set when nothing changes.
+ */
+export function keepShown<O extends { id: string }>(selected: Set<string>, objects: O[]) {
+  const shown = new Set(objects.map((obj) => obj.id));
+  const next = new Set([...selected].filter((id) => shown.has(id)));
+  return next.size === selected.size ? selected : next;
+}
+
+/**
+ * How the panel's state changes after an import, as state updaters applied
+ * to the latest state (so a "Load more" or a toggle made during the import is
+ * kept), from the summary and the freshly loaded imported use cases (not the
+ * ones the import started with): imported objects leave the picker and
+ * handled ids leave the selection. keepShown then restricts the selection to
+ * what the picker still shows, so imported ids of a batch kept whole
+ * (errors without ids, or interrupted part-way) leave it too. The handler
+ * applies this once, after reloading, so no reload can clear the outcome.
  */
 export function finishImport<O extends { id: string }>(
-  state: { objects: O[]; selected: Set<string> },
   summary: BatchSummary<string>,
   importedObjectIds: Set<string> | null,
-): { objects: O[]; selected: Set<string>; message: PanelMessage } {
-  const imported = importedObjectIds ?? new Set<string>();
-  const objects = state.objects.filter((obj) => !imported.has(obj.id));
-  const shown = new Set(objects.map((obj) => obj.id));
-  const notHandled = deselectDone(state.selected, summary.doneIds);
+): {
+  objects: (prev: O[]) => O[];
+  selected: (prev: Set<string>) => Set<string>;
+  message: PanelMessage;
+} {
   return {
-    objects,
-    selected: new Set([...notHandled].filter((id) => shown.has(id))),
+    objects: (prev) => withoutImported(prev, importedObjectIds),
+    selected: (prev) => deselectDone(prev, summary.doneIds),
     message: summaryMessage(summary),
   };
 }

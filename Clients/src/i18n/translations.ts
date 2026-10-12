@@ -9746,8 +9746,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Importing objects": "Objekte werden importiert",
     "Links cleaned up:": "Bereinigte Verknüpfungen:",
     "Use cases skipped:": "Übersprungene Anwendungsfälle:",
-    "Removal finished, but some use cases were not removed. They are still selected.":
-      "Entfernen abgeschlossen, aber einige Anwendungsfälle wurden nicht entfernt. Sie bleiben ausgewählt.",
+    "Removal finished. Some use cases were not removed because they are no longer missing in Jira or no longer exist.":
+      "Entfernen abgeschlossen. Einige Anwendungsfälle wurden nicht entfernt, da sie in Jira nicht mehr fehlen oder nicht mehr existieren.",
     "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
       "Import abgeschlossen, aber einige Objekte konnten nicht importiert werden. Sie bleiben ausgewählt; importieren Sie erneut, um es noch einmal zu versuchen.",
     "Objects not imported:": "Nicht importierte Objekte:",
@@ -19998,8 +19998,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Importing objects": "Importation des objets",
     "Links cleaned up:": "Liens nettoyés :",
     "Use cases skipped:": "Cas d'usage ignorés :",
-    "Removal finished, but some use cases were not removed. They are still selected.":
-      "Suppression terminée, mais certains cas d'usage n'ont pas été supprimés. Ils restent sélectionnés.",
+    "Removal finished. Some use cases were not removed because they are no longer missing in Jira or no longer exist.":
+      "Suppression terminée. Certains cas d'usage n'ont pas été supprimés, car ils ne sont plus absents de Jira ou n'existent plus.",
     "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
       "Importation terminée, mais certains objets n'ont pas pu être importés. Ils restent sélectionnés ; relancez l'importation pour réessayer.",
     "Objects not imported:": "Objets non importés :",
@@ -30175,8 +30175,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Importing objects": "Importando objetos",
     "Links cleaned up:": "Vínculos depurados:",
     "Use cases skipped:": "Casos de uso omitidos:",
-    "Removal finished, but some use cases were not removed. They are still selected.":
-      "Eliminación finalizada, pero algunos casos de uso no se eliminaron. Siguen seleccionados.",
+    "Removal finished. Some use cases were not removed because they are no longer missing in Jira or no longer exist.":
+      "Eliminación finalizada. Algunos casos de uso no se eliminaron porque ya no faltan en Jira o ya no existen.",
     "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
       "Importación finalizada, pero algunos objetos no se pudieron importar. Siguen seleccionados; vuelva a importar para reintentarlo.",
     "Objects not imported:": "Objetos no importados:",

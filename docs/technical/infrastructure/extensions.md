@@ -538,27 +538,36 @@ requests of up to 100, shows "Removing use cases 101–200 / 250", stops at the
 first error and reports how many were removed. Import batches the same way
 ("Importing objects …"); objects a batch reports as failed make the outcome a
 warning with a "not imported" count. A removal whose response lists
-`skipped_ids` (no longer flagged, or not found) is a warning with a "skipped"
-count, and links cleaned up are counted separately ("Links cleaned up").
-Handled ids leave the selection; failed, skipped and unsent ones stay
+`skipped_ids` is a warning saying they are no longer missing in Jira (a sync
+found them) or no longer exist; they leave the list on reload. Links cleaned
+up are counted separately ("Links cleaned up"). Failed and unsent ids stay
 selected, so a retry is one click. After an import the panel reloads the
-imported use cases and applies `finishImport` with that fresh list: imported
-objects leave the picker, and the selection is derived from the objects that
-remain (an id stays only if it is still shown and was not handled), so
-nothing selected is ever hidden. The outcome is shown last. Both live in
-`jira-assets/batching.ts`.
+imported use cases and applies `finishImport`'s updaters with that fresh list
+to the latest state (a "Load more" or toggle made meanwhile is kept):
+imported objects leave the picker and handled ids leave the selection. The
+selection is always restricted to the objects the picker shows (`keepShown`,
+applied whenever they change), so nothing selected is ever hidden. The
+outcome is shown last. Both live in `jira-assets/batching.ts`.
 `removeMissingUseCases` (through `deleteUseCasesUnderClaim`):
 
 1. takes the same claim, so it cannot race a sync or import (409)
-2. locks the listed rows that are still flagged (`FOR UPDATE`)
-3. for each link whose project is in this organization, deletes the project
-   the way the core "Delete use case" does (`deleteLinkedProject`): locks the
-   project row first (so nothing happens to a project that is not here), then
-   withdraws a pending approval request, runs `deleteProjectByIdQuery` (files,
-   risks, members, per-framework rows, custom-field values) and records the
-   deletion in the change history. The `project_deleted` automation is
-   queued after the transaction commits (`enqueueAutomationAfterCommit`), so
-   a rolled-back removal fires none. The link row cascades.
+2. reads the listed links that are still flagged, unlocked, for their
+   project ids; locks those projects in this organization in one statement
+   (`ORDER BY id FOR UPDATE`), which also classifies them as in this
+   organization or not; then locks the link rows (`ORDER BY id FOR UPDATE`)
+   and re-checks them. Projects before links is the order the core "Delete
+   use case" takes (project row, then the FK cascade into
+   `jira_assets_use_cases`), so the two cannot deadlock.
+3. for each project in this organization, deletes it once the way the core
+   "Delete use case" does (`deleteLinkedProject`): withdraws a pending
+   approval request, runs `deleteProjectByIdQuery` (files, risks, members,
+   per-framework rows, custom-field values) and records the deletion in the
+   change history. Every link of that project goes with it (cascade) and
+   counts as removed, so two flagged links to one project are both removed,
+   not one removed and one skipped. A locked project that fails to delete
+   rolls the whole removal back. The `project_deleted` automation is queued
+   after the transaction commits (`enqueueAutomationAfterCommit`), so a
+   rolled-back removal fires none.
 4. for a link with no project, or whose project is not in this organization
    (another organization's, or a bad id), deletes only the link row: no
    project is touched, no change history is written and no automation fires.
