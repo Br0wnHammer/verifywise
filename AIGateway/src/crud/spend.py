@@ -602,6 +602,9 @@ async def purge_spend_logs(
             delete_sql,
             {"org_id": org_id, "cutoff": cutoff, "batch_size": batch_size},
         )
+        # Commit each batch so a long purge never holds one big transaction
+        # and a later failure keeps the batches already deleted.
+        await db.commit()
         deleted_this_batch = result.rowcount or 0
         total_deleted += deleted_this_batch
         batches += 1
@@ -612,5 +615,4 @@ async def purge_spend_logs(
         if batches == max_batches:
             capped = True
 
-    await db.commit()
     return {"deleted": total_deleted, "batches": batches, "capped": capped}

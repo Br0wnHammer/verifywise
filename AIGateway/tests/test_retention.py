@@ -331,3 +331,69 @@ async def test_spend_purge_reports_capped(monkeypatch):
     db, calls = _counting_db([1000] * 60)
     out = await spend_crud.purge_spend_logs(db, 7, 30)
     assert out["batches"] == 50 and out["capped"] is True
+
+
+async def test_spend_purge_commits_each_batch():
+    db, calls = _counting_db([1000, 1000, 10])
+    out = await spend_crud.purge_spend_logs(db, 7, 30, max_batches=5)
+    assert out["batches"] == 3
+    # One commit per batch, so deleted batches survive a later failure.
+    assert db.commit.await_count == 3
+
+
+# ---------------------------------------------------------------------------
+# Per-organization purge
+# ---------------------------------------------------------------------------
+
+
+async def test_purge_for_one_org_scopes_the_query_and_caps_at_100(monkeypatch):
+    rows = [{"organization_id": 4, "log_retention_days": 30, "spend_log_retention_days": 15}]
+    get_db, executed = _fake_db(rows=rows)
+    guardrail_purge = AsyncMock(return_value={"deleted": 100000, "capped": True})
+    spend_purge = AsyncMock(return_value={"deleted": 9, "capped": False})
+    monkeypatch.setattr(retention_router, "get_db", get_db)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
+    monkeypatch.setattr(retention_router, "purge_guardrail_logs", guardrail_purge)
+    monkeypatch.setattr(retention_router.spend_crud, "purge_spend_logs", spend_purge)
+
+    out = await retention_router.purge_retention(
+        _request(), retention_router.PurgeRequest(organization_id=4)
+    )
+
+    select_sql, select_params = executed[0]
+    assert "auto_purge_enabled" in str(select_sql)
+    assert "organization_id = :org_id" in str(select_sql)
+    assert select_params == {"org_id": 4}
+    assert out["results"] == [
+        {
+            "organization_id": 4,
+            "guardrail_deleted": 100000,
+            "guardrail_capped": True,
+            "spend_deleted": 9,
+            "spend_capped": False,
+        }
+    ]
+    guardrail_purge.assert_awaited_once_with(4, 30, max_batches=100)
+    assert spend_purge.await_args_list[0].kwargs == {"max_batches": 100}
+
+
+async def test_purge_for_an_org_that_did_not_opt_in_returns_nothing(monkeypatch):
+    get_db, executed = _fake_db(rows=[])
+    guardrail_purge = AsyncMock()
+    monkeypatch.setattr(retention_router, "get_db", get_db)
+    monkeypatch.setattr(retention_router, "verify_internal_key", lambda r: None)
+    monkeypatch.setattr(retention_router, "purge_guardrail_logs", guardrail_purge)
+
+    out = await retention_router.purge_retention(
+        _request(), retention_router.PurgeRequest(organization_id=9)
+    )
+
+    assert out == {"results": []}
+    guardrail_purge.assert_not_awaited()
+
+
+def test_purge_request_requires_an_integer_org_id():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        retention_router.PurgeRequest(organization_id="4")

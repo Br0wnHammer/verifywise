@@ -32,6 +32,7 @@ const TARGETS = [
   { table: "project_change_history", col: "changed_at" },
   { table: "framework_change_history", col: "changed_at" },
   { table: "evidence_hub_change_history", col: "changed_at" },
+  { table: "model_lifecycle_change_history", col: "created_at" },
   { table: "event_logs", col: "timestamp" },
   { table: "file_access_logs", col: "access_date" },
   { table: "audit_ledger", col: "occurred_at" },

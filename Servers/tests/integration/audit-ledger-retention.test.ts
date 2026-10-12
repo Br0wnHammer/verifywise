@@ -21,6 +21,8 @@ import { pruneAuditLedgerBatch } from "../../utils/auditLedgerRetention.utils";
 import {
   countAuditRecordsBefore,
   getLatestRetentionRuns,
+  getOrgsWithAuditRetention,
+  pruneRetentionRunHistory,
   setAuditRetentionMonths,
 } from "../../utils/dataRetention.utils";
 import { runDataRetentionPrune } from "../../services/automations/actions/dataRetentionPrune";
@@ -514,5 +516,73 @@ describe("audit ledger prune and checkpoint-aware verification", () => {
     expect(runs.audit_records).toMatchObject({ deleted_count: 10, status: "success" });
     expect(await countAuditRecordsBefore(orgId, 12)).toBe(0);
     expect((await verifyChain(orgId)).status).toBe("intact");
+  });
+});
+
+describe("retention run history and daily job reads", () => {
+  beforeEach(async () => {
+    orgId = await createTestOrganization();
+  });
+
+  afterEach(async () => {
+    await cleanupDatabase();
+  });
+
+  async function insertRun(recordType: string, monthsAgo: number): Promise<number> {
+    const [rows] = (await sequelize.query(
+      `INSERT INTO data_retention_runs (organization_id, record_type, ran_at, deleted_count, status)
+       VALUES (:orgId, :recordType, now() - make_interval(months => :monthsAgo), 0, 'success')
+       RETURNING id`,
+      { replacements: { orgId, recordType, monthsAgo }, type: QueryTypes.INSERT },
+    )) as unknown as [{ id: string }[], number];
+    return Number(rows[0].id);
+  }
+
+  async function runIds(): Promise<number[]> {
+    const rows = await sequelize.query<{ id: string }>(
+      `SELECT id FROM data_retention_runs WHERE organization_id = :orgId ORDER BY id`,
+      { replacements: { orgId }, type: QueryTypes.SELECT },
+    );
+    return rows.map((r) => Number(r.id));
+  }
+
+  it("deletes runs older than 13 months but keeps each type's latest run", async () => {
+    await insertRun("audit_records", 20);
+    await insertRun("audit_records", 15);
+    const latestOldAudit = await insertRun("audit_records", 14);
+    await insertRun("mrm_metrics", 20);
+    const currentMrm = await insertRun("mrm_metrics", 0);
+    const recentShadow = await insertRun("shadow_ai_events", 2);
+
+    const removed = await pruneRetentionRunHistory();
+
+    expect(removed).toBe(3);
+    // The 14-month-old audit run stays: it is the only last run that type has.
+    expect(await runIds()).toEqual(
+      [latestOldAudit, currentMrm, recentShadow].sort((a, b) => a - b),
+    );
+    expect(await pruneRetentionRunHistory()).toBe(0);
+  });
+
+  it("reads every org with an audit period in one query", async () => {
+    expect((await getOrgsWithAuditRetention()).some((o) => o.organizationId === orgId)).toBe(false);
+    await setAuditRetentionMonths(orgId, 36, null);
+    expect(await getOrgsWithAuditRetention()).toContainEqual({ organizationId: orgId, months: 36 });
+    await setAuditRetentionMonths(orgId, null, null);
+    expect((await getOrgsWithAuditRetention()).some((o) => o.organizationId === orgId)).toBe(false);
+  });
+
+  it("indexes model_lifecycle_change_history by org and created_at", async () => {
+    // Idempotent; re-running proves the amended migration applies cleanly.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const migration = require("../../database/migrations/20261011150200-retention-timestamp-indexes.js");
+    await migration.up(sequelize.getQueryInterface());
+    const [index] = await sequelize.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes
+        WHERE schemaname = 'verifywise'
+          AND indexname = 'idx_model_lifecycle_change_history_org_created_at'`,
+      { type: QueryTypes.SELECT },
+    );
+    expect(index?.indexdef).toMatch(/\(organization_id, created_at\)/);
   });
 });

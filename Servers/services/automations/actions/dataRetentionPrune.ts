@@ -1,14 +1,16 @@
-import { getAllOrganizationsQuery } from "../../../utils/organization.utils";
 import { appendToAuditLedger } from "../../../utils/auditLedger.utils";
 import { pruneAuditLedgerBatch } from "../../../utils/auditLedgerRetention.utils";
 import {
   AUDIT_RECORD_TABLES,
   RETENTION_BATCH_SIZE,
   RETENTION_MAX_BATCHES,
+  auditTableExists,
   deleteAuditRowsBatch,
   getAuditCutoff,
   getAuditRetentionMonths,
   getGatewayAutoPurgeOrgIds,
+  getOrgsWithAuditRetention,
+  pruneRetentionRunHistory,
   recordRetentionRun,
   type RetentionRecordType,
 } from "../../../utils/dataRetention.utils";
@@ -30,8 +32,18 @@ export interface DataRetentionSummary {
   capped: boolean;
 }
 
+/** Whether each audit table exists, checked once per table per run rather than per batch. */
+export type AuditTableExistsCache = Map<string, boolean>;
+
+/**
+ * Prune one org. `months` is the org's period when the caller already read it
+ * (the daily job reads every org's period in one query); otherwise it is read
+ * here.
+ */
 export async function runDataRetentionPrune(
   organizationId: number,
+  months?: number | null,
+  tableExists: AuditTableExistsCache = new Map(),
 ): Promise<DataRetentionSummary | null> {
   let cutoff: string | null = null;
   let deleted = 0;
@@ -39,9 +51,9 @@ export async function runDataRetentionPrune(
   const failures: { name: string; error: unknown }[] = [];
 
   try {
-    const months = await getAuditRetentionMonths(organizationId);
-    if (months === null) return null;
-    cutoff = await getAuditCutoff(months);
+    const period = months === undefined ? await getAuditRetentionMonths(organizationId) : months;
+    if (period === null) return null;
+    cutoff = await getAuditCutoff(period);
   } catch (error) {
     await safeRecordRun(organizationId, cutoff, 0, "failed", error);
     throw error;
@@ -70,9 +82,15 @@ export async function runDataRetentionPrune(
     pruneAuditLedgerBatch(organizationId, runCutoff, RETENTION_BATCH_SIZE),
   );
   for (const entry of AUDIT_RECORD_TABLES) {
-    await drain(entry.table, () =>
-      deleteAuditRowsBatch(organizationId, entry, runCutoff, RETENTION_BATCH_SIZE),
-    );
+    await drain(entry.table, async () => {
+      let exists = tableExists.get(entry.table);
+      if (exists === undefined) {
+        exists = await auditTableExists(entry);
+        tableExists.set(entry.table, exists);
+      }
+      if (!exists) return 0;
+      return deleteAuditRowsBatch(organizationId, entry, runCutoff, RETENTION_BATCH_SIZE, true);
+    });
   }
 
   if (deleted > 0) {
@@ -123,27 +141,42 @@ async function safeRecordRun(
   }
 }
 
-/** Prune every org -- the BullMQ daily job entry point. One org's failure never blocks the rest. */
+/**
+ * Prune every org with an audit period -- the BullMQ daily job entry point.
+ * One org's failure never blocks the rest. Then AI Gateway logs are purged
+ * per opted-in org, and old run history is trimmed.
+ */
 export async function runDataRetentionPruneAllOrgs(): Promise<void> {
-  const organizations = await getAllOrganizationsQuery();
-  for (const org of organizations) {
-    if (org.id === undefined || org.id === null) continue;
+  const organizations = await getOrgsWithAuditRetention();
+  const tableExists: AuditTableExistsCache = new Map();
+  for (const { organizationId, months } of organizations) {
     try {
-      const summary = await runDataRetentionPrune(org.id);
+      const summary = await runDataRetentionPrune(organizationId, months, tableExists);
       if (summary && (summary.deleted > 0 || summary.capped)) {
         logger.info(
-          `Audit retention prune org ${org.id}: deleted=${summary.deleted} capped=${summary.capped} cutoff=${summary.cutoff}`,
+          `Audit retention prune org ${organizationId}: deleted=${summary.deleted} capped=${summary.capped} cutoff=${summary.cutoff}`,
         );
       }
     } catch (error) {
-      logger.error(`Audit retention prune failed for org ${org.id}:`, error);
+      logger.error(`Audit retention prune failed for org ${organizationId}:`, error);
     }
   }
   await purgeGatewayLogs();
+  try {
+    const removed = await pruneRetentionRunHistory();
+    if (removed > 0) logger.info(`Retention run history: removed ${removed} old runs`);
+  } catch (error) {
+    logger.error("Pruning retention run history failed:", error);
+  }
 }
 
-/** One purge request can drain many batches for every opted-in org, so it gets five minutes. */
+/**
+ * One purge call covers one org and at most 100 batches of 1,000 rows per log
+ * type, so five minutes is ample.
+ */
 const GATEWAY_PURGE_TIMEOUT_MS = 300_000;
+/** Calls per org per run: 5 x 100 batches = 500 batches per log type. */
+const GATEWAY_PURGE_MAX_CALLS = 5;
 
 interface GatewayPurgeResult {
   organization_id: number;
@@ -155,59 +188,92 @@ interface GatewayPurgeResult {
   spend_error?: string;
 }
 
-function gatewayRunStatus(error: string | undefined, capped: boolean | undefined) {
-  if (error) return "failed" as const;
-  return capped ? ("capped" as const) : ("success" as const);
+interface GatewayTypeTotal {
+  deleted: number;
+  capped: boolean;
+  error?: string;
+}
+
+function gatewayRunStatus(total: GatewayTypeTotal) {
+  if (total.error) return "failed" as const;
+  return total.capped ? ("capped" as const) : ("success" as const);
 }
 
 /**
- * Ask the AI Gateway to purge logs for every org that opted in to automatic
- * deletion, and record one run per log type per org. When the call itself
- * fails, every opted-in org gets a failed run for both log types. A gateway
- * or recording failure is logged and never fails the job.
+ * Ask the AI Gateway to purge logs for each org that opted in to automatic
+ * deletion, one org at a time. A gateway or recording failure is logged and
+ * never fails the job, and one org's failure never affects another's.
  */
 async function purgeGatewayLogs(): Promise<void> {
-  let results: GatewayPurgeResult[];
-  try {
-    const response = await aiGatewayRequest("POST", "/internal/retention/purge", {
-      timeoutMs: GATEWAY_PURGE_TIMEOUT_MS,
-    });
-    results = Array.isArray(response?.results) ? response.results : [];
-  } catch (error) {
-    logger.error("AI Gateway retention purge failed:", error);
-    await recordGatewayCallFailure(error);
-    return;
-  }
-  for (const result of results) {
-    await safeRecordRun(
-      result.organization_id,
-      null,
-      result.guardrail_deleted ?? 0,
-      gatewayRunStatus(result.guardrail_error, result.guardrail_capped),
-      result.guardrail_error,
-      "ai_gateway_guardrail_logs",
-    );
-    await safeRecordRun(
-      result.organization_id,
-      null,
-      result.spend_deleted ?? 0,
-      gatewayRunStatus(result.spend_error, result.spend_capped),
-      result.spend_error,
-      "ai_gateway_spend_logs",
-    );
-  }
-}
-
-async function recordGatewayCallFailure(error: unknown): Promise<void> {
   let orgIds: number[];
   try {
     orgIds = await getGatewayAutoPurgeOrgIds();
-  } catch (readError) {
-    logger.error("Reading AI Gateway auto-purge organizations failed:", readError);
+  } catch (error) {
+    logger.error("Reading AI Gateway auto-purge organizations failed:", error);
     return;
   }
   for (const orgId of orgIds) {
-    await safeRecordRun(orgId, null, 0, "failed", error, "ai_gateway_guardrail_logs");
-    await safeRecordRun(orgId, null, 0, "failed", error, "ai_gateway_spend_logs");
+    await purgeGatewayLogsForOrg(orgId);
   }
+}
+
+/**
+ * Call the per-org purge, repeating while a log type is still capped (up to
+ * five calls), then record one run per log type: failed if any call errored
+ * for that type, capped if still capped after the last call, else success.
+ */
+async function purgeGatewayLogsForOrg(orgId: number): Promise<void> {
+  const guardrail: GatewayTypeTotal = { deleted: 0, capped: false };
+  const spend: GatewayTypeTotal = { deleted: 0, capped: false };
+  let answered = false;
+
+  for (let call = 0; call < GATEWAY_PURGE_MAX_CALLS; call++) {
+    let result: GatewayPurgeResult | undefined;
+    try {
+      const response = await aiGatewayRequest("POST", "/internal/retention/purge", {
+        body: { organization_id: orgId },
+        timeoutMs: GATEWAY_PURGE_TIMEOUT_MS,
+      });
+      result = Array.isArray(response?.results)
+        ? response.results.find((r: GatewayPurgeResult) => r.organization_id === orgId)
+        : undefined;
+    } catch (error) {
+      logger.error(`AI Gateway retention purge failed for org ${orgId}:`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      guardrail.error ??= message;
+      spend.error ??= message;
+      answered = true;
+      break;
+    }
+    // The org turned automatic deletion off since it was read: nothing to record.
+    if (!result) break;
+    answered = true;
+    guardrail.deleted += result.guardrail_deleted ?? 0;
+    guardrail.capped = Boolean(result.guardrail_capped);
+    if (result.guardrail_error) guardrail.error ??= result.guardrail_error;
+    spend.deleted += result.spend_deleted ?? 0;
+    spend.capped = Boolean(result.spend_capped);
+    if (result.spend_error) spend.error ??= result.spend_error;
+
+    const more = (t: GatewayTypeTotal) => t.capped && !t.error;
+    if (!more(guardrail) && !more(spend)) break;
+  }
+  if (!answered) return;
+
+  await safeRecordRun(
+    orgId,
+    null,
+    guardrail.deleted,
+    gatewayRunStatus(guardrail),
+    guardrail.error,
+    "ai_gateway_guardrail_logs",
+  );
+  await safeRecordRun(
+    orgId,
+    null,
+    spend.deleted,
+    gatewayRunStatus(spend),
+    spend.error,
+    "ai_gateway_spend_logs",
+  );
 }

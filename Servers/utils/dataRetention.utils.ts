@@ -50,6 +50,15 @@ export const AUDIT_RECORD_TABLES: ReadonlyArray<{ table: string; timestampColumn
 
 type AuditTable = (typeof AUDIT_RECORD_TABLES)[number];
 
+/**
+ * Rows affected by a raw (untyped) DELETE: sequelize returns `[rows, result]`
+ * with the pg result's `rowCount`, or a bare number for typed queries.
+ */
+export function deletedRowCount(meta: unknown): number {
+  if (typeof meta === "number") return meta;
+  return Number((meta as { rowCount?: number } | null | undefined)?.rowCount ?? 0);
+}
+
 export async function getAuditRetentionMonths(organizationId: number): Promise<number | null> {
   const rows = (await sequelize.query(
     `SELECT audit_retention_months FROM data_retention_settings WHERE organization_id = :organizationId`,
@@ -58,6 +67,21 @@ export async function getAuditRetentionMonths(organizationId: number): Promise<n
   return rows.length > 0 && rows[0].audit_retention_months !== null
     ? Number(rows[0].audit_retention_months)
     : null;
+}
+
+/** Every org with an audit retention period set, in one read for the daily job. */
+export async function getOrgsWithAuditRetention(): Promise<
+  { organizationId: number; months: number }[]
+> {
+  const rows = (await sequelize.query(
+    `SELECT organization_id, audit_retention_months FROM data_retention_settings
+      WHERE audit_retention_months IS NOT NULL ORDER BY organization_id`,
+    { type: QueryTypes.SELECT },
+  )) as { organization_id: number; audit_retention_months: number }[];
+  return rows.map((r) => ({
+    organizationId: Number(r.organization_id),
+    months: Number(r.audit_retention_months),
+  }));
 }
 
 export async function setAuditRetentionMonths(
@@ -94,16 +118,31 @@ function resolveAuditTable(entry: { table: string; timestampColumn: string }): A
   return found;
 }
 
+/** Whether an audit table exists in this deployment (some are created by optional features). */
+export async function auditTableExists(entry: {
+  table: string;
+  timestampColumn: string;
+}): Promise<boolean> {
+  const { table } = resolveAuditTable(entry);
+  const exists = (await sequelize.query(`SELECT to_regclass('verifywise.' || :table) AS reg`, {
+    replacements: { table },
+    type: QueryTypes.SELECT,
+  })) as { reg: string | null }[];
+  return Boolean(exists[0]?.reg);
+}
+
 /**
  * Delete up to `batchSize` of the oldest rows older than `cutoff` from one
  * audit table for one org. Returns the rows deleted; 0 when the table does not
- * exist in this deployment.
+ * exist in this deployment. A caller that already checked the table exists
+ * (the daily job checks once per table per run) passes `tableKnownToExist`.
  */
 export async function deleteAuditRowsBatch(
   organizationId: number,
   entry: { table: string; timestampColumn: string },
   cutoff: string,
   batchSize: number,
+  tableKnownToExist = false,
 ): Promise<number> {
   const { table, timestampColumn } = resolveAuditTable(entry);
   return sequelize.transaction(async (transaction) => {
@@ -112,12 +151,14 @@ export async function deleteAuditRowsBatch(
       type: QueryTypes.SELECT,
       transaction,
     });
-    const exists = (await sequelize.query(`SELECT to_regclass('verifywise.' || :table) AS reg`, {
-      replacements: { table },
-      type: QueryTypes.SELECT,
-      transaction,
-    })) as { reg: string | null }[];
-    if (!exists[0]?.reg) return 0;
+    if (!tableKnownToExist) {
+      const exists = (await sequelize.query(`SELECT to_regclass('verifywise.' || :table) AS reg`, {
+        replacements: { table },
+        type: QueryTypes.SELECT,
+        transaction,
+      })) as { reg: string | null }[];
+      if (!exists[0]?.reg) return 0;
+    }
 
     const [, meta] = (await sequelize.query(
       `DELETE FROM ${table} WHERE ctid IN (
@@ -125,8 +166,8 @@ export async function deleteAuditRowsBatch(
           WHERE organization_id = :organizationId AND ${timestampColumn} < :cutoff
           ORDER BY ${timestampColumn} LIMIT :batchSize)`,
       { replacements: { organizationId, cutoff, batchSize }, transaction },
-    )) as [unknown, any];
-    return typeof meta === "number" ? meta : Number(meta?.rowCount ?? 0);
+    )) as [unknown, unknown];
+    return deletedRowCount(meta);
   });
 }
 
@@ -201,10 +242,64 @@ export async function recordRetentionRun(row: RetentionRunInput): Promise<void> 
   );
 }
 
+/** Run history older than this is deleted, except each type's latest run per org. */
+export const RETENTION_RUN_HISTORY_MONTHS = 13;
+
+/**
+ * Delete data_retention_runs rows older than 13 months, keeping the latest row
+ * per (organization, record type) so the settings page always has a last run
+ * to show. Batched per org like the audit deletes. Returns the rows deleted.
+ */
+export async function pruneRetentionRunHistory(): Promise<number> {
+  const orgs = (await sequelize.query(
+    `SELECT DISTINCT organization_id FROM data_retention_runs
+      WHERE ran_at < now() - make_interval(months => :months)
+      ORDER BY organization_id`,
+    { replacements: { months: RETENTION_RUN_HISTORY_MONTHS }, type: QueryTypes.SELECT },
+  )) as { organization_id: number }[];
+
+  let total = 0;
+  for (const { organization_id } of orgs) {
+    const organizationId = Number(organization_id);
+    for (let batches = 0; batches < RETENTION_MAX_BATCHES; batches++) {
+      const deleted = await sequelize.transaction(async (transaction) => {
+        await sequelize.query(`SELECT set_config('app.current_org', :org, true)`, {
+          replacements: { org: String(organizationId) },
+          type: QueryTypes.SELECT,
+          transaction,
+        });
+        const [, meta] = (await sequelize.query(
+          `DELETE FROM data_retention_runs WHERE id IN (
+             SELECT r.id FROM data_retention_runs r
+              WHERE r.organization_id = :organizationId
+                AND r.ran_at < now() - make_interval(months => :months)
+                AND r.id <> (
+                  SELECT l.id FROM data_retention_runs l
+                   WHERE l.organization_id = r.organization_id AND l.record_type = r.record_type
+                   ORDER BY l.ran_at DESC, l.id DESC LIMIT 1)
+              ORDER BY r.ran_at LIMIT :batchSize)`,
+          {
+            replacements: {
+              organizationId,
+              months: RETENTION_RUN_HISTORY_MONTHS,
+              batchSize: RETENTION_BATCH_SIZE,
+            },
+            transaction,
+          },
+        )) as [unknown, unknown];
+        return deletedRowCount(meta);
+      });
+      total += deleted;
+      if (deleted < RETENTION_BATCH_SIZE) break;
+    }
+  }
+  return total;
+}
+
 /**
  * Organizations that opted in to automatic AI Gateway log deletion, read
- * straight from the gateway's settings table (same database). Used to record
- * failed runs when the gateway purge call itself fails. Empty when the table
+ * straight from the gateway's settings table (same database). The daily job
+ * asks the gateway to purge each of them in turn. Empty when the table
  * does not exist in this deployment.
  */
 export async function getGatewayAutoPurgeOrgIds(): Promise<number[]> {
