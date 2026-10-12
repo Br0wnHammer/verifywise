@@ -15,7 +15,11 @@ import {
   REMOVED_BEFORE_STOP_LABEL,
   REMOVED_LABEL,
   removeInBatches,
-  SKIPPED_LABEL,
+  SKIPPED_CHANGED_LABEL,
+  SKIPPED_GONE_LABEL,
+  SKIPPED_SHARED_LABEL,
+  REMOVAL_KEPT_MESSAGE,
+  appendPage,
   UNLINKED_LABEL,
   runInBatches,
 } from "./batching";
@@ -157,27 +161,78 @@ describe("importInBatches", () => {
 });
 
 describe("removeInBatches", () => {
-  it("says why some were skipped (no longer missing or gone), without claiming they stay selected", async () => {
-    const send = vi.fn(async () => ({ removed: 2, unlinked: 0, skipped: 1, skipped_ids: [3] }));
+  it("skips that settle the id (no longer missing, not found) deselect it and say why", async () => {
+    const send = vi.fn(async () => ({
+      removed: 2,
+      unlinked: 0,
+      skipped_items: [
+        { id: 3, reason: "no_longer_missing" as const },
+        { id: 4, reason: "not_found" as const },
+      ],
+    }));
 
-    const summary = await removeInBatches([1, 2, 3], send);
+    const summary = await removeInBatches([1, 2, 3, 4], send);
 
     expect(summary).toEqual({
       type: "warning",
       text: REMOVAL_PARTLY_SKIPPED_MESSAGE,
       counts: [
         { label: REMOVED_LABEL, value: 2 },
-        { label: SKIPPED_LABEL, value: 1 },
+        { label: SKIPPED_GONE_LABEL, value: 2 },
       ],
-      // A skipped id is no longer missing (or gone), so it leaves the list too.
-      doneIds: [1, 2, 3],
+      doneIds: [1, 2, 3, 4],
     });
-    expect(summary.text).toContain("no longer missing in Jira or no longer exist");
-    expect(summary.text).not.toContain("still selected");
+  });
+
+  it("keeps changed and shared-project skips selected, and says they are", async () => {
+    const send = vi.fn(async () => ({
+      removed: 1,
+      unlinked: 0,
+      skipped_items: [
+        { id: 2, reason: "has_live_links" as const },
+        { id: 3, reason: "changed" as const },
+        { id: 4, reason: "no_longer_missing" as const },
+      ],
+    }));
+
+    const summary = await removeInBatches([1, 2, 3, 4], send);
+
+    expect(summary.type).toBe("warning");
+    expect(summary.text).toBe(REMOVAL_KEPT_MESSAGE);
+    expect(summary.counts).toEqual([
+      { label: REMOVED_LABEL, value: 1 },
+      { label: SKIPPED_GONE_LABEL, value: 1 },
+      { label: SKIPPED_SHARED_LABEL, value: 1 },
+      { label: SKIPPED_CHANGED_LABEL, value: 1 },
+    ]);
+    expect(summary.doneIds).toEqual([1, 4]);
+  });
+
+  it("shows the server's message naming the use case when a delete failed (500)", async () => {
+    const message =
+      "Use case 7 (project 70) could not be deleted, so nothing was removed. Try again.";
+    const send = vi
+      .fn<(batch: number[]) => Promise<any>>()
+      .mockResolvedValueOnce({ removed: 100, skipped_items: [] })
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Internal Server Error"), {
+          status: 500,
+          response: { message: "Internal Server Error", error: message },
+        }),
+      );
+
+    const summary = await removeInBatches(nums(150), send);
+
+    expect(summary).toMatchObject({
+      type: "error",
+      text: message,
+      counts: [{ label: REMOVED_BEFORE_STOP_LABEL, value: 100 }],
+      doneIds: nums(100),
+    });
   });
 
   it("reports links cleaned up separately from use cases removed", async () => {
-    const send = vi.fn(async () => ({ removed: 1, unlinked: 1, skipped: 0, skipped_ids: [] }));
+    const send = vi.fn(async () => ({ removed: 1, unlinked: 1, skipped_items: [] }));
 
     const summary = await removeInBatches([1, 2], send);
 
@@ -193,8 +248,8 @@ describe("removeInBatches", () => {
 
   it("stops at an error on the 2nd batch, reports the 100 removed, deselects only those", async () => {
     const send = vi
-      .fn<(batch: number[]) => Promise<{ removed: number; skipped_ids: number[] }>>()
-      .mockResolvedValueOnce({ removed: 100, skipped_ids: [] })
+      .fn<(batch: number[]) => Promise<{ removed: number; skipped_items: [] }>>()
+      .mockResolvedValueOnce({ removed: 100, skipped_items: [] })
       .mockRejectedValueOnce(
         conflict({ code: "removal_interrupted", message: REMOVAL_INTERRUPTED_MESSAGE }),
       );
@@ -324,5 +379,17 @@ describe("keepShown", () => {
 
     expect(keepShown(new Set(["1", "2", "99"]), objects)).toEqual(new Set(["1", "2"]));
     expect(keepShown(same, objects)).toBe(same);
+  });
+});
+
+describe("appendPage (Load more)", () => {
+  const obj = (id: string) => ({ id });
+
+  it("leaves out objects imported by the time the page lands, and duplicates", () => {
+    const prev = [obj("1"), obj("2")];
+    // The page was requested before an import of "3" finished.
+    const next = appendPage(prev, [obj("2"), obj("3"), obj("4")], new Set(["3"]));
+
+    expect(next.map((o) => o.id)).toEqual(["1", "2", "4"]);
   });
 });

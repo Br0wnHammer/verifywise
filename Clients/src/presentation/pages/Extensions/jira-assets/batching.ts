@@ -80,9 +80,13 @@ export const REMOVAL_FINISHED_MESSAGE = "Missing use cases removed.";
 export const REMOVED_LABEL = "Use cases removed:";
 export const REMOVED_BEFORE_STOP_LABEL = "Use cases removed before it stopped:";
 export const UNLINKED_LABEL = "Links cleaned up:";
-export const SKIPPED_LABEL = "Use cases skipped:";
+export const SKIPPED_GONE_LABEL = "Skipped, no longer missing or no longer there:";
+export const SKIPPED_SHARED_LABEL = "Skipped, project also used by another use case:";
+export const SKIPPED_CHANGED_LABEL = "Skipped, changed during the removal:";
 export const REMOVAL_PARTLY_SKIPPED_MESSAGE =
   "Removal finished. Some use cases were not removed because they are no longer missing in Jira or no longer exist.";
+export const REMOVAL_KEPT_MESSAGE =
+  "Removal finished, but some use cases were not removed. They are still selected.";
 export const REMOVAL_FAILED_MESSAGE = "Failed to remove use cases";
 /** An interrupted batch after earlier batches removed some ("nothing was removed" would mislead). */
 export const REMOVAL_INTERRUPTED_PARTIAL_MESSAGE =
@@ -182,17 +186,23 @@ export async function importInBatches(
   };
 }
 
+/** Why the server did not remove a requested use case (jiraAssets.service RemovalSkipReason). */
+export type RemovalSkipReason = "no_longer_missing" | "not_found" | "changed" | "has_live_links";
+
 interface RemoveResponse {
+  /** Use cases (projects) deleted. */
   removed?: number;
   /** Links whose project is not in this organization; only the link was deleted. */
   unlinked?: number;
-  /**
-   * Ids the server did not remove: no longer flagged (a sync found them in
-   * Jira again) or no longer there. Either way they leave the "Missing in
-   * Jira" list on reload, so they are not kept selected.
-   */
-  skipped_ids?: number[];
+  skipped_items?: Array<{ id: number; reason: RemovalSkipReason }>;
 }
+
+/**
+ * Skips that settle the id: it is no longer missing (a sync found it) or no
+ * longer there, so it leaves the "Missing in Jira" list on reload. The other
+ * reasons leave it flagged, so it stays selected for another try.
+ */
+const SETTLING_SKIPS = new Set<RemovalSkipReason>(["no_longer_missing", "not_found"]);
 
 /** Remove the use cases `ids` in batches through `send` (POST /use-cases/remove-missing). */
 export async function removeInBatches(
@@ -203,23 +213,37 @@ export async function removeInBatches(
   const run = await runInBatches(ids, send, onProgress);
   let removed = 0;
   let unlinked = 0;
-  let skipped = 0;
-  for (const { result } of run.done) {
+  const skips: Record<"gone" | "shared" | "changed", number> = { gone: 0, shared: 0, changed: 0 };
+  const doneIds: number[] = [];
+  for (const { batch, result } of run.done) {
     removed += result?.removed ?? 0;
     unlinked += result?.unlinked ?? 0;
-    skipped += result?.skipped_ids?.length ?? 0;
+    const kept = new Set<number>();
+    for (const { id, reason } of result?.skipped_items ?? []) {
+      if (SETTLING_SKIPS.has(reason)) skips.gone++;
+      else {
+        kept.add(id);
+        if (reason === "has_live_links") skips.shared++;
+        else skips.changed++;
+      }
+    }
+    doneIds.push(...batch.filter((id) => !kept.has(id)));
   }
-  // Every id of a finished batch is settled: removed, cleaned up, or skipped
-  // because it is no longer missing or no longer exists.
-  const doneIds = run.done.flatMap(({ batch }) => batch);
-  const extraCounts = [
+  const extraCounts: MessageCount[] = [
     ...(unlinked > 0 ? [{ label: UNLINKED_LABEL, value: unlinked }] : []),
-    ...(skipped > 0 ? [{ label: SKIPPED_LABEL, value: skipped }] : []),
+    ...(skips.gone > 0 ? [{ label: SKIPPED_GONE_LABEL, value: skips.gone }] : []),
+    ...(skips.shared > 0 ? [{ label: SKIPPED_SHARED_LABEL, value: skips.shared }] : []),
+    ...(skips.changed > 0 ? [{ label: SKIPPED_CHANGED_LABEL, value: skips.changed }] : []),
   ];
   if (!run.error) {
+    const keptAny = skips.shared + skips.changed > 0;
     return {
-      type: skipped > 0 ? "warning" : "success",
-      text: skipped > 0 ? REMOVAL_PARTLY_SKIPPED_MESSAGE : REMOVAL_FINISHED_MESSAGE,
+      type: keptAny || skips.gone > 0 ? "warning" : "success",
+      text: keptAny
+        ? REMOVAL_KEPT_MESSAGE
+        : skips.gone > 0
+          ? REMOVAL_PARTLY_SKIPPED_MESSAGE
+          : REMOVAL_FINISHED_MESSAGE,
       counts: [{ label: REMOVED_LABEL, value: removed }, ...extraCounts],
       doneIds,
     };
@@ -232,7 +256,8 @@ export async function removeInBatches(
         : stop.error.response?.data?.message || REMOVAL_INTERRUPTED_MESSAGE
       : stop.kind === "sync_running"
         ? SYNC_RUNNING_MESSAGE
-        : getApiErrorReason(stop.error) || stop.error?.message || REMOVAL_FAILED_MESSAGE;
+        : // A failed delete names the use case in the 500 body's reason.
+          getApiErrorReason(stop.error) || stop.error?.message || REMOVAL_FAILED_MESSAGE;
   return {
     type: "error",
     text,
@@ -270,10 +295,26 @@ export function withoutImported<O extends { id: string }>(
 }
 
 /**
+ * The picker after a "Load more" page arrives: the page is appended without
+ * duplicates and without objects already imported. `importedObjectIds` is
+ * read when the page arrives (not when it was requested), so a page that
+ * lands after an import never brings the just-imported objects back.
+ */
+export function appendPage<O extends { id: string }>(
+  prev: O[],
+  page: O[],
+  importedObjectIds: Set<string>,
+): O[] {
+  const seen = new Set(prev.map((obj) => obj.id));
+  return [...prev, ...page.filter((obj) => !seen.has(obj.id) && !importedObjectIds.has(obj.id))];
+}
+
+/**
  * The selection restricted to the objects shown in the picker. The panel
- * applies it whenever the picker changes, so a selected id is never
- * invisible: this is the one place the selection is derived from the
- * objects. Returns the same set when nothing changes.
+ * derives its effective selection with this at render, so a selected id is
+ * never invisible, not even for one frame: this is the one place the
+ * selection is derived from the objects. Returns the same set when nothing
+ * changes.
  */
 export function keepShown<O extends { id: string }>(selected: Set<string>, objects: O[]) {
   const shown = new Set(objects.map((obj) => obj.id));
@@ -286,8 +327,8 @@ export function keepShown<O extends { id: string }>(selected: Set<string>, objec
  * to the latest state (so a "Load more" or a toggle made during the import is
  * kept), from the summary and the freshly loaded imported use cases (not the
  * ones the import started with): imported objects leave the picker and
- * handled ids leave the selection. keepShown then restricts the selection to
- * what the picker still shows, so imported ids of a batch kept whole
+ * handled ids leave the selection. keepShown (at render) restricts the
+ * selection to what the picker still shows, so imported ids of a batch kept whole
  * (errors without ids, or interrupted part-way) leave it too. The handler
  * applies this once, after reloading, so no reload can clear the outcome.
  */
