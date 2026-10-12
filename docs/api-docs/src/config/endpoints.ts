@@ -1231,6 +1231,21 @@ export const aiDetectionEndpoints: Endpoint[] = [
   },
 ];
 
+// AI Gateway endpoints
+export const aiGatewayEndpoints: Endpoint[] = [
+  {
+    method: 'PUT',
+    path: '/ai-gateway/guardrails/settings',
+    summary: "Update Guardrail Settings",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "AI Gateway",
+  },
+];
+
 // Incidents endpoints
 export const aiIncidentEndpoints: Endpoint[] = [
   {
@@ -11819,6 +11834,7 @@ export const allEndpoints = {
   aiConfirmation: aiConfirmationEndpoints,
   aiContent: aiContentEndpoints,
   aiDetection: aiDetectionEndpoints,
+  aiGateway: aiGatewayEndpoints,
   aiIncident: aiIncidentEndpoints,
   aiTrustCentre: aiTrustCentreEndpoints,
   aiTrustIndex: aiTrustIndexEndpoints,

@@ -7695,6 +7695,8 @@ tags:
   -
     name: 'AI Detection'
   -
+    name: 'AI Gateway'
+  -
     name: 'AI Trust Centre'
   -
     name: 'Agent Discovery'
@@ -25266,6 +25268,20 @@ paths:
           description: Unauthorized
         '500':
           description: 'Internal server error'
+  /ai-gateway/guardrails/settings:
+    put:
+      summary: 'Update Guardrail Settings'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'AI Gateway'
+      operationId: updateGuardrailSettings
+      security:
+        -
+          bearerAuth: []
   '/custom-fields/definitions/by-id/{id}':
     get:
       summary: 'Get Custom Field Definition By Id'

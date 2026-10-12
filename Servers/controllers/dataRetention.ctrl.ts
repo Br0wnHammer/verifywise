@@ -25,6 +25,7 @@ import { getMrmOrgSettings } from "../utils/mrmSettings.utils";
 import { getFileOrgSettings } from "../utils/fileOrgSettings.utils";
 import { getSettingsQuery as getShadowAiSettings } from "../utils/shadowAiConfig.utils";
 import { getServerLogRetentionDays } from "../utils/logger/logRetention";
+import logger from "../utils/logger/fileLogger";
 
 const FILE_NAME = "dataRetention.ctrl.ts";
 
@@ -75,7 +76,8 @@ async function safeGateway(req: Request, path: string): Promise<any | null> {
       organizationId: req.organizationId!,
       role: req.role,
     });
-  } catch {
+  } catch (error) {
+    logger.warn(`AI Gateway request ${path} failed: ${(error as Error)?.message ?? error}`);
     return null;
   }
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { aiGatewayRequest } from "../aiGatewayInternal.utils";
+import { AiGatewayError, aiGatewayRequest } from "../aiGatewayInternal.utils";
 
 const fetchMock: jest.Mock<(...args: any[]) => Promise<any>> = jest.fn();
 
@@ -58,5 +58,37 @@ describe("aiGatewayRequest", () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403, text: async () => "nope" });
 
     await expect(aiGatewayRequest("GET", "/internal/x")).rejects.toThrow(/403/);
+  });
+
+  it("carries the status and parsed body on the error", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ detail: "bad value" }),
+    });
+
+    const error = (await aiGatewayRequest("PUT", "/internal/x").catch((e) => e)) as AiGatewayError;
+    expect(error).toBeInstanceOf(AiGatewayError);
+    expect(error.status).toBe(400);
+    expect(error.body).toEqual({ detail: "bad value" });
+  });
+
+  it("truncates a long upstream body in the error message", async () => {
+    const long = "x".repeat(5000);
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => long });
+
+    const error = (await aiGatewayRequest("GET", "/internal/x").catch((e) => e)) as AiGatewayError;
+    expect(error.message.length).toBeLessThan(260);
+    expect(error.message).toMatch(/x{200}\.\.\.$/);
+    expect(error.body).toBe(long);
+  });
+
+  it("sends the user id header when given", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    await aiGatewayRequest("PUT", "/internal/x", { organizationId: 1, role: "Admin", userId: 9 });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, any];
+    expect(init.headers["x-user-id"]).toBe("9");
   });
 });

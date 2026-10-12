@@ -9,6 +9,7 @@
 import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
 import authenticateJWT from "../middleware/auth.middleware";
 import express, { Request, Router } from "express";
+import { updateGuardrailSettings } from "../controllers/aiGatewaySettings.ctrl";
 
 const AI_GATEWAY_URL = process.env.AI_GATEWAY_URL || "http://127.0.0.1:8100";
 const AI_GATEWAY_KEY = process.env.AI_GATEWAY_INTERNAL_KEY || "";
@@ -84,6 +85,10 @@ function aiGatewayRoutes() {
       },
     },
   });
+
+  // Settings updates go through Express first so retention changes are
+  // recorded in the audit ledger; the gateway still enforces admin access.
+  router.put("/guardrails/settings", authenticateJWT, jsonParser, updateGuardrailSettings);
 
   // All routes: authenticate JWT, parse body, forward to AIGateway
   router.use("/", authenticateJWT, jsonParser, proxy);

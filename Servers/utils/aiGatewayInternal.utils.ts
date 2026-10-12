@@ -11,15 +11,34 @@ const AI_GATEWAY_URL = process.env.AI_GATEWAY_URL || "http://127.0.0.1:8100";
 const AI_GATEWAY_KEY = process.env.AI_GATEWAY_INTERNAL_KEY || "";
 const AI_GATEWAY_TIMEOUT_MS = 10_000;
 
+/** Upstream bodies are cut to this length in error messages, so logs stay readable. */
+const ERROR_BODY_MAX_CHARS = 200;
+
 export interface AiGatewayRequestOptions {
   organizationId?: number;
   role?: string;
+  userId?: number;
   body?: object;
   /** Overrides the default timeout, for long-running calls such as the retention purge. */
   timeoutMs?: number;
 }
 
-/** Call an AI Gateway internal endpoint; throws on a non-2xx response or timeout. */
+/** A non-2xx response from the gateway; carries its status and parsed body. */
+export class AiGatewayError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: unknown,
+    message: string,
+  ) {
+    super(message);
+    this.name = "AiGatewayError";
+  }
+}
+
+/**
+ * Call an AI Gateway internal endpoint; throws an AiGatewayError on a non-2xx
+ * response, or the fetch error on a timeout or network failure.
+ */
 export async function aiGatewayRequest(
   method: string,
   path: string,
@@ -33,6 +52,7 @@ export async function aiGatewayRequest(
     headers["x-organization-id"] = String(options.organizationId);
   }
   if (options.role) headers["x-role"] = options.role;
+  if (options.userId !== undefined) headers["x-user-id"] = String(options.userId);
 
   const response = await fetch(`${AI_GATEWAY_URL}${path}`, {
     method,
@@ -42,7 +62,19 @@ export async function aiGatewayRequest(
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`AIGateway ${path} returned ${response.status}: ${text}`);
+    let body: unknown = text;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // Not JSON: keep the raw text.
+    }
+    const excerpt =
+      text.length > ERROR_BODY_MAX_CHARS ? `${text.slice(0, ERROR_BODY_MAX_CHARS)}...` : text;
+    throw new AiGatewayError(
+      response.status,
+      body,
+      `AIGateway ${path} returned ${response.status}: ${excerpt}`,
+    );
   }
   return response.json();
 }

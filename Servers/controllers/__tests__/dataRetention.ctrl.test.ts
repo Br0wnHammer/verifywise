@@ -21,6 +21,10 @@ jest.mock("../../utils/aiGatewayInternal.utils", () => ({ aiGatewayRequest: jest
 jest.mock("../../utils/mrmSettings.utils", () => ({ getMrmOrgSettings: jest.fn<any>() }));
 jest.mock("../../utils/fileOrgSettings.utils", () => ({ getFileOrgSettings: jest.fn<any>() }));
 jest.mock("../../utils/shadowAiConfig.utils", () => ({ getSettingsQuery: jest.fn<any>() }));
+jest.mock("../../utils/logger/fileLogger", () => ({
+  __esModule: true,
+  default: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
+}));
 jest.mock("../../utils/logger/logRetention", () => ({
   getServerLogRetentionDays: jest.fn<any>().mockReturnValue(14),
 }));
@@ -38,6 +42,7 @@ import { aiGatewayRequest } from "../../utils/aiGatewayInternal.utils";
 import { getMrmOrgSettings } from "../../utils/mrmSettings.utils";
 import { getFileOrgSettings } from "../../utils/fileOrgSettings.utils";
 import { getSettingsQuery } from "../../utils/shadowAiConfig.utils";
+import logger from "../../utils/logger/fileLogger";
 
 const m = (fn: unknown) => fn as jest.MockedFunction<any>;
 
@@ -195,6 +200,10 @@ describe("dataRetention.ctrl", () => {
         expect(row(res, key).unavailable).toBe(true);
       }
       expect(row(res, "mrm_metrics").unavailable).toBeUndefined();
+      // The failure is logged with the path, not swallowed.
+      expect(m(logger.warn)).toHaveBeenCalledWith(
+        expect.stringContaining("/internal/guardrails/settings"),
+      );
     });
 
     it("builds the MRM, evidence, Shadow AI and server log rows", async () => {

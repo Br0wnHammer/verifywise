@@ -1,0 +1,207 @@
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+
+jest.mock("../../utils/aiGatewayInternal.utils", () => {
+  class AiGatewayError extends Error {
+    constructor(
+      public readonly status: number,
+      public readonly body: unknown,
+      message: string,
+    ) {
+      super(message);
+    }
+  }
+  return { AiGatewayError, aiGatewayRequest: jest.fn<any>() };
+});
+jest.mock("../../utils/auditLedger.utils", () => ({ appendToAuditLedger: jest.fn<any>() }));
+jest.mock("../../utils/logger/logHelper", () => ({
+  logFailure: jest.fn<any>().mockResolvedValue(undefined),
+}));
+jest.mock("../../utils/logger/fileLogger", () => ({
+  __esModule: true,
+  default: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
+}));
+
+import { describeRetentionChanges, updateGuardrailSettings } from "../aiGatewaySettings.ctrl";
+import { AiGatewayError, aiGatewayRequest } from "../../utils/aiGatewayInternal.utils";
+import { appendToAuditLedger } from "../../utils/auditLedger.utils";
+import { logFailure } from "../../utils/logger/logHelper";
+
+const m = (fn: unknown) => fn as jest.MockedFunction<any>;
+
+function createReq(body: Record<string, any>, role = "Admin"): any {
+  return { userId: 5, organizationId: 2, role, body };
+}
+function createRes(): any {
+  const res: any = {};
+  res.status = jest.fn<any>().mockReturnValue(res);
+  res.json = jest.fn<any>().mockReturnValue(res);
+  res.send = jest.fn<any>().mockReturnValue(res);
+  return res;
+}
+
+/** GET returns `before`, PUT returns `after` (or throws it when it is an Error). */
+function gateway(before: unknown, after: unknown) {
+  m(aiGatewayRequest).mockImplementation(async (method: string) => {
+    const value = method === "GET" ? before : after;
+    if (value instanceof Error) throw value;
+    return value;
+  });
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
+describe("updateGuardrailSettings", () => {
+  it("forwards the body with the caller's org, role and user and returns the gateway's body", async () => {
+    const after = { settings: { log_retention_days: 30, spend_log_retention_days: 90 } };
+    gateway({ settings: { log_retention_days: 90, spend_log_retention_days: 90 } }, after);
+    const res = createRes();
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), res);
+
+    expect(m(aiGatewayRequest)).toHaveBeenCalledWith("GET", "/internal/guardrails/settings", {
+      organizationId: 2,
+      role: "Admin",
+      userId: 5,
+    });
+    expect(m(aiGatewayRequest)).toHaveBeenCalledWith("PUT", "/internal/guardrails/settings", {
+      organizationId: 2,
+      role: "Admin",
+      userId: 5,
+      body: { log_retention_days: 30 },
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(after);
+  });
+
+  it("appends one ledger entry describing every retention change", async () => {
+    gateway(
+      {
+        settings: {
+          log_retention_days: 90,
+          spend_log_retention_days: 60,
+          auto_purge_enabled: false,
+        },
+      },
+      {
+        settings: {
+          log_retention_days: 30,
+          spend_log_retention_days: 60,
+          auto_purge_enabled: true,
+        },
+      },
+    );
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), createRes());
+
+    expect(m(appendToAuditLedger)).toHaveBeenCalledTimes(1);
+    expect(m(appendToAuditLedger)).toHaveBeenCalledWith({
+      organizationId: 2,
+      entryType: "event_log",
+      userId: 5,
+      eventType: "Update",
+      entityType: "data_retention",
+      description:
+        "AI Gateway retention changed: guardrail log retention from 90 days to 30 days; automatic deletion from off to on",
+    });
+  });
+
+  it("uses the gateway defaults when the org has no saved settings", async () => {
+    gateway({ settings: null }, { settings: { spend_log_retention_days: 30 } });
+
+    await updateGuardrailSettings(createReq({ spend_log_retention_days: 30 }), createRes());
+
+    expect(m(appendToAuditLedger)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "AI Gateway retention changed: spend log retention from 90 days to 30 days",
+      }),
+    );
+  });
+
+  it("appends nothing when only non-retention settings change", async () => {
+    gateway(
+      { settings: { log_retention_days: 90, pii_on_error: "block" } },
+      { settings: { log_retention_days: 90, pii_on_error: "allow" } },
+    );
+
+    await updateGuardrailSettings(createReq({ pii_on_error: "allow" }), createRes());
+
+    expect(m(appendToAuditLedger)).not.toHaveBeenCalled();
+  });
+
+  it("passes a gateway error status and body through unchanged", async () => {
+    gateway(
+      { settings: {} },
+      new AiGatewayError(400, { detail: "log_retention_days must be a positive integer" }, "x"),
+    );
+    const res = createRes();
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 0 }), res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      detail: "log_retention_days must be a positive integer",
+    });
+    expect(m(appendToAuditLedger)).not.toHaveBeenCalled();
+  });
+
+  it("passes the gateway's admin check through for a non-admin", async () => {
+    gateway({ settings: {} }, new AiGatewayError(403, { detail: "Admin role required" }, "x"));
+    const res = createRes();
+
+    await updateGuardrailSettings(createReq({ auto_purge_enabled: true }, "Editor"), res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ detail: "Admin role required" });
+  });
+
+  it("returns 502 when the gateway cannot be reached", async () => {
+    gateway(new Error("ECONNREFUSED"), new Error("ECONNREFUSED"));
+    const res = createRes();
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), res);
+
+    expect(res.status).toHaveBeenCalledWith(502);
+  });
+
+  it("still saves and records an unknown old value when the read fails", async () => {
+    m(aiGatewayRequest).mockImplementation(async (method: string) => {
+      if (method === "GET") throw new Error("timeout");
+      return { settings: { log_retention_days: 30 } };
+    });
+    const res = createRes();
+
+    await updateGuardrailSettings(createReq({ log_retention_days: 30 }), res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(m(appendToAuditLedger)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description:
+          "AI Gateway retention changed: guardrail log retention from unknown to 30 days",
+      }),
+    );
+  });
+
+  it("logs a failed ledger append and still succeeds", async () => {
+    gateway(
+      { settings: { auto_purge_enabled: false } },
+      { settings: { auto_purge_enabled: true } },
+    );
+    m(appendToAuditLedger).mockRejectedValue(new Error("ledger down"));
+    const res = createRes();
+
+    await updateGuardrailSettings(createReq({ auto_purge_enabled: true }), res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(m(logFailure)).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "Update", organizationId: 2 }),
+    );
+  });
+});
+
+describe("describeRetentionChanges", () => {
+  it("ignores keys the gateway did not return", () => {
+    expect(describeRetentionChanges({ log_retention_days: 90 }, {})).toEqual([]);
+  });
+});
