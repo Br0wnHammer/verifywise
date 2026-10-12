@@ -12,6 +12,7 @@
  *
  * Each table is skipped when it does not exist in this deployment.
  */
+// Table and column names interpolated into the SQL below come only from this hard-coded list.
 const TARGETS = [
   ...[
     "vendor",

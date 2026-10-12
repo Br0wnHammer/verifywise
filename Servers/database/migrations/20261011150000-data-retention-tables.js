@@ -45,7 +45,8 @@ module.exports = {
           anchor_hash CHAR(64) NOT NULL,
           cutoff TIMESTAMPTZ NOT NULL,
           rows_deleted INTEGER NOT NULL,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          created_txid BIGINT NOT NULL DEFAULT txid_current()
         );
       `);
       await run(`
