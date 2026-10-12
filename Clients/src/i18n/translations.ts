@@ -1709,10 +1709,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Ihre Anbieter-API-Schlüssel werden vor der Speicherung mit AES-256-GCM verschlüsselt. Sie werden nur beim Weiterleiten einer Anfrage entschlüsselt und erscheinen nie in Protokollen.",
     "Playground settings": "Playground-Einstellungen",
 
-    // ==============================
-    // Extended coverage (full app)
-    // ==============================
-
+    // =======================    // Extended coverage (full app)
+    // =======================
     // Actions / buttons (extended)
     "Add a description...": "Beschreibung hinzufügen...",
     "Add a reason for this decision...": "Grund für diese Entscheidung angeben...",
@@ -9823,6 +9821,12 @@ export const translations: Record<string, Record<string, string>> = {
     "MCP server": "MCP-Server",
     "The MCP server source was not found next to the backend. It is included from MCPServer/ at build time.":
       "Die MCP-Server-Quelle wurde nicht neben dem Backend gefunden. Sie wird zur Build-Zeit aus MCPServer/ eingebunden.",
+    "SLA (hours)": "SLA (Stunden)",
+    "Enter hours": "Stunden eingeben",
+    "Escalation user": "Eskalationsbenutzer",
+    "Select escalation user": "Eskalationsbenutzer auswählen",
+    "Auto-approve up to risk level": "Automatisch genehmigen bis zur Risikostufe",
+    "Escalated": "Eskaliert",
     // EU AI Act risk classification: questionnaire, results and reviewer panel
     "No": "Nein",
     "Another use in this area": "Eine andere Verwendung in diesem Bereich",
@@ -19917,6 +19921,12 @@ export const translations: Record<string, Record<string, string>> = {
     "MCP server": "Serveur MCP",
     "The MCP server source was not found next to the backend. It is included from MCPServer/ at build time.":
       "Les sources du serveur MCP n'ont pas été trouvées à côté du backend. Elles sont incluses depuis MCPServer/ au moment de la compilation.",
+    "SLA (hours)": "SLA (heures)",
+    "Enter hours": "Saisir les heures",
+    "Escalation user": "Utilisateur d'escalade",
+    "Select escalation user": "Sélectionner un utilisateur d'escalade",
+    "Auto-approve up to risk level": "Approuver automatiquement jusqu'au niveau de risque",
+    "Escalated": "Escaladé",
     // EU AI Act risk classification: questionnaire, results and reviewer panel
     "No": "Non",
     "Another use in this area": "Une autre utilisation dans ce domaine",
@@ -29934,6 +29944,12 @@ export const translations: Record<string, Record<string, string>> = {
     "MCP server": "Servidor MCP",
     "The MCP server source was not found next to the backend. It is included from MCPServer/ at build time.":
       "No se encontró el código fuente del servidor MCP junto al backend. Se incluye desde MCPServer/ en tiempo de compilación.",
+    "SLA (hours)": "SLA (horas)",
+    "Enter hours": "Introducir las horas",
+    "Escalation user": "Usuario de escalada",
+    "Select escalation user": "Seleccionar usuario de escalada",
+    "Auto-approve up to risk level": "Aprobación automática hasta el nivel de riesgo",
+    "Escalated": "Escalada",
     // EU AI Act risk classification: questionnaire, results and reviewer panel
     "No": "No",
     "Another use in this area": "Otro uso en este ámbito",
