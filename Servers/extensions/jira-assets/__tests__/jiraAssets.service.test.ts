@@ -15,6 +15,7 @@ import {
   JiraUseCaseNotFoundError,
   parseSyncIntervalHours,
   removeMissingUseCases,
+  REMOVAL_SKIP_REASONS,
   RunRef,
   runClaimedSync,
   runQueuedSync,
@@ -31,7 +32,7 @@ import {
 import { sequelize } from "../../../database/db";
 import { decryptText } from "../../../tools/createSecureValue";
 import { JiraAssetsClient } from "../jira.client";
-import { deleteProjectByIdQuery } from "../../../utils/project.utils";
+import { deleteProjectByIdQuery, lockProjectForDelete } from "../../../utils/project.utils";
 import {
   getPendingApprovalRequestIdQuery,
   withdrawApprovalRequestQuery,
@@ -63,7 +64,10 @@ jest.mock("../../../services/automations/automationProducer", () => {
   class BackgroundJobsUnavailableError extends Error {}
   return { enqueueJiraAssetsSyncRun: jest.fn(), BackgroundJobsUnavailableError };
 });
-jest.mock("../../../utils/project.utils", () => ({ deleteProjectByIdQuery: jest.fn() }));
+jest.mock("../../../utils/project.utils", () => ({
+  deleteProjectByIdQuery: jest.fn(),
+  lockProjectForDelete: jest.fn(async () => true),
+}));
 jest.mock("../../../utils/approvalRequest.utils", () => ({
   getPendingApprovalRequestIdQuery: jest.fn(),
   withdrawApprovalRequestQuery: jest.fn(),
@@ -83,6 +87,7 @@ const mockDecrypt = decryptText as jest.Mock;
 const MockClient = JiraAssetsClient as unknown as jest.Mock;
 const mockEnqueue = enqueueJiraAssetsSyncRun as jest.Mock;
 const mockDeleteProject = deleteProjectByIdQuery as jest.Mock;
+const mockLockProject = lockProjectForDelete as jest.Mock;
 const mockPendingApproval = getPendingApprovalRequestIdQuery as jest.Mock;
 const mockWithdrawApproval = withdrawApprovalRequestQuery as jest.Mock;
 const mockRecordDeletion = recordUseCaseDeletion as jest.Mock;
@@ -182,13 +187,24 @@ function fakeDb({
     if (sql.includes("SELECT * FROM jira_assets_config")) return config ? [config] : [];
     if (sql.includes("SELECT jira_object_id, project_id")) return existing;
     if (sql.includes("SELECT id, project_id, missing_in_jira_since FROM jira_assets_use_cases")) {
+      const r = opts.replacements ?? {};
+      const match = sql.includes("AND project_id IN (:lockedProjects)")
+        ? (row: { project_id: number | null }) =>
+            row.project_id !== null && r.lockedProjects.includes(row.project_id)
+        : sql.includes("AND project_id IN (:ids)")
+          ? (row: { project_id: number | null }) => r.ids.includes(row.project_id)
+          : (row: { id: number }) => r.ids.includes(row.id);
       return [...stillFlagged, ...otherLinks]
-        .map((r) => ({
-          id: r.id,
-          project_id: r.project_id,
-          missing_in_jira_since: r.missing === false ? null : "2026-01-01",
+        .filter((row: any) => match(row))
+        .map((row) => ({
+          id: row.id,
+          project_id: row.project_id,
+          missing_in_jira_since: row.missing === false ? null : "2026-01-01",
         }))
         .sort((a, b) => a.id - b.id);
+    }
+    if (sql.includes("SELECT p.project_title")) {
+      return [{ title: "Credit model", object_key: "AI-11" }];
     }
     if (sql.includes("SELECT id, project_id FROM jira_assets_use_cases")) {
       return stillFlagged.map((r) => ({ id: r.id, project_id: r.project_id }));
@@ -714,11 +730,17 @@ describe("removeMissingUseCases", () => {
     const [candidateSql, candidates] = linkReads()[0];
     expect(candidateSql).not.toContain("FOR UPDATE");
     expect(candidates.replacements).toEqual({ organizationId: 5, ids: [11, 12, 13, 14] });
-    const [lockSql, lock] = sqlCalls("SELECT id, project_id, missing_in_jira_since")[0];
-    expect(lockSql).toMatch(/ORDER BY id\s+FOR UPDATE/);
-    expect(lock.replacements).toEqual({
+    const [requestedSql, requestedLock] = sqlCalls(
+      "SELECT id, project_id, missing_in_jira_since",
+    )[0];
+    const [projectSql, projectLinksLock] = sqlCalls(
+      "SELECT id, project_id, missing_in_jira_since",
+    )[1];
+    expect(requestedSql).toMatch(/AND id IN \(:ids\)\s+ORDER BY id\s+FOR UPDATE/);
+    expect(requestedLock.replacements).toEqual({ organizationId: 5, ids: [11, 12, 13, 14] });
+    expect(projectSql).toMatch(/project_id IN \(:lockedProjects\)\s+ORDER BY id\s+FOR UPDATE/);
+    expect(projectLinksLock.replacements).toEqual({
       organizationId: 5,
-      ids: [11, 12, 13, 14],
       lockedProjects: [111, 114],
     });
     // The run's own row is share-locked first, so no claim can close it mid-way.
@@ -827,16 +849,48 @@ describe("removeMissingUseCases", () => {
     expect(sqlCalls("DELETE FROM jira_assets_use_cases")).toHaveLength(0);
   });
 
-  it("skips a project that also backs a flagged use case that was not selected", async () => {
+  it("flagged links of one project split across batches: the first deletes it, the second finds them gone", async () => {
+    // Links 50 and 150 of project 111 are both flagged; 50 is sent first.
     fakeDb({
-      stillFlagged: [{ id: 11, project_id: 111 }],
-      otherLinks: [{ id: 31, project_id: 111 }],
+      stillFlagged: [{ id: 50, project_id: 111 }],
+      otherLinks: [{ id: 150, project_id: 111 }],
     });
 
-    const result = await removeMissingUseCases(5, 8, [11]);
+    const first = await removeMissingUseCases(5, 8, [50]);
 
-    expect(result.skipped_items).toEqual([{ id: 11, reason: "has_live_links" }]);
-    expect(mockDeleteProject).not.toHaveBeenCalled();
+    expect(first).toEqual({
+      removed: 1,
+      links_removed: 2,
+      unlinked: 0,
+      skipped: 0,
+      skipped_items: [],
+    });
+    expect(mockDeleteProject).toHaveBeenCalledTimes(1);
+
+    // Second batch: both links went with the project.
+    mockQuery.mockReset();
+    fakeDb({ stillFlagged: [] });
+    const second = await removeMissingUseCases(5, 8, [150]);
+
+    expect(second.skipped_items).toEqual([{ id: 150, reason: "not_found" }]);
+  });
+
+  it("locks the project before withdrawing its approval (same order as the core delete)", async () => {
+    fakeDb({ stillFlagged: [{ id: 11, project_id: 111 }] });
+    mockPendingApproval.mockResolvedValue(900);
+
+    await removeMissingUseCases(5, 8, [11]);
+
+    expect(mockLockProject).toHaveBeenCalledWith(111, 5, FAKE_TX);
+    expect(mockLockProject.mock.invocationCallOrder[0]).toBeLessThan(
+      mockPendingApproval.mock.invocationCallOrder[0],
+    );
+    // And the batch project lock came before both.
+    const projectLock =
+      mockQuery.mock.invocationCallOrder[
+        mockQuery.mock.calls.indexOf(sqlCalls("SELECT id FROM projects")[0])
+      ];
+    expect(projectLock).toBeLessThan(mockLockProject.mock.invocationCallOrder[0]);
   });
 
   it("reports a link whose project changed during the request as changed", async () => {
@@ -864,8 +918,12 @@ describe("removeMissingUseCases", () => {
     const err = await removeMissingUseCases(5, 8, [11]).catch((e) => e);
 
     expect(err).toBeInstanceOf(JiraUseCaseDeleteFailedError);
-    expect(err).toMatchObject({ useCaseIds: [11], projectId: 111 });
-    expect(err.message).toContain("Use case 11");
+    expect(err).toMatchObject({ projectId: 111, title: "Credit model", objectKey: "AI-11" });
+    // Named by title and Jira key, not by internal ids.
+    expect(err.message).toBe(
+      '"Credit model" (AI-11) could not be deleted, so nothing was removed. Try again.',
+    );
+    expect(err.message).not.toContain("111");
     expect(sqlCalls("DELETE FROM jira_assets_use_cases")).toHaveLength(0);
     expect(sqlCalls("SET status = 'completed'")).toHaveLength(0);
     expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(1);
@@ -1328,5 +1386,29 @@ describe("saveConfig validation", () => {
 
     const update = mockQuery.mock.calls[1];
     expect(update[1].replacements).toMatchObject({ syncEnabled: true, syncIntervalHours: 6 });
+  });
+});
+
+describe("removal skip reasons", () => {
+  it("are the ones documented in swagger.yaml and extensions.md", () => {
+    const fs = jest.requireActual("fs") as typeof import("fs");
+    const path = jest.requireActual("path") as typeof import("path");
+    const root = path.resolve(__dirname, "../../../..");
+    const swagger = fs.readFileSync(path.join(root, "Servers/swagger.yaml"), "utf8");
+    const docs = fs.readFileSync(
+      path.join(root, "docs/technical/infrastructure/extensions.md"),
+      "utf8",
+    );
+
+    expect([...REMOVAL_SKIP_REASONS]).toEqual([
+      "no_longer_missing",
+      "not_found",
+      "changed",
+      "has_live_links",
+    ]);
+    for (const reason of REMOVAL_SKIP_REASONS) {
+      expect(swagger).toContain(reason);
+      expect(docs).toContain(`\`${reason}\``);
+    }
   });
 });
