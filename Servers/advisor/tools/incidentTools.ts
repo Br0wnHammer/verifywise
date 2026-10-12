@@ -177,7 +177,7 @@ export const toolsDefinition: any[] = [
     function: {
       name: "agent_update_incident_status",
       description:
-        "Update only the status of an AI incident. Requires human confirmation before execution. Use this when the user asks to change an incident's status (e.g., move to investigating, mitigate, close).",
+        "Update only the status of an AI incident. Requires human confirmation before execution. Use this when the user asks to change an incident's status (e.g., move to investigating, mitigate, close). Closed incidents can be reopened by moving them to any other status; reopening resets an Approved closure approval to Pending.",
       parameters: {
         type: "object",
         properties: {

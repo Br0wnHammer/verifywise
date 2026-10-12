@@ -230,6 +230,38 @@ describe("customAxios", () => {
       expect(callback).not.toHaveBeenCalled();
     });
 
+    it("does not show a toast when the request opted out with suppressGlobalErrorToast", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      for (const status of [409, 400, 500]) {
+        const error = {
+          config: { url: "/ai-incident-managements/42", suppressGlobalErrorToast: true },
+          response: { status, data: { message: "Conflict", data: { code: "CONFLICT" } } },
+          message: "Failed",
+        };
+        await expect(rejected(error)).rejects.toEqual(error);
+      }
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("still toasts the same incident 409 when the request did not opt out", async () => {
+      const callback = vi.fn();
+      setShowAlertCallback(callback);
+
+      const error = {
+        config: { url: "/ai-incident-managements/42" },
+        response: {
+          status: 409,
+          data: { message: "Conflict", data: { message: "Changed", code: "CONFLICT" } },
+        },
+        message: "Conflict",
+      };
+
+      await expect(rejected(error)).rejects.toEqual(error);
+      expect(callback).toHaveBeenCalled();
+    });
+
     it("does not show a toast for 404 (callers handle it as empty state)", async () => {
       const callback = vi.fn();
       setShowAlertCallback(callback);

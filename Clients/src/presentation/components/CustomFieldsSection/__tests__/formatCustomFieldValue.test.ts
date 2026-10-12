@@ -15,14 +15,16 @@ const scored = {
   ],
 };
 
+const noopFormatDate = (value: string) => value;
+
 describe("scored select display", () => {
   it("shows the label with its score", () => {
-    expect(formatCustomFieldValue(scored, "opt_1")).toBe("High (3)");
-    expect(formatCustomFieldValue(scored, "opt_2")).toBe("Half (0.5)");
+    expect(formatCustomFieldValue(scored, "opt_1", undefined, noopFormatDate)).toBe("High (3)");
+    expect(formatCustomFieldValue(scored, "opt_2", undefined, noopFormatDate)).toBe("Half (0.5)");
   });
   it("shows a dash for an id that matches no option, and for no value", () => {
-    expect(formatCustomFieldValue(scored, "opt_gone")).toBe("—");
-    expect(formatCustomFieldValue(scored, null)).toBe("—");
+    expect(formatCustomFieldValue(scored, "opt_gone", undefined, noopFormatDate)).toBe("—");
+    expect(formatCustomFieldValue(scored, null, undefined, noopFormatDate)).toBe("—");
   });
   it("formats scores without trailing zeros and never -0", () => {
     expect(formatScore(3)).toBe("3");
@@ -38,7 +40,14 @@ describe("scored select display", () => {
     expect(formatScore(null as unknown as number)).toBe("—");
   });
   it("keeps select formatting unchanged", () => {
-    expect(formatCustomFieldValue({ field_type: "select", options: ["US"] }, "US")).toBe("US");
+    expect(
+      formatCustomFieldValue(
+        { field_type: "select", options: ["US"] },
+        "US",
+        undefined,
+        noopFormatDate,
+      ),
+    ).toBe("US");
   });
 });
 
