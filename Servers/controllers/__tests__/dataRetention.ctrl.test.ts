@@ -30,6 +30,7 @@ import {
   previewAuditRetention,
   updateAuditRetention,
 } from "../dataRetention.ctrl";
+import { logFailure } from "../../utils/logger/logHelper";
 import * as retention from "../../utils/dataRetention.utils";
 import { getLatestLedgerCheckpoint } from "../../utils/auditLedgerRetention.utils";
 import { appendToAuditLedger } from "../../utils/auditLedger.utils";
@@ -83,7 +84,7 @@ describe("dataRetention.ctrl", () => {
           },
         };
       }
-      return { config: { mcp_audit_retention_days: 60 } };
+      return { mcp_audit_retention_days: 60 };
     });
   });
 
@@ -155,7 +156,7 @@ describe("dataRetention.ctrl", () => {
       m(aiGatewayRequest).mockImplementation(async (_m: string, path: string) =>
         path === "/internal/guardrails/settings"
           ? { settings: { log_retention_days: 30 } }
-          : { config: { mcp_audit_retention_days: 60 } },
+          : { mcp_audit_retention_days: 60 },
       );
       const res = createRes();
       await getDataRetention(createReq(), res);
@@ -297,6 +298,13 @@ describe("dataRetention.ctrl", () => {
       const res = createRes();
       await updateAuditRetention(createReq({ body: { months: 12 } }), res);
       expect(res.status).toHaveBeenCalledWith(200);
+      expect(logFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: 2,
+          description: expect.stringContaining("ledger"),
+          error: expect.objectContaining({ message: "ledger" }),
+        }),
+      );
     });
   });
 });

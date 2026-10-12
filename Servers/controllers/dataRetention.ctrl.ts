@@ -131,10 +131,9 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
     );
     const autoPurge = gatewaySettings.auto_purge_enabled === true;
 
-    const agentConfig = retentionConfig?.config ?? retentionConfig?.data ?? retentionConfig;
     const agentDays =
-      agentConfig && typeof agentConfig.mcp_audit_retention_days === "number"
-        ? agentConfig.mcp_audit_retention_days
+      typeof retentionConfig?.mcp_audit_retention_days === "number"
+        ? retentionConfig.mcp_audit_retention_days
         : null;
     const agentUnavailable = agentDays === null;
 
@@ -318,8 +317,18 @@ export async function updateAuditRetention(req: Request, res: Response): Promise
         entityType: "data_retention",
         description: `Audit record retention changed from ${label(oldMonths)} to ${label(newMonths)}`,
       });
-    } catch {
-      // The setting is saved; losing the ledger entry must not fail the request.
+    } catch (ledgerError) {
+      // The setting is saved, so the request still succeeds, but the missing
+      // ledger entry must leave a trace.
+      await logFailure({
+        eventType: "Update",
+        description: `audit record retention changed to ${label(newMonths)} but the audit ledger entry could not be written (organization ${organizationId}): ${(ledgerError as Error)?.message ?? ledgerError}`,
+        functionName: fn,
+        fileName: FILE_NAME,
+        userId,
+        organizationId,
+        error: ledgerError as Error,
+      });
     }
 
     await logSuccess({
