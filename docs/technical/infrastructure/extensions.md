@@ -276,7 +276,7 @@ enabled can call the route.
 | `/api/extensions/azure-ai-foundry` | `GET /models`, `GET /models/:deploymentId`, `POST /sync`, `GET /discover` | |
 | `/api/extensions/model-lifecycle` | `GET /config`; phases CRUD and reorder; items CRUD and reorder; `GET /models/:id/lifecycle`, `/progress`; item values, files, people and approvals under `/models/:id/lifecycle/items/:itemId/...` | |
 | `/api/extensions/risk-import` | `GET /template`, `POST /import` | Admin, Editor |
-| `/api/extensions/jira-assets` | `GET/POST /config`, `GET /vw-attributes`, schema and object-type discovery, `POST /import`, `POST /sync`, `GET /sync/status`, `GET /sync/history`, `GET/DELETE /use-cases/:id`, `GET /use-cases`, `GET /projects/:projectId/custom-frameworks-progress` | `extension.admin` (Admin) on `POST /config`, `POST /import`, `POST /sync`, `DELETE /use-cases/:id`. `POST /sync` returns 409 while a sync is running. |
+| `/api/extensions/jira-assets` | `GET/POST /config`, `PATCH /config/sync`, `GET /vw-attributes`, schema and object-type discovery, `POST /import`, `POST /sync`, `GET /sync/status`, `GET /sync/history`, `GET/DELETE /use-cases/:id`, `GET /use-cases`, `GET /projects/:projectId/custom-frameworks-progress` | `extension.admin` (Admin) on `POST /config`, `PATCH /config/sync`, `POST /import`, `POST /sync`, `DELETE /use-cases/:id`. `POST /import` and `POST /sync` return 409 while a sync or import is running. |
 | `/api/extensions/dataset-bulk-upload` | `POST /upload` (multipart, one file per request, 30 MB, CSV/XLS/XLSX; 413/415 on error) | Admin, Editor |
 
 The full list is in `Servers/swagger.yaml` under `/extensions/...`.
@@ -303,9 +303,10 @@ extensions are configured per organization in the UI.
   UI or API.
 - While disabled, the gate returns 403 on every `/api/extensions/<key>/...`
   route and the client hides the extension's entry points.
-- MLflow and Azure AI Foundry sync is manual only. Jira Assets also syncs on
-  its configured interval (see [Scheduled sync](#scheduled-sync)). The
-  scheduler skips organizations where the extension is disabled.
+- MLflow and Azure AI Foundry sync is manual only. Jira Assets also refreshes
+  its imported use cases on the configured interval (see
+  [Scheduled sync](#scheduled-sync)). The scheduler skips organizations where
+  the extension is disabled.
 
 ---
 
@@ -323,61 +324,120 @@ every 5 minutes (`*/5 * * * *`). It is registered in `addAllJobs()`
 in `Servers/extensions/jira-assets/jiraAssets.scheduler.ts`. Each org's own
 interval decides whether that tick does anything for it.
 
-**Per-org due check.** The runner loops `getAllOrganizationsQuery()`. For each
-org it loads one state row with `getScheduledSyncState` (every table filtered
-on `organization_id`) and passes it to the pure `evaluateScheduledSync`. A sync
-is due when all of these hold:
+**Candidates in one query, decision in code.** `getScheduledSyncCandidates`
+runs one cross-org discovery query: `jira_assets_config` with
+`sync_enabled = true`, joined to `extension_enablements` (`enabled = true`)
+and `extensions` (`key = 'jira-assets'`). Jobs bypass
+`requireExtensionEnabled`, so the join is the enablement check. Every
+subquery is correlated on the row's own `organization_id`. For each row the
+pure `evaluateScheduledSync` returns `due` when all of these hold:
 
-- the extension is enabled in `extension_enablements` (read directly; the HTTP
-  gate does not apply to jobs)
-- a `jira_assets_config` row exists with `sync_enabled = true` and a
-  `selected_object_type_id`
-- at least one `jira_assets_use_cases` row exists. This matches the panel,
-  where **Sync now** stays disabled until something is imported. Without it,
-  switching automatic sync on before the first import would pull in every
-  object of the type.
+- a `selected_object_type_id` is set
+- at least one `jira_assets_use_cases` row exists. A scheduled run only
+  refreshes links, so with none there is nothing to do.
+- no run is alive. A `started` row whose heartbeat is under 15 minutes old
+  counts as alive.
 - `sync_interval_hours` have passed since the later of `last_sync_at` (finish,
-  success or failure) and the newest `jira_assets_sync_history.started_at`.
-  "Never synced" counts as due. A manual sync therefore resets the clock.
+  success or failure) and the newest manual or scheduled `started_at`. Imports
+  do not count. "Never synced" counts as due, and a manual sync resets the
+  clock.
 
-The timing rule is `isIntervalElapsed` in `Servers/extensions/scheduledSync.utils.ts`.
-It is shared, so later extensions reuse it with their own state query.
+The timing rule is `isIntervalElapsed` in `Servers/extensions/scheduledSync.utils.ts`,
+so later extensions can reuse it. Orgs are handled one at a time. One org's
+error is logged (`logStructured` plus `logger.error`) and the loop moves on.
 
-Due orgs run `syncObjects(orgId, null, "scheduled")`, which writes the history
-row as `sync_type = 'scheduled'`, `triggered_by = NULL`. Use cases created by a
-scheduled run have no `projects.owner`. Orgs are handled one at a time. One
-org's error is logged (`logStructured` plus `logger.error`) and the loop moves
-on.
+**Scheduled runs only refresh.** Due orgs run
+`syncObjects(orgId, null, "scheduled")`. The history row is written with
+`sync_type = 'scheduled'` and `triggered_by = NULL`. A scheduled run updates
+the project and the `jira_assets_use_cases` row of every object that is
+already linked. It never creates a use case and never deletes one. Linked
+objects that Jira no longer returns are kept. Their count and ids are returned
+as `objectsMissingInJira` / `missingInJiraIds`, and they are written to the
+history row's `error_message` and the config's `last_sync_message` as a note
+(the run itself is `completed` / `success`).
 
-**No overlap.** Every sync, manual or scheduled, starts with `claimSyncRun`
-in `jiraAssets.service.ts`. In one transaction it takes
-`pg_advisory_xact_lock(hashtext('jira_assets_sync'), orgId)`, marks `started`
-rows older than `SYNC_STALE_AFTER_MS` (1 hour) as `failed` ("Sync did not
-finish and was marked as abandoned"), and then inserts the new `started` row
-only if no other `started` row is left. Otherwise it throws
-`JiraSyncInProgressError`. `POST /sync` maps that to 409 and the scheduler
-skips the org until the next tick. The advisory lock is released at commit,
-before any Jira call. The long-lived guard is the `started` row.
+**Manual sync** (`POST /sync`, `triggered_by` = the user) also creates use
+cases for new objects of the selected type, owned by that user. It removes the
+ones that disappeared upstream only when the fetch can be trusted:
 
-**Validation.** `POST /config` rejects a `sync_interval_hours` that is not a
-whole number from 1 to 168 (400). The same range is enforced by
-`jira_assets_config_sync_interval_range_chk`. The panel offers 1, 6, 12, 24
-and 48 hours. It saves the toggle and the interval as soon as they change,
-the same way it saves the schema and object type.
+- If Jira returns 0 objects while links exist, the run fails and nothing
+  changes.
+- Deletes are skipped, and the missing objects are reported, when either:
+  - the fetch was incomplete (see pagination below), or
+  - any link was imported from a different object type than the one selected
+    now (read from `jira_assets_use_cases.data.objectType.id`).
+
+**Pagination.** `JiraAssetsClient.getAllObjects` follows the Assets API pages.
+
+- **Cloud:** `POST object/aql?startAt=&maxResults=` with `{ qlQuery }`. It
+  stops at `isLast`, or at `total` when `isLast` is absent, and advances by
+  the number of rows returned.
+- **Data Center:** `GET iql/objects?...&page=&resultPerPage=`. It stops at
+  `pageSize` (the page count) or `totalFilterCount`.
+
+The page size is 50. It reports `complete: false` after 500 pages, or on an
+empty page before the reported total. Neither shape has been tested against a
+live Jira here.
+
+**Atomic writes.** A new use case (project plus link row) is created in one
+transaction. A unique violation on `(organization_id, jira_object_id)` counts
+as "already linked", not as an error. An updated use case (project plus link
+row) is also written in one transaction.
+
+**No overlap: sync, scheduled sync and import share one claim.** Every
+sync and every import (`POST /import`, `sync_type = 'import'`) starts with
+`claimSyncRun` in `jiraAssets.service.ts`. In one transaction it:
+
+1. takes `pg_advisory_xact_lock(hashtext('jira_assets_sync'), orgId)`
+2. marks as failed any `started` row with no heartbeat for
+   `SYNC_STALE_AFTER_MS` (15 minutes) (`COALESCE(heartbeat_at, started_at)`)
+3. inserts the new `started` row only if no other is left. Otherwise it
+   throws `JiraSyncInProgressError`.
+
+`POST /sync` and `POST /import` map that error to 409. The panel shows "A sync
+is already running. Try again when it finishes." The scheduler skips the org
+until the next tick. A live run touches `heartbeat_at` after every fetched
+page and every 25 objects. `heartbeat_at` and the `'import'` sync type come
+from migration `20261012003957-jira-assets-sync-heartbeat.js`.
+
+**Failures are recorded and back off.** The claim comes first, so every later
+failure is written to the history row and to the config (`last_sync_at`,
+`last_sync_status = 'failed'`, `last_sync_message`) by `finalizeFailure`.
+That covers a missing config, a token decrypt error, client construction, Jira
+errors and the empty-fetch guard. The panel shows the error. The scheduler's
+interval counts from that failure, so a broken org is retried once per
+interval, not every 5 minutes. `finalizeFailure` never throws, and it only
+updates its own row while that row is still `started`. The same holds for the
+success path.
+
+**Settings and validation.**
+
+- `POST /config` rejects a `sync_interval_hours` that is not a whole number
+  from 1 to 168 (400). The same range is enforced by
+  `jira_assets_config_sync_interval_range_chk`.
+- `PATCH /config/sync` updates only `sync_enabled` and/or
+  `sync_interval_hours`. It returns 400 on bad input and 404 before a
+  connection has been saved. The path is three segments below
+  `/api/extensions`, so the catalog router's `/:key` routes cannot shadow it.
+- The panel offers intervals of 1, 6, 12, 24 and 48 hours. It saves the toggle
+  and the interval through `PATCH /config/sync` as soon as they change. On
+  error it reverts the control and shows an alert. The controls are disabled
+  for non-Admins.
 
 **Adding a scheduled sync to another extension:**
 
-1. Add a pure `evaluate…` function and a per-org state query. Read
-   `extension_enablements.enabled` yourself, because jobs bypass
-   `requireExtensionEnabled`.
-2. Guard the sync itself against overlap, so manual and scheduled runs share
-   the guard.
-3. Add a `schedule…` function with `upsertJobScheduler` and no obliterate.
-   Register it in `addAllJobs()` after the obliterating schedulers and
+1. Add a candidate query that joins `extension_enablements` (jobs bypass
+   `requireExtensionEnabled`), plus a pure `evaluate…` function.
+2. Claim before doing anything, with an overlap guard that manual runs share
+   too. Heartbeat while running. Record every failure through a finalize step
+   that never throws.
+3. Make the scheduled run conservative: refresh only, and never delete on the
+   basis of an unconfirmed or empty fetch.
+4. Add a `schedule…` function with `upsertJobScheduler` and no obliterate.
+   Register it in `addAllJobs()` after the obliterating schedulers, and
    dispatch it in `createAutomationWorker`.
-4. Add a case to `services/automations/tests/automationProducer.spec.ts`, plus
-   unit tests for the due check and the guard (see
-   `extensions/jira-assets/__tests__/`).
+5. Add tests: a case in `services/automations/tests/automationProducer.spec.ts`,
+   and unit tests like those in `extensions/jira-assets/__tests__/`.
 
 ---
 

@@ -20,6 +20,11 @@ export type JiraDeploymentType = "cloud" | "datacenter";
 // segments into the composed cloud URL.
 const WORKSPACE_ID_PATTERN = /^[a-zA-Z0-9-]{1,64}$/;
 
+/** Objects requested per page when listing an object type. */
+export const PAGE_SIZE = 50;
+/** Hard stop: 500 pages × 50 = 25,000 objects. Past this the fetch is incomplete. */
+export const MAX_PAGES = 500;
+
 export interface JiraSchema {
   id: string;
   name: string;
@@ -138,14 +143,61 @@ export class JiraAssetsClient {
     return Array.isArray(result) ? result : [];
   }
 
-  async getObjects(objectTypeId: string, maxResults: number = 1000): Promise<JiraObject[]> {
+  /** Every object of the type, across all pages. See `getAllObjects`. */
+  async getObjects(objectTypeId: string): Promise<JiraObject[]> {
+    return (await this.getAllObjects(objectTypeId)).objects;
+  }
+
+  /**
+   * Fetch every object of a type, following the Assets API pagination.
+   *
+   * - Cloud: `POST object/aql?startAt=&maxResults=&includeAttributes=true`
+   *   with `{ qlQuery }`; the response carries `values`, `isLast`, `total`.
+   * - Data Center: `GET iql/objects?...&page=&resultPerPage=`; the response
+   *   carries `objectEntries`, `pageSize` (number of pages) and
+   *   `totalFilterCount`.
+   *
+   * `complete` is true only when the API itself said this was the last page
+   * (isLast / page count / total reached) or a short page ended the list.
+   * Anything else — hitting MAX_PAGES, an empty page before the reported
+   * total — returns `complete: false`, and callers must not treat objects
+   * missing from the result as deleted upstream.
+   */
+  async getAllObjects(
+    objectTypeId: string,
+    options: { onPage?: () => Promise<void> } = {},
+  ): Promise<{ objects: JiraObject[]; complete: boolean }> {
+    const objects: JiraObject[] = [];
+
     if (this.deploymentType === "datacenter") {
-      const result = await this.request<{ objectEntries: JiraObject[] }>(
-        `iql/objects?objectSchemaId=${this.workspaceId}&iql=objectTypeId=${objectTypeId}` +
-          `&resultPerPage=${maxResults}&includeAttributes=true`,
-      );
-      return result.objectEntries || [];
+      const iql = encodeURIComponent(`objectTypeId=${objectTypeId}`);
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const result = await this.request<any>(
+          `iql/objects?objectSchemaId=${encodeURIComponent(this.workspaceId)}&iql=${iql}` +
+            `&page=${page}&resultPerPage=${PAGE_SIZE}&includeAttributes=true`,
+        );
+        const entries: JiraObject[] = result?.objectEntries || [];
+        objects.push(...entries);
+        if (options.onPage) await options.onPage();
+        const pageCount = Number(result?.pageSize);
+        const total = Number(result?.totalFilterCount);
+        if (Number.isFinite(pageCount) && pageCount > 0 && page >= pageCount) {
+          return { objects, complete: true };
+        }
+        if (Number.isFinite(total) && objects.length >= total) {
+          return { objects, complete: true };
+        }
+        if (entries.length === 0) {
+          // Empty page: complete only if nothing says there should be more.
+          return { objects, complete: !(Number.isFinite(total) && objects.length < total) };
+        }
+        if (entries.length < PAGE_SIZE && !Number.isFinite(pageCount) && !Number.isFinite(total)) {
+          return { objects, complete: true };
+        }
+      }
+      return { objects, complete: false };
     }
+
     // Cloud: fetch attribute defs first to build id→name mapping, inject it
     // onto each object so the caller can resolve JIRA's cryptic attr ids to
     // human names when flattening.
@@ -153,16 +205,36 @@ export class JiraAssetsClient {
     const attrIdToName: Record<string, string> = {};
     for (const attr of attrDefs) attrIdToName[attr.id] = attr.name;
 
-    const result = await this.request<any>(`object/aql`, "POST", {
-      qlQuery: `objectTypeId = ${objectTypeId}`,
-      resultPerPage: maxResults,
-      includeAttributes: true,
-    });
-    const objects: JiraObject[] = result?.values || result?.objectEntries || [];
-    for (const obj of objects) {
-      (obj as any)._attrIdToName = attrIdToName;
+    let startAt = 0;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const result = await this.request<any>(
+        `object/aql?startAt=${startAt}&maxResults=${PAGE_SIZE}&includeAttributes=true`,
+        "POST",
+        { qlQuery: `objectTypeId = ${objectTypeId}` },
+      );
+      const values: JiraObject[] = result?.values || result?.objectEntries || [];
+      for (const obj of values) (obj as any)._attrIdToName = attrIdToName;
+      objects.push(...values);
+      if (options.onPage) await options.onPage();
+      const total = Number(result?.total);
+      if (result?.isLast === true) return { objects, complete: true };
+      if (values.length === 0) {
+        return {
+          objects,
+          complete: result?.isLast !== false && !(Number.isFinite(total) && objects.length < total),
+        };
+      }
+      if (result?.isLast === undefined) {
+        if (Number.isFinite(total) && objects.length >= total) return { objects, complete: true };
+        if (!Number.isFinite(total) && values.length < PAGE_SIZE) {
+          return { objects, complete: true };
+        }
+      }
+      // Advance by what came back, not by what was asked for, in case the
+      // server caps maxResults below PAGE_SIZE.
+      startAt += values.length;
     }
-    return objects;
+    return { objects, complete: false };
   }
 
   async getObjectById(objectId: string): Promise<JiraObject> {

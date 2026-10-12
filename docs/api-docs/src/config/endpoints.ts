@@ -3760,6 +3760,25 @@ export const extensionEndpoints: Endpoint[] = [
     tag: "Extensions",
   },
   {
+    method: 'PATCH',
+    path: '/extensions/jira-assets/config/sync',
+    summary: "Patch Sync Settings",
+    description: "Updates only the automatic-sync settings; connection fields are left untouched. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.",
+    requiresAuth: true,
+    requestBody: {
+      "sync_enabled": "boolean (optional)",
+      "sync_interval_hours": "integer (optional)",
+    },
+    responses: [
+      { status: 200, description: "Updated sync settings ({ sync_enabled, sync_interval_hours })" },
+      { status: 400, description: "Validation error (no field given, non-boolean sync_enabled, or sync_interval_hours outside 1-168)" },
+      { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 404, description: "No Jira connection saved yet" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
     method: 'GET',
     path: '/extensions/jira-assets/vw-attributes',
     summary: "Get Vw Attributes",
@@ -3842,6 +3861,7 @@ export const extensionEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 409, description: "A Jira Assets sync or import is already running for this organization" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Extensions",
@@ -3855,7 +3875,7 @@ export const extensionEndpoints: Endpoint[] = [
     responses: [
       { status: 200, description: "Success" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
-      { status: 409, description: "A Jira Assets sync (manual or scheduled) is already running for this organization" },
+      { status: 409, description: "A Jira Assets sync or import is already running for this organization" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Extensions",

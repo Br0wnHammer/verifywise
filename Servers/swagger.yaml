@@ -14163,6 +14163,40 @@ paths:
         -
           bearerAuth: []
       description: 'Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
+  /extensions/jira-assets/config/sync:
+    patch:
+      summary: 'Patch Sync Settings'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sync_enabled:
+                  type: boolean
+                sync_interval_hours:
+                  type: integer
+                  minimum: 1
+                  maximum: 168
+      responses:
+        '200':
+          description: 'Updated sync settings ({ sync_enabled, sync_interval_hours })'
+        '400':
+          description: 'Validation error (no field given, non-boolean sync_enabled, or sync_interval_hours outside 1-168)'
+        '403':
+          description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'No Jira connection saved yet'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: patchSyncSettings
+      security:
+        -
+          bearerAuth: []
+      description: 'Updates only the automatic-sync settings; connection fields are left untouched. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   /extensions/jira-assets/vw-attributes:
     get:
       summary: 'Get Vw Attributes'
@@ -14280,6 +14314,8 @@ paths:
           description: Success
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '409':
+          description: 'A Jira Assets sync or import is already running for this organization'
         '500':
           description: 'Internal server error'
       tags:
@@ -14298,7 +14334,7 @@ paths:
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
         '409':
-          description: 'A Jira Assets sync (manual or scheduled) is already running for this organization'
+          description: 'A Jira Assets sync or import is already running for this organization'
         '500':
           description: 'Internal server error'
       tags:

@@ -1,106 +1,104 @@
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../../database/db";
-import { getAllOrganizationsQuery } from "../../utils/organization.utils";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
 import { isIntervalElapsed, latestDate } from "../scheduledSync.utils";
-import { JiraSyncInProgressError, syncObjects } from "./jiraAssets.service";
+import { JiraSyncInProgressError, SYNC_STALE_AFTER_MS, syncObjects } from "./jiraAssets.service";
 
 /**
  * Automatic Jira Assets sync.
  *
  * The repeatable `jira_assets_scheduled_sync_check` job (automation-actions
- * queue, every 5 minutes) calls `runJiraAssetsScheduledSyncAllOrgs`. For each
- * organization it loads one row of sync state and asks the pure
- * `evaluateScheduledSync` whether a sync is due. Due orgs get
- * `syncObjects(org, null, "scheduled")`; the service's `claimSyncRun` guard
- * makes an org that is already syncing (manual or scheduled) a no-op.
+ * queue, every 5 minutes) calls `runJiraAssetsScheduledSyncAllOrgs`. One query
+ * (`getScheduledSyncCandidates`) returns every org that could be due — config
+ * with sync switched on and the extension enabled — with its last-run and
+ * heartbeat info, and the pure `evaluateScheduledSync` decides per org.
  *
+ * Due orgs get `syncObjects(org, null, "scheduled")`, which is refresh-only:
+ * it updates already-linked use cases and never creates or deletes. The
+ * service's `claimSyncRun` guard makes an org that is already syncing a no-op.
  * Orgs are processed one at a time and independently: an error in one is
  * logged and the loop moves on.
  */
 
 const fileName = "jiraAssets.scheduler.ts";
 
-/** Everything the due check needs for one organization. */
+/** One candidate org and everything the due check needs. */
 export interface JiraScheduledSyncState {
-  extension_enabled: boolean;
-  has_config: boolean;
+  organization_id: number;
   sync_enabled: boolean;
   sync_interval_hours: number | null;
   selected_object_type_id: string | null;
   has_use_cases: boolean;
   /** Finish time of the last sync (config.last_sync_at, set on success and failure). */
   last_sync_at: Date | string | null;
-  /** Start time of the most recent history row, manual or scheduled. */
+  /** Start time of the most recent manual or scheduled sync (imports excluded). */
   last_started_at: Date | string | null;
+  /** Latest heartbeat (else start) of a run still marked `started`, if any. */
+  running_heartbeat_at: Date | string | null;
 }
 
 export type ScheduledSyncDecision =
-  | "due"
-  | "extension_disabled"
-  | "no_config"
-  | "sync_disabled"
-  | "no_object_type"
-  | "no_use_cases"
-  | "not_due";
+  "due" | "sync_disabled" | "no_object_type" | "no_use_cases" | "running" | "not_due";
 
 /**
- * Pure due check. A sync is due when the extension is enabled, a config with
- * automatic sync and an object type exists, at least one use case has been
- * imported, and `sync_interval_hours` have passed since the later of the last
- * sync start and finish. Never synced counts as due.
- *
- * The "at least one use case" rule matches the panel, which disables
- * **Sync now** until something is imported. Without it, switching automatic
- * sync on before the first import would pull in every object of the type.
+ * Pure due check. A sync is due when automatic sync is on, an object type is
+ * selected, at least one use case is linked (a scheduled run only refreshes
+ * links, so with none there is nothing to do), no run is alive (heartbeat
+ * within SYNC_STALE_AFTER_MS), and `sync_interval_hours` have passed since the
+ * later of the last sync start and finish. Never synced counts as due. A run
+ * whose heartbeat is stale is not "running": the claim closes it as abandoned.
  */
 export function evaluateScheduledSync(
   state: JiraScheduledSyncState,
   now: Date,
 ): ScheduledSyncDecision {
-  if (!state.extension_enabled) return "extension_disabled";
-  if (!state.has_config) return "no_config";
   if (!state.sync_enabled) return "sync_disabled";
   if (!state.selected_object_type_id) return "no_object_type";
   if (!state.has_use_cases) return "no_use_cases";
+  const heartbeat = latestDate(state.running_heartbeat_at);
+  if (heartbeat && now.getTime() - heartbeat.getTime() < SYNC_STALE_AFTER_MS) return "running";
   const lastRunAt = latestDate(state.last_sync_at, state.last_started_at);
   return isIntervalElapsed(lastRunAt, Number(state.sync_interval_hours), now) ? "due" : "not_due";
 }
 
 /**
- * Load the sync state for one organization. Every table is filtered on
- * organization_id. Returns null when the org never enabled the extension or
- * has no Jira config, which the caller treats as "skip".
+ * Every org whose Jira Assets extension is enabled and whose config has
+ * automatic sync switched on. This is a system job's discovery query, so it
+ * spans organizations by design; every subquery is correlated on the outer
+ * row's organization_id, and each sync it triggers is scoped to one org.
  */
-export async function getScheduledSyncState(
-  organizationId: number,
-): Promise<JiraScheduledSyncState | null> {
-  const rows = (await sequelize.query(
-    `SELECT COALESCE(ee.enabled, FALSE) AS extension_enabled,
-            TRUE AS has_config,
+export async function getScheduledSyncCandidates(): Promise<JiraScheduledSyncState[]> {
+  return (await sequelize.query(
+    `SELECT c.organization_id,
             c.sync_enabled,
             c.sync_interval_hours,
             c.selected_object_type_id,
             c.last_sync_at,
             (SELECT MAX(h.started_at)
                FROM jira_assets_sync_history h
-              WHERE h.organization_id = :organizationId) AS last_started_at,
+              WHERE h.organization_id = c.organization_id
+                AND h.sync_type IN ('manual', 'scheduled')) AS last_started_at,
+            (SELECT MAX(COALESCE(h.heartbeat_at, h.started_at))
+               FROM jira_assets_sync_history h
+              WHERE h.organization_id = c.organization_id
+                AND h.status = 'started') AS running_heartbeat_at,
             EXISTS (SELECT 1
                       FROM jira_assets_use_cases u
-                     WHERE u.organization_id = :organizationId) AS has_use_cases
+                     WHERE u.organization_id = c.organization_id) AS has_use_cases
        FROM jira_assets_config c
        JOIN extensions e ON e.key = 'jira-assets'
-  LEFT JOIN extension_enablements ee
-         ON ee.extension_id = e.id AND ee.organization_id = :organizationId
-      WHERE c.organization_id = :organizationId
-      LIMIT 1;`,
-    { replacements: { organizationId }, type: QueryTypes.SELECT },
+       JOIN extension_enablements ee
+         ON ee.extension_id = e.id
+        AND ee.organization_id = c.organization_id
+        AND ee.enabled = TRUE
+      WHERE c.sync_enabled = TRUE
+      ORDER BY c.organization_id;`,
+    { type: QueryTypes.SELECT },
   )) as JiraScheduledSyncState[];
-  return rows[0] ?? null;
 }
 
 export interface JiraScheduledSyncSummary {
-  checked: number;
+  candidates: number;
   synced: number;
   failed: number;
   skippedRunning: number;
@@ -110,27 +108,30 @@ export interface JiraScheduledSyncSummary {
 export async function runJiraAssetsScheduledSyncAllOrgs(
   now: Date = new Date(),
 ): Promise<JiraScheduledSyncSummary> {
+  const candidates = await getScheduledSyncCandidates();
   const summary: JiraScheduledSyncSummary = {
-    checked: 0,
+    candidates: candidates.length,
     synced: 0,
     failed: 0,
     skippedRunning: 0,
   };
-  const organizations = await getAllOrganizationsQuery();
 
-  for (const org of organizations) {
-    const organizationId = org.id;
-    if (organizationId === undefined || organizationId === null) continue;
-    summary.checked++;
+  for (const state of candidates) {
+    const organizationId = Number(state.organization_id);
+    if (!Number.isInteger(organizationId) || organizationId <= 0) continue;
     try {
-      const state = await getScheduledSyncState(organizationId);
-      if (!state || evaluateScheduledSync(state, now) !== "due") continue;
+      const decision = evaluateScheduledSync(state, now);
+      if (decision === "running") {
+        summary.skippedRunning++;
+        continue;
+      }
+      if (decision !== "due") continue;
 
       const result = await syncObjects(organizationId, null, "scheduled");
       if (result.success) {
         summary.synced++;
         logger.info(
-          `Jira Assets scheduled sync org ${organizationId}: fetched=${result.objectsFetched} created=${result.objectsCreated} updated=${result.objectsUpdated} deleted=${result.objectsDeleted}`,
+          `Jira Assets scheduled sync org ${organizationId}: fetched=${result.objectsFetched} updated=${result.objectsUpdated} missingInJira=${result.objectsMissingInJira}`,
         );
       } else {
         // syncObjects already wrote the failure to the history row and config.

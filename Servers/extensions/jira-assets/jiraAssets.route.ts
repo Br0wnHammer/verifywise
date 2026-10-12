@@ -15,6 +15,7 @@ import {
   getUseCaseCtrl,
   getVwAttributes,
   listUseCasesCtrl,
+  patchSyncSettings,
   postConfig,
   postImport,
   postSync,
@@ -24,7 +25,7 @@ const router = express.Router();
 router.use(authenticateJWT);
 router.use(requireExtensionEnabled("jira-assets"));
 
-// Writes (config, import, sync, use-case delete) need "extension.admin" — the
+// Writes (config, sync settings, import, sync, use-case delete) need "extension.admin" — the
 // same permission as enabling or configuring an extension in the catalog.
 // Reads stay open to any member of an org with the extension enabled, because
 // the use-case views in the project pages call them.
@@ -38,6 +39,9 @@ router.use(requireExtensionEnabled("jira-assets"));
 // /test-connection route here would be shadowed and never fire.
 router.get("/config", getConfig);
 router.post("/config", authorize("extension.admin"), postConfig);
+// Partial update of the automatic-sync settings only. Three segments below
+// /api/extensions, so the catalog router's /:key routes can't shadow it.
+router.patch("/config/sync", authorize("extension.admin"), patchSyncSettings);
 router.get("/vw-attributes", getVwAttributes);
 
 // Schema / object-type discovery

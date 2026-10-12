@@ -22,6 +22,9 @@ import { RefreshCw, Download } from "lucide-react";
 import { VWField, VWSelect, VWToggle } from "./VWComponents";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
+import { useAuth } from "../../../../application/hooks/useAuth";
+
+const SYNC_RUNNING_MESSAGE = "A sync is already running. Try again when it finishes.";
 
 interface Schema {
   id: string;
@@ -57,6 +60,10 @@ interface ImportedUseCase {
 
 export const JiraAssetsConfiguration: React.FC = () => {
   const formatDate = useFormattedDate();
+  // The settings page already redirects non-Admins; this keeps the sync
+  // controls read-only if the panel is ever shown to anyone else.
+  const { userRoleName } = useAuth();
+  const canManageSync = userRoleName === "Admin";
   const pluginApiCall = useCallback(async (method: string, path: string, body?: any) => {
     const url = `/extensions/jira-assets${path.startsWith("/") ? path : `/${path}`}`;
     let response: any;
@@ -119,6 +126,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
   const [importedUseCases, setImportedUseCases] = useState<ImportedUseCase[]>([]);
   const [, setIsLoadingUseCases] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncSettingsError, setSyncSettingsError] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -257,7 +265,10 @@ export const JiraAssetsConfiguration: React.FC = () => {
         setImportMessage({ type: "error", text: response?.error || "Import failed" });
       }
     } catch (error: any) {
-      setImportMessage({ type: "error", text: error.message || "Import failed" });
+      setImportMessage({
+        type: "error",
+        text: error?.status === 409 ? SYNC_RUNNING_MESSAGE : error.message || "Import failed",
+      });
     } finally {
       setIsImporting(false);
     }
@@ -276,19 +287,37 @@ export const JiraAssetsConfiguration: React.FC = () => {
         });
         // Reload the imported use cases to show updated data
         await loadImportedUseCases();
-        // Update last_sync_at in local config
-        setLocalConfig((prev) => ({
-          ...prev,
-          last_sync_at: new Date().toISOString(),
-          last_sync_status: "success",
-        }));
       } else {
         setSyncMessage({ type: "error", text: response?.error || "Sync failed" });
       }
     } catch (error: any) {
-      setSyncMessage({ type: "error", text: error.message || "Sync failed" });
+      setSyncMessage({
+        type: "error",
+        text: error?.status === 409 ? SYNC_RUNNING_MESSAGE : error.message || "Sync failed",
+      });
     } finally {
+      // Success or failure, the server recorded the outcome on the config.
+      await refreshSyncStatus();
       setIsSyncing(false);
+    }
+  };
+
+  // Re-read only the last-sync fields (not the connection form, which may
+  // hold unsaved edits) so the "Last sync" line shows what the server
+  // recorded, including notes about objects missing in Jira.
+  const refreshSyncStatus = async () => {
+    try {
+      const status = await pluginApiCall("GET", "/sync/status");
+      if (status) {
+        setLocalConfig((prev) => ({
+          ...prev,
+          last_sync_at: status.last_sync_at,
+          last_sync_status: status.last_sync_status,
+          last_sync_message: status.last_sync_message,
+        }));
+      }
+    } catch (error) {
+      console.warn("[JiraConfig] could not refresh sync status:", error);
     }
   };
 
@@ -438,14 +467,26 @@ export const JiraAssetsConfiguration: React.FC = () => {
   };
 
   // Sync settings sit below the Save Configuration button, so persist them on
-  // change (same as schema and object type) — otherwise switching automatic
-  // sync on would silently do nothing until the user scrolled up and saved.
-  const handleSyncSettingChange = (
+  // change — otherwise switching automatic sync on would silently do nothing
+  // until the user scrolled up and saved. Only the changed sync field is sent
+  // (PATCH /config/sync), never the connection form, so unsaved connection
+  // edits are not saved as a side effect. Before the first save there is no
+  // config row yet; Save Configuration then carries these values.
+  const handleSyncSettingChange = async (
     key: "sync_enabled" | "sync_interval_hours",
     value: boolean | number,
   ) => {
+    const previous = localConfig[key];
     handleChange(key, value);
-    void persistConfigPatch({ [key]: value });
+    setSyncSettingsError(false);
+    if (!localConfig.has_api_token) return;
+    try {
+      await pluginApiCall("PATCH", "/config/sync", { [key]: value });
+    } catch (error) {
+      console.warn("[JiraConfig] sync settings save failed:", error);
+      handleChange(key, previous);
+      setSyncSettingsError(true);
+    }
   };
 
   // Load schemas on mount only if already configured (has_api_token indicates saved config)
@@ -755,7 +796,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
         <Box>
           <VWToggle
             checked={localConfig.sync_enabled || false}
-            onChange={(e) => handleSyncSettingChange("sync_enabled", e.target.checked)}
+            onChange={(e) => void handleSyncSettingChange("sync_enabled", e.target.checked)}
+            disabled={!canManageSync}
             label="Enable automatic sync"
             description="Automatically sync data from JIRA on a schedule"
           />
@@ -768,17 +810,29 @@ export const JiraAssetsConfiguration: React.FC = () => {
               label="Sync Interval"
               value={localConfig.sync_interval_hours || 24}
               onChange={(e) =>
-                handleSyncSettingChange("sync_interval_hours", Number(e.target.value))
+                void handleSyncSettingChange("sync_interval_hours", Number(e.target.value))
               }
+              disabled={!canManageSync}
               items={syncIntervalOptions.map((option) => ({
                 _id: option.value,
                 name: option.label,
               }))}
             />
             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
-              Automatic sync starts once at least one use case has been imported.
+              Automatic sync refreshes use cases you have imported. It does not import new objects
+              or remove any.
             </Typography>
           </Box>
+        )}
+
+        {syncSettingsError && (
+          <Alert
+            severity="error"
+            sx={{ fontSize: "13px" }}
+            onClose={() => setSyncSettingsError(false)}
+          >
+            Could not save the sync settings. Try again.
+          </Alert>
         )}
       </Stack>
 
@@ -786,13 +840,22 @@ export const JiraAssetsConfiguration: React.FC = () => {
       {localConfig.last_sync_at && (
         <Box sx={{ mt: 2 }}>
           <Alert
-            severity={localConfig.last_sync_status === "success" ? "success" : "warning"}
+            severity={
+              localConfig.last_sync_status === "success" && !localConfig.last_sync_message
+                ? "success"
+                : "warning"
+            }
             sx={{ fontSize: "13px" }}
           >
             Last sync: {formatDate(new Date(localConfig.last_sync_at), { includeTime: true })} -{" "}
             {localConfig.last_sync_status === "success"
               ? "Successful"
               : localConfig.last_sync_message}
+            {localConfig.last_sync_status === "success" && localConfig.last_sync_message && (
+              <Box component="span" sx={{ display: "block", mt: 0.5 }}>
+                {localConfig.last_sync_message}
+              </Box>
+            )}
           </Alert>
         </Box>
       )}

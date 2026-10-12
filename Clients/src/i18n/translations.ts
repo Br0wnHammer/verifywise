@@ -9697,8 +9697,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Aktivieren und konfigurieren Sie Integrationen für Ihre Organisation.",
     "Enable automatic sync": "Automatische Synchronisierung aktivieren",
-    "Automatic sync starts once at least one use case has been imported.":
-      "Die automatische Synchronisierung beginnt, sobald mindestens ein Anwendungsfall importiert wurde.",
+    "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
+      "Die automatische Synchronisierung aktualisiert importierte Anwendungsfälle. Sie importiert keine neuen Objekte und entfernt keine.",
+    "Could not save the sync settings. Try again.":
+      "Die Synchronisierungseinstellungen konnten nicht gespeichert werden. Versuchen Sie es erneut.",
+    "A sync is already running. Try again when it finishes.":
+      "Es läuft bereits eine Synchronisierung. Versuchen Sie es erneut, wenn sie abgeschlossen ist.",
     "Error Details:": "Fehlerdetails:",
     "Every 12 hours": "Alle 12 Stunden",
     "Every 24 hours": "Alle 24 Stunden",
@@ -19791,8 +19795,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Activez et configurez des intégrations pour votre organisation.",
     "Enable automatic sync": "Activer la synchronisation automatique",
-    "Automatic sync starts once at least one use case has been imported.":
-      "La synchronisation automatique démarre dès qu'au moins un cas d'usage a été importé.",
+    "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
+      "La synchronisation automatique met à jour les cas d'usage importés. Elle n'importe pas de nouveaux objets et n'en supprime aucun.",
+    "Could not save the sync settings. Try again.":
+      "Impossible d'enregistrer les paramètres de synchronisation. Réessayez.",
+    "A sync is already running. Try again when it finishes.":
+      "Une synchronisation est déjà en cours. Réessayez une fois qu'elle est terminée.",
     "Error Details:": "Détails de l'erreur :",
     "Every 12 hours": "Toutes les 12 heures",
     "Every 24 hours": "Toutes les 24 heures",
@@ -29811,8 +29819,12 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Active y configure integraciones para su organización.",
     "Enable automatic sync": "Activar sincronización automática",
-    "Automatic sync starts once at least one use case has been imported.":
-      "La sincronización automática comienza cuando se ha importado al menos un caso de uso.",
+    "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
+      "La sincronización automática actualiza los casos de uso importados. No importa objetos nuevos ni elimina ninguno.",
+    "Could not save the sync settings. Try again.":
+      "No se pudo guardar la configuración de sincronización. Inténtelo de nuevo.",
+    "A sync is already running. Try again when it finishes.":
+      "Ya hay una sincronización en curso. Inténtelo de nuevo cuando termine.",
     "Error Details:": "Detalles del error:",
     "Every 12 hours": "Cada 12 horas",
     "Every 24 hours": "Cada 24 horas",

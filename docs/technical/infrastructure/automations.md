@@ -94,7 +94,7 @@ Recurring (cron) jobs only — see [On-Demand Jobs](#on-demand-jobs) below for j
 | `send_report_notification` | `0 0 * * *` | Daily at midnight | Scheduled report generation |
 | `pmm_hourly_check` | `0 * * * *` | Every hour | PMM cycle processing |
 | `report_scheduler_tick` | `*/15 * * * *` | Every 15 minutes | Template-first scheduled report dispatch |
-| `jira_assets_scheduled_sync_check` | `*/5 * * * *` | Every 5 minutes | Runs Jira Assets sync for orgs whose interval has elapsed (see [Extensions → Scheduled sync](./extensions.md#scheduled-sync)) |
+| `jira_assets_scheduled_sync_check` | `*/5 * * * *` | Every 5 minutes | Refreshes imported Jira Assets use cases for orgs whose interval has elapsed; never creates or deletes (see [Extensions → Scheduled sync](./extensions.md#scheduled-sync)) |
 | `slack-notification-policy` | `0 9 * * *` | Daily at 9 AM | Slack policy due notifications |
 
 ### Cron Pattern Reference

@@ -14,12 +14,14 @@ import {
   getUseCaseByProjectId,
   importObjects,
   JiraAssetsConfig,
+  JiraConfigNotFoundError,
   JiraConfigValidationError,
   JiraSyncInProgressError,
   listUseCases,
   loadFullConfig,
   saveConfig,
   syncObjects,
+  updateSyncSettings,
 } from "./jiraAssets.service";
 
 const fileName = "jiraAssets.ctrl.ts";
@@ -74,6 +76,27 @@ export async function postConfig(req: Request, res: Response): Promise<any> {
       logger.error("❌ Error in jira postConfig:", err);
     }
     return res.status(status).json(STATUS_CODE[status](err.message));
+  }
+}
+
+/**
+ * PATCH /config/sync — only `sync_enabled` and/or `sync_interval_hours`.
+ * Used by the panel's auto-save so it never re-sends connection fields.
+ */
+export async function patchSyncSettings(req: Request, res: Response): Promise<any> {
+  try {
+    const settings = await updateSyncSettings(orgId(req), uid(req), req.body ?? {});
+    return res.status(200).json(STATUS_CODE[200](settings));
+  } catch (err: any) {
+    if (err instanceof JiraConfigValidationError) {
+      return res.status(400).json(STATUS_CODE[400](err.message));
+    }
+    if (err instanceof JiraConfigNotFoundError) {
+      return res.status(404).json(STATUS_CODE[404](err.message));
+    }
+    logStructured("error", "jira patchSyncSettings failed", "patchSyncSettings", fileName);
+    logger.error("❌ Error in jira patchSyncSettings:", err);
+    return res.status(500).json(STATUS_CODE[500](translateError(req, err)));
   }
 }
 
@@ -148,6 +171,9 @@ export async function postImport(req: Request, res: Response): Promise<any> {
     const result = await importObjects(orgId(req), uid(req), objectIds);
     return res.status(200).json(STATUS_CODE[200](result));
   } catch (err: any) {
+    if (err instanceof JiraSyncInProgressError) {
+      return res.status(409).json(STATUS_CODE[409](err.message));
+    }
     logStructured("error", "jira import failed", "postImport", fileName);
     logger.error("❌ Error in jira postImport:", err);
     return res.status(500).json(STATUS_CODE[500](err.message));

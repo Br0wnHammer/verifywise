@@ -1,8 +1,11 @@
-import { QueryTypes } from "sequelize";
+import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../../database/db";
 import { encryptText, decryptText } from "../../tools/createSecureValue";
 import { JiraAssetsClient, JiraObject } from "./jira.client";
 import { transformAttributes } from "./jira.constants";
+import logger, { logStructured } from "../../utils/logger/fileLogger";
+
+const fileName = "jiraAssets.service.ts";
 
 /**
  * DB-facing helpers for the jira-assets extension.
@@ -50,9 +53,16 @@ export interface JiraSyncResult {
   objectsCreated: number;
   objectsUpdated: number;
   objectsDeleted: number;
+  /** Linked objects not returned by Jira that were kept (scheduled run, or deletes skipped). */
+  objectsMissingInJira: number;
+  missingInJiraIds: string[];
+  /** Why a manual sync kept objects missing in Jira instead of removing them. */
+  deletesSkippedReason?: string;
   syncedAt: string;
   status: string;
 }
+
+export type SyncRunType = "manual" | "scheduled" | "import";
 
 /** Bounds for `sync_interval_hours`; mirrors jira_assets_config_sync_interval_range_chk. */
 export const SYNC_INTERVAL_MIN_HOURS = 1;
@@ -60,13 +70,16 @@ export const SYNC_INTERVAL_MAX_HOURS = 168;
 const DEFAULT_SYNC_INTERVAL_HOURS = 24;
 
 /**
- * A `started` history row older than this is treated as abandoned (worker
- * crash, deploy mid-sync) and closed as failed, so it cannot block every
- * later sync for the organization.
+ * A `started` history row with no heartbeat (heartbeat_at, else started_at)
+ * for this long is treated as abandoned (worker crash, deploy mid-sync) and
+ * closed as failed, so it cannot block every later sync for the organization.
+ * A live sync touches heartbeat_at per fetched page and every
+ * HEARTBEAT_EVERY_OBJECTS objects.
  */
-export const SYNC_STALE_AFTER_MS = 60 * 60 * 1000;
+export const SYNC_STALE_AFTER_MS = 15 * 60 * 1000;
+export const HEARTBEAT_EVERY_OBJECTS = 25;
 
-/** Thrown when a manual or scheduled sync is already running for the organization. */
+/** Thrown when a sync or import is already running for the organization. */
 export class JiraSyncInProgressError extends Error {
   constructor() {
     super("A Jira Assets sync is already running for this organization");
@@ -254,6 +267,54 @@ export async function saveConfig(
   }
 }
 
+/** Thrown by `updateSyncSettings` when the org has no saved connection yet. */
+export class JiraConfigNotFoundError extends Error {
+  constructor() {
+    super("Save the Jira connection before changing sync settings");
+    this.name = "JiraConfigNotFoundError";
+  }
+}
+
+/**
+ * Change only the automatic-sync settings. Connection fields, the token and
+ * the schema/object type are left untouched, so a half-edited connection form
+ * in the panel is never saved by toggling sync. At least one field required.
+ */
+export async function updateSyncSettings(
+  organizationId: number,
+  userId: number,
+  body: { sync_enabled?: unknown; sync_interval_hours?: unknown },
+): Promise<{ sync_enabled: boolean; sync_interval_hours: number }> {
+  const hasEnabled = body?.sync_enabled !== undefined;
+  const hasInterval = body?.sync_interval_hours !== undefined;
+  if (!hasEnabled && !hasInterval) {
+    throw new JiraConfigValidationError("Provide sync_enabled or sync_interval_hours");
+  }
+  if (hasEnabled && typeof body.sync_enabled !== "boolean") {
+    throw new JiraConfigValidationError("sync_enabled must be true or false");
+  }
+  const interval = hasInterval ? parseSyncIntervalHours(body.sync_interval_hours) : null;
+
+  const [rows] = (await sequelize.query(
+    `UPDATE jira_assets_config
+        SET sync_enabled = COALESCE(:syncEnabled, sync_enabled),
+            sync_interval_hours = COALESCE(:syncIntervalHours, sync_interval_hours),
+            updated_by = :userId, updated_at = NOW()
+      WHERE organization_id = :organizationId
+      RETURNING sync_enabled, sync_interval_hours;`,
+    {
+      replacements: {
+        syncEnabled: hasEnabled ? body.sync_enabled : null,
+        syncIntervalHours: interval,
+        userId,
+        organizationId,
+      },
+    },
+  )) as unknown as [Array<{ sync_enabled: boolean; sync_interval_hours: number }>, unknown];
+  if (!rows || rows.length === 0) throw new JiraConfigNotFoundError();
+  return rows[0];
+}
+
 // ---------------------------------------------------------------------------
 // Client builder
 // ---------------------------------------------------------------------------
@@ -272,15 +333,313 @@ export function clientFromConfig(config: JiraAssetsConfig): JiraAssetsClient {
 }
 
 // ---------------------------------------------------------------------------
-// UC-ID generator
+// Shared sync building blocks
 // ---------------------------------------------------------------------------
 
-async function nextUcId(organizationId: number): Promise<string> {
+async function nextUcId(organizationId: number, transaction?: Transaction): Promise<string> {
   const rows = (await sequelize.query(
     `SELECT nextval('verifywise.jira_use_case_uc_id_seq') AS seq;`,
-    { type: QueryTypes.SELECT },
+    { type: QueryTypes.SELECT, transaction },
   )) as Array<{ seq: string }>;
   return `UC-J${organizationId}-${rows[0].seq}`;
+}
+
+/** Message for any thrown value; never empty. */
+export function errorMessage(err: unknown): string {
+  const message = (err as { message?: unknown } | null | undefined)?.message;
+  if (typeof message === "string" && message) return message;
+  if (err !== undefined && err !== null) {
+    const text = String(err);
+    if (text) return text;
+  }
+  return "Unknown error";
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { name?: string; parent?: { code?: string }; original?: { code?: string } };
+  return (
+    e?.name === "SequelizeUniqueConstraintError" ||
+    e?.parent?.code === "23505" ||
+    e?.original?.code === "23505"
+  );
+}
+
+interface DescribedObject {
+  jiraObjectId: string;
+  name: string;
+  goal: string;
+  data: Record<string, unknown>;
+}
+
+function describeObject(
+  jiraObj: JiraObject,
+  attrIdToName: Record<string, string>,
+): DescribedObject {
+  const transformedAttrs = transformAttributes(jiraObj.attributes || [], attrIdToName);
+  const name = jiraObj.label || transformedAttrs["Name"] || `JIRA-${jiraObj.objectKey}`;
+  const description =
+    transformedAttrs["Description / Purpose"] || transformedAttrs["Description"] || "";
+  return {
+    jiraObjectId: String(jiraObj.id),
+    name,
+    goal: description || "Imported from JIRA Assets",
+    data: {
+      id: jiraObj.id,
+      objectKey: jiraObj.objectKey,
+      label: jiraObj.label,
+      objectType: jiraObj.objectType,
+      attributes: transformedAttrs,
+      created: jiraObj.created,
+      updated: jiraObj.updated,
+    },
+  };
+}
+
+/**
+ * Create the native project and its jira_assets_use_cases link in one
+ * transaction, so a failure can't leave a project without a link (or the
+ * reverse). Returns "exists" if the object is already linked (unique
+ * violation on organization_id + jira_object_id) instead of throwing.
+ */
+async function createLinkedUseCase(
+  organizationId: number,
+  ownerId: number | null,
+  obj: DescribedObject,
+  now: Date,
+): Promise<"created" | "exists"> {
+  try {
+    await sequelize.transaction(async (transaction) => {
+      const ucId = await nextUcId(organizationId, transaction);
+      const projectRows = (await sequelize.query(
+        `INSERT INTO projects
+           (organization_id, uc_id, project_title, owner, start_date, goal,
+            geography, last_updated, created_at, _source, is_organizational)
+         VALUES (:organizationId, :ucId, :title, :owner, :now, :goal,
+                 1, :now, :now, 'jira-assets', FALSE)
+         RETURNING id;`,
+        {
+          replacements: {
+            organizationId,
+            ucId,
+            title: obj.name,
+            owner: ownerId ?? null,
+            goal: obj.goal,
+            now,
+          },
+          type: QueryTypes.INSERT,
+          transaction,
+        },
+      )) as unknown as [Array<{ id: number }>, number];
+      const projectId = (projectRows[0] as any)[0].id;
+
+      await sequelize.query(
+        `INSERT INTO jira_assets_use_cases
+           (organization_id, jira_object_id, project_id, data, last_synced_at, sync_status)
+         VALUES (:organizationId, :jiraObjectId, :projectId, CAST(:data AS JSONB), :now, 'synced');`,
+        {
+          replacements: {
+            organizationId,
+            jiraObjectId: obj.jiraObjectId,
+            projectId,
+            data: JSON.stringify(obj.data),
+            now,
+          },
+          transaction,
+        },
+      );
+    });
+    return "created";
+  } catch (err) {
+    if (isUniqueViolation(err)) return "exists";
+    throw err;
+  }
+}
+
+/**
+ * Atomically record the start of a sync or import for the organization, or
+ * refuse if one is already running. Manual syncs, scheduled syncs and imports
+ * all come through here, so they never overlap for the same organization.
+ *
+ * A transaction-scoped advisory lock keyed on the organization serialises the
+ * check-then-insert (two READ COMMITTED transactions could otherwise both see
+ * "nothing running" and both insert). The lock is released at commit, before
+ * any Jira call, so it is held for milliseconds — the long-running guard is
+ * the `started` history row itself. A `started` row whose heartbeat (else
+ * start) is older than SYNC_STALE_AFTER_MS is closed as failed first, so an
+ * abandoned run cannot block forever.
+ *
+ * Returns the new history row id. Throws JiraSyncInProgressError on overlap.
+ */
+export async function claimSyncRun(
+  organizationId: number,
+  syncType: SyncRunType,
+  triggeredBy: number | null,
+  startedAt: Date,
+): Promise<number> {
+  return sequelize.transaction(async (transaction) => {
+    await sequelize.query(
+      `SELECT pg_advisory_xact_lock(hashtext('jira_assets_sync'), :organizationId);`,
+      { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
+    );
+
+    await sequelize.query(
+      `UPDATE jira_assets_sync_history
+          SET status = 'failed', completed_at = :now,
+              error_message = 'Sync stopped responding and was marked as abandoned'
+        WHERE organization_id = :organizationId
+          AND status = 'started'
+          AND COALESCE(heartbeat_at, started_at) < :staleBefore;`,
+      {
+        replacements: {
+          organizationId,
+          now: startedAt,
+          staleBefore: new Date(startedAt.getTime() - SYNC_STALE_AFTER_MS),
+        },
+        transaction,
+      },
+    );
+
+    const running = (await sequelize.query(
+      `SELECT id FROM jira_assets_sync_history
+        WHERE organization_id = :organizationId AND status = 'started'
+        LIMIT 1;`,
+      { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
+    )) as Array<{ id: number }>;
+    if (running.length > 0) throw new JiraSyncInProgressError();
+
+    const historyRows = (await sequelize.query(
+      `INSERT INTO jira_assets_sync_history
+         (organization_id, sync_type, status, started_at, heartbeat_at, triggered_by)
+       VALUES (:organizationId, :syncType, 'started', :startedAt, :startedAt, :triggeredBy)
+       RETURNING id;`,
+      {
+        replacements: { organizationId, syncType, startedAt, triggeredBy },
+        type: QueryTypes.INSERT,
+        transaction,
+      },
+    )) as unknown as [Array<{ id: number }>, number];
+    return (historyRows[0] as any)[0].id as number;
+  });
+}
+
+/** Mark the run as alive. Best effort: a missed heartbeat must not fail the sync. */
+async function touchHeartbeat(historyId: number, organizationId: number): Promise<void> {
+  try {
+    await sequelize.query(
+      `UPDATE jira_assets_sync_history
+          SET heartbeat_at = :now
+        WHERE id = :id AND organization_id = :organizationId AND status = 'started';`,
+      { replacements: { now: new Date(), id: historyId, organizationId } },
+    );
+  } catch (err) {
+    logger.error(`Jira Assets heartbeat failed for run ${historyId}:`, err);
+  }
+}
+
+/**
+ * Close a run as failed and record the error on the config so the panel shows
+ * it and the scheduler's interval acts as backoff. Never throws: it runs in
+ * catch blocks, where a second exception would hide the first.
+ */
+export async function finalizeFailure(
+  historyId: number,
+  organizationId: number,
+  err: unknown,
+): Promise<string> {
+  const message = errorMessage(err);
+  const now = new Date();
+  try {
+    await sequelize.query(
+      `UPDATE jira_assets_sync_history
+          SET status = 'failed', error_message = :message, completed_at = :now
+        WHERE id = :id AND organization_id = :organizationId AND status = 'started';`,
+      { replacements: { message, now, id: historyId, organizationId } },
+    );
+    await sequelize.query(
+      `UPDATE jira_assets_config
+          SET last_sync_at = :now, last_sync_status = 'failed', last_sync_message = :message,
+              updated_at = NOW()
+        WHERE organization_id = :organizationId;`,
+      { replacements: { now, message, organizationId } },
+    );
+  } catch (finalizeErr) {
+    logStructured(
+      "error",
+      `Jira Assets run ${historyId} could not be marked failed`,
+      "finalizeFailure",
+      fileName,
+    );
+    logger.error(`Jira Assets finalizeFailure for run ${historyId} failed:`, finalizeErr);
+  }
+  return message;
+}
+
+interface RunCounts {
+  objectsFetched: number;
+  objectsCreated: number;
+  objectsUpdated: number;
+  objectsDeleted: number;
+}
+
+/** Close a run as completed. Only touches its own row while it is still `started`. */
+async function finalizeSuccess(
+  historyId: number,
+  organizationId: number,
+  counts: RunCounts,
+  note: string | null,
+  updateConfig: boolean,
+): Promise<Date> {
+  const completedAt = new Date();
+  const [, updated] = (await sequelize.query(
+    `UPDATE jira_assets_sync_history
+        SET status = 'completed',
+            objects_fetched = :objectsFetched,
+            objects_created = :objectsCreated,
+            objects_updated = :objectsUpdated,
+            objects_deleted = :objectsDeleted,
+            error_message = :note,
+            completed_at = :completedAt
+      WHERE id = :id AND organization_id = :organizationId AND status = 'started';`,
+    { replacements: { ...counts, note, completedAt, id: historyId, organizationId } },
+  )) as unknown as [unknown, number];
+  if (updated === 0) {
+    logger.warn(
+      `Jira Assets run ${historyId} finished after it was marked abandoned; history row left as failed`,
+    );
+  }
+  if (updateConfig) {
+    await sequelize.query(
+      `UPDATE jira_assets_config
+          SET last_sync_at = :now, last_sync_status = 'success',
+              last_sync_message = :note, updated_at = NOW()
+        WHERE organization_id = :organizationId;`,
+      { replacements: { now: completedAt, note, organizationId } },
+    );
+  }
+  return completedAt;
+}
+
+function failedResult(status: string): JiraSyncResult {
+  return {
+    success: false,
+    objectsFetched: 0,
+    objectsCreated: 0,
+    objectsUpdated: 0,
+    objectsDeleted: 0,
+    objectsMissingInJira: 0,
+    missingInJiraIds: [],
+    syncedAt: new Date().toISOString(),
+    status,
+  };
+}
+
+const MISSING_IDS_IN_NOTE = 20;
+
+function missingNote(ids: string[], reason: string): string {
+  const shown = ids.slice(0, MISSING_IDS_IN_NOTE).join(", ");
+  const more =
+    ids.length > MISSING_IDS_IN_NOTE ? ` and ${ids.length - MISSING_IDS_IN_NOTE} more` : "";
+  return `${ids.length} linked object(s) missing in Jira were kept (${reason}): ${shown}${more}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,205 +661,116 @@ export async function importObjects(
   if (!Array.isArray(objectIds) || objectIds.length === 0) {
     throw new Error("No objects selected for import");
   }
-  const config = await loadFullConfig(organizationId);
-  if (!config) throw new Error("JIRA not configured");
-  const client = clientFromConfig(config);
 
-  // ID→name mapping so JIRA attribute IDs resolve to human names.
-  const attrIdToName: Record<string, string> = {};
-  if (config.selected_object_type_id) {
-    const defs = await client.getAttributes(config.selected_object_type_id);
-    for (const attr of defs) attrIdToName[attr.id] = attr.name;
-  }
+  // Same claim as sync: an import and a sync can't run at the same time.
+  const historyId = await claimSyncRun(organizationId, "import", userId, new Date());
 
-  const now = new Date();
   let imported = 0;
   let skipped = 0;
   const errors: string[] = [];
+  try {
+    const config = await loadFullConfig(organizationId);
+    if (!config) throw new Error("JIRA not configured");
+    const client = clientFromConfig(config);
 
-  for (const objectId of objectIds) {
-    try {
-      const existing = (await sequelize.query(
-        `SELECT id FROM jira_assets_use_cases
-          WHERE jira_object_id = :objectId AND organization_id = :organizationId;`,
-        { replacements: { objectId, organizationId }, type: QueryTypes.SELECT },
-      )) as Array<{ id: number }>;
-      if (existing.length > 0) {
-        skipped++;
-        continue;
-      }
-
-      const jiraObj = await client.getObjectById(objectId);
-      const jiraObjectId = String(jiraObj.id);
-      const transformedAttrs = transformAttributes(jiraObj.attributes, attrIdToName);
-      const name = jiraObj.label || transformedAttrs["Name"] || `JIRA-${jiraObj.objectKey}`;
-      const description =
-        transformedAttrs["Description / Purpose"] || transformedAttrs["Description"] || "";
-      const ucId = await nextUcId(organizationId);
-
-      const projectRows = (await sequelize.query(
-        `INSERT INTO projects
-           (organization_id, uc_id, project_title, owner, start_date, goal,
-            geography, last_updated, created_at, _source, is_organizational)
-         VALUES (:organizationId, :ucId, :title, :owner, :startDate, :goal,
-                 1, :now, :now, 'jira-assets', FALSE)
-         RETURNING id;`,
-        {
-          replacements: {
-            organizationId,
-            ucId,
-            title: name,
-            owner: userId ?? null,
-            startDate: now,
-            goal: description || "Imported from JIRA Assets",
-            now,
-          },
-          type: QueryTypes.INSERT,
-        },
-      )) as unknown as [Array<{ id: number }>, number];
-      const projectId = (projectRows[0] as any)[0].id;
-
-      const data = {
-        id: jiraObj.id,
-        objectKey: jiraObj.objectKey,
-        label: jiraObj.label,
-        objectType: jiraObj.objectType,
-        attributes: transformedAttrs,
-        created: jiraObj.created,
-        updated: jiraObj.updated,
-      };
-
-      await sequelize.query(
-        `INSERT INTO jira_assets_use_cases
-           (organization_id, jira_object_id, project_id, data, last_synced_at, sync_status)
-         VALUES (:organizationId, :jiraObjectId, :projectId, CAST(:data AS JSONB), :now, 'synced');`,
-        {
-          replacements: {
-            organizationId,
-            jiraObjectId,
-            projectId,
-            data: JSON.stringify(data),
-            now,
-          },
-        },
-      );
-      imported++;
-    } catch (err: any) {
-      errors.push(`Failed to import ${objectId}: ${err.message}`);
+    // ID→name mapping so JIRA attribute IDs resolve to human names.
+    const attrIdToName: Record<string, string> = {};
+    if (config.selected_object_type_id) {
+      const defs = await client.getAttributes(config.selected_object_type_id);
+      for (const attr of defs) attrIdToName[attr.id] = attr.name;
     }
+
+    const now = new Date();
+    for (const [index, objectId] of objectIds.entries()) {
+      try {
+        const existing = (await sequelize.query(
+          `SELECT id FROM jira_assets_use_cases
+            WHERE jira_object_id = :objectId AND organization_id = :organizationId;`,
+          { replacements: { objectId: String(objectId), organizationId }, type: QueryTypes.SELECT },
+        )) as Array<{ id: number }>;
+        if (existing.length > 0) {
+          skipped++;
+          continue;
+        }
+        const jiraObj = await client.getObjectById(objectId);
+        const outcome = await createLinkedUseCase(
+          organizationId,
+          userId ?? null,
+          describeObject(jiraObj, attrIdToName),
+          now,
+        );
+        if (outcome === "created") imported++;
+        else skipped++;
+      } catch (err) {
+        errors.push(`Failed to import ${objectId}: ${errorMessage(err)}`);
+      }
+      if ((index + 1) % HEARTBEAT_EVERY_OBJECTS === 0) {
+        await touchHeartbeat(historyId, organizationId);
+      }
+    }
+
+    await finalizeSuccess(
+      historyId,
+      organizationId,
+      {
+        objectsFetched: objectIds.length,
+        objectsCreated: imported,
+        objectsUpdated: 0,
+        objectsDeleted: 0,
+      },
+      errors.length > 0 ? `${errors.length} object(s) failed to import` : null,
+      false,
+    );
+  } catch (err) {
+    await finalizeFailure(historyId, organizationId, err);
+    throw err;
   }
 
   return { success: true, imported, skipped, errors: errors.length > 0 ? errors : undefined };
 }
 
 // ---------------------------------------------------------------------------
-// Sync (delta: create/update JIRA objects, delete removed ones)
+// Sync
 // ---------------------------------------------------------------------------
 
 /**
- * Atomically record a sync start for the organization, or refuse if one is
- * already running. Manual and scheduled syncs both come through here, so they
- * can never overlap for the same organization.
+ * Sync the organization's linked use cases with Jira.
  *
- * A transaction-scoped advisory lock keyed on the organization serialises the
- * check-then-insert (two READ COMMITTED transactions could otherwise both see
- * "nothing running" and both insert). The lock is released at commit, before
- * any Jira call, so it is held for milliseconds — the long-running guard is
- * the `started` history row itself. Rows older than SYNC_STALE_AFTER_MS are
- * closed as failed first so an abandoned sync cannot block forever.
+ * - **Scheduled** (`syncType = "scheduled"`, `triggeredBy = null`) is
+ *   refresh-only: it updates projects and links that already exist. It never
+ *   creates a use case and never deletes one. Linked objects Jira no longer
+ *   returns are counted and listed as missing in the result, the history row
+ *   and the log.
+ * - **Manual** also creates use cases for new objects of the selected type
+ *   (owned by the user who clicked) and deletes ones that disappeared
+ *   upstream — but only when the fetch is trustworthy: deletes are skipped if
+ *   the fetch was incomplete (pagination did not confirm the last page) or the
+ *   links were imported from a different object type, and the whole sync fails
+ *   without changes if Jira returns no objects while links exist.
  *
- * Returns the new history row id. Throws JiraSyncInProgressError on overlap.
- */
-export async function claimSyncRun(
-  organizationId: number,
-  syncType: "manual" | "scheduled",
-  triggeredBy: number | null,
-  startedAt: Date,
-): Promise<number> {
-  return sequelize.transaction(async (transaction) => {
-    await sequelize.query(
-      `SELECT pg_advisory_xact_lock(hashtext('jira_assets_sync'), :organizationId);`,
-      { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
-    );
-
-    await sequelize.query(
-      `UPDATE jira_assets_sync_history
-          SET status = 'failed', completed_at = :now,
-              error_message = 'Sync did not finish and was marked as abandoned'
-        WHERE organization_id = :organizationId
-          AND status = 'started'
-          AND started_at < :staleBefore;`,
-      {
-        replacements: {
-          organizationId,
-          now: startedAt,
-          staleBefore: new Date(startedAt.getTime() - SYNC_STALE_AFTER_MS),
-        },
-        transaction,
-      },
-    );
-
-    const running = (await sequelize.query(
-      `SELECT id FROM jira_assets_sync_history
-        WHERE organization_id = :organizationId AND status = 'started'
-        LIMIT 1;`,
-      { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
-    )) as Array<{ id: number }>;
-    if (running.length > 0) throw new JiraSyncInProgressError();
-
-    const historyRows = (await sequelize.query(
-      `INSERT INTO jira_assets_sync_history
-         (organization_id, sync_type, status, started_at, triggered_by)
-       VALUES (:organizationId, :syncType, 'started', :startedAt, :triggeredBy)
-       RETURNING id;`,
-      {
-        replacements: { organizationId, syncType, startedAt, triggeredBy },
-        type: QueryTypes.INSERT,
-        transaction,
-      },
-    )) as unknown as [Array<{ id: number }>, number];
-    return (historyRows[0] as any)[0].id as number;
-  });
-}
-
-/**
- * Run a delta sync for the organization.
- *
- * `triggeredBy` is the user for a manual sync and null for a scheduled one
- * (the history row then reads sync_type = 'scheduled', triggered_by = NULL).
- * Throws JiraSyncInProgressError if another sync is running for the org.
+ * The run is claimed first (throws JiraSyncInProgressError on overlap), so
+ * every later failure — missing config, token decrypt, client construction,
+ * Jira errors — is recorded on the history row and on the config, and the
+ * scheduler's interval counts from it instead of retrying every tick.
  */
 export async function syncObjects(
   organizationId: number,
   triggeredBy: number | null,
   syncType: "manual" | "scheduled",
 ): Promise<JiraSyncResult> {
-  const startedAt = new Date();
-  const config = await loadFullConfig(organizationId);
-  if (!config) throw new Error("JIRA not configured");
-  if (!config.selected_object_type_id) throw new Error("No object type selected for sync");
-  const client = clientFromConfig(config);
-
-  const historyId = await claimSyncRun(organizationId, syncType, triggeredBy, startedAt);
-
-  const finalizeFailure = async (message: string) => {
-    await sequelize.query(
-      `UPDATE jira_assets_sync_history
-          SET status = 'failed', error_message = :message, completed_at = :now
-        WHERE id = :id AND organization_id = :organizationId;`,
-      { replacements: { message, now: new Date(), id: historyId, organizationId } },
-    );
-    await sequelize.query(
-      `UPDATE jira_assets_config
-          SET last_sync_at = :now, last_sync_status = 'failed', last_sync_message = :message,
-              updated_at = NOW()
-        WHERE organization_id = :organizationId;`,
-      { replacements: { now: new Date(), message, organizationId } },
-    );
-  };
+  const historyId = await claimSyncRun(organizationId, syncType, triggeredBy, new Date());
+  const refreshOnly = syncType === "scheduled";
 
   try {
-    const jiraObjects: JiraObject[] = await client.getObjects(config.selected_object_type_id);
+    const config = await loadFullConfig(organizationId);
+    if (!config) throw new Error("JIRA not configured");
+    const objectTypeId = config.selected_object_type_id;
+    if (!objectTypeId) throw new Error("No object type selected for sync");
+    const client = clientFromConfig(config);
+
+    const { objects: jiraObjects, complete } = await client.getAllObjects(objectTypeId, {
+      onPage: () => touchHeartbeat(historyId, organizationId),
+    });
     const objectsFetched = jiraObjects.length;
 
     const existingRows = (await sequelize.query(
@@ -509,169 +779,141 @@ export async function syncObjects(
         WHERE organization_id = :organizationId;`,
       { replacements: { organizationId }, type: QueryTypes.SELECT },
     )) as Array<{ jira_object_id: string; project_id: number | null; data: any }>;
+
+    if (objectsFetched === 0 && existingRows.length > 0) {
+      throw new Error(
+        "Jira returned no objects for the selected object type, so nothing was changed. Check the object type and the account's access.",
+      );
+    }
+
     const existingMap = new Map(existingRows.map((r) => [r.jira_object_id, r]));
+    const linkedTypeIds = new Set(
+      existingRows
+        .map((r) => {
+          const data = typeof r.data === "string" ? JSON.parse(r.data) : r.data;
+          return data?.objectType?.id;
+        })
+        .filter((id): id is string | number => id !== undefined && id !== null)
+        .map(String),
+    );
 
     let objectsCreated = 0;
     let objectsUpdated = 0;
     let objectsDeleted = 0;
     const now = new Date();
 
-    for (const jiraObj of jiraObjects) {
-      const jiraObjectId = String(jiraObj.id);
-      const existing = existingMap.get(jiraObjectId);
-      const attrIdToName = (jiraObj as any)._attrIdToName || {};
-      const transformedAttrs = transformAttributes(jiraObj.attributes || [], attrIdToName);
-      const name = jiraObj.label || transformedAttrs["Name"] || `JIRA-${jiraObj.objectKey}`;
-      const description =
-        transformedAttrs["Description / Purpose"] || transformedAttrs["Description"] || "";
-      const data = {
-        id: jiraObj.id,
-        objectKey: jiraObj.objectKey,
-        label: jiraObj.label,
-        objectType: jiraObj.objectType,
-        attributes: transformedAttrs,
-        created: jiraObj.created,
-        updated: jiraObj.updated,
-      };
+    for (const [index, jiraObj] of jiraObjects.entries()) {
+      const obj = describeObject(jiraObj, (jiraObj as any)._attrIdToName || {});
+      const existing = existingMap.get(obj.jiraObjectId);
 
       if (!existing) {
-        const ucId = await nextUcId(organizationId);
-        const projectRows = (await sequelize.query(
-          `INSERT INTO projects
-             (organization_id, uc_id, project_title, owner, start_date, goal,
-              geography, last_updated, created_at, _source, is_organizational)
-           VALUES (:organizationId, :ucId, :title, :owner, :now, :goal,
-                   1, :now, :now, 'jira-assets', FALSE)
-           RETURNING id;`,
-          {
-            replacements: {
-              organizationId,
-              ucId,
-              title: name,
-              owner: triggeredBy ?? null,
-              goal: description || "Imported from JIRA Assets",
-              now,
-            },
-            type: QueryTypes.INSERT,
-          },
-        )) as unknown as [Array<{ id: number }>, number];
-        const projectId = (projectRows[0] as any)[0].id;
-
-        await sequelize.query(
-          `INSERT INTO jira_assets_use_cases
-             (organization_id, jira_object_id, project_id, data, last_synced_at, sync_status)
-           VALUES (:organizationId, :jiraObjectId, :projectId, CAST(:data AS JSONB), :now, 'synced');`,
-          {
-            replacements: {
-              organizationId,
-              jiraObjectId,
-              projectId,
-              data: JSON.stringify(data),
-              now,
-            },
-          },
-        );
-        objectsCreated++;
+        if (!refreshOnly) {
+          const outcome = await createLinkedUseCase(organizationId, triggeredBy, obj, now);
+          if (outcome === "created") objectsCreated++;
+        }
       } else {
-        if (existing.project_id !== null) {
+        await sequelize.transaction(async (transaction) => {
+          if (existing.project_id !== null) {
+            await sequelize.query(
+              `UPDATE projects
+                  SET project_title = :title, goal = :goal, last_updated = :now
+                WHERE id = :projectId AND organization_id = :organizationId;`,
+              {
+                replacements: {
+                  title: obj.name,
+                  goal: obj.goal,
+                  now,
+                  projectId: existing.project_id,
+                  organizationId,
+                },
+                transaction,
+              },
+            );
+          }
           await sequelize.query(
-            `UPDATE projects
-                SET project_title = :title, goal = :goal, last_updated = :now
-              WHERE id = :projectId AND organization_id = :organizationId;`,
+            `UPDATE jira_assets_use_cases
+                SET data = CAST(:data AS JSONB),
+                    last_synced_at = :now,
+                    sync_status = 'synced',
+                    updated_at = NOW()
+              WHERE jira_object_id = :jiraObjectId AND organization_id = :organizationId;`,
             {
               replacements: {
-                title: name,
-                goal: description || "Imported from JIRA Assets",
+                data: JSON.stringify(obj.data),
                 now,
-                projectId: existing.project_id,
+                jiraObjectId: obj.jiraObjectId,
                 organizationId,
               },
+              transaction,
             },
           );
-        }
-        await sequelize.query(
-          `UPDATE jira_assets_use_cases
-              SET data = CAST(:data AS JSONB),
-                  last_synced_at = :now,
-                  sync_status = 'synced',
-                  updated_at = NOW()
-            WHERE jira_object_id = :jiraObjectId AND organization_id = :organizationId;`,
-          {
-            replacements: {
-              data: JSON.stringify(data),
-              now,
-              jiraObjectId,
-              organizationId,
-            },
-          },
-        );
+        });
         objectsUpdated++;
       }
-      existingMap.delete(jiraObjectId);
-    }
-
-    // Anything left in existingMap disappeared upstream — delete the native
-    // project (jira_assets_use_cases row cascades via FK).
-    for (const [, record] of existingMap) {
-      if (record.project_id !== null) {
-        await sequelize.query(
-          `DELETE FROM projects WHERE id = :projectId AND organization_id = :organizationId;`,
-          { replacements: { projectId: record.project_id, organizationId } },
-        );
+      existingMap.delete(obj.jiraObjectId);
+      if ((index + 1) % HEARTBEAT_EVERY_OBJECTS === 0) {
+        await touchHeartbeat(historyId, organizationId);
       }
-      objectsDeleted++;
     }
 
-    const completedAt = new Date();
-    await sequelize.query(
-      `UPDATE jira_assets_sync_history
-          SET status = 'completed',
-              objects_fetched = :objectsFetched,
-              objects_created = :objectsCreated,
-              objects_updated = :objectsUpdated,
-              objects_deleted = :objectsDeleted,
-              completed_at = :completedAt
-        WHERE id = :id AND organization_id = :organizationId;`,
-      {
-        replacements: {
-          objectsFetched,
-          objectsCreated,
-          objectsUpdated,
-          objectsDeleted,
-          completedAt,
-          id: historyId,
-          organizationId,
-        },
-      },
-    );
-    await sequelize.query(
-      `UPDATE jira_assets_config
-          SET last_sync_at = :now, last_sync_status = 'success',
-              last_sync_message = NULL, updated_at = NOW()
-        WHERE organization_id = :organizationId;`,
-      { replacements: { now: completedAt, organizationId } },
+    // Whatever is left in existingMap was not returned by Jira.
+    const missingIds = Array.from(existingMap.keys());
+    let deletesSkippedReason: string | undefined;
+    if (missingIds.length > 0 && !refreshOnly) {
+      if (!complete) {
+        deletesSkippedReason =
+          "Jira did not confirm the last page of results, so missing objects were not removed";
+      } else if ([...linkedTypeIds].some((id) => id !== String(objectTypeId))) {
+        deletesSkippedReason =
+          "some use cases were imported from a different object type, so missing objects were not removed";
+      }
+    }
+
+    let note: string | null = null;
+    if (missingIds.length > 0 && (refreshOnly || deletesSkippedReason)) {
+      note = missingNote(
+        missingIds,
+        refreshOnly ? "automatic sync never removes use cases" : (deletesSkippedReason as string),
+      );
+      logStructured("processing", `Jira Assets run ${historyId}: ${note}`, "syncObjects", fileName);
+    } else {
+      // Manual sync with a trustworthy fetch: remove the native project; the
+      // jira_assets_use_cases row cascades via FK.
+      for (const [, record] of existingMap) {
+        if (record.project_id !== null) {
+          await sequelize.query(
+            `DELETE FROM projects WHERE id = :projectId AND organization_id = :organizationId;`,
+            { replacements: { projectId: record.project_id, organizationId } },
+          );
+        }
+        objectsDeleted++;
+      }
+    }
+
+    const completedAt = await finalizeSuccess(
+      historyId,
+      organizationId,
+      { objectsFetched, objectsCreated, objectsUpdated, objectsDeleted },
+      note,
+      true,
     );
 
+    const keptMissing = note ? missingIds : [];
     return {
       success: true,
       objectsFetched,
       objectsCreated,
       objectsUpdated,
       objectsDeleted,
+      objectsMissingInJira: keptMissing.length,
+      missingInJiraIds: keptMissing,
+      deletesSkippedReason,
       syncedAt: completedAt.toISOString(),
       status: "success",
     };
-  } catch (err: any) {
-    await finalizeFailure(err.message);
-    return {
-      success: false,
-      objectsFetched: 0,
-      objectsCreated: 0,
-      objectsUpdated: 0,
-      objectsDeleted: 0,
-      syncedAt: new Date().toISOString(),
-      status: `failed: ${err.message}`,
-    };
+  } catch (err) {
+    const message = await finalizeFailure(historyId, organizationId, err);
+    return failedResult(`failed: ${message}`);
   }
 }
 
