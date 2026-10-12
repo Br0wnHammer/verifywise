@@ -8,6 +8,7 @@ import {
   deleteAuditRowsBatch,
   getAuditCutoff,
   getAuditRetentionMonths,
+  getGatewayAutoPurgeOrgIds,
   recordRetentionRun,
   type RetentionRecordType,
 } from "../../../utils/dataRetention.utils";
@@ -147,14 +148,23 @@ const GATEWAY_PURGE_TIMEOUT_MS = 300_000;
 interface GatewayPurgeResult {
   organization_id: number;
   guardrail_deleted?: number;
+  guardrail_capped?: boolean;
+  guardrail_error?: string;
   spend_deleted?: number;
-  error?: string;
+  spend_capped?: boolean;
+  spend_error?: string;
+}
+
+function gatewayRunStatus(error: string | undefined, capped: boolean | undefined) {
+  if (error) return "failed" as const;
+  return capped ? ("capped" as const) : ("success" as const);
 }
 
 /**
  * Ask the AI Gateway to purge logs for every org that opted in to automatic
- * deletion, and record one run per log type per org. A gateway or recording
- * failure is logged and never fails the job.
+ * deletion, and record one run per log type per org. When the call itself
+ * fails, every opted-in org gets a failed run for both log types. A gateway
+ * or recording failure is logged and never fails the job.
  */
 async function purgeGatewayLogs(): Promise<void> {
   let results: GatewayPurgeResult[];
@@ -165,25 +175,39 @@ async function purgeGatewayLogs(): Promise<void> {
     results = Array.isArray(response?.results) ? response.results : [];
   } catch (error) {
     logger.error("AI Gateway retention purge failed:", error);
+    await recordGatewayCallFailure(error);
     return;
   }
   for (const result of results) {
-    const status = result.error ? "failed" : "success";
     await safeRecordRun(
       result.organization_id,
       null,
       result.guardrail_deleted ?? 0,
-      status,
-      result.error,
+      gatewayRunStatus(result.guardrail_error, result.guardrail_capped),
+      result.guardrail_error,
       "ai_gateway_guardrail_logs",
     );
     await safeRecordRun(
       result.organization_id,
       null,
       result.spend_deleted ?? 0,
-      status,
-      result.error,
+      gatewayRunStatus(result.spend_error, result.spend_capped),
+      result.spend_error,
       "ai_gateway_spend_logs",
     );
+  }
+}
+
+async function recordGatewayCallFailure(error: unknown): Promise<void> {
+  let orgIds: number[];
+  try {
+    orgIds = await getGatewayAutoPurgeOrgIds();
+  } catch (readError) {
+    logger.error("Reading AI Gateway auto-purge organizations failed:", readError);
+    return;
+  }
+  for (const orgId of orgIds) {
+    await safeRecordRun(orgId, null, 0, "failed", error, "ai_gateway_guardrail_logs");
+    await safeRecordRun(orgId, null, 0, "failed", error, "ai_gateway_spend_logs");
   }
 }

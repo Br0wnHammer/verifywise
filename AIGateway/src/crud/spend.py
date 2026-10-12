@@ -567,13 +567,15 @@ async def purge_spend_logs(
     db: AsyncSession,
     org_id: int,
     retention_days: int,
+    max_batches: int = 50,
 ) -> dict:
     """
     Delete spend logs older than retention_days for the given org.
-    Operates in batches of 1 000 rows, up to 50 batches (50 000 rows max
-    per call) to avoid long-running transactions.
+    Operates in batches of 1 000 rows, up to max_batches (50 000 rows max
+    per call by default) to avoid long-running transactions.
 
-    Returns {"deleted": <total_deleted>, "batches": <batches_run>}.
+    Returns {"deleted": <total_deleted>, "batches": <batches_run>,
+    "capped": <last allowed batch was full, so older rows may remain>}.
     """
     cutoff = (
         datetime.now(tz=timezone.utc) - timedelta(days=retention_days)
@@ -581,8 +583,8 @@ async def purge_spend_logs(
 
     total_deleted = 0
     batches = 0
-    max_batches = 50
     batch_size = 1000
+    capped = False
 
     delete_sql = text("""
         DELETE FROM ai_gateway_spend_logs
@@ -607,6 +609,8 @@ async def purge_spend_logs(
         if deleted_this_batch < batch_size:
             # No more rows to delete
             break
+        if batches == max_batches:
+            capped = True
 
     await db.commit()
-    return {"deleted": total_deleted, "batches": batches}
+    return {"deleted": total_deleted, "batches": batches, "capped": capped}

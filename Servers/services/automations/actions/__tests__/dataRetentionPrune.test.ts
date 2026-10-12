@@ -7,6 +7,7 @@ import {
   RETENTION_MAX_BATCHES,
   deleteAuditRowsBatch,
   getAuditRetentionMonths,
+  getGatewayAutoPurgeOrgIds,
   recordRetentionRun,
 } from "../../../../utils/dataRetention.utils";
 import { getAllOrganizationsQuery } from "../../../../utils/organization.utils";
@@ -24,6 +25,7 @@ jest.mock("../../../../utils/dataRetention.utils", () => ({
   getAuditCutoff: jest.fn(),
   deleteAuditRowsBatch: jest.fn(),
   recordRetentionRun: jest.fn(),
+  getGatewayAutoPurgeOrgIds: jest.fn(),
 }));
 jest.mock("../../../../utils/organization.utils", () => ({
   getAllOrganizationsQuery: jest.fn(),
@@ -43,6 +45,7 @@ const mockRecord = recordRetentionRun as jest.Mock;
 const mockAppend = appendToAuditLedger as jest.Mock;
 const mockAllOrgs = getAllOrganizationsQuery as jest.Mock;
 const mockGateway = aiGatewayRequest as jest.Mock;
+const mockOptedIn = getGatewayAutoPurgeOrgIds as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -54,6 +57,7 @@ beforeEach(() => {
   mockLedger.mockResolvedValue(0);
   mockTable.mockResolvedValue(0);
   mockGateway.mockResolvedValue({ results: [] });
+  mockOptedIn.mockResolvedValue([]);
 });
 
 describe("runDataRetentionPrune", () => {
@@ -169,7 +173,13 @@ describe("runDataRetentionPruneAllOrgs", () => {
     mockGateway.mockResolvedValue({
       results: [
         { organization_id: 5, guardrail_deleted: 3, spend_deleted: 9 },
-        { organization_id: 6, guardrail_deleted: 0, spend_deleted: 0, error: "db down" },
+        {
+          organization_id: 6,
+          guardrail_deleted: 4,
+          guardrail_capped: true,
+          spend_deleted: 0,
+          spend_error: "db down",
+        },
       ],
     });
     await runDataRetentionPruneAllOrgs();
@@ -201,11 +211,49 @@ describe("runDataRetentionPruneAllOrgs", () => {
         error: "db down",
       }),
     );
+    // The spend failure does not mark the guardrail purge failed; it hit the cap.
+    expect(mockRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 6,
+        recordType: "ai_gateway_guardrail_logs",
+        deletedCount: 4,
+        status: "capped",
+        error: null,
+      }),
+    );
   });
 
   it("never fails the job when the gateway call fails", async () => {
     mockAllOrgs.mockResolvedValue([]);
     mockGateway.mockRejectedValue(new Error("gateway unreachable"));
+    await expect(runDataRetentionPruneAllOrgs()).resolves.toBeUndefined();
+    expect(mockRecord).not.toHaveBeenCalled();
+  });
+
+  it("records failed runs for both log types of every opted-in org when the gateway call fails", async () => {
+    mockAllOrgs.mockResolvedValue([]);
+    mockGateway.mockRejectedValue(new Error("gateway unreachable"));
+    mockOptedIn.mockResolvedValue([5, 6]);
+    await runDataRetentionPruneAllOrgs();
+    expect(mockRecord).toHaveBeenCalledTimes(4);
+    for (const organizationId of [5, 6]) {
+      for (const recordType of ["ai_gateway_guardrail_logs", "ai_gateway_spend_logs"]) {
+        expect(mockRecord).toHaveBeenCalledWith({
+          organizationId,
+          recordType,
+          cutoff: null,
+          deletedCount: 0,
+          status: "failed",
+          error: "gateway unreachable",
+        });
+      }
+    }
+  });
+
+  it("never fails the job when reading opted-in orgs fails after a gateway failure", async () => {
+    mockAllOrgs.mockResolvedValue([]);
+    mockGateway.mockRejectedValue(new Error("gateway unreachable"));
+    mockOptedIn.mockRejectedValue(new Error("db down"));
     await expect(runDataRetentionPruneAllOrgs()).resolves.toBeUndefined();
     expect(mockRecord).not.toHaveBeenCalled();
   });

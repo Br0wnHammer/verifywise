@@ -201,6 +201,26 @@ export async function recordRetentionRun(row: RetentionRunInput): Promise<void> 
   );
 }
 
+/**
+ * Organizations that opted in to automatic AI Gateway log deletion, read
+ * straight from the gateway's settings table (same database). Used to record
+ * failed runs when the gateway purge call itself fails. Empty when the table
+ * does not exist in this deployment.
+ */
+export async function getGatewayAutoPurgeOrgIds(): Promise<number[]> {
+  const exists = (await sequelize.query(
+    `SELECT to_regclass('verifywise.ai_gateway_guardrail_settings') AS reg`,
+    { type: QueryTypes.SELECT },
+  )) as { reg: string | null }[];
+  if (!exists[0]?.reg) return [];
+  const rows = (await sequelize.query(
+    `SELECT organization_id FROM ai_gateway_guardrail_settings
+      WHERE auto_purge_enabled ORDER BY organization_id`,
+    { type: QueryTypes.SELECT },
+  )) as { organization_id: number }[];
+  return rows.map((r) => Number(r.organization_id));
+}
+
 export type LatestRetentionRuns = Record<
   RetentionRecordType,
   { ran_at: string; deleted_count: number; status: RetentionRunStatus } | undefined

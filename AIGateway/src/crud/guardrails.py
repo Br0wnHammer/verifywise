@@ -385,14 +385,20 @@ async def get_guardrail_stats_by_day(
     return []
 
 
-async def purge_guardrail_logs(org_id: int, retention_days: int) -> int:
-    """Batch DELETE 1000 rows at a time, max 50 batches. Returns total deleted count."""
+async def purge_guardrail_logs(
+    org_id: int, retention_days: int, max_batches: int = 50
+) -> dict:
+    """Batch DELETE 1000 rows at a time, up to max_batches.
+
+    Returns {"deleted": <total>, "capped": <the last allowed batch was full,
+    so older rows may remain>}.
+    """
     total_deleted = 0
-    max_batches = 50
     batch_size = 1000
+    capped = False
 
     async with get_db() as db:
-        for _ in range(max_batches):
+        for batch in range(max_batches):
             result = await db.execute(
                 text(
                     """
@@ -417,6 +423,8 @@ async def purge_guardrail_logs(org_id: int, retention_days: int) -> int:
             total_deleted += deleted
             if deleted < batch_size:
                 break
+            if batch == max_batches - 1:
+                capped = True
 
-        return total_deleted
-    return 0
+        return {"deleted": total_deleted, "capped": capped}
+    return {"deleted": 0, "capped": False}

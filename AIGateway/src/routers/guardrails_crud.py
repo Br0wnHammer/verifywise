@@ -356,7 +356,8 @@ async def purge_logs(request: Request):
     if settings and settings.get("log_retention_days") is not None:
         retention_days = int(settings["log_retention_days"])
 
-    total_deleted = await purge_guardrail_logs(org_id, retention_days)
+    purged = await purge_guardrail_logs(org_id, retention_days)
+    total_deleted = purged["deleted"]
 
     await notify_config_change(
         org_id=org_id,
