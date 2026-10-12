@@ -172,6 +172,41 @@ describe("RunContext", () => {
     ctx.dispose();
   });
 
+  it("heartbeat(t) runs inside the caller's transaction, without its own", async () => {
+    fakeDb();
+    const ctx = createRunContext(provider, RUN, null);
+    await ctx.heartbeat(TX as never);
+    expect(calls("SET heartbeat_at")[0][1].transaction).toBe(TX);
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(calls("lock_timeout")).toHaveLength(0);
+    fakeDb({ owned: false });
+    await expect(ctx.heartbeat(TX as never)).rejects.toBeInstanceOf(RunSupersededError);
+    ctx.dispose();
+  });
+
+  it("heartbeat without a transaction sets a lock timeout in its own short one", async () => {
+    fakeDb();
+    const ctx = createRunContext(provider, RUN, null);
+    await ctx.heartbeat();
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(calls("SET LOCAL lock_timeout")).toHaveLength(1);
+    expect(calls("SET LOCAL lock_timeout")[0][1].transaction).toBe(TX);
+    expect(calls("SET heartbeat_at")[0][1].transaction).toBe(TX);
+    ctx.dispose();
+  });
+
+  it("heartbeat surfaces a lock-timeout failure as an error", async () => {
+    fakeDb();
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SET heartbeat_at"))
+        throw new Error("canceling statement due to lock timeout");
+      return [[], {}];
+    });
+    const ctx = createRunContext(provider, RUN, null);
+    await expect(ctx.heartbeat()).rejects.toThrow("lock timeout");
+    ctx.dispose();
+  });
+
   it("heartbeat throws RunSupersededError once the claim is lost", async () => {
     fakeDb({ owned: false });
     const ctx = createRunContext(provider, RUN, null);
@@ -296,6 +331,16 @@ describe("runClaimed", () => {
     ["undefined", undefined, "Unknown error"],
     ["an empty Error", new Error(""), "Error"],
     ["null", null, "Unknown error"],
+    ["a null-prototype object", Object.create(null), "Unknown error"],
+    [
+      "an object with a throwing message getter",
+      {
+        get message(): string {
+          throw new Error("getter");
+        },
+      },
+      "Unknown error",
+    ],
   ])(
     "closes the run as failed for a thrown non-Error value (%s)",
     async (_label, thrown, expected) => {

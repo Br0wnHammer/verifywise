@@ -29,7 +29,14 @@ export interface RunResult {
   code?: string | null;
 }
 
-/** What a provider gets for one claimed run. */
+/**
+ * What a provider gets for one claimed run.
+ *
+ * sqlOwnsRun and assertOwned share-lock the run row until the surrounding
+ * transaction ends. Inside such a transaction, heartbeat, finalize and release
+ * MUST receive that transaction `t`; called without it they run on another
+ * connection and wait on the lock forever (a deadlock Postgres cannot detect).
+ */
 export interface RunContext {
   orgId: number;
   runId: number;
@@ -37,7 +44,7 @@ export interface RunContext {
   payload: unknown;
   triggeredBy: number | null;
   /** Throws RunSupersededError when the claim is lost. */
-  heartbeat(): Promise<void>;
+  heartbeat(t?: Transaction): Promise<void>;
   /** SQL boolean proving this run still owns its row (share-locks it); for provider writes. */
   sqlOwnsRun(alias?: string): string;
   /** FOR SHARE on the run row inside the caller's transaction; RunSupersededError if lost. */

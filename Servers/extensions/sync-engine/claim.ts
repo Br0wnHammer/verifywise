@@ -170,14 +170,27 @@ export class EngineRunContext implements RunContext {
     };
   }
 
-  async heartbeat(): Promise<void> {
-    const [rows] = (await sequelize.query(
-      `UPDATE extension_sync_runs SET heartbeat_at = now()
-        WHERE id = :runId AND organization_id = :orgId AND extension_key = :key
-          AND run_token = :token AND status = 'started'
-        RETURNING id;`,
-      { replacements: this.ref() },
-    )) as unknown as [Array<{ id: number }>, unknown];
+  async heartbeat(transaction?: Transaction): Promise<void> {
+    const beat = (t?: Transaction) =>
+      sequelize.query(
+        `UPDATE extension_sync_runs SET heartbeat_at = now()
+          WHERE id = :runId AND organization_id = :orgId AND extension_key = :key
+            AND run_token = :token AND status = 'started'
+          RETURNING id;`,
+        { replacements: this.ref(), transaction: t },
+      ) as unknown as Promise<[Array<{ id: number }>, unknown]>;
+    let rows: Array<{ id: number }> | undefined;
+    if (transaction) {
+      [rows] = await beat(transaction);
+    } else {
+      // A short transaction with a lock timeout: if the caller holds this row's
+      // share lock in another transaction, fail fast instead of hanging.
+      rows = await sequelize.transaction(async (t) => {
+        await sequelize.query(`SET LOCAL lock_timeout = '10s';`, { transaction: t });
+        const [updated] = await beat(t);
+        return updated;
+      });
+    }
     if (!rows || rows.length === 0) throw new RunSupersededError(this.runId);
   }
 
@@ -258,8 +271,9 @@ export function createRunContext(
  * catch blocks, where a second exception would hide the first.
  */
 export async function failRun(ctx: EngineRunContext, err: unknown): Promise<void> {
-  const message = truncateMessage(errorMessage(err));
   try {
+    const message = truncateMessage(errorMessage(err));
+    const code = errorCode(err);
     const closed = await sequelize.transaction(async (transaction) => {
       const [rows] = (await sequelize.query(
         `UPDATE extension_sync_runs
@@ -267,7 +281,7 @@ export async function failRun(ctx: EngineRunContext, err: unknown): Promise<void
           WHERE id = :runId AND organization_id = :orgId AND extension_key = :key
             AND run_token = :token AND status = 'started'
           RETURNING started_at;`,
-        { replacements: { ...ctx.ref(), message, code: errorCode(err) }, transaction },
+        { replacements: { ...ctx.ref(), message, code }, transaction },
       )) as unknown as [Array<{ started_at: Date }>, unknown];
       return rows?.[0] ?? null;
     });

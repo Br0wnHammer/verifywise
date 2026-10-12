@@ -47,18 +47,27 @@ export class SyncValidationError extends Error {
  * jiraAssets.service.ts (`errorMessage`), which re-exports it.
  */
 export function errorMessage(err: unknown): string {
-  const message = (err as { message?: unknown } | null | undefined)?.message;
-  if (typeof message === "string" && message) return message;
-  if (err !== undefined && err !== null) {
-    const text = String(err);
-    if (text) return text;
+  try {
+    const message = (err as { message?: unknown } | null | undefined)?.message;
+    if (typeof message === "string" && message) return message;
+    if (err !== undefined && err !== null) {
+      const text = String(err);
+      if (text) return text;
+    }
+  } catch {
+    // A throwing getter or toString; fall through to the generic message.
   }
   return "Unknown error";
 }
 
 /** The error's string `code` (Node and Postgres errors carry one), or null. */
 export function errorCode(err: unknown): string | null {
-  const code = (err as { code?: unknown } | null | undefined)?.code;
+  let code: unknown;
+  try {
+    code = (err as { code?: unknown } | null | undefined)?.code;
+  } catch {
+    return null;
+  }
   return typeof code === "string" && code.length > 0 && code.length <= 64 ? code : null;
 }
 
