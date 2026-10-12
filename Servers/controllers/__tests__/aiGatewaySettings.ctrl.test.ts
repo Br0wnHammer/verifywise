@@ -26,7 +26,11 @@ jest.mock("../../utils/logger/fileLogger", () => ({
   default: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
-import { describeRetentionChanges, updateGuardrailSettings } from "../aiGatewaySettings.ctrl";
+import {
+  describeRetentionChanges,
+  isRetentionOnlyUpdate,
+  updateGuardrailSettings,
+} from "../aiGatewaySettings.ctrl";
 import { AiGatewayError, aiGatewayRequest } from "../../utils/aiGatewayInternal.utils";
 import { appendToAuditLedger } from "../../utils/auditLedger.utils";
 import { logFailure, logProcessing, logSuccess } from "../../utils/logger/logHelper";
@@ -347,5 +351,21 @@ describe("describeRetentionChanges", () => {
         { log_retention_days: 30, auto_purge_enabled: false },
       ),
     ).toEqual(["guardrail log retention set to 30 days", "automatic deletion set to off"]);
+  });
+});
+
+describe("isRetentionOnlyUpdate", () => {
+  it("accepts only retention keys", () => {
+    expect(isRetentionOnlyUpdate({ log_retention_days: 30, auto_purge_enabled: true })).toBe(true);
+    expect(isRetentionOnlyUpdate({})).toBe(false);
+    expect(isRetentionOnlyUpdate({ log_retention_days: 30, pii_on_error: "allow" })).toBe(false);
+  });
+
+  it("does not treat inherited property names as retention keys", () => {
+    expect(isRetentionOnlyUpdate({ log_retention_days: 30, constructor: 1 })).toBe(false);
+    expect(isRetentionOnlyUpdate(JSON.parse('{"log_retention_days":30,"__proto__":1}'))).toBe(
+      false,
+    );
+    expect(isRetentionOnlyUpdate({ toString: 1 })).toBe(false);
   });
 });

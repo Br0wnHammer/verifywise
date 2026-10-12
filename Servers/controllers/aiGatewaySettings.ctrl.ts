@@ -21,18 +21,12 @@ import {
 } from "../utils/retentionAudit.utils";
 import { logFailure, logProcessing, logSuccess } from "../utils/logger/logHelper";
 import logger from "../utils/logger/fileLogger";
+import { GATEWAY_DEFAULTS } from "../utils/aiGatewayRetention.constants";
 
 const FILE_NAME = "aiGatewaySettings.ctrl.ts";
 const SETTINGS_PATH = "/internal/guardrails/settings";
 /** Same as the generic AI Gateway proxy this route used to go through. */
 const SETTINGS_UPDATE_TIMEOUT_MS = 30_000;
-
-/** The gateway's values for an organization that has not saved its own settings. */
-export const GATEWAY_DEFAULTS = {
-  log_retention_days: 90,
-  spend_log_retention_days: 90,
-  auto_purge_enabled: false,
-};
 
 type RetentionKey = keyof typeof GATEWAY_DEFAULTS;
 
@@ -41,6 +35,10 @@ const RETENTION_LABELS: Record<RetentionKey, string> = {
   spend_log_retention_days: "spend log retention",
   auto_purge_enabled: "automatic deletion",
 };
+
+function hasOwn(object: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
 
 function formatValue(key: RetentionKey, value: unknown): string {
   if (key === "auto_purge_enabled") return value ? "on" : "off";
@@ -59,7 +57,7 @@ export function describeRetentionChanges(
 ): string[] {
   const changes: string[] = [];
   for (const key of Object.keys(RETENTION_LABELS) as RetentionKey[]) {
-    if (!(key in requested) || !(key in after)) continue;
+    if (!hasOwn(requested, key) || !hasOwn(after, key)) continue;
     const newValue = formatValue(key, after[key]);
     if (before === null) {
       changes.push(`${RETENTION_LABELS[key]} set to ${newValue}`);
@@ -75,7 +73,8 @@ export function describeRetentionChanges(
 /** Whether a settings body touches retention settings and nothing else. */
 export function isRetentionOnlyUpdate(body: Record<string, unknown>): boolean {
   const keys = Object.keys(body);
-  return keys.length > 0 && keys.every((key) => key in RETENTION_LABELS);
+  // Own keys only: `in` would also accept inherited names like "constructor".
+  return keys.length > 0 && keys.every((key) => hasOwn(RETENTION_LABELS, key));
 }
 
 /**

@@ -26,7 +26,7 @@ import { getFileOrgSettings } from "../utils/fileOrgSettings.utils";
 import { getSettingsQuery as getShadowAiSettings } from "../utils/shadowAiConfig.utils";
 import { getServerLogRetentionDays } from "../utils/logger/logRetention";
 import logger from "../utils/logger/fileLogger";
-import { GATEWAY_DEFAULTS } from "./aiGatewaySettings.ctrl";
+import { GATEWAY_DEFAULTS } from "../utils/aiGatewayRetention.constants";
 
 const FILE_NAME = "dataRetention.ctrl.ts";
 
