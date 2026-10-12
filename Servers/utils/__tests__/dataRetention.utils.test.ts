@@ -20,6 +20,7 @@ import {
   recordRetentionRun,
   safeRecordRetentionRun,
   resetErrorCodeColumnCache,
+  ERROR_CODE_RECHECK_MS,
 } from "../dataRetention.utils";
 import logger from "../logger/fileLogger";
 
@@ -266,6 +267,66 @@ describe("before the error_code migration has run", () => {
     for (const call of mockQuery.mock.calls.slice(1)) {
       expect(String(call[0])).not.toContain("error_code");
     }
+  });
+
+  describe("rechecking the column", () => {
+    const run = {
+      organizationId: 1,
+      recordType: "audit_records" as const,
+      cutoff: null,
+      deletedCount: 0,
+      status: "success" as const,
+    };
+    const sqlOf = (index: number) => String(mockQuery.mock.calls[index][0]);
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date("2026-10-12T00:00:00Z"));
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("does not recheck within the interval", async () => {
+      mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValue([]);
+      await recordRetentionRun(run);
+      jest.setSystemTime(Date.now() + ERROR_CODE_RECHECK_MS - 1);
+      await recordRetentionRun(run);
+
+      expect(mockQuery).toHaveBeenCalledTimes(3);
+      expect(
+        mockQuery.mock.calls.some((call) => String(call[0]).includes("information_schema")),
+      ).toBe(false);
+    });
+
+    it("uses error_code again once a later check finds the column", async () => {
+      mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValueOnce([]); // fail, fallback
+      await recordRetentionRun(run);
+
+      jest.setSystemTime(Date.now() + ERROR_CODE_RECHECK_MS);
+      mockQuery.mockResolvedValueOnce([{ "?column?": 1 }]).mockResolvedValueOnce([]); // check, insert
+      await recordRetentionRun(run);
+
+      expect(sqlOf(2)).toContain("information_schema.columns");
+      expect(sqlOf(2)).toContain("current_schema()");
+      expect(sqlOf(3)).toContain("error_code");
+    });
+
+    it("keeps skipping when the column is still missing, and checks again later", async () => {
+      mockQuery.mockRejectedValueOnce(missingColumn()).mockResolvedValueOnce([]);
+      await recordRetentionRun(run);
+
+      jest.setSystemTime(Date.now() + ERROR_CODE_RECHECK_MS);
+      mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]); // check: none, fallback
+      await recordRetentionRun(run);
+      expect(sqlOf(3)).not.toContain("error_code");
+
+      // Within the next interval: straight to the fallback, no check.
+      mockQuery.mockResolvedValueOnce([]);
+      await recordRetentionRun(run);
+      expect(mockQuery).toHaveBeenCalledTimes(5);
+      expect(sqlOf(4)).not.toContain("information_schema");
+    });
   });
 
   it("does not hide other database errors", async () => {
