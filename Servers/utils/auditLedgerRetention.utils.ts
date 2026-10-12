@@ -1,4 +1,4 @@
-import { QueryTypes } from "sequelize";
+import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../database/db";
 import { AUDIT_LEDGER_LOCK_NS } from "./auditLedger.utils";
 
@@ -15,6 +15,7 @@ export interface LedgerCheckpoint {
  */
 export async function getLatestLedgerCheckpoint(
   organizationId: number,
+  transaction?: Transaction,
 ): Promise<LedgerCheckpoint | null> {
   const rows: any[] = await sequelize.query(
     `SELECT pruned_through_id, anchor_hash, cutoff
@@ -22,7 +23,7 @@ export async function getLatestLedgerCheckpoint(
       WHERE organization_id = :organizationId
       ORDER BY pruned_through_id DESC, id DESC
       LIMIT 1`,
-    { replacements: { organizationId }, type: QueryTypes.SELECT },
+    { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
   );
   if (rows.length === 0) return null;
   const row = rows[0];

@@ -362,6 +362,41 @@ describe("audit ledger prune and checkpoint-aware verification", () => {
     expect(await pruneAuditLedgerBatch(orgId, cutoff, 100)).toBe(0);
   });
 
+  it("stays intact when a prune commits while the walk is between pages", async () => {
+    await seedOld(20);
+    await appendCurrent(10);
+    const cutoff = await twelveMonthCutoff();
+
+    // After the first page of the walk is read, run a full prune on another
+    // connection and wait for it to commit. The walk must keep its snapshot.
+    const realQuery = sequelize.query.bind(sequelize) as (...args: any[]) => Promise<unknown>;
+    let pruned = false;
+    const spy = jest.spyOn(sequelize, "query").mockImplementation((async (...args: any[]) => {
+      const result = await realQuery(...args);
+      if (!pruned && typeof args[0] === "string" && args[0].includes("id > :afterId")) {
+        pruned = true;
+        await pruneUntilDone(cutoff, 100);
+      }
+      return result;
+    }) as any);
+
+    let overlapped;
+    try {
+      overlapped = await verifyChain(orgId, { batchSize: 5 });
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(pruned).toBe(true);
+    expect(await count("audit_ledger")).toBe(10);
+    expect(overlapped).toMatchObject({ status: "intact", totalEntries: 30 });
+    // A fresh verify now sees the checkpoint and is intact from the anchor.
+    expect(await verifyChain(orgId, { batchSize: 5 })).toMatchObject({
+      status: "intact",
+      totalEntries: 10,
+    });
+  });
+
   it("reports a tampered first remaining row as compromised", async () => {
     const old = await seedOld(10);
     await appendCurrent(2);

@@ -240,15 +240,29 @@ export async function verifyChain(
   organizationId: number,
   options?: VerifyChainOptions,
 ): Promise<VerifyChainResult> {
+  // One read-only snapshot for the checkpoint read and the whole walk, so a
+  // retention prune committing meanwhile can neither move the anchor under us
+  // nor remove rows mid-walk. No advisory lock: verification never blocks appends.
+  return sequelize.transaction(
+    { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ, readOnly: true },
+    (transaction) => walkChain(organizationId, transaction, options),
+  );
+}
+
+async function walkChain(
+  organizationId: number,
+  transaction: Transaction,
+  options?: VerifyChainOptions,
+): Promise<VerifyChainResult> {
   const batchSize = options?.batchSize || 1000;
   const maxEntries = options?.maxEntries || 100000;
-  let offset = 0;
-  const checkpoint = await getLatestLedgerCheckpoint(organizationId);
+  const checkpoint = await getLatestLedgerCheckpoint(organizationId, transaction);
   const prunedThroughId = checkpoint ? checkpoint.pruned_through_id : 0;
   const prunedThrough = checkpoint
     ? { id: checkpoint.pruned_through_id, cutoff: checkpoint.cutoff }
     : undefined;
   let prevHash = checkpoint ? checkpoint.anchor_hash : GENESIS_HASH;
+  let afterId: number | string = prunedThroughId;
   let totalEntries = 0;
 
   while (true) {
@@ -257,12 +271,13 @@ export async function verifyChain(
               entity_id, action, field_name, old_value, new_value, description,
               entry_hash, prev_hash
        FROM audit_ledger
-       WHERE organization_id = :organizationId AND id > :prunedThroughId
+       WHERE organization_id = :organizationId AND id > :afterId
        ORDER BY id ASC
-       LIMIT :batchSize OFFSET :offset`,
+       LIMIT :batchSize`,
       {
-        replacements: { organizationId, prunedThroughId, batchSize, offset },
+        replacements: { organizationId, afterId, batchSize },
         type: QueryTypes.SELECT,
+        transaction,
       },
     );
 
@@ -325,7 +340,7 @@ export async function verifyChain(
       return { status: "partial", totalEntries, prunedThrough };
     }
 
-    offset += batchSize;
+    afterId = rows[rows.length - 1].id;
   }
 
   if (totalEntries === 0) {

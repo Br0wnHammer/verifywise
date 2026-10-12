@@ -178,6 +178,7 @@ describe("verifyChain with checkpoints", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    transaction.mockImplementation(async (_opts: any, cb: any) => cb({ id: "txn" }));
   });
 
   it("starts at the anchor and walks only rows after the checkpoint", async () => {
@@ -194,8 +195,9 @@ describe("verifyChain with checkpoints", () => {
     const walkCall = query.mock.calls.find((c) =>
       (c[0] as string).includes("FROM audit_ledger\n"),
     )!;
-    expect(walkCall[0]).toContain("id > :prunedThroughId");
-    expect((walkCall[1] as any).replacements.prunedThroughId).toBe(20);
+    expect(walkCall[0]).toContain("id > :afterId");
+    expect(walkCall[0]).not.toContain("OFFSET");
+    expect((walkCall[1] as any).replacements.afterId).toBe(20);
   });
 
   it("reports compromised at the first row that does not link to the anchor", async () => {
@@ -216,6 +218,34 @@ describe("verifyChain with checkpoints", () => {
     expect(result.prunedThrough).toEqual({ id: 20, cutoff: CUTOFF });
   });
 
+  it("runs in one read-only repeatable-read transaction without the advisory lock", async () => {
+    mockWalk([checkpointRow], []);
+    await verifyChain(7);
+    const opts = transaction.mock.calls[0][0] as any;
+    expect(opts.isolationLevel).toBe("REPEATABLE READ");
+    expect(opts.readOnly).toBe(true);
+    expect(sqls().some((q) => q.includes("pg_advisory"))).toBe(false);
+    for (const call of query.mock.calls)
+      expect((call[1] as any).transaction).toEqual({ id: "txn" });
+  });
+
+  it("pages by keyset: each page starts after the previous page's last id", async () => {
+    const first = ledgerRow(21, ANCHOR);
+    const second = ledgerRow(22, first.entry_hash);
+    const third = ledgerRow(23, second.entry_hash);
+    const pages = [[first, second], [third], []];
+    query.mockImplementation(async (sql: string) => {
+      if (sql.includes("audit_ledger_retention_checkpoints")) return [checkpointRow];
+      return pages.shift() ?? [];
+    });
+
+    const result = await verifyChain(7, { batchSize: 2 });
+    expect(result.status).toBe("intact");
+    expect(result.totalEntries).toBe(3);
+    const walks = query.mock.calls.filter((c) => (c[0] as string).includes("FROM audit_ledger\n"));
+    expect(walks.map((c) => (c[1] as any).replacements.afterId)).toEqual([20, 22, 23]);
+  });
+
   it("is unchanged without a checkpoint: genesis start, no prunedThrough", async () => {
     const first = ledgerRow(1, GENESIS_HASH);
     mockWalk([], [first]);
@@ -225,6 +255,6 @@ describe("verifyChain with checkpoints", () => {
     const walkCall = query.mock.calls.find((c) =>
       (c[0] as string).includes("FROM audit_ledger\n"),
     )!;
-    expect((walkCall[1] as any).replacements.prunedThroughId).toBe(0);
+    expect((walkCall[1] as any).replacements.afterId).toBe(0);
   });
 });
