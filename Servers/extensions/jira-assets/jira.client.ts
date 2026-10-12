@@ -283,19 +283,23 @@ export class JiraAssetsClient {
    *   return fewer rows than asked for, so a short page proves nothing either.
    *   The walk advances by the rows returned.
    * - Data Center: `GET iql/objects?...&page=&resultPerPage=`; the response
-   *   carries `objectEntries`, `pageSize` (number of pages) and
-   *   `totalFilterCount`, but no last-page flag, and those counts cannot be
-   *   shown to be uncapped, so they are not used. As on cloud, the server may
-   *   cap `resultPerPage` below what was asked for, so a short page proves
-   *   nothing either. The walk keeps requesting pages until one comes back
-   *   empty — only that proves the end, at the cost of one extra request. A
-   *   non-empty page with no object the walk has not already seen (a server
-   *   that repeats its last page past the end) stops the walk as incomplete.
+   *   carries `objectEntries`, `pageSize` (the number of pages) and
+   *   `totalFilterCount`. The server may cap `resultPerPage`, so a short page
+   *   alone proves nothing. The walk ends complete on:
+   *   - an empty page;
+   *   - `isLast === true`, if the server sends it;
+   *   - as many distinct objects as `totalFilterCount`, on a short or
+   *     repeated page (on a full page the count could be capped);
+   *   - a short page that is the reported last page (`page >= pageSize`);
+   *   - a repeated page (no object not already seen — some servers answer
+   *     past the end with their last page) once `pageSize` says the walk is
+   *     past the last page.
+   *   A repeated page with no such signal ends the walk incomplete.
    *
    * Anything else — on cloud an empty page without isLast, a repeated Data
-   * Center page, MAX_PAGES, the overall deadline — returns `complete: false`,
-   * and callers must not flag objects missing from the result as gone from
-   * Jira.
+   * Center page without a page count, MAX_PAGES, the overall deadline —
+   * returns `complete: false`, and callers must not flag objects missing from
+   * the result as gone from Jira.
    */
   async getAllObjects(
     objectTypeId: string,
@@ -317,12 +321,31 @@ export class JiraAssetsClient {
           );
           const entries: JiraObject[] = result?.objectEntries || [];
           if (options.onPage) await options.onPage();
-          // Only an empty page is the end; a short one may be a capped page.
+          // An empty page is the end.
           if (entries.length === 0) return { objects, complete: true };
+          const pageCount = knownNumber(result?.pageSize); // Data Center: number of pages
+          const total = knownNumber(result?.totalFilterCount);
           const fresh = entries.filter((obj) => !seen.has(String(obj.id)));
-          if (fresh.length === 0) return { objects, complete: false };
           for (const obj of fresh) seen.add(String(obj.id));
           objects.push(...fresh);
+          // The server's own signals that every object has been returned. The
+          // total counts only on a short or repeated page: on a full page it
+          // could be a capped count with more to come.
+          const pageNotFull = entries.length < PAGE_SIZE || fresh.length === 0;
+          const reachedTotal =
+            total !== null && total > 0 && objects.length >= total && pageNotFull;
+          if (result?.isLast === true || reachedTotal) return { objects, complete: true };
+          if (fresh.length === 0) {
+            // A repeated page: the server answers past the end with its last
+            // page. That is the end only if its page count says we are past it.
+            const pastLastPage = pageCount !== null && page - 1 >= pageCount;
+            return { objects, complete: pastLastPage };
+          }
+          // The reported last page, if short. A full one might be followed by
+          // more (an understated count), so ask again.
+          if (pageCount !== null && page >= pageCount && entries.length < PAGE_SIZE) {
+            return { objects, complete: true };
+          }
         }
         return { objects, complete: false };
       }

@@ -179,25 +179,97 @@ describe("errors thrown by onPage", () => {
 });
 
 describe("data center pagination (page / resultPerPage / pageSize)", () => {
-  it("is complete only once an empty page arrives after a partial one", async () => {
+  it("is complete at the reported last page when it is short", async () => {
     mockFetch
       .mockResolvedValueOnce(
         ok({ objectEntries: objects(0, PAGE_SIZE), pageSize: 2, totalFilterCount: 60 }),
       )
       .mockResolvedValueOnce(
         ok({ objectEntries: objects(PAGE_SIZE, 10), pageSize: 2, totalFilterCount: 60 }),
-      )
-      .mockResolvedValueOnce(ok({ objectEntries: [], pageSize: 2, totalFilterCount: 60 }));
+      );
 
     const result = await datacenter().getAllObjects("42");
 
     expect(result.complete).toBe(true);
     expect(result.objects).toHaveLength(60);
     const urls = objectCalls().map(([url]) => String(url));
+    expect(urls).toHaveLength(2);
     expect(urls[0]).toContain(`page=1&resultPerPage=${PAGE_SIZE}`);
     expect(urls[1]).toContain("page=2");
-    expect(urls[2]).toContain("page=3");
     expect(urls[0]).toContain(`iql=${encodeURIComponent("objectTypeId=42")}`);
+  });
+
+  describe("a 73-object server that answers past the end with page 2 again", () => {
+    const page1 = objects(0, PAGE_SIZE);
+    const page2 = objects(PAGE_SIZE, 73 - PAGE_SIZE);
+    function server(signals: Record<string, unknown>) {
+      mockFetch.mockImplementation(async (url: string) => {
+        const page = Number(/[?&]page=(\d+)/.exec(String(url))![1]);
+        return ok({ objectEntries: page === 1 ? page1 : page2, ...signals });
+      });
+    }
+
+    it("is complete from pageSize and totalFilterCount, without asking past the end", async () => {
+      server({ pageSize: 2, totalFilterCount: 73 });
+
+      const result = await datacenter().getAllObjects("42");
+
+      expect(result).toMatchObject({ complete: true });
+      expect(result.objects).toHaveLength(73);
+      expect(objectCalls()).toHaveLength(2);
+    });
+
+    it("is complete from totalFilterCount alone", async () => {
+      server({ totalFilterCount: 73 });
+
+      const result = await datacenter().getAllObjects("42");
+
+      expect(result.complete).toBe(true);
+      expect(result.objects).toHaveLength(73);
+    });
+
+    it("is complete from pageSize alone", async () => {
+      server({ pageSize: 2 });
+
+      const result = await datacenter().getAllObjects("42");
+
+      expect(result.complete).toBe(true);
+      expect(result.objects).toHaveLength(73);
+    });
+
+    it("is incomplete with no signal: the repeated page proves nothing", async () => {
+      server({});
+
+      const result = await datacenter().getAllObjects("42");
+
+      expect(result.complete).toBe(false);
+      expect(result.objects).toHaveLength(73);
+      expect(objectCalls()).toHaveLength(3);
+    });
+  });
+
+  it("a repeated page after the reported last (full) page ends the walk complete", async () => {
+    mockFetch
+      .mockResolvedValueOnce(ok({ objectEntries: objects(0, PAGE_SIZE), pageSize: 2 }))
+      .mockResolvedValue(ok({ objectEntries: objects(PAGE_SIZE, PAGE_SIZE), pageSize: 2 }));
+
+    const result = await datacenter().getAllObjects("42");
+
+    expect(result.complete).toBe(true);
+    expect(result.objects).toHaveLength(2 * PAGE_SIZE);
+    expect(objectCalls()).toHaveLength(3);
+  });
+
+  it("does not trust a total reached on a full page (it may be capped)", async () => {
+    mockFetch
+      .mockResolvedValueOnce(ok({ objectEntries: objects(0, PAGE_SIZE), totalFilterCount: 50 }))
+      .mockResolvedValueOnce(ok({ objectEntries: objects(PAGE_SIZE, 5), totalFilterCount: 50 }));
+
+    const result = await datacenter().getAllObjects("42");
+
+    expect(result.complete).toBe(true);
+    expect(result.objects).toHaveLength(PAGE_SIZE + 5);
+    expect(objectCalls()).toHaveLength(2);
   });
 
   it("a short page is not the end: a server capping resultPerPage is walked to the empty page", async () => {
