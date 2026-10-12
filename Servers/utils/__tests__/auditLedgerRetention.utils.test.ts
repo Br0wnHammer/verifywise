@@ -162,11 +162,12 @@ describe("verifyChain with checkpoints", () => {
     cutoff: new Date(CUTOFF),
   };
 
-  /** checkpoint lookup, then the walk (first page rows, then empty). */
-  function mockWalk(checkpoint: any[], rows: any[]) {
+  /** checkpoint lookup, leftover-row check, then the walk (first page rows, then empty). */
+  function mockWalk(checkpoint: any[], rows: any[], leftoverId: number | null = null) {
     let walked = false;
     query.mockImplementation(async (sql: string) => {
       if (sql.includes("audit_ledger_retention_checkpoints")) return checkpoint;
+      if (sql.includes("MIN(id)")) return [{ id: leftoverId }];
       if (sql.includes("FROM audit_ledger\n")) {
         if (walked) return [];
         walked = true;
@@ -211,6 +212,24 @@ describe("verifyChain with checkpoints", () => {
     expect(result.prunedThrough).toEqual({ id: 20, cutoff: CUTOFF });
   });
 
+  it("reports compromised when a row at or below the checkpoint remains", async () => {
+    // A legitimate prune deletes every id <= pruned_through_id; a leftover row
+    // means a forged checkpoint hid a deletion from the middle.
+    const first = ledgerRow(21, ANCHOR);
+    mockWalk([checkpointRow], [first], 3);
+
+    const result = await verifyChain(7);
+    expect(result).toEqual({
+      status: "compromised",
+      totalEntries: 0,
+      brokenAtId: 3,
+      prunedThrough: { id: 20, cutoff: CUTOFF },
+    });
+    const check = query.mock.calls.find((c) => (c[0] as string).includes("MIN(id)"))!;
+    expect(check[0]).toContain("id <= :prunedThroughId");
+    expect((check[1] as any).replacements).toEqual({ organizationId: 7, prunedThroughId: 20 });
+  });
+
   it("returns prunedThrough on empty chains too", async () => {
     mockWalk([checkpointRow], []);
     const result = await verifyChain(7);
@@ -236,6 +255,7 @@ describe("verifyChain with checkpoints", () => {
     const pages = [[first, second], [third], []];
     query.mockImplementation(async (sql: string) => {
       if (sql.includes("audit_ledger_retention_checkpoints")) return [checkpointRow];
+      if (sql.includes("MIN(id)")) return [{ id: null }];
       return pages.shift() ?? [];
     });
 

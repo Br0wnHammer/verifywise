@@ -429,6 +429,63 @@ describe("audit ledger prune and checkpoint-aware verification", () => {
     expect(result.prunedThrough?.id).toBe(old.ids[9]);
   });
 
+  it("reports a forged checkpoint that hides a deletion from the middle as compromised", async () => {
+    // A forged checkpoint covers the first three rows and anchors on the third
+    // row's real hash, so the walk after it would link up; only the middle row
+    // is deleted, leaving rows at or below pruned_through_id.
+    const a = await insertLedgerRow(14, "a", GENESIS_HASH, 1);
+    const b = await insertLedgerRow(14, "b", a.hash, 2);
+    const c = await insertLedgerRow(14, "c", b.hash, 3);
+    await insertLedgerRow(14, "d", c.hash, 4);
+    await appendCurrent(1);
+
+    await sequelize.transaction(async (transaction) => {
+      await sequelize.query(
+        `INSERT INTO audit_ledger_retention_checkpoints
+           (organization_id, pruned_through_id, anchor_hash, cutoff, rows_deleted)
+         VALUES (:orgId, :throughId, :anchor, now() - interval '13 months', 1)`,
+        { replacements: { orgId, throughId: c.id, anchor: c.hash }, transaction },
+      );
+      await sequelize.query(`SELECT set_config('verifywise.ledger_retention', 'on', true)`, {
+        transaction,
+      });
+      await sequelize.query(`DELETE FROM audit_ledger WHERE id = :id`, {
+        replacements: { id: b.id },
+        transaction,
+      });
+    });
+    const left = await remainingIds();
+    expect(left).toContain(a.id);
+    expect(left).toContain(c.id);
+    expect(left).not.toContain(b.id);
+
+    const result = await verifyChain(orgId);
+    expect(result.status).toBe("compromised");
+    expect(Number(result.brokenAtId)).toBe(a.id);
+    expect(result.prunedThrough?.id).toBe(c.id);
+  });
+
+  it("reports a tampered checkpoint anchor as compromised", async () => {
+    const old = await seedOld(6);
+    await appendCurrent(2);
+    await pruneUntilDone(await twelveMonthCutoff(), 100);
+    expect((await verifyChain(orgId)).status).toBe("intact");
+
+    // A later checkpoint for the same prefix with a wrong anchor becomes the
+    // latest one, so the first remaining row no longer links to it.
+    await sequelize.query(
+      `INSERT INTO audit_ledger_retention_checkpoints
+         (organization_id, pruned_through_id, anchor_hash, cutoff, rows_deleted)
+       VALUES (:orgId, :throughId, :anchor, now() - interval '13 months', 0)`,
+      { replacements: { orgId, throughId: old.ids[5], anchor: "f".repeat(64) } },
+    );
+
+    const result = await verifyChain(orgId);
+    expect(result.status).toBe("compromised");
+    expect(Number(result.brokenAtId)).toBe((await remainingIds())[0]);
+    expect(result.expectedHash).toBe("f".repeat(64));
+  });
+
   it("runs the daily job end to end: counts, prunes, self-audits and records the run", async () => {
     await seedOld(10);
     await appendCurrent(2);

@@ -82,6 +82,24 @@ module.exports = {
   async down(queryInterface) {
     await queryInterface.sequelize.transaction(async (transaction) => {
       const run = (sql) => queryInterface.sequelize.query(sql, { transaction });
+      // A checkpoint is the only record that an organization's oldest ledger
+      // rows were pruned on purpose, and verifyChain starts from its anchor.
+      // Dropping the table after a prune would lose that record and make every
+      // pruned ledger fail verification, so refuse to roll back once any exist.
+      const [[{ present }]] = await run(
+        `SELECT to_regclass('verifywise.audit_ledger_retention_checkpoints') IS NOT NULL AS present;`,
+      );
+      const [[{ has_rows: hasRows }]] = present
+        ? await run(
+            `SELECT EXISTS (SELECT 1 FROM verifywise.audit_ledger_retention_checkpoints) AS has_rows;`,
+          )
+        : [[{ has_rows: false }]];
+      if (hasRows) {
+        throw new Error(
+          "Cannot roll back data retention tables: audit_ledger_retention_checkpoints has rows. " +
+            "They record audit ledger prunes; dropping them would make pruned ledgers fail verification.",
+        );
+      }
       await run(
         `DROP TRIGGER IF EXISTS trg_ledger_checkpoint_no_delete ON verifywise.audit_ledger_retention_checkpoints;`,
       );

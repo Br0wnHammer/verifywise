@@ -265,6 +265,29 @@ async function walkChain(
   let afterId: number | string = prunedThroughId;
   let totalEntries = 0;
 
+  // A legitimate prune deletes every row up to pruned_through_id, so a row
+  // still at or below it means the checkpoint was forged to hide a deletion
+  // from the middle of the chain.
+  if (checkpoint) {
+    const [leftover] = await sequelize.query<{ id: string | number | null }>(
+      `SELECT MIN(id) AS id FROM audit_ledger WHERE organization_id = :organizationId
+          AND id <= :prunedThroughId`,
+      {
+        replacements: { organizationId, prunedThroughId },
+        type: QueryTypes.SELECT,
+        transaction,
+      },
+    );
+    if (leftover && leftover.id !== null) {
+      return {
+        status: "compromised",
+        totalEntries: 0,
+        brokenAtId: Number(leftover.id),
+        prunedThrough,
+      };
+    }
+  }
+
   while (true) {
     const rows: any[] = await sequelize.query(
       `SELECT id, entry_type, user_id, occurred_at, event_type, entity_type,
