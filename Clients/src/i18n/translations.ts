@@ -9701,6 +9701,10 @@ export const translations: Record<string, Record<string, string>> = {
       "Die automatische Synchronisierung aktualisiert importierte Anwendungsfälle. Sie importiert keine neuen Objekte und entfernt keine.",
     "Could not save the sync settings. Try again.":
       "Die Synchronisierungseinstellungen konnten nicht gespeichert werden. Versuchen Sie es erneut.",
+    "The sync is taking longer than expected. Check the last sync result later.":
+      "Die Synchronisierung dauert länger als erwartet. Prüfen Sie das Ergebnis der letzten Synchronisierung später.",
+    "Could not save the schema and object type. Try again.":
+      "Schema und Objekttyp konnten nicht gespeichert werden. Versuchen Sie es erneut.",
     "A sync is already running. Try again when it finishes.":
       "Es läuft bereits eine Synchronisierung. Versuchen Sie es erneut, wenn sie abgeschlossen ist.",
     "Error Details:": "Fehlerdetails:",
@@ -19799,6 +19803,10 @@ export const translations: Record<string, Record<string, string>> = {
       "La synchronisation automatique met à jour les cas d'usage importés. Elle n'importe pas de nouveaux objets et n'en supprime aucun.",
     "Could not save the sync settings. Try again.":
       "Impossible d'enregistrer les paramètres de synchronisation. Réessayez.",
+    "The sync is taking longer than expected. Check the last sync result later.":
+      "La synchronisation prend plus de temps que prévu. Consultez le résultat de la dernière synchronisation plus tard.",
+    "Could not save the schema and object type. Try again.":
+      "Impossible d'enregistrer le schéma et le type d'objet. Réessayez.",
     "A sync is already running. Try again when it finishes.":
       "Une synchronisation est déjà en cours. Réessayez une fois qu'elle est terminée.",
     "Error Details:": "Détails de l'erreur :",
@@ -29823,6 +29831,10 @@ export const translations: Record<string, Record<string, string>> = {
       "La sincronización automática actualiza los casos de uso importados. No importa objetos nuevos ni elimina ninguno.",
     "Could not save the sync settings. Try again.":
       "No se pudo guardar la configuración de sincronización. Inténtelo de nuevo.",
+    "The sync is taking longer than expected. Check the last sync result later.":
+      "La sincronización está tardando más de lo esperado. Consulte el resultado de la última sincronización más tarde.",
+    "Could not save the schema and object type. Try again.":
+      "No se pudieron guardar el esquema y el tipo de objeto. Inténtelo de nuevo.",
     "A sync is already running. Try again when it finishes.":
       "Ya hay una sincronización en curso. Inténtelo de nuevo cuando termine.",
     "Error Details:": "Detalles del error:",

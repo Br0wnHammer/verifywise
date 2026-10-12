@@ -276,7 +276,7 @@ enabled can call the route.
 | `/api/extensions/azure-ai-foundry` | `GET /models`, `GET /models/:deploymentId`, `POST /sync`, `GET /discover` | |
 | `/api/extensions/model-lifecycle` | `GET /config`; phases CRUD and reorder; items CRUD and reorder; `GET /models/:id/lifecycle`, `/progress`; item values, files, people and approvals under `/models/:id/lifecycle/items/:itemId/...` | |
 | `/api/extensions/risk-import` | `GET /template`, `POST /import` | Admin, Editor |
-| `/api/extensions/jira-assets` | `GET/POST /config`, `PATCH /config/sync`, `GET /vw-attributes`, schema and object-type discovery, `POST /import`, `POST /sync`, `GET /sync/status`, `GET /sync/history`, `GET/DELETE /use-cases/:id`, `GET /use-cases`, `GET /projects/:projectId/custom-frameworks-progress` | `extension.admin` (Admin) on `POST /config`, `PATCH /config/sync`, `POST /import`, `POST /sync`, `DELETE /use-cases/:id`. `POST /import` and `POST /sync` return 409 while a sync or import is running. |
+| `/api/extensions/jira-assets` | `GET/POST /config`, `PATCH /config/sync`, `PATCH /config/selection`, `GET /vw-attributes`, schema and object-type discovery (`GET /object-types/:id/objects` is one bounded page of up to 1000 for the import picker), `POST /import`, `POST /sync` (202, runs in the worker), `GET /sync/status`, `GET /sync/history`, `GET/DELETE /use-cases/:id`, `GET /use-cases`, `GET /projects/:projectId/custom-frameworks-progress` | `extension.admin` (Admin) on `POST /config`, `PATCH /config/sync`, `PATCH /config/selection`, `POST /import`, `POST /sync`, `DELETE /use-cases/:id`. Errors: 400 bad input, 404 not configured, 409 a sync or import is running, 502 Jira or network failure (reason in `error`). |
 | `/api/extensions/dataset-bulk-upload` | `POST /upload` (multipart, one file per request, 30 MB, CSV/XLS/XLSX; 413/415 on error) | Admin, Editor |
 
 The full list is in `Servers/swagger.yaml` under `/extensions/...`.
@@ -321,122 +321,175 @@ in `Servers/services/automations/automationProducer.ts` upserts the repeatable
 every 5 minutes (`*/5 * * * *`). It is registered in `addAllJobs()`
 (`Servers/jobs/producer.ts`) through `safeSchedule`, and `createAutomationWorker`
 (`automationWorker.ts`) dispatches it to `runJiraAssetsScheduledSyncAllOrgs`
-in `Servers/extensions/jira-assets/jiraAssets.scheduler.ts`. Each org's own
-interval decides whether that tick does anything for it.
+in `Servers/extensions/jira-assets/jiraAssets.scheduler.ts`.
 
-**Candidates in one query, decision in code.** `getScheduledSyncCandidates`
-runs one cross-org discovery query: `jira_assets_config` with
+**Candidates and timing are decided in SQL.** `getScheduledSyncCandidates`
+runs one cross-org discovery query. It selects `jira_assets_config` with
 `sync_enabled = true`, joined to `extension_enablements` (`enabled = true`)
 and `extensions` (`key = 'jira-assets'`). Jobs bypass
 `requireExtensionEnabled`, so the join is the enablement check. Every
-subquery is correlated on the row's own `organization_id`. For each row the
-pure `evaluateScheduledSync` returns `due` when all of these hold:
+subquery is correlated on the row's own `organization_id`. The query returns
+these flags:
 
-- a `selected_object_type_id` is set
-- at least one `jira_assets_use_cases` row exists. A scheduled run only
-  refreshes links, so with none there is nothing to do.
-- no run is alive. A `started` row whose heartbeat is under 15 minutes old
-  counts as alive.
-- `sync_interval_hours` have passed since the later of `last_sync_at` (finish,
-  success or failure) and the newest manual or scheduled `started_at`. Imports
-  do not count. "Never synced" counts as due, and a manual sync resets the
-  clock.
+- `has_object_type`
+- `has_use_cases`
+- `running_is_live`: a `started` run with a heartbeat inside 15 minutes
+- `is_due`: `sync_interval_hours` have passed since the later of
+  `last_sync_at` and the newest manual or scheduled `started_at`. Imports do
+  not count. "Never synced" counts as due, and a manual sync resets the clock.
 
-The timing rule is `isIntervalElapsed` in `Servers/extensions/scheduledSync.utils.ts`,
-so later extensions can reuse it. Orgs are handled one at a time. One org's
-error is logged (`logStructured` plus `logger.error`) and the loop moves on.
+The pure `evaluateScheduledSync` turns these flags into a decision. No JS
+`Date` parsing of a `TIMESTAMP` column decides anything. A sync runs only
+when there is something to refresh and no run is live.
+
+**Time.** The run columns (`started_at`, `heartbeat_at`, `completed_at`,
+`last_sync_at`) are `TIMESTAMP WITHOUT TIME ZONE` holding UTC wall-clock time.
+They are written with `(NOW() AT TIME ZONE 'UTC')` and compared against that
+same expression. Sequelize's default `timezone: "+00:00"` also sets each
+session to UTC (`SET TIME ZONE INTERVAL '+00:00'`) and serialises JS Dates as
+UTC. The SQL is explicit, so it would stay right if that setting changed.
+The building blocks are in `Servers/extensions/scheduledSync.utils.ts`:
+`SQL_NOW_UTC`, `sqlIntervalElapsed`, `sqlWithinLastMinutes`.
 
 **Scheduled runs only refresh.** Due orgs run
 `syncObjects(orgId, null, "scheduled")`. The history row is written with
 `sync_type = 'scheduled'` and `triggered_by = NULL`. A scheduled run updates
-the project and the `jira_assets_use_cases` row of every object that is
-already linked. It never creates a use case and never deletes one. Linked
-objects that Jira no longer returns are kept. Their count and ids are returned
-as `objectsMissingInJira` / `missingInJiraIds`, and they are written to the
-history row's `error_message` and the config's `last_sync_message` as a note
-(the run itself is `completed` / `success`).
+the project and the `jira_assets_use_cases` row of every linked object. It
+never creates a use case and never deletes one. Linked objects that Jira no
+longer returns are kept and reported:
 
-**Manual sync** (`POST /sync`, `triggered_by` = the user) also creates use
-cases for new objects of the selected type, owned by that user. It removes the
-ones that disappeared upstream only when the fetch can be trusted:
+- in the result, as `objectsMissingInJira` and `missingInJiraIds`
+- as a note on the history row's `error_message` and the config's
+  `last_sync_message` (the run is still `completed` / `success`), which the
+  panel's "Last sync" line shows
+- in a log line
+
+**Manual sync runs in the worker.** `POST /sync` (`startManualSync`):
+
+1. checks the config: 404 if it is not configured, 400 if no object type is
+   selected
+2. claims the run: 409 if a sync or import is running
+3. queues a one-off `jira_assets_manual_sync` job (one attempt), then returns
+   202 with `{ historyId }`
+
+`runQueuedManualSync` validates the payload and fails closed, then runs the
+claimed sync. The panel polls `GET /sync/status` every 3 seconds, for up to
+20 minutes. That endpoint returns `running` (computed in SQL) and
+`latest_run` (the newest manual or scheduled history row), and the panel shows
+the outcome from them. The browser's 120-second request timeout no longer
+applies to a sync.
+
+A manual sync creates use cases for new objects of the selected type, owned
+by the user who started it. It removes the ones that disappeared upstream only
+when the fetch can be trusted:
 
 - If Jira returns 0 objects while links exist, the run fails and nothing
   changes.
-- Deletes are skipped, and the missing objects are reported, when either:
-  - the fetch was incomplete (see pagination below), or
-  - any link was imported from a different object type than the one selected
-    now (read from `jira_assets_use_cases.data.objectType.id`).
+- Deletes are skipped, and the missing objects reported, when any of these
+  hold:
+  - the fetch was incomplete
+  - any link was imported from a different object type
+    (`jira_assets_use_cases.data.objectType.id`)
+  - any link's type is unknown ("skipped: type unknown")
+- `objects_deleted` counts only projects actually removed (`DELETE ...
+  RETURNING`). A link row with no project whose object is gone is removed on
+  its own and counted as `linksRemoved`.
 
-**Pagination.** `JiraAssetsClient.getAllObjects` follows the Assets API pages.
+**Pagination, timeouts, deadline.** `JiraAssetsClient.getAllObjects` follows
+the Assets API pages.
 
 - **Cloud:** `POST object/aql?startAt=&maxResults=` with `{ qlQuery }`. It
-  stops at `isLast`, or at `total` when `isLast` is absent, and advances by
-  the number of rows returned.
-- **Data Center:** `GET iql/objects?...&page=&resultPerPage=`. It stops at
-  `pageSize` (the page count) or `totalFilterCount`.
+  advances by the number of rows returned, because the server may cap the
+  page size.
+- **Data Center:** `GET iql/objects?...&page=&resultPerPage=`.
 
-The page size is 50. It reports `complete: false` after 500 pages, or on an
-empty page before the reported total. Neither shape has been tested against a
-live Jira here.
+The fetch is `complete` only when one of these holds:
+
+- `isLast === true`
+- the reported page count (`pageSize`) has been reached
+- the reported total (`total` / `totalFilterCount`) has been reached
+
+A missing, null or non-numeric total counts as unknown. A short or empty page
+proves nothing. The walk stops after 500 pages of 50. Every request has a
+30-second timeout, and the whole walk has an overall deadline of
+`EXTERNAL_SYNC_DEADLINE_MS` (110 seconds), via `requestSignal` from
+`Servers/utils/outboundFetch.utils.ts` as MLflow and Azure do. When the
+deadline passes, the fetch is flagged and the run fails with "Jira did not
+return every object within 110 seconds, so nothing was changed". Jira and
+network failures become `JiraUpstreamError`, with the status, or the cause
+from `describeFetchError`.
+
+The import picker (`GET /object-types/:id/objects`) uses `getObjectsPage`.
+That is one bounded request for up to 1000 objects, and it never walks further
+pages.
 
 **Atomic writes.** A new use case (project plus link row) is created in one
 transaction. A unique violation on `(organization_id, jira_object_id)` counts
-as "already linked", not as an error. An updated use case (project plus link
-row) is also written in one transaction.
+as "already linked". An updated use case (project plus link row) is also
+written in one transaction.
 
-**No overlap: sync, scheduled sync and import share one claim.** Every
-sync and every import (`POST /import`, `sync_type = 'import'`) starts with
-`claimSyncRun` in `jiraAssets.service.ts`. In one transaction it:
+**No overlap: sync, scheduled sync and import share one claim.** Every sync
+and every import (`POST /import`, `sync_type = 'import'`) starts with
+`claimSyncRun`. In one transaction it:
 
 1. takes `pg_advisory_xact_lock(hashtext('jira_assets_sync'), orgId)`
-2. marks as failed any `started` row with no heartbeat for
-   `SYNC_STALE_AFTER_MS` (15 minutes) (`COALESCE(heartbeat_at, started_at)`)
+2. closes as failed any `started` row with no heartbeat for 15 minutes
+   (`NOT SQL_RUN_IS_LIVE`, computed in SQL)
 3. inserts the new `started` row only if no other is left. Otherwise it
    throws `JiraSyncInProgressError`.
 
-`POST /sync` and `POST /import` map that error to 409. The panel shows "A sync
-is already running. Try again when it finishes." The scheduler skips the org
-until the next tick. A live run touches `heartbeat_at` after every fetched
-page and every 25 objects. `heartbeat_at` and the `'import'` sync type come
-from migration `20261012003957-jira-assets-sync-heartbeat.js`.
+A run touches `heartbeat_at` at its start, after every fetched page, every 25
+objects, and before deletes. If that update affects 0 rows, another claim has
+closed the run as abandoned. `touchHeartbeat` then throws `RunSupersededError`
+and the run stops at once, with no further writes. Both finalize steps update
+only their own row, by id and while it is still `started`. If that update
+affects 0 rows, they leave the config alone. `heartbeat_at` and the `'import'`
+sync type come from migration `20261012003957-jira-assets-sync-heartbeat.js`.
 
-**Failures are recorded and back off.** The claim comes first, so every later
-failure is written to the history row and to the config (`last_sync_at`,
-`last_sync_status = 'failed'`, `last_sync_message`) by `finalizeFailure`.
-That covers a missing config, a token decrypt error, client construction, Jira
-errors and the empty-fetch guard. The panel shows the error. The scheduler's
+**Failures are recorded and back off.** For a sync, every failure after the
+claim is written to the history row and the config by `finalizeFailure`. That
+covers a missing config, a token decrypt error, Jira and network errors, the
+deadline and the empty-fetch guard. The config fields are `last_sync_at`,
+`last_sync_status = 'failed'` and `last_sync_message`. The scheduler's
 interval counts from that failure, so a broken org is retried once per
-interval, not every 5 minutes. `finalizeFailure` never throws, and it only
-updates its own row while that row is still `started`. The same holds for the
-success path.
+interval, not every 5 minutes. Import failures are recorded on the import's
+history row only. They never touch `last_sync_*`, so an import cannot shift
+the sync schedule. `finalizeFailure` never throws.
 
 **Settings and validation.**
 
-- `POST /config` rejects a `sync_interval_hours` that is not a whole number
-  from 1 to 168 (400). The same range is enforced by
-  `jira_assets_config_sync_interval_range_chk`.
-- `PATCH /config/sync` updates only `sync_enabled` and/or
-  `sync_interval_hours`. It returns 400 on bad input and 404 before a
-  connection has been saved. The path is three segments below
-  `/api/extensions`, so the catalog router's `/:key` routes cannot shadow it.
-- The panel offers intervals of 1, 6, 12, 24 and 48 hours. It saves the toggle
-  and the interval through `PATCH /config/sync` as soon as they change. On
-  error it reverts the control and shows an alert. The controls are disabled
-  for non-Admins.
+- `POST /config` validates `sync_interval_hours` (whole hours, 1 to 168).
+- `PATCH /config/sync` changes only `sync_enabled` and/or
+  `sync_interval_hours`.
+- `PATCH /config/selection` changes only `selected_schema_id` and/or
+  `selected_object_type_id`. A field left out is kept, and null clears it.
+- Both PATCH routes return 400 on bad input and 404 before a connection has
+  been saved. Both are three segments below `/api/extensions`, so the catalog
+  router cannot shadow them.
+
+The panel saves sync settings through `PATCH /config/sync`, one request at a
+time, in order. When the newest request settles, the controls are set to the
+server's last confirmed values. If any request in that burst failed, the panel
+also shows "Could not save the sync settings. Try again." Schema and
+object-type picks go through `PATCH /config/selection`. The sync controls are
+disabled for non-Admins.
 
 **Adding a scheduled sync to another extension:**
 
-1. Add a candidate query that joins `extension_enablements` (jobs bypass
-   `requireExtensionEnabled`), plus a pure `evaluate…` function.
+1. Write a candidate query that joins `extension_enablements` (jobs bypass
+   `requireExtensionEnabled`). Compute due and live flags in SQL with the
+   `scheduledSync.utils.ts` helpers.
 2. Claim before doing anything, with an overlap guard that manual runs share
-   too. Heartbeat while running. Record every failure through a finalize step
-   that never throws.
-3. Make the scheduled run conservative: refresh only, and never delete on the
-   basis of an unconfirmed or empty fetch.
-4. Add a `schedule…` function with `upsertJobScheduler` and no obliterate.
+   too. Heartbeat while running, and stop when the heartbeat finds the run
+   closed. Record every failure through a finalize step that never throws.
+3. Make the scheduled run conservative: refresh only, and never delete on an
+   unconfirmed, empty or timed-out fetch.
+4. Run user-triggered syncs in the worker and return 202, then poll a status
+   endpoint.
+5. Add a `schedule…` function with `upsertJobScheduler` and no obliterate.
    Register it in `addAllJobs()` after the obliterating schedulers, and
    dispatch it in `createAutomationWorker`.
-5. Add tests: a case in `services/automations/tests/automationProducer.spec.ts`,
+6. Add tests: a case in `services/automations/tests/automationProducer.spec.ts`,
    and unit tests like those in `extensions/jira-assets/__tests__/`.
 
 ---

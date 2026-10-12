@@ -4,7 +4,7 @@ import {
   JiraScheduledSyncState,
   runJiraAssetsScheduledSyncAllOrgs,
 } from "../jiraAssets.scheduler";
-import { isIntervalElapsed, latestDate } from "../../scheduledSync.utils";
+import { SQL_NOW_UTC, sqlIntervalElapsed, sqlWithinLastMinutes } from "../../scheduledSync.utils";
 import { sequelize } from "../../../database/db";
 import { JiraSyncInProgressError, syncObjects } from "../jiraAssets.service";
 
@@ -21,26 +21,19 @@ jest.mock("../jiraAssets.service", () => {
   return {
     syncObjects: jest.fn(),
     JiraSyncInProgressError: MockInProgress,
-    SYNC_STALE_AFTER_MS: 15 * 60 * 1000,
+    SQL_RUN_IS_LIVE: "(LIVE_CHECK)",
   };
 });
 
 const mockQuery = sequelize.query as jest.Mock;
 const mockSync = syncObjects as jest.Mock;
 
-const NOW = new Date("2026-10-12T12:00:00Z");
-const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 60 * 60 * 1000);
-const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60 * 1000);
-
-const dueState = (overrides: Partial<JiraScheduledSyncState> = {}): JiraScheduledSyncState => ({
+const candidate = (overrides: Partial<JiraScheduledSyncState> = {}): JiraScheduledSyncState => ({
   organization_id: 1,
-  sync_enabled: true,
-  sync_interval_hours: 24,
-  selected_object_type_id: "42",
+  has_object_type: true,
   has_use_cases: true,
-  last_sync_at: null,
-  last_started_at: null,
-  running_heartbeat_at: null,
+  running_is_live: false,
+  is_due: true,
   ...overrides,
 });
 
@@ -50,9 +43,10 @@ const okResult = {
   objectsCreated: 0,
   objectsUpdated: 3,
   objectsDeleted: 0,
+  linksRemoved: 0,
   objectsMissingInJira: 0,
   missingInJiraIds: [],
-  syncedAt: NOW.toISOString(),
+  syncedAt: "2026-10-12T12:00:00.000Z",
   status: "success",
 };
 
@@ -62,101 +56,47 @@ beforeEach(() => {
   mockSync.mockReset();
 });
 
-describe("isIntervalElapsed", () => {
-  it("is due when there has never been a run", () => {
-    expect(isIntervalElapsed(null, 24, NOW)).toBe(true);
-  });
-
-  it("is due exactly at the interval boundary", () => {
-    expect(isIntervalElapsed(hoursAgo(6), 6, NOW)).toBe(true);
-  });
-
-  it("is not due before the interval has passed", () => {
-    expect(isIntervalElapsed(hoursAgo(5.9), 6, NOW)).toBe(false);
-  });
-
-  it.each([0, -1, NaN, Infinity])("is never due for a bad interval (%p)", (interval) => {
-    expect(isIntervalElapsed(null, interval, NOW)).toBe(false);
-  });
-});
-
-describe("latestDate", () => {
-  it("picks the later timestamp and skips null and invalid values", () => {
-    expect(latestDate(null, hoursAgo(3), "not a date", hoursAgo(1).toISOString())).toEqual(
-      hoursAgo(1),
+describe("scheduledSync SQL building blocks", () => {
+  it("compares against NOW() in UTC, never a JS date", () => {
+    expect(SQL_NOW_UTC).toBe("(NOW() AT TIME ZONE 'UTC')");
+    expect(sqlIntervalElapsed("t.last", "t.hours")).toBe(
+      "(t.last IS NULL OR t.last + make_interval(hours => t.hours) <= (NOW() AT TIME ZONE 'UTC'))",
     );
-    expect(latestDate(null, undefined)).toBeNull();
+    expect(sqlWithinLastMinutes("t.beat", 15)).toBe(
+      "(t.beat >= (NOW() AT TIME ZONE 'UTC') - make_interval(mins => 15))",
+    );
+  });
+
+  it("refuses a non-integer minute count (it is interpolated)", () => {
+    expect(() => sqlWithinLastMinutes("t.beat", 1.5)).toThrow();
+    expect(() => sqlWithinLastMinutes("t.beat", -1)).toThrow();
   });
 });
 
 describe("evaluateScheduledSync", () => {
-  it("is due for an org that has never synced", () => {
-    expect(evaluateScheduledSync(dueState(), NOW)).toBe("due");
+  it("is due when SQL says the interval has passed and nothing is running", () => {
+    expect(evaluateScheduledSync(candidate())).toBe("due");
   });
 
-  it("is due once the interval has passed since the last sync", () => {
-    expect(
-      evaluateScheduledSync(
-        dueState({ last_sync_at: hoursAgo(25), last_started_at: hoursAgo(25.1) }),
-        NOW,
-      ),
-    ).toBe("due");
+  it("is not due when SQL says the interval has not passed", () => {
+    expect(evaluateScheduledSync(candidate({ is_due: false }))).toBe("not_due");
   });
 
-  it("is not due inside the interval", () => {
-    expect(evaluateScheduledSync(dueState({ last_sync_at: hoursAgo(2) }), NOW)).toBe("not_due");
-  });
-
-  it("counts from the later of last start and last finish", () => {
-    expect(
-      evaluateScheduledSync(
-        dueState({ last_sync_at: hoursAgo(48), last_started_at: hoursAgo(1) }),
-        NOW,
-      ),
-    ).toBe("not_due");
-  });
-
-  it("accepts timestamps as strings", () => {
-    expect(evaluateScheduledSync(dueState({ last_sync_at: hoursAgo(30).toISOString() }), NOW)).toBe(
-      "due",
-    );
-  });
-
-  it("skips while a run has a fresh heartbeat", () => {
-    expect(
-      evaluateScheduledSync(
-        dueState({ last_sync_at: hoursAgo(48), running_heartbeat_at: minutesAgo(5) }),
-        NOW,
-      ),
-    ).toBe("running");
-  });
-
-  it("does not wait on a run whose heartbeat is older than 15 minutes", () => {
-    expect(
-      evaluateScheduledSync(
-        dueState({ last_sync_at: hoursAgo(48), running_heartbeat_at: minutesAgo(16) }),
-        NOW,
-      ),
-    ).toBe("due");
-  });
-
-  it("skips orgs with automatic sync switched off", () => {
-    expect(evaluateScheduledSync(dueState({ sync_enabled: false }), NOW)).toBe("sync_disabled");
+  it("waits while a run is live", () => {
+    expect(evaluateScheduledSync(candidate({ running_is_live: true }))).toBe("running");
   });
 
   it("skips orgs without a selected object type", () => {
-    expect(evaluateScheduledSync(dueState({ selected_object_type_id: null }), NOW)).toBe(
-      "no_object_type",
-    );
+    expect(evaluateScheduledSync(candidate({ has_object_type: false }))).toBe("no_object_type");
   });
 
   it("skips orgs with nothing imported (nothing to refresh)", () => {
-    expect(evaluateScheduledSync(dueState({ has_use_cases: false }), NOW)).toBe("no_use_cases");
+    expect(evaluateScheduledSync(candidate({ has_use_cases: false }))).toBe("no_use_cases");
   });
 });
 
 describe("getScheduledSyncCandidates", () => {
-  it("only returns orgs with sync on and the jira-assets extension enabled", async () => {
+  it("only returns orgs with sync on and the extension enabled, with due/live decided in SQL", async () => {
     mockQuery.mockResolvedValueOnce([]);
 
     await getScheduledSyncCandidates();
@@ -171,21 +111,25 @@ describe("getScheduledSyncCandidates", () => {
     expect(sql).toContain("u.organization_id = c.organization_id");
     // Imports do not reset the refresh interval.
     expect(sql).toContain("h.sync_type IN ('manual', 'scheduled')");
-    expect(sql).toContain("COALESCE(h.heartbeat_at, h.started_at)");
+    expect(sql).toContain("(LIVE_CHECK)) AS running_is_live");
+    expect(sql).toMatch(/CROSS JOIN LATERAL[\s\S]*GREATEST\(\s*c\.last_sync_at/);
+    expect(sql).toContain(
+      "(lr.last_run IS NULL OR lr.last_run + make_interval(hours => c.sync_interval_hours) <= (NOW() AT TIME ZONE 'UTC')) AS is_due",
+    );
   });
 });
 
 describe("runJiraAssetsScheduledSyncAllOrgs", () => {
   it("syncs only due candidates, as a scheduled run with no user", async () => {
     mockQuery.mockResolvedValueOnce([
-      dueState({ organization_id: 1 }),
-      dueState({ organization_id: 2, last_sync_at: hoursAgo(1) }), // not due
-      dueState({ organization_id: 3, has_use_cases: false }), // nothing to refresh
-      dueState({ organization_id: 4, running_heartbeat_at: minutesAgo(1) }), // running
+      candidate({ organization_id: 1 }),
+      candidate({ organization_id: 2, is_due: false }),
+      candidate({ organization_id: 3, has_use_cases: false }),
+      candidate({ organization_id: 4, running_is_live: true }),
     ]);
     mockSync.mockResolvedValue(okResult);
 
-    const summary = await runJiraAssetsScheduledSyncAllOrgs(NOW);
+    const summary = await runJiraAssetsScheduledSyncAllOrgs();
 
     expect(mockQuery).toHaveBeenCalledTimes(1);
     expect(mockSync).toHaveBeenCalledTimes(1);
@@ -195,12 +139,12 @@ describe("runJiraAssetsScheduledSyncAllOrgs", () => {
 
   it("skips an org whose sync started meanwhile and carries on", async () => {
     mockQuery.mockResolvedValueOnce([
-      dueState({ organization_id: 1 }),
-      dueState({ organization_id: 2 }),
+      candidate({ organization_id: 1 }),
+      candidate({ organization_id: 2 }),
     ]);
     mockSync.mockRejectedValueOnce(new JiraSyncInProgressError()).mockResolvedValueOnce(okResult);
 
-    const summary = await runJiraAssetsScheduledSyncAllOrgs(NOW);
+    const summary = await runJiraAssetsScheduledSyncAllOrgs();
 
     expect(mockSync).toHaveBeenCalledTimes(2);
     expect(summary).toEqual({ candidates: 2, synced: 1, failed: 0, skippedRunning: 1 });
@@ -208,16 +152,16 @@ describe("runJiraAssetsScheduledSyncAllOrgs", () => {
 
   it("does not let one org's failure stop the others", async () => {
     mockQuery.mockResolvedValueOnce([
-      dueState({ organization_id: 1 }),
-      dueState({ organization_id: 2 }),
-      dueState({ organization_id: 3 }),
+      candidate({ organization_id: 1 }),
+      candidate({ organization_id: 2 }),
+      candidate({ organization_id: 3 }),
     ]);
     mockSync
       .mockRejectedValueOnce(new Error("unexpected"))
       .mockResolvedValueOnce({ ...okResult, success: false, status: "failed: 401" })
       .mockResolvedValueOnce(okResult);
 
-    const summary = await runJiraAssetsScheduledSyncAllOrgs(NOW);
+    const summary = await runJiraAssetsScheduledSyncAllOrgs();
 
     expect(mockSync).toHaveBeenCalledTimes(3);
     expect(mockSync).toHaveBeenLastCalledWith(3, null, "scheduled");

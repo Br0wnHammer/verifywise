@@ -14197,6 +14197,40 @@ paths:
         -
           bearerAuth: []
       description: 'Updates only the automatic-sync settings; connection fields are left untouched. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
+  /extensions/jira-assets/config/selection:
+    patch:
+      summary: 'Patch Selection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                selected_schema_id:
+                  type: string
+                  nullable: true
+                selected_object_type_id:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: 'Updated selection ({ selected_schema_id, selected_object_type_id })'
+        '400':
+          description: 'Validation error (no field given, or an id that is not a Jira id)'
+        '403':
+          description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'No Jira connection saved yet'
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: patchSelection
+      security:
+        -
+          bearerAuth: []
+      description: 'Updates only the selected schema and/or object type; a field left out is kept, null clears it. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   /extensions/jira-assets/vw-attributes:
     get:
       summary: 'Get Vw Attributes'
@@ -14289,15 +14323,19 @@ paths:
           description: Success
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'Jira Assets is not configured'
         '500':
           description: 'Internal server error'
+        '502':
+          description: 'Jira or network failure (reason in error)'
       tags:
         - Extensions
       operationId: getObjects
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'One bounded page (up to 1000 objects) for the import picker. Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
       parameters:
         -
           name: objectTypeId
@@ -14314,10 +14352,14 @@ paths:
           description: Success
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'Jira Assets is not configured'
         '409':
           description: 'A Jira Assets sync or import is already running for this organization'
         '500':
           description: 'Internal server error'
+        '502':
+          description: 'Jira or network failure (reason in error)'
       tags:
         - Extensions
       operationId: postImport
@@ -14329,10 +14371,14 @@ paths:
     post:
       summary: 'Post Sync'
       responses:
-        '200':
-          description: Success
+        '202':
+          description: 'Sync claimed and queued for the worker ({ historyId }); poll GET /extensions/jira-assets/sync/status for the outcome'
+        '400':
+          description: 'No object type selected'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'Jira Assets is not configured'
         '409':
           description: 'A Jira Assets sync or import is already running for this organization'
         '500':
@@ -14343,7 +14389,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
+      description: 'Starts a manual sync in the background. Requires the jira-assets extension to be enabled for the organization and the extension.admin permission (Admin); 403 otherwise.'
   /extensions/jira-assets/sync/status:
     get:
       summary: 'Get Sync Status Ctrl'

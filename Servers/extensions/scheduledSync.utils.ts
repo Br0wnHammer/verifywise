@@ -1,38 +1,44 @@
 /**
- * Shared helpers for extensions that sync on a per-organization interval.
+ * SQL building blocks for extensions that sync on a per-organization interval.
  *
  * Pattern (see docs/technical/infrastructure/extensions.md, "Scheduled sync"):
- * one repeatable BullMQ check job on the `automation-actions` queue runs every
- * few minutes, walks every organization, and for each one decides — with a pure
- * function built on `isIntervalElapsed` — whether that org's sync is due. The
- * per-org decision lives with the extension; only the timing rule lives here.
+ * one repeatable BullMQ check job runs every few minutes, a single candidate
+ * query decides in SQL which orgs are due, and each due org is synced on its
+ * own. Every time comparison happens in Postgres against NOW(), so nothing
+ * depends on how node-pg turns a TIMESTAMP-without-time-zone column into a JS
+ * Date.
+ *
+ * The run-tracking columns (started_at, heartbeat_at, completed_at,
+ * last_sync_at) are TIMESTAMP WITHOUT TIME ZONE holding UTC wall-clock time:
+ * they are written with SQL_NOW_UTC, and Sequelize (default `timezone:
+ * "+00:00"`) also serialises JS Dates as UTC and sets each session's TIME ZONE
+ * to +00:00. SQL_NOW_UTC is explicit anyway, so the comparisons stay right
+ * even if that session setting ever changes.
+ *
+ * Only pass trusted SQL expressions (column names) to these helpers — they are
+ * interpolated, not bound.
  */
 
-const HOUR_MS = 60 * 60 * 1000;
+/** Current time as a UTC TIMESTAMP WITHOUT TIME ZONE. */
+export const SQL_NOW_UTC = "(NOW() AT TIME ZONE 'UTC')";
 
-/** Latest of the given timestamps, ignoring null/undefined/invalid values. */
-export function latestDate(...dates: Array<Date | string | null | undefined>): Date | null {
-  let latest: Date | null = null;
-  for (const value of dates) {
-    if (value === null || value === undefined) continue;
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) continue;
-    if (!latest || date.getTime() > latest.getTime()) latest = date;
+function assertWholeNumber(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative whole number`);
   }
-  return latest;
 }
 
 /**
- * True when `intervalHours` have passed since `lastRunAt`, or when there has
- * never been a run. A non-positive or non-finite interval is never due, so a
- * bad value cannot turn into a sync on every tick.
+ * True when `intervalHoursExpr` hours have passed since `lastRunExpr`, or when
+ * there has been no run (NULL). Use GREATEST(a, b) for "the later of" —
+ * Postgres GREATEST ignores NULLs.
  */
-export function isIntervalElapsed(
-  lastRunAt: Date | null,
-  intervalHours: number,
-  now: Date,
-): boolean {
-  if (!Number.isFinite(intervalHours) || intervalHours <= 0) return false;
-  if (!lastRunAt) return true;
-  return lastRunAt.getTime() + intervalHours * HOUR_MS <= now.getTime();
+export function sqlIntervalElapsed(lastRunExpr: string, intervalHoursExpr: string): string {
+  return `(${lastRunExpr} IS NULL OR ${lastRunExpr} + make_interval(hours => ${intervalHoursExpr}) <= ${SQL_NOW_UTC})`;
+}
+
+/** True when `timestampExpr` is within the last `minutes` minutes. */
+export function sqlWithinLastMinutes(timestampExpr: string, minutes: number): string {
+  assertWholeNumber(minutes, "minutes");
+  return `(${timestampExpr} >= ${SQL_NOW_UTC} - make_interval(mins => ${minutes}))`;
 }

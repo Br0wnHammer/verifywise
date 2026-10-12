@@ -211,6 +211,7 @@ Not every job on the `automation-actions` queue is scheduled. Some are enqueued 
 | Job Name | Queue | Enqueued By | Handler |
 |----------|-------|-------------|---------|
 | `generate_report_manual` | `automation-actions` | `generateReportsV2` / `generateReports` controller, when a user requests a manual report (see [Reporting Domain](../domains/reporting.md)) | `handleManualReportGeneration` → `executeManualRun` |
+| `jira_assets_manual_sync` | `automation-actions` | `startManualSync` (Jira Assets `POST /sync`, "Sync now"), after claiming the run; `{ organizationId, historyId, triggeredBy }`, one attempt (see [Extensions → Scheduled sync](./extensions.md#scheduled-sync)) | `runQueuedManualSync` → `runClaimedSync` |
 
 **Processing Logic:**
 1. Controller creates a `report_runs` row (`status: "running"`) and enqueues `generate_report_manual` with `{ runId, request, userId, organizationId }`
@@ -218,6 +219,8 @@ Not every job on the `automation-actions` queue is scheduled. Some are enqueued 
 3. `report_runs` is updated to a terminal status (`success` or `failed`) on completion — `executeManualRun` never produces `partial_success` (that state applies only to scheduled runs with multiple delivery targets)
 
 This job only runs while a worker process (`npm run worker`) is up — with no worker running, the run stays `status: "running"` indefinitely and the frontend poll never resolves.
+
+`jira_assets_manual_sync` also needs a worker. Without one, the claimed history row gets no heartbeat. After 15 minutes it counts as abandoned, and the panel's poll ends with "The sync is taking longer than expected".
 
 ## Workers
 

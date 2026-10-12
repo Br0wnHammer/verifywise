@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Box,
   Typography,
@@ -23,8 +23,19 @@ import { VWField, VWSelect, VWToggle } from "./VWComponents";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import { useAuth } from "../../../../application/hooks/useAuth";
+import { getApiErrorReason } from "../../../../application/utils/apiErrorReason";
 
 const SYNC_RUNNING_MESSAGE = "A sync is already running. Try again when it finishes.";
+const SYNC_SLOW_MESSAGE =
+  "The sync is taking longer than expected. Check the last sync result later.";
+const SELECTION_SAVE_FAILED = "Could not save the schema and object type. Try again.";
+/** "Sync now" runs in the background; poll its status at this rate, up to the limit. */
+const SYNC_POLL_MS = 3000;
+const SYNC_POLL_LIMIT_MS = 20 * 60 * 1000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+type SyncSettings = { sync_enabled: boolean; sync_interval_hours: number };
 
 interface Schema {
   id: string;
@@ -127,6 +138,27 @@ export const JiraAssetsConfiguration: React.FC = () => {
   const [, setIsLoadingUseCases] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSettingsError, setSyncSettingsError] = useState(false);
+
+  // Unmount flag so the "Sync now" poll loop stops with the panel.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Sync-setting saves run one at a time, in order (each PATCH sends only the
+  // field that changed). `savedSyncSettings` is the server's latest answer;
+  // when the newest request settles, the controls are set to it, and an error
+  // is shown if any request in that burst failed.
+  const syncSettingsQueue = useRef<Promise<void>>(Promise.resolve());
+  const syncSettingsSeq = useRef(0);
+  const syncSettingsBurstFailed = useRef(false);
+  const savedSyncSettings = useRef<SyncSettings | null>(null);
+  // Schema / object-type saves: same ordering, latest response wins.
+  const selectionQueue = useRef<Promise<void>>(Promise.resolve());
+  const selectionSeq = useRef(0);
   const [syncMessage, setSyncMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -143,6 +175,10 @@ export const JiraAssetsConfiguration: React.FC = () => {
         const data = response.data?.data ?? response.data;
         if (data) {
           setLocalConfig((prev) => ({ ...prev, ...data }));
+          savedSyncSettings.current = {
+            sync_enabled: !!data.sync_enabled,
+            sync_interval_hours: data.sync_interval_hours ?? 24,
+          };
         }
       } catch (error) {
         console.error("Failed to load JIRA config:", error);
@@ -267,57 +303,80 @@ export const JiraAssetsConfiguration: React.FC = () => {
     } catch (error: any) {
       setImportMessage({
         type: "error",
-        text: error?.status === 409 ? SYNC_RUNNING_MESSAGE : error.message || "Import failed",
+        text:
+          error?.status === 409
+            ? SYNC_RUNNING_MESSAGE
+            : getApiErrorReason(error) || error?.message || "Import failed",
       });
     } finally {
       setIsImporting(false);
     }
   };
 
-  // Sync now - fetch latest data from JIRA
+  // Re-read only the last-sync fields (not the connection form, which may
+  // hold unsaved edits) so the "Last sync" line shows what the server
+  // recorded, including notes about objects missing in Jira.
+  const readSyncStatus = useCallback(async () => {
+    const status = await pluginApiCall("GET", "/sync/status");
+    if (status) {
+      setLocalConfig((prev) => ({
+        ...prev,
+        last_sync_at: status.last_sync_at,
+        last_sync_status: status.last_sync_status,
+        last_sync_message: status.last_sync_message,
+      }));
+    }
+    return status;
+  }, [pluginApiCall]);
+
+  // "Sync now" returns 202 and runs in the worker. Poll /sync/status until no
+  // run is live (or the limit passes), then report the latest run.
   const handleSyncNow = async () => {
     setIsSyncing(true);
     setSyncMessage(null);
     try {
-      const response = await pluginApiCall("POST", "/sync");
-      if (response?.success) {
-        setSyncMessage({
-          type: "success",
-          text: `Sync completed: ${response.objectsCreated || 0} created, ${response.objectsUpdated || 0} updated, ${response.objectsDeleted || 0} deleted`,
-        });
-        // Reload the imported use cases to show updated data
-        await loadImportedUseCases();
-      } else {
-        setSyncMessage({ type: "error", text: response?.error || "Sync failed" });
-      }
+      await pluginApiCall("POST", "/sync");
     } catch (error: any) {
       setSyncMessage({
         type: "error",
-        text: error?.status === 409 ? SYNC_RUNNING_MESSAGE : error.message || "Sync failed",
+        text:
+          error?.status === 409
+            ? SYNC_RUNNING_MESSAGE
+            : getApiErrorReason(error) || error?.message || "Sync failed",
       });
-    } finally {
-      // Success or failure, the server recorded the outcome on the config.
-      await refreshSyncStatus();
       setIsSyncing(false);
+      return;
     }
-  };
 
-  // Re-read only the last-sync fields (not the connection form, which may
-  // hold unsaved edits) so the "Last sync" line shows what the server
-  // recorded, including notes about objects missing in Jira.
-  const refreshSyncStatus = async () => {
-    try {
-      const status = await pluginApiCall("GET", "/sync/status");
-      if (status) {
-        setLocalConfig((prev) => ({
-          ...prev,
-          last_sync_at: status.last_sync_at,
-          last_sync_status: status.last_sync_status,
-          last_sync_message: status.last_sync_message,
-        }));
+    const giveUpAt = Date.now() + SYNC_POLL_LIMIT_MS;
+    let status: any = null;
+    while (mountedRef.current && Date.now() < giveUpAt) {
+      await sleep(SYNC_POLL_MS);
+      try {
+        status = await readSyncStatus();
+      } catch (error) {
+        console.warn("[JiraConfig] could not read sync status:", error);
+        status = null;
       }
-    } catch (error) {
-      console.warn("[JiraConfig] could not refresh sync status:", error);
+      if (status && !status.running) break;
+    }
+    if (!mountedRef.current) return;
+    setIsSyncing(false);
+
+    const run = status && !status.running ? status.latest_run : null;
+    if (!run) {
+      setSyncMessage({ type: "error", text: SYNC_SLOW_MESSAGE });
+    } else if (run.status === "completed") {
+      setSyncMessage({
+        type: "success",
+        text: `Sync completed: ${run.objects_created || 0} created, ${run.objects_updated || 0} updated, ${run.objects_deleted || 0} deleted`,
+      });
+      await loadImportedUseCases();
+    } else {
+      setSyncMessage({
+        type: "error",
+        text: run.error_message || status.last_sync_message || "Sync failed",
+      });
     }
   };
 
@@ -414,79 +473,83 @@ export const JiraAssetsConfiguration: React.FC = () => {
     }
   };
 
-  // Persist a partial config update to the plugin's /config endpoint
-  // without requiring the user to click "Save Configuration". We send
-  // only what changed alongside the previously-saved connection fields,
-  // so the existing api_token (already encrypted in the DB) is preserved
-  // by the backend's `hasExistingToken` branch.
-  const persistConfigPatch = useCallback(
-    async (patch: Record<string, any>) => {
-      if (!localConfig.has_api_token) return;
+  // Persist the schema / object-type pick at once (PATCH /config/selection,
+  // only those two fields), so users don't have to click Save Configuration
+  // to keep their picks. Saves run in order; only the newest one's failure is
+  // shown.
+  const persistSelection = (patch: {
+    selected_schema_id?: string | null;
+    selected_object_type_id?: string | null;
+  }) => {
+    if (!localConfig.has_api_token) return;
+    const seq = ++selectionSeq.current;
+    selectionQueue.current = selectionQueue.current.then(async () => {
       try {
-        await pluginApiCall("POST", "/config", {
-          jira_base_url: localConfig.jira_base_url,
-          workspace_id: localConfig.workspace_id,
-          email: localConfig.email,
-          deployment_type: localConfig.deployment_type || "cloud",
-          // Defaults so the backend doesn't null these out on partial saves
-          selected_schema_id: localConfig.selected_schema_id || undefined,
-          selected_object_type_id: localConfig.selected_object_type_id || undefined,
-          sync_enabled: localConfig.sync_enabled || false,
-          sync_interval_hours: localConfig.sync_interval_hours || 24,
-          ...patch,
-        });
-      } catch (err) {
-        // Best-effort; user can still hit the Save button explicitly.
-        console.warn("[JiraConfig] auto-save failed:", err);
+        await pluginApiCall("PATCH", "/config/selection", patch);
+      } catch (error) {
+        console.warn("[JiraConfig] selection save failed:", error);
+        if (seq === selectionSeq.current && mountedRef.current) {
+          setSaveMessage({ type: "error", text: SELECTION_SAVE_FAILED });
+        }
       }
-    },
-    [pluginApiCall, localConfig],
-  );
+    });
+  };
 
-  // Handle schema selection. Auto-persist so users don't have to click
-  // Save Configuration just to remember their picks across reloads.
   const handleSchemaChange = (schemaId: string) => {
     handleChange("selected_schema_id", schemaId);
     handleChange("selected_object_type_id", "");
     setObjectTypes([]);
     if (schemaId) {
       loadObjectTypes(schemaId);
-      void persistConfigPatch({
-        selected_schema_id: schemaId,
-        selected_object_type_id: undefined,
-      });
+      persistSelection({ selected_schema_id: schemaId, selected_object_type_id: null });
     }
   };
 
-  // Handle object type selection. Auto-persist for the same reason.
   const handleObjectTypeChange = (objectTypeId: string) => {
     handleChange("selected_object_type_id", objectTypeId);
     if (objectTypeId) {
-      void persistConfigPatch({ selected_object_type_id: objectTypeId });
+      persistSelection({ selected_object_type_id: objectTypeId });
     }
   };
 
   // Sync settings sit below the Save Configuration button, so persist them on
   // change — otherwise switching automatic sync on would silently do nothing
-  // until the user scrolled up and saved. Only the changed sync field is sent
-  // (PATCH /config/sync), never the connection form, so unsaved connection
-  // edits are not saved as a side effect. Before the first save there is no
-  // config row yet; Save Configuration then carries these values.
-  const handleSyncSettingChange = async (
+  // until the user scrolled up and saved. Each PATCH /config/sync sends only
+  // the field that changed, never the connection form. Before the first save
+  // there is no config row yet; Save Configuration then carries these values.
+  const handleSyncSettingChange = (
     key: "sync_enabled" | "sync_interval_hours",
     value: boolean | number,
   ) => {
-    const previous = localConfig[key];
     handleChange(key, value);
     setSyncSettingsError(false);
     if (!localConfig.has_api_token) return;
-    try {
-      await pluginApiCall("PATCH", "/config/sync", { [key]: value });
-    } catch (error) {
-      console.warn("[JiraConfig] sync settings save failed:", error);
-      handleChange(key, previous);
-      setSyncSettingsError(true);
-    }
+    const seq = ++syncSettingsSeq.current;
+    syncSettingsQueue.current = syncSettingsQueue.current.then(async () => {
+      try {
+        const saved = await pluginApiCall("PATCH", "/config/sync", { [key]: value });
+        if (saved && typeof saved.sync_enabled === "boolean") {
+          savedSyncSettings.current = {
+            sync_enabled: saved.sync_enabled,
+            sync_interval_hours: saved.sync_interval_hours,
+          };
+        }
+      } catch (error) {
+        console.warn("[JiraConfig] sync settings save failed:", error);
+        syncSettingsBurstFailed.current = true;
+      }
+      // Only the newest request decides what the controls show.
+      if (seq !== syncSettingsSeq.current || !mountedRef.current) return;
+      if (syncSettingsBurstFailed.current) {
+        const saved = savedSyncSettings.current;
+        if (saved) {
+          handleChange("sync_enabled", saved.sync_enabled);
+          handleChange("sync_interval_hours", saved.sync_interval_hours);
+        }
+        setSyncSettingsError(true);
+      }
+      syncSettingsBurstFailed.current = false;
+    });
   };
 
   // Load schemas on mount only if already configured (has_api_token indicates saved config)
@@ -796,7 +859,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
         <Box>
           <VWToggle
             checked={localConfig.sync_enabled || false}
-            onChange={(e) => void handleSyncSettingChange("sync_enabled", e.target.checked)}
+            onChange={(e) => handleSyncSettingChange("sync_enabled", e.target.checked)}
             disabled={!canManageSync}
             label="Enable automatic sync"
             description="Automatically sync data from JIRA on a schedule"
@@ -810,7 +873,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
               label="Sync Interval"
               value={localConfig.sync_interval_hours || 24}
               onChange={(e) =>
-                void handleSyncSettingChange("sync_interval_hours", Number(e.target.value))
+                handleSyncSettingChange("sync_interval_hours", Number(e.target.value))
               }
               disabled={!canManageSync}
               items={syncIntervalOptions.map((option) => ({

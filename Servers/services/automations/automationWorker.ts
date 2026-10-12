@@ -40,6 +40,7 @@ import {
 import { suggestDirectionForComponent } from "../riskLinks/direction/direction.service";
 import { runFileExpirySweepAllOrgs } from "./actions/fileExpirySweep";
 import { runJiraAssetsScheduledSyncAllOrgs } from "../../extensions/jira-assets/jiraAssets.scheduler";
+import { runQueuedManualSync } from "../../extensions/jira-assets/jiraAssets.service";
 // AI Gateway budget/risk jobs — call AIGateway HTTP endpoints via internal API
 const AI_GATEWAY_URL = process.env.AI_GATEWAY_URL || "http://127.0.0.1:8100";
 const AI_GATEWAY_KEY = process.env.AI_GATEWAY_INTERNAL_KEY || "";
@@ -682,6 +683,8 @@ export const createAutomationWorker = () => {
           await processScheduledAiDetectionScans();
         } else if (name === "jira_assets_scheduled_sync_check") {
           await runJiraAssetsScheduledSyncAllOrgs();
+        } else if (name === "jira_assets_manual_sync") {
+          await runQueuedManualSync(job.data);
         } else if (name === "ai_gateway_budget_reset") {
           await resetAllBudgets();
           await resetVirtualKeyBudgets();

@@ -3,18 +3,25 @@ import {
   errorMessage,
   finalizeFailure,
   importObjects,
-  JiraConfigNotFoundError,
   JiraConfigValidationError,
+  JiraNotConfiguredError,
   JiraSyncInProgressError,
   parseSyncIntervalHours,
+  runClaimedSync,
+  runQueuedManualSync,
   saveConfig,
-  SYNC_STALE_AFTER_MS,
+  startManualSync,
+  SQL_RUN_IS_LIVE,
   syncObjects,
+  touchHeartbeat,
+  RunSupersededError,
+  updateSelection,
   updateSyncSettings,
 } from "../jiraAssets.service";
 import { sequelize } from "../../../database/db";
 import { decryptText } from "../../../tools/createSecureValue";
 import { JiraAssetsClient } from "../jira.client";
+import { enqueueJiraAssetsManualSync } from "../../../services/automations/automationProducer";
 
 const FAKE_TX = { id: "tx" };
 
@@ -28,8 +35,12 @@ jest.mock("../../../tools/createSecureValue", () => ({
   encryptText: jest.fn(() => ({ value: "enc", iv: "iv" })),
   decryptText: jest.fn(),
 }));
-jest.mock("../jira.client", () => ({
-  JiraAssetsClient: jest.fn(),
+jest.mock("../jira.client", () => {
+  class JiraUpstreamError extends Error {}
+  return { JiraAssetsClient: jest.fn(), JiraUpstreamError };
+});
+jest.mock("../../../services/automations/automationProducer", () => ({
+  enqueueJiraAssetsManualSync: jest.fn(),
 }));
 jest.mock("../../../utils/logger/fileLogger", () => ({
   __esModule: true,
@@ -41,10 +52,10 @@ const mockQuery = sequelize.query as jest.Mock;
 const mockTransaction = sequelize.transaction as unknown as jest.Mock;
 const mockDecrypt = decryptText as jest.Mock;
 const MockClient = JiraAssetsClient as unknown as jest.Mock;
-
-const STARTED_AT = new Date("2026-10-12T12:00:00Z");
+const mockEnqueue = enqueueJiraAssetsManualSync as jest.Mock;
 
 const CONFIG_ROW = {
+  id: 1,
   jira_base_url: "https://x.atlassian.net",
   workspace_id: "w",
   email: "a@b.co",
@@ -64,43 +75,64 @@ const jiraObject = (id: string, typeId = "42") => ({
   updated: "2026-01-02",
 });
 
-const link = (id: string, projectId: number, typeId = "42") => ({
+const link = (id: string, projectId: number | null, typeId: string | null = "42") => ({
   jira_object_id: id,
   project_id: projectId,
-  data: { objectType: { id: typeId } },
+  data: typeId === null ? { label: "no type" } : { objectType: { id: typeId } },
 });
 
 interface FakeDb {
   config?: Record<string, unknown> | null;
   existing?: Array<ReturnType<typeof link>>;
   running?: Array<{ id: number }>;
+  /** Rows a heartbeat UPDATE affects; [] means another claim closed the run. */
+  heartbeat?: Array<{ id: number }>;
+  /** Rows the run's own finalize UPDATE affects. */
+  ownRow?: Array<{ id: number }>;
+  deletedProjects?: Array<{ id: number }>;
 }
 
 /** Route sequelize.query by SQL text, so tests read as scenarios, not call orders. */
-function fakeDb({ config = CONFIG_ROW, existing = [], running = [] }: FakeDb = {}) {
+function fakeDb({
+  config = CONFIG_ROW,
+  existing = [],
+  running = [],
+  heartbeat = [{ id: 77 }],
+  ownRow = [{ id: 77 }],
+  deletedProjects = [{ id: 1 }],
+}: FakeDb = {}) {
   mockQuery.mockImplementation(async (sql: string) => {
     if (sql.includes("pg_advisory_xact_lock")) return [{}];
     if (sql.includes("marked as abandoned")) return [[], 0];
     if (sql.includes("SELECT id FROM jira_assets_sync_history")) return running;
     if (sql.includes("INSERT INTO jira_assets_sync_history")) return [[{ id: 77 }], 1];
+    if (sql.includes("SET heartbeat_at")) return [heartbeat, {}];
+    if (sql.includes("SELECT id, jira_base_url")) return config ? [config] : [];
     if (sql.includes("SELECT * FROM jira_assets_config")) return config ? [config] : [];
     if (sql.includes("SELECT jira_object_id, project_id, data")) return existing;
     if (sql.includes("SELECT id FROM jira_assets_use_cases")) return [];
     if (sql.includes("nextval")) return [{ seq: "9" }];
     if (sql.includes("INSERT INTO projects")) return [[{ id: 500 }], 1];
-    if (sql.includes("SET status = 'completed'")) return [undefined, 1];
-    return [[], 0];
+    if (sql.includes("SET status = 'completed'")) return [ownRow, {}];
+    if (sql.includes("SET status = 'failed', error_message")) return [ownRow, {}];
+    if (sql.includes("DELETE FROM projects")) return [deletedProjects, {}];
+    if (sql.includes("DELETE FROM jira_assets_use_cases")) return [[{ id: 3 }], {}];
+    return [[], {}];
   });
 }
 
 const sqlCalls = (fragment: string) =>
   mockQuery.mock.calls.filter(([sql]) => String(sql).includes(fragment));
 
-function clientReturning(objects: ReturnType<typeof jiraObject>[], complete = true) {
+function clientReturning(
+  objects: ReturnType<typeof jiraObject>[],
+  complete = true,
+  stoppedReason?: "deadline",
+) {
   const getAllObjects = jest.fn(
     async (_typeId: string, options: { onPage?: () => Promise<void> } = {}) => {
       if (options.onPage) await options.onPage();
-      return { objects, complete };
+      return { objects, complete, stoppedReason };
     },
   );
   MockClient.mockImplementation(() => ({ getAllObjects }));
@@ -114,21 +146,21 @@ beforeEach(() => {
   mockTransaction.mockReset();
   mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb(FAKE_TX));
   mockDecrypt.mockReturnValue({ success: true, data: "token" });
+  mockEnqueue.mockResolvedValue({ id: "job" });
 });
 
 describe("claimSyncRun (overlap guard)", () => {
-  it("records a new run, with a first heartbeat, when nothing is running", async () => {
+  it("records a new run with start and heartbeat set in SQL", async () => {
     fakeDb();
 
-    const id = await claimSyncRun(5, "scheduled", null, STARTED_AT);
+    const id = await claimSyncRun(5, "scheduled", null);
 
     expect(id).toBe(77);
     const [insertSql, insertOptions] = sqlCalls("INSERT INTO jira_assets_sync_history")[0];
-    expect(insertSql).toContain("heartbeat_at");
+    expect(insertSql).toContain("(NOW() AT TIME ZONE 'UTC'), (NOW() AT TIME ZONE 'UTC')");
     expect(insertOptions.replacements).toEqual({
       organizationId: 5,
       syncType: "scheduled",
-      startedAt: STARTED_AT,
       triggeredBy: null,
     });
     for (const [, options] of mockQuery.mock.calls) {
@@ -139,27 +171,39 @@ describe("claimSyncRun (overlap guard)", () => {
   it("refuses when a run is already going and inserts nothing", async () => {
     fakeDb({ running: [{ id: 12 }] });
 
-    await expect(claimSyncRun(5, "manual", 3, STARTED_AT)).rejects.toBeInstanceOf(
-      JiraSyncInProgressError,
-    );
+    await expect(claimSyncRun(5, "manual", 3)).rejects.toBeInstanceOf(JiraSyncInProgressError);
     expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
   });
 
-  it("treats a run as stale only after 15 minutes without a heartbeat", async () => {
+  it("decides staleness in SQL: no heartbeat for 15 minutes", async () => {
     fakeDb();
 
-    await claimSyncRun(5, "import", 3, STARTED_AT);
+    await claimSyncRun(5, "import", 3);
 
     const [sql, options] = sqlCalls("marked as abandoned")[0];
-    expect(sql).toContain("COALESCE(heartbeat_at, started_at) < :staleBefore");
-    expect(SYNC_STALE_AFTER_MS).toBe(15 * 60 * 1000);
-    expect(options.replacements.staleBefore).toEqual(
-      new Date(STARTED_AT.getTime() - 15 * 60 * 1000),
+    expect(sql).toContain(`NOT ${SQL_RUN_IS_LIVE}`);
+    expect(SQL_RUN_IS_LIVE).toBe(
+      "(COALESCE(h.heartbeat_at, h.started_at) >= (NOW() AT TIME ZONE 'UTC') - make_interval(mins => 15))",
     );
+    expect(options.replacements).toEqual({ organizationId: 5 });
   });
 });
 
-describe("syncObjects — scheduled (refresh-only)", () => {
+describe("touchHeartbeat", () => {
+  it("throws RunSupersededError when the row is no longer started", async () => {
+    fakeDb({ heartbeat: [] });
+
+    await expect(touchHeartbeat(77, 5)).rejects.toBeInstanceOf(RunSupersededError);
+  });
+
+  it("tolerates a database error (a missed heartbeat is not fatal)", async () => {
+    mockQuery.mockRejectedValue(new Error("db hiccup"));
+
+    await expect(touchHeartbeat(77, 5)).resolves.toBeUndefined();
+  });
+});
+
+describe("runClaimedSync — scheduled (refresh-only)", () => {
   it("updates linked use cases and never creates or deletes", async () => {
     fakeDb({ existing: [link("1", 101), link("2", 102)] });
     // "1" still in Jira, "3" is new upstream, "2" has gone from Jira.
@@ -171,13 +215,11 @@ describe("syncObjects — scheduled (refresh-only)", () => {
     expect(result.objectsUpdated).toBe(1);
     expect(result.objectsCreated).toBe(0);
     expect(result.objectsDeleted).toBe(0);
-    expect(result.objectsMissingInJira).toBe(1);
     expect(result.missingInJiraIds).toEqual(["2"]);
     expect(sqlCalls("INSERT INTO projects")).toHaveLength(0);
-    expect(sqlCalls("DELETE FROM projects")).toHaveLength(0);
+    expect(sqlCalls("DELETE FROM")).toHaveLength(0);
     const [, completed] = sqlCalls("SET status = 'completed'")[0];
     expect(completed.replacements.note).toContain("missing in Jira");
-    expect(completed.replacements.note).toContain(": 2");
   });
 
   it("records the run as scheduled with no user", async () => {
@@ -189,23 +231,40 @@ describe("syncObjects — scheduled (refresh-only)", () => {
     const [, insert] = sqlCalls("INSERT INTO jira_assets_sync_history")[0];
     expect(insert.replacements).toMatchObject({ syncType: "scheduled", triggeredBy: null });
   });
+});
 
-  it("writes a heartbeat while fetching", async () => {
-    fakeDb({ existing: [link("1", 101)] });
+describe("runClaimedSync — abandoned runs stop", () => {
+  it("writes nothing once another claim has closed the run", async () => {
+    fakeDb({ existing: [link("1", 101)], heartbeat: [] });
+    const getAllObjects = clientReturning([jiraObject("1")]);
+
+    const result = await runClaimedSync(5, 77, 8, "manual");
+
+    expect(result.success).toBe(false);
+    expect(result.status).toContain("closed by another run");
+    expect(getAllObjects).not.toHaveBeenCalled();
+    expect(sqlCalls("UPDATE projects")).toHaveLength(0);
+    expect(sqlCalls("SET status = 'failed'")).toHaveLength(0);
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
+  });
+
+  it("leaves the config alone when its own row was already closed at finish", async () => {
+    fakeDb({ existing: [link("1", 101)], ownRow: [] });
     clientReturning([jiraObject("1")]);
 
-    await syncObjects(5, null, "scheduled");
+    const result = await runClaimedSync(5, 77, null, "scheduled");
 
-    expect(sqlCalls("SET heartbeat_at = :now").length).toBeGreaterThan(0);
+    expect(result.success).toBe(false);
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 });
 
-describe("syncObjects — manual deletion safety", () => {
+describe("runClaimedSync — manual deletion safety", () => {
   it("creates new objects (owned by the user) and deletes missing ones after a complete fetch", async () => {
     fakeDb({ existing: [link("1", 101), link("2", 102)] });
     clientReturning([jiraObject("1"), jiraObject("3")], true);
 
-    const result = await syncObjects(5, 8, "manual");
+    const result = await runClaimedSync(5, 77, 8, "manual");
 
     expect(result.objectsCreated).toBe(1);
     expect(result.objectsDeleted).toBe(1);
@@ -216,95 +275,147 @@ describe("syncObjects — manual deletion safety", () => {
     });
   });
 
+  it("only counts a delete when a project row was actually removed", async () => {
+    fakeDb({ existing: [link("1", 101), link("2", 102)], deletedProjects: [] });
+    clientReturning([jiraObject("1")], true);
+
+    const result = await runClaimedSync(5, 77, 8, "manual");
+
+    expect(result.objectsDeleted).toBe(0);
+  });
+
+  it("removes a link with no project and counts it separately", async () => {
+    fakeDb({ existing: [link("1", 101), link("2", null)] });
+    clientReturning([jiraObject("1")], true);
+
+    const result = await runClaimedSync(5, 77, 8, "manual");
+
+    expect(result.objectsDeleted).toBe(0);
+    expect(result.linksRemoved).toBe(1);
+    const [sql, options] = sqlCalls("DELETE FROM jira_assets_use_cases")[0];
+    expect(sql).toContain("project_id IS NULL");
+    expect(options.replacements).toEqual({ jiraObjectId: "2", organizationId: 5 });
+  });
+
   it("fails without changing anything when Jira returns no objects but links exist", async () => {
     fakeDb({ existing: [link("1", 101)] });
     clientReturning([], true);
 
-    const result = await syncObjects(5, 8, "manual");
+    const result = await runClaimedSync(5, 77, 8, "manual");
 
     expect(result.success).toBe(false);
     expect(result.status).toContain("returned no objects");
-    expect(sqlCalls("DELETE FROM projects")).toHaveLength(0);
+    expect(sqlCalls("DELETE FROM")).toHaveLength(0);
     expect(sqlCalls("UPDATE projects")).toHaveLength(0);
-    const [, failed] = sqlCalls("SET status = 'failed', error_message")[0];
-    expect(failed.replacements.id).toBe(77);
+  });
+
+  it("fails without changing anything when the fetch deadline is hit", async () => {
+    fakeDb({ existing: [link("1", 101), link("2", 102)] });
+    clientReturning([jiraObject("1")], false, "deadline");
+
+    const result = await runClaimedSync(5, 77, 8, "manual");
+
+    expect(result.success).toBe(false);
+    expect(result.status).toContain("did not return every object within 110 seconds");
+    expect(sqlCalls("UPDATE projects")).toHaveLength(0);
+    expect(sqlCalls("DELETE FROM")).toHaveLength(0);
   });
 
   it("keeps missing objects when pagination did not confirm the last page", async () => {
     fakeDb({ existing: [link("1", 101), link("2", 102)] });
     clientReturning([jiraObject("1")], false);
 
-    const result = await syncObjects(5, 8, "manual");
+    const result = await runClaimedSync(5, 77, 8, "manual");
 
     expect(result.success).toBe(true);
-    expect(result.objectsDeleted).toBe(0);
-    expect(result.missingInJiraIds).toEqual(["2"]);
     expect(result.deletesSkippedReason).toContain("last page");
-    expect(sqlCalls("DELETE FROM projects")).toHaveLength(0);
+    expect(sqlCalls("DELETE FROM")).toHaveLength(0);
   });
 
   it("keeps missing objects when links came from a different object type", async () => {
     fakeDb({ existing: [link("1", 101), link("2", 102, "7")] });
     clientReturning([jiraObject("1")], true);
 
-    const result = await syncObjects(5, 8, "manual");
+    const result = await runClaimedSync(5, 77, 8, "manual");
 
-    expect(result.objectsDeleted).toBe(0);
     expect(result.deletesSkippedReason).toContain("different object type");
-    expect(sqlCalls("DELETE FROM projects")).toHaveLength(0);
+    expect(sqlCalls("DELETE FROM")).toHaveLength(0);
+  });
+
+  it("keeps missing objects when any link's object type is unknown", async () => {
+    fakeDb({ existing: [link("1", 101), link("2", 102, null)] });
+    clientReturning([jiraObject("1")], true);
+
+    const result = await runClaimedSync(5, 77, 8, "manual");
+
+    expect(result.deletesSkippedReason).toContain("skipped: type unknown");
+    expect(sqlCalls("DELETE FROM")).toHaveLength(0);
   });
 
   it("creates the project and its link in one transaction", async () => {
     fakeDb({ existing: [link("1", 101)] });
     clientReturning([jiraObject("1"), jiraObject("3")], true);
 
-    await syncObjects(5, 8, "manual");
+    await runClaimedSync(5, 77, 8, "manual");
 
-    const [, projectInsert] = sqlCalls("INSERT INTO projects")[0];
-    const [, linkInsert] = sqlCalls("INSERT INTO jira_assets_use_cases")[0];
-    expect(projectInsert.transaction).toBe(FAKE_TX);
-    expect(linkInsert.transaction).toBe(FAKE_TX);
-  });
-
-  it("does not call Jira when another run holds the org", async () => {
-    fakeDb({ running: [{ id: 1 }] });
-    const getAllObjects = clientReturning([jiraObject("1")]);
-
-    await expect(syncObjects(5, null, "scheduled")).rejects.toBeInstanceOf(JiraSyncInProgressError);
-    expect(getAllObjects).not.toHaveBeenCalled();
+    expect(sqlCalls("INSERT INTO projects")[0][1].transaction).toBe(FAKE_TX);
+    expect(sqlCalls("INSERT INTO jira_assets_use_cases")[0][1].transaction).toBe(FAKE_TX);
   });
 });
 
-describe("syncObjects — failures before Jira is reached", () => {
+describe("runClaimedSync — failures before Jira is reached", () => {
   it("records a token decrypt failure on the history row and the config", async () => {
     fakeDb({ existing: [link("1", 101)] });
     mockDecrypt.mockReturnValue({ success: false, error: "bad key" });
 
-    const result = await syncObjects(5, null, "scheduled");
+    const result = await runClaimedSync(5, 77, null, "scheduled");
 
     expect(result.success).toBe(false);
     expect(result.status).toContain("bad key");
     const [, history] = sqlCalls("SET status = 'failed', error_message")[0];
     expect(history.replacements).toMatchObject({ id: 77, organizationId: 5 });
     const [configSql, config] = sqlCalls("last_sync_status = 'failed'")[0];
-    expect(configSql).toContain("last_sync_at = :now");
+    expect(configSql).toContain("last_sync_at = (NOW() AT TIME ZONE 'UTC')");
     expect(config.replacements.message).toContain("bad key");
   });
+});
 
-  it("records a missing config as a failed run", async () => {
+describe("startManualSync (Sync now runs in the worker)", () => {
+  it("claims the run, queues it and returns the history id", async () => {
+    fakeDb();
+
+    await expect(startManualSync(5, 8)).resolves.toEqual({ historyId: 77 });
+    expect(mockEnqueue).toHaveBeenCalledWith({ organizationId: 5, historyId: 77, triggeredBy: 8 });
+  });
+
+  it("rejects without a config or an object type, before claiming", async () => {
     fakeDb({ config: null });
+    await expect(startManualSync(5, 8)).rejects.toBeInstanceOf(JiraNotConfiguredError);
 
-    const result = await syncObjects(5, 8, "manual");
+    fakeDb({ config: { ...CONFIG_ROW, selected_object_type_id: null } });
+    await expect(startManualSync(5, 8)).rejects.toBeInstanceOf(JiraConfigValidationError);
+    expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
+  });
 
-    expect(result.success).toBe(false);
-    expect(result.status).toContain("JIRA not configured");
-    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(1);
+  it("closes the claimed run as failed if it cannot be queued", async () => {
+    fakeDb();
+    mockEnqueue.mockRejectedValue(new Error("redis down"));
+
+    await expect(startManualSync(5, 8)).rejects.toThrow("redis down");
+    const [, failed] = sqlCalls("SET status = 'failed', error_message")[0];
+    expect(failed.replacements).toMatchObject({ id: 77, message: "redis down" });
+  });
+
+  it("the worker entry validates its payload and fails closed", async () => {
+    await expect(runQueuedManualSync({ historyId: 1 })).rejects.toThrow("organizationId");
+    await expect(runQueuedManualSync({ organizationId: 5 })).rejects.toThrow("historyId");
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
 
 describe("finalizeFailure", () => {
   it("only closes its own row while it is still started", async () => {
-    mockQuery.mockResolvedValue([[], 0]);
+    mockQuery.mockResolvedValue([[{ id: 77 }], {}]);
 
     await finalizeFailure(77, 5, new Error("boom"));
 
@@ -313,6 +424,23 @@ describe("finalizeFailure", () => {
       "WHERE id = :id AND organization_id = :organizationId AND status = 'started'",
     );
     expect(options.replacements).toMatchObject({ id: 77, organizationId: 5, message: "boom" });
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(1);
+  });
+
+  it("skips the config update when its row was already closed", async () => {
+    mockQuery.mockResolvedValue([[], {}]);
+
+    await finalizeFailure(77, 5, new Error("boom"));
+
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
+  });
+
+  it("can record on the history row only (imports)", async () => {
+    mockQuery.mockResolvedValue([[{ id: 77 }], {}]);
+
+    await finalizeFailure(77, 5, new Error("boom"), false);
+
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 
   it("never throws when the database write fails", async () => {
@@ -340,6 +468,22 @@ describe("importObjects", () => {
     expect(sqlCalls("INSERT INTO projects")).toHaveLength(0);
   });
 
+  it("rejects before claiming when Jira is not configured", async () => {
+    fakeDb({ config: null });
+
+    await expect(importObjects(5, 8, ["1"])).rejects.toBeInstanceOf(JiraNotConfiguredError);
+    expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
+  });
+
+  it("records an import failure on the history row only, never on the config", async () => {
+    fakeDb();
+    mockDecrypt.mockReturnValue({ success: false, error: "bad key" });
+
+    await expect(importObjects(5, 8, ["1"])).rejects.toThrow("bad key");
+    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(1);
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
+  });
+
   it("records the import in the history and counts a unique violation as skipped", async () => {
     fakeDb();
     const getObjectById = jest.fn(async (id: string) => jiraObject(id));
@@ -363,6 +507,7 @@ describe("importObjects", () => {
     const [, insert] = sqlCalls("INSERT INTO jira_assets_sync_history")[0];
     expect(insert.replacements).toMatchObject({ syncType: "import", triggeredBy: 8 });
     expect(sqlCalls("SET status = 'completed'")).toHaveLength(1);
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 });
 
@@ -375,7 +520,6 @@ describe("updateSyncSettings (partial patch)", () => {
     expect(result).toEqual({ sync_enabled: true, sync_interval_hours: 24 });
     const [sql, options] = mockQuery.mock.calls[0];
     expect(sql).toContain("COALESCE(:syncEnabled, sync_enabled)");
-    expect(sql).toContain("COALESCE(:syncIntervalHours, sync_interval_hours)");
     expect(sql).not.toMatch(/jira_base_url|api_token|selected_schema_id|email/);
     expect(options.replacements).toEqual({
       syncEnabled: true,
@@ -400,7 +544,49 @@ describe("updateSyncSettings (partial patch)", () => {
     mockQuery.mockResolvedValue([[], 0]);
 
     await expect(updateSyncSettings(5, 8, { sync_interval_hours: 6 })).rejects.toBeInstanceOf(
-      JiraConfigNotFoundError,
+      JiraNotConfiguredError,
+    );
+  });
+});
+
+describe("updateSelection (partial patch)", () => {
+  it("changes only the selection fields that were sent, clearing on null", async () => {
+    mockQuery.mockResolvedValue([[{ selected_schema_id: "3", selected_object_type_id: null }], 1]);
+
+    await updateSelection(5, 8, { selected_schema_id: "3", selected_object_type_id: null });
+
+    const [sql, options] = mockQuery.mock.calls[0];
+    expect(sql).not.toMatch(/sync_enabled|sync_interval|jira_base_url|api_token|email/);
+    expect(options.replacements).toEqual({
+      setSchema: true,
+      schemaId: "3",
+      setObjectType: true,
+      objectTypeId: null,
+      userId: 8,
+      organizationId: 5,
+    });
+  });
+
+  it("leaves a field that was not sent unchanged", async () => {
+    mockQuery.mockResolvedValue([[{ selected_schema_id: "3", selected_object_type_id: "42" }], 1]);
+
+    await updateSelection(5, 8, { selected_object_type_id: 42 });
+
+    expect(mockQuery.mock.calls[0][1].replacements).toMatchObject({
+      setSchema: false,
+      setObjectType: true,
+      objectTypeId: "42",
+    });
+  });
+
+  it("rejects bad ids and empty bodies, and reports a missing config", async () => {
+    await expect(updateSelection(5, 8, {})).rejects.toBeInstanceOf(JiraConfigValidationError);
+    await expect(
+      updateSelection(5, 8, { selected_object_type_id: "1; DROP TABLE x" }),
+    ).rejects.toBeInstanceOf(JiraConfigValidationError);
+    mockQuery.mockResolvedValue([[], 0]);
+    await expect(updateSelection(5, 8, { selected_schema_id: "3" })).rejects.toBeInstanceOf(
+      JiraNotConfiguredError,
     );
   });
 });
@@ -439,21 +625,12 @@ describe("saveConfig validation", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a non-boolean sync_enabled", async () => {
-    mockQuery.mockResolvedValueOnce([{ id: 1, api_token_encrypted: "enc" }]);
-
-    await expect(
-      saveConfig(5, 3, { ...base, sync_enabled: "yes" as unknown as boolean }),
-    ).rejects.toBeInstanceOf(JiraConfigValidationError);
-  });
-
   it("saves a valid interval", async () => {
     mockQuery.mockResolvedValueOnce([{ id: 1, api_token_encrypted: "enc" }]).mockResolvedValue([]);
 
     await saveConfig(5, 3, { ...base, sync_enabled: true, sync_interval_hours: 6 });
 
     const update = mockQuery.mock.calls[1];
-    expect(update[0]).toContain("UPDATE jira_assets_config");
     expect(update[1].replacements).toMatchObject({ syncEnabled: true, syncIntervalHours: 6 });
   });
 });

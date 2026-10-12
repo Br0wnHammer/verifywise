@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { STATUS_CODE } from "../../utils/statusCode.utils";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
 import { translateError } from "../../utils/i18n.utils";
-import { JiraAssetsClient } from "./jira.client";
+import { JiraAssetsClient, JiraUpstreamError } from "./jira.client";
 import { VW_AI_SYSTEM_ATTRIBUTES, transformAttributes } from "./jira.constants";
 import {
   clientFromConfig,
@@ -14,13 +14,14 @@ import {
   getUseCaseByProjectId,
   importObjects,
   JiraAssetsConfig,
-  JiraConfigNotFoundError,
   JiraConfigValidationError,
+  JiraNotConfiguredError,
   JiraSyncInProgressError,
   listUseCases,
   loadFullConfig,
   saveConfig,
-  syncObjects,
+  startManualSync,
+  updateSelection,
   updateSyncSettings,
 } from "./jiraAssets.service";
 
@@ -43,9 +44,38 @@ function intParam(req: Request, name: string): number {
 async function requireClient(organizationId: number): Promise<JiraAssetsClient> {
   const config = await loadFullConfig(organizationId);
   if (!config?.jira_base_url || !config.workspace_id || !config.email) {
-    throw new Error("JIRA not configured");
+    throw new JiraNotConfiguredError();
   }
   return clientFromConfig(config);
+}
+
+/**
+ * Map a service error to a response. 4xx bodies carry the reason in `data`,
+ * 5xx in `error` (STATUS_CODE shapes) — the panel reads both through
+ * getApiErrorReason, as the MLflow tab does.
+ *
+ * - JiraConfigValidationError → 400
+ * - JiraNotConfiguredError → 404
+ * - JiraSyncInProgressError → 409
+ * - JiraUpstreamError (Jira response, timeout, DNS/TLS) → 502
+ * - anything else → 500, logged
+ */
+function sendError(req: Request, res: Response, err: unknown, functionName: string) {
+  if (err instanceof JiraConfigValidationError) {
+    return res.status(400).json(STATUS_CODE[400](err.message));
+  }
+  if (err instanceof JiraNotConfiguredError) {
+    return res.status(404).json(STATUS_CODE[404](err.message));
+  }
+  if (err instanceof JiraSyncInProgressError) {
+    return res.status(409).json(STATUS_CODE[409](err.message));
+  }
+  if (err instanceof JiraUpstreamError) {
+    return res.status(502).json(STATUS_CODE[502](err.message));
+  }
+  logStructured("error", `jira ${functionName} failed`, functionName, fileName);
+  logger.error(`❌ Error in jira ${functionName}:`, err);
+  return res.status(500).json(STATUS_CODE[500](translateError(req, err)));
 }
 
 // ---- Config ------------------------------------------------------------
@@ -67,15 +97,8 @@ export async function postConfig(req: Request, res: Response): Promise<any> {
     return res
       .status(200)
       .json(STATUS_CODE[200]({ success: true, message: "Configuration saved successfully" }));
-  } catch (err: any) {
-    // Validation errors surface as 400 so the UI can render them inline.
-    const bad = err instanceof JiraConfigValidationError;
-    const status = bad ? 400 : 500;
-    if (!bad) {
-      logStructured("error", "jira postConfig failed", "postConfig", fileName);
-      logger.error("❌ Error in jira postConfig:", err);
-    }
-    return res.status(status).json(STATUS_CODE[status](err.message));
+  } catch (err) {
+    return sendError(req, res, err, "postConfig");
   }
 }
 
@@ -87,16 +110,22 @@ export async function patchSyncSettings(req: Request, res: Response): Promise<an
   try {
     const settings = await updateSyncSettings(orgId(req), uid(req), req.body ?? {});
     return res.status(200).json(STATUS_CODE[200](settings));
-  } catch (err: any) {
-    if (err instanceof JiraConfigValidationError) {
-      return res.status(400).json(STATUS_CODE[400](err.message));
-    }
-    if (err instanceof JiraConfigNotFoundError) {
-      return res.status(404).json(STATUS_CODE[404](err.message));
-    }
-    logStructured("error", "jira patchSyncSettings failed", "patchSyncSettings", fileName);
-    logger.error("❌ Error in jira patchSyncSettings:", err);
-    return res.status(500).json(STATUS_CODE[500](translateError(req, err)));
+  } catch (err) {
+    return sendError(req, res, err, "patchSyncSettings");
+  }
+}
+
+/**
+ * PATCH /config/selection — only `selected_schema_id` and/or
+ * `selected_object_type_id`. Used when the panel's schema or object-type
+ * pickers change, so nothing else in the config is re-sent.
+ */
+export async function patchSelection(req: Request, res: Response): Promise<any> {
+  try {
+    const selection = await updateSelection(orgId(req), uid(req), req.body ?? {});
+    return res.status(200).json(STATUS_CODE[200](selection));
+  } catch (err) {
+    return sendError(req, res, err, "patchSelection");
   }
 }
 
@@ -120,8 +149,8 @@ export async function getSchemas(req: Request, res: Response): Promise<any> {
     const client = await requireClient(orgId(req));
     const schemas = await client.getSchemas();
     return res.status(200).json(STATUS_CODE[200](schemas));
-  } catch (err: any) {
-    return res.status(500).json(STATUS_CODE[500](err.message));
+  } catch (err) {
+    return sendError(req, res, err, "getSchemas");
   }
 }
 
@@ -130,8 +159,8 @@ export async function getObjectTypes(req: Request, res: Response): Promise<any> 
     const client = await requireClient(orgId(req));
     const objectTypes = await client.getObjectTypes(stringParam(req, "schemaId"));
     return res.status(200).json(STATUS_CODE[200](objectTypes));
-  } catch (err: any) {
-    return res.status(500).json(STATUS_CODE[500](err.message));
+  } catch (err) {
+    return sendError(req, res, err, "getObjectTypes");
   }
 }
 
@@ -140,15 +169,19 @@ export async function getAttributes(req: Request, res: Response): Promise<any> {
     const client = await requireClient(orgId(req));
     const attributes = await client.getAttributes(stringParam(req, "objectTypeId"));
     return res.status(200).json(STATUS_CODE[200](attributes));
-  } catch (err: any) {
-    return res.status(500).json(STATUS_CODE[500](err.message));
+  } catch (err) {
+    return sendError(req, res, err, "getAttributes");
   }
 }
 
+/**
+ * Objects for the import picker: one bounded page (PICKER_MAX_RESULTS), not
+ * the full paginated walk that sync uses.
+ */
 export async function getObjects(req: Request, res: Response): Promise<any> {
   try {
     const client = await requireClient(orgId(req));
-    const objects = await client.getObjects(stringParam(req, "objectTypeId"));
+    const objects = await client.getObjectsPage(stringParam(req, "objectTypeId"));
     const transformed = objects.map((obj) => ({
       id: obj.id,
       key: obj.objectKey,
@@ -158,8 +191,8 @@ export async function getObjects(req: Request, res: Response): Promise<any> {
       updated: obj.updated,
     }));
     return res.status(200).json(STATUS_CODE[200](transformed));
-  } catch (err: any) {
-    return res.status(500).json(STATUS_CODE[500](err.message));
+  } catch (err) {
+    return sendError(req, res, err, "getObjects");
   }
 }
 
@@ -170,27 +203,24 @@ export async function postImport(req: Request, res: Response): Promise<any> {
     const objectIds = (req.body?.object_ids ?? []) as string[];
     const result = await importObjects(orgId(req), uid(req), objectIds);
     return res.status(200).json(STATUS_CODE[200](result));
-  } catch (err: any) {
-    if (err instanceof JiraSyncInProgressError) {
-      return res.status(409).json(STATUS_CODE[409](err.message));
-    }
-    logStructured("error", "jira import failed", "postImport", fileName);
-    logger.error("❌ Error in jira postImport:", err);
-    return res.status(500).json(STATUS_CODE[500](err.message));
+  } catch (err) {
+    return sendError(req, res, err, "postImport");
   }
 }
 
+/**
+ * POST /sync — "Sync now". Checks the config (404 / 400), claims the run
+ * (409 if a sync or import is running) and queues it for the worker: 202 with
+ * `{ historyId }`. The outcome, including the reason for a failure, is
+ * recorded on the history row and the config; the panel polls GET
+ * /sync/status (`running`, `latest_run`, `last_sync_*`) to show it.
+ */
 export async function postSync(req: Request, res: Response): Promise<any> {
   try {
-    const result = await syncObjects(orgId(req), uid(req), "manual");
-    return res.status(result.success ? 200 : 500).json(STATUS_CODE[200](result));
-  } catch (err: any) {
-    if (err instanceof JiraSyncInProgressError) {
-      return res.status(409).json(STATUS_CODE[409](err.message));
-    }
-    logStructured("error", "jira sync failed", "postSync", fileName);
-    logger.error("❌ Error in jira postSync:", err);
-    return res.status(500).json(STATUS_CODE[500](err.message));
+    const started = await startManualSync(orgId(req), uid(req));
+    return res.status(202).json(STATUS_CODE[202](started));
+  } catch (err) {
+    return sendError(req, res, err, "postSync");
   }
 }
 
