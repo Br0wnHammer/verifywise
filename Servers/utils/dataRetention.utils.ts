@@ -268,11 +268,14 @@ async function skipErrorCodeColumn(): Promise<boolean> {
   if (Date.now() - errorCodeColumnCheckedAt < ERROR_CODE_RECHECK_MS) return true;
   errorCodeColumnCheckedAt = Date.now();
   try {
+    // Resolve the table as every other retention query does (to_regclass of
+    // the unqualified name, through search_path), then look for the column.
     const rows = (await sequelize.query(
-      `SELECT 1 FROM information_schema.columns
-        WHERE table_schema = current_schema()
-          AND table_name = 'data_retention_runs'
-          AND column_name = 'error_code'`,
+      `SELECT 1 FROM pg_attribute
+        WHERE attrelid = to_regclass('data_retention_runs')
+          AND attname = 'error_code'
+          AND attnum > 0
+          AND NOT attisdropped`,
       { type: QueryTypes.SELECT },
     )) as unknown[];
     if (rows.length > 0) errorCodeColumnMissing = false;

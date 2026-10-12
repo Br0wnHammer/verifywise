@@ -295,7 +295,7 @@ describe("before the error_code migration has run", () => {
 
       expect(mockQuery).toHaveBeenCalledTimes(3);
       expect(
-        mockQuery.mock.calls.some((call) => String(call[0]).includes("information_schema")),
+        mockQuery.mock.calls.some((call) => String(call[0]).includes("pg_attribute")),
       ).toBe(false);
     });
 
@@ -307,8 +307,10 @@ describe("before the error_code migration has run", () => {
       mockQuery.mockResolvedValueOnce([{ "?column?": 1 }]).mockResolvedValueOnce([]); // check, insert
       await recordRetentionRun(run);
 
-      expect(sqlOf(2)).toContain("information_schema.columns");
-      expect(sqlOf(2)).toContain("current_schema()");
+      expect(sqlOf(2)).toContain("FROM pg_attribute");
+      expect(sqlOf(2)).toContain("to_regclass('data_retention_runs')");
+      expect(sqlOf(2)).toContain("NOT attisdropped");
+      expect(sqlOf(2)).not.toMatch(/verifywise\./);
       expect(sqlOf(3)).toContain("error_code");
     });
 
@@ -325,7 +327,7 @@ describe("before the error_code migration has run", () => {
       mockQuery.mockResolvedValueOnce([]);
       await recordRetentionRun(run);
       expect(mockQuery).toHaveBeenCalledTimes(5);
-      expect(sqlOf(4)).not.toContain("information_schema");
+      expect(sqlOf(4)).not.toContain("pg_attribute");
     });
   });
 
