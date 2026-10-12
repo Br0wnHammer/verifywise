@@ -659,28 +659,38 @@ NULL `project_id` is allowed. The app only ever creates a link together with
 its project, in one transaction, and never changes `project_id` afterwards.
 Migration `20261012165625-jira-assets-link-same-org-fk.js` added the key. It
 first copied existing links whose project was missing or in another
-organization into `jira_assets_use_cases_fk_cleanup_backup` (named columns
-plus `cleaned_at`; its `organization_id` cascades with the organization) and
-deleted them, logging the count; no project was touched, and their Jira
-objects can be imported again. It reuses an existing equivalent unique index
-on `projects (id, organization_id)` (valid, immediate, non-partial, key
-columns only) if there is one, otherwise it creates its own
-(`projects_id_org_for_jira_link_fk_key`). The FK is added `NOT VALID`, then
-validated. The old single-column FK is kept: dropping any FK from this table
-to `projects` takes `ACCESS EXCLUSIVE` on `projects`, which the migration
-avoids; it is redundant with the composite one and harmless. The old
-`project_id` index is replaced by one on `(project_id, organization_id)`.
-Locks, taken up front with a 10 s `lock_timeout`, projects first:
-`SHARE ROW EXCLUSIVE` on `projects` (reads, including `SELECT ... FOR
-UPDATE`, are not blocked; writes wait) and `ACCESS EXCLUSIVE` on
-`jira_assets_use_cases`. Deploy it with the worker stopped or idle (no sync
-running), as API and worker deploy together. `down()` drops the composite FK
-(which does lock `projects` exclusively, briefly), its index and only its own
-unique index, recreates the old index, and puts the backed-up links back where
-the single-column FK allows it (organization and project still exist; a link
-re-imported since wins). Restored rows leave the backup; the backup table is
-dropped only when it is empty, otherwise it is kept and the remaining count is
-logged. The id sequence is never moved backwards.
+organization into `jira_assets_use_cases_fk_cleanup_backup` and deleted them,
+logging the count; no project was touched, and their Jira objects can be
+imported again. The backup is created `LIKE` the live table (every column
+with its real type, whatever the install has), plus `cleaned_at`; rows are
+copied by column name, and an existing backup whose column set differs from
+the live table's stops the migration with a clear message. Its
+`organization_id` cascades with the organization. The migration reuses an
+existing equivalent unique index on `projects (id, organization_id)` (valid,
+immediate, non-partial, key columns only) if there is one, otherwise it
+creates its own (`projects_id_org_for_jira_link_fk_key`), then adds the FK
+validated in one statement (adding it `NOT VALID` and validating in the same
+transaction would hold the same locks, so it would gain nothing). The old
+single-column FK is kept: dropping any FK from this table to `projects` takes
+`ACCESS EXCLUSIVE` on `projects`, which the migration avoids; it is redundant
+with the composite one and harmless. The old `project_id` index is replaced
+by one on `(project_id, organization_id)`.
+
+Locks and deploy: `up()` takes, up front with a 10 s `lock_timeout`, projects
+first, `SHARE ROW EXCLUSIVE` on `projects` and `ACCESS EXCLUSIVE` on
+`jira_assets_use_cases`. Reads of `projects` (including `SELECT ... FOR
+UPDATE`) continue; writes to `projects` pause until it commits (the unique
+index build and the FK validation run under that lock). Deploy it with the
+worker stopped and no Jira Assets removal or use-case delete in progress: an
+in-app "Remove missing" or delete running at the same time can deadlock with
+it, Postgres then aborts the migration (it rolls back cleanly), and the deploy
+has to be re-run. `down()` drops the composite FK, which needs `ACCESS
+EXCLUSIVE` on `projects` (it may wait up to 10 s for it), its index and only
+its own unique index, recreates the old index, and puts the backed-up links
+back where the single-column FK allows it (organization and project still
+exist; a link re-imported since wins). Restored rows leave the backup; the
+backup table is dropped only when it is empty, otherwise it is kept and the
+remaining count is logged. The id sequence is never moved backwards.
 
 A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is
