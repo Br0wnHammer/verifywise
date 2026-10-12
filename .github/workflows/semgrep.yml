@@ -58,19 +58,22 @@ jobs:
 
       # The semgrep-action@v1 is deprecated and rejects the generateSarif /
       # baselineRef inputs, so it never produced semgrep.sarif and the upload
-      # step failed. Run the Semgrep CLI directly: it prints findings to the
-      # log, writes SARIF via --sarif-output, and blocks on findings via its
-      # own exit code.
+      # step failed. Run the Semgrep CLI directly: on pull requests it prints
+      # new findings to the log and writes SARIF; on push it writes SARIF
+      # only. It blocks on findings via its own exit code.
       - name: Run Semgrep
         env:
           SEMGREP_VERSION: '1.178.0'
+          # Passed through env, never interpolated into the script.
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           python3 -m pip install --quiet --retries 5 --timeout 60 "semgrep==${SEMGREP_VERSION}"
           RULES="--config p/javascript --config p/typescript --config p/python --config p/security-audit --config p/secrets --metrics off"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
             # PR gate: fails only on findings not present on the base branch,
             # and prints them to this log as well as writing SARIF.
-            semgrep scan $RULES --sarif-output=semgrep.sarif --error --baseline-commit "origin/${{ github.base_ref }}"
+            semgrep scan $RULES --sarif-output=semgrep.sarif --error --baseline-commit "origin/$BASE_REF"
           else
             # Push: full scan, non-blocking. SARIF only, so the whole backlog
             # is not printed to the log on every merge; genuine scan errors
