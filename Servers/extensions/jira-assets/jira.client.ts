@@ -285,14 +285,17 @@ export class JiraAssetsClient {
    * - Data Center: `GET iql/objects?...&page=&resultPerPage=`; the response
    *   carries `objectEntries`, `pageSize` (number of pages) and
    *   `totalFilterCount`, but no last-page flag, and those counts cannot be
-   *   shown to be uncapped, so they are not used. The walk keeps requesting
-   *   pages until one comes back partial or empty — that page proves the end.
-   *   A type whose size is an exact multiple of PAGE_SIZE therefore costs one
-   *   extra (empty) request.
+   *   shown to be uncapped, so they are not used. As on cloud, the server may
+   *   cap `resultPerPage` below what was asked for, so a short page proves
+   *   nothing either. The walk keeps requesting pages until one comes back
+   *   empty — only that proves the end, at the cost of one extra request. A
+   *   non-empty page with no object the walk has not already seen (a server
+   *   that repeats its last page past the end) stops the walk as incomplete.
    *
-   * Anything else — on cloud an empty page without isLast, MAX_PAGES, the
-   * overall deadline — returns `complete: false`, and callers must not flag
-   * objects missing from the result as gone from Jira.
+   * Anything else — on cloud an empty page without isLast, a repeated Data
+   * Center page, MAX_PAGES, the overall deadline — returns `complete: false`,
+   * and callers must not flag objects missing from the result as gone from
+   * Jira.
    */
   async getAllObjects(
     objectTypeId: string,
@@ -303,6 +306,7 @@ export class JiraAssetsClient {
     try {
       if (this.deploymentType === "datacenter") {
         const iql = encodeURIComponent(`objectTypeId=${objectTypeId}`);
+        const seen = new Set<string>();
         for (let page = 1; page <= MAX_PAGES; page++) {
           const result = await this.request<any>(
             `iql/objects?objectSchemaId=${encodeURIComponent(this.workspaceId)}&iql=${iql}` +
@@ -312,10 +316,13 @@ export class JiraAssetsClient {
             deadline,
           );
           const entries: JiraObject[] = result?.objectEntries || [];
-          objects.push(...entries);
           if (options.onPage) await options.onPage();
-          // A partial or empty page is the end; a full one means ask again.
-          if (entries.length < PAGE_SIZE) return { objects, complete: true };
+          // Only an empty page is the end; a short one may be a capped page.
+          if (entries.length === 0) return { objects, complete: true };
+          const fresh = entries.filter((obj) => !seen.has(String(obj.id)));
+          if (fresh.length === 0) return { objects, complete: false };
+          for (const obj of fresh) seen.add(String(obj.id));
+          objects.push(...fresh);
         }
         return { objects, complete: false };
       }
