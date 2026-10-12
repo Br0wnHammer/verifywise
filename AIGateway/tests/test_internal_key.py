@@ -32,21 +32,21 @@ def test_keys_match_compares_bytes(provided, expected, match):
     assert auth.keys_match(provided, expected) is match
 
 
-def test_verify_internal_key_rejects_a_non_ascii_header_with_401(monkeypatch):
+async def test_verify_internal_key_rejects_a_non_ascii_header_with_401(monkeypatch):
     """Comparing two str with non-ASCII characters raised TypeError (500)."""
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
     with pytest.raises(HTTPException) as exc:
-        auth.verify_internal_key(_request("clé-ü"))
+        await auth.verify_internal_key(_request("clé-ü"))
     assert exc.value.status_code == 401
 
 
-def test_verify_internal_key_accepts_the_right_key(monkeypatch):
+async def test_verify_internal_key_accepts_the_right_key(monkeypatch):
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
-    assert auth.verify_internal_key(_request("right-key")) is None
+    assert await auth.verify_internal_key(_request("right-key")) is None
 
 
 @pytest.mark.parametrize("configured", ["", "   "])
-def test_verify_internal_key_refuses_every_request_when_no_key_is_configured(
+async def test_verify_internal_key_refuses_every_request_when_no_key_is_configured(
     monkeypatch, configured
 ):
     """Fail closed: without a configured key nothing is served (503 + code)."""
@@ -55,16 +55,16 @@ def test_verify_internal_key_refuses_every_request_when_no_key_is_configured(
     monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", configured)
     monkeypatch.setattr(settings, "ai_gateway_internal_key", config.Settings().ai_gateway_internal_key)
     with pytest.raises(HTTPException) as exc:
-        auth.verify_internal_key(_request("anything"))
+        await auth.verify_internal_key(_request("anything"))
     assert exc.value.status_code == 503
     assert exc.value.detail["code"] == "internal_key_not_configured"
 
 
 @pytest.mark.parametrize("key", [None, "", "wrong-key", "clé-ü"])
-def test_verify_internal_key_rejects_a_missing_or_wrong_key_with_a_code(monkeypatch, key):
+async def test_verify_internal_key_rejects_a_missing_or_wrong_key_with_a_code(monkeypatch, key):
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
     with pytest.raises(HTTPException) as exc:
-        auth.verify_internal_key(_request(key))
+        await auth.verify_internal_key(_request(key))
     assert exc.value.status_code == 401
     assert exc.value.detail["code"] == "internal_key_rejected"
 
@@ -259,11 +259,25 @@ def test_a_route_without_its_own_check_is_still_protected(monkeypatch):
     assert served.json() == {"ok": True}
 
 
-def test_every_internal_mount_in_app_uses_the_dependency():
-    """app.py mounts internal routers only through include_internal_router."""
-    source = open(os.path.join(os.path.dirname(__file__), "..", "src", "app.py")).read()
-    assert 'prefix="/internal"' not in source
-    assert source.count("include_internal_router(app, ") >= 21
+def test_every_registered_internal_route_has_the_key_dependency():
+    """Inspect the real app: every route under /internal must carry
+    verify_internal_key in its dependencies."""
+    from fastapi.routing import APIRoute
+
+    import app as gateway_app
+
+    internal = [
+        route
+        for route in gateway_app.app.routes
+        if isinstance(route, APIRoute) and route.path.startswith("/internal")
+    ]
+    assert internal, "no /internal routes registered"
+    missing = [
+        f"{sorted(route.methods)} {route.path}"
+        for route in internal
+        if auth.verify_internal_key not in [dep.call for dep in route.dependant.dependencies]
+    ]
+    assert missing == [], f"internal routes without the key check: {missing}"
 
 
 # ---------------------------------------------------------------------------
@@ -281,78 +295,80 @@ def _rejected(route_template=None, path="/internal/x"):
     )
 
 
-def test_rejected_keys_are_logged_at_most_once_a_minute_per_route(monkeypatch, caplog):
+async def test_rejected_keys_are_logged_at_most_once_a_minute_per_route(monkeypatch, caplog):
     import logging
 
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
-    monkeypatch.setattr(auth, "_rejected_logged_at", {})
+    monkeypatch.setattr(auth, "_rejected_log_state", {})
     clock = {"now": 1000.0}
     monkeypatch.setattr(auth.time, "monotonic", lambda: clock["now"])
     caplog.set_level(logging.WARNING, logger=auth.logger.name)
 
-    def reject(template, path):
+    async def reject(template, path):
         with pytest.raises(HTTPException):
-            auth.verify_internal_key(_rejected(template, path))
+            await auth.verify_internal_key(_rejected(template, path))
 
-    reject("/internal/keys/{key_id}", "/internal/keys/1")
-    reject("/internal/keys/{key_id}", "/internal/keys/2")  # same route: not logged
-    reject("/internal/budget", "/internal/budget")  # another route: logged
+    await reject("/internal/keys/{key_id}", "/internal/keys/1")
+    await reject("/internal/keys/{key_id}", "/internal/keys/2")  # same route: not logged
+    await reject("/internal/budget", "/internal/budget")  # another route: logged
     clock["now"] += auth.REJECTED_KEY_LOG_INTERVAL_SECONDS
-    reject("/internal/keys/{key_id}", "/internal/keys/3")  # window passed: logged
+    await reject("/internal/keys/{key_id}", "/internal/keys/3")  # window passed: logged
 
     messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert messages == [
         "Rejected internal request POST /internal/keys/{key_id}: invalid internal key",
         "Rejected internal request POST /internal/budget: invalid internal key",
-        "Rejected internal request POST /internal/keys/{key_id}: invalid internal key",
+        # The one rejection suppressed inside the window is counted.
+        "Rejected internal request POST /internal/keys/{key_id} (1 more since last log): "
+        "invalid internal key",
     ]
     # Never the key, the header value or the raw path.
     assert all("secret-wrong-key" not in m and "/keys/1" not in m for m in messages)
 
 
-def test_unique_paths_do_not_grow_the_limiter(monkeypatch):
+async def test_unique_paths_do_not_grow_the_limiter(monkeypatch):
     """10,000 rejected requests with unique paths (unmatched, or one route with
     a path parameter) keep the limiter within its cap."""
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
-    monkeypatch.setattr(auth, "_rejected_logged_at", {})
+    monkeypatch.setattr(auth, "_rejected_log_state", {})
 
     for i in range(10_000):
         with pytest.raises(HTTPException):
-            auth.verify_internal_key(_rejected(None, f"/internal/{i}"))
+            await auth.verify_internal_key(_rejected(None, f"/internal/{i}"))
         with pytest.raises(HTTPException):
-            auth.verify_internal_key(_rejected("/internal/keys/{key_id}", f"/internal/keys/{i}"))
+            await auth.verify_internal_key(_rejected("/internal/keys/{key_id}", f"/internal/keys/{i}"))
 
-    assert set(auth._rejected_logged_at) == {"<unmatched>", "/internal/keys/{key_id}"}
+    assert set(auth._rejected_log_state) == {"<unmatched>", "/internal/keys/{key_id}"}
 
 
-def test_the_limiter_is_capped_even_with_many_route_templates(monkeypatch):
+async def test_the_limiter_is_capped_even_with_many_route_templates(monkeypatch):
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
-    monkeypatch.setattr(auth, "_rejected_logged_at", {})
+    monkeypatch.setattr(auth, "_rejected_log_state", {})
 
     for i in range(auth.REJECTED_KEY_LOG_MAX_ROUTES * 4):
         with pytest.raises(HTTPException):
-            auth.verify_internal_key(_rejected(f"/internal/route-{i}", f"/internal/route-{i}"))
+            await auth.verify_internal_key(_rejected(f"/internal/route-{i}", f"/internal/route-{i}"))
 
-    assert len(auth._rejected_logged_at) == auth.REJECTED_KEY_LOG_MAX_ROUTES
+    assert len(auth._rejected_log_state) == auth.REJECTED_KEY_LOG_MAX_ROUTES
 
 
 def test_unknown_internal_paths_never_reach_the_check(monkeypatch):
     """Over HTTP an unknown /internal path is a 404 before the dependency runs."""
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
-    monkeypatch.setattr(auth, "_rejected_logged_at", {})
+    monkeypatch.setattr(auth, "_rejected_log_state", {})
     client, _ = _cache_client(monkeypatch)
 
     assert client.get("/internal/no-such-route-123").status_code == 404
-    assert auth._rejected_logged_at == {}
+    assert auth._rejected_log_state == {}
 
     assert client.get("/internal/cache/stats").status_code == 401
     # One entry for the matched template. Depending on the FastAPI version
     # the template is reported with or without the /internal prefix.
-    (template,) = auth._rejected_logged_at
+    (template,) = auth._rejected_log_state
     assert template in {"/internal/cache/stats", "/cache/stats"}
 
 
-def test_missing_key_is_logged_once_per_process(monkeypatch, caplog):
+async def test_missing_key_is_logged_once_per_process(monkeypatch, caplog):
     import logging
 
     monkeypatch.setattr(settings, "ai_gateway_internal_key", "")
@@ -361,7 +377,7 @@ def test_missing_key_is_logged_once_per_process(monkeypatch, caplog):
 
     for _ in range(3):
         with pytest.raises(HTTPException) as exc:
-            auth.verify_internal_key(_request("anything"))
+            await auth.verify_internal_key(_request("anything"))
         assert exc.value.status_code == 503
 
     errors = [r for r in caplog.records if r.levelno == logging.ERROR]
@@ -369,3 +385,58 @@ def test_missing_key_is_logged_once_per_process(monkeypatch, caplog):
     # One boolean, not a per-request or per-path structure.
     assert auth._missing_key_logged is True
     assert "AI_GATEWAY_INTERNAL_KEY is not configured" in errors[0].getMessage()
+
+
+async def test_suppressed_rejections_are_counted_in_the_next_warning(monkeypatch, caplog):
+    import logging
+
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    monkeypatch.setattr(auth, "_rejected_log_state", {})
+    clock = {"now": 50.0}
+    monkeypatch.setattr(auth.time, "monotonic", lambda: clock["now"])
+    caplog.set_level(logging.WARNING, logger=auth.logger.name)
+
+    for _ in range(5):
+        with pytest.raises(HTTPException):
+            await auth.verify_internal_key(_rejected("/internal/budget", "/internal/budget"))
+    clock["now"] += auth.REJECTED_KEY_LOG_INTERVAL_SECONDS
+    with pytest.raises(HTTPException):
+        await auth.verify_internal_key(_rejected("/internal/budget", "/internal/budget"))
+    clock["now"] += auth.REJECTED_KEY_LOG_INTERVAL_SECONDS
+    with pytest.raises(HTTPException):
+        await auth.verify_internal_key(_rejected("/internal/budget", "/internal/budget"))
+
+    messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert messages == [
+        "Rejected internal request POST /internal/budget: invalid internal key",
+        "Rejected internal request POST /internal/budget (4 more since last log): "
+        "invalid internal key",
+        "Rejected internal request POST /internal/budget: invalid internal key",
+    ]
+
+
+def test_include_internal_router_takes_an_extra_prefix(monkeypatch):
+    from fastapi import APIRouter, FastAPI
+    from fastapi.testclient import TestClient
+
+    router = APIRouter()
+
+    @router.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    app = FastAPI()
+    auth.include_internal_router(app, router, prefix="/extra", tags=["x"])
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    client = TestClient(app)
+
+    assert client.get("/internal/extra/ping").status_code == 401
+    assert client.get("/internal/extra/ping", headers={"x-internal-key": "right-key"}).json() == {
+        "ok": True
+    }
+
+
+def test_verify_internal_key_is_async():
+    import inspect
+
+    assert inspect.iscoroutinefunction(auth.verify_internal_key)

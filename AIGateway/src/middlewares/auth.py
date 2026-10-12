@@ -1,8 +1,11 @@
 """Shared authentication for the internal API.
 
 Every router mounted under /internal is included with include_internal_router,
-which attaches verify_internal_key as a router-level dependency. A route
-cannot forget the check, and it runs before the request body is validated.
+which attaches verify_internal_key as a router-level dependency, so a route
+cannot forget the check. The key is checked before the body is validated
+against the route's schema, so an unauthenticated request learns nothing
+about it. FastAPI still reads and JSON-decodes the body first: a body that is
+not JSON at all gets a 422 json_invalid even without the key.
 """
 
 import hmac
@@ -26,7 +29,8 @@ INTERNAL_KEY_REJECTED = "internal_key_rejected"
 REJECTED_KEY_LOG_INTERVAL_SECONDS = 60.0
 REJECTED_KEY_LOG_MAX_ROUTES = 256
 _UNMATCHED_ROUTE = "<unmatched>"
-_rejected_logged_at: dict[str, float] = {}
+# route template -> [time it was last logged, rejections not logged since]
+_rejected_log_state: dict[str, list] = {}
 # A single flag: the missing-key error is logged once per process.
 _missing_key_logged = False
 
@@ -61,23 +65,36 @@ def _route_template(request: Request) -> str:
 
 
 def _log_rejected_key(request: Request) -> None:
-    """Warn about a rejected key, at most once a minute per route template.
-    Only the method and the template are logged, never the key, the header
-    value or the raw path."""
+    """Warn about a rejected key, at most once a minute per route template;
+    the next warning counts the rejections suppressed in between. Only the
+    method and the template are logged, never the key, the header value or
+    the raw path."""
     route = _route_template(request)
     now = time.monotonic()
-    last = _rejected_logged_at.get(route)
-    if last is not None and now - last < REJECTED_KEY_LOG_INTERVAL_SECONDS:
+    state = _rejected_log_state.get(route)
+    if state is not None and now - state[0] < REJECTED_KEY_LOG_INTERVAL_SECONDS:
+        state[1] += 1
         return
-    if route not in _rejected_logged_at and len(_rejected_logged_at) >= REJECTED_KEY_LOG_MAX_ROUTES:
+    suppressed = state[1] if state is not None else 0
+    if state is None and len(_rejected_log_state) >= REJECTED_KEY_LOG_MAX_ROUTES:
         # Hard cap: drop the oldest entry (dicts keep insertion order).
-        _rejected_logged_at.pop(next(iter(_rejected_logged_at)))
-    _rejected_logged_at.pop(route, None)
-    _rejected_logged_at[route] = now
-    logger.warning("Rejected internal request %s %s: invalid internal key", request.method, route)
+        _rejected_log_state.pop(next(iter(_rejected_log_state)))
+    _rejected_log_state.pop(route, None)
+    _rejected_log_state[route] = [now, 0]
+    if suppressed:
+        logger.warning(
+            "Rejected internal request %s %s (%d more since last log): invalid internal key",
+            request.method,
+            route,
+            suppressed,
+        )
+    else:
+        logger.warning(
+            "Rejected internal request %s %s: invalid internal key", request.method, route
+        )
 
 
-def verify_internal_key(request: Request) -> None:
+async def verify_internal_key(request: Request) -> None:
     """Verify the request comes from the Express backend. Fails closed:
 
     - no internal key configured (empty or whitespace, trimmed by settings):
@@ -88,7 +105,9 @@ def verify_internal_key(request: Request) -> None:
       internal_key_rejected. Logged as a rate-limited warning.
 
     Errors carry {"detail": {"message": ..., "code": ...}}. Used as a
-    router-level dependency through include_internal_router."""
+    router-level dependency through include_internal_router. Async because
+    it never blocks: it runs on the event loop instead of taking a threadpool
+    slot per request, and the log state above is only touched from the loop."""
     expected = settings.ai_gateway_internal_key
     if not expected:
         _log_missing_key_once(request)
@@ -108,8 +127,15 @@ def verify_internal_key(request: Request) -> None:
         )
 
 
-def include_internal_router(app: FastAPI, router: APIRouter, **kwargs) -> None:
-    """Mount a router under /internal with the internal key check on every
-    route it has, including routes added later."""
+def include_internal_router(
+    app: FastAPI, router: APIRouter, prefix: str = "", **kwargs
+) -> None:
+    """Mount a router under /internal (plus an optional extra `prefix`) with
+    the internal key check on every route it has.
+
+    include_router copies the router's routes when it is called, so all routes
+    must be defined before the router is mounted."""
     dependencies = [Depends(verify_internal_key), *kwargs.pop("dependencies", [])]
-    app.include_router(router, prefix="/internal", dependencies=dependencies, **kwargs)
+    app.include_router(
+        router, prefix=f"/internal{prefix}", dependencies=dependencies, **kwargs
+    )
