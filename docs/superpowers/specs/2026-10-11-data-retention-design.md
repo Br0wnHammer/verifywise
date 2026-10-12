@@ -70,7 +70,8 @@ Who can change each period today:
   updated_at TIMESTAMPTZ DEFAULT now(), updated_by INT REFERENCES users ON DELETE SET NULL`.
   `NULL` or a missing row = keep indefinitely. Saving is an
   `INSERT ... ON CONFLICT (organization_id) DO UPDATE`. Registered in the
-  tenant-isolation and RLS registries.
+  tenant-isolation registry with an isolation test (no per-table RLS policy:
+  this codebase adds RLS policies retroactively, in batches).
 - Not a `feature_settings` column: that table has no unique key on
   `organization_id` and no code ever inserts a row, so only orgs migrated
   from the old per-tenant schemas have one (see "Found while designing").
@@ -87,7 +88,7 @@ pruned_through_id BIGINT NOT NULL, anchor_hash CHAR(64) NOT NULL,
 cutoff TIMESTAMPTZ NOT NULL, rows_deleted INT NOT NULL, created_at TIMESTAMPTZ DEFAULT now()`.
 Append-only: UPDATE and DELETE are rejected by triggers (except the
 organization cascade, as for the ledger). It is the permanent record of every
-prune. Registered in the tenant-isolation and RLS registries.
+prune. Registered in the tenant-isolation registry, like the settings table.
 
 **Prune of one org** (one transaction per batch):
 
@@ -127,9 +128,20 @@ the two AI Gateway-owned `ai_gateway_endpoint_change_history` and
 `ai_gateway_guardrail_change_history`), `ai_action_audit_log` (`created_at`)
 and `file_access_logs` (`access_date`): batched deletes
 `WHERE organization_id = :org AND <ts> < :cutoff`, oldest first, 10,000 per
-batch. The table list comes from one constant; the change history list is
-derived from `changeHistory.config.ts` so a new entity type is covered
-automatically. Indexes on `(organization_id, <ts>)` are added where missing.
+batch.
+
+- The table list is one explicit constant of `{ table, timestampColumn }`,
+  because timestamp columns differ (`model_lifecycle_change_history` uses
+  `created_at`). A unit test fails if any `tableName` in
+  `ENTITY_CONFIGS` (`changeHistory.config.ts`) is missing from it, so a new
+  entity type cannot be silently skipped.
+- Tables that do not exist are skipped (`to_regclass`): no migration creates
+  `project_change_history`, `framework_change_history` or
+  `evidence_hub_change_history`.
+- Indexes on `(organization_id, <ts>)` are added where missing: the 12 change
+  history tables with none, `event_logs`, `file_access_logs` (Servers
+  migration, guarded by `to_regclass`), and the two AI Gateway change history
+  tables (Alembic, section 6).
 
 ### 4. Daily job
 
@@ -185,15 +197,29 @@ rows); server logs.
   with the number of records the next cleanup will delete (a count query) and
   a link to Export CSV on the Audit ledger page.
 - Backend: `GET /api/data-retention` returns every row in one response;
-  `PUT /api/data-retention/audit-records` sets the audit period.
-  AI Gateway, MRM and file settings are written through their existing APIs.
+  `GET /api/data-retention/audit-records/preview?months=N` returns how many
+  records a period would delete; `PUT /api/data-retention/audit-records`
+  sets the audit period. All `authorize("organization.admin")`.
+  The GET reads AI Gateway settings and the Agent Control period from the
+  gateway's internal API with the org's headers; if the gateway is
+  unreachable those rows show "Unavailable" and the rest still load.
+  AI Gateway, MRM, file and Shadow AI settings are written through their
+  existing APIs.
 
 ### 6. AI Gateway changes (Alembic `a0011`)
 
 - Add `spend_log_retention_days INT NOT NULL DEFAULT 90` (the column the
   spend purge already reads) and `auto_purge_enabled BOOLEAN NOT NULL DEFAULT false`
   to `ai_gateway_guardrail_settings`.
-- Settings read/write include both; `POST /internal/retention/purge` purges
+- `upsert_guardrail_settings` today resets every key missing from the PUT
+  body to its default; it becomes a partial update (only keys present
+  change), so saving one row from the Data retention tab cannot wipe the
+  other guardrail settings.
+- Indexes `(organization_id, changed_at)` on
+  `ai_gateway_endpoint_change_history` and
+  `ai_gateway_guardrail_change_history`.
+- `GET /internal/retention/config` returns `{ mcp_audit_retention_days }`.
+- Settings read/write include both new columns; `POST /internal/retention/purge` purges
   for every org with `auto_purge_enabled`, returning
   `[{ organization_id, guardrail_deleted, spend_deleted }]`.
 - AI Gateway → Settings: "Purge old logs" gets a confirmation and shows the
@@ -250,8 +276,11 @@ Enforced on the server; the UI disables the control for non-Admins with
   `feature_settings` row, ledger entry on change; non-Admin 403 on MRM
   `retention_months` and on a changed per-file `retention_policy`, while
   alert settings and `expiry_date` still work for them.
-- AI Gateway pytest: new columns, internal purge only touches orgs with the
-  switch on.
+- AI Gateway pytest: new columns, partial settings update keeps other
+  keys, internal purge only touches orgs with the switch on.
+- The new real-DB integration test file is added to the explicit allow-list
+  in `.github/workflows/backend-checks.yml`, or CI never runs it; the new
+  tables get tenant-isolation registry entries and isolation tests.
 - Client: Data retention tab rows, read-only rows, confirmation on
   shortening, purge button confirmation and result.
 - i18n de/fr/es for every new string.
