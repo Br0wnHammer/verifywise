@@ -14335,7 +14335,7 @@ paths:
       security:
         -
           bearerAuth: []
-      description: 'One bounded page (up to 1000 objects) for the import picker. Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      description: 'One page (up to 1000 objects) for the import picker, as { objects, hasMore, nextStartAt }; pass nextStartAt as startAt to load more. Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
       parameters:
         -
           name: objectTypeId
@@ -14344,6 +14344,14 @@ paths:
           description: 'The objectTypeId'
           schema:
             type: string
+        -
+          name: startAt
+          in: query
+          required: false
+          description: 'Offset of the first object (default 0)'
+          schema:
+            type: integer
+            minimum: 0
   /extensions/jira-assets/import:
     post:
       summary: 'Post Import'
@@ -14355,7 +14363,7 @@ paths:
         '404':
           description: 'Jira Assets is not configured'
         '409':
-          description: 'A Jira Assets sync or import is already running for this organization'
+          description: 'A sync or import is already running, or this import was interrupted part-way ({ message, imported, skipped })'
         '500':
           description: 'Internal server error'
         '502':
@@ -14395,7 +14403,9 @@ paths:
       summary: 'Get Sync Status Ctrl'
       responses:
         '200':
-          description: Success
+          description: 'Last-sync fields, running, latest_run, and with historyId the run as run (with is_live)'
+        '400':
+          description: 'historyId is not a positive integer'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
         '500':
@@ -14407,6 +14417,15 @@ paths:
         -
           bearerAuth: []
       description: 'Requires the jira-assets extension to be enabled for the organization (403 otherwise).'
+      parameters:
+        -
+          name: historyId
+          in: query
+          required: false
+          description: 'A sync history id (from POST /sync) to return as run'
+          schema:
+            type: integer
+            minimum: 1
   /extensions/jira-assets/sync/history:
     get:
       summary: 'Get Sync History Ctrl'

@@ -3859,10 +3859,11 @@ export const extensionEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/extensions/jira-assets/object-types/{objectTypeId}/objects',
     summary: "Get Objects",
-    description: "One bounded page (up to 1000 objects) for the import picker. Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
+    description: "One page (up to 1000 objects) for the import picker, as { objects, hasMore, nextStartAt }; pass nextStartAt as startAt to load more. Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
     requiresAuth: true,
     parameters: [
       { name: 'objectTypeId', in: 'path', type: 'string', required: true, description: "The objectTypeId" },
+      { name: 'startAt', in: 'query', type: 'integer', required: false, description: "Offset of the first object (default 0)" },
     ],
     responses: [
       { status: 200, description: "Success" },
@@ -3883,7 +3884,7 @@ export const extensionEndpoints: Endpoint[] = [
       { status: 200, description: "Success" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
       { status: 404, description: "Jira Assets is not configured" },
-      { status: 409, description: "A Jira Assets sync or import is already running for this organization" },
+      { status: 409, description: "A sync or import is already running, or this import was interrupted part-way ({ message, imported, skipped })" },
       { status: 500, description: "Internal server error" },
       { status: 502, description: "Jira or network failure (reason in error)" },
     ],
@@ -3911,8 +3912,12 @@ export const extensionEndpoints: Endpoint[] = [
     summary: "Get Sync Status Ctrl",
     description: "Requires the jira-assets extension to be enabled for the organization (403 otherwise).",
     requiresAuth: true,
+    parameters: [
+      { name: 'historyId', in: 'query', type: 'integer', required: false, description: "A sync history id (from POST /sync) to return as run" },
+    ],
     responses: [
-      { status: 200, description: "Success" },
+      { status: 200, description: "Last-sync fields, running, latest_run, and with historyId the run as run (with is_live)" },
+      { status: 400, description: "historyId is not a positive integer" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
       { status: 500, description: "Internal server error" },
     ],

@@ -2,7 +2,17 @@ jest.mock("../jiraAssets.service", () => {
   class JiraConfigValidationError extends Error {}
   class JiraNotConfiguredError extends Error {}
   class JiraSyncInProgressError extends Error {}
+  class JiraImportInterruptedError extends Error {
+    constructor(
+      public imported: number,
+      public skipped: number,
+    ) {
+      super(`interrupted after ${imported}`);
+    }
+  }
   return {
+    JiraImportInterruptedError,
+    getSyncStatus: jest.fn(),
     JiraConfigValidationError,
     JiraNotConfiguredError,
     JiraSyncInProgressError,
@@ -26,9 +36,17 @@ jest.mock("../../../utils/i18n.utils", () => ({
   translateError: jest.fn(() => "Something went wrong"),
 }));
 
-import { getObjects, patchSelection, postImport, postSync } from "../jiraAssets.ctrl";
+import {
+  getObjects,
+  getSyncStatusCtrl,
+  patchSelection,
+  postImport,
+  postSync,
+} from "../jiraAssets.ctrl";
 import {
   clientFromConfig,
+  getSyncStatus,
+  JiraImportInterruptedError,
   importObjects,
   JiraConfigValidationError,
   JiraNotConfiguredError,
@@ -107,6 +125,19 @@ describe("POST /import", () => {
     });
   });
 
+  it("returns 409 with partial counts when the import was interrupted", async () => {
+    (importObjects as jest.Mock).mockRejectedValue(new JiraImportInterruptedError(3, 1));
+    const res = mockRes();
+
+    await postImport({ ...req, body: { object_ids: ["1"] } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Conflict",
+      data: { message: "interrupted after 3", imported: 3, skipped: 1 },
+    });
+  });
+
   it("returns 409 while a sync is running", async () => {
     (importObjects as jest.Mock).mockRejectedValue(new JiraSyncInProgressError("running"));
     const res = mockRes();
@@ -133,8 +164,12 @@ describe("PATCH /config/selection", () => {
 });
 
 describe("GET /object-types/:id/objects (import picker)", () => {
-  it("uses the bounded single-page call, not the full walk", async () => {
-    const getObjectsPage = jest.fn(async () => []);
+  it("uses the single-page call from startAt and returns hasMore", async () => {
+    const getObjectsPage = jest.fn(async () => ({
+      objects: [],
+      hasMore: true,
+      nextStartAt: 2000,
+    }));
     const getAllObjects = jest.fn();
     (loadFullConfig as jest.Mock).mockResolvedValue({
       jira_base_url: "https://x",
@@ -144,10 +179,35 @@ describe("GET /object-types/:id/objects (import picker)", () => {
     (clientFromConfig as jest.Mock).mockReturnValue({ getObjectsPage, getAllObjects });
     const res = mockRes();
 
-    await getObjects({ ...req, params: { objectTypeId: "42" } }, res);
+    await getObjects({ ...req, params: { objectTypeId: "42" }, query: { startAt: "1000" } }, res);
 
-    expect(getObjectsPage).toHaveBeenCalledWith("42");
+    expect(getObjectsPage).toHaveBeenCalledWith("42", 1000);
     expect(getAllObjects).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "OK",
+      data: { objects: [], hasMore: true, nextStartAt: 2000 },
+    });
+  });
+});
+
+describe("GET /sync/status", () => {
+  it("passes a valid historyId through", async () => {
+    (getSyncStatus as jest.Mock).mockResolvedValue({ run: { id: 77 } });
+    const res = mockRes();
+
+    await getSyncStatusCtrl({ ...req, query: { historyId: "77" } }, res);
+
+    expect(getSyncStatus).toHaveBeenCalledWith(5, 77);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("rejects a malformed historyId", async () => {
+    const res = mockRes();
+
+    await getSyncStatusCtrl({ ...req, query: { historyId: "abc" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(getSyncStatus).not.toHaveBeenCalled();
   });
 });

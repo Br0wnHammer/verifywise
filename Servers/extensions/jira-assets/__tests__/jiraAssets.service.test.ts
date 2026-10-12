@@ -2,7 +2,9 @@ import {
   claimSyncRun,
   errorMessage,
   finalizeFailure,
+  getSyncStatus,
   importObjects,
+  JiraImportInterruptedError,
   JiraConfigValidationError,
   JiraNotConfiguredError,
   JiraSyncInProgressError,
@@ -22,6 +24,7 @@ import { sequelize } from "../../../database/db";
 import { decryptText } from "../../../tools/createSecureValue";
 import { JiraAssetsClient } from "../jira.client";
 import { enqueueJiraAssetsManualSync } from "../../../services/automations/automationProducer";
+import logger from "../../../utils/logger/fileLogger";
 
 const FAKE_TX = { id: "tx" };
 
@@ -37,7 +40,7 @@ jest.mock("../../../tools/createSecureValue", () => ({
 }));
 jest.mock("../jira.client", () => {
   class JiraUpstreamError extends Error {}
-  return { JiraAssetsClient: jest.fn(), JiraUpstreamError };
+  return { JiraAssetsClient: jest.fn(), JiraUpstreamError, WORKER_SYNC_DEADLINE_MS: 600_000 };
 });
 jest.mock("../../../services/automations/automationProducer", () => ({
   enqueueJiraAssetsManualSync: jest.fn(),
@@ -292,6 +295,9 @@ describe("runClaimedSync — manual deletion safety", () => {
 
     expect(result.objectsDeleted).toBe(0);
     expect(result.linksRemoved).toBe(1);
+    const [completedSql, completed] = sqlCalls("SET status = 'completed'")[0];
+    expect(completedSql).toContain("links_removed = :linksRemoved");
+    expect(completed.replacements).toMatchObject({ objectsDeleted: 0, linksRemoved: 1 });
     const [sql, options] = sqlCalls("DELETE FROM jira_assets_use_cases")[0];
     expect(sql).toContain("project_id IS NULL");
     expect(options.replacements).toEqual({ jiraObjectId: "2", organizationId: 5 });
@@ -316,7 +322,7 @@ describe("runClaimedSync — manual deletion safety", () => {
     const result = await runClaimedSync(5, 77, 8, "manual");
 
     expect(result.success).toBe(false);
-    expect(result.status).toContain("did not return every object within 110 seconds");
+    expect(result.status).toContain("did not return every object within 10 minutes");
     expect(sqlCalls("UPDATE projects")).toHaveLength(0);
     expect(sqlCalls("DELETE FROM")).toHaveLength(0);
   });
@@ -406,10 +412,42 @@ describe("startManualSync (Sync now runs in the worker)", () => {
     expect(failed.replacements).toMatchObject({ id: 77, message: "redis down" });
   });
 
-  it("the worker entry validates its payload and fails closed", async () => {
+  it("the worker entry fails closed without a valid org and run id", async () => {
     await expect(runQueuedManualSync({ historyId: 1 })).rejects.toThrow("organizationId");
     await expect(runQueuedManualSync({ organizationId: 5 })).rejects.toThrow("historyId");
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("falls back to no user when triggeredBy is invalid, and still runs", async () => {
+    fakeDb({ existing: [link("1", 101)] });
+    clientReturning([jiraObject("1"), jiraObject("3")]);
+
+    const result = await runQueuedManualSync({
+      organizationId: 5,
+      historyId: 77,
+      triggeredBy: "nobody",
+    });
+
+    expect(result.success).toBe(true);
+    expect(sqlCalls("INSERT INTO projects")[0][1].replacements.owner).toBeNull();
+  });
+
+  it("closes the claimed row as failed if the run throws unexpectedly", async () => {
+    fakeDb({ existing: [link("1", 101)], heartbeat: [] });
+    clientReturning([jiraObject("1")]);
+    (logger.warn as jest.Mock).mockImplementationOnce(() => {
+      throw new Error("logger broke");
+    });
+
+    await expect(
+      runQueuedManualSync({ organizationId: 5, historyId: 77, triggeredBy: 8 }),
+    ).rejects.toThrow("logger broke");
+    const [, failed] = sqlCalls("SET status = 'failed', error_message")[0];
+    expect(failed.replacements).toMatchObject({
+      id: 77,
+      organizationId: 5,
+      message: "Manual sync could not run: logger broke",
+    });
   });
 });
 
@@ -508,6 +546,37 @@ describe("importObjects", () => {
     expect(insert.replacements).toMatchObject({ syncType: "import", triggeredBy: 8 });
     expect(sqlCalls("SET status = 'completed'")).toHaveLength(1);
     expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
+  });
+});
+
+describe("importObjects — interrupted", () => {
+  it("reports how many objects were imported when another run took over", async () => {
+    fakeDb({ ownRow: [] });
+    MockClient.mockImplementation(() => ({
+      getAttributes: jest.fn(async () => []),
+      getObjectById: jest.fn(async (id: string) => jiraObject(id)),
+    }));
+
+    const err = await importObjects(5, 8, ["1", "2"]).catch((e) => e);
+
+    expect(err).toBeInstanceOf(JiraImportInterruptedError);
+    expect(err).toMatchObject({ imported: 2, skipped: 0 });
+    expect(err.message).toContain("2 object(s) were imported");
+    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
+  });
+});
+
+describe("getSyncStatus", () => {
+  it("returns the requested run, with liveness computed in SQL", async () => {
+    mockQuery.mockResolvedValue([{ running: true, run: { id: 77 } }]);
+
+    await getSyncStatus(5, 77);
+
+    const [sql, options] = mockQuery.mock.calls[0];
+    expect(sql).toContain("h.id = :historyId");
+    expect(sql).toContain(`(h.status = 'started' AND ${SQL_RUN_IS_LIVE}) AS is_live`);
+    expect(sql).toContain("links_removed");
+    expect(options.replacements).toEqual({ organizationId: 5, historyId: 77 });
   });
 });
 

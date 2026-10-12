@@ -15,6 +15,7 @@ import {
   importObjects,
   JiraAssetsConfig,
   JiraConfigValidationError,
+  JiraImportInterruptedError,
   JiraNotConfiguredError,
   JiraSyncInProgressError,
   listUseCases,
@@ -57,6 +58,7 @@ async function requireClient(organizationId: number): Promise<JiraAssetsClient> 
  * - JiraConfigValidationError → 400
  * - JiraNotConfiguredError → 404
  * - JiraSyncInProgressError → 409
+ * - JiraImportInterruptedError → 409 with { message, imported, skipped }
  * - JiraUpstreamError (Jira response, timeout, DNS/TLS) → 502
  * - anything else → 500, logged
  */
@@ -69,6 +71,13 @@ function sendError(req: Request, res: Response, err: unknown, functionName: stri
   }
   if (err instanceof JiraSyncInProgressError) {
     return res.status(409).json(STATUS_CODE[409](err.message));
+  }
+  if (err instanceof JiraImportInterruptedError) {
+    return res
+      .status(409)
+      .json(
+        STATUS_CODE[409]({ message: err.message, imported: err.imported, skipped: err.skipped }),
+      );
   }
   if (err instanceof JiraUpstreamError) {
     return res.status(502).json(STATUS_CODE[502](err.message));
@@ -175,14 +184,17 @@ export async function getAttributes(req: Request, res: Response): Promise<any> {
 }
 
 /**
- * Objects for the import picker: one bounded page (PICKER_MAX_RESULTS), not
- * the full paginated walk that sync uses.
+ * Objects for the import picker: one page of up to PICKER_MAX_RESULTS from
+ * `?startAt=` (default 0), never the full paginated walk that sync uses.
+ * Returns `{ objects, hasMore, nextStartAt }` so the panel can say more exist
+ * and offer "Load more".
  */
 export async function getObjects(req: Request, res: Response): Promise<any> {
   try {
     const client = await requireClient(orgId(req));
-    const objects = await client.getObjectsPage(stringParam(req, "objectTypeId"));
-    const transformed = objects.map((obj) => ({
+    const startAt = Math.max(0, parseInt(String(req.query?.startAt ?? "0"), 10) || 0);
+    const page = await client.getObjectsPage(stringParam(req, "objectTypeId"), startAt);
+    const transformed = page.objects.map((obj) => ({
       id: obj.id,
       key: obj.objectKey,
       name: obj.label,
@@ -190,7 +202,13 @@ export async function getObjects(req: Request, res: Response): Promise<any> {
       created: obj.created,
       updated: obj.updated,
     }));
-    return res.status(200).json(STATUS_CODE[200](transformed));
+    return res.status(200).json(
+      STATUS_CODE[200]({
+        objects: transformed,
+        hasMore: page.hasMore,
+        nextStartAt: page.nextStartAt,
+      }),
+    );
   } catch (err) {
     return sendError(req, res, err, "getObjects");
   }
@@ -226,7 +244,12 @@ export async function postSync(req: Request, res: Response): Promise<any> {
 
 export async function getSyncStatusCtrl(req: Request, res: Response): Promise<any> {
   try {
-    const status = await getSyncStatus(orgId(req));
+    const rawId = req.query?.historyId;
+    const historyId = rawId === undefined ? null : parseInt(String(rawId), 10);
+    if (historyId !== null && (!Number.isInteger(historyId) || historyId <= 0)) {
+      return res.status(400).json(STATUS_CODE[400]("historyId must be a positive integer"));
+    }
+    const status = await getSyncStatus(orgId(req), historyId);
     return res.status(200).json(STATUS_CODE[200](status));
   } catch (err: any) {
     return res.status(500).json(STATUS_CODE[500](err.message));

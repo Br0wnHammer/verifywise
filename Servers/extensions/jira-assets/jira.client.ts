@@ -31,8 +31,14 @@ export const PAGE_SIZE = 50;
 export const MAX_PAGES = 500;
 /** Per-request timeout for every call to Jira. */
 export const REQUEST_TIMEOUT_SECONDS = 30;
-/** Cap for the single-page import picker listing (GET .../objects). */
+/** Objects per import-picker page (GET .../objects); "Load more" asks for the next one. */
 export const PICKER_MAX_RESULTS = 1000;
+/**
+ * Overall deadline for walking every object of a type in the worker (manual
+ * and scheduled sync). Well inside the 15-minute stale window: the sync
+ * heartbeats after every page, and each request has its own 30 s timeout.
+ */
+export const WORKER_SYNC_DEADLINE_MS = 10 * 60 * 1000;
 
 /**
  * Jira (or the network path to it) failed: non-2xx response, timeout, DNS,
@@ -43,6 +49,13 @@ export class JiraUpstreamError extends Error {
     super(message);
     this.name = "JiraUpstreamError";
   }
+}
+
+/** One import-picker page. `nextStartAt` is the offset for "Load more". */
+export interface ObjectPage {
+  objects: JiraObject[];
+  hasMore: boolean;
+  nextStartAt: number;
 }
 
 export interface ObjectFetchResult {
@@ -172,7 +185,15 @@ export class JiraAssetsClient {
         `Jira returned ${response.status}: ${errorText.slice(0, 500) || "no details"}`,
       );
     }
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch (err) {
+      // The body can time out or be cut off mid-read, or not be JSON.
+      if (deadline.aborted) throw err;
+      throw new JiraUpstreamError(
+        `Could not read Jira's response: ${describeFetchError(err, REQUEST_TIMEOUT_SECONDS)}`,
+      );
+    }
   }
 
   async getSchemas(): Promise<JiraSchema[]> {
@@ -215,31 +236,41 @@ export class JiraAssetsClient {
   }
 
   /**
-   * One bounded page of objects, for the import picker. Never walks further
-   * pages: at most PICKER_MAX_RESULTS objects (the server may cap lower).
+   * One page of objects for the import picker, starting at `startAt`. Never
+   * walks further pages; the caller asks again with `nextStartAt` ("Load
+   * more"). `hasMore` is the API's own last-page signal where it has one
+   * (cloud `isLast`, Data Center page count); otherwise a full page is taken
+   * to mean there may be more. Nothing destructive depends on it.
    */
-  async getObjectsPage(
-    objectTypeId: string,
-    maxResults: number = PICKER_MAX_RESULTS,
-  ): Promise<JiraObject[]> {
-    const limit = Math.min(Math.max(1, Math.floor(maxResults)), PICKER_MAX_RESULTS);
+  async getObjectsPage(objectTypeId: string, startAt: number = 0): Promise<ObjectPage> {
+    const offset = Math.max(0, Math.floor(startAt) || 0);
     if (this.deploymentType === "datacenter") {
+      const page = Math.floor(offset / PICKER_MAX_RESULTS) + 1;
       const iql = encodeURIComponent(`objectTypeId=${objectTypeId}`);
       const result = await this.request<any>(
         `iql/objects?objectSchemaId=${encodeURIComponent(this.workspaceId)}&iql=${iql}` +
-          `&page=1&resultPerPage=${limit}&includeAttributes=true`,
+          `&page=${page}&resultPerPage=${PICKER_MAX_RESULTS}&includeAttributes=true`,
       );
-      return result?.objectEntries || [];
+      const objects: JiraObject[] = result?.objectEntries || [];
+      const pageCount = knownNumber(result?.pageSize);
+      const hasMore =
+        objects.length > 0 &&
+        (pageCount !== null ? page < pageCount : objects.length >= PICKER_MAX_RESULTS);
+      return { objects, hasMore, nextStartAt: page * PICKER_MAX_RESULTS };
     }
     const attrIdToName = await this.attributeNames(objectTypeId);
     const result = await this.request<any>(
-      `object/aql?startAt=0&maxResults=${limit}&includeAttributes=true`,
+      `object/aql?startAt=${offset}&maxResults=${PICKER_MAX_RESULTS}&includeAttributes=true`,
       "POST",
       { qlQuery: `objectTypeId = ${objectTypeId}` },
     );
     const objects: JiraObject[] = result?.values || [];
     for (const obj of objects) (obj as any)._attrIdToName = attrIdToName;
-    return objects;
+    const hasMore =
+      objects.length > 0 &&
+      (result?.isLast === false ||
+        (result?.isLast !== true && objects.length >= PICKER_MAX_RESULTS));
+    return { objects, hasMore, nextStartAt: offset + objects.length };
   }
 
   /**
@@ -247,23 +278,26 @@ export class JiraAssetsClient {
    *
    * - Cloud: `POST object/aql?startAt=&maxResults=&includeAttributes=true`
    *   with `{ qlQuery }`; the response carries `values`, `isLast`, `total`.
-   *   The server may return fewer rows than asked for, so a short page proves
-   *   nothing and the walk advances by the rows returned.
+   *   Only `isLast === true` proves the end: `total` is capped (at 1,000) for
+   *   larger result sets, so reaching it proves nothing, and the server may
+   *   return fewer rows than asked for, so a short page proves nothing either.
+   *   The walk advances by the rows returned.
    * - Data Center: `GET iql/objects?...&page=&resultPerPage=`; the response
    *   carries `objectEntries`, `pageSize` (number of pages) and
-   *   `totalFilterCount`.
+   *   `totalFilterCount`, but no last-page flag. Those counts cannot be shown
+   *   to be uncapped, so the end is proven only when the reported last page
+   *   (page >= pageSize) is a partial page. A type whose size is an exact
+   *   multiple of PAGE_SIZE therefore reports `complete: false` — the safe
+   *   side: deletes are skipped, nothing else changes.
    *
-   * `complete` is true only when the API said so: `isLast === true`, the
-   * reported page count reached, or a reported total reached. Totals that are
-   * absent, null or not numeric count as unknown. Everything else — an empty
-   * page with no proof of the end, MAX_PAGES, the overall deadline — returns
+   * Anything else — an empty page, MAX_PAGES, the overall deadline — returns
    * `complete: false`, and callers must not treat missing objects as deleted.
    */
   async getAllObjects(
     objectTypeId: string,
     options: { onPage?: () => Promise<void>; deadline?: AbortSignal } = {},
   ): Promise<ObjectFetchResult> {
-    const deadline = options.deadline ?? AbortSignal.timeout(EXTERNAL_SYNC_DEADLINE_MS);
+    const deadline = options.deadline ?? AbortSignal.timeout(WORKER_SYNC_DEADLINE_MS);
     const objects: JiraObject[] = [];
     try {
       if (this.deploymentType === "datacenter") {
@@ -279,13 +313,11 @@ export class JiraAssetsClient {
           const entries: JiraObject[] = result?.objectEntries || [];
           objects.push(...entries);
           if (options.onPage) await options.onPage();
-          const pageCount = knownNumber(result?.pageSize);
-          const total = knownNumber(result?.totalFilterCount);
-          if (pageCount !== null && pageCount > 0 && page >= pageCount) {
-            return { objects, complete: true };
-          }
-          if (total !== null && objects.length >= total) return { objects, complete: true };
           if (entries.length === 0) return { objects, complete: false };
+          const pageCount = knownNumber(result?.pageSize);
+          if (pageCount !== null && pageCount > 0 && page >= pageCount) {
+            return { objects, complete: entries.length < PAGE_SIZE };
+          }
         }
         return { objects, complete: false };
       }
@@ -304,8 +336,6 @@ export class JiraAssetsClient {
         objects.push(...values);
         if (options.onPage) await options.onPage();
         if (result?.isLast === true) return { objects, complete: true };
-        const total = knownNumber(result?.total);
-        if (total !== null && objects.length >= total) return { objects, complete: true };
         if (values.length === 0) return { objects, complete: false };
         startAt += values.length;
       }

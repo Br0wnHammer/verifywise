@@ -372,12 +372,25 @@ longer returns are kept and reported:
 3. queues a one-off `jira_assets_manual_sync` job (one attempt), then returns
    202 with `{ historyId }`
 
-`runQueuedManualSync` validates the payload and fails closed, then runs the
-claimed sync. The panel polls `GET /sync/status` every 3 seconds, for up to
-20 minutes. That endpoint returns `running` (computed in SQL) and
-`latest_run` (the newest manual or scheduled history row), and the panel shows
-the outcome from them. The browser's 120-second request timeout no longer
-applies to a sync.
+`runQueuedManualSync` runs the claimed sync. It fails closed when
+`organizationId` or `historyId` is missing or invalid, because there is then
+no row it can safely touch. An invalid `triggeredBy` only loses attribution,
+so it falls back to null. If the run throws unexpectedly, the claimed row is
+closed as failed before the error is rethrown.
+
+The panel polls `GET /sync/status?historyId=<id>` every 3 seconds, for up to
+20 minutes. That endpoint returns `run`: that history row (this org's only)
+with `is_live` computed in SQL. Polling stops once the run is no longer
+`started`, or no longer live. The panel then reports that run's own result:
+
+- **completed:** the counts (created, updated, deleted, and "unlinked" when
+  `links_removed` > 0)
+- **failed:** the run's `error_message`
+- **stopped heart-beating** (still `started`, or closed as abandoned): "The
+  sync stopped responding. Try again."
+
+The response also carries `running` and `latest_run`. The browser's
+120-second request timeout no longer applies to a sync.
 
 A manual sync creates use cases for new objects of the selected type, owned
 by the user who started it. It removes the ones that disappeared upstream only
@@ -393,35 +406,44 @@ when the fetch can be trusted:
   - any link's type is unknown ("skipped: type unknown")
 - `objects_deleted` counts only projects actually removed (`DELETE ...
   RETURNING`). A link row with no project whose object is gone is removed on
-  its own and counted as `linksRemoved`.
+  its own. It is counted in the history column `links_removed` (and
+  `linksRemoved` in the result), and the panel shows it as "unlinked".
 
 **Pagination, timeouts, deadline.** `JiraAssetsClient.getAllObjects` follows
 the Assets API pages.
 
-- **Cloud:** `POST object/aql?startAt=&maxResults=` with `{ qlQuery }`. It
-  advances by the number of rows returned, because the server may cap the
-  page size.
-- **Data Center:** `GET iql/objects?...&page=&resultPerPage=`.
+- **Cloud:** `POST object/aql?startAt=&maxResults=` with `{ qlQuery }`. Only
+  `isLast === true` proves the end. `total` can be capped for large result
+  sets (reported as 1,000), so reaching it proves nothing. The server may also
+  return fewer rows than asked for, so a short page proves nothing either. The
+  walk advances by the number of rows returned.
+- **Data Center:** `GET iql/objects?...&page=&resultPerPage=`. There is no
+  last-page flag, and `pageSize` (the page count) and `totalFilterCount`
+  cannot be shown to be uncapped. The end is therefore proven only when the
+  reported last page (page >= `pageSize`) is a partial page. A type whose size
+  is an exact multiple of 50 reports incomplete. That is the safe side: deletes
+  are skipped.
 
-The fetch is `complete` only when one of these holds:
+Anything else returns `complete: false`: an empty page, the 500-page stop, or
+the deadline.
 
-- `isLast === true`
-- the reported page count (`pageSize`) has been reached
-- the reported total (`total` / `totalFilterCount`) has been reached
+Every request has a 30-second timeout (`requestSignal`). The worker's walk has
+an overall deadline of `WORKER_SYNC_DEADLINE_MS` (10 minutes). That stays well
+inside the 15-minute stale window, because the sync heartbeats after every
+page. When the deadline passes, the fetch is flagged and the run fails with
+"Jira did not return every object within 10 minutes, so nothing was changed".
+Browser-initiated calls (discovery, the picker, the connection test) keep the
+110-second `EXTERNAL_SYNC_DEADLINE_MS`.
 
-A missing, null or non-numeric total counts as unknown. A short or empty page
-proves nothing. The walk stops after 500 pages of 50. Every request has a
-30-second timeout, and the whole walk has an overall deadline of
-`EXTERNAL_SYNC_DEADLINE_MS` (110 seconds), via `requestSignal` from
-`Servers/utils/outboundFetch.utils.ts` as MLflow and Azure do. When the
-deadline passes, the fetch is flagged and the run fails with "Jira did not
-return every object within 110 seconds, so nothing was changed". Jira and
-network failures become `JiraUpstreamError`, with the status, or the cause
-from `describeFetchError`.
+Jira and network failures become `JiraUpstreamError`, with the status or the
+cause from `describeFetchError`. That includes a response body that times out
+or cannot be read.
 
-The import picker (`GET /object-types/:id/objects`) uses `getObjectsPage`.
-That is one bounded request for up to 1000 objects, and it never walks further
-pages.
+The import picker (`GET /object-types/:id/objects?startAt=`) uses
+`getObjectsPage`. That is one request for up to 1000 objects, and it never
+walks further pages. It returns `{ objects, hasMore, nextStartAt }`. When
+`hasMore` is true, the panel shows "More objects exist in Jira than are shown
+here." with a **Load more** button that asks for the next page.
 
 **Atomic writes.** A new use case (project plus link row) is created in one
 transaction. A unique violation on `(organization_id, jira_object_id)` counts
@@ -444,7 +466,12 @@ closed the run as abandoned. `touchHeartbeat` then throws `RunSupersededError`
 and the run stops at once, with no further writes. Both finalize steps update
 only their own row, by id and while it is still `started`. If that update
 affects 0 rows, they leave the config alone. `heartbeat_at` and the `'import'`
-sync type come from migration `20261012003957-jira-assets-sync-heartbeat.js`.
+sync type, and `links_removed`, come from migration
+`20261012003957-jira-assets-sync-heartbeat.js`.
+
+If an import is closed as abandoned part-way, it stops and `POST /import`
+returns 409 with `{ message, imported, skipped }`. Objects imported before
+that stay imported.
 
 **Failures are recorded and back off.** For a sync, every failure after the
 claim is written to the history row and the config by `finalizeFailure`. That

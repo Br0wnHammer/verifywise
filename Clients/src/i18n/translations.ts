@@ -9705,6 +9705,12 @@ export const translations: Record<string, Record<string, string>> = {
       "Die Synchronisierung dauert länger als erwartet. Prüfen Sie das Ergebnis der letzten Synchronisierung später.",
     "Could not save the schema and object type. Try again.":
       "Schema und Objekttyp konnten nicht gespeichert werden. Versuchen Sie es erneut.",
+    "More objects exist in Jira than are shown here.":
+      "In Jira gibt es mehr Objekte, als hier angezeigt werden.",
+    "Load more": "Mehr laden",
+    "The sync stopped responding. Try again.":
+      "Die Synchronisierung reagiert nicht mehr. Versuchen Sie es erneut.",
+    "Sync failed": "Synchronisierung fehlgeschlagen",
     "A sync is already running. Try again when it finishes.":
       "Es läuft bereits eine Synchronisierung. Versuchen Sie es erneut, wenn sie abgeschlossen ist.",
     "Error Details:": "Fehlerdetails:",
@@ -19807,6 +19813,11 @@ export const translations: Record<string, Record<string, string>> = {
       "La synchronisation prend plus de temps que prévu. Consultez le résultat de la dernière synchronisation plus tard.",
     "Could not save the schema and object type. Try again.":
       "Impossible d'enregistrer le schéma et le type d'objet. Réessayez.",
+    "More objects exist in Jira than are shown here.":
+      "Jira contient plus d'objets que ceux affichés ici.",
+    "Load more": "Charger plus",
+    "The sync stopped responding. Try again.": "La synchronisation ne répond plus. Réessayez.",
+    "Sync failed": "Échec de la synchronisation",
     "A sync is already running. Try again when it finishes.":
       "Une synchronisation est déjà en cours. Réessayez une fois qu'elle est terminée.",
     "Error Details:": "Détails de l'erreur :",
@@ -29835,6 +29846,12 @@ export const translations: Record<string, Record<string, string>> = {
       "La sincronización está tardando más de lo esperado. Consulte el resultado de la última sincronización más tarde.",
     "Could not save the schema and object type. Try again.":
       "No se pudieron guardar el esquema y el tipo de objeto. Inténtelo de nuevo.",
+    "More objects exist in Jira than are shown here.":
+      "Hay más objetos en Jira de los que se muestran aquí.",
+    "Load more": "Cargar más",
+    "The sync stopped responding. Try again.":
+      "La sincronización dejó de responder. Inténtelo de nuevo.",
+    "Sync failed": "Error de sincronización",
     "A sync is already running. Try again when it finishes.":
       "Ya hay una sincronización en curso. Inténtelo de nuevo cuando termine.",
     "Error Details:": "Detalles del error:",

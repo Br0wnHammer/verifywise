@@ -1,10 +1,14 @@
 import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../../database/db";
 import { encryptText, decryptText } from "../../tools/createSecureValue";
-import { JiraAssetsClient, JiraObject, JiraUpstreamError } from "./jira.client";
+import {
+  JiraAssetsClient,
+  JiraObject,
+  JiraUpstreamError,
+  WORKER_SYNC_DEADLINE_MS,
+} from "./jira.client";
 import { transformAttributes } from "./jira.constants";
 import logger, { logStructured } from "../../utils/logger/fileLogger";
-import { EXTERNAL_SYNC_DEADLINE_MS } from "../../utils/outboundFetch.utils";
 import { enqueueJiraAssetsManualSync } from "../../services/automations/automationProducer";
 import { SQL_NOW_UTC, sqlWithinLastMinutes } from "../scheduledSync.utils";
 
@@ -115,6 +119,22 @@ export class RunSupersededError extends Error {
   constructor(historyId: number) {
     super(`Jira Assets run ${historyId} was closed by another run; stopping`);
     this.name = "RunSupersededError";
+  }
+}
+
+/**
+ * An import was stopped part-way because another run closed it as abandoned.
+ * Objects imported before that stay imported; the controller returns 409.
+ */
+export class JiraImportInterruptedError extends Error {
+  constructor(
+    public readonly imported: number,
+    public readonly skipped: number,
+  ) {
+    super(
+      `The import was interrupted because another sync took over. ${imported} object(s) were imported before it stopped.`,
+    );
+    this.name = "JiraImportInterruptedError";
   }
 }
 
@@ -671,6 +691,7 @@ interface RunCounts {
   objectsCreated: number;
   objectsUpdated: number;
   objectsDeleted: number;
+  linksRemoved: number;
 }
 
 /**
@@ -692,6 +713,7 @@ async function finalizeSuccess(
             objects_created = :objectsCreated,
             objects_updated = :objectsUpdated,
             objects_deleted = :objectsDeleted,
+            links_removed = :linksRemoved,
             error_message = :note,
             completed_at = ${SQL_NOW_UTC}
       WHERE id = :id AND organization_id = :organizationId AND status = 'started'
@@ -815,14 +837,18 @@ export async function importObjects(
         objectsCreated: imported,
         objectsUpdated: 0,
         objectsDeleted: 0,
+        linksRemoved: 0,
       },
       errors.length > 0 ? `${errors.length} object(s) failed to import` : null,
       false,
     );
   } catch (err) {
-    if (!(err instanceof RunSupersededError)) {
-      await finalizeFailure(historyId, organizationId, err, false);
+    if (err instanceof RunSupersededError) {
+      // Another claim closed this import as abandoned; its row is already
+      // failed. Report how far it got instead of a bare error.
+      throw new JiraImportInterruptedError(imported, skipped);
     }
+    await finalizeFailure(historyId, organizationId, err, false);
     throw err;
   }
 
@@ -905,12 +931,12 @@ export async function runClaimedSync(
     const client = clientFromConfig(config);
 
     const fetched = await client.getAllObjects(objectTypeId, {
-      deadline: AbortSignal.timeout(EXTERNAL_SYNC_DEADLINE_MS),
+      deadline: AbortSignal.timeout(WORKER_SYNC_DEADLINE_MS),
       onPage: () => touchHeartbeat(historyId, organizationId),
     });
     if (fetched.stoppedReason === "deadline") {
       throw new JiraUpstreamError(
-        `Jira did not return every object within ${EXTERNAL_SYNC_DEADLINE_MS / 1000} seconds, so nothing was changed`,
+        `Jira did not return every object within ${WORKER_SYNC_DEADLINE_MS / 60000} minutes, so nothing was changed`,
       );
     }
     const { objects: jiraObjects, complete } = fetched;
@@ -1050,7 +1076,7 @@ export async function runClaimedSync(
     await finalizeSuccess(
       historyId,
       organizationId,
-      { objectsFetched, objectsCreated, objectsUpdated, objectsDeleted },
+      { objectsFetched, objectsCreated, objectsUpdated, objectsDeleted, linksRemoved },
       note,
       true,
     );
@@ -1081,25 +1107,40 @@ export async function runClaimedSync(
 }
 
 /**
- * Worker entry for `jira_assets_manual_sync`. Fails closed on a malformed
- * payload (tenant-isolation runbook §4.3): the claimed row then goes stale
- * and is closed by the next claim.
+ * Worker entry for `jira_assets_manual_sync`. Without a valid organizationId
+ * and historyId there is no row it may safely touch, so it fails closed
+ * (tenant-isolation runbook §4.3); that claimed row then goes stale and is
+ * closed by the next claim. An invalid triggeredBy only loses attribution, so
+ * it falls back to null. If the run itself throws unexpectedly, the claimed
+ * row is closed as failed before the error is rethrown.
  */
 export async function runQueuedManualSync(data: unknown): Promise<JiraSyncResult> {
   const payload = data as { organizationId?: unknown; historyId?: unknown; triggeredBy?: unknown };
   const organizationId = Number(payload?.organizationId);
   const historyId = Number(payload?.historyId);
-  const triggeredBy = payload?.triggeredBy === null ? null : Number(payload?.triggeredBy);
   if (!Number.isInteger(organizationId) || organizationId <= 0) {
     throw new Error("jira_assets_manual_sync: organizationId missing or invalid");
   }
   if (!Number.isInteger(historyId) || historyId <= 0) {
     throw new Error("jira_assets_manual_sync: historyId missing or invalid");
   }
-  if (triggeredBy !== null && (!Number.isInteger(triggeredBy) || triggeredBy <= 0)) {
-    throw new Error("jira_assets_manual_sync: triggeredBy invalid");
+  let triggeredBy: number | null = Number(payload?.triggeredBy);
+  if (!Number.isInteger(triggeredBy) || triggeredBy <= 0) {
+    if (payload?.triggeredBy !== null && payload?.triggeredBy !== undefined) {
+      logger.warn(`jira_assets_manual_sync run ${historyId}: invalid triggeredBy, using none`);
+    }
+    triggeredBy = null;
   }
-  return runClaimedSync(organizationId, historyId, triggeredBy, "manual");
+  try {
+    return await runClaimedSync(organizationId, historyId, triggeredBy, "manual");
+  } catch (err) {
+    await finalizeFailure(
+      historyId,
+      organizationId,
+      new Error(`Manual sync could not run: ${errorMessage(err)}`),
+    );
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1182,11 +1223,19 @@ export async function deleteUseCaseByProjectId(
 
 /**
  * Last-sync fields plus, computed in SQL, whether a sync or import is running
- * now (`running`) and the latest manual or scheduled run (`latest_run`). The
- * panel polls this after "Sync now" (which returns 202 and runs in the
- * worker) until `running` is false.
+ * now (`running`) and the latest manual or scheduled run (`latest_run`). With
+ * `historyId`, also that run as `run` (null if it is not this org's), with
+ * `is_live` computed in SQL: the panel polls it after "Sync now" (202, runs in
+ * the worker) until the run is no longer `started` — or no longer live, which
+ * means it stopped responding.
  */
-export async function getSyncStatus(organizationId: number): Promise<any | null> {
+export async function getSyncStatus(
+  organizationId: number,
+  historyId: number | null = null,
+): Promise<any | null> {
+  const runColumns = `id, sync_type, status, objects_fetched, objects_created,
+                      objects_updated, objects_deleted, links_removed, error_message,
+                      started_at, completed_at`;
   const rows = (await sequelize.query(
     `SELECT c.last_sync_at, c.last_sync_status, c.last_sync_message,
             c.sync_enabled, c.sync_interval_hours,
@@ -1196,18 +1245,22 @@ export async function getSyncStatus(organizationId: number): Promise<any | null>
                        AND h.status = 'started'
                        AND ${SQL_RUN_IS_LIVE}) AS running,
             (SELECT row_to_json(r)
-               FROM (SELECT id, sync_type, status, objects_fetched, objects_created,
-                            objects_updated, objects_deleted, error_message,
-                            started_at, completed_at
+               FROM (SELECT ${runColumns}
                        FROM jira_assets_sync_history
                       WHERE organization_id = :organizationId
                         AND sync_type IN ('manual', 'scheduled')
                       ORDER BY started_at DESC, id DESC
-                      LIMIT 1) r) AS latest_run
+                      LIMIT 1) r) AS latest_run,
+            (SELECT row_to_json(r)
+               FROM (SELECT ${runColumns},
+                            (h.status = 'started' AND ${SQL_RUN_IS_LIVE}) AS is_live
+                       FROM jira_assets_sync_history h
+                      WHERE h.organization_id = :organizationId
+                        AND h.id = :historyId) r) AS run
        FROM jira_assets_config c
       WHERE c.organization_id = :organizationId
       LIMIT 1;`,
-    { replacements: { organizationId }, type: QueryTypes.SELECT },
+    { replacements: { organizationId, historyId }, type: QueryTypes.SELECT },
   )) as any[];
   return rows[0] ?? null;
 }

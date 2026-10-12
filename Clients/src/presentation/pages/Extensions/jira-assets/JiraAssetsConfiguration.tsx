@@ -29,6 +29,9 @@ const SYNC_RUNNING_MESSAGE = "A sync is already running. Try again when it finis
 const SYNC_SLOW_MESSAGE =
   "The sync is taking longer than expected. Check the last sync result later.";
 const SELECTION_SAVE_FAILED = "Could not save the schema and object type. Try again.";
+const SYNC_STALLED_MESSAGE = "The sync stopped responding. Try again.";
+/** error_message the server writes when it closes a run that stopped heart-beating. */
+const ABANDONED_RUN_MESSAGE = "Sync stopped responding and was marked as abandoned";
 /** "Sync now" runs in the background; poll its status at this rate, up to the limit. */
 const SYNC_POLL_MS = 3000;
 const SYNC_POLL_LIMIT_MS = 20 * 60 * 1000;
@@ -127,6 +130,9 @@ export const JiraAssetsConfiguration: React.FC = () => {
   const [jiraObjects, setJiraObjects] = useState<JiraObject[]>([]);
   const [selectedObjects, setSelectedObjects] = useState<Set<string>>(new Set());
   const [isLoadingObjects, setIsLoadingObjects] = useState(false);
+  // The picker loads one page at a time; "Load more" asks for the next.
+  const [jiraHasMore, setJiraHasMore] = useState(false);
+  const [jiraNextStartAt, setJiraNextStartAt] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<{
     type: "success" | "error";
@@ -238,29 +244,45 @@ export const JiraAssetsConfiguration: React.FC = () => {
     [pluginApiCall],
   );
 
-  // Load JIRA objects for import
-  const loadJiraObjects = useCallback(async () => {
-    if (!localConfig.selected_object_type_id) return;
+  // Load JIRA objects for import, one page at a time (`append` = "Load more").
+  const loadJiraObjects = useCallback(
+    async (append = false) => {
+      if (!localConfig.selected_object_type_id) return;
 
-    setIsLoadingObjects(true);
-    setImportMessage(null);
-    try {
-      const response = await pluginApiCall(
-        "GET",
-        `/object-types/${localConfig.selected_object_type_id}/objects`,
-      );
-      if (response && Array.isArray(response)) {
-        // Filter out already imported objects
-        const importedIds = new Set(importedUseCases.map((uc) => uc.jira_object_id));
-        const newObjects = response.filter((obj: JiraObject) => !importedIds.has(obj.id));
-        setJiraObjects(newObjects);
+      setIsLoadingObjects(true);
+      setImportMessage(null);
+      try {
+        const startAt = append ? jiraNextStartAt : 0;
+        const response = await pluginApiCall(
+          "GET",
+          `/object-types/${localConfig.selected_object_type_id}/objects?startAt=${startAt}`,
+        );
+        const list: JiraObject[] | undefined = Array.isArray(response)
+          ? response
+          : response?.objects;
+        if (Array.isArray(list)) {
+          // Filter out already imported objects
+          const importedIds = new Set(importedUseCases.map((uc) => uc.jira_object_id));
+          const newObjects = list.filter((obj) => !importedIds.has(obj.id));
+          setJiraObjects((prev) => {
+            if (!append) return newObjects;
+            const seen = new Set(prev.map((obj) => obj.id));
+            return [...prev, ...newObjects.filter((obj) => !seen.has(obj.id))];
+          });
+          setJiraHasMore(!!response?.hasMore);
+          setJiraNextStartAt(Number(response?.nextStartAt) || 0);
+        }
+      } catch (error: any) {
+        setImportMessage({
+          type: "error",
+          text: getApiErrorReason(error) || error?.message || "Failed to load JIRA objects",
+        });
+      } finally {
+        setIsLoadingObjects(false);
       }
-    } catch (error: any) {
-      setImportMessage({ type: "error", text: error.message || "Failed to load JIRA objects" });
-    } finally {
-      setIsLoadingObjects(false);
-    }
-  }, [pluginApiCall, localConfig.selected_object_type_id, importedUseCases]);
+    },
+    [pluginApiCall, localConfig.selected_object_type_id, importedUseCases, jiraNextStartAt],
+  );
 
   // Load imported use cases
   const loadImportedUseCases = useCallback(async () => {
@@ -301,10 +323,18 @@ export const JiraAssetsConfiguration: React.FC = () => {
         setImportMessage({ type: "error", text: response?.error || "Import failed" });
       }
     } catch (error: any) {
+      // 409 with counts: the import was interrupted part-way; show how far it got.
+      const interrupted =
+        error?.status === 409 && typeof error?.response?.data?.imported === "number";
+      if (interrupted) {
+        setSelectedObjects(new Set());
+        await loadImportedUseCases();
+      }
       setImportMessage({
         type: "error",
-        text:
-          error?.status === 409
+        text: interrupted
+          ? error.response.data.message || error.message
+          : error?.status === 409
             ? SYNC_RUNNING_MESSAGE
             : getApiErrorReason(error) || error?.message || "Import failed",
       });
@@ -313,29 +343,38 @@ export const JiraAssetsConfiguration: React.FC = () => {
     }
   };
 
-  // Re-read only the last-sync fields (not the connection form, which may
-  // hold unsaved edits) so the "Last sync" line shows what the server
-  // recorded, including notes about objects missing in Jira.
-  const readSyncStatus = useCallback(async () => {
-    const status = await pluginApiCall("GET", "/sync/status");
-    if (status) {
-      setLocalConfig((prev) => ({
-        ...prev,
-        last_sync_at: status.last_sync_at,
-        last_sync_status: status.last_sync_status,
-        last_sync_message: status.last_sync_message,
-      }));
-    }
-    return status;
-  }, [pluginApiCall]);
+  // Re-read the last-sync fields (not the connection form, which may hold
+  // unsaved edits) so the "Last sync" line shows what the server recorded.
+  // With `historyId`, the response also carries that run as `run`.
+  const readSyncStatus = useCallback(
+    async (historyId?: number) => {
+      const status = await pluginApiCall(
+        "GET",
+        historyId ? `/sync/status?historyId=${historyId}` : "/sync/status",
+      );
+      if (status) {
+        setLocalConfig((prev) => ({
+          ...prev,
+          last_sync_at: status.last_sync_at,
+          last_sync_status: status.last_sync_status,
+          last_sync_message: status.last_sync_message,
+        }));
+      }
+      return status;
+    },
+    [pluginApiCall],
+  );
 
-  // "Sync now" returns 202 and runs in the worker. Poll /sync/status until no
-  // run is live (or the limit passes), then report the latest run.
+  // "Sync now" returns 202 with the run's id and runs in the worker. Poll that
+  // run until it is no longer `started` — or no longer live, which means it
+  // stopped responding — then report that run's own result.
   const handleSyncNow = async () => {
     setIsSyncing(true);
     setSyncMessage(null);
+    let historyId: number | undefined;
     try {
-      await pluginApiCall("POST", "/sync");
+      const started = await pluginApiCall("POST", "/sync");
+      historyId = Number(started?.historyId) || undefined;
     } catch (error: any) {
       setSyncMessage({
         type: "error",
@@ -347,36 +386,47 @@ export const JiraAssetsConfiguration: React.FC = () => {
       setIsSyncing(false);
       return;
     }
+    if (!historyId) {
+      setSyncMessage({ type: "error", text: "Sync failed" });
+      setIsSyncing(false);
+      return;
+    }
 
     const giveUpAt = Date.now() + SYNC_POLL_LIMIT_MS;
-    let status: any = null;
+    let run: any = null;
+    let settled = false;
     while (mountedRef.current && Date.now() < giveUpAt) {
       await sleep(SYNC_POLL_MS);
       try {
-        status = await readSyncStatus();
+        const status = await readSyncStatus(historyId);
+        run = status?.run ?? null;
       } catch (error) {
         console.warn("[JiraConfig] could not read sync status:", error);
-        status = null;
+        continue;
       }
-      if (status && !status.running) break;
+      if (!run || run.status !== "started" || !run.is_live) {
+        settled = true;
+        break;
+      }
     }
     if (!mountedRef.current) return;
     setIsSyncing(false);
 
-    const run = status && !status.running ? status.latest_run : null;
-    if (!run) {
+    if (!settled) {
       setSyncMessage({ type: "error", text: SYNC_SLOW_MESSAGE });
+    } else if (!run) {
+      setSyncMessage({ type: "error", text: "Sync failed" });
     } else if (run.status === "completed") {
+      const unlinked = run.links_removed ? `, ${run.links_removed} unlinked` : "";
       setSyncMessage({
         type: "success",
-        text: `Sync completed: ${run.objects_created || 0} created, ${run.objects_updated || 0} updated, ${run.objects_deleted || 0} deleted`,
+        text: `Sync completed: ${run.objects_created || 0} created, ${run.objects_updated || 0} updated, ${run.objects_deleted || 0} deleted${unlinked}`,
       });
       await loadImportedUseCases();
+    } else if (run.status === "started" || run.error_message === ABANDONED_RUN_MESSAGE) {
+      setSyncMessage({ type: "error", text: SYNC_STALLED_MESSAGE });
     } else {
-      setSyncMessage({
-        type: "error",
-        text: run.error_message || status.last_sync_message || "Sync failed",
-      });
+      setSyncMessage({ type: "error", text: run.error_message || "Sync failed" });
     }
   };
 
@@ -966,7 +1016,7 @@ export const JiraAssetsConfiguration: React.FC = () => {
                     <Download size={14} />
                   )
                 }
-                onClick={loadJiraObjects}
+                onClick={() => loadJiraObjects()}
                 disabled={isImporting || isLoadingObjects}
                 sx={{
                   "backgroundColor": "#13715B",
@@ -1086,6 +1136,31 @@ export const JiraAssetsConfiguration: React.FC = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+            </Box>
+          )}
+
+          {/* The picker shows one page; say so and offer the next. */}
+          {jiraHasMore && (
+            <Box
+              sx={{
+                mt: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "8px",
+              }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                More objects exist in Jira than are shown here.
+              </Typography>
+              <Button
+                variant="text"
+                onClick={() => loadJiraObjects(true)}
+                disabled={isLoadingObjects}
+                sx={{ textTransform: "none", fontSize: "13px", color: "#13715B" }}
+              >
+                Load more
+              </Button>
             </Box>
           )}
 

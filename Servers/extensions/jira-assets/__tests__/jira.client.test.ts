@@ -66,18 +66,25 @@ describe("cloud pagination (startAt / maxResults / isLast)", () => {
     expect(objectCalls()[0][1].signal).toBeInstanceOf(AbortSignal);
   });
 
-  it("completes when a known total is reached, advancing by rows returned", async () => {
-    cloudPages({ values: objects(0, 25), total: 40 }, { values: objects(25, 15), total: 40 });
+  it("ignores a capped total: total=1000 with isLast=false at 1000 objects is not the end", async () => {
+    const pages = Array.from({ length: 1000 / PAGE_SIZE }, (_, i) => ({
+      values: objects(i * PAGE_SIZE, PAGE_SIZE),
+      isLast: false,
+      total: 1000,
+    }));
+    // The type really has more; Jira just stops answering with rows here.
+    cloudPages(...pages, { values: [], isLast: false, total: 1000 });
 
     const result = await cloud().getAllObjects("42");
 
-    expect(result.complete).toBe(true);
-    expect(result.objects).toHaveLength(40);
-    expect(String(objectCalls()[1][0])).toContain("startAt=25");
+    expect(result.complete).toBe(false);
+    expect(result.objects).toHaveLength(1000);
+    // It kept paging past the reported total instead of stopping at it.
+    expect(objectCalls()).toHaveLength(1000 / PAGE_SIZE + 1);
   });
 
-  it.each([null, undefined, "n/a"])(
-    "treats total=%p as unknown: a short page is not proof of the end",
+  it.each([null, undefined, 3])(
+    "without isLast, a short page proves nothing (total=%p)",
     async (total) => {
       cloudPages({ values: objects(0, 3), total }, { values: [], total });
 
@@ -87,6 +94,18 @@ describe("cloud pagination (startAt / maxResults / isLast)", () => {
       expect(result.objects).toHaveLength(3);
     },
   );
+
+  it("advances by the rows returned when the server caps the page size", async () => {
+    cloudPages(
+      { values: objects(0, 25), isLast: false },
+      { values: objects(25, 15), isLast: true },
+    );
+
+    const result = await cloud().getAllObjects("42");
+
+    expect(result.complete).toBe(true);
+    expect(String(objectCalls()[1][0])).toContain("startAt=25");
+  });
 
   it("is incomplete when an empty page arrives before the reported total", async () => {
     cloudPages(
@@ -140,7 +159,7 @@ describe("cloud pagination (startAt / maxResults / isLast)", () => {
 });
 
 describe("data center pagination (page / resultPerPage / pageSize)", () => {
-  it("requests every page up to the reported page count", async () => {
+  it("is complete when the reported last page is a partial page", async () => {
     mockFetch
       .mockResolvedValueOnce(
         ok({ objectEntries: objects(0, PAGE_SIZE), pageSize: 2, totalFilterCount: 60 }),
@@ -177,6 +196,25 @@ describe("data center pagination (page / resultPerPage / pageSize)", () => {
     },
   );
 
+  it("does not trust a reported page count whose last page is full (the count may be capped)", async () => {
+    mockFetch
+      .mockResolvedValueOnce(ok({ objectEntries: objects(0, PAGE_SIZE), pageSize: 2 }))
+      .mockResolvedValueOnce(ok({ objectEntries: objects(PAGE_SIZE, PAGE_SIZE), pageSize: 2 }));
+
+    const result = await datacenter().getAllObjects("42");
+
+    expect(result.complete).toBe(false);
+    expect(objectCalls()).toHaveLength(2);
+  });
+
+  it("ignores totalFilterCount for completeness", async () => {
+    mockFetch
+      .mockResolvedValueOnce(ok({ objectEntries: objects(0, 10), totalFilterCount: 10 }))
+      .mockResolvedValueOnce(ok({ objectEntries: [], totalFilterCount: 10 }));
+
+    expect((await datacenter().getAllObjects("42")).complete).toBe(false);
+  });
+
   it("is incomplete when a page comes back empty before the reported total", async () => {
     mockFetch
       .mockResolvedValueOnce(ok({ objectEntries: objects(0, PAGE_SIZE), totalFilterCount: 500 }))
@@ -187,23 +225,31 @@ describe("data center pagination (page / resultPerPage / pageSize)", () => {
 });
 
 describe("import picker page", () => {
-  it("makes one bounded request on cloud and never walks further pages", async () => {
-    cloudPages({ values: objects(0, 5), isLast: false, total: 5000 });
+  it("makes one cloud request from startAt and reports hasMore from isLast", async () => {
+    cloudPages({ values: objects(0, 5), isLast: false, total: 1000 });
 
-    const result = await cloud().getObjectsPage("42");
+    const page = await cloud().getObjectsPage("42", 1000);
 
-    expect(result).toHaveLength(5);
+    expect(page).toMatchObject({ hasMore: true, nextStartAt: 1005 });
+    expect(page.objects).toHaveLength(5);
     expect(objectCalls()).toHaveLength(1);
-    expect(String(objectCalls()[0][0])).toContain(`startAt=0&maxResults=${PICKER_MAX_RESULTS}`);
+    expect(String(objectCalls()[0][0])).toContain(`startAt=1000&maxResults=${PICKER_MAX_RESULTS}`);
   });
 
-  it("makes one bounded request on data center", async () => {
-    mockFetch.mockResolvedValueOnce(ok({ objectEntries: objects(0, 2), pageSize: 9 }));
+  it("reports no more on cloud when isLast is true", async () => {
+    cloudPages({ values: objects(0, 5), isLast: true });
 
-    await datacenter().getObjectsPage("42", 5000);
+    expect(await cloud().getObjectsPage("42")).toMatchObject({ hasMore: false });
+  });
+
+  it("maps startAt to a data center page and reports hasMore from the page count", async () => {
+    mockFetch.mockResolvedValueOnce(ok({ objectEntries: objects(0, 2), pageSize: 3 }));
+
+    const page = await datacenter().getObjectsPage("42", PICKER_MAX_RESULTS);
 
     expect(objectCalls()).toHaveLength(1);
-    expect(String(objectCalls()[0][0])).toContain(`page=1&resultPerPage=${PICKER_MAX_RESULTS}`);
+    expect(String(objectCalls()[0][0])).toContain(`page=2&resultPerPage=${PICKER_MAX_RESULTS}`);
+    expect(page).toMatchObject({ hasMore: true, nextStartAt: 2 * PICKER_MAX_RESULTS });
   });
 });
 
@@ -214,6 +260,23 @@ describe("errors", () => {
     await expect(cloud().getSchemas()).rejects.toThrow(JiraUpstreamError);
     mockFetch.mockResolvedValueOnce({ ok: false, status: 401, text: async () => "bad creds" });
     await expect(cloud().getSchemas()).rejects.toThrow("Jira returned 401: bad creds");
+  });
+
+  it("turns an unreadable response body into a JiraUpstreamError", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        throw Object.assign(new Error("terminated"), { name: "TimeoutError" });
+      },
+      text: async () => "",
+    });
+
+    const err = await cloud()
+      .getSchemas()
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(JiraUpstreamError);
+    expect(err.message).toContain("Could not read Jira's response: request timed out");
   });
 
   it("turns a network failure into a JiraUpstreamError with the cause", async () => {
