@@ -33,6 +33,10 @@ jest.mock("../../../../utils/dataRetention.utils", () => ({
   pruneRetentionRunHistory: jest.fn(),
   auditTableExists: jest.fn(),
 }));
+let mockGatewayKeyConfigured = true;
+jest.mock("../../../../utils/aiGatewayConfig", () => ({
+  isGatewayInternalKeyConfigured: () => mockGatewayKeyConfigured,
+}));
 jest.mock("../../../../utils/aiGatewayInternal.utils", () => ({
   aiGatewayRequest: jest.fn(),
 }));
@@ -236,45 +240,70 @@ describe("runDataRetentionPruneAllOrgs", () => {
   ];
 
   describe("when the gateway refuses the purge over the internal key", () => {
-    const savedKey = process.env.AI_GATEWAY_INTERNAL_KEY;
     afterEach(() => {
-      if (savedKey === undefined) delete process.env.AI_GATEWAY_INTERNAL_KEY;
-      else process.env.AI_GATEWAY_INTERNAL_KEY = savedKey;
+      mockGatewayKeyConfigured = true;
     });
 
-    const refused = (status: number) =>
-      Object.assign(new Error(`AI Gateway ${status}`), { status, body: {} });
+    const gatewayError = (status: number, body: unknown) =>
+      Object.assign(new Error(`AIGateway /internal/retention/purge returned ${status}: x`), {
+        status,
+        body,
+      });
+    const withCode = (code: string) => ({ detail: { message: "x", code } });
 
     it.each([
-      ["the gateway has no key (503)", 503, "set", "Purge refused: internal key not configured"],
-      ["this backend has no key (401)", 401, "", "Purge refused: internal key not configured"],
-      ["the keys differ (401)", 401, "set", "Purge refused: internal key rejected"],
-    ])("records both log types as failed when %s", async (_case, status, key, message) => {
-      process.env.AI_GATEWAY_INTERNAL_KEY = key === "set" ? "some-key" : "";
+      [
+        "the gateway has no key (503 with its code)",
+        gatewayError(503, withCode("internal_key_not_configured")),
+        true,
+        "internal_key_not_configured",
+        "Purge refused: internal key not configured",
+      ],
+      [
+        "this backend has no key (401)",
+        gatewayError(401, { detail: "Unauthorized" }),
+        false,
+        "internal_key_not_configured",
+        "Purge refused: internal key not configured",
+      ],
+      [
+        "the keys differ (401 with its code)",
+        gatewayError(401, withCode("internal_key_rejected")),
+        true,
+        "internal_key_rejected",
+        "Purge refused: internal key rejected",
+      ],
+    ])(
+      "records both log types as failed with a code when %s",
+      async (_case, error, keyConfigured, code, message) => {
+        mockGatewayKeyConfigured = keyConfigured as boolean;
+        mockOptedIn.mockResolvedValue([5]);
+        mockGateway.mockRejectedValue(error);
+
+        await runDataRetentionPruneAllOrgs();
+
+        for (const recordType of ["ai_gateway_guardrail_logs", "ai_gateway_spend_logs"]) {
+          expect(mockRecord).toHaveBeenCalledWith(
+            expect.objectContaining({
+              organizationId: 5,
+              recordType,
+              status: "failed",
+              deletedCount: 0,
+              error: message,
+              errorCode: code,
+            }),
+          );
+        }
+      },
+    );
+
+    it.each([
+      ["a proxy's 503 while the gateway is down", 503, "Service Unavailable"],
+      ["a 500", 500, { detail: "boom" }],
+    ])("records %s as a normal failure with the HTTP status", async (_case, status, body) => {
       mockOptedIn.mockResolvedValue([5]);
-      mockGateway.mockRejectedValue(refused(status as number));
-
-      await runDataRetentionPruneAllOrgs();
-
-      for (const recordType of ["ai_gateway_guardrail_logs", "ai_gateway_spend_logs"]) {
-        expect(mockRecord).toHaveBeenCalledWith(
-          expect.objectContaining({
-            organizationId: 5,
-            recordType,
-            status: "failed",
-            deletedCount: 0,
-            error: message,
-          }),
-        );
-      }
-    });
-
-    it("keeps the original message for other gateway errors", async () => {
-      process.env.AI_GATEWAY_INTERNAL_KEY = "some-key";
-      mockOptedIn.mockResolvedValue([5]);
-      mockGateway.mockRejectedValue(
-        Object.assign(new Error("AI Gateway 500: boom"), { status: 500 }),
-      );
+      const error = gatewayError(status as number, body);
+      mockGateway.mockRejectedValue(error);
 
       await runDataRetentionPruneAllOrgs();
 
@@ -282,9 +311,11 @@ describe("runDataRetentionPruneAllOrgs", () => {
         expect.objectContaining({
           recordType: "ai_gateway_guardrail_logs",
           status: "failed",
-          error: "AI Gateway 500: boom",
+          error: error.message,
+          errorCode: undefined,
         }),
       );
+      expect(error.message).toContain(`returned ${status}`);
     });
   });
 

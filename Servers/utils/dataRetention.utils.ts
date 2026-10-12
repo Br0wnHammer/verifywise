@@ -233,13 +233,15 @@ export interface RetentionRunInput {
   deletedCount: number;
   status: RetentionRunStatus;
   error?: string | null;
+  /** Machine-readable failure reason, e.g. "internal_key_not_configured". */
+  errorCode?: string | null;
 }
 
 export async function recordRetentionRun(row: RetentionRunInput): Promise<void> {
   await sequelize.query(
     `INSERT INTO data_retention_runs
-       (organization_id, record_type, cutoff, deleted_count, status, error)
-     VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error)`,
+       (organization_id, record_type, cutoff, deleted_count, status, error, error_code)
+     VALUES (:organizationId, :recordType, :cutoff, :deletedCount, :status, :error, :errorCode)`,
     {
       replacements: {
         organizationId: row.organizationId,
@@ -248,6 +250,7 @@ export async function recordRetentionRun(row: RetentionRunInput): Promise<void> 
         deletedCount: row.deletedCount,
         status: row.status,
         error: row.error ?? null,
+        errorCode: row.errorCode ?? null,
       },
     },
   );
@@ -351,13 +354,19 @@ export async function getGatewayAutoPurgeOrgIds(): Promise<number[]> {
 
 export type LatestRetentionRuns = Record<
   RetentionRecordType,
-  | { ran_at: string; deleted_count: number; status: RetentionRunStatus; error: string | null }
+  | {
+      ran_at: string;
+      deleted_count: number;
+      status: RetentionRunStatus;
+      error: string | null;
+      error_code: string | null;
+    }
   | undefined
 >;
 
 export async function getLatestRetentionRuns(organizationId: number): Promise<LatestRetentionRuns> {
   const rows = (await sequelize.query(
-    `SELECT DISTINCT ON (record_type) record_type, ran_at, deleted_count, status, error
+    `SELECT DISTINCT ON (record_type) record_type, ran_at, deleted_count, status, error, error_code
        FROM data_retention_runs
       WHERE organization_id = :organizationId
       ORDER BY record_type, ran_at DESC, id DESC`,
@@ -370,6 +379,7 @@ export async function getLatestRetentionRuns(organizationId: number): Promise<La
       deleted_count: Number(r.deleted_count),
       status: r.status,
       error: r.error ?? null,
+      error_code: r.error_code ?? null,
     };
   }
   return result;

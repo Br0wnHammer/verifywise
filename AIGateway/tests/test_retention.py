@@ -267,6 +267,8 @@ async def test_retention_routes_refuse_when_no_internal_key_is_configured(monkey
     with pytest.raises(HTTPException) as exc:
         await retention_router.get_retention_config(_keyed_request("anything"))
     assert exc.value.status_code == 503
+    # A machine code lets the backend tell this from a proxy's 503.
+    assert exc.value.detail["code"] == "internal_key_not_configured"
 
     with pytest.raises(HTTPException) as exc:
         await retention_router.purge_retention(
@@ -289,6 +291,7 @@ async def test_retention_routes_reject_a_wrong_internal_key(monkeypatch, key):
     with pytest.raises(HTTPException) as exc:
         await retention_router.get_retention_config(_keyed_request(key))
     assert exc.value.status_code == 401
+    assert exc.value.detail["code"] == "internal_key_rejected"
 
 
 async def test_retention_routes_serve_the_right_internal_key(monkeypatch):

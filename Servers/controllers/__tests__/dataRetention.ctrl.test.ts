@@ -235,7 +235,23 @@ describe("dataRetention.ctrl", () => {
       });
     });
 
-    it("marks a gateway purge refused over the internal key", async () => {
+    it("reads a gateway refusal from the run's error_code", async () => {
+      m(retention.getLatestRetentionRuns).mockResolvedValue({
+        ai_gateway_spend_logs: {
+          ran_at: "2026-10-12T02:00:00Z",
+          deleted_count: 0,
+          status: "failed",
+          error: "AIGateway /internal/retention/purge returned 401: x",
+          error_code: "internal_key_rejected",
+        },
+      });
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+
+      expect(row(res, "ai_gateway_spend_logs").lastCleanup.refusal).toBe("internal_key_rejected");
+    });
+
+    it("marks a gateway purge refused over the internal key (older run, text only)", async () => {
       m(retention.getLatestRetentionRuns).mockResolvedValue({
         ai_gateway_guardrail_logs: {
           ran_at: "2026-10-12T02:00:00Z",
