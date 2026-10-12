@@ -18,6 +18,7 @@ function aiGatewayRoutes() {
   const router = Router();
 
   const proxy = createProxyMiddleware({
+    // The startup fallback http-proxy-middleware requires; router below wins.
     target: getGatewayUrl(),
     // Resolve the gateway URL per request, so it follows AI_GATEWAY_URL as
     // read now rather than when the router was built.
