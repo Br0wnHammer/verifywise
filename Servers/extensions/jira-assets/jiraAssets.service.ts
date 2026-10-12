@@ -1170,7 +1170,11 @@ type LinkRow = { id: number; project_id: number | null; missing_in_jira_since: D
  * action on the project and deletes it with all its links (reported in
  * linksRemoved). A link with no project, or whose project is not in this
  * organization, has only its link row deleted (unlinked): no project, no
- * change history, no automation. A project that is locked here but fails to
+ * change history, no automation. Since migration
+ * 20261012165625-jira-assets-link-same-org-fk the database enforces
+ * same-organization links (composite FK), so in practice this path handles a
+ * NULL project_id (including legacy cross-organization links that migration
+ * cleared); the cross-organization branch is kept as a safeguard. A project that is locked here but fails to
  * delete throws JiraUseCaseDeleteFailedError, naming the use case by its
  * title and Jira key, and everything rolls back.
  *
@@ -1823,7 +1827,8 @@ export async function getUseCaseByProjectId(
  * explicit action on the project: it is deleted with all its links, and
  * `links_removed` reports how many went. A link whose project is not in this
  * organization has only its link row deleted (`unlinked: true`); no project
- * is touched. A project id with no link is JiraUseCaseNotFoundError (404) and
+ * is touched (the database now enforces same-organization links, so this is a
+ * safeguard for NULL or legacy rows). A project id with no link is JiraUseCaseNotFoundError (404) and
  * no run is recorded: rejected before claiming, or, if the link vanished in
  * the meantime, rolled back with the claimed history row released. The
  * requested project itself is locked, so a link that changed between the

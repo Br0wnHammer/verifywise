@@ -610,7 +610,11 @@ All of this lives in `jira-assets/batching.ts`.
    (another organization's, or a bad id), deletes only the link row: no
    project is touched, no change history is written and no automation fires.
    It is reported as `unlinked`, not as a removed use case. Without this,
-   such a link could never leave the "Missing in Jira" list.
+   such a link could never leave the "Missing in Jira" list. The database
+   now enforces same-organization links (see below), so in practice this
+   handles links with a NULL `project_id`, including legacy cross-organization
+   links that the migration cleared; the cross-organization check stays as a
+   safeguard.
 5. records the run (`objects_deleted` = use cases, that is projects,
    removed; a note counts the links cleaned up)
 
@@ -645,6 +649,19 @@ vanished between that check and the locked one under the claim, the
 transaction rolls back and the claimed history row is deleted, so nothing is
 recorded. A link whose project is not in this organization has only its link
 row deleted and returns 200 with `unlinked: true`.
+
+**Same-organization links (database).** `jira_assets_use_cases.project_id`
+references `projects` through a composite foreign key,
+`(project_id, organization_id) REFERENCES projects (id, organization_id) ON
+DELETE CASCADE` (`projects` has `UNIQUE (id, organization_id)` as its
+target), so a link can only point at a project in its own organization; a
+NULL `project_id` is allowed. The app only ever creates a link together with
+its project, in one transaction, and never changes `project_id` afterwards.
+Migration `20261012165625-jira-assets-link-same-org-fk.js` added the key: it
+first set `project_id` to NULL on existing links whose project was missing or
+in another organization (the count is logged), and those links show up for
+removal under "Links cleaned up". `down()` restores the single-column key but
+cannot restore those NULLed ids.
 
 A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is

@@ -139,7 +139,7 @@ const deferredScopedTables: SharedTableEntry[] = [
   {
     name: "jira_assets_use_cases",
     justification:
-      "Extension-owned table (jira-assets). Every query in Servers/extensions/jira-assets/jiraAssets.service.ts filters by organization_id. UNIQUE(organization_id, jira_object_id). Deferred pending matrix coverage.",
+      "Extension-owned table (jira-assets). Every query in Servers/extensions/jira-assets/jiraAssets.service.ts filters by organization_id. UNIQUE(organization_id, jira_object_id). project_id references projects through a composite FK (project_id, organization_id), so a link cannot point at another organization's project. Deferred pending matrix coverage.",
   },
   {
     name: "model_lifecycle_change_history",
