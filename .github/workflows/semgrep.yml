@@ -10,7 +10,8 @@ name: SAST (Semgrep)
 #   p/security-audit           — cross-language security patterns
 #   p/secrets                  — hardcoded secret patterns
 #
-# Findings are uploaded to the GitHub Security tab and the scan is an
+# Findings are printed to the job log (rule, file:line, message) and also
+# uploaded as SARIF to the GitHub Security tab. The scan is an
 # enforced blocking gate — but only for NEW findings. The pre-existing
 # findings backlog is triaged separately (tracked outside CI); blocking on it
 # would fail every PR. Semgrep's built-in baseline diffing
@@ -19,6 +20,12 @@ name: SAST (Semgrep)
 # runs (SARIF keeps the backlog visible in the Security tab) but does not
 # fail the job — full-history triage pending; the PR gate is the enforcement
 # point.
+#
+# The Semgrep engine is pinned (SEMGREP_VERSION) so a new upstream release
+# cannot change results or break the job between two otherwise identical
+# runs; bump it deliberately. pip retries with a longer timeout because
+# transient PyPI download timeouts were the most common infra failure.
+# Metrics reporting to Semgrep is disabled.
 
 permissions:
   contents: read
@@ -44,16 +51,19 @@ jobs:
 
       # The semgrep-action@v1 is deprecated and rejects the generateSarif /
       # baselineRef inputs, so it never produced semgrep.sarif and the upload
-      # step failed. Run the Semgrep CLI directly: it emits SARIF and blocks on
-      # findings via its own exit code.
+      # step failed. Run the Semgrep CLI directly: it prints findings to the
+      # log, writes SARIF via --sarif-output, and blocks on findings via its
+      # own exit code.
       - name: Run Semgrep
+        env:
+          SEMGREP_VERSION: '1.178.0'
         run: |
-          python3 -m pip install --quiet semgrep
+          python3 -m pip install --quiet --retries 5 --timeout 60 "semgrep==${SEMGREP_VERSION}"
           # Baseline diffing policy: only findings NOT present on the base
           # branch fail this job. The pre-existing backlog is triaged
           # separately; new findings block. (fetch-depth: 0 above is required
           # so the baseline commit is available locally.)
-          COMMON_ARGS="--config p/javascript --config p/typescript --config p/python --config p/security-audit --config p/secrets --sarif --output semgrep.sarif"
+          COMMON_ARGS="--config p/javascript --config p/typescript --config p/python --config p/security-audit --config p/secrets --sarif-output=semgrep.sarif --metrics off"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             # PR gate (enforcement point): --error + --baseline-commit fails
             # the job only on findings NOT present on the base branch.
@@ -70,7 +80,9 @@ jobs:
 
       - name: Upload Semgrep results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        # Only when a SARIF file exists: if the install or scan never ran,
+        # skip the upload instead of adding a second, misleading failure.
+        if: always() && hashFiles('semgrep.sarif') != ''
         with:
           sarif_file: semgrep.sarif
           category: 'semgrep-sast'
