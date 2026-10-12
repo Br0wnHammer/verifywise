@@ -466,7 +466,10 @@ the Assets API pages. Completeness now only decides whether flags may be set.
   `isLast === true`, or on as many distinct objects as `totalFilterCount`
   (on a short or repeated page only, since a count reached on a full page
   could be capped). A repeated page (some servers answer past the end with
-  their last page) with none of these ends the walk incomplete.
+  their last page) with none of these ends the walk incomplete. The accepted
+  trade-off: a server that reports only `pageSize` and repeats its last page
+  past the end never gets a complete walk, so its syncs refresh what they see
+  but never flag anything as missing in Jira.
 
 Every request has a 30-second timeout. The worker's walk has a 10-minute
 deadline (`WORKER_SYNC_DEADLINE_MS`). When it passes, the run fails with
@@ -477,7 +480,8 @@ import picker (`GET /object-types/:id/objects?startAt=`) returns one page of up
 to 1000 as `{ objects, hasMore, nextStartAt }`, with **Load more** in the
 panel. `POST /import` takes at most 100 `object_ids` per request
 (`IMPORT_MAX_OBJECTS`, 400 above that; the panel sends a bigger selection as
-sequential batches of 100),
+sequential batches of 100). The result carries `errors` and, for those,
+`failed_ids`, so the panel can keep the failed objects selected for a retry
 because it runs inside the request and fetches each object from Jira in turn.
 An import that loses its claim returns 409 with
 `{ message, code: "import_interrupted", imported, skipped }`.
@@ -529,7 +533,13 @@ ids, at most 100 per request (the same limit as an import,
 `REMOVE_MISSING_MAX_IDS`). For a bigger selection the panel sends sequential
 requests of up to 100, shows "Removing use cases 101–200 / 250", stops at the
 first error and reports how many were removed. Import batches the same way
-("Importing objects …"). Both live in `jira-assets/batching.ts`.
+("Importing objects …"); objects a batch reports as failed make the outcome a
+warning with a "not imported" count. Only handled ids leave the selection
+(imported or already imported, removed or no longer flagged); failed and
+unsent ones stay selected, so a retry is one click. After an import the panel
+reloads the imported use cases and drops those objects from the picker using
+that fresh list, then shows the outcome. Both live in
+`jira-assets/batching.ts`.
 `removeMissingUseCases` (through `deleteUseCasesUnderClaim`):
 
 1. takes the same claim, so it cannot race a sync or import (409)
@@ -551,9 +561,12 @@ history row so no other claim can close it mid-way.
 `deleteUseCasesUnderClaim` flow (409 while a sync, import or removal runs; its
 history row is `'remove_missing'` with `objects_deleted = 1`; 409
 `removal_interrupted` if it lost its claim). A project that is not linked in
-`jira_assets_use_cases`, or is already gone, is 404: the transaction rolls
-back and the claimed history row is deleted, so the attempt is not recorded as
-a failed run.
+`jira_assets_use_cases` is 404 from an unlocked check before claiming, so it
+never takes or waits on the claim (404, not 409, during a sync). If the link
+vanished between that check and the locked one under the claim, the
+transaction rolls back and the claimed history row is deleted, so nothing is
+recorded. A link whose project is already gone is stale: both flows delete the
+link row and count it as removed.
 
 A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is

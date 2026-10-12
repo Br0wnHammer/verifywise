@@ -9744,6 +9744,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Eine andere Synchronisierung oder ein Import lief bereits, daher wurde diese Synchronisierung nicht gestartet.",
     "Importing objects": "Objekte werden importiert",
+    "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
+      "Import abgeschlossen, aber einige Objekte konnten nicht importiert werden. Sie bleiben ausgewählt; importieren Sie erneut, um es noch einmal zu versuchen.",
+    "Objects not imported:": "Nicht importierte Objekte:",
     "Removing use cases": "Anwendungsfälle werden entfernt",
     "Import finished.": "Import abgeschlossen.",
     "Objects imported:": "Importierte Objekte:",
@@ -19902,6 +19905,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Une autre synchronisation ou importation était en cours, cette synchronisation n'a donc pas démarré.",
     "Importing objects": "Importation des objets",
+    "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
+      "Importation terminée, mais certains objets n'ont pas pu être importés. Ils restent sélectionnés ; relancez l'importation pour réessayer.",
+    "Objects not imported:": "Objets non importés :",
     "Removing use cases": "Suppression des cas d'usage",
     "Import finished.": "Importation terminée.",
     "Objects imported:": "Objets importés :",
@@ -29987,6 +29993,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Another sync or import was running, so this sync did not start.":
       "Había otra sincronización o importación en curso, por lo que esta sincronización no se inició.",
     "Importing objects": "Importando objetos",
+    "Import finished, but some objects could not be imported. They are still selected; import again to retry.":
+      "Importación finalizada, pero algunos objetos no se pudieron importar. Siguen seleccionados; vuelva a importar para reintentarlo.",
+    "Objects not imported:": "Objetos no importados:",
     "Removing use cases": "Eliminando casos de uso",
     "Import finished.": "Importación finalizada.",
     "Objects imported:": "Objetos importados:",

@@ -28,25 +28,27 @@ import { useAuth } from "../../../../application/hooks/useAuth";
 import { getApiErrorReason } from "../../../../application/utils/apiErrorReason";
 import { CustomizableButton } from "../../../components/button/customizable-button";
 import { isAbandonedRun, SYNC_RUNNING_MESSAGE } from "./runOutcome";
-import { BatchProgress, BatchSummary, importInBatches, removeInBatches } from "./batching";
+import {
+  BatchProgress,
+  deselectDone,
+  importInBatches,
+  PanelMessage,
+  removeInBatches,
+  summaryMessage,
+  withoutImported,
+} from "./batching";
 
-type PanelMessage = {
-  type: "success" | "error";
-  text: string;
-  count?: BatchSummary["count"];
-};
-
-/** A panel message: the text, then its count with its own label (each translatable). */
+/** A panel message: the text, then each count with its own label (each translatable). */
 function MessageBody({ message }: { message: PanelMessage }) {
   return (
     <>
       <span>{message.text}</span>
-      {message.count && (
-        <>
+      {message.counts?.map((count) => (
+        <React.Fragment key={count.label}>
           {" "}
-          <span>{message.count.label}</span> <span>{message.count.value}</span>
-        </>
-      )}
+          <span>{count.label}</span> <span>{count.value}</span>
+        </React.Fragment>
+      ))}
     </>
   );
 }
@@ -345,22 +347,26 @@ export const JiraAssetsConfiguration: React.FC = () => {
   );
 
   // Load imported use cases
-  const loadImportedUseCases = useCallback(async () => {
+  /** Reload the imported use cases; returns the fresh list, or null if it could not be read. */
+  const loadImportedUseCases = useCallback(async (): Promise<ImportedUseCase[] | null> => {
     setIsLoadingUseCases(true);
     try {
       const response = await pluginApiCall("GET", "/use-cases");
       if (response && Array.isArray(response)) {
         setImportedUseCases(response);
+        return response;
       }
+      return null;
     } catch (error) {
       console.error("Failed to load imported use cases:", error);
+      return null;
     } finally {
       setIsLoadingUseCases(false);
     }
   }, [pluginApiCall]);
 
   // Import the selected objects, 100 per request (the server limit), one
-  // request at a time; the first error stops the rest. Lists refresh at the end.
+  // request at a time; the first error stops the rest.
   const handleImport = async () => {
     if (selectedObjects.size === 0) return;
 
@@ -372,12 +378,16 @@ export const JiraAssetsConfiguration: React.FC = () => {
         (batch) => pluginApiCall("POST", "/import", { object_ids: batch }),
         setImportProgress,
       );
-      setImportMessage({ type: summary.type, text: summary.text, count: summary.count });
-      if (summary.type === "success" || (summary.count?.value ?? 0) > 0) {
-        setSelectedObjects(new Set());
-      }
-      await loadImportedUseCases();
-      await loadJiraObjects();
+      // Reload the imported use cases, then drop the now-imported objects from
+      // the picker using that fresh list (not the one this handler started
+      // with), keeping the pages already loaded. Only handled ids leave the
+      // selection; failed and unsent ones stay for a retry. The outcome is set
+      // last and nothing after it clears it.
+      const fresh = await loadImportedUseCases();
+      const importedIds = fresh ? new Set(fresh.map((uc) => String(uc.jira_object_id))) : null;
+      setJiraObjects((prev) => withoutImported(prev, importedIds));
+      setSelectedObjects((prev) => deselectDone(prev, summary.doneIds));
+      setImportMessage(summaryMessage(summary));
     } finally {
       setImportProgress(null);
       setIsImporting(false);
@@ -527,9 +537,9 @@ export const JiraAssetsConfiguration: React.FC = () => {
         (batch) => pluginApiCall("POST", "/use-cases/remove-missing", { use_case_ids: batch }),
         setRemoveProgress,
       );
-      setSyncMessage({ type: summary.type, text: summary.text, count: summary.count });
-      if (summary.type === "success") setSelectedMissingIds(new Set());
+      setSelectedMissingIds((prev) => deselectDone(prev, summary.doneIds));
       await loadImportedUseCases();
+      setSyncMessage(summaryMessage(summary));
     } finally {
       setRemoveProgress(null);
       setIsRemovingMissing(false);
