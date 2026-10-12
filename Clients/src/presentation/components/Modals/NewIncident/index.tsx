@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { FC, useState, useEffect, useMemo, Suspense, useCallback } from "react";
+import React, { FC, useState, useEffect, useMemo, Suspense, useCallback, useRef } from "react";
 import {
   Drawer,
   Stack,
@@ -47,7 +47,13 @@ import SelectComponent from "../../Inputs/Select";
 interface SideDrawerIncidentProps {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
-  onSuccess?: (data: NewIncidentFormValues) => void;
+  /**
+   * Called on save. When editing (isEdit with initialData) it receives only
+   * the fields the user changed, plus expected_updated_at; when creating, the
+   * whole form. Resolve to `false` to keep the drawer open with the user's
+   * values (the save failed); anything else closes it.
+   */
+  onSuccess?: (data: Partial<NewIncidentFormValues>) => void | boolean | Promise<void | boolean>;
   initialData?: NewIncidentFormValues;
   isEdit?: boolean;
   mode?: string;
@@ -79,8 +85,14 @@ export interface NewIncidentFormValues {
   interim_report: boolean;
   approval_status: AIIncidentManagementApprovalStatus;
   approved_by?: string;
-  approval_date?: string;
+  /** YYYY-MM-DD, or empty/null when the incident has no approval date. */
+  approval_date?: string | null;
   approval_notes?: string;
+  /**
+   * The incident's updated_at when the drawer loaded it (edit only). Sent
+   * back so the server can refuse the save if someone changed it since.
+   */
+  expected_updated_at?: string;
 }
 
 const initialState: NewIncidentFormValues = {
@@ -107,6 +119,69 @@ const initialState: NewIncidentFormValues = {
   approval_date: "",
   approval_notes: "",
 };
+
+/** Normalise FK picker values ("" / null / numeric strings) to integer ids or null (issue #4583). */
+const toId = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
+
+const FK_FIELDS = new Set<keyof NewIncidentFormValues>([
+  "project_id",
+  "model_inventory_id",
+  "assignee_id",
+]);
+
+/**
+ * Whether two form values are the same for change detection: "" / null /
+ * undefined are all empty, FK pickers compare as ids, harm categories compare
+ * as a set (ignoring order, items by their JSON), and other objects or lists
+ * by their JSON, in order.
+ */
+export const isSameFormValue = (
+  key: keyof NewIncidentFormValues,
+  a: unknown,
+  b: unknown,
+): boolean => {
+  const norm = (v: unknown) => {
+    if (FK_FIELDS.has(key)) return toId(v);
+    if (v === undefined || v === null) return "";
+    if (key === "categories_of_harm" && Array.isArray(v)) {
+      return JSON.stringify(v.map((item) => JSON.stringify(item)).sort());
+    }
+    return typeof v === "object" ? JSON.stringify(v) : String(v);
+  };
+  return norm(a) === norm(b);
+};
+
+/** The drawer's label for each editable field, as shown on the form. */
+export const INCIDENT_FIELD_LABELS: Partial<Record<keyof NewIncidentFormValues, string>> = {
+  ai_project: "AI use case or framework",
+  project_id: "AI use case or framework",
+  type: "Incident type",
+  severity: "Severity",
+  status: "Status",
+  model_inventory_id: "Affected model",
+  assignee_id: "Owner",
+  occurred_date: "Occurred date",
+  date_detected: "Detected date",
+  reporter: "Reporter",
+  model_system_version: "Model / system version",
+  categories_of_harm: "Categories of harm",
+  affected_persons_groups: "Affected persons / groups",
+  description: "Description",
+  relationship_causality: "Relationship / causality",
+  immediate_mitigations: "Immediate mitigations taken",
+  planned_corrective_actions: "Planned corrective actions",
+  approval_status: "Approval status",
+  approved_by: "Approved by",
+  approval_date: "Approval date",
+  approval_notes: "Approval notes / comments",
+  interim_report: "This incident has an interim report",
+};
+
+/** Fields the drawer never sends as edits: identity and the version token. */
+const NON_EDITABLE_FIELDS = new Set<keyof NewIncidentFormValues>([
+  "incident_id",
+  "expected_updated_at",
+]);
 
 const severityOptions = [
   { _id: Severity.MINOR, name: "Minor" },
@@ -185,13 +260,28 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
     }
   }, [isOpen]);
 
+  // The initialData the form was last filled from: the baseline that tells the
+  // user's edits apart from untouched fields.
+  const baselineRef = useRef<NewIncidentFormValues | null>(null);
+
   useEffect(() => {
-    if (initialData) {
-      setValues((prev) => ({
-        ...prev,
-        ...initialData,
-      }));
+    if (!initialData) return;
+    const baseline = baselineRef.current;
+    baselineRef.current = initialData;
+    if (!baseline || baseline.incident_id !== initialData.incident_id) {
+      setValues((prev) => ({ ...prev, ...initialData }));
+      return;
     }
+    // A refreshed copy of the same incident (after an edit conflict): show the
+    // latest value for every field the user has not edited and keep their
+    // edits. expected_updated_at moves to the latest version this way too.
+    setValues((prev) => {
+      const next: Record<string, unknown> = { ...prev };
+      for (const key of Object.keys(initialData) as (keyof NewIncidentFormValues)[]) {
+        if (isSameFormValue(key, prev[key], baseline[key])) next[key] = initialData[key];
+      }
+      return next as unknown as NewIncidentFormValues;
+    });
   }, [initialData]);
 
   const fetchUsers = async () => {
@@ -321,22 +411,51 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
 
   const handleClose = () => {
     setIsOpen(false);
+    baselineRef.current = null;
     setValues(initialState);
     resetErrors();
     setActiveTab("details");
   };
 
-  const handleSaveIncident = (e?: React.FormEvent) => {
+  // In-flight guard: a second click while a save is pending does nothing.
+  const savingRef = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSaveIncident = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (savingRef.current) return;
     if (validateAll(values, INCIDENT_FORM_FIELD_ORDER)) {
-      // Normalize optional FK pickers to integer ids or null (issue #4583)
-      const toId = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
-      onSuccess?.({
+      const formData: NewIncidentFormValues = {
         ...values,
         project_id: toId(values.project_id),
         model_inventory_id: toId(values.model_inventory_id),
         assignee_id: toId(values.assignee_id),
-      });
+      };
+      // When editing, send only what the user changed (plus the version), so
+      // a save never writes back stale copies of fields someone else changed.
+      const baseline = baselineRef.current;
+      let body: Partial<NewIncidentFormValues> = formData;
+      if (isEdit && baseline) {
+        const changed: Record<string, unknown> = {};
+        for (const key of Object.keys(formData) as (keyof NewIncidentFormValues)[]) {
+          if (NON_EDITABLE_FIELDS.has(key)) continue;
+          if (!isSameFormValue(key, formData[key], baseline[key])) changed[key] = formData[key];
+        }
+        if (values.expected_updated_at) changed.expected_updated_at = values.expected_updated_at;
+        body = changed as Partial<NewIncidentFormValues>;
+      }
+
+      savingRef.current = true;
+      setIsSaving(true);
+      let result: void | boolean;
+      try {
+        result = await onSuccess?.(body);
+      } finally {
+        savingRef.current = false;
+        setIsSaving(false);
+      }
+      // Keep the drawer, and what the user typed, when the save failed.
+      if (result === false) return;
       handleClose();
       return;
     }
@@ -897,6 +1016,7 @@ const SideDrawerIncident: FC<SideDrawerIncidentProps> = ({
                     text={isEdit ? "Update incident" : "Save incident"}
                     icon={<SaveIconSVGWhite />}
                     onClick={handleSaveIncident as (event: unknown) => void}
+                    isDisabled={isSaving}
                     sx={{
                       backgroundColor: theme.palette.primary.main,
                       border: `1px solid ${theme.palette.primary.main}`,
