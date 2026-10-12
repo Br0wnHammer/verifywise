@@ -121,6 +121,8 @@ interface FakeDb {
   heartbeat?: Array<{ id: number }>;
   /** Rows the in-transaction ownership check (FOR SHARE) finds; [] means the claim was lost. */
   owned?: Array<{ id: number }>;
+  /** Link rows the unlocked pre-check of DELETE /use-cases/:id finds. */
+  linkedProject?: Array<{ id: number }>;
   /** Whether the per-object update finds the link row (false: deleted since the walk). */
   linkExists?: boolean;
   /** Rows the run's own finalize UPDATE affects. */
@@ -141,18 +143,20 @@ function fakeDb({
   heartbeat = [{ id: 77 }],
   owned = [{ id: 77 }],
   linkExists = true,
+  linkedProject = [{ id: 11 }],
   ownRow = [{ id: 77 }],
   flagged = [],
   stillFlagged = [],
   live = false,
   latestRunId = 40,
 }: FakeDb = {}) {
-  mockQuery.mockImplementation(async (sql: string) => {
+  mockQuery.mockImplementation(async (sql: string, opts: any = {}) => {
     if (sql.includes("WITH own AS")) {
       const isOwned = owned.length > 0;
       return [{ owned: owned.length, links: isOwned && linkExists ? 1 : 0, projects: 0 }];
     }
     if (sql.includes("FOR SHARE")) return owned;
+    if (sql.includes("WHERE project_id = :projectId")) return linkedProject;
     if (sql.includes("SET heartbeat_at")) return [heartbeat, {}];
     if (sql.includes("pg_advisory_xact_lock")) return [{}];
     if (sql.includes("SET status = 'failed', completed_at")) return [[], 0];
@@ -173,7 +177,7 @@ function fakeDb({
     if (sql.includes("SET status = 'completed'")) return [ownRow, {}];
     if (sql.includes("SET status = 'failed', error_message")) return [ownRow, {}];
     if (sql.includes("DELETE FROM jira_assets_use_cases")) {
-      return [stillFlagged.filter((r) => r.project_id === null).map((r) => ({ id: r.id })), {}];
+      return [(opts.replacements?.linkOnlyIds ?? []).map((id: number) => ({ id })), {}];
     }
     return [[], {}];
   });
@@ -726,7 +730,7 @@ describe("removeMissingUseCases", () => {
     expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
   });
 
-  it("withdraws a pending approval and counts only projects actually deleted", async () => {
+  it("withdraws a pending approval; a link whose project is gone is removed as stale", async () => {
     fakeDb({
       stillFlagged: [
         { id: 11, project_id: 111 },
@@ -740,7 +744,11 @@ describe("removeMissingUseCases", () => {
 
     const result = await removeMissingUseCases(5, 8, [11, 12]);
 
-    expect(result).toEqual({ removed: 1, skipped: 1 });
+    // 112's project was already gone: its stale link row is removed too.
+    expect(result).toEqual({ removed: 2, skipped: 0 });
+    expect(sqlCalls("DELETE FROM jira_assets_use_cases")[0][1].replacements).toMatchObject({
+      linkOnlyIds: [12],
+    });
     expect(mockPendingApproval).toHaveBeenCalledWith(111, "use_case", 5, FAKE_TX);
     expect(mockWithdrawApproval).toHaveBeenCalledTimes(1);
     expect(mockWithdrawApproval).toHaveBeenCalledWith(900, 5, FAKE_TX);
@@ -782,7 +790,26 @@ describe("deleteUseCaseByProjectId", () => {
     expect(completed.replacements).toMatchObject({ objectsDeleted: 1 });
   });
 
-  it("is 404 for a project that is not a Jira Assets use case, leaving no history row", async () => {
+  it("is 404 for a project that is not a Jira Assets use case, without claiming", async () => {
+    fakeDb({ linkedProject: [] });
+
+    await expect(deleteUseCaseByProjectId(111, 5, 8)).rejects.toBeInstanceOf(
+      JiraUseCaseNotFoundError,
+    );
+    expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
+    expect(sqlCalls("pg_advisory_xact_lock")).toHaveLength(0);
+  });
+
+  it("is 404, not 409, for a non-linked id while a sync is running", async () => {
+    fakeDb({ linkedProject: [], running: [{ id: 3 }] });
+
+    await expect(deleteUseCaseByProjectId(111, 5, 8)).rejects.toBeInstanceOf(
+      JiraUseCaseNotFoundError,
+    );
+    expect(sqlCalls("pg_advisory_xact_lock")).toHaveLength(0);
+  });
+
+  it("is 404 with no history row when the link vanished after the pre-check", async () => {
     fakeDb({ stillFlagged: [] });
 
     await expect(deleteUseCaseByProjectId(111, 5, 8)).rejects.toBeInstanceOf(
@@ -806,17 +833,18 @@ describe("deleteUseCaseByProjectId", () => {
     expect(mockDeleteProject).not.toHaveBeenCalled();
   });
 
-  it("rolls back and is 404, with no history rows, when the project is already gone", async () => {
+  it("removes a stale link whose project is already gone", async () => {
     fakeDb({ stillFlagged: [{ id: 11, project_id: 111 }] });
     mockDeleteProject.mockResolvedValue(false);
 
-    await expect(deleteUseCaseByProjectId(111, 5, 8)).rejects.toBeInstanceOf(
-      JiraUseCaseNotFoundError,
-    );
+    await deleteUseCaseByProjectId(111, 5, 8);
+
     expect(mockRecordDeletion).not.toHaveBeenCalled();
-    expect(sqlCalls("SET status = 'completed'")).toHaveLength(0);
-    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
-    expect(sqlCalls("DELETE FROM jira_assets_sync_history")).toHaveLength(1);
+    expect(sqlCalls("DELETE FROM jira_assets_use_cases")[0][1].replacements).toMatchObject({
+      linkOnlyIds: [11],
+    });
+    const [, completed] = sqlCalls("SET status = 'completed'")[0];
+    expect(completed.replacements).toMatchObject({ objectsDeleted: 1 });
   });
 
   it("still closes the run as failed on an unexpected error", async () => {
@@ -886,6 +914,22 @@ describe("importObjects", () => {
 
     await expect(importObjects(5, 8, ids)).rejects.toBeInstanceOf(JiraConfigValidationError);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns the ids of the objects that failed, next to their errors", async () => {
+    fakeDb();
+    MockClient.mockImplementation(() => ({
+      getAttributes: jest.fn(async () => []),
+      getObjectById: jest.fn(async (id: string) => {
+        if (id === "2") throw new Error("not found");
+        return jiraObject(id);
+      }),
+    }));
+
+    const result = await importObjects(5, 8, ["1", "2", "3"]);
+
+    expect(result).toMatchObject({ imported: 2, skipped: 0, failed_ids: ["2"] });
+    expect(result.errors).toEqual(["Failed to import 2: not found"]);
   });
 
   it("heartbeats while skipping objects that are already linked", async () => {

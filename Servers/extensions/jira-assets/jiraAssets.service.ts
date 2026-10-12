@@ -859,6 +859,8 @@ interface ImportResult {
   imported: number;
   skipped: number;
   errors?: string[];
+  /** Ids of the objects in `errors`, so the panel can keep them selected for a retry. */
+  failed_ids?: string[];
 }
 
 /**
@@ -887,6 +889,7 @@ export async function importObjects(
   let imported = 0;
   let skipped = 0;
   const errors: string[] = [];
+  const failedIds: string[] = [];
   try {
     const config = await loadFullConfig(organizationId);
     if (!config) throw new JiraNotConfiguredError();
@@ -925,6 +928,7 @@ export async function importObjects(
         // Lost the claim: stop now rather than record it as one failed object.
         if (err instanceof RunSupersededError) throw err;
         errors.push(`Failed to import ${objectId}: ${errorMessage(err)}`);
+        failedIds.push(String(objectId));
       }
       // Skipped objects count too, so a run of already-linked ones still heartbeats.
       if ((index + 1) % HEARTBEAT_EVERY_OBJECTS === 0) {
@@ -954,7 +958,13 @@ export async function importObjects(
     throw err;
   }
 
-  return { success: true, imported, skipped, errors: errors.length > 0 ? errors : undefined };
+  return {
+    success: true,
+    imported,
+    skipped,
+    errors: errors.length > 0 ? errors : undefined,
+    failed_ids: failedIds.length > 0 ? failedIds : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1081,9 +1091,12 @@ async function deleteUseCasesUnderClaim(
           linkOnlyIds.push(row.id);
         } else if (await deleteLinkedProject(row.project_id, organizationId, userId, transaction)) {
           // No savepoint per row: a savepoint's afterCommit hooks fire when it
-          // is released, not when this transaction commits. The link rows are
-          // locked FOR UPDATE, so their projects cannot vanish mid-removal.
+          // is released, not when this transaction commits.
           removed++;
+        } else {
+          // The project is gone but its link row is still here: the link is
+          // stale, so it goes too (and counts as removed).
+          linkOnlyIds.push(row.id);
         }
       }
       if (linkOnlyIds.length > 0) {
@@ -1555,14 +1568,26 @@ export async function getUseCaseByProjectId(
  * jira_assets_use_cases) the same way as the core "Delete use case", through
  * the same claimed flow as removals (deleteUseCasesUnderClaim). Any other
  * project, or one already gone, is JiraUseCaseNotFoundError (404): nothing is
- * deleted and the claimed history row is removed, so the attempt leaves no
- * trace. 409 while a sync, import or removal runs.
+ * deleted and no run is recorded: a project that is not linked is rejected
+ * before claiming, and one that vanished in the meantime releases the claimed
+ * history row. A link whose project is already gone is stale and is removed.
+ * 409 while a sync, import or removal runs.
  */
 export async function deleteUseCaseByProjectId(
   projectId: number,
   organizationId: number,
   userId: number,
 ): Promise<void> {
+  // Cheap unlocked check first, so a request for a project that is not a
+  // Jira Assets use case is 404 at once and never takes (or waits on) the
+  // per-org claim. The flow below checks again under the claim, locked.
+  const linked = (await sequelize.query(
+    `SELECT id FROM jira_assets_use_cases
+      WHERE project_id = :projectId AND organization_id = :organizationId LIMIT 1;`,
+    { replacements: { projectId, organizationId }, type: QueryTypes.SELECT },
+  )) as Array<{ id: number }>;
+  if (linked.length === 0) throw new JiraUseCaseNotFoundError();
+
   await deleteUseCasesUnderClaim(organizationId, userId, {
     by: "project_id",
     ids: [projectId],

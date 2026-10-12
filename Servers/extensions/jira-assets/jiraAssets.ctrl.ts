@@ -368,13 +368,6 @@ export async function getUseCaseCtrl(req: Request, res: Response): Promise<any> 
 export const REMOVAL_INTERRUPTED_MESSAGE =
   "The removal was interrupted; nothing was removed. Try again.";
 
-/**
- * POST /use-cases/remove-missing — delete the use cases the admin chose from
- * the "Missing in Jira" list (`{ use_case_ids: number[] }`). Only ids still
- * flagged as missing are removed; returns `{ removed, skipped }`. 409 while a
- * sync or import is running, or `{ message, code: "removal_interrupted" }`
- * when the removal lost its claim (nothing was removed).
- */
 /** 409 when a deletion lost its claim before finishing; its transaction rolled back. */
 function sendRemovalInterrupted(res: Response) {
   return res.status(409).json(
@@ -385,6 +378,13 @@ function sendRemovalInterrupted(res: Response) {
   );
 }
 
+/**
+ * POST /use-cases/remove-missing — delete the use cases the admin chose from
+ * the "Missing in Jira" list (`{ use_case_ids: number[] }`). Only ids still
+ * flagged as missing are removed; returns `{ removed, skipped }`. 409 while a
+ * sync or import is running, or `{ message, code: "removal_interrupted" }`
+ * when the removal lost its claim (nothing was removed).
+ */
 export async function removeMissingCtrl(req: Request, res: Response): Promise<any> {
   const ctx = logContext(req, "removeMissingCtrl");
   const requested = Array.isArray(req.body?.use_case_ids) ? req.body.use_case_ids.length : 0;
