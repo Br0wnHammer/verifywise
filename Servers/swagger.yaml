@@ -14478,7 +14478,7 @@ paths:
                   items: {type: integer, minimum: 1}
       responses:
         '200':
-          description: 'Removed the listed use cases still flagged as missing in Jira ({ removed, skipped })'
+          description: 'Removed the listed use cases still flagged as missing in Jira ({ removed, unlinked, skipped, skipped_ids }); unlinked counts links whose project is not in this organization, of which only the link was deleted'
         '400':
           description: 'use_case_ids is not a list of 1 to 100 use case ids'
         '403':
@@ -14523,7 +14523,7 @@ paths:
       summary: 'Delete Use Case Ctrl'
       responses:
         '200':
-          description: Success
+          description: 'Deleted ({ success, unlinked }); unlinked is true when only the link was deleted because its project is not in this organization'
         '400':
           description: 'Invalid use case id'
         '403':

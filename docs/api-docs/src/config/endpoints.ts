@@ -3957,7 +3957,7 @@ export const extensionEndpoints: Endpoint[] = [
       "use_case_ids": "array (required)",
     },
     responses: [
-      { status: 200, description: "Removed the listed use cases still flagged as missing in Jira ({ removed, skipped })" },
+      { status: 200, description: "Removed the listed use cases still flagged as missing in Jira ({ removed, unlinked, skipped, skipped_ids }); unlinked counts links whose project is not in this organization, of which only the link was deleted" },
       { status: 400, description: "use_case_ids is not a list of 1 to 100 use case ids" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
       { status: 409, description: "A Jira Assets sync or import is running, or the removal was interrupted, nothing removed ({ message, code: removal_interrupted })" },
@@ -3991,7 +3991,7 @@ export const extensionEndpoints: Endpoint[] = [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
     ],
     responses: [
-      { status: 200, description: "Success" },
+      { status: 200, description: "Deleted ({ success, unlinked }); unlinked is true when only the link was deleted because its project is not in this organization" },
       { status: 400, description: "Invalid use case id" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
       { status: 404, description: "No Jira Assets use case with that project id" },

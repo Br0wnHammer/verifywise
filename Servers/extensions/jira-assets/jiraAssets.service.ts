@@ -980,13 +980,16 @@ export const REMOVE_MISSING_MAX_IDS = IMPORT_MAX_OBJECTS;
 
 /**
  * Delete one imported use case's native project the way the core "Delete use
- * case" does: withdraw a pending approval request, deleteProjectByIdQuery
+ * case" does. It first locks the project row in this organization; if there is
+ * none, it returns false and touches nothing (no approval is withdrawn).
+ * Otherwise: withdraw a pending approval request, deleteProjectByIdQuery
  * (files, risks, members, per-framework rows, custom-field values), then
- * record the deletion in the change history — only once the project was
- * actually deleted. The project_deleted automation is queued after the
- * caller's transaction commits, never for a project a rollback kept. The
- * jira_assets_use_cases link cascades with the project. Returns false if the
- * project was already gone (no history row is written then).
+ * record the deletion in the change history. The project_deleted automation
+ * is queued after the caller's transaction commits, never for a project a
+ * rollback kept. The jira_assets_use_cases link cascades with the project.
+ *
+ * false means the project is not in this organization: the link points at a
+ * project that does not exist here (another organization's, or a bad id).
  */
 async function deleteLinkedProject(
   projectId: number,
@@ -994,6 +997,14 @@ async function deleteLinkedProject(
   userId: number | null,
   transaction: Transaction,
 ): Promise<boolean> {
+  const project = (await sequelize.query(
+    `SELECT id FROM projects
+      WHERE id = :projectId AND organization_id = :organizationId
+      FOR UPDATE;`,
+    { replacements: { projectId, organizationId }, type: QueryTypes.SELECT, transaction },
+  )) as Array<{ id: number }>;
+  if (project.length === 0) return false;
+
   const pendingApprovalId = await getPendingApprovalRequestIdQuery(
     projectId,
     "use_case",
@@ -1027,7 +1038,7 @@ export async function removeMissingUseCases(
   organizationId: number,
   userId: number,
   useCaseIds: unknown,
-): Promise<{ removed: number; skipped: number }> {
+): Promise<{ removed: number; unlinked: number; skipped: number; skipped_ids: number[] }> {
   if (
     !Array.isArray(useCaseIds) ||
     useCaseIds.length === 0 ||
@@ -1039,13 +1050,20 @@ export async function removeMissingUseCases(
     );
   }
   const ids = Array.from(new Set(useCaseIds as number[]));
-  const removed = await deleteUseCasesUnderClaim(organizationId, userId, {
+  const outcome = await deleteUseCasesUnderClaim(organizationId, userId, {
     by: "id",
     ids,
     onlyMissing: true,
     requireAll: false,
   });
-  return { removed, skipped: ids.length - removed };
+  const handled = new Set([...outcome.removedIds, ...outcome.unlinkedIds]);
+  const skippedIds = ids.filter((id) => !handled.has(id));
+  return {
+    removed: outcome.removedIds.length,
+    unlinked: outcome.unlinkedIds.length,
+    skipped: skippedIds.length,
+    skipped_ids: skippedIds,
+  };
 }
 
 /**
@@ -1053,11 +1071,18 @@ export async function removeMissingUseCases(
  * DELETE /use-cases/:id). Takes the per-org claim ('remove_missing'), then in
  * one transaction: share-locks the run's own row (no other claim can close it
  * mid-way), locks the matching link rows (`by` id or project id, optionally
- * only those still flagged missing), deletes each project through
- * deleteLinkedProject (a link with no project is deleted itself) and records
- * the run (objects_deleted). Returns how many were removed.
+ * only those still flagged) and handles each:
+ * - its project is in this organization: deleted through deleteLinkedProject
+ *   (the link cascades) — `removedIds`;
+ * - it has no project, or its project is not in this organization: only the
+ *   link row is deleted, no project is touched, nothing is written to the
+ *   change history and no automation fires — `unlinkedIds`. Such a link
+ *   could otherwise never leave the "Missing in Jira" list.
+ * The run records objects_deleted = removed use cases. Ids (link ids, or
+ * project ids for a single delete) are returned so callers can tell which
+ * of theirs were handled.
  *
- * With `requireAll`, removing fewer than `ids` is JiraUseCaseNotFoundError:
+ * With `requireAll`, handling fewer than `ids` is JiraUseCaseNotFoundError:
  * the transaction rolls back and the claimed history row is deleted (it never
  * did anything, so it is not recorded as a failed run). Other errors close
  * the row as failed; a lost claim (RunSupersededError) writes nothing more.
@@ -1066,10 +1091,11 @@ async function deleteUseCasesUnderClaim(
   organizationId: number,
   userId: number,
   target: { by: "id" | "project_id"; ids: number[]; onlyMissing: boolean; requireAll: boolean },
-): Promise<number> {
+): Promise<{ removedIds: number[]; unlinkedIds: number[] }> {
   const run = await claimSyncRun(organizationId, "remove_missing", userId);
   try {
-    let removed = 0;
+    const removedIds: number[] = [];
+    const unlinkedIds: number[] = [];
     await sequelize.transaction(async (transaction) => {
       await assertRunOwned(run, organizationId, transaction);
       const rows = (await sequelize.query(
@@ -1085,30 +1111,38 @@ async function deleteUseCasesUnderClaim(
         },
       )) as Array<{ id: number; project_id: number | null }>;
 
-      const linkOnlyIds: number[] = [];
+      const unlinkRows: Array<{ id: number; project_id: number | null }> = [];
       for (const row of rows) {
-        if (row.project_id === null) {
-          linkOnlyIds.push(row.id);
-        } else if (await deleteLinkedProject(row.project_id, organizationId, userId, transaction)) {
-          // No savepoint per row: a savepoint's afterCommit hooks fire when it
-          // is released, not when this transaction commits. The link rows are
-          // locked FOR UPDATE and cascade with their project (ON DELETE
-          // CASCADE), so a project cannot vanish under a locked link. A false
-          // here means the linked project is not this org's: not removed
-          // (skipped, or 404 for a single delete), and the link is untouched.
-          removed++;
+        const callerId = target.by === "id" ? row.id : (row.project_id as number);
+        // No savepoint per row: a savepoint's afterCommit hooks fire when it
+        // is released, not when this transaction commits. A link in this org
+        // whose project is in this org cascades with it, so while the link is
+        // locked FOR UPDATE the project cannot vanish; deleteLinkedProject
+        // returns false only for a project that is not in this organization.
+        if (
+          row.project_id !== null &&
+          (await deleteLinkedProject(row.project_id, organizationId, userId, transaction))
+        ) {
+          removedIds.push(callerId);
+        } else {
+          unlinkRows.push(row);
         }
       }
-      if (linkOnlyIds.length > 0) {
+      if (unlinkRows.length > 0) {
+        const linkIds = unlinkRows.map((r) => r.id);
         const [deleted] = (await sequelize.query(
           `DELETE FROM jira_assets_use_cases
-            WHERE organization_id = :organizationId AND id IN (:linkOnlyIds)
+            WHERE organization_id = :organizationId AND id IN (:linkIds)
             RETURNING id;`,
-          { replacements: { organizationId, linkOnlyIds }, transaction },
+          { replacements: { organizationId, linkIds }, transaction },
         )) as unknown as [Array<{ id: number }>, unknown];
-        removed += deleted?.length ?? 0;
+        const gone = new Set((deleted ?? []).map((r) => r.id));
+        for (const row of unlinkRows) {
+          if (!gone.has(row.id)) continue;
+          unlinkedIds.push(target.by === "id" ? row.id : (row.project_id as number));
+        }
       }
-      if (target.requireAll && removed < target.ids.length) {
+      if (target.requireAll && removedIds.length + unlinkedIds.length < target.ids.length) {
         throw new JiraUseCaseNotFoundError();
       }
       // Recorded in the same transaction: if this run lost its claim, the
@@ -1116,13 +1150,20 @@ async function deleteUseCasesUnderClaim(
       await finalizeSuccess(
         run,
         organizationId,
-        { objectsFetched: 0, objectsCreated: 0, objectsUpdated: 0, objectsDeleted: removed },
-        null,
+        {
+          objectsFetched: 0,
+          objectsCreated: 0,
+          objectsUpdated: 0,
+          objectsDeleted: removedIds.length,
+        },
+        unlinkedIds.length > 0
+          ? `${unlinkedIds.length} link(s) with no project in this organization were cleaned up.`
+          : null,
         false,
         transaction,
       );
     });
-    return removed;
+    return { removedIds, unlinkedIds };
   } catch (err) {
     if (err instanceof JiraUseCaseNotFoundError) {
       await releaseClaim(run, organizationId);
@@ -1566,18 +1607,19 @@ export async function getUseCaseByProjectId(
 /**
  * DELETE /use-cases/:id — delete one imported use case (a project linked in
  * jira_assets_use_cases) the same way as the core "Delete use case", through
- * the same claimed flow as removals (deleteUseCasesUnderClaim). Any other
- * project, or one already gone, is JiraUseCaseNotFoundError (404): nothing is
- * deleted and no run is recorded: a project that is not linked is rejected
- * before claiming; one whose link vanished in the meantime, or whose linked
- * project is not this organization's, rolls back and releases the claimed
- * history row. 409 while a sync, import or removal runs.
+ * the same claimed flow as removals (deleteUseCasesUnderClaim). A link whose
+ * project is not in this organization has only its link row deleted
+ * (`{ unlinked: true }`), so it leaves the panel; no project is touched. A
+ * project id with no link is JiraUseCaseNotFoundError (404) and no run is
+ * recorded: rejected before claiming, or, if the link vanished in the
+ * meantime, rolled back with the claimed history row released. 409 while a
+ * sync, import or removal runs.
  */
 export async function deleteUseCaseByProjectId(
   projectId: number,
   organizationId: number,
   userId: number,
-): Promise<void> {
+): Promise<{ unlinked: boolean }> {
   // Cheap unlocked check first, so a request for a project that is not a
   // Jira Assets use case is 404 at once and never takes (or waits on) the
   // per-org claim. The flow below checks again under the claim, locked.
@@ -1588,12 +1630,13 @@ export async function deleteUseCaseByProjectId(
   )) as Array<{ id: number }>;
   if (linked.length === 0) throw new JiraUseCaseNotFoundError();
 
-  await deleteUseCasesUnderClaim(organizationId, userId, {
+  const outcome = await deleteUseCasesUnderClaim(organizationId, userId, {
     by: "project_id",
     ids: [projectId],
     onlyMissing: false,
     requireAll: true,
   });
+  return { unlinked: outcome.unlinkedIds.length > 0 };
 }
 
 // ---------------------------------------------------------------------------
