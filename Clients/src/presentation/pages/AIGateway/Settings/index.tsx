@@ -28,6 +28,8 @@ import Toggle from "../../../components/Inputs/Toggle";
 import TabBar from "../../../components/TabBar";
 import { PageHeaderExtended } from "../../../components/Layout/PageHeaderExtended";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
+import { useTranslation } from "../../../../application/hooks/useTranslation";
+import { fill } from "../../../../i18n/fill";
 import palette from "../../../themes/palette";
 import { sectionTitleSx, useCardSx, ProviderIcon, API_KEY_PROVIDERS } from "../shared";
 import CustomizableSkeleton from "../../../components/Skeletons";
@@ -123,7 +125,14 @@ interface RiskSuggestion {
   reviewed_by_name?: string;
 }
 
+// apiServices rejects with a CustomException whose `response` is the raw body.
+// The gateway reports validation failures as { detail }, which the message
+// extraction does not read, so prefer it over the generic axios message.
+const apiErrorText = (err: any, fallback: string): string =>
+  (typeof err?.response?.detail === "string" && err.response.detail) || err?.message || fallback;
+
 export default function AIGatewaySettingsPage() {
+  const { t } = useTranslation();
   const formatDate = useFormattedDate();
   const cardSx = useCardSx();
   const { tab: urlTab } = useParams<{ tab: string }>();
@@ -383,7 +392,7 @@ export default function AIGatewaySettingsPage() {
       });
       await loadData();
     } catch (err: any) {
-      setGsError(err?.message || "Failed to save settings");
+      setGsError(apiErrorText(err, "Failed to save settings"));
     } finally {
       setGsSaving(false);
     }
@@ -394,9 +403,9 @@ export default function AIGatewaySettingsPage() {
     try {
       const res = await apiServices.post<Record<string, any>>("/ai-gateway/guardrails/logs/purge");
       const count = res?.data?.total_deleted ?? res?.data?.data?.total_deleted ?? 0;
-      setPurgeMessage({ text: `${count} logs deleted`, isError: false });
+      setPurgeMessage({ text: fill(t("{count} logs deleted"), { count }), isError: false });
     } catch (err: any) {
-      setPurgeMessage({ text: err?.message || "Failed to purge logs", isError: true });
+      setPurgeMessage({ text: apiErrorText(err, "Failed to purge logs"), isError: true });
     } finally {
       setPurging(false);
       setIsPurgeModalOpen(false);
@@ -847,9 +856,9 @@ export default function AIGatewaySettingsPage() {
                   <Stack gap="8px">
                     <Typography sx={sectionTitleSx}>Audit log retention</Typography>
                     <Typography sx={{ fontSize: 13, color: palette.text.tertiary }}>
-                      How long to keep guardrail detection logs and spend logs. Guardrail logs
-                      record every blocked or masked request for compliance auditing (EU AI Act Art.
-                      12).
+                      {t(
+                        "How long to keep guardrail detection logs and spend logs. Guardrail logs record every blocked or masked request for compliance auditing (EU AI Act Art. 12).",
+                      )}
                     </Typography>
                     <Box sx={{ maxWidth: 200, mt: "8px" }}>
                       <Field
@@ -887,8 +896,9 @@ export default function AIGatewaySettingsPage() {
                       />
                     </Stack>
                     <Typography sx={{ fontSize: 13, color: palette.text.tertiary }}>
-                      When on, logs older than their retention period are deleted every day. When
-                      off, logs are kept until you purge them.
+                      {t(
+                        "When on, logs older than their retention period are deleted every day. When off, logs are kept until you purge them.",
+                      )}
                     </Typography>
                     <Box sx={{ mt: "8px" }}>
                       <CustomizableButton
@@ -1413,9 +1423,9 @@ export default function AIGatewaySettingsPage() {
         isOpen={isPurgeModalOpen}
         onClose={() => setIsPurgeModalOpen(false)}
         title="Purge old logs"
-        description={`Permanently delete guardrail logs older than ${
-          guardrailSettings?.log_retention_days ?? 90
-        } days?`}
+        description={fill(t("Permanently delete guardrail logs older than {days} days?"), {
+          days: guardrailSettings?.log_retention_days ?? 90,
+        })}
         onSubmit={handlePurgeGuardrailLogs}
         submitButtonText="Purge logs"
         submitButtonColor="#D32F2F"

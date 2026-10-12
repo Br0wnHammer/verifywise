@@ -10206,6 +10206,13 @@ export const translations: Record<string, Record<string, string>> = {
     "Unavailable": "Nicht verfügbar",
     "Set by deployment: {setting}": "Durch die Bereitstellung festgelegt: {setting}",
     "Edit retention: {name}": "Aufbewahrung bearbeiten: {name}",
+    "{count} logs deleted": "{count} Protokolle gelöscht",
+    "Permanently delete guardrail logs older than {days} days?":
+      "Guardrail-Protokolle, die älter als {days} Tage sind, endgültig löschen?",
+    "How long to keep guardrail detection logs and spend logs. Guardrail logs record every blocked or masked request for compliance auditing (EU AI Act Art. 12).":
+      "Wie lange Guardrail-Erkennungsprotokolle und Ausgabenprotokolle aufbewahrt werden. Guardrail-Protokolle erfassen jede blockierte oder maskierte Anfrage für die Compliance-Prüfung (EU-KI-Verordnung, Art. 12).",
+    "When on, logs older than their retention period are deleted every day. When off, logs are kept until you purge them.":
+      "Wenn aktiviert, werden Protokolle, die älter als ihre Aufbewahrungsfrist sind, täglich gelöscht. Wenn deaktiviert, werden Protokolle aufbewahrt, bis Sie sie löschen.",
     "Only admins can change retention periods":
       "Nur Administratoren können Aufbewahrungsfristen ändern",
     "Records before {date} removed by retention policy":
@@ -20372,6 +20379,13 @@ export const translations: Record<string, Record<string, string>> = {
     "Unavailable": "Indisponible",
     "Set by deployment: {setting}": "Défini par le déploiement : {setting}",
     "Edit retention: {name}": "Modifier la conservation : {name}",
+    "{count} logs deleted": "{count} journaux supprimés",
+    "Permanently delete guardrail logs older than {days} days?":
+      "Supprimer définitivement les journaux de garde-fous datant de plus de {days} jours ?",
+    "How long to keep guardrail detection logs and spend logs. Guardrail logs record every blocked or masked request for compliance auditing (EU AI Act Art. 12).":
+      "Durée de conservation des journaux de détection des garde-fous et des journaux de dépenses. Les journaux des garde-fous enregistrent chaque requête bloquée ou masquée pour l'audit de conformité (règlement européen sur l'IA, art. 12).",
+    "When on, logs older than their retention period are deleted every day. When off, logs are kept until you purge them.":
+      "Si activé, les journaux plus anciens que leur durée de conservation sont supprimés chaque jour. Si désactivé, les journaux sont conservés jusqu'à ce que vous les purgiez.",
     "Only admins can change retention periods":
       "Seuls les administrateurs peuvent modifier les durées de conservation",
     "Records before {date} removed by retention policy":
@@ -30458,6 +30472,13 @@ export const translations: Record<string, Record<string, string>> = {
     "Unavailable": "No disponible",
     "Set by deployment: {setting}": "Definido por el despliegue: {setting}",
     "Edit retention: {name}": "Editar retención: {name}",
+    "{count} logs deleted": "{count} registros eliminados",
+    "Permanently delete guardrail logs older than {days} days?":
+      "¿Eliminar permanentemente los registros de guardrails con más de {days} días?",
+    "How long to keep guardrail detection logs and spend logs. Guardrail logs record every blocked or masked request for compliance auditing (EU AI Act Art. 12).":
+      "Cuánto tiempo se conservan los registros de detección de guardrails y los registros de gasto. Los registros de guardrails recogen cada solicitud bloqueada o enmascarada para la auditoría de cumplimiento (Reglamento de IA de la UE, art. 12).",
+    "When on, logs older than their retention period are deleted every day. When off, logs are kept until you purge them.":
+      "Si está activado, los registros más antiguos que su periodo de retención se eliminan cada día. Si está desactivado, los registros se conservan hasta que los purgues.",
     "Only admins can change retention periods":
       "Solo los administradores pueden cambiar los periodos de retención",
     "Records before {date} removed by retention policy":

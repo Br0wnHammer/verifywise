@@ -409,6 +409,26 @@ describe("AIGateway - Settings", () => {
     expect(mockPut).not.toHaveBeenCalled();
   });
 
+  it("shows the gateway detail from the error shape apiServices produces", async () => {
+    mockParams = { tab: "guardrails" };
+    // apiServices rejects with CustomException(message, status, rawBody)
+    const err: any = new Error("Request failed with status code 400");
+    err.status = 400;
+    err.response = { detail: "spend_log_retention_days must be an integer >= 1" };
+    mockPut.mockRejectedValue(err);
+    renderWithProviders(<AIGatewaySettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Error behavior")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    expect(
+      await screen.findByText("spend_log_retention_days must be an integer >= 1"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Request failed with status code 400")).not.toBeInTheDocument();
+  });
+
   it("shows the server error when saving settings fails", async () => {
     mockParams = { tab: "guardrails" };
     mockPut.mockRejectedValue(new Error("spend_log_retention_days must be at least 1"));
