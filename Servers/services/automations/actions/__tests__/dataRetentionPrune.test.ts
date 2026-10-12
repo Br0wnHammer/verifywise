@@ -174,7 +174,9 @@ describe("runDataRetentionPruneAllOrgs", () => {
     });
     await runDataRetentionPruneAllOrgs();
     expect(mockGateway).toHaveBeenCalledTimes(1);
-    expect(mockGateway).toHaveBeenCalledWith("POST", "/internal/retention/purge");
+    expect(mockGateway).toHaveBeenCalledWith("POST", "/internal/retention/purge", {
+      timeoutMs: 300_000,
+    });
     expect(mockRecord).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: 5,

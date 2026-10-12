@@ -42,6 +42,18 @@ describe("aiGatewayRequest", () => {
     expect(init.body).toBe(JSON.stringify({ a: 1 }));
   });
 
+  it("uses a custom timeout when given and the default otherwise", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    const timeoutSpy = jest.spyOn(AbortSignal, "timeout");
+
+    await aiGatewayRequest("POST", "/internal/x", { timeoutMs: 300_000 });
+    await aiGatewayRequest("POST", "/internal/x");
+
+    expect(timeoutSpy).toHaveBeenNthCalledWith(1, 300_000);
+    expect(timeoutSpy).toHaveBeenNthCalledWith(2, 10_000);
+    timeoutSpy.mockRestore();
+  });
+
   it("throws on a non-2xx response", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403, text: async () => "nope" });
 

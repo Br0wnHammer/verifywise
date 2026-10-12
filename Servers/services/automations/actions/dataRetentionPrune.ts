@@ -141,6 +141,9 @@ export async function runDataRetentionPruneAllOrgs(): Promise<void> {
   await purgeGatewayLogs();
 }
 
+/** One purge request can drain many batches for every opted-in org, so it gets five minutes. */
+const GATEWAY_PURGE_TIMEOUT_MS = 300_000;
+
 interface GatewayPurgeResult {
   organization_id: number;
   guardrail_deleted?: number;
@@ -156,7 +159,9 @@ interface GatewayPurgeResult {
 async function purgeGatewayLogs(): Promise<void> {
   let results: GatewayPurgeResult[];
   try {
-    const response = await aiGatewayRequest("POST", "/internal/retention/purge");
+    const response = await aiGatewayRequest("POST", "/internal/retention/purge", {
+      timeoutMs: GATEWAY_PURGE_TIMEOUT_MS,
+    });
     results = Array.isArray(response?.results) ? response.results : [];
   } catch (error) {
     logger.error("AI Gateway retention purge failed:", error);

@@ -15,6 +15,8 @@ export interface AiGatewayRequestOptions {
   organizationId?: number;
   role?: string;
   body?: object;
+  /** Overrides the default timeout, for long-running calls such as the retention purge. */
+  timeoutMs?: number;
 }
 
 /** Call an AI Gateway internal endpoint; throws on a non-2xx response or timeout. */
@@ -36,7 +38,7 @@ export async function aiGatewayRequest(
     method,
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
-    signal: AbortSignal.timeout(AI_GATEWAY_TIMEOUT_MS),
+    signal: AbortSignal.timeout(options.timeoutMs ?? AI_GATEWAY_TIMEOUT_MS),
   });
   if (!response.ok) {
     const text = await response.text();
