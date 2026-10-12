@@ -29,12 +29,27 @@ function isRefusalCode(value: unknown): value is GatewayPurgeRefusal {
   );
 }
 
-/** The machine code in a gateway error body: { detail: { code } } or { code }. */
-function gatewayErrorCode(body: unknown): unknown {
+/**
+ * The exact detail strings a gateway released before the machine codes
+ * returned for the same refusals. Accepted so a rolling deploy (new backend,
+ * old gateway) still explains the refusal.
+ */
+const LEGACY_REFUSAL_DETAILS: Record<number, { detail: string; code: GatewayPurgeRefusal }> = {
+  503: { detail: "Internal key not configured", code: "internal_key_not_configured" },
+  401: { detail: "Invalid internal key", code: "internal_key_rejected" },
+};
+
+/**
+ * The machine code in a gateway error body: { detail: { code } } or { code },
+ * or for an older gateway the code its exact legacy detail string stands for.
+ */
+function gatewayErrorCode(status: number, body: unknown): unknown {
   if (!body || typeof body !== "object") return undefined;
   const { code, detail } = body as { code?: unknown; detail?: unknown };
   if (code !== undefined) return code;
-  return detail && typeof detail === "object" ? (detail as { code?: unknown }).code : undefined;
+  if (detail && typeof detail === "object") return (detail as { code?: unknown }).code;
+  const legacy = LEGACY_REFUSAL_DETAILS[status];
+  return legacy && detail === legacy.detail ? legacy.code : undefined;
 }
 
 /**
@@ -46,7 +61,7 @@ function gatewayErrorCode(body: unknown): unknown {
 export function gatewayPurgeRefusalFor(error: unknown): GatewayPurgeRefusal | null {
   const { status, body } = (error ?? {}) as { status?: unknown; body?: unknown };
   if (status !== 401 && status !== 503) return null;
-  const code = gatewayErrorCode(body);
+  const code = gatewayErrorCode(status, body);
   if (status === 503) return code === "internal_key_not_configured" ? code : null;
   if (!isGatewayInternalKeyConfigured()) return "internal_key_not_configured";
   return code === "internal_key_rejected" ? code : null;
