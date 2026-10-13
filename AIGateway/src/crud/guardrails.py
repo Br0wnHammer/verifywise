@@ -251,10 +251,10 @@ def _validate_settings_input(data: dict) -> None:
     """Reject values the settings columns cannot hold, as a 400.
 
     Saves are partial: a key that is left out keeps its stored value. An
-    explicit null is stored only for the two nullable columns
-    (log_request_body, log_response_body), as before. For every other setting
-    the column is NOT NULL, so null is rejected here rather than failing in
-    the database as a 500."""
+    explicit null is stored only for the nullable columns: log_request_body,
+    log_response_body, and mcp_audit_retention_days (where null means the
+    deployment default). For every other setting the column is NOT NULL, so
+    null is rejected here rather than failing in the database as a 500."""
     for key in _SETTINGS_DEFAULTS:
         if key in data and data[key] is None and key not in _NULLABLE_SETTING_KEYS:
             raise HTTPException(
