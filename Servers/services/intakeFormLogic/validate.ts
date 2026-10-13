@@ -50,6 +50,14 @@ export function validateSchemaLogic(schema: LogicSchema, entityType: string): Sc
     : [];
   const errors: SchemaLogicError[] = [];
   const seenIds = new Set<string>();
+  // Fields some show/hide condition depends on: rules match options by value.
+  const referencedIds = new Set(
+    fields.flatMap((field) =>
+      Array.isArray(field.visibility?.conditions)
+        ? field.visibility.conditions.map((condition) => condition?.fieldId)
+        : [],
+    ),
+  );
 
   fields.forEach((field, index) => {
     const add = (message: string) =>
@@ -58,8 +66,14 @@ export function validateSchemaLogic(schema: LogicSchema, entityType: string): Sc
     if (seenIds.has(field.id)) add(`another field already uses the id "${field.id}"`);
     seenIds.add(field.id);
 
-    // Rules, scoring and the review screens look options up by value.
-    if (OPTION_TYPES.includes(field.type) && Array.isArray(field.options)) {
+    // Rules match options by value, so a field a rule uses needs unique,
+    // non-blank values. Only those fields are checked: older forms may hold
+    // duplicate values from the previous option editor and must stay saveable.
+    if (
+      OPTION_TYPES.includes(field.type) &&
+      referencedIds.has(field.id) &&
+      Array.isArray(field.options)
+    ) {
       const values = field.options.map((option) => option?.value);
       if (values.some((value) => typeof value !== "string" || value.trim() === "")) {
         add("every option needs a value");

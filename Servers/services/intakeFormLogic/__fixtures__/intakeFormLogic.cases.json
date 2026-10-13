@@ -1337,7 +1337,7 @@
       "errorFieldIds": []
     },
     {
-      "name": "option values must be set and unique",
+      "name": "option values must be set and unique on fields a rule uses",
       "entityType": "use_case",
       "fields": [
         {
@@ -1361,14 +1361,27 @@
           ]
         },
         {
-          "id": "ok",
+          "id": "legacy",
           "type": "select",
-          "label": "Fine",
+          "label": "Legacy duplicates, no rule uses it",
           "order": 2,
           "options": [
-            { "value": "a", "label": "A" },
-            { "value": "b", "label": "B" }
+            { "value": "option2", "label": "A" },
+            { "value": "option2", "label": "B" }
           ]
+        },
+        {
+          "id": "shown",
+          "type": "text",
+          "label": "Shown",
+          "order": 3,
+          "visibility": {
+            "match": "any",
+            "conditions": [
+              { "fieldId": "dup", "operator": "is_not_empty" },
+              { "fieldId": "blank", "operator": "is_not_empty" }
+            ]
+          }
         }
       ],
       "errorFieldIds": ["blank", "dup"]

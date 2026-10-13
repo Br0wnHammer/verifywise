@@ -1191,7 +1191,7 @@ export async function getSubmissionByEntity(req: Request, res: Response) {
     }
 
     const { submission, formName, formSchema } = result;
-    const submissionData = submission.data as Record<string, unknown>;
+    const submissionData = (submission.data ?? {}) as Record<string, unknown>;
 
     // Build a structured fields array using the form schema for labels/types
     const schemaFields = (formSchema as any)?.fields || [];
@@ -1204,7 +1204,7 @@ export async function getSubmissionByEntity(req: Request, res: Response) {
         value: submissionData[field.id] ?? null,
         // A visible calculated field without a result is stored as null; a
         // hidden one, or a submission from before the field existed, has no key.
-        answered: Object.prototype.hasOwnProperty.call(submissionData ?? {}, field.id),
+        answered: Object.prototype.hasOwnProperty.call(submissionData, field.id),
         options: field.options || null,
         decimals: field.decimals ?? null,
         prefix: field.prefix ?? null,
