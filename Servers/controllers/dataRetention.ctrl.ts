@@ -64,6 +64,12 @@ export interface RetentionRow {
   deploymentSetting?: string;
   /** The source (AI Gateway, or a module's settings) could not be read, so the values are unknown. */
   unavailable?: boolean;
+  /** Agent Control: the organization has no own period, so the deployment default applies. */
+  usesDeploymentDefault?: boolean;
+  /** Agent Control: the deployment default in days (0 or less = kept indefinitely). */
+  deploymentDefaultDays?: number;
+  /** Agent Control: the shortest period an organization may set. */
+  minDays?: number;
 }
 
 function daysPeriod(days: number): RetentionRow["period"] {
@@ -153,11 +159,23 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
     );
     const autoPurge = gatewaySettings.auto_purge_enabled === true;
 
-    const agentDays =
+    const deploymentAgentDays =
       typeof retentionConfig?.mcp_audit_retention_days === "number"
         ? retentionConfig.mcp_audit_retention_days
         : null;
-    const agentUnavailable = agentDays === null;
+    const agentMinDays =
+      typeof retentionConfig?.mcp_audit_retention_min_days === "number"
+        ? retentionConfig.mcp_audit_retention_min_days
+        : null;
+    const ownAgentDays =
+      typeof gatewaySettings.mcp_audit_retention_days === "number"
+        ? gatewaySettings.mcp_audit_retention_days
+        : null;
+    // An older gateway reports no floor and cannot store a period: show the
+    // row as unavailable rather than offer an edit it would reject.
+    const agentUnavailable =
+      gatewayUnavailable || deploymentAgentDays === null || agentMinDays === null;
+    const agentDays = ownAgentDays ?? deploymentAgentDays ?? 0;
 
     /** A row whose settings could not be read: shown as unavailable. */
     const unavailableRow = (
@@ -212,15 +230,18 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
         source: "app",
         ...(gatewayUnavailable ? { unavailable: true } : {}),
       },
-      {
-        key: "agent_control_logs",
-        period: agentUnavailable ? null : daysPeriod(agentDays),
-        automaticDeletion: !agentUnavailable && agentDays > 0 ? "yes" : "no",
-        lastCleanup: null,
-        source: "deployment",
-        deploymentSetting: "MCP_AUDIT_RETENTION_DAYS",
-        ...(agentUnavailable ? { unavailable: true } : {}),
-      },
+      agentUnavailable
+        ? unavailableRow("agent_control_logs", null)
+        : {
+            key: "agent_control_logs",
+            period: daysPeriod(agentDays),
+            automaticDeletion: agentDays > 0 ? "yes" : "no",
+            lastCleanup: null,
+            source: "app",
+            usesDeploymentDefault: ownAgentDays === null,
+            deploymentDefaultDays: deploymentAgentDays as number,
+            minDays: agentMinDays as number,
+          },
       mrm
         ? {
             key: "mrm_metrics",

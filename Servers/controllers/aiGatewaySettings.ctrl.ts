@@ -34,6 +34,7 @@ const RETENTION_LABELS: Record<RetentionKey, string> = {
   log_retention_days: "guardrail log retention",
   spend_log_retention_days: "spend log retention",
   auto_purge_enabled: "automatic deletion",
+  mcp_audit_retention_days: "Agent Control log retention",
 };
 
 function hasOwn(object: object, key: string): boolean {
@@ -42,6 +43,7 @@ function hasOwn(object: object, key: string): boolean {
 
 function formatValue(key: RetentionKey, value: unknown): string {
   if (key === "auto_purge_enabled") return value ? "on" : "off";
+  if (key === "mcp_audit_retention_days" && value === null) return "the deployment default";
   return `${value} days`;
 }
 

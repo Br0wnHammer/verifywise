@@ -377,9 +377,38 @@ describe("describeRetentionChanges", () => {
       ),
     ).toEqual(["guardrail log retention set to 30 days", "automatic deletion set to off"]);
   });
+  it("describes an Agent Control period change and a reset to the default", () => {
+    expect(
+      describeRetentionChanges(
+        { mcp_audit_retention_days: null },
+        { mcp_audit_retention_days: 60 },
+        { mcp_audit_retention_days: 60 },
+      ),
+    ).toEqual(["Agent Control log retention from the deployment default to 60 days"]);
+    expect(
+      describeRetentionChanges(
+        { mcp_audit_retention_days: 60 },
+        { mcp_audit_retention_days: null },
+        { mcp_audit_retention_days: null },
+      ),
+    ).toEqual(["Agent Control log retention from 60 days to the deployment default"]);
+  });
+
+  it("skips an unchanged Agent Control default", () => {
+    expect(
+      describeRetentionChanges(
+        { mcp_audit_retention_days: null },
+        { mcp_audit_retention_days: null },
+        { mcp_audit_retention_days: null },
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("isRetentionOnlyUpdate", () => {
+  it("treats an Agent Control-only save as retention-only", () => {
+    expect(isRetentionOnlyUpdate({ mcp_audit_retention_days: 30 })).toBe(true);
+  });
   it("accepts only retention keys", () => {
     expect(isRetentionOnlyUpdate({ log_retention_days: 30, auto_purge_enabled: true })).toBe(true);
     expect(isRetentionOnlyUpdate({})).toBe(false);
