@@ -4,7 +4,7 @@
  * trusted expressions (column names, bind parameters) are interpolated;
  * sqlOwnsRunFragment validates its values before inlining them.
  */
-import { STALE_AFTER_MINUTES } from "./types";
+import { BACKOFF_CAP_HOURS, STALE_AFTER_MINUTES } from "./types";
 
 const ALIAS_PATTERN = /^[a-z_][a-z0-9_]*$/;
 const TOKEN_PATTERN = /^[0-9a-f-]{36}$/;
@@ -53,3 +53,61 @@ export function sqlOwnsRunFragment(run: OwnedRunRef, alias = "own"): string {
                      AND ${alias}.run_token = '${run.token}' AND ${alias}.status = 'started'
                    FOR SHARE)`;
 }
+
+/**
+ * Doubling stops at this exponent: 2^(6-1) = 32 h already exceeds the 24 h
+ * cap, and an unclamped power(2, n) overflows Postgres float8 near n = 1024,
+ * which would fail the tick for every organization.
+ */
+const BACKOFF_MAX_EXPONENT = 6;
+
+/** Hours to wait after `n` consecutive scheduled failures: 0, 1, 2, 4, 8, 16, then 24. */
+export function backoffHours(consecutiveFailures: number): number {
+  if (!Number.isFinite(consecutiveFailures) || consecutiveFailures <= 0) return 0;
+  return Math.min(
+    2 ** (Math.min(consecutiveFailures, BACKOFF_MAX_EXPONENT) - 1),
+    BACKOFF_CAP_HOURS,
+  );
+}
+
+/** SQL mirror of backoffHours for the settings row `alias`. */
+export function sqlBackoffHours(alias: string): string {
+  assertAlias(alias);
+  return `(CASE WHEN ${alias}.consecutive_failures <= 0 THEN 0
+                ELSE LEAST(power(2, LEAST(${alias}.consecutive_failures, ${BACKOFF_MAX_EXPONENT}) - 1), ${BACKOFF_CAP_HOURS})::int
+           END)`;
+}
+
+/**
+ * The tick's discovery query for one extension (:key): every org whose
+ * schedule is on, whose extension is enabled (jobs bypass
+ * requireExtensionEnabled, so the join is the enablement check), with no live
+ * run, and whose due time has passed. `last_run` is the newest start of a
+ * claimed run of a status kind (:statusKinds); skipped rows have no token and
+ * never count. Due when there is no last run, or when
+ * GREATEST(interval_hours, backoff) hours have passed since it. Nothing is
+ * stored ahead of time, so an interval change applies on the next tick. This
+ * system query spans organizations by design; every subquery is correlated on
+ * the row's own organization_id.
+ */
+export const DUE_RUNS_SQL = `
+  SELECT s.organization_id
+    FROM extension_sync_settings s
+    JOIN extensions e ON e.key = s.extension_key
+    JOIN extension_enablements ee
+      ON ee.extension_id = e.id
+     AND ee.organization_id = s.organization_id
+     AND ee.enabled = TRUE
+    LEFT JOIN LATERAL (
+      SELECT MAX(r.started_at) AS last_run
+        FROM extension_sync_runs r
+       WHERE r.organization_id = s.organization_id AND r.extension_key = s.extension_key
+         AND r.kind IN (:statusKinds) AND r.run_token IS NOT NULL
+    ) lr ON TRUE
+   WHERE s.extension_key = :key
+     AND s.enabled = TRUE
+     AND NOT ${sqlLiveRunExists("s.extension_key", "s.organization_id")}
+     AND (lr.last_run IS NULL
+          OR now() >= lr.last_run
+                      + make_interval(hours => GREATEST(s.interval_hours, ${sqlBackoffHours("s")})))
+   ORDER BY s.organization_id;`;

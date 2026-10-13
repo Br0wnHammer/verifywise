@@ -10,7 +10,8 @@ import {
   isUniqueViolation,
   truncateMessage,
 } from "./errors";
-import { getSyncProvider } from "./registry";
+import { getSyncProvider, statusKinds } from "./registry";
+import { recordFailureForSchedule, resetScheduleFailures } from "./schedule";
 import { sqlOwnsRunFragment, sqlRunIsLive } from "./sql";
 import {
   ABANDONED_RUN_MESSAGE,
@@ -74,7 +75,12 @@ export async function claimRun(
       type: QueryTypes.SELECT,
       transaction,
     });
-    await closeStaleRuns(provider, orgId, transaction);
+    for (const closed of await closeStaleRuns(provider, orgId, transaction)) {
+      // An abandoned scheduled run counts as a scheduled failure.
+      if (closed.kind === provider.scheduledKind) {
+        await recordFailureForSchedule(key, orgId, closed.started_at, transaction);
+      }
+    }
     const running = (await sequelize.query(
       `SELECT id FROM extension_sync_runs
         WHERE organization_id = :orgId AND extension_key = :key AND status = 'started'
@@ -231,6 +237,9 @@ export class EngineRunContext implements RunContext {
       },
     )) as unknown as [Array<{ id: number }>, unknown];
     if (!rows || rows.length === 0) throw new RunSupersededError(this.runId);
+    if (statusKinds(this.provider).includes(this.kind)) {
+      await resetScheduleFailures(this.provider.key, this.orgId, transaction);
+    }
     this.markSettled(transaction);
   }
 
@@ -283,7 +292,11 @@ export async function failRun(ctx: EngineRunContext, err: unknown): Promise<void
           RETURNING started_at;`,
         { replacements: { ...ctx.ref(), message, code }, transaction },
       )) as unknown as [Array<{ started_at: Date }>, unknown];
-      return rows?.[0] ?? null;
+      const row = rows?.[0] ?? null;
+      if (row && ctx.kind === ctx.provider.scheduledKind) {
+        await recordFailureForSchedule(ctx.provider.key, ctx.orgId, row.started_at, transaction);
+      }
+      return row;
     });
     if (!closed) {
       logger.warn(`Extension sync run ${ctx.runId} was already closed; failure not recorded`);

@@ -507,3 +507,42 @@ describe("recordSkippedRun", () => {
     await expect(recordSkippedRun("demo-ext", 5, "manual", 8)).resolves.toBeUndefined();
   });
 });
+
+describe("schedule bookkeeping", () => {
+  const streakUps = () => calls("consecutive_failures = consecutive_failures + 1");
+  const resets = () => calls("SET consecutive_failures = 0");
+
+  it("counts an abandoned scheduled run as a scheduled failure", async () => {
+    fakeDb({
+      closed: [
+        { kind: "scheduled", started_at: STARTED_AT },
+        { kind: "import", started_at: STARTED_AT },
+      ],
+    });
+    await claimRun("demo-ext", 5, "manual", 8);
+    expect(streakUps()).toHaveLength(1);
+    expect(streakUps()[0][1]).toMatchObject({
+      replacements: { key: "demo-ext", orgId: 5, startedAt: STARTED_AT },
+      transaction: TX,
+    });
+  });
+
+  it("counts a failed scheduled run, not a failed manual one", async () => {
+    fakeDb();
+    mockRun.mockRejectedValue(new Error("boom"));
+    await runClaimed(provider, createRunContext(provider, { ...RUN, kind: "scheduled" }, null));
+    expect(streakUps()).toHaveLength(1);
+    await runClaimed(provider, createRunContext(provider, RUN, null));
+    expect(streakUps()).toHaveLength(1);
+  });
+
+  it("resets the streak on a completed manual or scheduled run, not on an import", async () => {
+    fakeDb();
+    for (const kind of ["manual", "scheduled", "import"]) {
+      const ctx = createRunContext(provider, { ...RUN, kind }, null);
+      await ctx.finalize({ counts: {} });
+      ctx.dispose();
+    }
+    expect(resets()).toHaveLength(2);
+  });
+});
