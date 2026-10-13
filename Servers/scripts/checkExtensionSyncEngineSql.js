@@ -19,6 +19,7 @@ const {
   DUE_RUNS_SQL,
   backoffHours,
   sqlBackoffHours,
+  sqlLastFinishedRun,
   sqlOwnsRunFragment,
 } = require("../extensions/sync-engine/sql");
 
@@ -119,6 +120,41 @@ async function main() {
       assert.equal(row.hours, backoffHours(failures), `backoff for ${failures} failures`);
     }
 
+    // last_sync_* / last_finished_run: a newer abandoned or skipped run never
+    // replaces an older completed or failed one; a newer failed one does.
+    const lastFinished = async () => {
+      const [row] = await sequelize.query(
+        `SELECT * FROM (${sqlLastFinishedRun(":orgId", ":key", ":kinds", "r.id, r.status")}) x`,
+        { replacements: { orgId: 7, key: KEY, kinds: STATUS_KINDS }, type: QueryTypes.SELECT },
+      );
+      return row;
+    };
+    const {
+      rows: [done],
+    } = await client.query(
+      `INSERT INTO verifywise.extension_sync_runs
+         (organization_id, extension_key, kind, status, run_token, started_at, completed_at)
+       VALUES (7, '${KEY}', 'manual', 'completed', 't7a', now() - interval '60 minutes',
+               now() - interval '59 minutes') RETURNING id`,
+    );
+    await client.query(
+      `INSERT INTO verifywise.extension_sync_runs
+         (organization_id, extension_key, kind, status, code, run_token, started_at, completed_at)
+       VALUES (7, '${KEY}', 'scheduled', 'abandoned', 'abandoned', 't7b',
+               now() - interval '30 minutes', now() - interval '10 minutes'),
+              (7, '${KEY}', 'manual', 'skipped', 'skipped', NULL,
+               now() - interval '5 minutes', now() - interval '5 minutes')`,
+    );
+    assert.deepEqual(await lastFinished(), { id: done.id, status: "completed" });
+    const {
+      rows: [failed],
+    } = await client.query(
+      `INSERT INTO verifywise.extension_sync_runs
+         (organization_id, extension_key, kind, status, run_token, started_at, completed_at)
+       VALUES (7, '${KEY}', 'scheduled', 'failed', 't7c', now() - interval '3 minutes',
+               now() - interval '2 minutes') RETURNING id`,
+    );
+    assert.deepEqual(await lastFinished(), { id: failed.id, status: "failed" });
     const {
       rows: [started],
     } = await client.query(

@@ -6,10 +6,11 @@ import { logFailure, logProcessing, logSuccess } from "../../utils/logger/logHel
 import { JiraAssetsClient, JiraUpstreamError } from "./jira.client";
 import {
   BackgroundJobsUnavailableError,
-  hasPendingJiraAssetsSyncJob,
+  hasPendingExtensionSyncJob,
 } from "../../services/automations/automationProducer";
 import { VW_AI_SYSTEM_ATTRIBUTES, transformAttributes } from "./jira.constants";
 import {
+  JIRA_ASSETS_KEY,
   JIRA_SYNC_IN_PROGRESS_MESSAGE,
   clientFromConfig,
   deleteUseCaseByProjectId,
@@ -24,7 +25,6 @@ import {
   JiraConfigValidationError,
   JiraImportInterruptedError,
   JiraNotConfiguredError,
-  JiraSyncInProgressError,
   JiraUseCaseDeleteFailedError,
   JiraUseCaseNotFoundError,
   listUseCases,
@@ -32,11 +32,12 @@ import {
   removeMissingUseCases,
   RunSupersededError,
   saveConfig,
-  startManualSync,
   updateSelection,
   updateSyncSettings,
 } from "./jiraAssets.service";
-import { SyncInProgressError } from "../sync-engine/errors";
+import { SyncInProgressError, SyncNotReadyError } from "../sync-engine/errors";
+import { startManualRun } from "../sync-engine/jobs";
+import { parseRunsLimit } from "../sync-engine/status";
 
 const fileName = "jiraAssets.ctrl.ts";
 
@@ -65,7 +66,7 @@ function isExpectedError(err: unknown): boolean {
     err instanceof JiraConfigValidationError ||
     err instanceof JiraNotConfiguredError ||
     err instanceof JiraUseCaseNotFoundError ||
-    err instanceof JiraSyncInProgressError ||
+    err instanceof SyncNotReadyError ||
     err instanceof SyncInProgressError ||
     err instanceof JiraImportInterruptedError ||
     err instanceof RunSupersededError
@@ -96,7 +97,7 @@ async function requireClient(organizationId: number): Promise<JiraAssetsClient> 
  *
  * - JiraConfigValidationError → 400
  * - JiraNotConfiguredError, JiraUseCaseNotFoundError → 404
- * - JiraSyncInProgressError → 409
+ * - SyncNotReadyError (Jira readiness for "Sync now") → its status (404 or 400) with the reason
  * - SyncInProgressError (engine claim taken) → 409 with JIRA_SYNC_IN_PROGRESS_MESSAGE
  * - JiraImportInterruptedError → 409 with { message, code: "import_interrupted", imported, skipped }
  * - JiraUpstreamError (Jira response, timeout, DNS/TLS) → 502
@@ -105,14 +106,14 @@ async function requireClient(organizationId: number): Promise<JiraAssetsClient> 
  * - anything else → 500, logged
  */
 function sendError(req: Request, res: Response, err: unknown, functionName: string) {
+  if (err instanceof SyncNotReadyError) {
+    return res.status(err.status).json(STATUS_CODE[err.status](err.message));
+  }
   if (err instanceof JiraConfigValidationError) {
     return res.status(400).json(STATUS_CODE[400](err.message));
   }
   if (err instanceof JiraNotConfiguredError || err instanceof JiraUseCaseNotFoundError) {
     return res.status(404).json(STATUS_CODE[404](err.message));
-  }
-  if (err instanceof JiraSyncInProgressError) {
-    return res.status(409).json(STATUS_CODE[409](err.message));
   }
   if (err instanceof SyncInProgressError) {
     // The engine's claim is per extension; keep Jira's own message and shape.
@@ -171,12 +172,13 @@ export async function postConfig(req: Request, res: Response): Promise<any> {
 /**
  * PATCH /config/sync — only `sync_enabled` and/or `sync_interval_hours`.
  * Used by the panel's auto-save so it never re-sends connection fields.
+ * Deprecated: the panel uses PATCH /api/extensions/jira-assets/schedule.
  */
 export async function patchSyncSettings(req: Request, res: Response): Promise<any> {
   const ctx = logContext(req, "patchSyncSettings");
   logProcessing({ ...ctx, description: "updating Jira Assets sync settings" });
   try {
-    const settings = await updateSyncSettings(orgId(req), uid(req), req.body ?? {});
+    const settings = await updateSyncSettings(orgId(req), req.body ?? {});
     await logSuccess({
       ...ctx,
       eventType: "Update",
@@ -308,18 +310,14 @@ export async function postImport(req: Request, res: Response): Promise<any> {
 }
 
 /**
- * POST /sync — "Sync now". Checks the config (404 / 400), refuses with 409 if
- * a run is live or a sync job for the org is already waiting, and otherwise
- * queues the job: 202 with `{ jobId, previousRunId }`. Nothing is claimed
- * here; the worker claims the run when it picks the job up. `previousRunId`
- * is the newest manual or scheduled run before this request. The outcome,
- * including the reason for a failure, is recorded on the history row and the
- * config; the panel polls GET /sync/status (`queued`, `running`,
- * `latest_run`, `last_sync_*`) until a run newer than `previousRunId` ends.
+ * POST /sync (deprecated) — "Sync now", served by the sync engine's manual
+ * run with the old responses: 202 `{ jobId, previousRunId }`; 404 / 400 from
+ * Jira's readiness; 409 if a run is live or a job is already waiting; 503 if
+ * the queue does not answer. The panel uses POST /api/extensions/jira-assets/runs.
  */
 export async function postSync(req: Request, res: Response): Promise<any> {
   try {
-    const started = await startManualSync(orgId(req), uid(req));
+    const started = await startManualRun(JIRA_ASSETS_KEY, orgId(req), uid(req));
     return res.status(202).json(STATUS_CODE[202](started));
   } catch (err) {
     return sendError(req, res, err, "postSync");
@@ -330,14 +328,14 @@ export async function postSync(req: Request, res: Response): Promise<any> {
  * GET /sync/status — last-sync fields, `running`, `latest_run` (with
  * `is_live`), plus `queued`: whether a sync job for the org is waiting in the
  * queue. If the queue does not answer, `queued` is null rather than failing
- * the whole response.
+ * the whole response. (deprecated: the panel uses GET /api/extensions/jira-assets/runs/status)
  */
 export async function getSyncStatusCtrl(req: Request, res: Response): Promise<any> {
   try {
     const status = await getSyncStatus(orgId(req));
     let queued: boolean | null = null;
     try {
-      queued = await hasPendingJiraAssetsSyncJob(orgId(req));
+      queued = await hasPendingExtensionSyncJob(JIRA_ASSETS_KEY, orgId(req));
     } catch (err) {
       logger.warn(`jira sync status: queue state unavailable: ${(err as Error).message}`);
     }
@@ -349,7 +347,7 @@ export async function getSyncStatusCtrl(req: Request, res: Response): Promise<an
 
 export async function getSyncHistoryCtrl(req: Request, res: Response): Promise<any> {
   try {
-    const limit = Math.min(parseInt(String(req.query.limit ?? "20"), 10) || 20, 200);
+    const limit = parseRunsLimit(req.query?.limit);
     const history = await getSyncHistory(orgId(req), limit);
     return res.status(200).json(STATUS_CODE[200](history));
   } catch (err: any) {

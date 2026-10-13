@@ -3,13 +3,14 @@ import {
   deleteUseCaseByProjectId,
   IMPORT_MAX_OBJECTS,
   errorMessage,
+  getPublicConfig,
+  getSyncHistory,
   getSyncStatus,
   importObjects,
   JiraConfigValidationError,
   JiraImportInterruptedError,
   JiraNotConfiguredError,
   jiraReadiness,
-  JiraSyncInProgressError,
   JiraUseCaseDeleteFailedError,
   JiraUseCaseNotFoundError,
   parseSyncIntervalHours,
@@ -17,9 +18,7 @@ import {
   REMOVAL_SKIP_REASONS,
   runJiraSync,
   saveConfig,
-  startManualSync,
   SKIPPED_RUN_MESSAGE,
-  SQL_RUN_IS_LIVE,
   RunSupersededError,
   updateSelection,
   updateSyncSettings,
@@ -28,6 +27,9 @@ import { jiraAssetsSyncProvider } from "../jiraAssets.syncProvider";
 import { createRunContext, runClaimed } from "../../sync-engine/claim";
 import { __resetSyncProvidersForTests, registerSyncProvider } from "../../sync-engine/registry";
 import { SyncInProgressError } from "../../sync-engine/errors";
+import * as engineSchedule from "../../sync-engine/schedule";
+import * as engineStatus from "../../sync-engine/status";
+import type { RunView } from "../../sync-engine/status";
 import { sequelize } from "../../../database/db";
 import { decryptText } from "../../../tools/createSecureValue";
 import { JiraAssetsClient } from "../jira.client";
@@ -37,10 +39,6 @@ import {
   withdrawApprovalRequestQuery,
 } from "../../../utils/approvalRequest.utils";
 import { recordUseCaseDeletion } from "../../../utils/useCaseChangeHistory.utils";
-import {
-  BackgroundJobsUnavailableError,
-  enqueueJiraAssetsSyncRun,
-} from "../../../services/automations/automationProducer";
 
 // afterCommit runs at once: the mocked transaction always commits.
 const FAKE_TX = { id: "tx", afterCommit: (fn: () => void) => fn() };
@@ -81,10 +79,6 @@ jest.mock("../jira.client", () => {
     PAGE_SIZE: 50,
   };
 });
-jest.mock("../../../services/automations/automationProducer", () => {
-  class BackgroundJobsUnavailableError extends Error {}
-  return { enqueueJiraAssetsSyncRun: jest.fn(), BackgroundJobsUnavailableError };
-});
 jest.mock("../../../utils/project.utils", () => ({
   deleteProjectByIdQuery: jest.fn(),
   lockProjectForDelete: jest.fn(async () => true),
@@ -106,7 +100,6 @@ const mockQuery = sequelize.query as jest.Mock;
 const mockTransaction = sequelize.transaction as unknown as jest.Mock;
 const mockDecrypt = decryptText as jest.Mock;
 const MockClient = JiraAssetsClient as unknown as jest.Mock;
-const mockEnqueue = enqueueJiraAssetsSyncRun as jest.Mock;
 const mockDeleteProject = deleteProjectByIdQuery as jest.Mock;
 const mockLockProject = lockProjectForDelete as jest.Mock;
 const mockPendingApproval = getPendingApprovalRequestIdQuery as jest.Mock;
@@ -216,7 +209,7 @@ function fakeDb({
     if (sql.includes("SELECT id FROM extension_sync_runs")) return running;
     if (sql.includes("INSERT INTO extension_sync_runs")) return [[{ id: 77 }], 1];
     if (sql.includes("AS live")) return [{ live }];
-    if (sql.includes("SELECT id, jira_base_url")) return config ? [config] : [];
+    if (sql.includes("SELECT c.id, c.jira_base_url")) return config ? [config] : [];
     if (sql.includes("SELECT * FROM jira_assets_config")) return config ? [config] : [];
     if (sql.includes("SELECT jira_object_id, project_id")) return existing;
     if (sql.includes("SELECT id, project_id, missing_in_jira_since FROM jira_assets_use_cases")) {
@@ -291,7 +284,6 @@ beforeEach(() => {
   mockTransaction.mockReset();
   mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb(FAKE_TX));
   mockDecrypt.mockReturnValue({ success: true, data: "token" });
-  mockEnqueue.mockResolvedValue({ jobId: "jira-assets-sync-5", queued: true });
   mockDeleteProject.mockResolvedValue(true);
   mockPendingApproval.mockResolvedValue(null);
 });
@@ -602,54 +594,6 @@ describe("jiraReadiness", () => {
     fakeDb({ config: null });
     await expect(jiraReadiness(5, "import")).resolves.toMatchObject({ ready: false, status: 404 });
     await expect(jiraReadiness(5, "remove_missing")).resolves.toEqual({ ready: true });
-  });
-});
-
-describe("startManualSync (Sync now queues a job)", () => {
-  it("queues the job and returns its id and the newest run before it", async () => {
-    fakeDb({ latestRunId: 40 });
-
-    await expect(startManualSync(5, 8)).resolves.toEqual({
-      jobId: "jira-assets-sync-5",
-      previousRunId: 40,
-    });
-    expect(mockEnqueue).toHaveBeenCalledWith({
-      organizationId: 5,
-      triggeredBy: 8,
-      syncType: "manual",
-    });
-    // The worker claims at pickup; nothing is claimed here.
-    expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
-  });
-
-  it("refuses with 409 when a run is live", async () => {
-    fakeDb({ live: true });
-
-    await expect(startManualSync(5, 8)).rejects.toBeInstanceOf(JiraSyncInProgressError);
-    expect(mockEnqueue).not.toHaveBeenCalled();
-  });
-
-  it("refuses with 409 when a job for the org is already waiting", async () => {
-    fakeDb();
-    mockEnqueue.mockResolvedValue({ jobId: "jira-assets-sync-5", queued: false });
-
-    await expect(startManualSync(5, 8)).rejects.toBeInstanceOf(JiraSyncInProgressError);
-  });
-
-  it("passes a queue outage through (503 in the controller)", async () => {
-    fakeDb();
-    mockEnqueue.mockRejectedValue(new BackgroundJobsUnavailableError());
-
-    await expect(startManualSync(5, 8)).rejects.toBeInstanceOf(BackgroundJobsUnavailableError);
-  });
-
-  it("rejects without a config or an object type", async () => {
-    fakeDb({ config: null });
-    await expect(startManualSync(5, 8)).rejects.toBeInstanceOf(JiraNotConfiguredError);
-
-    fakeDb({ config: { ...CONFIG_ROW, selected_object_type_id: null } });
-    await expect(startManualSync(5, 8)).rejects.toBeInstanceOf(JiraConfigValidationError);
-    expect(mockEnqueue).not.toHaveBeenCalled();
   });
 });
 
@@ -1220,6 +1164,7 @@ describe("importObjects", () => {
 
     await expect(importObjects(5, 8, ["1"])).rejects.toBeInstanceOf(SyncInProgressError);
     expect(sqlCalls("INSERT INTO projects")).toHaveLength(0);
+    expect(sqlCalls("INSERT INTO extension_sync_runs")).toHaveLength(0);
   });
 
   it("rejects before claiming when Jira is not configured", async () => {
@@ -1279,60 +1224,229 @@ describe("importObjects", () => {
   });
 });
 
-describe("getSyncStatus", () => {
-  it("returns the latest run with liveness computed in SQL", async () => {
-    mockQuery.mockResolvedValue([{ running: false, latest_run: { id: 77 } }]);
+const runView = (over: Partial<RunView> = {}): RunView => ({
+  id: 41,
+  kind: "manual",
+  status: "completed",
+  code: null,
+  counts: { fetched: 3, created: 1, updated: 2, deleted: 0 },
+  message: null,
+  started_at: "2026-10-12T10:00:00.000+00:00",
+  completed_at: "2026-10-12T10:01:00.000+00:00",
+  is_live: false,
+  ...over,
+});
 
-    await getSyncStatus(5);
+describe("legacy GET /sync/status (getSyncStatus)", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("is null when Jira is not configured", async () => {
+    fakeDb({ config: null });
+    const spy = jest.spyOn(engineStatus, "getRunStatus");
+
+    await expect(getSyncStatus(5)).resolves.toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("keeps the old shape, with an abandoned run as a failed row coded abandoned", async () => {
+    fakeDb({ config: { ...CONFIG_ROW, sync_enabled: true, sync_interval_hours: 6 } });
+    jest.spyOn(engineStatus, "getRunStatus").mockResolvedValue({
+      schedule: null,
+      running: false,
+      last_finished_run: null,
+      latest_run: runView({
+        status: "abandoned",
+        code: "abandoned",
+        message: ABANDONED_RUN_MESSAGE,
+      }),
+    });
+
+    const status = await getSyncStatus(5);
+
+    expect(Object.keys(status!).sort()).toEqual([
+      "last_sync_at",
+      "last_sync_message",
+      "last_sync_status",
+      "latest_run",
+      "running",
+      "sync_enabled",
+      "sync_interval_hours",
+    ]);
+    expect(status!.latest_run).toEqual({
+      id: 41,
+      sync_type: "manual",
+      status: "failed",
+      objects_fetched: 3,
+      objects_created: 1,
+      objects_updated: 2,
+      error_message: ABANDONED_RUN_MESSAGE,
+      started_at: "2026-10-12T10:00:00.000+00:00",
+      completed_at: "2026-10-12T10:01:00.000+00:00",
+      is_live: false,
+      code: "abandoned",
+    });
+    expect(status).toMatchObject({ sync_enabled: true, sync_interval_hours: 6, running: false });
+    expect(engineStatus.getRunStatus).toHaveBeenCalledWith("jira-assets", 5);
+  });
+
+  it("reports a skipped run as a failed row coded skipped, and a completed one uncoded", async () => {
+    fakeDb();
+    const spy = jest.spyOn(engineStatus, "getRunStatus");
+    spy.mockResolvedValueOnce({
+      schedule: null,
+      running: false,
+      last_finished_run: null,
+      latest_run: runView({
+        status: "skipped",
+        code: "skipped",
+        message: SKIPPED_RUN_MESSAGE,
+        counts: {},
+      }),
+    });
+    expect((await getSyncStatus(5))!.latest_run).toMatchObject({
+      status: "failed",
+      code: "skipped",
+      error_message: SKIPPED_RUN_MESSAGE,
+      objects_fetched: 0,
+    });
+
+    spy.mockResolvedValueOnce({
+      schedule: null,
+      running: true,
+      last_finished_run: null,
+      latest_run: runView(),
+    });
+    expect((await getSyncStatus(5))!.latest_run).toMatchObject({ status: "completed", code: null });
+  });
+});
+
+describe("legacy GET /sync/history (getSyncHistory)", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("returns rows in the old SELECT * shape, with no token", async () => {
+    const at = new Date("2026-10-12T10:00:00Z");
+    jest.spyOn(engineStatus, "listRuns").mockResolvedValue([
+      {
+        id: 42,
+        kind: "remove_missing",
+        status: "completed",
+        code: null,
+        counts: { deleted: 2 },
+        message: null,
+        triggered_by: 8,
+        started_at: at,
+        heartbeat_at: at,
+        completed_at: at,
+      },
+      {
+        id: 41,
+        kind: "manual",
+        status: "skipped",
+        code: "skipped",
+        counts: {},
+        message: SKIPPED_RUN_MESSAGE,
+        triggered_by: 8,
+        started_at: at,
+        heartbeat_at: null,
+        completed_at: at,
+      },
+    ]);
+
+    const rows = await getSyncHistory(5, 20);
+
+    expect(engineStatus.listRuns).toHaveBeenCalledWith("jira-assets", 5, 20);
+    expect(Object.keys(rows[0]).sort()).toEqual([
+      "completed_at",
+      "error_message",
+      "heartbeat_at",
+      "id",
+      "objects_created",
+      "objects_deleted",
+      "objects_fetched",
+      "objects_updated",
+      "organization_id",
+      "run_token",
+      "started_at",
+      "status",
+      "sync_type",
+      "triggered_by",
+    ]);
+    expect(rows[0]).toMatchObject({
+      organization_id: 5,
+      sync_type: "remove_missing",
+      status: "completed",
+      objects_deleted: 2,
+      run_token: null,
+    });
+    expect(rows[1]).toMatchObject({ status: "failed", error_message: SKIPPED_RUN_MESSAGE });
+  });
+});
+
+describe("GET /config last_sync_* (getPublicConfig)", () => {
+  it("derives the schedule and last_sync_* from the engine", async () => {
+    mockQuery.mockResolvedValue([{ id: 1 }]);
+
+    await getPublicConfig(5);
 
     const [sql, options] = mockQuery.mock.calls[0];
-    expect(sql).toContain(`(h.status = 'started' AND ${SQL_RUN_IS_LIVE}) AS is_live`);
-    expect(sql).toContain("END AS code");
+    expect(sql).toContain("LEFT JOIN extension_sync_settings s");
+    expect(sql).toContain("COALESCE(s.enabled, FALSE) AS sync_enabled");
+    expect(sql).toContain(
+      "r.kind IN ('manual', 'scheduled') AND r.status IN ('completed', 'failed')",
+    );
+    expect(sql).toContain("ORDER BY r.completed_at DESC, r.id DESC");
+    expect(sql).toContain("WHEN 'completed' THEN 'success'");
+    expect(sql).not.toMatch(/c\.last_sync_|c\.sync_enabled|c\.sync_interval_hours/);
     expect(options.replacements).toEqual({
       organizationId: 5,
-      abandonedMessage: ABANDONED_RUN_MESSAGE,
-      abandonedCode: "abandoned",
-      skippedMessage: SKIPPED_RUN_MESSAGE,
-      skippedCode: "skipped",
+      key: "jira-assets",
+      defaultInterval: 24,
     });
   });
 });
 
-describe("updateSyncSettings (partial patch)", () => {
-  it("updates only the sync fields that were sent", async () => {
-    mockQuery.mockResolvedValue([[{ sync_enabled: true, sync_interval_hours: 24 }], 1]);
+describe("legacy PATCH /config/sync (updateSyncSettings)", () => {
+  afterEach(() => jest.restoreAllMocks());
 
-    const result = await updateSyncSettings(5, 8, { sync_enabled: true });
-
-    expect(result).toEqual({ sync_enabled: true, sync_interval_hours: 24 });
-    const [sql, options] = mockQuery.mock.calls[0];
-    expect(sql).toContain("COALESCE(:syncEnabled, sync_enabled)");
-    expect(sql).not.toMatch(/jira_base_url|api_token|selected_schema_id|email/);
-    expect(options.replacements).toEqual({
-      syncEnabled: true,
-      syncIntervalHours: null,
-      userId: 8,
-      organizationId: 5,
+  it("saves the fields sent in the engine schedule and answers in the old shape", async () => {
+    fakeDb();
+    const save = jest.spyOn(engineSchedule, "saveSchedule").mockResolvedValue({
+      enabled: true,
+      interval_hours: 24,
+      consecutive_failures: 0,
+      failing_since: null,
     });
+
+    await expect(updateSyncSettings(5, { sync_enabled: true })).resolves.toEqual({
+      sync_enabled: true,
+      sync_interval_hours: 24,
+    });
+    expect(save).toHaveBeenCalledWith("jira-assets", 5, {
+      enabled: true,
+      intervalHours: undefined,
+    });
+    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 
   it("validates the input before touching the database", async () => {
-    await expect(updateSyncSettings(5, 8, { sync_interval_hours: 0 })).rejects.toBeInstanceOf(
+    await expect(updateSyncSettings(5, { sync_interval_hours: 0 })).rejects.toBeInstanceOf(
       JiraConfigValidationError,
     );
-    await expect(updateSyncSettings(5, 8, {})).rejects.toBeInstanceOf(JiraConfigValidationError);
-    await expect(updateSyncSettings(5, 8, { sync_enabled: "on" })).rejects.toBeInstanceOf(
+    await expect(updateSyncSettings(5, {})).rejects.toBeInstanceOf(JiraConfigValidationError);
+    await expect(updateSyncSettings(5, { sync_enabled: "on" })).rejects.toBeInstanceOf(
       JiraConfigValidationError,
     );
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("reports a missing config instead of creating one", async () => {
-    mockQuery.mockResolvedValue([[], 0]);
+  it("reports a missing config instead of creating a schedule", async () => {
+    fakeDb({ config: null });
+    const save = jest.spyOn(engineSchedule, "saveSchedule");
 
-    await expect(updateSyncSettings(5, 8, { sync_interval_hours: 6 })).rejects.toBeInstanceOf(
+    await expect(updateSyncSettings(5, { sync_interval_hours: 6 })).rejects.toBeInstanceOf(
       JiraNotConfiguredError,
     );
+    expect(save).not.toHaveBeenCalled();
   });
 });
 
@@ -1412,13 +1526,32 @@ describe("saveConfig validation", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("saves a valid interval", async () => {
+  it("writes the connection without sync columns and the schedule through the engine", async () => {
     mockQuery.mockResolvedValueOnce([{ id: 1, api_token_encrypted: "enc" }]).mockResolvedValue([]);
+    const save = jest.spyOn(engineSchedule, "saveSchedule").mockResolvedValue({
+      enabled: true,
+      interval_hours: 6,
+      consecutive_failures: 0,
+      failing_since: null,
+    });
 
     await saveConfig(5, 3, { ...base, sync_enabled: true, sync_interval_hours: 6 });
 
-    const update = mockQuery.mock.calls[1];
-    expect(update[1].replacements).toMatchObject({ syncEnabled: true, syncIntervalHours: 6 });
+    const [updateSql, update] = mockQuery.mock.calls[1];
+    expect(updateSql).not.toContain("sync_enabled");
+    expect(update.replacements).not.toHaveProperty("syncEnabled");
+    expect(save).toHaveBeenCalledWith("jira-assets", 5, { enabled: true, intervalHours: 6 });
+    save.mockRestore();
+  });
+
+  it("leaves the schedule alone when the body has no sync fields", async () => {
+    mockQuery.mockResolvedValueOnce([{ id: 1, api_token_encrypted: "enc" }]).mockResolvedValue([]);
+    const save = jest.spyOn(engineSchedule, "saveSchedule");
+
+    await saveConfig(5, 3, base);
+
+    expect(save).not.toHaveBeenCalled();
+    save.mockRestore();
   });
 });
 

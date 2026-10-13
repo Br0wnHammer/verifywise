@@ -11,13 +11,20 @@ import {
 } from "./jira.client";
 import { transformAttributes } from "./jira.constants";
 import { logStructured } from "../../utils/logger/fileLogger";
-import { enqueueJiraAssetsSyncRun } from "../../services/automations/automationProducer";
-import { SQL_NOW_UTC, sqlWithinLastMinutes } from "../scheduledSync.utils";
+import { SQL_NOW_UTC } from "../scheduledSync.utils";
 import { deleteProjectWithSideEffects } from "../../utils/projectDeletion.utils";
 import { withClaim } from "../sync-engine/claim";
-import { errorMessage, isUniqueViolation, RunSupersededError } from "../sync-engine/errors";
+import {
+  errorMessage,
+  isUniqueViolation,
+  RunSupersededError,
+  SyncValidationError,
+} from "../sync-engine/errors";
+import { parseIntervalHours, saveSchedule } from "../sync-engine/schedule";
+import { sqlLastFinishedRun } from "../sync-engine/sql";
+import { getRunStatus, listRuns, type RunListRow, type RunView } from "../sync-engine/status";
 import { ABANDONED_RUN_MESSAGE, SKIPPED_RUN_MESSAGE } from "../sync-engine/types";
-import type { Readiness, RunContext, RunResult } from "../sync-engine/types";
+import type { Readiness, RunContext, RunResult, RunStatus } from "../sync-engine/types";
 
 export { ABANDONED_RUN_MESSAGE, errorMessage, RunSupersededError, SKIPPED_RUN_MESSAGE };
 
@@ -67,37 +74,10 @@ export const JIRA_ASSETS_KEY = "jira-assets";
 /** Every exclusive Jira Assets operation runs under the engine claim as one of these kinds. */
 export const JIRA_RUN_KINDS = ["manual", "scheduled", "import", "remove_missing"] as const;
 
-/** Bounds for `sync_interval_hours`; mirrors jira_assets_config_sync_interval_range_chk. */
-export const SYNC_INTERVAL_MIN_HOURS = 1;
-export const SYNC_INTERVAL_MAX_HOURS = 168;
+/** `sync_interval_hours` when POST /config leaves it out. */
 const DEFAULT_SYNC_INTERVAL_HOURS = 24;
-
-/**
- * A `started` history row with no heartbeat (heartbeat_at, else started_at)
- * for this many minutes is treated as abandoned (worker crash, deploy
- * mid-sync) and closed as failed, so it cannot block every later sync for the
- * organization. A live run touches heartbeat_at per fetched page and every
- * HEARTBEAT_EVERY_OBJECTS objects. All comparisons are done in SQL.
- */
-export const SYNC_STALE_AFTER_MINUTES = 15;
+/** A run heartbeats every this many objects, and after every fetched page. */
 export const HEARTBEAT_EVERY_OBJECTS = 25;
-
-/** SQL: this history row (alias `h`) has a heartbeat inside the stale window. */
-export const SQL_RUN_IS_LIVE = sqlWithinLastMinutes(
-  "COALESCE(h.heartbeat_at, h.started_at)",
-  SYNC_STALE_AFTER_MINUTES,
-);
-
-/**
- * SQL: a live `started` run exists for the organization `orgExpr` (a bind
- * parameter or a column). Shared by "Sync now", the status poll and the
- * scheduler so they agree on what "running" means.
- */
-export function sqlLiveRunExists(orgExpr: string): string {
-  return `EXISTS (SELECT 1 FROM jira_assets_sync_history h
-                   WHERE h.organization_id = ${orgExpr}
-                     AND h.status = 'started' AND ${SQL_RUN_IS_LIVE})`;
-}
 
 /**
  * Machine-readable outcome codes the panel switches on (never on message
@@ -118,14 +98,6 @@ export const JIRA_NOT_CONFIGURED_MESSAGE =
   "Jira Assets is not configured. Save the connection first.";
 export const JIRA_SYNC_IN_PROGRESS_MESSAGE =
   "A Jira Assets sync is already running for this organization";
-
-/** Thrown when a sync or import is already running for the organization. */
-export class JiraSyncInProgressError extends Error {
-  constructor() {
-    super(JIRA_SYNC_IN_PROGRESS_MESSAGE);
-    this.name = "JiraSyncInProgressError";
-  }
-}
 
 /** No Jira connection saved for the organization (404). */
 export class JiraNotConfiguredError extends Error {
@@ -208,22 +180,18 @@ export class JiraConfigValidationError extends Error {
 
 /**
  * Validate `sync_interval_hours` from a request body. Missing → default (24).
- * Accepts numeric strings because the UI select can hand back a string.
+ * Otherwise the engine's rule (whole hours from 1 to 168; numeric strings are
+ * accepted because the old panel's select handed one back), reported as a
+ * Jira validation error (400).
  */
 export function parseSyncIntervalHours(raw: unknown): number {
   if (raw === undefined || raw === null || raw === "") return DEFAULT_SYNC_INTERVAL_HOURS;
-  const value = typeof raw === "string" ? Number(raw.trim()) : raw;
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < SYNC_INTERVAL_MIN_HOURS ||
-    value > SYNC_INTERVAL_MAX_HOURS
-  ) {
-    throw new JiraConfigValidationError(
-      `Sync interval must be a whole number of hours between ${SYNC_INTERVAL_MIN_HOURS} and ${SYNC_INTERVAL_MAX_HOURS}`,
-    );
+  try {
+    return parseIntervalHours(raw);
+  } catch (err) {
+    if (err instanceof SyncValidationError) throw new JiraConfigValidationError(err.message);
+    throw err;
   }
-  return value;
 }
 
 // ---------------------------------------------------------------------------
@@ -231,17 +199,41 @@ export function parseSyncIntervalHours(raw: unknown): number {
 // ---------------------------------------------------------------------------
 
 export async function getPublicConfig(organizationId: number): Promise<JiraAssetsConfigRow | null> {
+  // The schedule and the last-sync fields come from the sync engine. last_sync_*
+  // is the newest finished manual or scheduled run that completed or failed;
+  // abandoned and skipped runs never replace it, as before.
   const rows = (await sequelize.query(
-    `SELECT id, jira_base_url, workspace_id, email, deployment_type,
-            selected_schema_id, selected_object_type_id,
-            sync_enabled, sync_interval_hours,
-            last_sync_at, last_sync_status, last_sync_message,
-            CASE WHEN api_token_encrypted IS NOT NULL AND api_token_encrypted <> ''
+    `SELECT c.id, c.jira_base_url, c.workspace_id, c.email, c.deployment_type,
+            c.selected_schema_id, c.selected_object_type_id,
+            COALESCE(s.enabled, FALSE) AS sync_enabled,
+            COALESCE(s.interval_hours, :defaultInterval) AS sync_interval_hours,
+            lf.completed_at AS last_sync_at,
+            CASE lf.status WHEN 'completed' THEN 'success' WHEN 'failed' THEN 'failed' END
+              AS last_sync_status,
+            lf.message AS last_sync_message,
+            CASE WHEN c.api_token_encrypted IS NOT NULL AND c.api_token_encrypted <> ''
                  THEN TRUE ELSE FALSE END AS has_api_token
-       FROM jira_assets_config
-      WHERE organization_id = :organizationId
+       FROM jira_assets_config c
+       LEFT JOIN extension_sync_settings s
+         ON s.organization_id = c.organization_id AND s.extension_key = :key
+       LEFT JOIN LATERAL (
+         ${sqlLastFinishedRun(
+           "c.organization_id",
+           ":key",
+           "'manual', 'scheduled'",
+           "r.status, r.message, r.completed_at",
+         )}
+       ) lf ON TRUE
+      WHERE c.organization_id = :organizationId
       LIMIT 1;`,
-    { replacements: { organizationId }, type: QueryTypes.SELECT },
+    {
+      replacements: {
+        organizationId,
+        key: JIRA_ASSETS_KEY,
+        defaultInterval: DEFAULT_SYNC_INTERVAL_HOURS,
+      },
+      type: QueryTypes.SELECT,
+    },
   )) as JiraAssetsConfigRow[];
   return rows[0] ?? null;
 }
@@ -273,8 +265,6 @@ export async function loadFullConfig(organizationId: number): Promise<JiraAssets
     deployment_type: row.deployment_type ?? "cloud",
     selected_schema_id: row.selected_schema_id,
     selected_object_type_id: row.selected_object_type_id,
-    sync_enabled: row.sync_enabled,
-    sync_interval_hours: row.sync_interval_hours,
   };
 }
 
@@ -315,8 +305,6 @@ export async function saveConfig(
     deploymentType: body.deployment_type ?? "cloud",
     selectedSchemaId: body.selected_schema_id ?? null,
     selectedObjectTypeId: body.selected_object_type_id ?? null,
-    syncEnabled: body.sync_enabled ?? false,
-    syncIntervalHours,
     userId,
   };
 
@@ -330,7 +318,6 @@ export async function saveConfig(
                 deployment_type = :deploymentType,
                 selected_schema_id = :selectedSchemaId,
                 selected_object_type_id = :selectedObjectTypeId,
-                sync_enabled = :syncEnabled, sync_interval_hours = :syncIntervalHours,
                 updated_by = :userId, updated_at = NOW()
           WHERE id = :id AND organization_id = :organizationId;`,
         {
@@ -349,7 +336,6 @@ export async function saveConfig(
                 deployment_type = :deploymentType,
                 selected_schema_id = :selectedSchemaId,
                 selected_object_type_id = :selectedObjectTypeId,
-                sync_enabled = :syncEnabled, sync_interval_hours = :syncIntervalHours,
                 updated_by = :userId, updated_at = NOW()
           WHERE id = :id AND organization_id = :organizationId;`,
         { replacements: { ...commonReplacements, id: row.id } },
@@ -362,11 +348,11 @@ export async function saveConfig(
          (organization_id, jira_base_url, workspace_id, email,
           api_token_encrypted, api_token_iv, deployment_type,
           selected_schema_id, selected_object_type_id,
-          sync_enabled, sync_interval_hours, created_by)
+          created_by)
        VALUES (:organizationId, :jiraBaseUrl, :workspaceId, :email,
                :apiTokenEncrypted, :apiTokenIv, :deploymentType,
                :selectedSchemaId, :selectedObjectTypeId,
-               :syncEnabled, :syncIntervalHours, :userId);`,
+               :userId);`,
       {
         replacements: {
           ...commonReplacements,
@@ -376,16 +362,25 @@ export async function saveConfig(
       },
     );
   }
+
+  // The schedule lives in the sync engine. A body that carries the sync fields
+  // still sets them, as POST /config always did; one that leaves both out keeps
+  // the schedule as it is (the panel no longer sends them here).
+  if (body.sync_enabled !== undefined || body.sync_interval_hours !== undefined) {
+    await saveSchedule(JIRA_ASSETS_KEY, organizationId, {
+      enabled: body.sync_enabled ?? false,
+      intervalHours: syncIntervalHours,
+    });
+  }
 }
 
 /**
- * Change only the automatic-sync settings. Connection fields, the token and
- * the schema/object type are left untouched, so a half-edited connection form
- * in the panel is never saved by toggling sync. At least one field required.
+ * PATCH /config/sync (deprecated): change only the automatic-sync settings,
+ * now kept by the sync engine. At least one field; 404 when no connection is
+ * saved yet. Answers in the old shape.
  */
 export async function updateSyncSettings(
   organizationId: number,
-  userId: number,
   body: { sync_enabled?: unknown; sync_interval_hours?: unknown },
 ): Promise<{ sync_enabled: boolean; sync_interval_hours: number }> {
   const hasEnabled = body?.sync_enabled !== undefined;
@@ -396,26 +391,13 @@ export async function updateSyncSettings(
   if (hasEnabled && typeof body.sync_enabled !== "boolean") {
     throw new JiraConfigValidationError("sync_enabled must be true or false");
   }
-  const interval = hasInterval ? parseSyncIntervalHours(body.sync_interval_hours) : null;
-
-  const [rows] = (await sequelize.query(
-    `UPDATE jira_assets_config
-        SET sync_enabled = COALESCE(:syncEnabled, sync_enabled),
-            sync_interval_hours = COALESCE(:syncIntervalHours, sync_interval_hours),
-            updated_by = :userId, updated_at = NOW()
-      WHERE organization_id = :organizationId
-      RETURNING sync_enabled, sync_interval_hours;`,
-    {
-      replacements: {
-        syncEnabled: hasEnabled ? body.sync_enabled : null,
-        syncIntervalHours: interval,
-        userId,
-        organizationId,
-      },
-    },
-  )) as unknown as [Array<{ sync_enabled: boolean; sync_interval_hours: number }>, unknown];
-  if (!rows || rows.length === 0) throw new JiraNotConfiguredError();
-  return rows[0];
+  const interval = hasInterval ? parseSyncIntervalHours(body.sync_interval_hours) : undefined;
+  throwIfNotReady(await jiraCanSchedule(organizationId));
+  const saved = await saveSchedule(JIRA_ASSETS_KEY, organizationId, {
+    enabled: hasEnabled ? (body.sync_enabled as boolean) : undefined,
+    intervalHours: interval,
+  });
+  return { sync_enabled: saved.enabled, sync_interval_hours: saved.interval_hours };
 }
 
 const JIRA_ID_PATTERN = /^[A-Za-z0-9:_-]{1,100}$/;
@@ -1172,53 +1154,6 @@ async function deleteUseCasesUnderClaim(
 // Sync
 // ---------------------------------------------------------------------------
 
-/** A live `started` run exists for the organization. */
-async function hasLiveRun(organizationId: number): Promise<boolean> {
-  const rows = (await sequelize.query(`SELECT ${sqlLiveRunExists(":organizationId")} AS live;`, {
-    replacements: { organizationId },
-    type: QueryTypes.SELECT,
-  })) as Array<{ live: boolean }>;
-  return !!rows[0]?.live;
-}
-
-/** Id of the newest manual or scheduled run, so the panel can tell when a newer one finishes. */
-async function latestSyncRunId(organizationId: number): Promise<number | null> {
-  const rows = (await sequelize.query(
-    `SELECT id FROM jira_assets_sync_history
-      WHERE organization_id = :organizationId AND sync_type IN ('manual', 'scheduled')
-      ORDER BY started_at DESC, id DESC LIMIT 1;`,
-    { replacements: { organizationId }, type: QueryTypes.SELECT },
-  )) as Array<{ id: number }>;
-  return rows[0]?.id ?? null;
-}
-
-/**
- * Start a manual sync for the "Sync now" button. Checks the config (404 /
- * 400), refuses with JiraSyncInProgressError (409) if a run is live or a sync
- * job for the org is already waiting, and otherwise queues the job (202). The
- * worker claims the run when it picks the job up. `previousRunId` is the
- * newest run before this request; the panel waits for a newer one to finish.
- */
-export async function startManualSync(
-  organizationId: number,
-  userId: number,
-): Promise<{ jobId: string; previousRunId: number | null }> {
-  const config = await getPublicConfig(organizationId);
-  if (!config) throw new JiraNotConfiguredError();
-  if (!config.selected_object_type_id) {
-    throw new JiraConfigValidationError("Select an object type before syncing");
-  }
-  if (await hasLiveRun(organizationId)) throw new JiraSyncInProgressError();
-  const previousRunId = await latestSyncRunId(organizationId);
-  const { jobId, queued } = await enqueueJiraAssetsSyncRun({
-    organizationId,
-    triggeredBy: userId,
-    syncType: "manual",
-  });
-  if (!queued) throw new JiraSyncInProgressError();
-  return { jobId, previousRunId };
-}
-
 /**
  * The Jira Assets run body: the provider's `run` for a manual or scheduled run
  * the engine has already claimed. Syncs never delete anything.
@@ -1508,60 +1443,132 @@ export async function deleteUseCaseByProjectId(
 }
 
 // ---------------------------------------------------------------------------
-// Sync status + history
+// Sync status + history: the old response shapes, served by the sync engine
 // ---------------------------------------------------------------------------
 
-/**
- * Last-sync fields plus, computed in SQL, whether a run is live now
- * (`running`) and the newest manual or scheduled run (`latest_run`, with
- * `is_live` and `code`: "abandoned" or "skipped" for a run closed for that
- * reason, else null). The controller adds `queued` (a sync job waiting in the
- * queue).
- * The panel polls this after "Sync now" until nothing is queued or running
- * and `latest_run` is newer than the run it saw before clicking.
- */
-export async function getSyncStatus(organizationId: number): Promise<any | null> {
-  const rows = (await sequelize.query(
-    `SELECT c.last_sync_at, c.last_sync_status, c.last_sync_message,
-            c.sync_enabled, c.sync_interval_hours,
-            ${sqlLiveRunExists(":organizationId")} AS running,
-            (SELECT row_to_json(r)
-               FROM (SELECT h.id, h.sync_type, h.status, h.objects_fetched, h.objects_created,
-                            h.objects_updated, h.error_message, h.started_at, h.completed_at,
-                            (h.status = 'started' AND ${SQL_RUN_IS_LIVE}) AS is_live,
-                            CASE WHEN h.status <> 'failed' THEN NULL
-                                 WHEN h.error_message = :abandonedMessage THEN :abandonedCode
-                                 WHEN h.error_message = :skippedMessage THEN :skippedCode
-                            END AS code
-                       FROM jira_assets_sync_history h
-                      WHERE h.organization_id = :organizationId
-                        AND h.sync_type IN ('manual', 'scheduled')
-                      ORDER BY h.started_at DESC, h.id DESC
-                      LIMIT 1) r) AS latest_run
-       FROM jira_assets_config c
-      WHERE c.organization_id = :organizationId
-      LIMIT 1;`,
-    {
-      replacements: {
-        organizationId,
-        abandonedMessage: ABANDONED_RUN_MESSAGE,
-        abandonedCode: JIRA_RUN_CODES.abandoned,
-        skippedMessage: SKIPPED_RUN_MESSAGE,
-        skippedCode: JIRA_RUN_CODES.skipped,
-      },
-      type: QueryTypes.SELECT,
-    },
-  )) as any[];
-  return rows[0] ?? null;
+/** One row of the old GET /sync/history (`SELECT *` on jira_assets_sync_history). */
+export interface LegacySyncHistoryRow {
+  id: number;
+  organization_id: number;
+  sync_type: string;
+  status: "started" | "completed" | "failed";
+  objects_fetched: number;
+  objects_created: number;
+  objects_updated: number;
+  objects_deleted: number;
+  error_message: string | null;
+  started_at: Date;
+  completed_at: Date | null;
+  triggered_by: number | null;
+  heartbeat_at: Date | null;
+  /** Always null: the token is the engine's ownership secret. */
+  run_token: null;
 }
 
-export async function getSyncHistory(organizationId: number, limit: number): Promise<any[]> {
-  return (await sequelize.query(
-    `SELECT * FROM jira_assets_sync_history
-      WHERE organization_id = :organizationId
-      ORDER BY started_at DESC LIMIT :limit;`,
-    { replacements: { organizationId, limit }, type: QueryTypes.SELECT },
-  )) as any[];
+/** `latest_run` of the old GET /sync/status. */
+export interface LegacyLatestRun {
+  id: number;
+  sync_type: string;
+  status: "started" | "completed" | "failed";
+  objects_fetched: number;
+  objects_created: number;
+  objects_updated: number;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  is_live: boolean;
+  code: "abandoned" | "skipped" | null;
+}
+
+export interface LegacySyncStatus {
+  last_sync_at: Date | null;
+  last_sync_status: string | null;
+  last_sync_message: string | null;
+  sync_enabled: boolean;
+  sync_interval_hours: number;
+  running: boolean;
+  latest_run: LegacyLatestRun | null;
+}
+
+/** Abandoned and skipped runs were `failed` history rows. */
+function legacyStatus(status: RunStatus): "started" | "completed" | "failed" {
+  return status === "started" || status === "completed" ? status : "failed";
+}
+
+function legacyCode(status: RunStatus): "abandoned" | "skipped" | null {
+  if (status === "abandoned") return JIRA_RUN_CODES.abandoned;
+  if (status === "skipped") return JIRA_RUN_CODES.skipped;
+  return null;
+}
+
+function countOf(counts: Record<string, number> | null | undefined, name: string): number {
+  const value = counts?.[name];
+  return typeof value === "number" ? value : 0;
+}
+
+export function toLegacyLatestRun(run: RunView): LegacyLatestRun {
+  return {
+    id: run.id,
+    sync_type: run.kind,
+    status: legacyStatus(run.status),
+    objects_fetched: countOf(run.counts, "fetched"),
+    objects_created: countOf(run.counts, "created"),
+    objects_updated: countOf(run.counts, "updated"),
+    error_message: run.message,
+    started_at: run.started_at,
+    completed_at: run.completed_at,
+    is_live: run.is_live,
+    code: legacyCode(run.status),
+  };
+}
+
+export function toLegacyHistoryRow(run: RunListRow, organizationId: number): LegacySyncHistoryRow {
+  return {
+    id: run.id,
+    organization_id: organizationId,
+    sync_type: run.kind,
+    status: legacyStatus(run.status),
+    objects_fetched: countOf(run.counts, "fetched"),
+    objects_created: countOf(run.counts, "created"),
+    objects_updated: countOf(run.counts, "updated"),
+    objects_deleted: countOf(run.counts, "deleted"),
+    error_message: run.message,
+    started_at: run.started_at,
+    completed_at: run.completed_at,
+    triggered_by: run.triggered_by,
+    heartbeat_at: run.heartbeat_at,
+    run_token: null,
+  };
+}
+
+/**
+ * GET /sync/status (deprecated) in its old shape: last_sync_* and the schedule
+ * (as GET /config derives them), `running`, and the newest manual or scheduled
+ * run (`latest_run`, `code` "abandoned" or "skipped"). Null when Jira is not
+ * configured. The controller adds `queued`.
+ */
+export async function getSyncStatus(organizationId: number): Promise<LegacySyncStatus | null> {
+  const config = await getPublicConfig(organizationId);
+  if (!config) return null;
+  const status = await getRunStatus(JIRA_ASSETS_KEY, organizationId);
+  return {
+    last_sync_at: config.last_sync_at,
+    last_sync_status: config.last_sync_status,
+    last_sync_message: config.last_sync_message,
+    sync_enabled: config.sync_enabled,
+    sync_interval_hours: config.sync_interval_hours,
+    running: status.running,
+    latest_run: status.latest_run ? toLegacyLatestRun(status.latest_run) : null,
+  };
+}
+
+/** GET /sync/history (deprecated): every Jira Assets run, newest first, in the old row shape. */
+export async function getSyncHistory(
+  organizationId: number,
+  limit: number,
+): Promise<LegacySyncHistoryRow[]> {
+  const runs = await listRuns(JIRA_ASSETS_KEY, organizationId, limit);
+  return runs.map((run) => toLegacyHistoryRow(run, organizationId));
 }
 
 // ---------------------------------------------------------------------------

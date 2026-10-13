@@ -51,8 +51,6 @@ import {
   scheduleMcpGatewayCleanup,
   scheduleFileExpirySweep,
   scheduleDataRetentionPrune,
-  enqueueJiraAssetsSyncRun,
-  hasPendingJiraAssetsSyncJob,
   BackgroundJobsUnavailableError,
   QUEUE_CALL_TIMEOUT_MS,
 } from "../automationProducer";
@@ -233,9 +231,15 @@ describe("automationProducer", () => {
     });
   });
 
-  describe("enqueueJiraAssetsSyncRun", () => {
+  describe("enqueueExtensionSyncRun (one job per extension and org)", () => {
     const mockGetJob = automationQueue.getJob as unknown as jest.Mock;
-    const payload = { organizationId: 5, triggeredBy: null, syncType: "scheduled" as const };
+    const payload = {
+      key: "jira-assets",
+      orgId: 5,
+      kind: "scheduled",
+      triggeredBy: null,
+      payload: null,
+    };
 
     beforeEach(() => {
       mockGetJob.mockReset();
@@ -243,13 +247,13 @@ describe("automationProducer", () => {
     });
 
     it("queues one attempt under a fixed per-org job id, removed when done", async () => {
-      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
-        jobId: "jira-assets-sync-5",
+      await expect(enqueueExtensionSyncRun(payload)).resolves.toEqual({
+        jobId: "ext-sync-jira-assets-5",
         queued: true,
       });
 
-      expect(mockAdd).toHaveBeenCalledWith("jira_assets_sync_run", payload, {
-        jobId: "jira-assets-sync-5",
+      expect(mockAdd).toHaveBeenCalledWith("extension_sync_run", payload, {
+        jobId: "ext-sync-jira-assets-5",
         attempts: 1,
         removeOnComplete: true,
         removeOnFail: true,
@@ -259,8 +263,8 @@ describe("automationProducer", () => {
     it("does not queue a second job while one is waiting or running", async () => {
       mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("waiting") });
 
-      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
-        jobId: "jira-assets-sync-5",
+      await expect(enqueueExtensionSyncRun(payload)).resolves.toEqual({
+        jobId: "ext-sync-jira-assets-5",
         queued: false,
       });
       expect(mockAdd).not.toHaveBeenCalled();
@@ -270,7 +274,7 @@ describe("automationProducer", () => {
       const remove = jest.fn().mockResolvedValue(undefined);
       mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("failed"), remove });
 
-      await enqueueJiraAssetsSyncRun(payload);
+      await enqueueExtensionSyncRun(payload);
 
       expect(remove).toHaveBeenCalled();
       expect(mockAdd).toHaveBeenCalled();
@@ -282,8 +286,8 @@ describe("automationProducer", () => {
         .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue("completed"), remove })
         .mockResolvedValueOnce(undefined); // already cleaned up by someone else
 
-      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
-        jobId: "jira-assets-sync-5",
+      await expect(enqueueExtensionSyncRun(payload)).resolves.toEqual({
+        jobId: "ext-sync-jira-assets-5",
         queued: true,
       });
       expect(mockAdd).toHaveBeenCalled();
@@ -295,8 +299,8 @@ describe("automationProducer", () => {
         .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue("failed"), remove })
         .mockResolvedValueOnce({ getState: jest.fn().mockResolvedValue("waiting") });
 
-      await expect(enqueueJiraAssetsSyncRun(payload)).resolves.toEqual({
-        jobId: "jira-assets-sync-5",
+      await expect(enqueueExtensionSyncRun(payload)).resolves.toEqual({
+        jobId: "ext-sync-jira-assets-5",
         queued: false,
       });
       expect(mockAdd).not.toHaveBeenCalled();
@@ -307,7 +311,7 @@ describe("automationProducer", () => {
       const finished = { getState: jest.fn().mockResolvedValue("failed"), remove };
       mockGetJob.mockResolvedValueOnce(finished).mockResolvedValueOnce(finished);
 
-      await expect(enqueueJiraAssetsSyncRun(payload)).rejects.toBeInstanceOf(
+      await expect(enqueueExtensionSyncRun(payload)).rejects.toBeInstanceOf(
         BackgroundJobsUnavailableError,
       );
       expect(mockAdd).not.toHaveBeenCalled();
@@ -315,17 +319,17 @@ describe("automationProducer", () => {
 
     it("reports pending jobs", async () => {
       mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("active") });
-      await expect(hasPendingJiraAssetsSyncJob(5)).resolves.toBe(true);
+      await expect(hasPendingExtensionSyncJob("jira-assets", 5)).resolves.toBe(true);
 
       mockGetJob.mockResolvedValue(undefined);
-      await expect(hasPendingJiraAssetsSyncJob(5)).resolves.toBe(false);
+      await expect(hasPendingExtensionSyncJob("jira-assets", 5)).resolves.toBe(false);
     });
 
     it("gives up after QUEUE_CALL_TIMEOUT_MS with BackgroundJobsUnavailableError", async () => {
       jest.useFakeTimers();
       try {
         mockGetJob.mockReturnValue(new Promise(() => undefined)); // Redis never answers
-        const pending = enqueueJiraAssetsSyncRun(payload);
+        const pending = enqueueExtensionSyncRun(payload);
         const assertion = expect(pending).rejects.toBeInstanceOf(BackgroundJobsUnavailableError);
         jest.advanceTimersByTime(QUEUE_CALL_TIMEOUT_MS);
         await assertion;
@@ -337,7 +341,7 @@ describe("automationProducer", () => {
     it("turns a queue error into BackgroundJobsUnavailableError", async () => {
       mockGetJob.mockRejectedValue(new Error("ECONNREFUSED"));
 
-      await expect(enqueueJiraAssetsSyncRun(payload)).rejects.toBeInstanceOf(
+      await expect(enqueueExtensionSyncRun(payload)).rejects.toBeInstanceOf(
         BackgroundJobsUnavailableError,
       );
     });
@@ -360,28 +364,6 @@ describe("automationProducer", () => {
 
     it("fixes the job id per extension and org", () => {
       expect(extensionSyncJobId("jira-assets", 5)).toBe("ext-sync-jira-assets-5");
-    });
-
-    it("queues one attempt of extension_sync_run under that id, removed when done", async () => {
-      await expect(enqueueExtensionSyncRun(payload)).resolves.toEqual({
-        jobId: "ext-sync-jira-assets-5",
-        queued: true,
-      });
-      expect(mockAdd).toHaveBeenCalledWith("extension_sync_run", payload, {
-        jobId: "ext-sync-jira-assets-5",
-        attempts: 1,
-        removeOnComplete: true,
-        removeOnFail: true,
-      });
-    });
-
-    it("does not queue a second job while one is waiting", async () => {
-      mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("waiting") });
-      await expect(enqueueExtensionSyncRun(payload)).resolves.toEqual({
-        jobId: "ext-sync-jira-assets-5",
-        queued: false,
-      });
-      expect(mockAdd).not.toHaveBeenCalled();
     });
 
     it("reports a pending job for the extension and org", async () => {
