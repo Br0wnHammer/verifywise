@@ -79,7 +79,7 @@ export const validateApiResponse = (
   }
 
   // Handle different response structures
-  let extractedData: any[] = [];
+  let extractedData: any[];
 
   if (Array.isArray(response)) {
     extractedData = response;
