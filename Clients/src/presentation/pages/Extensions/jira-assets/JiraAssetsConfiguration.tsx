@@ -217,7 +217,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
   const loadedPagesRef = useRef(0);
   const [, setIsLoadingUseCases] = useState(false);
 
-  // Unmount flag so the "Sync now" poll loop stops with the panel.
+  // Unmount flag so a schema / object-type save that settles late does not
+  // update the page after it has gone.
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;

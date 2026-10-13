@@ -230,6 +230,12 @@ describe("ExtensionSyncPanel", () => {
     expect(toggle(container)).toBeDisabled();
   });
 
+  it("keeps the schedule controls locked when the first status request failed", () => {
+    mockUseExtensionSync.mockReturnValue(hookState({ isLoading: false, status: null }));
+    const { container } = renderPanel();
+    expect(toggle(container)).toBeDisabled();
+  });
+
   it("non-admins cannot change the schedule or sync", () => {
     mockUseExtensionSync.mockReturnValue(hookState());
     const { container } = renderPanel({ canManage: false });

@@ -126,8 +126,9 @@ export function ExtensionSyncPanel({
   const failures = sync.status?.schedule?.consecutive_failures ?? 0;
   const failingSince = sync.status?.schedule?.failing_since ?? null;
   const running = sync.isSyncing || !!sync.status?.running || !!sync.status?.queued;
-  // Until the saved schedule has loaded, a change would be overwritten by it.
-  const scheduleLocked = !canManage || sync.isLoading;
+  // Until the saved schedule has loaded, the controls would show defaults, not
+  // the real schedule (also when the first status request failed).
+  const scheduleLocked = !canManage || !sync.status;
 
   useEffect(() => {
     onScheduleChange?.(sync.schedule);
