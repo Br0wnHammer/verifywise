@@ -58,7 +58,11 @@ const EvidenceGapsPanel: React.FC = () => {
         {expanded && worst.length > 0 && (
           <Stack component="ul" spacing={0.5} sx={{ mt: 1, pl: 2, m: 0 }}>
             {worst.map((gap: any) => (
-              <Typography component="li" key={`${gap.framework_type}-${gap.control_id}`} sx={{ fontSize: 12 }}>
+              <Typography
+                component="li"
+                key={`${gap.framework_type}-${gap.control_id}`}
+                sx={{ fontSize: 12 }}
+              >
                 {FRAMEWORK_LABELS[gap.framework_type] ?? gap.framework_type}: {gap.control_title} (
                 {gap.gap_type === "no_evidence" ? "no evidence" : "low quality"})
               </Typography>
