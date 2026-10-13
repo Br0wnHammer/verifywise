@@ -64,6 +64,17 @@ export const toLiteLLMModel = (prov: string, mdl: string): string => {
  * Handles both custom scorers and standard judge LLM
  * This modifies req.body before the proxy forwards it
  */
+/**
+ * The text of a gateway `detail`, which FastAPI sends as a string or, for
+ * internal-key refusals, as `{ message, code }`. Always a string or null, so
+ * the client can render it.
+ */
+export function gatewayDetailMessage(detail: unknown): string | null {
+  if (typeof detail === "string") return detail || null;
+  const message = (detail as { message?: unknown } | null)?.message;
+  return typeof message === "string" && message ? message : null;
+}
+
 export async function injectApiKeys(req: Request, _res: Response, next: NextFunction) {
   // Only process POST requests to experiments, arena, or report endpoints
   const isExperiment = req.method === "POST" && req.url.includes("/experiments");
@@ -384,7 +395,7 @@ function deepEvalRoutes() {
 
         if (!gatewayRes.ok) {
           const errMsg =
-            data?.detail ||
+            gatewayDetailMessage(data?.detail) ||
             data?.error?.message ||
             data?.message ||
             rawText.slice(0, 300) ||

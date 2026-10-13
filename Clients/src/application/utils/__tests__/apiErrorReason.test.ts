@@ -105,25 +105,35 @@ describe("isClientError", () => {
 });
 
 describe("getGatewayErrorDetail", () => {
-  it("reads the gateway's { detail } reason", () => {
-    expect(
-      getGatewayErrorDetail({ response: { detail: "log_retention_days must be an integer" } }),
-    ).toBe("log_retention_days must be an integer");
+  const gatewayError = (status: number, detail: unknown) =>
+    apiError("Request failed", status, { detail });
+
+  it("reads the gateway's { detail } reason of a 4xx", () => {
+    expect(getGatewayErrorDetail(gatewayError(422, "log_retention_days must be an integer"))).toBe(
+      "log_retention_days must be an integer",
+    );
   });
 
-  it("reads the message of an object detail ({ message, code })", () => {
+  it("reads the message of an object detail ({ message, code }) of a 4xx", () => {
     expect(
-      getGatewayErrorDetail({
-        response: { detail: { message: "Invalid internal key", code: "internal_key_rejected" } },
-      }),
+      getGatewayErrorDetail(
+        gatewayError(401, { message: "Invalid internal key", code: "internal_key_rejected" }),
+      ),
     ).toBe("Invalid internal key");
-    expect(getGatewayErrorDetail({ response: { detail: { code: "x" } } })).toBeNull();
-    expect(getGatewayErrorDetail({ response: { detail: { message: "" } } })).toBeNull();
+    expect(getGatewayErrorDetail(gatewayError(400, { code: "x" }))).toBeNull();
+    expect(getGatewayErrorDetail(gatewayError(400, { message: "" }))).toBeNull();
+  });
+
+  it("never surfaces the detail of a 5xx, string or object", () => {
+    expect(getGatewayErrorDetail(gatewayError(500, "Failed: connection refused"))).toBeNull();
+    expect(
+      getGatewayErrorDetail(gatewayError(503, { message: "Internal key not configured" })),
+    ).toBeNull();
   });
 
   it("returns null when there is no string detail", () => {
-    expect(getGatewayErrorDetail({ response: { detail: [{ msg: "x" }] } })).toBeNull();
-    expect(getGatewayErrorDetail({ response: { detail: "" } })).toBeNull();
+    expect(getGatewayErrorDetail(gatewayError(422, [{ msg: "x" }]))).toBeNull();
+    expect(getGatewayErrorDetail(gatewayError(400, ""))).toBeNull();
     expect(getGatewayErrorDetail(new Error("network"))).toBeNull();
     expect(getGatewayErrorDetail(null)).toBeNull();
   });

@@ -37,7 +37,7 @@ jest.mock("../../utils/aiGatewayEvalKey.utils", () => ({
   getDecryptedAiGatewayKeyForProviderQuery: jest.fn(),
 }));
 
-import { injectApiKeys, toLiteLLMModel } from "../deepEvalRoutes.route";
+import { gatewayDetailMessage, injectApiKeys, toLiteLLMModel } from "../deepEvalRoutes.route";
 import { getDecryptedAiGatewayKeyForProviderQuery } from "../../utils/aiGatewayEvalKey.utils";
 
 const mockGetKey = getDecryptedAiGatewayKeyForProviderQuery as jest.MockedFunction<
@@ -514,5 +514,24 @@ describe("injectApiKeys error handling", () => {
 
     expect(req.body.config.model.apiKey).toBe("");
     expect(next).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("gatewayDetailMessage", () => {
+  it("returns a string detail as-is", () => {
+    expect(gatewayDetailMessage("Invalid internal key")).toBe("Invalid internal key");
+  });
+
+  it("returns the message of an object detail ({ message, code })", () => {
+    expect(
+      gatewayDetailMessage({ message: "Invalid internal key", code: "internal_key_rejected" }),
+    ).toBe("Invalid internal key");
+  });
+
+  it("returns null for anything else so the caller falls back", () => {
+    expect(gatewayDetailMessage({ code: "x" })).toBeNull();
+    expect(gatewayDetailMessage([{ msg: "x" }])).toBeNull();
+    expect(gatewayDetailMessage("")).toBeNull();
+    expect(gatewayDetailMessage(undefined)).toBeNull();
   });
 });

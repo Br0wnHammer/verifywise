@@ -19,9 +19,11 @@ export function getApiErrorReason(error: unknown): string | null {
  * The AI Gateway's reason for a failed request. The gateway (FastAPI) reports
  * errors as { detail }, a string or { message, code }, which the envelope
  * readers above do not look at; `apiServices` passes that body through as the
- * error's `response`.
+ * error's `response`. Only for a rejected request (4xx): a 5xx detail can carry
+ * internal details (or is a gateway misconfiguration), so it is never surfaced.
  */
 export function getGatewayErrorDetail(error: unknown): string | null {
+  if (!isClientError(error)) return null;
   const detail = (error as { response?: { detail?: unknown } } | null)?.response?.detail;
   if (typeof detail === "string") return detail || null;
   const message = (detail as { message?: unknown } | null)?.message;
