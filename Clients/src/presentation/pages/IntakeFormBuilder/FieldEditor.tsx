@@ -468,7 +468,8 @@ export function FieldEditor({
                   id="field-decimals"
                   label="Decimals"
                   type="number"
-                  InputProps={{ inputProps: { min: 0, max: MAX_DECIMALS, step: 1 } }}
+                  min={0}
+                  max={MAX_DECIMALS}
                   value={localField.decimals === undefined ? "" : String(localField.decimals)}
                   placeholder={String(DEFAULT_DECIMALS)}
                   onChange={(e) => {

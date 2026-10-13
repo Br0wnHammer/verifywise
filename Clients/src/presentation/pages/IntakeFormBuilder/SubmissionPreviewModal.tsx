@@ -639,7 +639,10 @@ function SubmissionPreviewModal({
                   fontWeight: 500,
                 }}
               >
-                Other answers ({otherAnswers.length})
+                {/* The label is its own text node so the DOM translator can match it. */}
+                <span>
+                  <span>Other answers</span> ({otherAnswers.length})
+                </span>
                 {showOtherAnswers ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </Box>
               {showOtherAnswers && (

@@ -61,6 +61,9 @@ const DIMENSION_CONFIGS = [
         "biometric",
         "health",
         "medical",
+        "telehealth",
+        "telemedicine",
+        "biomedical",
         "genetic",
         "racial",
         "ethnic",
@@ -186,6 +189,9 @@ const DIMENSION_CONFIGS = [
       high: [
         "healthcare",
         "medical",
+        "telehealth",
+        "telemedicine",
+        "biomedical",
         "legal",
         "judicial",
         "law enforcement",
@@ -284,8 +290,9 @@ export function answersForScoring(
       default:
         text = "";
     }
-    // Every answered field is listed, even with no scorable text: an
-    // unchecked tagged checkbox is still the tagged answer for its dimension.
+    // Every answered field is listed, even with no scorable text. One with no
+    // text (an unchecked checkbox) matches no keyword, so if it is a
+    // dimension's only tagged answer, that dimension falls back to all answers.
     answers.push({ label: field.label, text, riskDimension: field.riskDimension });
   }
   return answers;

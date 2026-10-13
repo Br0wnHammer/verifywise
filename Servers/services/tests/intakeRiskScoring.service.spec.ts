@@ -234,6 +234,16 @@ describe("intakeRiskScoring.service", () => {
       expect(dimension(inside, "data_sensitivity").score).toBe(50);
     });
 
+    it.each(["telehealth", "telemedicine", "biomedical"])(
+      "scores the health compound %s as high risk despite word-start matching",
+      (word) => {
+        const schema = { version: "1.0", fields: [{ id: "notes", type: "text", label: "Notes" }] };
+        const result = scoreSubmissionRuleBased({ notes: `A ${word} triage tool` }, schema);
+        expect(dimension(result, "data_sensitivity").score).toBeGreaterThan(70);
+        expect(dimension(result, "domain_criticality").score).toBeGreaterThan(70);
+      },
+    );
+
     it("matches multi-word keywords as phrases", () => {
       const schema = { version: "1.0", fields: [{ id: "notes", type: "text", label: "Notes" }] };
       const result = scoreSubmissionRuleBased({ notes: "There is no human in the loop" }, schema);

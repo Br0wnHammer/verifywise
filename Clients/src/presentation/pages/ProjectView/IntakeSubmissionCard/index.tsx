@@ -139,7 +139,10 @@ export default function IntakeSubmissionCard({ projectId }: IntakeSubmissionCard
             ) : (
               <ChevronDown size={15} strokeWidth={1.5} />
             )}
-            Additional answers ({unmappedFields.length})
+            {/* The label is its own text node so the DOM translator can match it. */}
+            <span>
+              <span>Additional answers</span> ({unmappedFields.length})
+            </span>
           </Box>
           <Collapse in={showAdditional} timeout="auto" unmountOnExit>
             <Stack

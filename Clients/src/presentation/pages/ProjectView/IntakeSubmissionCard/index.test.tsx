@@ -76,7 +76,8 @@ describe("IntakeSubmissionCard", () => {
     expect(screen.getByText(/Jane Doe/)).toBeInTheDocument();
     expect(screen.getByText(/Risk: High/)).toBeInTheDocument();
 
-    const toggle = screen.getByText("Additional answers (1)");
+    const toggle = screen.getByText("Additional answers");
+    expect(toggle.parentElement).toHaveTextContent("Additional answers (1)");
     expect(screen.queryByText("Uses biometrics")).not.toBeInTheDocument();
 
     fireEvent.click(toggle);
@@ -95,7 +96,8 @@ describe("IntakeSubmissionCard", () => {
     renderWithProviders(<IntakeSubmissionCard projectId={1} />);
 
     expect(screen.queryByText("System name")).not.toBeInTheDocument();
-    const toggle = screen.getByText("Additional answers (2)");
+    const toggle = screen.getByText("Additional answers");
+    expect(toggle.parentElement).toHaveTextContent("Additional answers (2)");
     fireEvent.click(toggle);
     expect(screen.getByText("System name")).toBeInTheDocument();
     expect(screen.getByText("Uses biometrics")).toBeInTheDocument();
