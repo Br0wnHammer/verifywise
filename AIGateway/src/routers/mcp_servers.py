@@ -1,5 +1,6 @@
 import re
 import logging
+import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from typing import Any, Optional
 
@@ -85,6 +86,8 @@ async def create_mcp_server(request: Request) -> Any:
         payload={"server_id": server["id"], "slug": server["slug"]},
     )
 
+    asyncio.create_task(_discover_server_tools_safe(org_id, server))
+
     return {"server": server}
 
 
@@ -140,6 +143,44 @@ async def delete_mcp_server(server_id: int, request: Request) -> Any:
     return {"deleted": True, "server_id": server_id}
 
 
+async def _discover_server_tools(org_id: int, server: dict) -> list:
+    """Discover tools for a registered MCP server and update its health."""
+    from services.mcp_proxy_service import discover_server_tools as do_discover
+
+    try:
+        tools = await do_discover(
+            org_id=org_id,
+            server_id=server["id"],
+            server_url=server["url"],
+            auth_type=server.get("auth_type", "none"),
+            auth_config=server.get("auth_config") or {},
+        )
+        await mcp_servers_crud.update_server_health(server["id"], "healthy")
+        return tools
+    except Exception:
+        await mcp_servers_crud.update_server_health(server["id"], "unhealthy")
+        raise
+
+
+async def _discover_server_tools_safe(org_id: int, server: dict) -> None:
+    """Background discovery for a freshly created server; failures only log."""
+    try:
+        tools = await _discover_server_tools(org_id, server)
+        logger.info(
+            "Tool discovery for MCP server %s (%s) found %d tools",
+            server.get("id"),
+            server.get("slug"),
+            len(tools),
+        )
+    except Exception as e:
+        logger.error(
+            "Background tool discovery for MCP server %s (%s) failed: %s",
+            server.get("id"),
+            server.get("slug"),
+            e,
+        )
+
+
 @router.post("/{server_id}/discover")
 async def discover_server_tools(server_id: int, request: Request) -> Any:
     """Trigger tool discovery for a registered MCP server."""
@@ -151,18 +192,8 @@ async def discover_server_tools(server_id: int, request: Request) -> Any:
     if not server:
         raise HTTPException(status_code=404, detail="MCP server not found")
 
-    from services.mcp_proxy_service import discover_server_tools as do_discover
-
     try:
-        tools = await do_discover(
-            org_id=org_id,
-            server_id=server_id,
-            server_url=server["url"],
-            auth_type=server.get("auth_type", "none"),
-            auth_config=server.get("auth_config") or {},
-        )
-        await mcp_servers_crud.update_server_health(server_id, "healthy")
+        tools = await _discover_server_tools(org_id, server)
         return {"status": "success", "tools_discovered": len(tools), "tools": tools}
     except Exception as e:
-        await mcp_servers_crud.update_server_health(server_id, "unhealthy")
         raise HTTPException(status_code=502, detail=f"Discovery failed: {str(e)}")
