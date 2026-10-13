@@ -111,3 +111,24 @@ export const DUE_RUNS_SQL = `
           OR now() >= lr.last_run
                       + make_interval(hours => GREATEST(s.interval_hours, ${sqlBackoffHours("s")})))
    ORDER BY s.organization_id;`;
+
+/**
+ * SQL: the newest run of the given kinds (`kindsExpr`, a bind list or literal
+ * list) that completed or failed, for org `orgExpr` and extension `keyExpr`.
+ * Abandoned and skipped runs never count, so they never replace the last
+ * finished sync (GET /config's last_sync_*, the status route's
+ * last_finished_run). `columns` reads from alias `r`.
+ */
+export function sqlLastFinishedRun(
+  orgExpr: string,
+  keyExpr: string,
+  kindsExpr: string,
+  columns: string,
+): string {
+  return `SELECT ${columns}
+            FROM extension_sync_runs r
+           WHERE r.organization_id = ${orgExpr} AND r.extension_key = ${keyExpr}
+             AND r.kind IN (${kindsExpr}) AND r.status IN ('completed', 'failed')
+           ORDER BY r.completed_at DESC, r.id DESC
+           LIMIT 1`;
+}
