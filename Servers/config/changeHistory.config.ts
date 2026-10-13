@@ -36,15 +36,12 @@ export type EntityType =
   | "model_inventory"
   | "vendor"
   | "use_case"
-  | "project"
-  | "framework"
   | "evidence_hub"
   | "risk"
   | "vendor_risk"
   | "policy"
   | "incident"
   | "file"
-  | "model_lifecycle"
   | "task"
   | "training"
   | "model_risk"
@@ -456,33 +453,13 @@ export const ENTITY_CONFIGS: { [key in EntityType]: EntityConfig } = {
     },
   },
 
-  project: {
-    tableName: "project_change_history",
-    foreignKeyField: "project_id",
-    fieldsToTrack: ["name", "description"],
-    fieldLabels: {
-      name: "Name",
-      description: "Description",
-    },
-  },
-
-  framework: {
-    tableName: "framework_change_history",
-    foreignKeyField: "framework_id",
-    fieldsToTrack: ["name", "description"],
-    fieldLabels: {
-      name: "Name",
-      description: "Description",
-    },
-  },
-
   evidence_hub: {
     tableName: "evidence_hub_change_history",
     foreignKeyField: "evidence_hub_id",
-    fieldsToTrack: ["name", "type", "description"],
+    fieldsToTrack: ["evidence_name", "evidence_type", "description"],
     fieldLabels: {
-      name: "Name",
-      type: "Type",
+      evidence_name: "Name",
+      evidence_type: "Type",
       description: "Description",
     },
   },
@@ -688,19 +665,6 @@ export const ENTITY_CONFIGS: { [key in EntityType]: EntityConfig } = {
     fieldFormatters: {
       tags: GENERIC_FORMATTERS.array,
       expiry_date: GENERIC_FORMATTERS.date,
-    },
-  },
-
-  model_lifecycle: {
-    tableName: "model_lifecycle_change_history",
-    foreignKeyField: "model_lifecycle_value_id",
-    fieldsToTrack: ["value_text", "value_json"],
-    fieldLabels: {
-      value_text: "Value",
-      value_json: "Value (structured)",
-    },
-    fieldFormatters: {
-      value_json: GENERIC_FORMATTERS.text,
     },
   },
 
