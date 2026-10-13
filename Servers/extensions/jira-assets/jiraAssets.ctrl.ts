@@ -10,6 +10,7 @@ import {
 } from "../../services/automations/automationProducer";
 import { VW_AI_SYSTEM_ATTRIBUTES, transformAttributes } from "./jira.constants";
 import {
+  JIRA_SYNC_IN_PROGRESS_MESSAGE,
   clientFromConfig,
   deleteUseCaseByProjectId,
   getCustomFrameworksProgress,
@@ -35,6 +36,7 @@ import {
   updateSelection,
   updateSyncSettings,
 } from "./jiraAssets.service";
+import { SyncInProgressError } from "../sync-engine/errors";
 
 const fileName = "jiraAssets.ctrl.ts";
 
@@ -64,6 +66,7 @@ function isExpectedError(err: unknown): boolean {
     err instanceof JiraNotConfiguredError ||
     err instanceof JiraUseCaseNotFoundError ||
     err instanceof JiraSyncInProgressError ||
+    err instanceof SyncInProgressError ||
     err instanceof JiraImportInterruptedError ||
     err instanceof RunSupersededError
   );
@@ -94,6 +97,7 @@ async function requireClient(organizationId: number): Promise<JiraAssetsClient> 
  * - JiraConfigValidationError → 400
  * - JiraNotConfiguredError, JiraUseCaseNotFoundError → 404
  * - JiraSyncInProgressError → 409
+ * - SyncInProgressError (engine claim taken) → 409 with JIRA_SYNC_IN_PROGRESS_MESSAGE
  * - JiraImportInterruptedError → 409 with { message, code: "import_interrupted", imported, skipped }
  * - JiraUpstreamError (Jira response, timeout, DNS/TLS) → 502
  * - BackgroundJobsUnavailableError (queue did not answer) → 503
@@ -109,6 +113,10 @@ function sendError(req: Request, res: Response, err: unknown, functionName: stri
   }
   if (err instanceof JiraSyncInProgressError) {
     return res.status(409).json(STATUS_CODE[409](err.message));
+  }
+  if (err instanceof SyncInProgressError) {
+    // The engine's claim is per extension; keep Jira's own message and shape.
+    return res.status(409).json(STATUS_CODE[409](JIRA_SYNC_IN_PROGRESS_MESSAGE));
   }
   if (err instanceof JiraImportInterruptedError) {
     return res.status(409).json(

@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../../database/db";
 import { encryptText, decryptText } from "../../tools/createSecureValue";
@@ -11,10 +10,11 @@ import {
   WORKER_SYNC_DEADLINE_MS,
 } from "./jira.client";
 import { transformAttributes } from "./jira.constants";
-import logger, { logStructured } from "../../utils/logger/fileLogger";
+import { logStructured } from "../../utils/logger/fileLogger";
 import { enqueueJiraAssetsSyncRun } from "../../services/automations/automationProducer";
 import { SQL_NOW_UTC, sqlWithinLastMinutes } from "../scheduledSync.utils";
 import { deleteProjectWithSideEffects } from "../../utils/projectDeletion.utils";
+import { withClaim } from "../sync-engine/claim";
 import { errorMessage, isUniqueViolation, RunSupersededError } from "../sync-engine/errors";
 import { ABANDONED_RUN_MESSAGE, SKIPPED_RUN_MESSAGE } from "../sync-engine/types";
 import type { Readiness, RunContext, RunResult } from "../sync-engine/types";
@@ -66,8 +66,6 @@ export interface JiraAssetsConfigRow {
 export const JIRA_ASSETS_KEY = "jira-assets";
 /** Every exclusive Jira Assets operation runs under the engine claim as one of these kinds. */
 export const JIRA_RUN_KINDS = ["manual", "scheduled", "import", "remove_missing"] as const;
-
-export type SyncRunType = "manual" | "scheduled" | "import" | "remove_missing";
 
 /** Bounds for `sync_interval_hours`; mirrors jira_assets_config_sync_interval_range_chk. */
 export const SYNC_INTERVAL_MIN_HOURS = 1;
@@ -601,32 +599,6 @@ function describeObject(
 }
 
 /**
- * Inside `transaction`, prove this run still owns its `started` history row
- * and hold a share lock on it until the transaction ends. A claim closing the
- * row as abandoned must update it, so it waits for this transaction: the
- * writes made under the lock can never land after the run lost its claim.
- * Throws RunSupersededError when the run no longer owns the row.
- */
-async function assertRunOwned(
-  run: RunRef,
-  organizationId: number,
-  transaction: Transaction,
-): Promise<void> {
-  const rows = (await sequelize.query(
-    `SELECT id FROM jira_assets_sync_history
-      WHERE id = :id AND organization_id = :organizationId
-        AND run_token = :token AND status = 'started'
-      FOR SHARE;`,
-    {
-      replacements: { id: run.historyId, organizationId, token: run.token },
-      type: QueryTypes.SELECT,
-      transaction,
-    },
-  )) as Array<{ id: number }>;
-  if (rows.length === 0) throw new RunSupersededError(run.historyId);
-}
-
-/**
  * Create the native project and its jira_assets_use_cases link in one
  * transaction, so a failure can't leave a project without a link (or the
  * reverse). The transaction first proves the run still owns its claim
@@ -690,193 +662,6 @@ async function createLinkedUseCase(
   }
 }
 
-/** A claimed run: its history row and the random token only this run holds. */
-export interface RunRef {
-  historyId: number;
-  token: string;
-}
-
-/**
- * Atomically record the start of a run for the organization, or refuse if one
- * is already running. Manual and scheduled syncs (claimed by the worker when it
- * picks the job up), imports and missing-use-case removal all come through
- * here, so they never overlap for the same organization.
- *
- * A transaction-scoped advisory lock keyed on the organization serialises the
- * check-then-insert. The lock is released at commit, before any Jira call; the
- * long-running guard is the `started` history row itself. A `started` row
- * whose heartbeat (else start) is older than SYNC_STALE_AFTER_MINUTES is
- * closed as failed first, so an abandoned run cannot block forever. Times are
- * compared in SQL.
- *
- * The row gets a random `run_token`. Every later heartbeat and finalize step
- * matches id AND token, so a duplicate delivery of the same job cannot
- * co-own the run.
- *
- * Throws JiraSyncInProgressError on overlap.
- */
-export async function claimSyncRun(
-  organizationId: number,
-  syncType: SyncRunType,
-  triggeredBy: number | null,
-): Promise<RunRef> {
-  const token = randomUUID();
-  return sequelize.transaction(async (transaction) => {
-    await sequelize.query(
-      `SELECT pg_advisory_xact_lock(hashtext('jira_assets_sync'), :organizationId);`,
-      { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
-    );
-
-    await sequelize.query(
-      `UPDATE jira_assets_sync_history h
-          SET status = 'failed', completed_at = ${SQL_NOW_UTC},
-              error_message = :abandonedMessage
-        WHERE h.organization_id = :organizationId
-          AND h.status = 'started'
-          AND NOT ${SQL_RUN_IS_LIVE};`,
-      { replacements: { organizationId, abandonedMessage: ABANDONED_RUN_MESSAGE }, transaction },
-    );
-
-    const running = (await sequelize.query(
-      `SELECT id FROM jira_assets_sync_history
-        WHERE organization_id = :organizationId AND status = 'started'
-        LIMIT 1;`,
-      { replacements: { organizationId }, type: QueryTypes.SELECT, transaction },
-    )) as Array<{ id: number }>;
-    if (running.length > 0) throw new JiraSyncInProgressError();
-
-    const historyRows = (await sequelize.query(
-      `INSERT INTO jira_assets_sync_history
-         (organization_id, sync_type, status, started_at, heartbeat_at, triggered_by, run_token)
-       VALUES (:organizationId, :syncType, 'started', ${SQL_NOW_UTC}, ${SQL_NOW_UTC},
-               :triggeredBy, :token)
-       RETURNING id;`,
-      {
-        replacements: { organizationId, syncType, triggeredBy, token },
-        type: QueryTypes.INSERT,
-        transaction,
-      },
-    )) as unknown as [Array<{ id: number }>, number];
-    return { historyId: (historyRows[0] as any)[0].id as number, token };
-  });
-}
-
-/**
- * Mark the run as alive. Throws RunSupersededError when this run no longer
- * owns a `started` row (another claim closed it as abandoned, or the token
- * does not match). A database error is thrown as well: the run cannot prove
- * it still owns its row, so it must stop.
- */
-export async function touchHeartbeat(run: RunRef, organizationId: number): Promise<void> {
-  const [rows] = (await sequelize.query(
-    `UPDATE jira_assets_sync_history
-        SET heartbeat_at = ${SQL_NOW_UTC}
-      WHERE id = :id AND organization_id = :organizationId
-        AND run_token = :token AND status = 'started'
-      RETURNING id;`,
-    { replacements: { id: run.historyId, organizationId, token: run.token } },
-  )) as unknown as [Array<{ id: number }>, unknown];
-  if (!rows || rows.length === 0) throw new RunSupersededError(run.historyId);
-}
-
-/**
- * Close a run as failed. The config's last_sync_* fields are updated too
- * (unless `updateConfig` is false, as for imports and removals) so the panel
- * shows the error and the scheduler's interval acts as backoff — but only if
- * this run still owned its row. Never throws: it runs in catch blocks, where a
- * second exception would hide the first.
- */
-export async function finalizeFailure(
-  run: RunRef,
-  organizationId: number,
-  err: unknown,
-  updateConfig = true,
-): Promise<string> {
-  const message = errorMessage(err);
-  try {
-    const [rows] = (await sequelize.query(
-      `UPDATE jira_assets_sync_history
-          SET status = 'failed', error_message = :message, completed_at = ${SQL_NOW_UTC}
-        WHERE id = :id AND organization_id = :organizationId
-          AND run_token = :token AND status = 'started'
-        RETURNING id;`,
-      { replacements: { message, id: run.historyId, organizationId, token: run.token } },
-    )) as unknown as [Array<{ id: number }>, unknown];
-    if (!rows || rows.length === 0) {
-      logger.warn(`Jira Assets run ${run.historyId} was already closed; failure not recorded`);
-      return message;
-    }
-    if (updateConfig) {
-      await sequelize.query(
-        `UPDATE jira_assets_config
-            SET last_sync_at = ${SQL_NOW_UTC}, last_sync_status = 'failed',
-                last_sync_message = :message, updated_at = NOW()
-          WHERE organization_id = :organizationId;`,
-        { replacements: { message, organizationId } },
-      );
-    }
-  } catch (finalizeErr) {
-    logStructured(
-      "error",
-      `Jira Assets run ${run.historyId} could not be marked failed`,
-      "finalizeFailure",
-      fileName,
-    );
-    logger.error(`Jira Assets finalizeFailure for run ${run.historyId} failed:`, finalizeErr);
-  }
-  return message;
-}
-
-interface RunCounts {
-  objectsFetched: number;
-  objectsCreated: number;
-  objectsUpdated: number;
-  /** Only the explicit removal writes this; syncs never delete. */
-  objectsDeleted: number;
-}
-
-/**
- * Close a run as completed. Only touches its own row (id AND token) while it
- * is still `started`; if it no longer owns the row, the config is left alone
- * too and RunSupersededError is thrown.
- */
-async function finalizeSuccess(
-  run: RunRef,
-  organizationId: number,
-  counts: RunCounts,
-  note: string | null,
-  updateConfig: boolean,
-  transaction?: Transaction,
-): Promise<void> {
-  const [rows] = (await sequelize.query(
-    `UPDATE jira_assets_sync_history
-        SET status = 'completed',
-            objects_fetched = :objectsFetched,
-            objects_created = :objectsCreated,
-            objects_updated = :objectsUpdated,
-            objects_deleted = :objectsDeleted,
-            error_message = :note,
-            completed_at = ${SQL_NOW_UTC}
-      WHERE id = :id AND organization_id = :organizationId
-        AND run_token = :token AND status = 'started'
-      RETURNING id;`,
-    {
-      replacements: { ...counts, note, id: run.historyId, organizationId, token: run.token },
-      transaction,
-    },
-  )) as unknown as [Array<{ id: number }>, unknown];
-  if (!rows || rows.length === 0) throw new RunSupersededError(run.historyId);
-  if (updateConfig) {
-    await sequelize.query(
-      `UPDATE jira_assets_config
-          SET last_sync_at = ${SQL_NOW_UTC}, last_sync_status = 'success',
-              last_sync_message = :note, updated_at = NOW()
-        WHERE organization_id = :organizationId;`,
-      { replacements: { note, organizationId }, transaction },
-    );
-  }
-}
-
 const MISSING_IDS_IN_NOTE = 20;
 
 function idList(ids: string[]): string {
@@ -900,10 +685,9 @@ interface ImportResult {
 }
 
 /**
- * Import the selected objects. Takes the same per-org claim as sync (history
- * row with sync_type 'import'), so an import and a sync never overlap. Import
- * results and failures are recorded on that history row only — never on the
- * config's last_sync_* fields, which belong to syncs and drive the scheduler.
+ * Import the selected objects. Takes the same engine claim as syncs (kind
+ * 'import'), so an import and a sync never overlap. The outcome is recorded on
+ * the import's run only; imports never count as a sync for the schedule.
  */
 export async function importObjects(
   organizationId: number,
@@ -918,89 +702,83 @@ export async function importObjects(
       `Select up to ${IMPORT_MAX_OBJECTS} objects per import. ${objectIds.length} were selected.`,
     );
   }
-  if (!(await getPublicConfig(organizationId))) throw new JiraNotConfiguredError();
-
-  const run = await claimSyncRun(organizationId, "import", userId);
+  throwIfNotReady(await jiraReadiness(organizationId, "import"));
 
   let imported = 0;
   let skipped = 0;
-  const errors: string[] = [];
-  const failedIds: string[] = [];
   try {
-    const config = await loadFullConfig(organizationId);
-    if (!config) throw new JiraNotConfiguredError();
-    const client = clientFromConfig(config);
+    return await withClaim(JIRA_ASSETS_KEY, organizationId, "import", userId, async (ctx) => {
+      const errors: string[] = [];
+      const failedIds: string[] = [];
+      const config = await loadFullConfig(organizationId);
+      if (!config) throw new JiraNotConfiguredError();
+      const client = clientFromConfig(config);
 
-    // ID→name mapping so JIRA attribute IDs resolve to human names.
-    const attrIdToName: Record<string, string> = {};
-    if (config.selected_object_type_id) {
-      const defs = await client.getAttributes(config.selected_object_type_id);
-      for (const attr of defs) attrIdToName[attr.id] = attr.name;
-    }
+      // ID→name mapping so JIRA attribute IDs resolve to human names.
+      const attrIdToName: Record<string, string> = {};
+      if (config.selected_object_type_id) {
+        const defs = await client.getAttributes(config.selected_object_type_id);
+        for (const attr of defs) attrIdToName[attr.id] = attr.name;
+      }
 
-    const now = new Date();
-    for (const [index, objectId] of objectIds.entries()) {
-      try {
-        const existing = (await sequelize.query(
-          `SELECT id FROM jira_assets_use_cases
-            WHERE jira_object_id = :objectId AND organization_id = :organizationId;`,
-          { replacements: { objectId: String(objectId), organizationId }, type: QueryTypes.SELECT },
-        )) as Array<{ id: number }>;
-        if (existing.length > 0) {
-          skipped++;
-        } else {
-          const jiraObj = await client.getObjectById(objectId);
-          const outcome = await createLinkedUseCase(
-            (t) => assertRunOwned(run, organizationId, t),
-            organizationId,
-            userId ?? null,
-            describeObject(jiraObj, attrIdToName),
-            now,
-          );
-          if (outcome === "created") imported++;
-          else skipped++;
+      const now = new Date();
+      for (const [index, objectId] of objectIds.entries()) {
+        try {
+          const existing = (await sequelize.query(
+            `SELECT id FROM jira_assets_use_cases
+              WHERE jira_object_id = :objectId AND organization_id = :organizationId;`,
+            {
+              replacements: { objectId: String(objectId), organizationId },
+              type: QueryTypes.SELECT,
+            },
+          )) as Array<{ id: number }>;
+          if (existing.length > 0) {
+            skipped++;
+          } else {
+            const jiraObj = await client.getObjectById(objectId);
+            const outcome = await createLinkedUseCase(
+              (t) => ctx.assertOwned(t),
+              organizationId,
+              userId ?? null,
+              describeObject(jiraObj, attrIdToName),
+              now,
+            );
+            if (outcome === "created") imported++;
+            else skipped++;
+          }
+        } catch (err) {
+          // Lost the claim: stop now rather than record it as one failed object.
+          if (err instanceof RunSupersededError) throw err;
+          errors.push(`Failed to import ${objectId}: ${errorMessage(err)}`);
+          failedIds.push(String(objectId));
         }
-      } catch (err) {
-        // Lost the claim: stop now rather than record it as one failed object.
-        if (err instanceof RunSupersededError) throw err;
-        errors.push(`Failed to import ${objectId}: ${errorMessage(err)}`);
-        failedIds.push(String(objectId));
+        // Skipped objects count too, so a run of already-linked ones still heartbeats.
+        if ((index + 1) % HEARTBEAT_EVERY_OBJECTS === 0) {
+          await ctx.heartbeat();
+        }
       }
-      // Skipped objects count too, so a run of already-linked ones still heartbeats.
-      if ((index + 1) % HEARTBEAT_EVERY_OBJECTS === 0) {
-        await touchHeartbeat(run, organizationId);
-      }
-    }
 
-    await finalizeSuccess(
-      run,
-      organizationId,
-      {
-        objectsFetched: objectIds.length,
-        objectsCreated: imported,
-        objectsUpdated: 0,
-        objectsDeleted: 0,
-      },
-      errors.length > 0 ? `${errors.length} object(s) failed to import` : null,
-      false,
-    );
+      return {
+        value: {
+          success: true,
+          imported,
+          skipped,
+          errors: errors.length > 0 ? errors : undefined,
+          failed_ids: failedIds.length > 0 ? failedIds : undefined,
+        },
+        result: {
+          counts: { fetched: objectIds.length, created: imported, updated: 0, deleted: 0 },
+          message: errors.length > 0 ? `${errors.length} object(s) failed to import` : null,
+        },
+      };
+    });
   } catch (err) {
     if (err instanceof RunSupersededError) {
-      // Another claim closed this import as abandoned; its row is already
-      // failed. Report how far it got instead of a bare error.
+      // Another claim closed this import as abandoned. Report how far it got.
       throw new JiraImportInterruptedError(imported, skipped);
     }
-    await finalizeFailure(run, organizationId, err, false);
     throw err;
   }
-
-  return {
-    success: true,
-    imported,
-    skipped,
-    errors: errors.length > 0 ? errors : undefined,
-    failed_ids: failedIds.length > 0 ? failedIds : undefined,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,234 +953,219 @@ type LinkRow = { id: number; project_id: number | null; missing_in_jira_since: D
  * title and Jira key, and everything rolls back.
  *
  * With `requireAll` (single delete), nothing handled is
- * JiraUseCaseNotFoundError: the transaction rolls back and the claimed history
- * row is deleted (it never did anything). Other errors close the row as
- * failed; a lost claim (RunSupersededError) writes nothing more. The run
- * records objects_deleted = projects (use cases) deleted.
+ * JiraUseCaseNotFoundError: the transaction rolls back and the claim is
+ * released (it never did anything). Other errors close the run as failed; a
+ * lost claim (RunSupersededError) writes nothing more. The run records
+ * counts.deleted = projects (use cases) deleted, finalized inside the data
+ * transaction, so a lost claim rolls the deletes back.
  */
 async function deleteUseCasesUnderClaim(
   organizationId: number,
   userId: number,
   target: { by: "id" | "project_id"; ids: number[]; onlyMissing: boolean; requireAll: boolean },
 ): Promise<DeletionOutcome> {
-  const run = await claimSyncRun(organizationId, "remove_missing", userId);
   const matchColumn = target.by === "id" ? "id" : "project_id";
-  try {
-    const outcome: DeletionOutcome = {
-      removedProjectIds: [],
-      linksRemoved: 0,
-      unlinkedIds: [],
-      skipped: [],
-    };
-    await sequelize.transaction(async (transaction) => {
-      await assertRunOwned(run, organizationId, transaction);
+  return withClaim(
+    JIRA_ASSETS_KEY,
+    organizationId,
+    "remove_missing",
+    userId,
+    async (ctx) => {
+      const outcome: DeletionOutcome = {
+        removedProjectIds: [],
+        linksRemoved: 0,
+        unlinkedIds: [],
+        skipped: [],
+      };
+      await sequelize.transaction(async (transaction) => {
+        await ctx.assertOwned(transaction);
 
-      // 2. The requested links, unlocked: only to learn their project ids.
-      const candidates = (await sequelize.query(
-        `SELECT id, project_id FROM jira_assets_use_cases
+        // 2. The requested links, unlocked: only to learn their project ids.
+        const candidates = (await sequelize.query(
+          `SELECT id, project_id FROM jira_assets_use_cases
           WHERE organization_id = :organizationId AND ${matchColumn} IN (:ids);`,
-        {
-          replacements: { organizationId, ids: target.ids },
-          type: QueryTypes.SELECT,
-          transaction,
-        },
-      )) as Array<{ id: number; project_id: number | null }>;
-
-      // 3. Lock and classify the projects first.
-      const toLock = new Set<number>(target.by === "project_id" ? target.ids : []);
-      for (const c of candidates) if (c.project_id !== null) toLock.add(c.project_id);
-      const inOrg = new Set<number>();
-      if (toLock.size > 0) {
-        const locked = (await sequelize.query(
-          `SELECT id FROM projects
-            WHERE organization_id = :organizationId AND id IN (:projectIds)
-            ORDER BY id
-            FOR UPDATE;`,
           {
-            replacements: { organizationId, projectIds: [...toLock] },
+            replacements: { organizationId, ids: target.ids },
             type: QueryTypes.SELECT,
             transaction,
           },
-        )) as Array<{ id: number }>;
-        for (const p of locked) inOrg.add(p.id);
-      }
+        )) as Array<{ id: number; project_id: number | null }>;
 
-      // 4. Then the links, each query ordered by id: the requested ones, and
-      //    every link of a locked project (to see whether the project backs a
-      //    use case that is not missing).
-      const requestedLinks = (await sequelize.query(
-        `SELECT id, project_id, missing_in_jira_since FROM jira_assets_use_cases
+        // 3. Lock and classify the projects first.
+        const toLock = new Set<number>(target.by === "project_id" ? target.ids : []);
+        for (const c of candidates) if (c.project_id !== null) toLock.add(c.project_id);
+        const inOrg = new Set<number>();
+        if (toLock.size > 0) {
+          const locked = (await sequelize.query(
+            `SELECT id FROM projects
+            WHERE organization_id = :organizationId AND id IN (:projectIds)
+            ORDER BY id
+            FOR UPDATE;`,
+            {
+              replacements: { organizationId, projectIds: [...toLock] },
+              type: QueryTypes.SELECT,
+              transaction,
+            },
+          )) as Array<{ id: number }>;
+          for (const p of locked) inOrg.add(p.id);
+        }
+
+        // 4. Then the links, each query ordered by id: the requested ones, and
+        //    every link of a locked project (to see whether the project backs a
+        //    use case that is not missing).
+        const requestedLinks = (await sequelize.query(
+          `SELECT id, project_id, missing_in_jira_since FROM jira_assets_use_cases
           WHERE organization_id = :organizationId AND ${matchColumn} IN (:ids)
           ORDER BY id
           FOR UPDATE;`,
-        {
-          replacements: { organizationId, ids: target.ids },
-          type: QueryTypes.SELECT,
-          transaction,
-        },
-      )) as LinkRow[];
-      if (target.onlyMissing) {
-        // The size rule again, on the locked rows (the pre-check was unlocked).
-        const lockedProjects = new Set(
-          requestedLinks.map((l) => l.project_id).filter((id) => id !== null),
-        );
-        checkRemovalSize(target.ids.length, lockedProjects.size);
-      }
-      const projectLinks =
-        inOrg.size === 0
-          ? []
-          : ((await sequelize.query(
-              `SELECT id, project_id, missing_in_jira_since FROM jira_assets_use_cases
+          {
+            replacements: { organizationId, ids: target.ids },
+            type: QueryTypes.SELECT,
+            transaction,
+          },
+        )) as LinkRow[];
+        if (target.onlyMissing) {
+          // The size rule again, on the locked rows (the pre-check was unlocked).
+          const lockedProjects = new Set(
+            requestedLinks.map((l) => l.project_id).filter((id) => id !== null),
+          );
+          checkRemovalSize(target.ids.length, lockedProjects.size);
+        }
+        const projectLinks =
+          inOrg.size === 0
+            ? []
+            : ((await sequelize.query(
+                `SELECT id, project_id, missing_in_jira_since FROM jira_assets_use_cases
                 WHERE organization_id = :organizationId AND project_id IN (:lockedProjects)
                 ORDER BY id
                 FOR UPDATE;`,
-              {
-                replacements: { organizationId, lockedProjects: [...inOrg] },
-                type: QueryTypes.SELECT,
-                transaction,
-              },
-            )) as LinkRow[]);
-      const linkById = new Map<number, LinkRow>();
-      for (const link of [...requestedLinks, ...projectLinks]) linkById.set(link.id, link);
-      const links = [...linkById.values()].sort((a, b) => a.id - b.id);
+                {
+                  replacements: { organizationId, lockedProjects: [...inOrg] },
+                  type: QueryTypes.SELECT,
+                  transaction,
+                },
+              )) as LinkRow[]);
+        const linkById = new Map<number, LinkRow>();
+        for (const link of [...requestedLinks, ...projectLinks]) linkById.set(link.id, link);
+        const links = [...linkById.values()].sort((a, b) => a.id - b.id);
 
-      const linksByProject = new Map<number, LinkRow[]>();
-      for (const link of links) {
-        if (link.project_id === null || !inOrg.has(link.project_id)) continue;
-        const group = linksByProject.get(link.project_id);
-        if (group) group.push(link);
-        else linksByProject.set(link.project_id, [link]);
-      }
+        const linksByProject = new Map<number, LinkRow[]>();
+        for (const link of links) {
+          if (link.project_id === null || !inOrg.has(link.project_id)) continue;
+          const group = linksByProject.get(link.project_id);
+          if (group) group.push(link);
+          else linksByProject.set(link.project_id, [link]);
+        }
 
-      // Decide each requested link once, carrying its caller id.
-      // project id -> the caller ids and link ids requested for it
-      const accepted = new Map<number, { callerIds: number[]; linkIds: number[] }>();
-      const toUnlink: Array<{ id: number; callerId: number }> = [];
-      const seen = new Set<number>();
-      for (const link of requestedLinks) {
-        const callerId = target.by === "id" ? link.id : (link.project_id as number);
-        seen.add(callerId);
-        if (target.onlyMissing && !link.missing_in_jira_since) {
-          outcome.skipped.push({ id: callerId, reason: "no_longer_missing" });
-        } else if (link.project_id !== null && inOrg.has(link.project_id)) {
-          const group = accepted.get(link.project_id);
-          if (group) {
-            group.callerIds.push(callerId);
-            group.linkIds.push(link.id);
+        // Decide each requested link once, carrying its caller id.
+        // project id -> the caller ids and link ids requested for it
+        const accepted = new Map<number, { callerIds: number[]; linkIds: number[] }>();
+        const toUnlink: Array<{ id: number; callerId: number }> = [];
+        const seen = new Set<number>();
+        for (const link of requestedLinks) {
+          const callerId = target.by === "id" ? link.id : (link.project_id as number);
+          seen.add(callerId);
+          if (target.onlyMissing && !link.missing_in_jira_since) {
+            outcome.skipped.push({ id: callerId, reason: "no_longer_missing" });
+          } else if (link.project_id !== null && inOrg.has(link.project_id)) {
+            const group = accepted.get(link.project_id);
+            if (group) {
+              group.callerIds.push(callerId);
+              group.linkIds.push(link.id);
+            } else {
+              accepted.set(link.project_id, { callerIds: [callerId], linkIds: [link.id] });
+            }
+          } else if (link.project_id === null || toLock.has(link.project_id)) {
+            toUnlink.push({ id: link.id, callerId });
           } else {
-            accepted.set(link.project_id, { callerIds: [callerId], linkIds: [link.id] });
-          }
-        } else if (link.project_id === null || toLock.has(link.project_id)) {
-          toUnlink.push({ id: link.id, callerId });
-        } else {
-          // Its project changed after step 2; locking it now would break the
-          // lock order.
-          outcome.skipped.push({ id: callerId, reason: "changed" });
-        }
-      }
-      for (const id of target.ids) {
-        if (!seen.has(id) && !(target.by === "project_id" && accepted.has(id))) {
-          outcome.skipped.push({ id, reason: "not_found" });
-        }
-      }
-
-      // No savepoint per project: a savepoint's afterCommit hooks fire when
-      // it is released, not when this transaction commits.
-      for (const [projectId, { callerIds, linkIds }] of [...accepted].sort(([a], [b]) => a - b)) {
-        const ofProject = linksByProject.get(projectId) ?? [];
-        if (target.onlyMissing) {
-          // A removal deletes a project only when every link of it was
-          // requested, so nothing the admin did not tick goes by cascade.
-          const requestedLinks = new Set(linkIds);
-          const reason: RemovalSkipReason | null = ofProject.some((l) => !l.missing_in_jira_since)
-            ? "has_live_links"
-            : ofProject.some((l) => !requestedLinks.has(l.id))
-              ? "other_links_not_selected"
-              : null;
-          if (reason) {
-            for (const id of callerIds) outcome.skipped.push({ id, reason });
-            continue;
+            // Its project changed after step 2; locking it now would break the
+            // lock order.
+            outcome.skipped.push({ id: callerId, reason: "changed" });
           }
         }
-        // Same order as the core delete; the project is already locked.
-        const { deleted } = await deleteProjectWithSideEffects(
-          projectId,
-          organizationId,
-          transaction,
-          { userId, alreadyLocked: true, enqueueAutomationAfterCommit: true },
-        );
-        if (!deleted) {
-          throw await deleteFailedError(linkIds[0], projectId, organizationId, transaction);
+        for (const id of target.ids) {
+          if (!seen.has(id) && !(target.by === "project_id" && accepted.has(id))) {
+            outcome.skipped.push({ id, reason: "not_found" });
+          }
         }
-        outcome.removedProjectIds.push(projectId);
-        outcome.linksRemoved += ofProject.length;
-      }
 
-      if (toUnlink.length > 0) {
-        const [deleted] = (await sequelize.query(
-          `DELETE FROM jira_assets_use_cases
+        // No savepoint per project: a savepoint's afterCommit hooks fire when
+        // it is released, not when this transaction commits.
+        for (const [projectId, { callerIds, linkIds }] of [...accepted].sort(([a], [b]) => a - b)) {
+          const ofProject = linksByProject.get(projectId) ?? [];
+          if (target.onlyMissing) {
+            // A removal deletes a project only when every link of it was
+            // requested, so nothing the admin did not tick goes by cascade.
+            const requestedLinks = new Set(linkIds);
+            const reason: RemovalSkipReason | null = ofProject.some((l) => !l.missing_in_jira_since)
+              ? "has_live_links"
+              : ofProject.some((l) => !requestedLinks.has(l.id))
+                ? "other_links_not_selected"
+                : null;
+            if (reason) {
+              for (const id of callerIds) outcome.skipped.push({ id, reason });
+              continue;
+            }
+          }
+          // Same order as the core delete; the project is already locked.
+          const { deleted } = await deleteProjectWithSideEffects(
+            projectId,
+            organizationId,
+            transaction,
+            { userId, alreadyLocked: true, enqueueAutomationAfterCommit: true },
+          );
+          if (!deleted) {
+            throw await deleteFailedError(linkIds[0], projectId, organizationId, transaction);
+          }
+          outcome.removedProjectIds.push(projectId);
+          outcome.linksRemoved += ofProject.length;
+        }
+
+        if (toUnlink.length > 0) {
+          const [deleted] = (await sequelize.query(
+            `DELETE FROM jira_assets_use_cases
             WHERE organization_id = :organizationId AND id IN (:linkIds)
             RETURNING id;`,
-          { replacements: { organizationId, linkIds: toUnlink.map((l) => l.id) }, transaction },
-        )) as unknown as [Array<{ id: number }>, unknown];
-        const gone = new Set((deleted ?? []).map((r) => r.id));
-        for (const link of toUnlink) if (gone.has(link.id)) outcome.unlinkedIds.push(link.callerId);
-      }
+            { replacements: { organizationId, linkIds: toUnlink.map((l) => l.id) }, transaction },
+          )) as unknown as [Array<{ id: number }>, unknown];
+          const gone = new Set((deleted ?? []).map((r) => r.id));
+          for (const link of toUnlink)
+            if (gone.has(link.id)) outcome.unlinkedIds.push(link.callerId);
+        }
 
-      if (
-        target.requireAll &&
-        outcome.removedProjectIds.length === 0 &&
-        outcome.unlinkedIds.length === 0
-      ) {
-        throw new JiraUseCaseNotFoundError();
-      }
-      // Recorded in the same transaction: if this run lost its claim, the
-      // deletes roll back with it.
-      await finalizeSuccess(
-        run,
-        organizationId,
-        {
-          objectsFetched: 0,
-          objectsCreated: 0,
-          objectsUpdated: 0,
-          objectsDeleted: outcome.removedProjectIds.length,
-        },
-        outcome.unlinkedIds.length > 0
-          ? `${outcome.unlinkedIds.length} link(s) with no project in this organization were cleaned up.`
-          : null,
-        false,
-        transaction,
-      );
-    });
-    return outcome;
-  } catch (err) {
-    if (err instanceof JiraUseCaseNotFoundError || err instanceof JiraConfigValidationError) {
-      // Nothing was done: the claimed row goes, not a failed run.
-      await releaseClaim(run, organizationId);
-    } else if (!(err instanceof RunSupersededError)) {
-      await finalizeFailure(run, organizationId, err, false);
-    }
-    throw err;
-  }
-}
-
-/**
- * Delete a claimed history row that did nothing (still `started`, matched by
- * id and token), so a request that found nothing to act on leaves no run in
- * the history. Never throws: if it fails, the row stays `started` and is
- * closed as abandoned after the stale window like any other.
- */
-async function releaseClaim(run: RunRef, organizationId: number): Promise<void> {
-  try {
-    await sequelize.query(
-      `DELETE FROM jira_assets_sync_history
-        WHERE id = :id AND organization_id = :organizationId
-          AND run_token = :token AND status = 'started';`,
-      { replacements: { id: run.historyId, organizationId, token: run.token } },
-    );
-  } catch (err) {
-    logger.error(`Jira Assets: could not release claimed run ${run.historyId}:`, err);
-  }
+        if (
+          target.requireAll &&
+          outcome.removedProjectIds.length === 0 &&
+          outcome.unlinkedIds.length === 0
+        ) {
+          throw new JiraUseCaseNotFoundError();
+        }
+        // Recorded in the same transaction: if this run lost its claim, the
+        // deletes roll back with it.
+        await ctx.finalize(
+          {
+            counts: {
+              fetched: 0,
+              created: 0,
+              updated: 0,
+              deleted: outcome.removedProjectIds.length,
+            },
+            message:
+              outcome.unlinkedIds.length > 0
+                ? `${outcome.unlinkedIds.length} link(s) with no project in this organization were cleaned up.`
+                : null,
+          },
+          transaction,
+        );
+      });
+      return { value: outcome };
+    },
+    {
+      // Nothing was done: the claim is released, not recorded as a failed run.
+      releaseOn: (err) =>
+        err instanceof JiraUseCaseNotFoundError || err instanceof JiraConfigValidationError,
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

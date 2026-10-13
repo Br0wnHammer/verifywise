@@ -22,6 +22,7 @@ jest.mock("../jiraAssets.service", () => {
     JiraConfigValidationError,
     JiraNotConfiguredError,
     JiraSyncInProgressError,
+    JIRA_SYNC_IN_PROGRESS_MESSAGE: "A Jira Assets sync is already running for this organization",
     startManualSync: jest.fn(),
     importObjects: jest.fn(),
     updateSelection: jest.fn(),
@@ -91,6 +92,7 @@ import {
   updateSelection,
 } from "../jiraAssets.service";
 import { JiraUpstreamError } from "../jira.client";
+import { SyncInProgressError } from "../../sync-engine/errors";
 
 function mockRes() {
   const res: any = {};
@@ -168,6 +170,18 @@ describe("POST /sync (Sync now)", () => {
 });
 
 describe("POST /import", () => {
+  it("returns 409 with the Jira message when the engine claim is taken", async () => {
+    (importObjects as jest.Mock).mockRejectedValue(new SyncInProgressError());
+    const res = mockRes();
+
+    await postImport({ ...req, body: { object_ids: ["1"] } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0].data).toBe(
+      "A Jira Assets sync is already running for this organization",
+    );
+  });
+
   it("returns 502 with Jira's reason when Jira fails", async () => {
     (importObjects as jest.Mock).mockRejectedValue(new JiraUpstreamError("Jira returned 500: x"));
     const res = mockRes();
