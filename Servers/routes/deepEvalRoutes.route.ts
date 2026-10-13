@@ -60,6 +60,46 @@ export const toLiteLLMModel = (prov: string, mdl: string): string => {
 };
 
 /**
+ * The text of a gateway `detail`, which FastAPI sends as a string, as
+ * `{ message, code }` for internal-key refusals, or as a list of validation
+ * errors (422). List entries are joined as "field: msg"; the offending input
+ * is never echoed. Always a string or null, so the client can render it.
+ */
+export function gatewayDetailMessage(detail: unknown): string | null {
+  if (typeof detail === "string") return detail || null;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((entry) => {
+        const e = entry as { loc?: unknown; msg?: unknown } | null;
+        if (typeof e?.msg !== "string" || !e.msg) return null;
+        const field = Array.isArray(e.loc)
+          ? e.loc.filter((l) => l !== "body" && l !== "query").join(".")
+          : "";
+        return field ? `${field}: ${e.msg}` : e.msg;
+      })
+      .filter((m): m is string => m !== null);
+    return parts.length ? parts.join("; ") : null;
+  }
+  const message = (detail as { message?: unknown } | null)?.message;
+  return typeof message === "string" && message ? message : null;
+}
+
+/**
+ * The message shown for a failed gateway call. Uses the structured fields when
+ * the body is JSON; raw body text is only used when it is not JSON, so parsed
+ * error bodies (which can echo user input) never reach the client verbatim.
+ */
+export function gatewayErrorMessage(status: number, rawText: string, data: any): string {
+  return (
+    gatewayDetailMessage(data?.detail) ||
+    data?.error?.message ||
+    data?.message ||
+    (data === null ? rawText.slice(0, 300) : "") ||
+    `Gateway error ${status}`
+  );
+}
+
+/**
  * Middleware to inject API keys for experiment creation and arena comparisons
  * Handles both custom scorers and standard judge LLM
  * This modifies req.body before the proxy forwards it
@@ -383,12 +423,7 @@ function deepEvalRoutes() {
         }
 
         if (!gatewayRes.ok) {
-          const errMsg =
-            data?.detail ||
-            data?.error?.message ||
-            data?.message ||
-            rawText.slice(0, 300) ||
-            `Gateway error ${gatewayRes.status}`;
+          const errMsg = gatewayErrorMessage(gatewayRes.status, rawText, data);
           res.status(gatewayRes.status).json({ error: errMsg });
           return;
         }

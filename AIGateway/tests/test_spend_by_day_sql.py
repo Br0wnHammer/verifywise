@@ -92,7 +92,6 @@ async def test_spend_summary_never_overlaps_session_operations(monkeypatch):
         yield db
 
     monkeypatch.setattr(spend_router, "get_db", fake_get_db)
-    monkeypatch.setattr(spend_router, "verify_internal_key", lambda _request: None)
     monkeypatch.setattr(spend_router, "get_org_id", lambda _request: 1)
 
     for name in (
