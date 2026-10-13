@@ -151,12 +151,47 @@ export const getQualityScoresQuery = async (
 };
 
 /**
+ * Map each framework's file_entity_links to the struct row they are
+ * evidence FOR (#4911). EU AI Act stores links three ways: 'control' links
+ * carry a controls_struct_eu id directly (applied AI suggestions),
+ * 'subcontrol' links carry a per-project subcontrols_eu id (mapped up via
+ * subcontrol_meta_id -> subcontrols_struct_eu.control_id), and 'assessment'
+ * links carry an answers_eu id, which belongs to an assessment QUESTION and
+ * has no control mapping — those are excluded rather than miscounted.
+ * ISO 42001 stores 'control' links (annex struct id) and 'annex_category'
+ * links (per-project annexcategories_iso id, mapped via annexcategory_meta_id).
+ */
+const LINK_TO_STRUCT_SQL: Record<string, string> = {
+  eu_ai_act: `CASE fel.entity_type
+    WHEN 'control' THEN fel.entity_id::int
+    WHEN 'subcontrol' THEN (
+      SELECT ss.control_id
+        FROM subcontrols_eu s
+        JOIN subcontrols_struct_eu ss ON ss.id = s.subcontrol_meta_id
+       WHERE s.id = fel.entity_id AND s.organization_id = fel.organization_id
+    )
+    ELSE NULL
+  END`,
+  iso_42001: `CASE fel.entity_type
+    WHEN 'control' THEN fel.entity_id::int
+    WHEN 'annex_category' THEN (
+      SELECT a.annexcategory_meta_id
+        FROM annexcategories_iso a
+       WHERE a.id = fel.entity_id AND a.organization_id = fel.organization_id
+    )
+    ELSE NULL
+  END`,
+};
+
+/**
  * Get evidence gap analysis — controls lacking evidence or with low quality.
  */
 export const getEvidenceGapsQuery = async (
   organizationId: number,
   frameworkType?: string,
   lowGrades: QualityGrade[] = ["D", "F"],
+  /** Restrict counted evidence to files uploaded under this project. */
+  projectId?: number,
 ) => {
   const fwTypes = frameworkType ? [frameworkType] : ["eu_ai_act", "iso_42001"];
   const allGaps: any[] = [];
@@ -171,6 +206,8 @@ export const getEvidenceGapsQuery = async (
       controlQuery = "controls_struct_eu";
       controlTitleCol = "title";
     }
+    const linkMapping = LINK_TO_STRUCT_SQL[fw];
+    if (!linkMapping) continue;
 
     // adequate evidence = an analysis whose overall_quality_grade is graded and
     // NOT in the low set. Low-quality (unrated/D/F) evidence and un-analyzed
@@ -185,23 +222,29 @@ export const getEvidenceGapsQuery = async (
          COALESCE(stats.adequate_count, 0)::int as adequate_count
        FROM ${controlQuery} cs
        LEFT JOIN (
-         SELECT
-           fel.entity_id,
-           COUNT(DISTINCT fel.file_id) as evidence_count,
-           COUNT(DISTINCT fel.file_id) FILTER (
-             WHERE eaa.overall_quality_grade IS NOT NULL
-               AND eaa.overall_quality_grade <> ALL(ARRAY[:lowGrades]::varchar[])
-           ) as adequate_count
-         FROM file_entity_links fel
-         LEFT JOIN evidence_ai_analysis eaa
-           ON eaa.file_id = fel.file_id AND eaa.organization_id = :organizationId
-         WHERE fel.organization_id = :organizationId
-           AND fel.framework_type = :fwType
-         GROUP BY fel.entity_id
-       ) stats ON stats.entity_id = cs.id
+         SELECT mapped.struct_id,
+                COUNT(DISTINCT fel.file_id) as evidence_count,
+                COUNT(DISTINCT fel.file_id) FILTER (
+                  WHERE eaa.overall_quality_grade IS NOT NULL
+                    AND eaa.overall_quality_grade <> ALL(ARRAY[:lowGrades]::varchar[])
+                ) as adequate_count
+           FROM file_entity_links fel
+           LEFT JOIN evidence_ai_analysis eaa
+             ON eaa.file_id = fel.file_id AND eaa.organization_id = :organizationId
+           LEFT JOIN LATERAL (SELECT ${linkMapping} AS struct_id) mapped
+             ON mapped.struct_id IS NOT NULL
+          WHERE fel.organization_id = :organizationId
+            AND fel.framework_type = :fwType
+            AND (:projectId IS NULL OR EXISTS (
+                  SELECT 1 FROM files pf
+                   WHERE pf.id = fel.file_id AND pf.organization_id = fel.organization_id
+                     AND pf.project_id = :projectId
+                ))
+          GROUP BY mapped.struct_id
+       ) stats ON stats.struct_id = cs.id
        WHERE cs.${controlTitleCol} IS NOT NULL
        ORDER BY COALESCE(stats.evidence_count, 0) ASC, COALESCE(stats.adequate_count, 0) ASC`,
-      { replacements: { organizationId, fwType: fw, lowGrades } },
+      { replacements: { organizationId, fwType: fw, lowGrades, projectId: projectId ?? null } },
     );
 
     allGaps.push(...(gaps as any[]));
