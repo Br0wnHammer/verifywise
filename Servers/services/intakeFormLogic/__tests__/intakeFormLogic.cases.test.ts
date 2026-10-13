@@ -5,7 +5,14 @@
  */
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { evaluateFormula, parseFormula } from "..";
+import {
+  cleanSubmission,
+  evaluateForm,
+  evaluateFormula,
+  firstMissingVisibleInput,
+  parseFormula,
+  validateSchemaLogic,
+} from "..";
 
 type FormulaCase = { formula?: string; formulaParts?: Array<[string, number]> };
 
@@ -33,6 +40,36 @@ describe("intake form logic cases", () => {
       if (!parsed.ok) throw new Error(`fixture formula does not parse: ${c.formula}`);
       const result = evaluateFormula(parsed.ast, c.values, c.decimals);
       expect(Object.is(result, c.expected)).toBe(true);
+    });
+  });
+
+  describe("evaluateForm", () => {
+    it.each(cases.evaluateForm)("$name", (c: any) => {
+      const result = evaluateForm({ fields: c.fields }, c.answers);
+      expect(Array.from(result.visibleIds).sort()).toEqual(c.visibleIds);
+      expect({ ...result.calculated }).toEqual(c.calculated);
+    });
+  });
+
+  describe("cleanSubmission", () => {
+    it.each(cases.cleanSubmission)("$name", (c: any) => {
+      expect({ ...cleanSubmission({ fields: c.fields }, c.answers).data }).toEqual(c.data);
+    });
+  });
+
+  describe("firstMissingVisibleInput", () => {
+    it.each(cases.firstMissingVisibleInput)("$name", (c: any) => {
+      const schema = { fields: c.fields };
+      const evaluation = evaluateForm(schema, c.answers);
+      expect(firstMissingVisibleInput(schema, evaluation, c.fieldId)).toBe(c.expected);
+    });
+  });
+
+  describe("validateSchemaLogic", () => {
+    it.each(cases.validateSchemaLogic)("$name", (c: any) => {
+      const errors = validateSchemaLogic({ fields: c.fields }, c.entityType);
+      expect(Array.from(new Set(errors.map((e) => e.fieldId))).sort()).toEqual(c.errorFieldIds);
+      for (const error of errors) expect(error.message).toMatch(/^Field "/);
     });
   });
 });

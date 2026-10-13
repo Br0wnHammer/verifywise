@@ -144,5 +144,1047 @@
       "decimals": 2,
       "expected": null
     }
+  ],
+  "evaluateForm": [
+    {
+      "name": "no rules: every field shown",
+      "fields": [
+        { "id": "a", "type": "text", "label": "A", "order": 0 },
+        { "id": "b", "type": "number", "label": "B", "order": 1 }
+      ],
+      "answers": { "a": "x" },
+      "visibleIds": ["a", "b"],
+      "calculated": {}
+    },
+    {
+      "name": "select equals shows the field",
+      "fields": [
+        {
+          "id": "q",
+          "type": "select",
+          "label": "Q",
+          "order": 0,
+          "options": [
+            { "value": "yes", "label": "Yes" },
+            { "value": "no", "label": "No" }
+          ]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "equals", "value": "yes" }]
+          }
+        }
+      ],
+      "answers": { "q": "yes", "d": "hi" },
+      "visibleIds": ["d", "q"],
+      "calculated": {}
+    },
+    {
+      "name": "select equals hides the field",
+      "fields": [
+        {
+          "id": "q",
+          "type": "select",
+          "label": "Q",
+          "order": 0,
+          "options": [
+            { "value": "yes", "label": "Yes" },
+            { "value": "no", "label": "No" }
+          ]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "equals", "value": "yes" }]
+          }
+        }
+      ],
+      "answers": { "q": "no", "d": "hi" },
+      "visibleIds": ["q"],
+      "calculated": {}
+    },
+    {
+      "name": "empty answer: not_equals is false",
+      "fields": [
+        {
+          "id": "q",
+          "type": "select",
+          "label": "Q",
+          "order": 0,
+          "options": [{ "value": "yes", "label": "Yes" }]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "not_equals", "value": "yes" }]
+          }
+        }
+      ],
+      "answers": {},
+      "visibleIds": ["q"],
+      "calculated": {}
+    },
+    {
+      "name": "multiselect equals means includes",
+      "fields": [
+        {
+          "id": "m",
+          "type": "multiselect",
+          "label": "M",
+          "order": 0,
+          "options": [
+            { "value": "a", "label": "A" },
+            { "value": "b", "label": "B" }
+          ]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "m", "operator": "equals", "value": "b" }]
+          }
+        }
+      ],
+      "answers": { "m": ["a", "b"] },
+      "visibleIds": ["d", "m"],
+      "calculated": {}
+    },
+    {
+      "name": "multiselect not_equals means does not include",
+      "fields": [
+        {
+          "id": "m",
+          "type": "multiselect",
+          "label": "M",
+          "order": 0,
+          "options": [
+            { "value": "a", "label": "A" },
+            { "value": "b", "label": "B" }
+          ]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "m", "operator": "not_equals", "value": "b" }]
+          }
+        }
+      ],
+      "answers": { "m": ["a"] },
+      "visibleIds": ["d", "m"],
+      "calculated": {}
+    },
+    {
+      "name": "one_of on a select",
+      "fields": [
+        {
+          "id": "q",
+          "type": "select",
+          "label": "Q",
+          "order": 0,
+          "options": [
+            { "value": "x", "label": "X" },
+            { "value": "y", "label": "Y" },
+            { "value": "z", "label": "Z" }
+          ]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "one_of", "value": ["y", "z"] }]
+          }
+        }
+      ],
+      "answers": { "q": "z" },
+      "visibleIds": ["d", "q"],
+      "calculated": {}
+    },
+    {
+      "name": "checkbox is_checked",
+      "fields": [
+        { "id": "c", "type": "checkbox", "label": "C", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "c", "operator": "is_checked" }]
+          }
+        }
+      ],
+      "answers": { "c": true },
+      "visibleIds": ["c", "d"],
+      "calculated": {}
+    },
+    {
+      "name": "unanswered checkbox counts as not checked",
+      "fields": [
+        { "id": "c", "type": "checkbox", "label": "C", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "c", "operator": "is_not_checked" }]
+          }
+        }
+      ],
+      "answers": {},
+      "visibleIds": ["c", "d"],
+      "calculated": {}
+    },
+    {
+      "name": "text contains is case-insensitive",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "t", "operator": "contains", "value": "Health" }]
+          }
+        }
+      ],
+      "answers": { "t": "uses HEALTH records" },
+      "visibleIds": ["d", "t"],
+      "calculated": {}
+    },
+    {
+      "name": "number answers given as strings",
+      "fields": [
+        { "id": "n", "type": "number", "label": "N", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "n", "operator": "gt", "value": 10 }]
+          }
+        }
+      ],
+      "answers": { "n": "12" },
+      "visibleIds": ["d", "n"],
+      "calculated": {}
+    },
+    {
+      "name": "non-numeric string is missing",
+      "fields": [
+        { "id": "n", "type": "number", "label": "N", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "n", "operator": "neq", "value": 10 }]
+          }
+        }
+      ],
+      "answers": { "n": "abc" },
+      "visibleIds": ["n"],
+      "calculated": {}
+    },
+    {
+      "name": "match any shows on one true condition",
+      "fields": [
+        { "id": "n", "type": "number", "label": "N", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "any",
+            "conditions": [
+              { "fieldId": "n", "operator": "gt", "value": 10 },
+              { "fieldId": "n", "operator": "lt", "value": 0 }
+            ]
+          }
+        }
+      ],
+      "answers": { "n": 5 },
+      "visibleIds": ["n"],
+      "calculated": {}
+    },
+    {
+      "name": "match all needs every condition",
+      "fields": [
+        { "id": "n", "type": "number", "label": "N", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [
+              { "fieldId": "n", "operator": "gte", "value": 5 },
+              { "fieldId": "n", "operator": "lte", "value": 5 }
+            ]
+          }
+        }
+      ],
+      "answers": { "n": 5 },
+      "visibleIds": ["d", "n"],
+      "calculated": {}
+    },
+    {
+      "name": "chained hiding ignores a stale answer",
+      "fields": [
+        {
+          "id": "q",
+          "type": "select",
+          "label": "Q",
+          "order": 0,
+          "options": [
+            { "value": "yes", "label": "Yes" },
+            { "value": "no", "label": "No" }
+          ]
+        },
+        {
+          "id": "b",
+          "type": "text",
+          "label": "B",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "equals", "value": "yes" }]
+          }
+        },
+        {
+          "id": "c",
+          "type": "text",
+          "label": "C",
+          "order": 2,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "b", "operator": "is_not_empty" }]
+          }
+        }
+      ],
+      "answers": { "q": "no", "b": "stale", "c": "x" },
+      "visibleIds": ["q"],
+      "calculated": {}
+    },
+    {
+      "name": "calculated from number answers",
+      "fields": [
+        { "id": "cost", "type": "number", "label": "Cost", "order": 0 },
+        { "id": "months", "type": "number", "label": "Months", "order": 1 },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 2,
+          "formula": "{cost} * {months}",
+          "decimals": 2
+        }
+      ],
+      "answers": { "cost": "100", "months": 12 },
+      "visibleIds": ["cost", "months", "total"],
+      "calculated": { "total": 1200 }
+    },
+    {
+      "name": "calculated with a hidden input is null",
+      "fields": [
+        { "id": "flag", "type": "checkbox", "label": "Flag", "order": 0 },
+        {
+          "id": "cost",
+          "type": "number",
+          "label": "Cost",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "flag", "operator": "is_checked" }]
+          }
+        },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 2,
+          "formula": "{cost} * 2"
+        }
+      ],
+      "answers": { "cost": 5 },
+      "visibleIds": ["flag", "total"],
+      "calculated": { "total": null }
+    },
+    {
+      "name": "condition on a calculated field",
+      "fields": [
+        { "id": "a", "type": "number", "label": "A", "order": 0 },
+        { "id": "total", "type": "calculated", "label": "Total", "order": 1, "formula": "{a} * 2" },
+        {
+          "id": "big",
+          "type": "text",
+          "label": "Big",
+          "order": 2,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "total", "operator": "gt", "value": 10 }]
+          }
+        }
+      ],
+      "answers": { "a": 6 },
+      "visibleIds": ["a", "big", "total"],
+      "calculated": { "total": 12 }
+    },
+    {
+      "name": "hidden calculated field is null",
+      "fields": [
+        { "id": "flag", "type": "checkbox", "label": "Flag", "order": 0 },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 1,
+          "formula": "1 + 1",
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "flag", "operator": "is_checked" }]
+          }
+        }
+      ],
+      "answers": {},
+      "visibleIds": ["flag"],
+      "calculated": { "total": null }
+    },
+    {
+      "name": "formula on a later field gets no value",
+      "fields": [
+        { "id": "total", "type": "calculated", "label": "Total", "order": 0, "formula": "{b} + 1" },
+        { "id": "b", "type": "number", "label": "B", "order": 1 }
+      ],
+      "answers": { "b": 5 },
+      "visibleIds": ["b", "total"],
+      "calculated": { "total": null }
+    },
+    {
+      "name": "malformed visibility shows the field",
+      "fields": [
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 0,
+          "visibility": { "match": "all", "conditions": "oops" }
+        }
+      ],
+      "answers": {},
+      "visibleIds": ["d"],
+      "calculated": {}
+    }
+  ],
+  "cleanSubmission": [
+    {
+      "name": "drops hidden answers and unknown keys",
+      "fields": [
+        {
+          "id": "q",
+          "type": "select",
+          "label": "Q",
+          "order": 0,
+          "options": [
+            { "value": "yes", "label": "Yes" },
+            { "value": "no", "label": "No" }
+          ]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "equals", "value": "yes" }]
+          }
+        }
+      ],
+      "answers": { "q": "no", "d": "secret", "junk": "x" },
+      "data": { "q": "no" }
+    },
+    {
+      "name": "replaces a client calculated value with the server value",
+      "fields": [
+        { "id": "cost", "type": "number", "label": "Cost", "order": 0 },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 1,
+          "formula": "{cost} * 12"
+        }
+      ],
+      "answers": { "cost": "10", "total": 999 },
+      "data": { "cost": "10", "total": 120 }
+    },
+    {
+      "name": "visible calculated field without a result is stored as null",
+      "fields": [
+        { "id": "cost", "type": "number", "label": "Cost", "order": 0 },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 1,
+          "formula": "{cost} * 12"
+        }
+      ],
+      "answers": {},
+      "data": { "total": null }
+    },
+    {
+      "name": "hidden calculated field is left out",
+      "fields": [
+        { "id": "flag", "type": "checkbox", "label": "Flag", "order": 0 },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 1,
+          "formula": "1 + 1",
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "flag", "operator": "is_checked" }]
+          }
+        }
+      ],
+      "answers": { "flag": false },
+      "data": { "flag": false }
+    }
+  ],
+  "firstMissingVisibleInput": [
+    {
+      "name": "names the first visible missing input",
+      "fields": [
+        { "id": "cost", "type": "number", "label": "Cost", "order": 0 },
+        { "id": "months", "type": "number", "label": "Months", "order": 1 },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 2,
+          "formula": "{cost} * {months}"
+        }
+      ],
+      "answers": { "months": 3 },
+      "fieldId": "total",
+      "expected": "Cost"
+    },
+    {
+      "name": "no hint when the missing input is hidden",
+      "fields": [
+        { "id": "flag", "type": "checkbox", "label": "Flag", "order": 0 },
+        {
+          "id": "cost",
+          "type": "number",
+          "label": "Cost",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "flag", "operator": "is_checked" }]
+          }
+        },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 2,
+          "formula": "{cost} + 1"
+        }
+      ],
+      "answers": {},
+      "fieldId": "total",
+      "expected": null
+    },
+    {
+      "name": "no hint on division by zero",
+      "fields": [
+        { "id": "a", "type": "number", "label": "A", "order": 0 },
+        { "id": "b", "type": "number", "label": "B", "order": 1 },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 2,
+          "formula": "{a} / {b}"
+        }
+      ],
+      "answers": { "a": 1, "b": 0 },
+      "fieldId": "total",
+      "expected": null
+    }
+  ],
+  "validateSchemaLogic": [
+    {
+      "name": "a valid form has no errors",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "q",
+          "type": "select",
+          "label": "Q",
+          "order": 0,
+          "options": [{ "value": "yes", "label": "Yes" }]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "equals", "value": "yes" }]
+          }
+        },
+        { "id": "n", "type": "number", "label": "N", "order": 2 },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 3,
+          "formula": "{n} * 2",
+          "decimals": 0,
+          "prefix": "€"
+        },
+        { "id": "t", "type": "text", "label": "T", "order": 4, "riskDimension": "data_sensitivity" }
+      ],
+      "errorFieldIds": []
+    },
+    {
+      "name": "condition on a later field",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 0,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "is_not_empty" }]
+          }
+        },
+        { "id": "q", "type": "text", "label": "Q", "order": 1 }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "condition on itself",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 0,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "d", "operator": "is_not_empty" }]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "condition on a removed field",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 0,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "gone", "operator": "is_not_empty" }]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "operator not allowed for the field type",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "t", "operator": "gt", "value": 3 }]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "option that no longer exists",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "q",
+          "type": "select",
+          "label": "Q",
+          "order": 0,
+          "options": [
+            { "value": "yes", "label": "Yes" },
+            { "value": "no", "label": "No" }
+          ]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "equals", "value": "maybe" }]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "one_of needs at least one option",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "q",
+          "type": "select",
+          "label": "Q",
+          "order": 0,
+          "options": [{ "value": "yes", "label": "Yes" }]
+        },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "q", "operator": "one_of", "value": [] }]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "numeric condition needs a number",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "n", "type": "number", "label": "N", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "n", "operator": "gt", "value": "10" }]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "text condition needs a non-empty value",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "t", "operator": "contains", "value": "  " }]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "more than 20 conditions",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "any",
+            "conditions": [
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" },
+              { "fieldId": "t", "operator": "is_empty" }
+            ]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "malformed match value",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "some",
+            "conditions": [{ "fieldId": "t", "operator": "is_empty" }]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
+    },
+    {
+      "name": "rules on the use case title",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        {
+          "id": "title",
+          "type": "text",
+          "label": "Title",
+          "order": 1,
+          "entityFieldMapping": "project_title",
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "t", "operator": "is_empty" }]
+          }
+        }
+      ],
+      "errorFieldIds": ["title"]
+    },
+    {
+      "name": "rules on the model name",
+      "entityType": "model",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        {
+          "id": "name",
+          "type": "text",
+          "label": "Name",
+          "order": 1,
+          "entityFieldMapping": "name",
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "t", "operator": "is_empty" }]
+          }
+        }
+      ],
+      "errorFieldIds": ["name"]
+    },
+    {
+      "name": "rules on an optional mapped field are fine",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        {
+          "id": "start",
+          "type": "date",
+          "label": "Start",
+          "order": 1,
+          "entityFieldMapping": "start_date",
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "t", "operator": "is_not_empty" }]
+          }
+        }
+      ],
+      "errorFieldIds": []
+    },
+    {
+      "name": "formula that does not parse",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "n", "type": "number", "label": "N", "order": 0 },
+        { "id": "total", "type": "calculated", "label": "Total", "order": 1, "formula": "{n} *" }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "formula on a later field",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "total", "type": "calculated", "label": "Total", "order": 0, "formula": "{n} + 1" },
+        { "id": "n", "type": "number", "label": "N", "order": 1 }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "formula on itself",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 0,
+          "formula": "{total} + 1"
+        }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "formula on a text field",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        { "id": "total", "type": "calculated", "label": "Total", "order": 1, "formula": "{t} + 1" }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "formula on a removed field",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 0,
+          "formula": "{gone} + 1"
+        }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "decimals out of range",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 0,
+          "formula": "1",
+          "decimals": 7
+        }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "fractional decimals",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 0,
+          "formula": "1",
+          "decimals": 1.5
+        }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "prefix longer than 10 characters",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 0,
+          "formula": "1",
+          "prefix": "12345678901"
+        }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "required calculated field",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 0,
+          "formula": "1",
+          "validation": { "required": true }
+        }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "unknown risk dimension",
+      "entityType": "use_case",
+      "fields": [{ "id": "t", "type": "text", "label": "T", "order": 0, "riskDimension": "vibes" }],
+      "errorFieldIds": ["t"]
+    },
+    {
+      "name": "risk dimension on a number field",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "n", "type": "number", "label": "N", "order": 0, "riskDimension": "impact_scope" }
+      ],
+      "errorFieldIds": ["n"]
+    }
   ]
 }
