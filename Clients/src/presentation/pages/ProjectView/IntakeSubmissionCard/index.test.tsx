@@ -241,4 +241,36 @@ describe("IntakeSubmissionCard", () => {
     expect(screen.queryByText("Old total")).not.toBeInTheDocument();
     expect(screen.queryByText(/Additional answers/)).not.toBeInTheDocument();
   });
+
+  it("does not list an empty multiselect as an answer", async () => {
+    mockUseEntityIntakeSubmission.mockReturnValue({
+      isLoading: false,
+      data: {
+        ...baseSubmission,
+        fields: [
+          {
+            fieldId: "name",
+            label: "Use case name",
+            type: "text",
+            value: "Bot",
+            options: null,
+            entityFieldMapping: "project_title",
+            isMapped: true,
+          },
+          {
+            fieldId: "tags",
+            label: "Data kinds",
+            type: "multiselect",
+            value: [],
+            options: [],
+            entityFieldMapping: null,
+            isMapped: false,
+          },
+        ],
+      },
+    });
+    renderWithProviders(<IntakeSubmissionCard projectId={1} />);
+    await screen.findByText("Bot");
+    expect(screen.queryByText(/Additional answers/)).not.toBeInTheDocument();
+  });
 });

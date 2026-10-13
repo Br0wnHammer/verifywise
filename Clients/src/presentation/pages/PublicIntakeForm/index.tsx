@@ -11,6 +11,7 @@ import {
   cleanSubmission,
   evaluateForm,
   firstMissingVisibleInput,
+  sortFields,
 } from "../../../application/utils/intakeFormLogic";
 import { MathCaptcha } from "./MathCaptcha";
 import EuAiActQuestionnaire from "../../components/EuAiActQuestionnaire";
@@ -428,7 +429,8 @@ export function PublicIntakeForm() {
     return null;
   }
 
-  const sortedFields = [...formData.schema.fields].sort((a, b) => a.order - b.order);
+  // Same order the show/hide rules and formulas use.
+  const sortedFields = sortFields(formData.schema.fields);
 
   // Resolve design settings
   const ds = formData.designSettings ?? DEFAULT_DESIGN_SETTINGS;

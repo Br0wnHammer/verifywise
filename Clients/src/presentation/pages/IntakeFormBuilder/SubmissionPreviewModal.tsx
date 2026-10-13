@@ -23,7 +23,7 @@ import {
 } from "../../../application/repository/intakeForm.repository";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import { formatAnswer } from "../../../application/utils/intakeAnswerFormat";
-import { sortFields } from "../../../application/utils/intakeFormLogic";
+import { isEmptyAnswer, sortFields } from "../../../application/utils/intakeFormLogic";
 import EuAiActClassificationPanel, {
   type EuAiActClassificationData,
 } from "./EuAiActClassificationPanel";
@@ -442,7 +442,7 @@ function SubmissionPreviewModal({
     if (field.entityFieldMapping) return false;
     if (!Object.prototype.hasOwnProperty.call(submissionData, field.id)) return false;
     const value = submissionData[field.id];
-    return field.type === "calculated" || (value !== null && value !== undefined && value !== "");
+    return field.type === "calculated" || !isEmptyAnswer(value);
   });
 
   // Derived: entity type label

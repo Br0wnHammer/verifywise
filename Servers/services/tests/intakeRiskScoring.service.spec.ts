@@ -261,6 +261,23 @@ describe("intakeRiskScoring.service", () => {
       expect(dimension(result, "data_sensitivity").score).toBeGreaterThan(70);
     });
 
+    it("an unchecked tagged checkbox is the tagged answer: unrelated text does not decide", () => {
+      const schema = {
+        version: "1.0",
+        fields: [
+          { id: "notes", type: "text", label: "Notes" },
+          {
+            id: "bio",
+            type: "checkbox",
+            label: "Uses face data",
+            riskDimension: "data_sensitivity",
+          },
+        ],
+      };
+      const result = scoreSubmissionRuleBased({ notes: "biometric", bio: false }, schema);
+      expect(dimension(result, "data_sensitivity").score).toBe(50);
+    });
+
     it("scores select answers by option label", () => {
       const schema = {
         version: "1.0",

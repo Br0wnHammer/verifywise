@@ -5,6 +5,7 @@ import { useEntityIntakeSubmission } from "../../../../application/hooks/useEnti
 import type { IntakeSubmissionField } from "../../../../application/repository/intakeForm.repository";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import { formatAnswer } from "../../../../application/utils/intakeAnswerFormat";
+import { isEmptyAnswer } from "../../../../application/utils/intakeFormLogic";
 
 interface IntakeSubmissionCardProps {
   projectId: number;
@@ -56,9 +57,7 @@ export default function IntakeSubmissionCard({ projectId }: IntakeSubmissionCard
   // Calculated fields count when the submission stored them (null shows "—");
   // submissions from before a field existed have no key and show nothing.
   const hasAnswer = (f: IntakeSubmissionField) =>
-    f.type === "calculated"
-      ? Boolean(f.answered)
-      : f.value !== null && f.value !== undefined && f.value !== "";
+    f.type === "calculated" ? Boolean(f.answered) : !isEmptyAnswer(f.value);
   const mappedFields = submission.fields.filter((f) => f.isMapped && hasAnswer(f));
   const unmappedFields = submission.fields.filter((f) => !f.isMapped && hasAnswer(f));
 

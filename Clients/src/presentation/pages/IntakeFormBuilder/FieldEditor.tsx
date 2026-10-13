@@ -17,6 +17,8 @@ import { VisibilityEditor, visibilitySummary } from "./VisibilityEditor";
 import { IntakeEntityType } from "../../../domain/intake/enums";
 import { getLLMFieldGuidance } from "../../../application/repository/intakeForm.repository";
 import {
+  DEFAULT_DECIMALS,
+  MAX_DECIMALS,
   RISK_TAGGABLE_TYPES,
   sortFields,
   type SchemaLogicError,
@@ -319,9 +321,9 @@ export function FieldEditor({
         <Box sx={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {logicErrors.length > 0 && (
             <Box role="alert" sx={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              {logicErrors.map((error) => (
+              {logicErrors.map((error, index) => (
                 <Typography
-                  key={error.message}
+                  key={`${index}-${error.message}`}
                   sx={{ fontSize: "12px", color: theme.palette.status.error.text }}
                 >
                   {error.message}
@@ -465,8 +467,8 @@ export function FieldEditor({
                   id="field-decimals"
                   label="Decimals"
                   type="number"
-                  InputProps={{ inputProps: { min: 0, max: 6, step: 1 } }}
-                  value={String(localField.decimals ?? 2)}
+                  InputProps={{ inputProps: { min: 0, max: MAX_DECIMALS, step: 1 } }}
+                  value={String(localField.decimals ?? DEFAULT_DECIMALS)}
                   onChange={(e) => {
                     const v = e.target.value;
                     handleChange("decimals", v === "" ? undefined : Number(v));

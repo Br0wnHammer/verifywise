@@ -6,6 +6,7 @@ import Checkbox from "../../components/Inputs/Checkbox";
 import { CustomizableButton } from "../../components/button/customizable-button";
 import type { FormField } from "./types";
 import {
+  MAX_CONDITIONS,
   OPERATORS_BY_TYPE,
   type Condition,
   type ConditionOperator,
@@ -224,7 +225,7 @@ export function VisibilityEditor({ visibility, earlierFields, onChange }: Visibi
         size="small"
         text="Add condition"
         startIcon={<Plus size={14} />}
-        isDisabled={conditions.length >= 20}
+        isDisabled={conditions.length >= MAX_CONDITIONS}
         onClick={() => commit([...conditions, defaultCondition(earlierFields[0])])}
       />
     </Box>

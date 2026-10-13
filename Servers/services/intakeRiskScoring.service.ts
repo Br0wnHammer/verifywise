@@ -282,9 +282,9 @@ export function answersForScoring(
       default:
         text = "";
     }
-    if (text.trim() !== "") {
-      answers.push({ label: field.label, text, riskDimension: field.riskDimension });
-    }
+    // Every answered field is listed, even with no scorable text: an
+    // unchecked tagged checkbox is still the tagged answer for its dimension.
+    answers.push({ label: field.label, text, riskDimension: field.riskDimension });
   }
   return answers;
 }

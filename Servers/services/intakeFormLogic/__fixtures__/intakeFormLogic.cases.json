@@ -1265,6 +1265,24 @@
         }
       ],
       "errorFieldIds": []
+    },
+    {
+      "name": "field type that is an object prototype key does not throw",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "a", "type": "constructor", "label": "A", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "a", "operator": "is_empty" }]
+          }
+        }
+      ],
+      "errorFieldIds": ["d"]
     }
   ]
 }

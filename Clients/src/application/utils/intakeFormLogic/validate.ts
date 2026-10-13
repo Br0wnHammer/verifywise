@@ -134,7 +134,10 @@ export function validateSchemaLogic(schema: LogicSchema, entityType: string): Sc
         add(`depends on "${ref.label}", which is not above it`);
         continue;
       }
-      if (!(OPERATORS_BY_TYPE[ref.type] ?? []).includes(condition.operator as never)) {
+      const allowed = Object.prototype.hasOwnProperty.call(OPERATORS_BY_TYPE, ref.type)
+        ? OPERATORS_BY_TYPE[ref.type]
+        : [];
+      if (!allowed.includes(condition.operator as never)) {
         add(`"${condition.operator}" cannot be used with "${ref.label}"`);
         continue;
       }
