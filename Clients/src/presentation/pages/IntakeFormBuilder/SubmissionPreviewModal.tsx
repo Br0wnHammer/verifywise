@@ -316,7 +316,7 @@ function SubmissionPreviewModal({
         });
         setEuAiActLevel(response.data.euAiActClassification?.current.level ?? "");
         setEditedEntityData({ ...(entityPreview || {}) });
-      } catch (err) {
+      } catch {
         if (cancelled) return;
         setFetchError("Failed to load submission preview. Please try again.");
       } finally {

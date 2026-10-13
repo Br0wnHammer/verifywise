@@ -501,7 +501,7 @@ export async function loadPages<O extends { id: string }>(
   const objects: O[] = [];
   const seen = new Set<string>();
   let startAt = 0;
-  let hasMore = false;
+  let hasMore: boolean;
   let pages = 0;
   for (;;) {
     const page = await fetchPage(startAt);

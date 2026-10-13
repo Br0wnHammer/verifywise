@@ -294,7 +294,7 @@ const AgentDiscovery: React.FC = () => {
       }
       fetchAgents();
       fetchStats();
-    } catch (error) {
+    } catch {
       showAlertMessage(
         "error",
         "Sync failed. Check that the Azure AI Foundry extension is enabled and configured.",
