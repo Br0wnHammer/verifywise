@@ -55,6 +55,7 @@ import taskRoutes from "./routes/task.route";
 import deadlineRoutes from "./routes/deadline.route";
 import slackWebhookRoutes from "./routes/slackWebhook.route";
 import extensionRoutes from "./routes/extension.route";
+import extensionRunsRoutes from "./routes/extensionRuns.route";
 import tokenRoutes from "./routes/tokens.route";
 import shareLinkRoutes from "./routes/shareLink.route";
 import automation from "./routes/automation.route.js";
@@ -326,6 +327,9 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   // sub-paths (which all use multi-segment paths like /oauth/workspaces,
   // /models, /config, /import, /sync, /use-cases, etc.).
   app.use("/api/extensions", extensionRoutes);
+  // Sync engine routes (/:key/runs, /:key/runs/status, /:key/schedule). A key
+  // without a sync provider falls through to the per-extension routers below.
+  app.use("/api/extensions", extensionRunsRoutes);
   app.use("/api/extensions/dataset-bulk-upload", datasetBulkUploadRoutes);
   app.use("/api/extensions/risk-import", riskImportRoutes);
   app.use("/api/extensions/slack", slackExtensionRoutes);

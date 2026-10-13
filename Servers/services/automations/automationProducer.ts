@@ -358,11 +358,6 @@ async function withQueueTimeout<T>(op: () => Promise<T>): Promise<T> {
   }
 }
 
-/** One Jira Assets sync job per org at a time: the job id is fixed per org. */
-export function jiraAssetsSyncJobId(organizationId: number): string {
-  return `jira-assets-sync-${organizationId}`;
-}
-
 const PENDING_JOB_STATES = new Set([
   "waiting",
   "delayed",
@@ -371,44 +366,26 @@ const PENDING_JOB_STATES = new Set([
   "waiting-children",
 ]);
 
-/** True when a Jira Assets sync job for the org is waiting or running in the queue. */
-export async function hasPendingJiraAssetsSyncJob(organizationId: number): Promise<boolean> {
-  return withQueueTimeout(async () => {
-    const job = await automationQueue.getJob(jiraAssetsSyncJobId(organizationId));
-    return !!job && PENDING_JOB_STATES.has(await job.getState());
-  });
-}
-
 /**
- * Queue one Jira Assets sync for the worker: a manual "Sync now" or a
- * scheduled refresh. The worker claims the run when it picks the job up, so
- * time spent waiting in the queue never counts against the run's heartbeat.
- * The job id is fixed per org, so a double click or overlapping scheduler
- * ticks cannot queue two: if one is already waiting or running, nothing is
- * added and `queued` is false. Finished jobs are removed (complete or failed)
- * so they never block the next one. One attempt: a retry is the next tick or
- * click. Throws BackgroundJobsUnavailableError if the queue does not answer
- * within QUEUE_CALL_TIMEOUT_MS. Known edge: if the timeout fires after Redis
- * accepted the add, the caller sees 503 although the job is queued; the next
- * attempt then finds it waiting (409), and it runs normally.
+ * Add `name` under a fixed `jobId` unless one is already waiting or running
+ * (`queued: false`). A finished job left behind is removed first, because
+ * BullMQ ignores an add whose id still exists; if that removal fails, the job
+ * is looked up again: gone, the add goes ahead; now waiting, `queued: false`;
+ * still there and finished, a genuine queue failure. Throws
+ * BackgroundJobsUnavailableError past QUEUE_CALL_TIMEOUT_MS.
  */
-export async function enqueueJiraAssetsSyncRun(data: {
-  organizationId: number;
-  triggeredBy: number | null;
-  syncType: "manual" | "scheduled";
-}): Promise<{ jobId: string; queued: boolean }> {
-  const jobId = jiraAssetsSyncJobId(data.organizationId);
+async function addSingletonJob(
+  name: string,
+  jobId: string,
+  data: object,
+): Promise<{ jobId: string; queued: boolean }> {
   return withQueueTimeout(async () => {
     const existing = await automationQueue.getJob(jobId);
     if (existing) {
       if (PENDING_JOB_STATES.has(await existing.getState())) return { jobId, queued: false };
-      // A finished job left behind would make BullMQ ignore the add.
       try {
         await existing.remove();
       } catch (err) {
-        // Lost a race: another caller (or BullMQ's own cleanup) may have
-        // removed it, or re-queued under the same id, in the meantime. Look
-        // again before treating this as a queue failure.
         const again = await automationQueue.getJob(jobId);
         if (again) {
           if (PENDING_JOB_STATES.has(await again.getState())) return { jobId, queued: false };
@@ -416,7 +393,7 @@ export async function enqueueJiraAssetsSyncRun(data: {
         }
       }
     }
-    await automationQueue.add("jira_assets_sync_run", data, {
+    await automationQueue.add(name, data, {
       jobId,
       attempts: 1,
       removeOnComplete: true,
@@ -426,16 +403,61 @@ export async function enqueueJiraAssetsSyncRun(data: {
   });
 }
 
-export async function scheduleJiraAssetsScheduledSyncCheck() {
-  logger.info("Adding Jira Assets scheduled sync check job to the queue...");
-  // Every 5 minutes, check which orgs' Jira Assets sync interval has elapsed.
-  // The interval itself (1–168 hours) is per org in jira_assets_config. No
-  // obliterate here -- the scheduler upsert is idempotent by scheduler id.
+/** One sync-engine job per extension and org at a time: the job id is fixed per pair. */
+export function extensionSyncJobId(key: string, organizationId: number): string {
+  return `ext-sync-${key}-${organizationId}`;
+}
+
+/** Payload of an `extension_sync_run` job. */
+export interface ExtensionSyncJobData {
+  key: string;
+  orgId: number;
+  kind: string;
+  triggeredBy: number | null;
+  payload: unknown;
+}
+
+/** True when a sync-engine job for the extension and org is waiting or running. */
+export async function hasPendingExtensionSyncJob(
+  key: string,
+  organizationId: number,
+): Promise<boolean> {
+  return withQueueTimeout(async () => {
+    const job = await automationQueue.getJob(extensionSyncJobId(key, organizationId));
+    return !!job && PENDING_JOB_STATES.has(await job.getState());
+  });
+}
+
+/**
+ * Queue one sync-engine run for the worker, which claims it at pickup, so
+ * time spent waiting never counts against its heartbeat. A double click or
+ * overlapping ticks cannot queue two (`queued: false`). One attempt: a retry
+ * is the next tick or click.
+ */
+export async function enqueueExtensionSyncRun(
+  data: ExtensionSyncJobData,
+): Promise<{ jobId: string; queued: boolean }> {
+  return addSingletonJob("extension_sync_run", extensionSyncJobId(data.key, data.orgId), data);
+}
+
+/** The sync engine's tick: every 5 minutes, queue the due scheduled runs of every provider. */
+export async function scheduleExtensionSyncTick() {
+  logger.info("Adding extension sync tick job to the queue...");
+  // No obliterate here: the scheduler upsert is idempotent by scheduler id.
+  // The tick replaces the Jira-only check job. Its queued jobs still run (the
+  // worker routes the old names to the engine) for one release.
+  try {
+    await automationQueue.removeJobScheduler("jira_assets_scheduled_sync_check");
+  } catch (error) {
+    logger.warn(
+      `Could not remove the old Jira Assets check scheduler: ${(error as Error).message}`,
+    );
+  }
   await automationQueue.upsertJobScheduler(
-    "jira_assets_scheduled_sync_check",
+    "extension_sync_tick",
     { pattern: "*/5 * * * *" },
     {
-      name: "jira_assets_scheduled_sync_check",
+      name: "extension_sync_tick",
       data: {},
       opts: {
         removeOnComplete: true,
