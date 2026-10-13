@@ -56,9 +56,7 @@ const analyzeDocument = async (
 
     let text = document_text || "";
     if (!text.trim() && file.content) {
-      const buffer = Buffer.isBuffer(file.content)
-        ? file.content
-        : Buffer.from(file.content);
+      const buffer = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content);
       text = buffer.toString("utf-8");
     }
     if (!text.trim()) {
