@@ -42,7 +42,7 @@ export function FormulaEditor({ formula, numericFields, decimals, onChange }: Fo
   };
 
   // The picker never takes focus, so its own Escape handling never runs.
-  // Close it here, and keep the key from also closing a surrounding modal.
+  // Close it here, and stop the key so Escape only closes the picker.
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape" && pickerAnchor) {
       event.preventDefault();

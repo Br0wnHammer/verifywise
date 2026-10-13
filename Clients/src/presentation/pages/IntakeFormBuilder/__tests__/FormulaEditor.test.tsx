@@ -50,7 +50,7 @@ describe("FormulaEditor", () => {
     expect(screen.queryByRole("menuitem", { name: "Monthly cost" })).toBeNull();
   });
 
-  it("closes the picker on Escape without passing the key to a surrounding modal", () => {
+  it("closes the picker on Escape without passing the key to surrounding handlers", () => {
     const parentKeyDown = vi.fn();
     renderWithProviders(
       <div onKeyDown={parentKeyDown}>
@@ -64,7 +64,7 @@ describe("FormulaEditor", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("menuitem", { name: "Monthly cost" })).toBeNull();
     expect(parentKeyDown).not.toHaveBeenCalled();
-    // With the picker closed, Escape is left to the surrounding modal.
+    // With the picker closed, Escape is left to surrounding handlers.
     fireEvent.keyDown(input, { key: "Escape" });
     expect(parentKeyDown).toHaveBeenCalledTimes(1);
   });

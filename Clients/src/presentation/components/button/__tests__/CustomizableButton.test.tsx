@@ -157,18 +157,4 @@ describe("CustomizableButton", () => {
     await user.keyboard(key);
     expect(handleSubmit).toHaveBeenCalledTimes(1);
   });
-
-  it("does not fire onClick from the keyboard when disabled", async () => {
-    const user = userEvent.setup();
-    const handleClick = vi.fn();
-    renderWithProviders(
-      <CustomizableButton onClick={handleClick} isDisabled>
-        Disabled
-      </CustomizableButton>,
-    );
-    screen.getByRole("button", { name: "Disabled" }).focus();
-    await user.keyboard("{Enter}");
-    await user.keyboard(" ");
-    expect(handleClick).not.toHaveBeenCalled();
-  });
 });

@@ -173,7 +173,7 @@ const ModelInventory: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [showAlert, setShowAlert] = useState(false);
 
-  const { userRoleName } = useAuth();
+  const { userRoleName, userId } = useAuth();
   const isCreatingDisabled = !userRoleName || !["Admin", "Editor"].includes(userRoleName);
   const theme = useTheme();
 
@@ -1393,25 +1393,40 @@ const ModelInventory: React.FC = () => {
   const handleConfirmReplace = async () => {
     setShowReplaceConfirmation(false);
     // A link is already being created; replacing now would disable it.
-    if (isCreatingLink) return;
+    if (isCreatingLink) {
+      setAlert({
+        variant: "info",
+        body: "A share link is still being created. Try again in a moment.",
+      });
+      return;
+    }
 
     try {
       const existingLinksResponse: any = await getShareLinksForResource("model", 0);
-      const existingLinks: { id: number; is_enabled: boolean }[] =
+      const existingLinks: { id: number; is_enabled: boolean; created_by: number }[] =
         existingLinksResponse?.data?.data || [];
 
-      const outcome = await replaceShareLink({
+      const result = await replaceShareLink({
         existingLinks,
+        currentUserId: userId,
         // Shows its own error and returns "" when creation fails.
         createLink: () => generateShareableLink(shareSettings),
         disableLink: (id) => updateShareMutation.mutateAsync({ id, is_enabled: false }),
       });
-      if (outcome === "not-created") return;
+      if (!result.created) return;
 
-      if (outcome === "old-links-still-active") {
+      if (result.failed > 0) {
+        console.error("Failed to disable previous share links:", result.errors);
         setAlert({
           variant: "warning",
-          body: "New share link created, but some previous links are still active. Replace the link again to disable them.",
+          body: "New share link created, but some of your previous links could not be disabled. Replace the link again to retry.",
+        });
+        return;
+      }
+      if (result.othersStillActive > 0) {
+        setAlert({
+          variant: "warning",
+          body: "New share link created. Links created by other users are still active; only they can disable them.",
         });
         return;
       }
