@@ -381,6 +381,16 @@ export const ADVANCED_PALETTE_ITEMS: PaletteItem[] = [
   },
 ];
 
+/** Risk dimensions a field can feed, in the order the editor lists them. */
+export const RISK_DIMENSION_OPTIONS: Array<{ _id: string; name: string }> = [
+  { _id: "data_sensitivity", name: "Data sensitivity" },
+  { _id: "autonomy_level", name: "Autonomy level" },
+  { _id: "impact_scope", name: "Impact scope" },
+  { _id: "transparency", name: "Transparency" },
+  { _id: "human_oversight", name: "Human oversight" },
+  { _id: "domain_criticality", name: "Domain criticality" },
+];
+
 /**
  * Generate unique field ID
  */

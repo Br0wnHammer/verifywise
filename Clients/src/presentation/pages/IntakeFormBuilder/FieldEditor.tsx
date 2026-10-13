@@ -11,10 +11,16 @@ import {
   FieldType,
   ENTITY_FIELD_MAPPINGS,
   EntityFieldMapping,
+  RISK_DIMENSION_OPTIONS,
 } from "./types";
+import { VisibilityEditor, visibilitySummary } from "./VisibilityEditor";
 import { IntakeEntityType } from "../../../domain/intake/enums";
 import { getLLMFieldGuidance } from "../../../application/repository/intakeForm.repository";
-import { sortFields } from "../../../application/utils/intakeFormLogic";
+import {
+  RISK_TAGGABLE_TYPES,
+  sortFields,
+  type SchemaLogicError,
+} from "../../../application/utils/intakeFormLogic";
 import { FormulaEditor } from "./FormulaEditor";
 import { EditorSection } from "./EditorSection";
 
@@ -152,6 +158,8 @@ interface FieldEditorProps {
   llmKeyId?: number | null;
   onChange: (field: FormField) => void;
   onClose: () => void;
+  /** Problems the schema checks found on this field. */
+  logicErrors?: SchemaLogicError[];
 }
 
 export function FieldEditor({
@@ -162,6 +170,7 @@ export function FieldEditor({
   llmKeyId,
   onChange,
   onClose,
+  logicErrors = [],
 }: FieldEditorProps) {
   const theme = useTheme();
   const [localField, setLocalField] = useState<FormField>(field);
@@ -237,6 +246,7 @@ export function FieldEditor({
   const showMinMax = localField.type === "number";
   const showMinMaxLength = localField.type === "text" || localField.type === "textarea";
   const isCalculated = localField.type === "calculated";
+  const hasRules = (localField.visibility?.conditions.length ?? 0) > 0;
   const earlierFields = (() => {
     const sorted = sortFields(allFields);
     const index = sorted.findIndex((candidate) => candidate.id === localField.id);
@@ -307,6 +317,18 @@ export function FieldEditor({
       {/* Content */}
       <Box sx={{ flex: 1, overflowY: "auto", p: "8px" }}>
         <Box sx={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {logicErrors.length > 0 && (
+            <Box role="alert" sx={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              {logicErrors.map((error) => (
+                <Typography
+                  key={error.message}
+                  sx={{ fontSize: "12px", color: theme.palette.status.error.text }}
+                >
+                  {error.message}
+                </Typography>
+              ))}
+            </Box>
+          )}
           {/* Basic settings */}
           <Box>
             <Typography
@@ -489,7 +511,7 @@ export function FieldEditor({
                 <Box sx={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   <Checkbox
                     id="field-required"
-                    label="Required field"
+                    label={hasRules ? "Required when shown" : "Required field"}
                     isChecked={localField.validation?.required || false}
                     value="required"
                     onChange={() =>
@@ -586,6 +608,33 @@ export function FieldEditor({
                 )}
               </Box>
             </>
+          )}
+          <Divider sx={{ borderColor: theme.palette.border.dark }} />
+          <EditorSection
+            title="Show this field only if…"
+            summary={visibilitySummary(localField.visibility)}
+          >
+            <VisibilityEditor
+              visibility={localField.visibility}
+              earlierFields={earlierFields}
+              onChange={(visibility) => handleChange("visibility", visibility)}
+            />
+          </EditorSection>
+          {RISK_TAGGABLE_TYPES.includes(localField.type) && (
+            <EditorSection title="Risk scoring">
+              <Select
+                id="field-risk-dimension"
+                label="Risk dimension"
+                value={localField.riskDimension ?? ""}
+                items={[{ _id: "", name: "None" }, ...RISK_DIMENSION_OPTIONS]}
+                onChange={(e) =>
+                  handleChange(
+                    "riskDimension",
+                    e.target.value === "" ? undefined : String(e.target.value),
+                  )
+                }
+              />
+            </EditorSection>
           )}
         </Box>
       </Box>

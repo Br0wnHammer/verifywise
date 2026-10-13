@@ -35,6 +35,7 @@ import {
 } from "../../../application/repository/intakeForm.repository";
 import CustomAxios from "../../../infrastructure/api/customAxios";
 import { invalidateLLMKeyQueries, useLLMKeys } from "../../../application/hooks/useLLMKeys";
+import { validateSchemaLogic } from "../../../application/utils/intakeFormLogic";
 import { getClientErrorReason, isClientError } from "../../../application/utils/apiErrorReason";
 import {
   FieldPalette,
@@ -294,6 +295,14 @@ export function IntakeFormBuilder() {
       });
       return null;
     }
+    if (logicErrors.length > 0) {
+      setSnackbar({
+        open: true,
+        message: "Fix the highlighted fields before saving",
+        severity: "error",
+      });
+      return null;
+    }
     setIsSaving(true);
     try {
       const formData = {
@@ -482,6 +491,16 @@ export function IntakeFormBuilder() {
   // ============================================================================
   // Derived values
   // ============================================================================
+
+  // Same checks the server runs on save, shown while editing.
+  const logicErrors = useMemo(
+    () => validateSchemaLogic(form.schema, form.entityType),
+    [form.schema, form.entityType],
+  );
+  const logicErrorFieldIds = useMemo(
+    () => new Set(logicErrors.map((error) => error.fieldId)),
+    [logicErrors],
+  );
 
   const mappingCoverage = useMemo(
     () =>
@@ -826,6 +845,7 @@ export function IntakeFormBuilder() {
                       form.entityType === IntakeEntityType.USE_CASE &&
                       (form.euAiActRiskStepEnabled ?? false)
                     }
+                    errorFieldIds={logicErrorFieldIds}
                   />
                   {form.suggestedQuestionsEnabled && (
                     <SuggestedQuestionsPanel
@@ -849,6 +869,7 @@ export function IntakeFormBuilder() {
                   <FieldEditor
                     field={selectedField}
                     allFields={form.schema.fields}
+                    logicErrors={logicErrors.filter((error) => error.fieldId === selectedField.id)}
                     entityType={form.entityType}
                     usedEntityMappings={usedEntityMappingsFor(
                       form.schema.fields,

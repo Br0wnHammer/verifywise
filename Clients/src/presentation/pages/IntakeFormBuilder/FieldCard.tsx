@@ -35,6 +35,8 @@ interface FieldCardProps {
   onMoveDown: (fieldId: string) => void;
   /** Every field in the form, used to read formulas back with labels. */
   fields: FormField[];
+  /** Outline the card when the schema checks found a problem on this field. */
+  hasLogicError?: boolean;
 }
 
 /**
@@ -294,6 +296,7 @@ export function FieldCard({
   onMoveUp,
   onMoveDown,
   fields,
+  hasLogicError = false,
 }: FieldCardProps) {
   const theme = useTheme();
 
@@ -328,7 +331,11 @@ export function FieldCard({
       sx={{
         "position": "relative",
         "backgroundColor": theme.palette.background.main,
-        "border": isSelected ? `1px solid ${theme.palette.border.dark}` : "1px solid transparent",
+        "border": hasLogicError
+          ? `1px solid ${theme.palette.status.error.text}`
+          : isSelected
+            ? `1px solid ${theme.palette.border.dark}`
+            : "1px solid transparent",
         "borderRadius": "4px",
         "cursor": "pointer",
         "transition": "border-color 0.15s ease",
@@ -347,6 +354,9 @@ export function FieldCard({
       {/* Metadata badges — always visible */}
       <Box sx={{ display: "flex", alignItems: "center", gap: "6px", mt: "8px", flexWrap: "wrap" }}>
         <Chip label={TYPE_LABELS[field.type]} variant="default" size="small" uppercase={false} />
+        {(field.visibility?.conditions.length ?? 0) > 0 && (
+          <Chip label="Conditional" variant="info" size="small" uppercase={false} />
+        )}
         {field.type === "calculated" && field.formula && (
           <Typography sx={{ fontSize: "11px", color: theme.palette.text.accent, width: "100%" }}>
             {describeFormula(
