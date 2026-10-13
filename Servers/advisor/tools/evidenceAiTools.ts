@@ -15,10 +15,10 @@ export const toolsDefinition: any[] = [
           document_text: {
             type: "string",
             description:
-              "The actual extracted text content of the document. Must be the real content — do not fabricate or infer this from the filename.",
+              "Optional extracted text content of the document. When omitted, the analyzer reads the file's stored content directly.",
           },
         },
-        required: ["file_id", "document_text"],
+        required: ["file_id"],
       },
     },
   },
