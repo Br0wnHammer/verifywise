@@ -51,6 +51,7 @@ import { EvidenceHubTableProps } from "../../../domain/interfaces/i.modelInvento
 import { earliestFileExpiry } from "../../../application/utils/fileExpiry";
 import { FileExpiryChip } from "../../components/FileExpiryChip";
 import { pageOfLabel } from "../../components/Table/pageOfLabel";
+import EvidenceGapsPanel from "./EvidenceGapsPanel";
 
 dayjs.extend(utc);
 
@@ -627,6 +628,7 @@ const EvidenceHubTable: React.FC<EvidenceHubTableProps> = ({
 
   return (
     <>
+      <EvidenceGapsPanel />
       <TableContainer sx={{ overflowX: "auto" }}>
         <Table sx={singleTheme.tableStyles.primary.frame}>
           {tableHeader}
