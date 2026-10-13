@@ -509,10 +509,11 @@ describe("AIGateway - Settings", () => {
   it("shows the gateway detail from the error shape apiServices produces", async () => {
     mockParams = { tab: "guardrails" };
     // apiServices rejects with CustomException(message, status, rawBody)
-    const err: any = new Error("Request failed with status code 400");
-    err.status = 400;
-    err.response = { detail: "spend_log_retention_days must be an integer >= 1" };
-    mockPut.mockRejectedValue(err);
+    mockPut.mockRejectedValue(
+      new CustomException("Request failed with status code 400", 400, {
+        detail: "spend_log_retention_days must be an integer >= 1",
+      }),
+    );
     renderWithProviders(<AIGatewaySettingsPage />);
     await waitFor(() => {
       expect(screen.getByText("Error behavior")).toBeInTheDocument();
