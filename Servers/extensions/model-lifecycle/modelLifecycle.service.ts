@@ -194,6 +194,41 @@ export async function createItem(
   return (rows[0] as any)[0];
 }
 
+// ---------------------------------------------------------------------------
+// Item change history (issue #4915)
+// ---------------------------------------------------------------------------
+
+/**
+ * Record one row in model_lifecycle_change_history. The table has a bespoke
+ * schema (change_type + JSONB old/new snapshots), so it is written directly
+ * rather than through the generic change-history writer.
+ */
+async function recordItemChange(
+  organizationId: number,
+  itemId: number,
+  changeType: string,
+  changedBy: number | null,
+  oldValue: Record<string, unknown> | null,
+  newValue: Record<string, unknown> | null,
+): Promise<void> {
+  await sequelize.query(
+    `INSERT INTO model_lifecycle_change_history
+       (organization_id, item_id, change_type, changed_by, old_value, new_value)
+     VALUES (:organizationId, :itemId, :changeType, :changedBy,
+             CAST(:oldValue AS JSONB), CAST(:newValue AS JSONB));`,
+    {
+      replacements: {
+        organizationId,
+        itemId,
+        changeType,
+        changedBy,
+        oldValue: oldValue ? JSON.stringify(oldValue) : null,
+        newValue: newValue ? JSON.stringify(newValue) : null,
+      },
+    },
+  );
+}
+
 export async function updateItem(
   organizationId: number,
   itemId: number,
@@ -206,6 +241,7 @@ export async function updateItem(
     config: Record<string, unknown>;
     is_active: boolean;
   }>,
+  changedBy: number | null = null,
 ): Promise<any | null> {
   const set: string[] = [];
   const replacements: Record<string, unknown> = { organizationId, itemId };
@@ -240,13 +276,41 @@ export async function updateItem(
   if (set.length === 0) return null;
   set.push("updated_at = NOW()");
 
+  // Snapshot the patched fields for the change history before the update
+  // replaces them (#4915).
+  const beforeRows = (await sequelize.query(
+    `SELECT name, description, item_type, is_required, display_order, config, is_active
+       FROM model_lifecycle_items
+      WHERE organization_id = :organizationId AND id = :itemId;`,
+    { replacements: { organizationId, itemId }, type: QueryTypes.SELECT },
+  )) as any[];
+  const before = beforeRows[0] ?? null;
+
   const rows = (await sequelize.query(
     `UPDATE model_lifecycle_items SET ${set.join(", ")}
       WHERE organization_id = :organizationId AND id = :itemId
       RETURNING *;`,
     { replacements, type: QueryTypes.UPDATE },
   )) as unknown as [any[], number];
-  return (rows[0] as any)?.[0] ?? null;
+  const updated = (rows[0] as any)?.[0] ?? null;
+  if (updated && before) {
+    const oldSnapshot: Record<string, unknown> = {};
+    const newSnapshot: Record<string, unknown> = {};
+    for (const key of Object.keys(patch)) {
+      const column = key === "item_type" ? "item_type" : key;
+      const oldRaw = before[column];
+      oldSnapshot[key] =
+        oldRaw !== null && typeof oldRaw === "object" ? oldRaw : oldRaw == null ? null : String(oldRaw);
+      newSnapshot[key] = (patch as Record<string, unknown>)[key] ?? null;
+    }
+    try {
+      await recordItemChange(organizationId, itemId, "updated", changedBy, oldSnapshot, newSnapshot);
+    } catch (error) {
+      // History must never fail the edit.
+      console.error("Failed to record model lifecycle item change:", error);
+    }
+  }
+  return updated;
 }
 
 export async function deleteItem(organizationId: number, itemId: number): Promise<void> {
