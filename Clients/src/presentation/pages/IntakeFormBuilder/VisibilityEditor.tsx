@@ -91,23 +91,37 @@ interface VisibilityEditorProps {
   /** Fields above the one being edited; rules may only use these. */
   earlierFields: FormField[];
   onChange: (visibility: Visibility | undefined) => void;
+  /**
+   * Why no rule can be added (e.g. the field is mapped to a required entity
+   * field). Existing conditions stay listed so they can be removed.
+   */
+  blockedReason?: string;
 }
 
-export function VisibilityEditor({ visibility, earlierFields, onChange }: VisibilityEditorProps) {
+export function VisibilityEditor({
+  visibility,
+  earlierFields: allEarlierFields,
+  onChange,
+  blockedReason,
+}: VisibilityEditorProps) {
   const theme = useTheme();
   const conditions = Array.isArray(visibility?.conditions) ? visibility.conditions : [];
   const match = visibility?.match ?? "all";
+  const earlierFields = blockedReason ? [] : allEarlierFields;
+  const hint =
+    blockedReason ??
+    (earlierFields.length === 0 ? "Add a field above this one to create a rule" : null);
 
   const commit = (next: Condition[], nextMatch = match) =>
     onChange(next.length === 0 ? undefined : { match: nextMatch, conditions: next });
   const update = (index: number, condition: Condition) =>
     commit(conditions.map((c, i) => (i === index ? condition : c)));
 
-  if (earlierFields.length === 0) {
+  // With nothing to choose from, leftover conditions are still listed so the
+  // author can remove them (they block saving a live form).
+  if (hint && conditions.length === 0) {
     return (
-      <Typography sx={{ fontSize: "11px", color: theme.palette.text.accent }}>
-        Add a field above this one to create a rule
-      </Typography>
+      <Typography sx={{ fontSize: "11px", color: theme.palette.text.accent }}>{hint}</Typography>
     );
   }
 
@@ -243,14 +257,18 @@ export function VisibilityEditor({ visibility, earlierFields, onChange }: Visibi
           </Box>
         );
       })}
-      <CustomizableButton
-        variant="outlined"
-        size="small"
-        text="Add condition"
-        startIcon={<Plus size={14} />}
-        isDisabled={conditions.length >= MAX_CONDITIONS}
-        onClick={() => commit([...conditions, defaultCondition(earlierFields[0])])}
-      />
+      {hint ? (
+        <Typography sx={{ fontSize: "11px", color: theme.palette.text.accent }}>{hint}</Typography>
+      ) : (
+        <CustomizableButton
+          variant="outlined"
+          size="small"
+          text="Add condition"
+          startIcon={<Plus size={14} />}
+          isDisabled={conditions.length >= MAX_CONDITIONS}
+          onClick={() => commit([...conditions, defaultCondition(earlierFields[0])])}
+        />
+      )}
     </Box>
   );
 }

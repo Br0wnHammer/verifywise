@@ -91,7 +91,7 @@ New property `riskDimension?: string` (any number of fields may share one dimens
 
 ### 1.4 Save-time checks
 
-`Servers/utils/intakeFormSchema.validation.ts` (which today checks labels) also runs `validateSchemaLogic` (§2) on create and update when the form will be active after the save (a draft may hold unfinished logic, such as a new calculated field's empty formula; publishing it runs the check). A form is rejected with 400 when:
+`Servers/utils/intakeFormSchema.validation.ts` (which today checks labels) also runs `validateSchemaLogic` (§2) on create and update when the form will be active after the save (a draft may hold unfinished logic, such as a new calculated field's empty formula; publishing it runs the check). An update that changes none of the schema, entity type or status skips it, so an unrelated edit is never blocked by a stored problem. A form is rejected with 400 when:
 
 - a condition or formula references a field id that does not exist;
 - a condition references a field at the same or a later position;

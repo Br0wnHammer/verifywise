@@ -4995,6 +4995,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Advanced": "Erweitert",
     "Calculated": "Berechnet",
     "Other answers": "Weitere Antworten",
+    "This field is always shown: it fills a required field of the new entity":
+      "Dieses Feld wird immer angezeigt: Es füllt ein Pflichtfeld des neuen Eintrags",
     "Fix the highlighted fields before publishing":
       "Korrigieren Sie die markierten Felder vor dem Veröffentlichen",
     "Draft saved. Fix the highlighted fields before publishing":
@@ -15317,6 +15319,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Advanced": "Avancé",
     "Calculated": "Calculé",
     "Other answers": "Autres réponses",
+    "This field is always shown: it fills a required field of the new entity":
+      "Ce champ est toujours affiché : il remplit un champ obligatoire de la nouvelle entité",
     "Fix the highlighted fields before publishing":
       "Corrigez les champs en surbrillance avant de publier",
     "Draft saved. Fix the highlighted fields before publishing":
@@ -23946,6 +23950,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Advanced": "Avanzado",
     "Calculated": "Calculado",
     "Other answers": "Otras respuestas",
+    "This field is always shown: it fills a required field of the new entity":
+      "Este campo se muestra siempre: rellena un campo obligatorio de la nueva entidad",
     "Fix the highlighted fields before publishing":
       "Corrija los campos resaltados antes de publicar",
     "Draft saved. Fix the highlighted fields before publishing":

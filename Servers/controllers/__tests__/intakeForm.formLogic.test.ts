@@ -337,6 +337,28 @@ describe("saving a form with invalid logic", () => {
     expect(intake.updateIntakeFormQuery).not.toHaveBeenCalled();
   });
 
+  it("does not block an update that leaves the schema, entity type and status alone", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({
+      id: 1,
+      entityType: "use_case",
+      status: "active",
+      euAiActRiskStepEnabled: false,
+      schema: {
+        version: "1.0",
+        fields: [
+          { id: "x", type: "text", label: "A", order: 0 },
+          { id: "x", type: "text", label: "B", order: 1 },
+        ],
+      },
+    });
+    const r = res();
+    await ctrl.updateIntakeForm(
+      req({ params: { id: "1" }, body: { description: "New text" } }) as any,
+      r,
+    );
+    expect(intake.updateIntakeFormQuery).toHaveBeenCalled();
+  });
+
   it("checks the stored schema when only the entity type changes", async () => {
     intake.getIntakeFormByIdQuery.mockResolvedValue({
       id: 1,

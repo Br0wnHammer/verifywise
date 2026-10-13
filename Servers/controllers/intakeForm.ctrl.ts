@@ -749,8 +749,11 @@ export async function updateIntakeForm(req: Request, res: Response) {
 
     // Drafts may hold unfinished logic; only a form that will be live after
     // this update must be valid (publishing a draft sends status "active").
+    // An update that leaves the schema, entity type and status alone (e.g.
+    // recipients only) is not blocked by a problem it did not touch.
+    const touchesLogic = schema !== undefined || entityType !== undefined || status !== undefined;
     const logicErrors =
-      (status ?? existingForm.status) === IntakeFormStatus.ACTIVE
+      touchesLogic && (status ?? existingForm.status) === IntakeFormStatus.ACTIVE
         ? validateIntakeFormSchemaLogic(
             schema ?? existingForm.schema,
             entityType ?? existingForm.entityType,

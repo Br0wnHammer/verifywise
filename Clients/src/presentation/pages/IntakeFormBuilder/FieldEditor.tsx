@@ -19,6 +19,7 @@ import { getLLMFieldGuidance } from "../../../application/repository/intakeForm.
 import {
   DEFAULT_DECIMALS,
   MAX_DECIMALS,
+  REQUIRED_ENTITY_FIELDS,
   RISK_TAGGABLE_TYPES,
   sortFields,
   type SchemaLogicError,
@@ -624,6 +625,12 @@ export function FieldEditor({
               visibility={localField.visibility}
               earlierFields={earlierFields}
               onChange={(visibility) => handleChange("visibility", visibility)}
+              blockedReason={
+                localField.entityFieldMapping &&
+                (REQUIRED_ENTITY_FIELDS[entityType] ?? []).includes(localField.entityFieldMapping)
+                  ? "This field is always shown: it fills a required field of the new entity"
+                  : undefined
+              }
             />
           </EditorSection>
           {RISK_TAGGABLE_TYPES.includes(localField.type) && (

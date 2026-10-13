@@ -56,6 +56,37 @@ describe("VisibilityEditor", () => {
     expect(screen.getByText("Add a field above this one to create a rule")).toBeInTheDocument();
   });
 
+  it("keeps leftover conditions removable once no field is above", () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <VisibilityEditor
+        visibility={{
+          match: "all",
+          conditions: [{ fieldId: "personal", operator: "equals", value: "yes" }],
+        }}
+        earlierFields={[]}
+        onChange={onChange}
+      />,
+    );
+    expect(screen.getByText("Add a field above this one to create a rule")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add condition" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Remove condition" }));
+    expect(onChange).toHaveBeenCalledWith(undefined);
+  });
+
+  it("offers no new rule when blocked, and says why", () => {
+    renderWithProviders(
+      <VisibilityEditor
+        visibility={undefined}
+        earlierFields={[PERSONAL]}
+        onChange={vi.fn()}
+        blockedReason="This field is always shown"
+      />,
+    );
+    expect(screen.getByText("This field is always shown")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add condition" })).toBeNull();
+  });
+
   it("words operators for authors", () => {
     expect(operatorLabel("multiselect", "equals")).toBe("includes");
     expect(operatorLabel("select", "not_equals")).toBe("is not");
