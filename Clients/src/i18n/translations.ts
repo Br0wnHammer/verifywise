@@ -4157,8 +4157,8 @@ export const translations: Record<string, Record<string, string>> = {
       'Wenn Prüfer fragen „Wann haben Sie diese Kontrolle eingeführt?" oder „Wie haben Sie auf diesen Vorfall reagiert?", liefern Ereignisprotokolle klare Antworten. Ein detaillierter Ereignisverlauf macht Erinnerungsabhängigkeit überflüssig und erzeugt objektive Nachweise.',
     "Filter events to find relevant information quickly.":
       "Filtern Sie Ereignisse, um relevante Informationen schnell zu finden.",
-    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities. Export filtered events for reports or documentation.":
-      "Bei vielen protokollierten Ereignissen helfen Filter, das Gesuchte zu finden. Filtern Sie nach Zeitraum, Ereignistyp oder verknüpfter Entität, um Governance-Aktivitäten schnell zu lokalisieren. Exportieren Sie gefilterte Ereignisse für Berichte oder Dokumentation.",
+    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities.":
+      "Bei vielen protokollierten Ereignissen helfen Filter, das Gesuchte zu finden. Filtern Sie nach Zeitraum, Ereignistyp oder verknüpfter Entität, um Governance-Aktivitäten schnell zu lokalisieren.",
 
     "Settings customize VerifyWise to your organization's needs.":
       "Einstellungen passen VerifyWise an die Anforderungen Ihrer Organisation an.",
@@ -14545,8 +14545,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Lorsque les auditeurs demandent « Quand avez-vous mis en œuvre ce contrôle ? » ou « Comment avez-vous répondu à cet incident ? », les journaux d'événements fournissent des réponses précises. Un historique détaillé élimine la dépendance à la mémoire et constitue une preuve objective.",
     "Filter events to find relevant information quickly.":
       "Filtrer les événements pour trouver rapidement les informations pertinentes.",
-    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities. Export filtered events for reports or documentation.":
-      "Avec de nombreux événements journalisés dans le temps, les filtres vous aident à trouver ce dont vous avez besoin. Filtrez par plage de dates, type d'événement ou entité liée pour localiser rapidement des activités de gouvernance. Exportez les événements filtrés pour les rapports ou la documentation.",
+    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities.":
+      "Avec de nombreux événements journalisés dans le temps, les filtres vous aident à trouver ce dont vous avez besoin. Filtrez par plage de dates, type d'événement ou entité liée pour localiser rapidement des activités de gouvernance.",
     "Settings customize VerifyWise to your organization's needs.":
       "Les paramètres adaptent VerifyWise aux besoins de votre organisation.",
     "Configure user roles and system defaults to match your governance workflows. Taking time to properly configure settings upfront saves time and reduces confusion later. Review settings periodically as your organization grows.":
@@ -26889,8 +26889,8 @@ export const translations: Record<string, Record<string, string>> = {
       'Cuando los auditores preguntan "¿Cuándo implementaron este control?" o "¿Cómo respondieron a ese incidente?", los registros de eventos proporcionan respuestas definitivas. Un historial de eventos detallado elimina la dependencia de la memoria y crea evidencia objetiva.',
     "Filter events to find relevant information quickly.":
       "Filtre los eventos para encontrar rápidamente la información relevante.",
-    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities. Export filtered events for reports or documentation.":
-      "Con muchos eventos registrados a lo largo del tiempo, los filtros le ayudan a encontrar lo que necesita. Filtre por intervalo de fechas, tipo de evento o entidad relacionada para localizar rápidamente actividades de gobernanza específicas. Exporte los eventos filtrados para informes o documentación.",
+    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities.":
+      "Con muchos eventos registrados a lo largo del tiempo, los filtros le ayudan a encontrar lo que necesita. Filtre por intervalo de fechas, tipo de evento o entidad relacionada para localizar rápidamente actividades de gobernanza específicas.",
     "Settings customize VerifyWise to your organization's needs.":
       "La configuración adapta VerifyWise a las necesidades de su organización.",
     "Configure user roles and system defaults to match your governance workflows. Taking time to properly configure settings upfront saves time and reduces confusion later. Review settings periodically as your organization grows.":
