@@ -1,0 +1,148 @@
+{
+  "parse": [
+    {
+      "name": "simple product",
+      "formula": "{monthly_cost} * 12",
+      "ok": true,
+      "refs": ["monthly_cost"]
+    },
+    {
+      "name": "precedence and parentheses",
+      "formula": "({users} + {contractors}) / {sites}",
+      "ok": true,
+      "refs": ["users", "contractors", "sites"]
+    },
+    { "name": "decimal literals", "formula": "0.5 * .5 + 12", "ok": true, "refs": [] },
+    { "name": "unary minus", "formula": "-{a} - -2", "ok": true, "refs": ["a"] },
+    { "name": "duplicate refs listed once", "formula": "{a} + {a}", "ok": true, "refs": ["a"] },
+    {
+      "name": "ids with dashes and underscores",
+      "formula": "{field_1697040000000_ab-12}",
+      "ok": true,
+      "refs": ["field_1697040000000_ab-12"]
+    },
+    { "name": "empty formula", "formula": "   ", "ok": false, "position": 0 },
+    {
+      "name": "unexpected closing parenthesis",
+      "formula": "{a} * 12)",
+      "ok": false,
+      "position": 8
+    },
+    { "name": "missing closing parenthesis", "formula": "({a} + 1", "ok": false, "position": 8 },
+    { "name": "comma decimal rejected", "formula": "1,5", "ok": false, "position": 1 },
+    { "name": "exponent rejected", "formula": "1e3", "ok": false, "position": 1 },
+    { "name": "trailing dot rejected", "formula": "12.", "ok": false, "position": 2 },
+    { "name": "reference with a space", "formula": "{bad id} + 1", "ok": false, "position": 0 },
+    { "name": "empty reference", "formula": "{} + 1", "ok": false, "position": 0 },
+    { "name": "operator without operand", "formula": "{a} *", "ok": false, "position": 5 },
+    {
+      "name": "longer than 500 characters",
+      "formulaParts": [
+        ["1+", 250],
+        ["1", 1]
+      ],
+      "ok": false,
+      "position": 500
+    },
+    {
+      "name": "20 nested parentheses allowed",
+      "formulaParts": [
+        ["(", 20],
+        ["1", 1],
+        [")", 20]
+      ],
+      "ok": true,
+      "refs": []
+    },
+    {
+      "name": "21 nested parentheses rejected",
+      "formulaParts": [
+        ["(", 21],
+        ["1", 1],
+        [")", 21]
+      ],
+      "ok": false,
+      "position": 20
+    }
+  ],
+  "evaluateFormula": [
+    {
+      "name": "annual cost",
+      "formula": "{monthly_cost} * 12",
+      "values": { "monthly_cost": 1200 },
+      "decimals": 2,
+      "expected": 14400
+    },
+    {
+      "name": "missing input",
+      "formula": "{monthly_cost} * 12",
+      "values": {},
+      "decimals": 2,
+      "expected": null
+    },
+    {
+      "name": "null input",
+      "formula": "{monthly_cost} * 12",
+      "values": { "monthly_cost": null },
+      "decimals": 2,
+      "expected": null
+    },
+    {
+      "name": "division by zero",
+      "formula": "{a} / {b}",
+      "values": { "a": 1, "b": 0 },
+      "decimals": 2,
+      "expected": null
+    },
+    {
+      "name": "division by zero inside an expression",
+      "formula": "1 / (2 - 2) + 1",
+      "values": {},
+      "decimals": 2,
+      "expected": null
+    },
+    { "name": "precedence", "formula": "2 + 3 * 4", "values": {}, "decimals": 2, "expected": 14 },
+    {
+      "name": "rounds half away from zero",
+      "formula": "{a}",
+      "values": { "a": 1.005 },
+      "decimals": 2,
+      "expected": 1.01
+    },
+    {
+      "name": "negative rounds away from zero",
+      "formula": "{a}",
+      "values": { "a": -2.5 },
+      "decimals": 0,
+      "expected": -3
+    },
+    {
+      "name": "negative zero becomes zero",
+      "formula": "-0.001",
+      "values": {},
+      "decimals": 2,
+      "expected": 0
+    },
+    {
+      "name": "invalid decimals fall back to 2",
+      "formula": "{a} / 3",
+      "values": { "a": 1 },
+      "decimals": 9,
+      "expected": 0.33
+    },
+    {
+      "name": "zero decimals",
+      "formula": "{a} / 3",
+      "values": { "a": 2 },
+      "decimals": 0,
+      "expected": 1
+    },
+    {
+      "name": "overflow is no result",
+      "formula": "{a} * {a}",
+      "values": { "a": 1e200 },
+      "decimals": 2,
+      "expected": null
+    }
+  ]
+}
