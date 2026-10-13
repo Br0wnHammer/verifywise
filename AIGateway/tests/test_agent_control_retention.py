@@ -110,6 +110,24 @@ class TestPerOrgCleanup:
         assert deleted == 5
         assert len(executed) == 3
 
+    @pytest.mark.parametrize("default_days", [0, -5])
+    @pytest.mark.parametrize(
+        "delete", [delete_expired_audit_logs, delete_expired_approval_requests]
+    )
+    async def test_default_off_keeps_logs_of_orgs_without_a_period(
+        self, monkeypatch, default_days, delete
+    ):
+        # Before per-organization retention, a default of 0 or less meant
+        # "older than now or later", so every log was deleted each night.
+        # Now the default passes through unclamped and the guard skips every
+        # organization that has no period of its own.
+        get_db, executed = _fake_delete_db([0])
+        monkeypatch.setattr(batch_delete, "get_db", get_db)
+        await delete(default_days=default_days, min_days=7)
+        sql, params = executed[0]
+        assert params["default_days"] == default_days
+        assert "(s.mcp_audit_retention_days IS NOT NULL OR :default_days > 0)" in sql
+
     async def test_approvals_keep_pending_requests(self, monkeypatch):
         get_db, executed = _fake_delete_db([0])
         monkeypatch.setattr(batch_delete, "get_db", get_db)
