@@ -212,6 +212,40 @@ describe("intakeRiskScoring.service", () => {
       // Should return original dimensions since JSON parsing fails
       expect(result).toEqual(dimensions);
     });
+
+    it("sends select answers to the LLM as option labels, as keyword scoring reads them", async () => {
+      mockGetLLMKeys.mockResolvedValue([{ id: 1, name: "openai", key: "sk-test", model: "gpt-4" }]);
+      const { createOpenAI } = require("@ai-sdk/openai");
+      (createOpenAI as jest.Mock).mockReturnValue(jest.fn().mockReturnValue("model-instance"));
+      mockGenerateText.mockResolvedValue({ text: "not valid json" } as any);
+      const schema = {
+        version: "1.0",
+        fields: [
+          {
+            id: "sector",
+            type: "select",
+            label: "Sector",
+            options: [{ value: "option3", label: "Healthcare" }],
+          },
+          {
+            id: "uses",
+            type: "multiselect",
+            label: "Uses",
+            options: [{ value: "option1", label: "Triage" }],
+          },
+          { id: "cost", type: "number", label: "Cost" },
+        ],
+      };
+      const data = { sector: "option3", uses: ["option1"], cost: 1200 };
+
+      await enhanceWithLLM(scoreSubmissionRuleBased(data, schema), data, schema, 1, 1);
+
+      const prompt = String(mockGenerateText.mock.calls[0][0].prompt);
+      expect(prompt).toContain('Sector: "Healthcare"');
+      expect(prompt).toContain('Uses: ["Triage"]');
+      expect(prompt).toContain("Cost: 1200");
+      expect(prompt).not.toContain("option3");
+    });
   });
 
   describe("answer selection and keyword matching", () => {

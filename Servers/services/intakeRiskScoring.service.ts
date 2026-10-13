@@ -253,6 +253,11 @@ interface ScoringAnswer {
   riskDimension?: string;
 }
 
+/** A select option's label for a stored value; the value itself when unknown. */
+function optionLabelOf(field: FormSchema["fields"][number], value: unknown): string {
+  return field.options?.find((option) => option.value === value)?.label ?? String(value);
+}
+
 /**
  * The text each answer contributes to keyword scoring. Selects contribute
  * their option labels (stored values default to "option1", "option2", ...),
@@ -268,8 +273,7 @@ export function answersForScoring(
     const value = submissionData[field.id];
     // Same notion of blank as the show/hide rules: whitespace and [] are not answers.
     if (isEmptyAnswer(value)) continue;
-    const optionLabel = (v: unknown) =>
-      field.options?.find((option) => option.value === v)?.label ?? String(v);
+    const optionLabel = (v: unknown) => optionLabelOf(field, v);
     let text = "";
     switch (field.type) {
       case "text":
@@ -438,7 +442,17 @@ export async function enhanceWithLLM(
     const fieldSummary = schema.fields
       // A calculated field stored as null had no result; leave it out.
       .filter((f) => submissionData[f.id] !== undefined && submissionData[f.id] !== null)
-      .map((f) => `${f.label}: ${JSON.stringify(submissionData[f.id])}`)
+      // Selects show their option labels, as keyword scoring reads them.
+      .map((f) => {
+        const value = submissionData[f.id];
+        const shown =
+          f.type === "select"
+            ? optionLabelOf(f, value)
+            : f.type === "multiselect" && Array.isArray(value)
+              ? value.map((v) => optionLabelOf(f, v))
+              : value;
+        return `${f.label}: ${JSON.stringify(shown)}`;
+      })
       .join("\n");
 
     const dimensionSummary = dimensions
