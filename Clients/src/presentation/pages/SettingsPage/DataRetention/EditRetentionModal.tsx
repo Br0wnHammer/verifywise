@@ -66,6 +66,8 @@ const rank = (months: number | null) => (months === null ? Infinity : months);
 
 const initialValue = (row: RetentionRow): string => {
   const { period } = row;
+  // Turning the default off must not silently pin the default's value.
+  if (row.key === "agent_control_logs" && row.usesDeploymentDefault === true) return "";
   if (period === null) return row.key === "audit_records" ? INDEFINITE : "";
   if (period.unit === "policy") return period.value ?? "";
   return String(period.value);
@@ -390,6 +392,12 @@ export default function EditRetentionModal({ row, rows, onClose }: EditRetention
                   })}
                 </Typography>
               </Box>
+              {/* The days field shows errors itself; while it is hidden, show the gateway's here. */}
+              {useDefault && error && (
+                <Typography role="alert" sx={{ fontSize: 12, color: theme.palette.error.main }}>
+                  {error}
+                </Typography>
+              )}
               {!useDefault && (
                 <Field
                   id="retention-days"
