@@ -121,21 +121,6 @@ const CustomizableButton = memo(
       [onClick, loading, isDisabled],
     );
 
-    // Handle keyboard events for accessibility
-    const handleKeyDown = useCallback(
-      (event: React.KeyboardEvent<HTMLButtonElement>) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          if (!loading && !isDisabled) {
-            // For keyboard accessibility, call handleClick directly
-            // We need to create a proper synthetic event to avoid TypeScript errors
-            handleClick(event as unknown as React.MouseEvent<HTMLButtonElement>);
-          }
-        }
-      },
-      [handleClick, loading, isDisabled],
-    );
-
     const sizeKey = size === "small" ? "small" : "medium";
 
     // Get theme-based appearance - ensure proper typing for MUI sx prop
@@ -172,7 +157,6 @@ const CustomizableButton = memo(
         disabled={isDisabled || loading}
         color={color as ButtonProps["color"]}
         onClick={handleClick}
-        onKeyDown={handleKeyDown}
         type={type}
         fullWidth={fullWidth}
         title={title}

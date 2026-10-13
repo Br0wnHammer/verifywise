@@ -6750,6 +6750,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Failed to rename project": "Umbenennen des Projekts fehlgeschlagen",
     "Failed to replace share link. Please try again.":
       "Ersetzen des Freigabelinks fehlgeschlagen. Bitte erneut versuchen.",
+    "A share link is still being created. Try again in a moment.":
+      "Ein Freigabelink wird noch erstellt. Versuchen Sie es gleich noch einmal.",
+    "New share link created, but some of your previous links could not be disabled. Replace the link again to retry.":
+      "Neuer Freigabelink erstellt, aber einige Ihrer vorherigen Links konnten nicht deaktiviert werden. Ersetzen Sie den Link erneut, um es noch einmal zu versuchen.",
+    "New share link created. Links created by other users are still active; only they can disable them.":
+      "Neuer Freigabelink erstellt. Von anderen Benutzern erstellte Links sind noch aktiv; nur diese können sie deaktivieren.",
+    "Share link replaced. Previous links no longer work.":
+      "Freigabelink ersetzt. Vorherige Links funktionieren nicht mehr.",
     "Failed to restore the task. Please try again.":
       "Wiederherstellen der Aufgabe fehlgeschlagen. Bitte erneut versuchen.",
     "Failed to save": "Speichern fehlgeschlagen",
@@ -17076,6 +17084,14 @@ export const translations: Record<string, Record<string, string>> = {
     "Failed to rename project": "Échec du renommage du projet",
     "Failed to replace share link. Please try again.":
       "Échec du remplacement du lien de partage. Veuillez réessayer.",
+    "A share link is still being created. Try again in a moment.":
+      "Un lien de partage est encore en cours de création. Réessayez dans un instant.",
+    "New share link created, but some of your previous links could not be disabled. Replace the link again to retry.":
+      "Nouveau lien de partage créé, mais certains de vos liens précédents n'ont pas pu être désactivés. Remplacez à nouveau le lien pour réessayer.",
+    "New share link created. Links created by other users are still active; only they can disable them.":
+      "Nouveau lien de partage créé. Les liens créés par d'autres utilisateurs sont encore actifs ; seuls eux peuvent les désactiver.",
+    "Share link replaced. Previous links no longer work.":
+      "Lien de partage remplacé. Les liens précédents ne fonctionnent plus.",
     "Failed to restore the task. Please try again.":
       "Échec de la restauration de la tâche. Veuillez réessayer.",
     "Failed to save": "Échec de l'enregistrement",
@@ -28224,6 +28240,14 @@ export const translations: Record<string, Record<string, string>> = {
       "No se pudo eliminar el marco. Inténtelo de nuevo.",
     "Failed to replace share link. Please try again.":
       "No se pudo reemplazar el enlace para compartir. Inténtelo de nuevo.",
+    "A share link is still being created. Try again in a moment.":
+      "Todavía se está creando un enlace para compartir. Inténtelo de nuevo en un momento.",
+    "New share link created, but some of your previous links could not be disabled. Replace the link again to retry.":
+      "Se creó un nuevo enlace para compartir, pero algunos de sus enlaces anteriores no se pudieron desactivar. Vuelva a reemplazar el enlace para reintentarlo.",
+    "New share link created. Links created by other users are still active; only they can disable them.":
+      "Se creó un nuevo enlace para compartir. Los enlaces creados por otros usuarios siguen activos; solo ellos pueden desactivarlos.",
+    "Share link replaced. Previous links no longer work.":
+      "Enlace para compartir reemplazado. Los enlaces anteriores ya no funcionan.",
     "Failed to restore the task. Please try again.":
       "No se pudo restaurar la tarea. Inténtelo de nuevo.",
     "Failed to save configuration. Please try again.":

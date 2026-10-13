@@ -50,6 +50,25 @@ describe("FormulaEditor", () => {
     expect(screen.queryByRole("menuitem", { name: "Monthly cost" })).toBeNull();
   });
 
+  it("closes the picker on Escape without passing the key to surrounding handlers", () => {
+    const parentKeyDown = vi.fn();
+    renderWithProviders(
+      <div onKeyDown={parentKeyDown}>
+        <Harness />
+      </div>,
+    );
+    const input = screen.getByLabelText("Formula");
+    input.focus();
+    fireEvent.change(input, { target: { value: "{" } });
+    expect(screen.getByRole("menuitem", { name: "Monthly cost" })).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("menuitem", { name: "Monthly cost" })).toBeNull();
+    expect(parentKeyDown).not.toHaveBeenCalled();
+    // With the picker closed, Escape is left to surrounding handlers.
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(parentKeyDown).toHaveBeenCalledTimes(1);
+  });
+
   it("reads the formula back with labels and previews it with inputs set to 1", () => {
     renderWithProviders(<Harness initial="{cost} * 12" />);
     expect(screen.getByText("= Monthly cost × 12")).toBeInTheDocument();
