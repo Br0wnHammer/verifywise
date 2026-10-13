@@ -332,15 +332,20 @@ describe("MCPServersPage", () => {
     });
   });
 
-  it("disables the discover-tools action with a 'Coming soon' tooltip", async () => {
+  it("discovers tools when the discover action is clicked", async () => {
     mockGet.mockResolvedValue({ data: { servers: [makeServer()] } });
+    mockPost.mockResolvedValue({ data: { status: "success", tools_discovered: 2 } });
     renderWithProviders(<MCPServersPage />, { route: "/ai-gateway/mcp/servers" });
 
     await waitFor(() => {
       expect(screen.getByText("Search Server")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: "Discover tools" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Discover tools" }));
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith("/ai-gateway/mcp/servers/1/discover");
+    });
   });
 
   it("falls back to a generic error message when the API error has no detail/message", async () => {
