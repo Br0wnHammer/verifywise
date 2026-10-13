@@ -13802,6 +13802,61 @@ paths:
               properties:
                 configuration:
                   type: object
+  '/extensions/{key}/runs':
+    post:
+      summary: 'Post Run Ctrl'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: postRunCtrl
+      security:
+        -
+          bearerAuth: []
+    get:
+      summary: 'Get Runs Ctrl'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: getRunsCtrl
+      security:
+        -
+          bearerAuth: []
+  '/extensions/{key}/runs/status':
+    get:
+      summary: 'Get Run Status Ctrl'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: getRunStatusCtrl
+      security:
+        -
+          bearerAuth: []
+  '/extensions/{key}/schedule':
+    patch:
+      summary: 'Patch Schedule Ctrl'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Extensions
+      operationId: patchScheduleCtrl
+      security:
+        -
+          bearerAuth: []
   /extensions/dataset-bulk-upload/upload:
     post:
       summary: 'Upload Dataset File'

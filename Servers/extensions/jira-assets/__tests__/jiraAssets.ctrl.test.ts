@@ -1,7 +1,10 @@
+jest.mock("../../../database/db", () => ({
+  sequelize: { query: jest.fn(), transaction: jest.fn() },
+}));
+jest.mock("../../sync-engine/jobs", () => ({ startManualRun: jest.fn() }));
 jest.mock("../jiraAssets.service", () => {
   class JiraConfigValidationError extends Error {}
   class JiraNotConfiguredError extends Error {}
-  class JiraSyncInProgressError extends Error {}
   class RunSupersededError extends Error {}
   class JiraUseCaseNotFoundError extends Error {}
   class JiraUseCaseDeleteFailedError extends Error {}
@@ -21,8 +24,10 @@ jest.mock("../jiraAssets.service", () => {
     getSyncStatus: jest.fn(),
     JiraConfigValidationError,
     JiraNotConfiguredError,
-    JiraSyncInProgressError,
-    startManualSync: jest.fn(),
+    JIRA_SYNC_IN_PROGRESS_MESSAGE: "A Jira Assets sync is already running for this organization",
+    getSyncHistory: jest.fn(),
+    updateSyncSettings: jest.fn(),
+    JIRA_ASSETS_KEY: "jira-assets",
     importObjects: jest.fn(),
     updateSelection: jest.fn(),
     removeMissingUseCases: jest.fn(),
@@ -43,7 +48,7 @@ jest.mock("../jira.client", () => {
 });
 jest.mock("../../../services/automations/automationProducer", () => {
   class BackgroundJobsUnavailableError extends Error {}
-  return { BackgroundJobsUnavailableError, hasPendingJiraAssetsSyncJob: jest.fn() };
+  return { BackgroundJobsUnavailableError, hasPendingExtensionSyncJob: jest.fn() };
 });
 jest.mock("../../../utils/logger/fileLogger", () => ({
   __esModule: true,
@@ -63,6 +68,7 @@ import { logFailure, logProcessing, logSuccess } from "../../../utils/logger/log
 import {
   deleteUseCaseCtrl,
   getObjects,
+  getSyncHistoryCtrl,
   getSyncStatusCtrl,
   patchSelection,
   postImport,
@@ -71,26 +77,27 @@ import {
 } from "../jiraAssets.ctrl";
 import {
   BackgroundJobsUnavailableError,
-  hasPendingJiraAssetsSyncJob,
+  hasPendingExtensionSyncJob,
 } from "../../../services/automations/automationProducer";
 import {
   clientFromConfig,
   deleteUseCaseByProjectId,
+  getSyncHistory,
   getSyncStatus,
   JiraImportInterruptedError,
   importObjects,
   JiraConfigValidationError,
   JiraNotConfiguredError,
-  JiraSyncInProgressError,
   JiraUseCaseDeleteFailedError,
   JiraUseCaseNotFoundError,
   loadFullConfig,
   removeMissingUseCases,
   RunSupersededError,
-  startManualSync,
   updateSelection,
 } from "../jiraAssets.service";
 import { JiraUpstreamError } from "../jira.client";
+import { SyncInProgressError, SyncNotReadyError } from "../../sync-engine/errors";
+import { startManualRun } from "../../sync-engine/jobs";
 
 function mockRes() {
   const res: any = {};
@@ -105,26 +112,26 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-describe("POST /sync (Sync now)", () => {
-  it("returns 202 with the job id and the newest run before it", async () => {
-    (startManualSync as jest.Mock).mockResolvedValue({
-      jobId: "jira-assets-sync-5",
+describe("POST /sync (Sync now, deprecated)", () => {
+  it("starts the engine's manual run: 202 with the job id and the newest run before it", async () => {
+    (startManualRun as jest.Mock).mockResolvedValue({
+      jobId: "ext-sync-jira-assets-5",
       previousRunId: 40,
     });
     const res = mockRes();
 
     await postSync(req, res);
 
-    expect(startManualSync).toHaveBeenCalledWith(5, 8);
+    expect(startManualRun).toHaveBeenCalledWith("jira-assets", 5, 8);
     expect(res.status).toHaveBeenCalledWith(202);
     expect(res.json).toHaveBeenCalledWith({
       message: "Accepted",
-      data: { jobId: "jira-assets-sync-5", previousRunId: 40 },
+      data: { jobId: "ext-sync-jira-assets-5", previousRunId: 40 },
     });
   });
 
   it("returns 503 when the queue does not answer", async () => {
-    (startManualSync as jest.Mock).mockRejectedValue(
+    (startManualRun as jest.Mock).mockRejectedValue(
       new BackgroundJobsUnavailableError("Background jobs are unavailable"),
     );
     const res = mockRes();
@@ -139,22 +146,29 @@ describe("POST /sync (Sync now)", () => {
   });
 
   it.each([
-    [new JiraNotConfiguredError("Jira Assets is not configured."), 404, "data"],
-    [new JiraConfigValidationError("Select an object type before syncing"), 400, "data"],
-    [new JiraSyncInProgressError("A Jira Assets sync is already running"), 409, "data"],
-    [new JiraUpstreamError("Jira returned 401: bad creds"), 502, "error"],
-  ])("maps %p to %i with the reason in `%s`", async (err, status, field) => {
-    (startManualSync as jest.Mock).mockRejectedValue(err);
+    [
+      new SyncNotReadyError(404, "Jira Assets is not configured. Save the connection first."),
+      404,
+      "Jira Assets is not configured. Save the connection first.",
+    ],
+    [
+      new SyncNotReadyError(400, "Select an object type before syncing"),
+      400,
+      "Select an object type before syncing",
+    ],
+    [new SyncInProgressError(), 409, "A Jira Assets sync is already running for this organization"],
+  ])("keeps the old status and reason for %p", async (err, status, reason) => {
+    (startManualRun as jest.Mock).mockRejectedValue(err);
     const res = mockRes();
 
     await postSync(req, res);
 
     expect(res.status).toHaveBeenCalledWith(status);
-    expect(res.json.mock.calls[0][0][field]).toBe((err as Error).message);
+    expect(res.json.mock.calls[0][0].data).toBe(reason);
   });
 
   it("hides unexpected errors behind a 500", async () => {
-    (startManualSync as jest.Mock).mockRejectedValue(new Error("pool exhausted"));
+    (startManualRun as jest.Mock).mockRejectedValue(new Error("pool exhausted"));
     const res = mockRes();
 
     await postSync(req, res);
@@ -167,7 +181,36 @@ describe("POST /sync (Sync now)", () => {
   });
 });
 
+describe("GET /sync/history (deprecated)", () => {
+  it.each([
+    [undefined, 20],
+    ["7", 7],
+    ["-5", 20],
+    ["500", 200],
+  ])("parses limit %p as %p", async (limit, expected) => {
+    (getSyncHistory as jest.Mock).mockResolvedValue([]);
+    const res = mockRes();
+
+    await getSyncHistoryCtrl({ ...req, query: limit === undefined ? {} : { limit } }, res);
+
+    expect(getSyncHistory).toHaveBeenCalledWith(5, expected);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
 describe("POST /import", () => {
+  it("returns 409 with the Jira message when the engine claim is taken", async () => {
+    (importObjects as jest.Mock).mockRejectedValue(new SyncInProgressError());
+    const res = mockRes();
+
+    await postImport({ ...req, body: { object_ids: ["1"] } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0].data).toBe(
+      "A Jira Assets sync is already running for this organization",
+    );
+  });
+
   it("returns 502 with Jira's reason when Jira fails", async () => {
     (importObjects as jest.Mock).mockRejectedValue(new JiraUpstreamError("Jira returned 500: x"));
     const res = mockRes();
@@ -197,15 +240,6 @@ describe("POST /import", () => {
         skipped: 1,
       },
     });
-  });
-
-  it("returns 409 while a sync is running", async () => {
-    (importObjects as jest.Mock).mockRejectedValue(new JiraSyncInProgressError("running"));
-    const res = mockRes();
-
-    await postImport({ ...req, body: { object_ids: ["1"] } }, res);
-
-    expect(res.status).toHaveBeenCalledWith(409);
   });
 });
 
@@ -255,10 +289,11 @@ describe("GET /object-types/:id/objects (import picker)", () => {
 describe("GET /sync/status", () => {
   it("adds whether a sync job is waiting in the queue", async () => {
     (getSyncStatus as jest.Mock).mockResolvedValue({ running: false, latest_run: { id: 77 } });
-    (hasPendingJiraAssetsSyncJob as jest.Mock).mockResolvedValue(true);
+    (hasPendingExtensionSyncJob as jest.Mock).mockResolvedValue(true);
     const res = mockRes();
 
     await getSyncStatusCtrl(req, res);
+    expect(hasPendingExtensionSyncJob).toHaveBeenCalledWith("jira-assets", 5);
 
     expect(getSyncStatus).toHaveBeenCalledWith(5);
     expect(res.json).toHaveBeenCalledWith({
@@ -269,7 +304,7 @@ describe("GET /sync/status", () => {
 
   it("reports queued as unknown (null) when the queue does not answer", async () => {
     (getSyncStatus as jest.Mock).mockResolvedValue({ running: false });
-    (hasPendingJiraAssetsSyncJob as jest.Mock).mockRejectedValue(new Error("timeout"));
+    (hasPendingExtensionSyncJob as jest.Mock).mockRejectedValue(new Error("timeout"));
     const res = mockRes();
 
     await getSyncStatusCtrl(req, res);
@@ -330,9 +365,7 @@ describe("POST /use-cases/remove-missing", () => {
   });
 
   it("returns 409 while a sync is running and 400 for a bad list", async () => {
-    (removeMissingUseCases as jest.Mock).mockRejectedValueOnce(
-      new JiraSyncInProgressError("running"),
-    );
+    (removeMissingUseCases as jest.Mock).mockRejectedValueOnce(new SyncInProgressError());
     const res409 = mockRes();
     await removeMissingCtrl({ ...req, body: { use_case_ids: [11] } }, res409);
     expect(res409.status).toHaveBeenCalledWith(409);
@@ -368,7 +401,7 @@ describe("DELETE /use-cases/:id", () => {
 
   it.each([
     [() => new JiraUseCaseNotFoundError("Use case not found"), 404],
-    [() => new JiraSyncInProgressError("running"), 409],
+    [() => new SyncInProgressError(), 409],
   ])("maps %p to its status without event-logging a failure", async (makeErr, status) => {
     (deleteUseCaseByProjectId as jest.Mock).mockRejectedValueOnce(makeErr());
     const res = mockRes();

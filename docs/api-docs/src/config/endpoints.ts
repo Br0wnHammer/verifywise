@@ -3560,6 +3560,50 @@ export const extensionEndpoints: Endpoint[] = [
     tag: "Extensions",
   },
   {
+    method: 'GET',
+    path: '/extensions/{key}/runs',
+    summary: "Get Runs Ctrl",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'POST',
+    path: '/extensions/{key}/runs',
+    summary: "Post Run Ctrl",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'GET',
+    path: '/extensions/{key}/runs/status',
+    summary: "Get Run Status Ctrl",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
+    method: 'PATCH',
+    path: '/extensions/{key}/schedule',
+    summary: "Patch Schedule Ctrl",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Extensions",
+  },
+  {
     method: 'POST',
     path: '/extensions/dataset-bulk-upload/upload',
     summary: "Upload Dataset File",

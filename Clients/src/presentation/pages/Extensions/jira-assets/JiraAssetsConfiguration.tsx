@@ -19,15 +19,20 @@ import {
   FormControlLabel,
   useTheme,
 } from "@mui/material";
-import { RefreshCw, Download } from "lucide-react";
-import { VWField, VWSelect, VWToggle } from "./VWComponents";
+import { Download } from "lucide-react";
+import { VWField, VWSelect } from "../../../components/VWComponents";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import StandardModal from "../../../components/Modals/StandardModal";
 import { useAuth } from "../../../../application/hooks/useAuth";
 import { getApiErrorReason } from "../../../../application/utils/apiErrorReason";
 import { CustomizableButton } from "../../../components/button/customizable-button";
-import { isAbandonedRun, SYNC_RUNNING_MESSAGE } from "./runOutcome";
+import ExtensionSyncPanel from "../../../components/ExtensionSyncPanel";
+import {
+  useExtensionSyncStatus,
+  type ScheduleState,
+} from "../../../../application/hooks/useExtensionSync";
+import type { ExtensionRun } from "../../../../application/repository/extensionSync.repository";
 import {
   BatchProgress,
   deselectDone,
@@ -71,26 +76,17 @@ function BatchProgressLine({ label, progress }: { label: string; progress: Batch
   );
 }
 
-const SYNC_SLOW_MESSAGE =
-  "The sync is taking longer than expected. Check the last sync result later.";
 const SELECTION_SAVE_FAILED = "Could not save the schema and object type. Try again.";
-const SYNC_STALLED_MESSAGE = "The sync stopped responding. Try again.";
-const SYNC_NOT_STARTED_MESSAGE = "The sync did not start. Try again.";
 const IMPORT_PROGRESS_LABEL = "Importing objects";
 const REMOVE_PROGRESS_LABEL = "Removing use cases";
 /** Desktop control height for the panel's action buttons. */
 const CONTROL_HEIGHT_SX = { height: 30, minHeight: 30 };
+/** The "Sync now" success line, as the page showed it before the shared panel. */
+function describeJiraSync(run: ExtensionRun): string {
+  return `Sync completed: ${run.counts.created ?? 0} created, ${run.counts.updated ?? 0} updated`;
+}
 const MISSING_EXPLAINER =
   "Jira no longer returns these objects. Syncs keep their use cases; remove them here if they should go.";
-/** Polls with nothing queued, nothing running and no new run before we say it did not start. */
-const NOT_STARTED_AFTER_POLLS = 3;
-/** "Sync now" runs in the background; poll its status at this rate, up to the limit. */
-const SYNC_POLL_MS = 3000;
-const SYNC_POLL_LIMIT_MS = 20 * 60 * 1000;
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-type SyncSettings = { sync_enabled: boolean; sync_interval_hours: number };
 
 interface Schema {
   id: string;
@@ -133,6 +129,17 @@ export const JiraAssetsConfiguration: React.FC = () => {
   // controls read-only if the panel is ever shown to anyone else.
   const { userRoleName } = useAuth();
   const canManageSync = userRoleName === "Admin";
+  // The "Last sync" date in the Import & Sync header comes from the sync engine.
+  const syncStatus = useExtensionSyncStatus("jira-assets");
+  const lastSyncAt = syncStatus.data?.last_finished_run?.completed_at ?? null;
+  // Before the connection is saved, the panel's schedule is a draft sent with it.
+  const scheduleDraft = useRef({ sync_enabled: false, sync_interval_hours: 24 });
+  const handleScheduleDraft = useCallback((schedule: ScheduleState) => {
+    scheduleDraft.current = {
+      sync_enabled: schedule.enabled,
+      sync_interval_hours: schedule.interval_hours,
+    };
+  }, []);
   const pluginApiCall = useCallback(async (method: string, path: string, body?: any) => {
     const url = `/extensions/jira-assets${path.startsWith("/") ? path : `/${path}`}`;
     let response: any;
@@ -162,10 +169,11 @@ export const JiraAssetsConfiguration: React.FC = () => {
 
   const [localConfig, setLocalConfig] = useState<Record<string, any>>({
     deployment_type: "cloud",
-    sync_enabled: false,
-    sync_interval_hours: 24,
   });
   const [configLoaded, setConfigLoaded] = useState(false);
+  // A failed load leaves has_api_token false, which would turn schedule changes
+  // into an unsaved draft; the schedule stays locked instead.
+  const [configLoadFailed, setConfigLoadFailed] = useState(false);
 
   const [schemas, setSchemas] = useState<Schema[]>([]);
   const [objectTypes, setObjectTypes] = useState<ObjectType[]>([]);
@@ -211,10 +219,9 @@ export const JiraAssetsConfiguration: React.FC = () => {
   // reloads that many.
   const loadedPagesRef = useRef(0);
   const [, setIsLoadingUseCases] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncSettingsError, setSyncSettingsError] = useState(false);
 
-  // Unmount flag so the "Sync now" poll loop stops with the panel.
+  // Unmount flag so a schema / object-type save that settles late does not
+  // update the page after it has gone.
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -223,14 +230,6 @@ export const JiraAssetsConfiguration: React.FC = () => {
     };
   }, []);
 
-  // Sync-setting saves run one at a time, in order (each PATCH sends only the
-  // field that changed). `savedSyncSettings` is the server's latest answer;
-  // when the newest request settles, the controls are set to it, and an error
-  // is shown if any request in that burst failed.
-  const syncSettingsQueue = useRef<Promise<void>>(Promise.resolve());
-  const syncSettingsSeq = useRef(0);
-  const syncSettingsBurstFailed = useRef(false);
-  const savedSyncSettings = useRef<SyncSettings | null>(null);
   // Schema / object-type saves: same ordering, latest response wins.
   const selectionQueue = useRef<Promise<void>>(Promise.resolve());
   const selectionSeq = useRef(0);
@@ -248,13 +247,11 @@ export const JiraAssetsConfiguration: React.FC = () => {
         const data = response.data?.data ?? response.data;
         if (data) {
           setLocalConfig((prev) => ({ ...prev, ...data }));
-          savedSyncSettings.current = {
-            sync_enabled: !!data.sync_enabled,
-            sync_interval_hours: data.sync_interval_hours ?? 24,
-          };
         }
+        setConfigLoadFailed(false);
       } catch (error) {
         console.error("Failed to load JIRA config:", error);
+        setConfigLoadFailed(true);
       } finally {
         setConfigLoaded(true);
       }
@@ -440,98 +437,6 @@ export const JiraAssetsConfiguration: React.FC = () => {
     }
   };
 
-  // Re-read the last-sync fields (not the connection form, which may hold
-  // unsaved edits) so the "Last sync" line shows what the server recorded.
-  const readSyncStatus = useCallback(async () => {
-    const status = await pluginApiCall("GET", "/sync/status");
-    if (status) {
-      setLocalConfig((prev) => ({
-        ...prev,
-        last_sync_at: status.last_sync_at,
-        last_sync_status: status.last_sync_status,
-        last_sync_message: status.last_sync_message,
-      }));
-    }
-    return status;
-  }, [pluginApiCall]);
-
-  // "Sync now" queues a job (202) and the worker claims the run when it picks
-  // it up. The response names the newest run before the click; poll until
-  // nothing is queued or running and a newer run has finished, then report
-  // that run. A newer run that stopped heart-beating is reported as stalled;
-  // if nothing new appears while nothing is queued or running, the job never
-  // started.
-  const handleSyncNow = async () => {
-    setIsSyncing(true);
-    setSyncMessage(null);
-    let previousRunId: number | null = null;
-    try {
-      const started = await pluginApiCall("POST", "/sync");
-      previousRunId = started?.previousRunId ?? null;
-    } catch (error: any) {
-      setSyncMessage({
-        type: "error",
-        text:
-          error?.status === 409
-            ? SYNC_RUNNING_MESSAGE
-            : getApiErrorReason(error) || error?.message || "Sync failed",
-      });
-      setIsSyncing(false);
-      return;
-    }
-
-    const giveUpAt = Date.now() + SYNC_POLL_LIMIT_MS;
-    let run: any = null;
-    let outcome: "done" | "stalled" | "not_started" | "timeout" = "timeout";
-    let idlePolls = 0;
-    while (mountedRef.current && Date.now() < giveUpAt) {
-      await sleep(SYNC_POLL_MS);
-      let status: any;
-      try {
-        status = await readSyncStatus();
-      } catch (error) {
-        console.warn("[JiraConfig] could not read sync status:", error);
-        continue;
-      }
-      const latest = status?.latest_run ?? null;
-      const isNew = !!latest && latest.id !== previousRunId;
-      if (isNew && latest.status !== "started") {
-        run = latest;
-        outcome = "done";
-        break;
-      }
-      if (isNew && !latest.is_live) {
-        outcome = "stalled";
-        break;
-      }
-      // `queued` is null when the queue state is unknown: keep waiting.
-      const idle = !isNew && status?.queued === false && !status?.running;
-      idlePolls = idle ? idlePolls + 1 : 0;
-      if (idlePolls >= NOT_STARTED_AFTER_POLLS) {
-        outcome = "not_started";
-        break;
-      }
-    }
-    if (!mountedRef.current) return;
-    setIsSyncing(false);
-
-    if (outcome === "timeout") {
-      setSyncMessage({ type: "error", text: SYNC_SLOW_MESSAGE });
-    } else if (outcome === "not_started") {
-      setSyncMessage({ type: "error", text: SYNC_NOT_STARTED_MESSAGE });
-    } else if (outcome === "stalled" || isAbandonedRun(run)) {
-      setSyncMessage({ type: "error", text: SYNC_STALLED_MESSAGE });
-    } else if (run.status === "completed") {
-      setSyncMessage({
-        type: "success",
-        text: `Sync completed: ${run.objects_created || 0} created, ${run.objects_updated || 0} updated`,
-      });
-      await loadImportedUseCases();
-    } else {
-      setSyncMessage({ type: "error", text: run.error_message || "Sync failed" });
-    }
-  };
-
   // Use cases a sync flagged as missing in Jira. Syncs never delete; an
   // Admin removes them here, after confirming.
   const missingUseCases = importedUseCases.filter((uc) => !!uc.missing_in_jira_since);
@@ -664,8 +569,9 @@ export const JiraAssetsConfiguration: React.FC = () => {
         deployment_type: localConfig.deployment_type || "cloud",
         selected_schema_id: localConfig.selected_schema_id || undefined,
         selected_object_type_id: localConfig.selected_object_type_id || undefined,
-        sync_enabled: localConfig.sync_enabled || false,
-        sync_interval_hours: localConfig.sync_interval_hours || 24,
+        // Before the first save the schedule has no connection to attach to,
+        // so the panel's draft travels with the connection, as it always did.
+        ...(localConfig.has_api_token ? {} : scheduleDraft.current),
       });
 
       const data = response.data?.data ?? response.data;
@@ -730,46 +636,6 @@ export const JiraAssetsConfiguration: React.FC = () => {
     }
   };
 
-  // Sync settings sit below the Save Configuration button, so persist them on
-  // change — otherwise switching automatic sync on would silently do nothing
-  // until the user scrolled up and saved. Each PATCH /config/sync sends only
-  // the field that changed, never the connection form. Before the first save
-  // there is no config row yet; Save Configuration then carries these values.
-  const handleSyncSettingChange = (
-    key: "sync_enabled" | "sync_interval_hours",
-    value: boolean | number,
-  ) => {
-    handleChange(key, value);
-    setSyncSettingsError(false);
-    if (!localConfig.has_api_token) return;
-    const seq = ++syncSettingsSeq.current;
-    syncSettingsQueue.current = syncSettingsQueue.current.then(async () => {
-      try {
-        const saved = await pluginApiCall("PATCH", "/config/sync", { [key]: value });
-        if (saved && typeof saved.sync_enabled === "boolean") {
-          savedSyncSettings.current = {
-            sync_enabled: saved.sync_enabled,
-            sync_interval_hours: saved.sync_interval_hours,
-          };
-        }
-      } catch (error) {
-        console.warn("[JiraConfig] sync settings save failed:", error);
-        syncSettingsBurstFailed.current = true;
-      }
-      // Only the newest request decides what the controls show.
-      if (seq !== syncSettingsSeq.current || !mountedRef.current) return;
-      if (syncSettingsBurstFailed.current) {
-        const saved = savedSyncSettings.current;
-        if (saved) {
-          handleChange("sync_enabled", saved.sync_enabled);
-          handleChange("sync_interval_hours", saved.sync_interval_hours);
-        }
-        setSyncSettingsError(true);
-      }
-      syncSettingsBurstFailed.current = false;
-    });
-  };
-
   // Load schemas on mount only if already configured (has_api_token indicates saved config)
   useEffect(() => {
     console.log("[JiraConfig] Schema load check:", {
@@ -813,14 +679,6 @@ export const JiraAssetsConfiguration: React.FC = () => {
       loadImportedUseCases();
     }
   }, [configLoaded, loadImportedUseCases]);
-
-  const syncIntervalOptions = [
-    { value: 1, label: "Every hour" },
-    { value: 6, label: "Every 6 hours" },
-    { value: 12, label: "Every 12 hours" },
-    { value: 24, label: "Every 24 hours" },
-    { value: 48, label: "Every 48 hours" },
-  ];
 
   return (
     <Box>
@@ -1073,73 +931,29 @@ export const JiraAssetsConfiguration: React.FC = () => {
         Step 3: Sync Settings
       </Typography>
 
-      <Stack spacing={2.5}>
-        <Box>
-          <VWToggle
-            checked={localConfig.sync_enabled || false}
-            onChange={(e) => handleSyncSettingChange("sync_enabled", e.target.checked)}
-            disabled={!canManageSync}
-            label="Enable automatic sync"
-            description="Automatically sync data from JIRA on a schedule"
-          />
-        </Box>
-
-        {localConfig.sync_enabled && (
-          <Box>
-            <VWSelect
-              id="sync_interval_hours"
-              label="Sync Interval"
-              value={localConfig.sync_interval_hours || 24}
-              onChange={(e) =>
-                handleSyncSettingChange("sync_interval_hours", Number(e.target.value))
-              }
-              disabled={!canManageSync}
-              items={syncIntervalOptions.map((option) => ({
-                _id: option.value,
-                name: option.label,
-              }))}
-            />
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
-              Automatic sync refreshes use cases you have imported. It does not import new objects
-              or remove any.
-            </Typography>
-          </Box>
-        )}
-
-        {syncSettingsError && (
-          <Alert
-            severity="error"
-            sx={{ fontSize: "13px" }}
-            onClose={() => setSyncSettingsError(false)}
-          >
-            Could not save the sync settings. Try again.
-          </Alert>
-        )}
-      </Stack>
-
-      {/* Last Sync Info */}
-      {localConfig.last_sync_at && (
-        <Box sx={{ mt: 2 }}>
-          <Alert
-            severity={
-              localConfig.last_sync_status === "success" && !localConfig.last_sync_message
-                ? "success"
-                : "warning"
-            }
-            sx={{ fontSize: "13px" }}
-          >
-            Last sync: {formatDate(new Date(localConfig.last_sync_at), { includeTime: true })} -{" "}
-            {localConfig.last_sync_status === "success"
-              ? "Successful"
-              : localConfig.last_sync_message}
-            {localConfig.last_sync_status === "success" && localConfig.last_sync_message && (
-              <Box component="span" sx={{ display: "block", mt: 0.5 }}>
-                {localConfig.last_sync_message}
-              </Box>
-            )}
+      {configLoadFailed && (
+        <Box sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ fontSize: "13px" }}>
+            Could not load the saved Jira connection. Reload the page to change the sync settings.
           </Alert>
         </Box>
       )}
+
+      <ExtensionSyncPanel
+        extensionKey="jira-assets"
+        // Until GET /config answers, a schedule change could be kept as a draft by mistake.
+        canManage={canManageSync && configLoaded && !configLoadFailed}
+        scheduleDescription="Automatically sync data from JIRA on a schedule"
+        scheduleHelp="Automatic sync refreshes use cases you have imported. It does not import new objects or remove any."
+        persistSchedule={!!localConfig.has_api_token}
+        onScheduleChange={handleScheduleDraft}
+        showSyncNow={!!(localConfig.has_api_token && localConfig.selected_object_type_id)}
+        syncNowDisabled={importedUseCases.length === 0}
+        describeCompletedRun={describeJiraSync}
+        onRunCompleted={() => {
+          void loadImportedUseCases();
+        }}
+      />
 
       {/* Import Section - Only show if config is saved and object type is selected */}
       {localConfig.has_api_token && localConfig.selected_object_type_id && (
@@ -1154,27 +968,11 @@ export const JiraAssetsConfiguration: React.FC = () => {
               </Typography>
               <Typography variant="body2" fontSize={12} color="text.secondary">
                 {importedUseCases.length} use cases imported
-                {localConfig.last_sync_at &&
-                  ` • Last sync: ${formatDate(new Date(localConfig.last_sync_at), { includeTime: true })}`}
+                {lastSyncAt &&
+                  ` • Last sync: ${formatDate(new Date(lastSyncAt), { includeTime: true })}`}
               </Typography>
             </Box>
             <Box sx={{ display: "flex", gap: 1 }}>
-              <Button
-                variant="outlined"
-                startIcon={isSyncing ? <CircularProgress size={14} /> : <RefreshCw size={14} />}
-                onClick={handleSyncNow}
-                disabled={isSyncing || importedUseCases.length === 0}
-                sx={{
-                  "borderColor": "#13715B",
-                  "color": "#13715B",
-                  "textTransform": "none",
-                  "fontSize": "13px",
-                  "&:hover": { borderColor: "#0F5A47", backgroundColor: "rgba(19, 113, 91, 0.04)" },
-                  "&:disabled": { borderColor: "#d0d5dd", color: "#98a2b3" },
-                }}
-              >
-                {isSyncing ? "Syncing..." : "Sync Now"}
-              </Button>
               <Button
                 variant="contained"
                 startIcon={
