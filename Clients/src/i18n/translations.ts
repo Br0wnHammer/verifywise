@@ -9712,6 +9712,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Aktivieren und konfigurieren Sie Integrationen für Ihre Organisation.",
     "Enable automatic sync": "Automatische Synchronisierung aktivieren",
+    "Sync interval": "Synchronisierungsintervall",
+    "Failing since": "Fehlgeschlagen seit",
+    "Sync completed.": "Synchronisierung abgeschlossen.",
     "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
       "Die automatische Synchronisierung aktualisiert importierte Anwendungsfälle. Sie importiert keine neuen Objekte und entfernt keine.",
     "Could not save the sync settings. Try again.":
@@ -19981,6 +19984,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Activez et configurez des intégrations pour votre organisation.",
     "Enable automatic sync": "Activer la synchronisation automatique",
+    "Sync interval": "Intervalle de synchronisation",
+    "Failing since": "En échec depuis",
+    "Sync completed.": "Synchronisation terminée.",
     "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
       "La synchronisation automatique met à jour les cas d'usage importés. Elle n'importe pas de nouveaux objets et n'en supprime aucun.",
     "Could not save the sync settings. Try again.":
@@ -30170,6 +30176,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Enable and configure integrations for your organization.":
       "Active y configure integraciones para su organización.",
     "Enable automatic sync": "Activar sincronización automática",
+    "Sync interval": "Intervalo de sincronización",
+    "Failing since": "Con errores desde",
+    "Sync completed.": "Sincronización completada.",
     "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
       "La sincronización automática actualiza los casos de uso importados. No importa objetos nuevos ni elimina ninguno.",
     "Could not save the sync settings. Try again.":
