@@ -300,11 +300,22 @@ export async function updateItem(
       const column = key === "item_type" ? "item_type" : key;
       const oldRaw = before[column];
       oldSnapshot[key] =
-        oldRaw !== null && typeof oldRaw === "object" ? oldRaw : oldRaw == null ? null : String(oldRaw);
+        oldRaw !== null && typeof oldRaw === "object"
+          ? oldRaw
+          : oldRaw == null
+            ? null
+            : String(oldRaw);
       newSnapshot[key] = (patch as Record<string, unknown>)[key] ?? null;
     }
     try {
-      await recordItemChange(organizationId, itemId, "updated", changedBy, oldSnapshot, newSnapshot);
+      await recordItemChange(
+        organizationId,
+        itemId,
+        "updated",
+        changedBy,
+        oldSnapshot,
+        newSnapshot,
+      );
     } catch (error) {
       // History must never fail the edit.
       console.error("Failed to record model lifecycle item change:", error);
