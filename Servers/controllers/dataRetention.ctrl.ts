@@ -175,7 +175,12 @@ export async function getDataRetention(req: Request, res: Response): Promise<any
     // row as unavailable rather than offer an edit it would reject.
     const agentUnavailable =
       gatewayUnavailable || deploymentAgentDays === null || agentMinDays === null;
-    const agentDays = ownAgentDays ?? deploymentAgentDays ?? 0;
+    // The effective period the cleanup applies: an organization's own period
+    // is raised to the floor; the deployment default never is.
+    const agentDays =
+      ownAgentDays !== null
+        ? Math.max(ownAgentDays, agentMinDays ?? 0)
+        : (deploymentAgentDays ?? 0);
 
     /** A row whose settings could not be read: shown as unavailable. */
     const unavailableRow = (

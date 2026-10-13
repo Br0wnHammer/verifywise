@@ -126,6 +126,42 @@ describe("dataRetention.ctrl", () => {
       });
     });
 
+    it("raises an organization's own period below the floor to the floor", async () => {
+      mockGateway(
+        { mcp_audit_retention_days: 7 },
+        { mcp_audit_retention_days: 30, mcp_audit_retention_min_days: 14 },
+      );
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs")).toMatchObject({
+        period: { unit: "days", value: 14 },
+        automaticDeletion: "yes",
+        usesDeploymentDefault: false,
+        minDays: 14,
+      });
+    });
+
+    it("keeps an organization's own period above the floor unchanged", async () => {
+      mockGateway(
+        { mcp_audit_retention_days: 20 },
+        { mcp_audit_retention_days: 30, mcp_audit_retention_min_days: 14 },
+      );
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs").period).toEqual({ unit: "days", value: 20 });
+    });
+
+    it("never raises the deployment default to the floor", async () => {
+      mockGateway({}, { mcp_audit_retention_days: 3, mcp_audit_retention_min_days: 7 });
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs")).toMatchObject({
+        period: { unit: "days", value: 3 },
+        usesDeploymentDefault: true,
+        deploymentDefaultDays: 3,
+      });
+    });
+
     it("shows kept indefinitely when the default is off and no period is set", async () => {
       mockGateway({}, { mcp_audit_retention_days: 0, mcp_audit_retention_min_days: 7 });
       const res = createRes();
