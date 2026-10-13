@@ -236,6 +236,28 @@ describe("public submit with form logic", () => {
   );
 });
 
+describe("public form payload", () => {
+  it("leaves out risk dimension tags", async () => {
+    jest.clearAllMocks();
+    intake.getTenantByPublicId.mockResolvedValue({ orgId: 5 });
+    intake.getFormByPublicIdQuery.mockResolvedValue({
+      ...FORM,
+      schema: {
+        version: "1.0",
+        fields: [
+          { id: "t", type: "text", label: "Purpose", order: 0, riskDimension: "data_sensitivity" },
+        ],
+      },
+    });
+    const r = res();
+    await ctrl.getPublicFormByPublicId(req({ params: { publicId: "abc" }, query: {} }) as any, r);
+    expect(r.status).toHaveBeenCalledWith(200);
+    const field = r.json.mock.calls[0][0].data.form.schema.fields[0];
+    expect(field).toMatchObject({ id: "t", label: "Purpose" });
+    expect(field).not.toHaveProperty("riskDimension");
+  });
+});
+
 describe("saving a form with invalid logic", () => {
   beforeEach(() => {
     jest.clearAllMocks();

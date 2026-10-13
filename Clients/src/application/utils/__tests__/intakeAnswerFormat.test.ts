@@ -28,6 +28,10 @@ describe("formatCalculatedValue", () => {
     expect(formatCalculatedValue(null, { decimals: 2, prefix: "€" }, "en-US")).toBe("—");
     expect(formatCalculatedValue(undefined, {}, "en-US")).toBe("—");
   });
+  it("ignores a prefix or suffix that is not text instead of throwing", () => {
+    const field = { decimals: 0, prefix: 5, suffix: null } as unknown as { decimals: number };
+    expect(formatCalculatedValue(3, field, "en-US")).toBe("3");
+  });
 });
 
 describe("describeFormula", () => {

@@ -103,6 +103,9 @@ New property `riskDimension?: string` (any number of fields may share one dimens
 - `decimals` is outside 0–6;
 - `riskDimension` is not one of the six keys, or is set on a field type that cannot take it.
 - two fields share an id (the later one is reported).
+- a calculated field's `prefix` or `suffix` is not text.
+
+A `null` optional property (`riskDimension`, `visibility`, `decimals`, `prefix`, `suffix`) means not set, as at runtime. The public form endpoints return the schema without `riskDimension`.
 
 Each error names the field label, like the existing label errors, and carries the field id so the builder can show it on that field. The builder runs the client copy of `validateSchemaLogic` as the author edits, so errors appear before saving; the server check is the backstop for API callers.
 

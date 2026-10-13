@@ -420,6 +420,23 @@ function validateFormData(
 }
 
 /**
+ * The schema as the public form gets it: risk dimension tags are internal
+ * scoring hints, so they are left out (a submitter could otherwise see which
+ * answers feed which risk score).
+ */
+function publicSchema(schema: IIntakeFormSchema): IIntakeFormSchema {
+  if (!schema || !Array.isArray(schema.fields)) return schema;
+  return {
+    ...schema,
+    fields: schema.fields.map((field) => {
+      const copy = { ...field };
+      delete copy.riskDimension;
+      return copy;
+    }),
+  };
+}
+
+/**
  * Applies the form's show/hide rules and formulas to submitted answers. The
  * browser is never trusted: answers to hidden fields and unknown keys are
  * dropped and calculated values are recomputed here.
@@ -1836,7 +1853,7 @@ export async function getPublicFormByPublicId(req: Request, res: Response) {
           description: form.description,
           slug: form.slug,
           entityType: form.entityType,
-          schema: form.schema,
+          schema: publicSchema(form.schema),
           submitButtonText: form.submitButtonText,
           publicId: form.publicId,
           designSettings: form.designSettings ?? null,
@@ -2190,7 +2207,7 @@ export async function getPublicForm(req: Request, res: Response) {
           description: form.description,
           slug: form.slug,
           entityType: form.entityType,
-          schema: form.schema,
+          schema: publicSchema(form.schema),
           submitButtonText: form.submitButtonText,
           publicId: form.publicId,
           designSettings: form.designSettings ?? null,

@@ -23,7 +23,7 @@ export function formatCalculatedValue(
     maximumFractionDigits: decimals,
   }).format(value);
   return [field.prefix, number, field.suffix]
-    .filter((part) => part && part.trim() !== "")
+    .filter((part): part is string => typeof part === "string" && part.trim() !== "")
     .join(" ");
 }
 

@@ -574,6 +574,8 @@ Intake forms support calculated fields, show/hide rules and risk dimension tags
   `cleanSubmission` before validation: answers to hidden fields and unknown
   keys are dropped, calculated values are recomputed, and a visible calculated
   field with no result is stored as `null` (hidden ones are left out).
+  The public form endpoints leave `riskDimension` out of the schema they
+  return, so submitters cannot see which answers feed which risk score.
 - **Save checks.** Create and update of a form that will be active reject
   invalid formulas, conditions on fields that are not above, stale option
   values, duplicate field ids, rules on fields mapped to required entity fields

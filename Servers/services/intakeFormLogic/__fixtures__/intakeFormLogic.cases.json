@@ -1293,6 +1293,48 @@
         { "id": "x", "type": "text", "label": "Notes", "order": 2 }
       ],
       "errorFieldIds": ["total", "x"]
+    },
+    {
+      "name": "a prefix or suffix that is not text is rejected",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "n", "type": "number", "label": "N", "order": 0 },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 1,
+          "formula": "{n}",
+          "prefix": 5
+        }
+      ],
+      "errorFieldIds": ["total"]
+    },
+    {
+      "name": "null optional logic properties mean not set",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "n",
+          "type": "number",
+          "label": "N",
+          "order": 0,
+          "riskDimension": null,
+          "visibility": null
+        },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 1,
+          "formula": "{n}",
+          "decimals": null,
+          "prefix": null,
+          "suffix": null
+        },
+        { "id": "t", "type": "text", "label": "T", "order": 2, "riskDimension": null }
+      ],
+      "errorFieldIds": []
     }
   ]
 }

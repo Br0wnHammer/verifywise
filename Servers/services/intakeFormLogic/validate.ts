@@ -75,12 +75,15 @@ export function validateSchemaLogic(schema: LogicSchema, entityType: string): Sc
         }
       }
       if (
-        field.decimals !== undefined &&
+        field.decimals != null &&
         !(Number.isInteger(field.decimals) && field.decimals >= 0 && field.decimals <= MAX_DECIMALS)
       ) {
         add(`decimals must be a whole number from 0 to ${MAX_DECIMALS}`);
       }
-      if (
+      const affixes: unknown[] = [field.prefix, field.suffix];
+      if (affixes.some((affix) => affix != null && typeof affix !== "string")) {
+        add("prefix and suffix must be text");
+      } else if (
         (field.prefix ?? "").length > MAX_AFFIX_LENGTH ||
         (field.suffix ?? "").length > MAX_AFFIX_LENGTH
       ) {
@@ -98,7 +101,8 @@ export function validateSchemaLogic(schema: LogicSchema, entityType: string): Sc
       }
     }
 
-    if (field.riskDimension !== undefined && field.type !== "calculated") {
+    // null means "not set", as the runtime treats it.
+    if (field.riskDimension != null && field.type !== "calculated") {
       if (!(RISK_DIMENSIONS as readonly string[]).includes(field.riskDimension)) {
         add("unknown risk dimension");
       } else if (!RISK_TAGGABLE_TYPES.includes(field.type)) {
@@ -107,10 +111,9 @@ export function validateSchemaLogic(schema: LogicSchema, entityType: string): Sc
     }
 
     const visibility = field.visibility;
-    if (visibility === undefined) return;
+    if (visibility == null) return;
     if (
       typeof visibility !== "object" ||
-      visibility === null ||
       (visibility.match !== "all" && visibility.match !== "any") ||
       !Array.isArray(visibility.conditions)
     ) {
