@@ -1335,6 +1335,43 @@
         { "id": "t", "type": "text", "label": "T", "order": 2, "riskDimension": null }
       ],
       "errorFieldIds": []
+    },
+    {
+      "name": "option values must be set and unique",
+      "entityType": "use_case",
+      "fields": [
+        {
+          "id": "dup",
+          "type": "select",
+          "label": "Region",
+          "order": 0,
+          "options": [
+            { "value": "eu", "label": "EU" },
+            { "value": "eu", "label": "EEA" }
+          ]
+        },
+        {
+          "id": "blank",
+          "type": "multiselect",
+          "label": "Uses",
+          "order": 1,
+          "options": [
+            { "value": "option1", "label": "A" },
+            { "value": " ", "label": "B" }
+          ]
+        },
+        {
+          "id": "ok",
+          "type": "select",
+          "label": "Fine",
+          "order": 2,
+          "options": [
+            { "value": "a", "label": "A" },
+            { "value": "b", "label": "B" }
+          ]
+        }
+      ],
+      "errorFieldIds": ["blank", "dup"]
     }
   ]
 }

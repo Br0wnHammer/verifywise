@@ -23,6 +23,7 @@ interface FormulaEditorProps {
 export function FormulaEditor({ formula, numericFields, decimals, onChange }: FormulaEditorProps) {
   const theme = useTheme();
   const caretRef = useRef<number>(formula.length);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
   const parsed = formula.trim() === "" ? null : parseFormula(formula);
 
@@ -31,9 +32,12 @@ export function FormulaEditor({ formula, numericFields, decimals, onChange }: Fo
     const caret = event.target.selectionStart ?? next.length;
     caretRef.current = caret;
     onChange(next);
-    // Typing "{" opens the picker of fields the formula may use.
+    // Typing "{" opens the picker of fields the formula may use; typing
+    // anything else closes it, so the author can keep typing the reference.
     if (next.length === formula.length + 1 && next[caret - 1] === "{") {
       setPickerAnchor(event.target);
+    } else if (pickerAnchor) {
+      setPickerAnchor(null);
     }
   };
 
@@ -44,6 +48,13 @@ export function FormulaEditor({ formula, numericFields, decimals, onChange }: Fo
     const base = before.endsWith("{") ? before.slice(0, -1) : before;
     onChange(`${base}{${fieldId}}${after}`);
     setPickerAnchor(null);
+    // Back to the input, with the caret just after the inserted reference.
+    const nextCaret = base.length + fieldId.length + 2;
+    caretRef.current = nextCaret;
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(nextCaret, nextCaret);
+    });
   };
 
   const preview =
@@ -58,6 +69,7 @@ export function FormulaEditor({ formula, numericFields, decimals, onChange }: Fo
   return (
     <Box>
       <Field
+        ref={inputRef}
         id="field-formula"
         label="Formula"
         value={formula}
@@ -68,6 +80,12 @@ export function FormulaEditor({ formula, numericFields, decimals, onChange }: Fo
         anchorEl={pickerAnchor}
         open={Boolean(pickerAnchor)}
         onClose={() => setPickerAnchor(null)}
+        // Keep the keyboard in the formula input: the picker is for the mouse.
+        autoFocus={false}
+        disableAutoFocusItem
+        disableAutoFocus
+        disableEnforceFocus
+        disableRestoreFocus
       >
         {numericFields.length === 0 ? (
           <MenuItem disabled>Add a number field above this one first</MenuItem>

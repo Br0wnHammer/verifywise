@@ -58,6 +58,16 @@ export function validateSchemaLogic(schema: LogicSchema, entityType: string): Sc
     if (seenIds.has(field.id)) add(`another field already uses the id "${field.id}"`);
     seenIds.add(field.id);
 
+    // Rules, scoring and the review screens look options up by value.
+    if (OPTION_TYPES.includes(field.type) && Array.isArray(field.options)) {
+      const values = field.options.map((option) => option?.value);
+      if (values.some((value) => typeof value !== "string" || value.trim() === "")) {
+        add("every option needs a value");
+      } else if (new Set(values).size !== values.length) {
+        add("two options share a value");
+      }
+    }
+
     if (field.type === "calculated") {
       const parsed = parseFormula(field.formula ?? "");
       if (!parsed.ok) {

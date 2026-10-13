@@ -377,8 +377,16 @@ export function IntakeFormBuilder() {
   };
 
   const doPublish = async () => {
-    // The "Publish anyway" path skips handlePublish; the server would reject invalid logic.
-    if (logicErrors.length > 0) return;
+    // The "Publish anyway" path skips handlePublish, and a debounced field edit
+    // can add a logic error while its modal is open; say so instead of doing nothing.
+    if (logicErrors.length > 0) {
+      setSnackbar({
+        open: true,
+        message: "Fix the highlighted fields before publishing",
+        severity: "error",
+      });
+      return;
+    }
     setIsSaving(true);
     try {
       const formData = {

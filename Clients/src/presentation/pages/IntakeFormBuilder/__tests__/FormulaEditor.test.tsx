@@ -37,6 +37,19 @@ describe("FormulaEditor", () => {
     expect(onChange).toHaveBeenLastCalledWith("{cost}");
   });
 
+  it("keeps typing in the formula input while the picker is open, and closes it", () => {
+    const onChange = vi.fn();
+    renderWithProviders(<Harness onChange={onChange} />);
+    const input = screen.getByLabelText("Formula");
+    input.focus();
+    fireEvent.change(input, { target: { value: "{" } });
+    expect(screen.getByRole("menuitem", { name: "Monthly cost" })).toBeInTheDocument();
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "{c" } });
+    expect(onChange).toHaveBeenLastCalledWith("{c");
+    expect(screen.queryByRole("menuitem", { name: "Monthly cost" })).toBeNull();
+  });
+
   it("reads the formula back with labels and previews it with inputs set to 1", () => {
     renderWithProviders(<Harness initial="{cost} * 12" />);
     expect(screen.getByText("= Monthly cost × 12")).toBeInTheDocument();

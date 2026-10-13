@@ -104,6 +104,7 @@ New property `riskDimension?: string` (any number of fields may share one dimens
 - `riskDimension` is not one of the six keys, or is set on a field type that cannot take it.
 - two fields share an id (the later one is reported).
 - a calculated field's `prefix` or `suffix` is not text.
+- a select or multiselect option has a blank value, or two options share a value (rules, scoring and the review screens look options up by value).
 
 A `null` optional property (`riskDimension`, `visibility`, `decimals`, `prefix`, `suffix`) means not set, as at runtime. The public form endpoints return the schema without `riskDimension`.
 
