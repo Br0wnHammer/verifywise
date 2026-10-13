@@ -32,6 +32,10 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
 
 import {
   enqueueAutomationAction,
+  enqueueExtensionSyncRun,
+  hasPendingExtensionSyncJob,
+  extensionSyncJobId,
+  scheduleExtensionSyncTick,
   automationQueue,
   scheduleVendorReviewDateNotification,
   schedulePolicyDueSoonNotification,
@@ -344,6 +348,60 @@ describe("automationProducer", () => {
 
       expect(mockObliterate).not.toHaveBeenCalled();
       expectSchedulerCall("jira_assets_scheduled_sync_check", {}, "*/5 * * * *");
+    });
+  });
+
+  describe("extension sync engine jobs", () => {
+    const mockGetJob = automationQueue.getJob as unknown as jest.Mock;
+    const payload = {
+      key: "jira-assets",
+      orgId: 5,
+      kind: "manual",
+      triggeredBy: 8,
+      payload: null,
+    };
+
+    beforeEach(() => {
+      mockGetJob.mockReset();
+      mockGetJob.mockResolvedValue(undefined);
+    });
+
+    it("fixes the job id per extension and org", () => {
+      expect(extensionSyncJobId("jira-assets", 5)).toBe("ext-sync-jira-assets-5");
+    });
+
+    it("queues one attempt of extension_sync_run under that id, removed when done", async () => {
+      await expect(enqueueExtensionSyncRun(payload)).resolves.toEqual({
+        jobId: "ext-sync-jira-assets-5",
+        queued: true,
+      });
+      expect(mockAdd).toHaveBeenCalledWith("extension_sync_run", payload, {
+        jobId: "ext-sync-jira-assets-5",
+        attempts: 1,
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+    });
+
+    it("does not queue a second job while one is waiting", async () => {
+      mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("waiting") });
+      await expect(enqueueExtensionSyncRun(payload)).resolves.toEqual({
+        jobId: "ext-sync-jira-assets-5",
+        queued: false,
+      });
+      expect(mockAdd).not.toHaveBeenCalled();
+    });
+
+    it("reports a pending job for the extension and org", async () => {
+      mockGetJob.mockResolvedValue({ getState: jest.fn().mockResolvedValue("active") });
+      await expect(hasPendingExtensionSyncJob("jira-assets", 5)).resolves.toBe(true);
+      expect(mockGetJob).toHaveBeenCalledWith("ext-sync-jira-assets-5");
+    });
+
+    it("schedules the tick every 5 minutes without obliterating", async () => {
+      await scheduleExtensionSyncTick();
+      expect(mockObliterate).not.toHaveBeenCalled();
+      expectSchedulerCall("extension_sync_tick", {}, "*/5 * * * *");
     });
   });
 });

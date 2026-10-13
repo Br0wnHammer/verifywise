@@ -397,18 +397,29 @@ export async function enqueueJiraAssetsSyncRun(data: {
   triggeredBy: number | null;
   syncType: "manual" | "scheduled";
 }): Promise<{ jobId: string; queued: boolean }> {
-  const jobId = jiraAssetsSyncJobId(data.organizationId);
+  return addSingletonJob("jira_assets_sync_run", jiraAssetsSyncJobId(data.organizationId), data);
+}
+
+/**
+ * Add `name` under a fixed `jobId` unless one is already waiting or running
+ * (`queued: false`). A finished job left behind is removed first, because
+ * BullMQ ignores an add whose id still exists; if that removal fails, the job
+ * is looked up again: gone, the add goes ahead; now waiting, `queued: false`;
+ * still there and finished, a genuine queue failure. Throws
+ * BackgroundJobsUnavailableError past QUEUE_CALL_TIMEOUT_MS.
+ */
+async function addSingletonJob(
+  name: string,
+  jobId: string,
+  data: object,
+): Promise<{ jobId: string; queued: boolean }> {
   return withQueueTimeout(async () => {
     const existing = await automationQueue.getJob(jobId);
     if (existing) {
       if (PENDING_JOB_STATES.has(await existing.getState())) return { jobId, queued: false };
-      // A finished job left behind would make BullMQ ignore the add.
       try {
         await existing.remove();
       } catch (err) {
-        // Lost a race: another caller (or BullMQ's own cleanup) may have
-        // removed it, or re-queued under the same id, in the meantime. Look
-        // again before treating this as a queue failure.
         const again = await automationQueue.getJob(jobId);
         if (again) {
           if (PENDING_JOB_STATES.has(await again.getState())) return { jobId, queued: false };
@@ -416,7 +427,7 @@ export async function enqueueJiraAssetsSyncRun(data: {
         }
       }
     }
-    await automationQueue.add("jira_assets_sync_run", data, {
+    await automationQueue.add(name, data, {
       jobId,
       attempts: 1,
       removeOnComplete: true,
@@ -424,6 +435,61 @@ export async function enqueueJiraAssetsSyncRun(data: {
     });
     return { jobId, queued: true };
   });
+}
+
+/** One sync-engine job per extension and org at a time: the job id is fixed per pair. */
+export function extensionSyncJobId(key: string, organizationId: number): string {
+  return `ext-sync-${key}-${organizationId}`;
+}
+
+/** Payload of an `extension_sync_run` job. */
+export interface ExtensionSyncJobData {
+  key: string;
+  orgId: number;
+  kind: string;
+  triggeredBy: number | null;
+  payload: unknown;
+}
+
+/** True when a sync-engine job for the extension and org is waiting or running. */
+export async function hasPendingExtensionSyncJob(
+  key: string,
+  organizationId: number,
+): Promise<boolean> {
+  return withQueueTimeout(async () => {
+    const job = await automationQueue.getJob(extensionSyncJobId(key, organizationId));
+    return !!job && PENDING_JOB_STATES.has(await job.getState());
+  });
+}
+
+/**
+ * Queue one sync-engine run for the worker, which claims it at pickup, so
+ * time spent waiting never counts against its heartbeat. A double click or
+ * overlapping ticks cannot queue two (`queued: false`). One attempt: a retry
+ * is the next tick or click.
+ */
+export async function enqueueExtensionSyncRun(
+  data: ExtensionSyncJobData,
+): Promise<{ jobId: string; queued: boolean }> {
+  return addSingletonJob("extension_sync_run", extensionSyncJobId(data.key, data.orgId), data);
+}
+
+/** The sync engine's tick: every 5 minutes, queue the due scheduled runs of every provider. */
+export async function scheduleExtensionSyncTick() {
+  logger.info("Adding extension sync tick job to the queue...");
+  // No obliterate here: the scheduler upsert is idempotent by scheduler id.
+  await automationQueue.upsertJobScheduler(
+    "extension_sync_tick",
+    { pattern: "*/5 * * * *" },
+    {
+      name: "extension_sync_tick",
+      data: {},
+      opts: {
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    },
+  );
 }
 
 export async function scheduleJiraAssetsScheduledSyncCheck() {
