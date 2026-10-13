@@ -344,6 +344,63 @@ describe("updateGuardrailSettings", () => {
     expect(res.json).toHaveBeenCalledWith({ settings: { log_retention_days: 30 } });
   });
 
+  describe("Agent Control deployment default in the ledger", () => {
+    const CONFIG_PATH = "/internal/retention/config";
+    const mockAgentSave = (config: () => Promise<unknown>) =>
+      m(aiGatewayRequest).mockImplementation(async (method: string, path: string) => {
+        if (method === "GET" && path === CONFIG_PATH) return config();
+        return {
+          settings: { mcp_audit_retention_days: null },
+          previous_retention: { mcp_audit_retention_days: 60 },
+        };
+      });
+
+    it("reads the deployment default and records its days", async () => {
+      mockAgentSave(async () => ({
+        mcp_audit_retention_days: 30,
+        mcp_audit_retention_min_days: 7,
+      }));
+      const res = createRes();
+
+      await updateGuardrailSettings(createReq({ mcp_audit_retention_days: null }), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(m(appendToAuditLedger)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description:
+            "AI Gateway retention changed: Agent Control log retention from 60 days to the deployment default (30 days)",
+        }),
+      );
+    });
+
+    it("falls back to the plain wording when the config read fails", async () => {
+      mockAgentSave(async () => {
+        throw new Error("timeout");
+      });
+      const res = createRes();
+
+      await updateGuardrailSettings(createReq({ mcp_audit_retention_days: null }), res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(m(appendToAuditLedger)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description:
+            "AI Gateway retention changed: Agent Control log retention from 60 days to the deployment default",
+        }),
+      );
+    });
+
+    it("does not read the config when the request has no Agent Control period", async () => {
+      gateway({ settings: { log_retention_days: 90 } }, { settings: { log_retention_days: 30 } });
+      const res = createRes();
+
+      await updateGuardrailSettings(createReq({ log_retention_days: 30 }), res);
+
+      const paths = m(aiGatewayRequest).mock.calls.map((call: any[]) => call[1]);
+      expect(paths).not.toContain(CONFIG_PATH);
+    });
+  });
+
   it("logs a failed ledger append and still succeeds", async () => {
     gateway(
       { settings: { auto_purge_enabled: false } },
@@ -392,6 +449,38 @@ describe("describeRetentionChanges", () => {
         { mcp_audit_retention_days: null },
       ),
     ).toEqual(["Agent Control log retention from 60 days to the deployment default"]);
+  });
+
+  it("names the deployment default's days when they are known", () => {
+    expect(
+      describeRetentionChanges(
+        { mcp_audit_retention_days: null },
+        { mcp_audit_retention_days: 60 },
+        { mcp_audit_retention_days: 60 },
+        30,
+      ),
+    ).toEqual(["Agent Control log retention from the deployment default (30 days) to 60 days"]);
+    expect(
+      describeRetentionChanges(
+        { mcp_audit_retention_days: 60 },
+        { mcp_audit_retention_days: null },
+        { mcp_audit_retention_days: null },
+        30,
+      ),
+    ).toEqual(["Agent Control log retention from 60 days to the deployment default (30 days)"]);
+  });
+
+  it("describes a deployment default of 0 or less as kept indefinitely", () => {
+    expect(
+      describeRetentionChanges(
+        { mcp_audit_retention_days: 60 },
+        { mcp_audit_retention_days: null },
+        { mcp_audit_retention_days: null },
+        0,
+      ),
+    ).toEqual([
+      "Agent Control log retention from 60 days to the deployment default (kept indefinitely)",
+    ]);
   });
 
   it("skips an unchanged Agent Control default", () => {
