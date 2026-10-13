@@ -18,10 +18,7 @@ import {
   recordEvidenceFieldChangeForModel,
 } from "../utils/modelInventoryChangeHistory.utils";
 import { runEvidenceFreshnessSweep } from "../services/automations/actions/evidenceFreshnessSweep";
-import {
-  trackEntityChanges,
-  recordMultipleFieldChanges,
-} from "../utils/changeHistory.base.utils";
+import { trackEntityChanges, recordMultipleFieldChanges } from "../utils/changeHistory.base.utils";
 
 export async function getAllEvidences(req: Request, res: Response) {
   logStructured(
