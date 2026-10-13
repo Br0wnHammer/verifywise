@@ -581,4 +581,5 @@ Intake forms support calculated fields, show/hide rules and risk dimension tags
 - **Risk scoring.** `intakeRiskScoring.service.ts` matches keywords at the start
   of a word (plurals and compounds count, "renamed" does not hit "name") in text
   answers, option labels and ticked checkbox labels. A dimension uses its tagged
-  answers when they match any keyword, and all answers otherwise.
+  answers when they match any keyword, and all answers otherwise; high-risk
+  keywords in any answer set a floor the tagged score cannot go below.

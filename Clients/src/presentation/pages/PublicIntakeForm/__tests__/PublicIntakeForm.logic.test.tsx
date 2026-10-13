@@ -123,6 +123,18 @@ describe("public form logic", () => {
     expect(repo.submitPublicFormById.mock.calls[0][1].formData).not.toHaveProperty("details");
   });
 
+  it("treats a required answer of only spaces as missing, as the server does", async () => {
+    renderPage();
+    await fillContactAndCaptcha();
+    fireEvent.click(screen.getByLabelText("Uses personal data"));
+    fireEvent.change(await screen.findByLabelText(/Describe the data/), {
+      target: { value: "   " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByText("This field is required")).toBeInTheDocument();
+    expect(repo.submitPublicFormById).not.toHaveBeenCalled();
+  });
+
   it("does not submit pre-filled answers to hidden fields", async () => {
     repo.getPublicFormById.mockResolvedValue(
       formResponse({ previousData: { personal: false, details: "old answer", cost: "1" } }),

@@ -351,12 +351,31 @@ function scoreDimension(
   // Tagged answers decide the dimension when they match any keyword; when
   // nothing is tagged, or the tagged answers match nothing, every answer counts.
   const tagged = answers.filter((answer) => answer.riskDimension === config.key);
-  let matches = tagged.length > 0 ? matchKeywords(config, tagged) : null;
-  if (!matches || matches.highMatches + matches.mediumMatches + matches.lowMatches === 0) {
-    matches = matchKeywords(config, answers);
-  }
-  const { highMatches, mediumMatches, lowMatches, signals } = matches;
+  const taggedMatches = tagged.length > 0 ? matchKeywords(config, tagged) : null;
+  const usesTagged =
+    taggedMatches !== null &&
+    taggedMatches.highMatches + taggedMatches.mediumMatches + taggedMatches.lowMatches > 0;
+  const allMatches = usesTagged ? matchKeywords(config, answers) : null;
+  const matches = usesTagged ? taggedMatches! : matchKeywords(config, answers);
+  let { score } = scoreFromMatches(matches);
+  let signals = matches.signals;
 
+  // Tags refine a score but never hide risk: high-risk keywords in any answer
+  // keep the dimension at least where those keywords alone would put it.
+  if (allMatches && allMatches.highMatches > 0) {
+    const floor = scoreFromMatches({ ...allMatches, mediumMatches: 0, lowMatches: 0 }).score;
+    if (score < floor) {
+      score = floor;
+      const highSignals = allMatches.signals.filter((signal) => signal.startsWith("High-risk"));
+      signals = [...new Set([...highSignals, ...signals])];
+    }
+  }
+
+  return { score, signals };
+}
+
+function scoreFromMatches(matches: KeywordMatches): { score: number } {
+  const { highMatches, mediumMatches, lowMatches } = matches;
   let score = 50; // Default neutral
   if (highMatches > 0 && lowMatches === 0) {
     score = 70 + Math.min(highMatches * 5, 30);
@@ -367,8 +386,7 @@ function scoreDimension(
   } else if (lowMatches > 0 && highMatches === 0) {
     score = 10 + Math.max(20 - lowMatches * 5, 0);
   }
-
-  return { score: Math.max(0, Math.min(100, score)), signals };
+  return { score: Math.max(0, Math.min(100, score)) };
 }
 
 export function scoreSubmissionRuleBased(

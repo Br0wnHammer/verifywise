@@ -469,7 +469,8 @@ export function FieldEditor({
                   label="Decimals"
                   type="number"
                   InputProps={{ inputProps: { min: 0, max: MAX_DECIMALS, step: 1 } }}
-                  value={String(localField.decimals ?? DEFAULT_DECIMALS)}
+                  value={localField.decimals === undefined ? "" : String(localField.decimals)}
+                  placeholder={String(DEFAULT_DECIMALS)}
                   onChange={(e) => {
                     const v = e.target.value;
                     handleChange("decimals", v === "" ? undefined : Number(v));

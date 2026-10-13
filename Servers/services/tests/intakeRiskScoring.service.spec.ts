@@ -248,14 +248,14 @@ describe("intakeRiskScoring.service", () => {
       ],
     };
 
-    it("scores a dimension from its tagged fields only", () => {
+    it("tagged answers decide over medium and low signals elsewhere", () => {
+      // Scored from all answers, "public" would pull this down to 15; the
+      // tagged medium-risk answer decides instead.
       const result = scoreSubmissionRuleBased(
-        { notes: "biometric", purpose: "anonymous aggregated" },
+        { notes: "a public dataset", purpose: "personal email addresses" },
         taggedSchema,
       );
-      const data = dimension(result, "data_sensitivity");
-      expect(data.score).toBeLessThan(30);
-      expect(data.signals.join(" ")).not.toContain("biometric");
+      expect(dimension(result, "data_sensitivity").score).toBe(55);
     });
 
     it("falls back to every answer when the tagged field has no answer", () => {
@@ -296,6 +296,23 @@ describe("intakeRiskScoring.service", () => {
         schema,
       );
       expect(dimension(result, "data_sensitivity").score).toBeGreaterThan(70);
+    });
+
+    it("a low-risk tagged answer cannot hide high-risk text elsewhere", () => {
+      const schema = {
+        version: "1.0",
+        fields: [
+          { id: "notes", type: "textarea", label: "Notes" },
+          { id: "purpose", type: "text", label: "Purpose", riskDimension: "data_sensitivity" },
+        ],
+      };
+      const result = scoreSubmissionRuleBased(
+        { notes: "we process biometric and health records", purpose: "public" },
+        schema,
+      );
+      const data = dimension(result, "data_sensitivity");
+      expect(data.score).toBe(80);
+      expect(data.signals).toContain('High-risk signal: "biometric" (Notes)');
     });
 
     it("scores select answers by option label", () => {

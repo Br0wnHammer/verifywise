@@ -373,6 +373,8 @@ export function IntakeFormBuilder() {
   };
 
   const doPublish = async () => {
+    // The "Publish anyway" path skips handlePublish; the server would reject invalid logic.
+    if (logicErrors.length > 0) return;
     setIsSaving(true);
     try {
       const formData = {
@@ -414,6 +416,14 @@ export function IntakeFormBuilder() {
   };
 
   const handlePublish = async () => {
+    if (logicErrors.length > 0) {
+      setSnackbar({
+        open: true,
+        message: "Fix the highlighted fields before saving",
+        severity: "error",
+      });
+      return;
+    }
     if (form.schema.fields.length === 0) {
       setSnackbar({
         open: true,

@@ -247,6 +247,34 @@ describe("IntakeFormBuilder Page", () => {
       expect(updateIntakeForm).not.toHaveBeenCalled();
     });
 
+    it("blocks publishing while a field has a logic problem", async () => {
+      mockGetLLMKeys.mockResolvedValue({ data: { data: [openAIKey] } });
+      vi.mocked(getIntakeForm).mockResolvedValue({
+        data: {
+          id: 5,
+          name: "Intake",
+          entityType: "use_case",
+          status: "draft",
+          suggestedQuestionsEnabled: true,
+          llmKeyId: 3,
+          schema: {
+            version: "1.0",
+            fields: [
+              { id: "total", type: "calculated", label: "Total", order: 0, formula: "{later} + 1" },
+              { id: "later", type: "number", label: "Later", order: 1 },
+            ],
+          },
+        },
+      } as never);
+      renderEditRoute();
+      await formLoaded();
+      fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+      expect(
+        await screen.findByText("Fix the highlighted fields before saving"),
+      ).toBeInTheDocument();
+      expect(updateIntakeForm).not.toHaveBeenCalled();
+    });
+
     it("shows the server's reason when the save is rejected with a 4xx", async () => {
       mockGetLLMKeys.mockResolvedValue({ data: { data: [openAIKey] } });
       vi.mocked(getIntakeForm).mockResolvedValue(savedForm(3) as never);

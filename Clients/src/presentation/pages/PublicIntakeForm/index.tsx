@@ -179,12 +179,13 @@ export function PublicIntakeForm() {
         .join("|")
     : "";
 
-  // Fields present when the form first renders appear at once; only fields a
-  // rule reveals later animate in.
+  // Fields present when the form step first renders appear at once; only
+  // fields a rule reveals later animate in. Re-armed each time the form step
+  // is entered (it follows the EU AI Act risk step when that is on).
   const [fieldsShown, setFieldsShown] = useState(false);
   useEffect(() => {
-    if (formData) setFieldsShown(true);
-  }, [formData]);
+    setFieldsShown(Boolean(formData) && step === "form");
+  }, [formData, step]);
 
   // A hidden field must not block submit: drop its validation but keep the
   // typed value, so showing it again restores the answer.
