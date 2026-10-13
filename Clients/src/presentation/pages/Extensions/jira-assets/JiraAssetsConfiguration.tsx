@@ -171,6 +171,9 @@ export const JiraAssetsConfiguration: React.FC = () => {
     deployment_type: "cloud",
   });
   const [configLoaded, setConfigLoaded] = useState(false);
+  // A failed load leaves has_api_token false, which would turn schedule changes
+  // into an unsaved draft; the schedule stays locked instead.
+  const [configLoadFailed, setConfigLoadFailed] = useState(false);
 
   const [schemas, setSchemas] = useState<Schema[]>([]);
   const [objectTypes, setObjectTypes] = useState<ObjectType[]>([]);
@@ -245,8 +248,10 @@ export const JiraAssetsConfiguration: React.FC = () => {
         if (data) {
           setLocalConfig((prev) => ({ ...prev, ...data }));
         }
+        setConfigLoadFailed(false);
       } catch (error) {
         console.error("Failed to load JIRA config:", error);
+        setConfigLoadFailed(true);
       } finally {
         setConfigLoaded(true);
       }
@@ -926,10 +931,18 @@ export const JiraAssetsConfiguration: React.FC = () => {
         Step 3: Sync Settings
       </Typography>
 
+      {configLoadFailed && (
+        <Box sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ fontSize: "13px" }}>
+            Could not load the saved Jira connection. Reload the page to change the sync settings.
+          </Alert>
+        </Box>
+      )}
+
       <ExtensionSyncPanel
         extensionKey="jira-assets"
         // Until GET /config answers, a schedule change could be kept as a draft by mistake.
-        canManage={canManageSync && configLoaded}
+        canManage={canManageSync && configLoaded && !configLoadFailed}
         scheduleDescription="Automatically sync data from JIRA on a schedule"
         scheduleHelp="Automatic sync refreshes use cases you have imported. It does not import new objects or remove any."
         persistSchedule={!!localConfig.has_api_token}

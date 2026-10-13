@@ -9717,6 +9717,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Sync completed.": "Synchronisierung abgeschlossen.",
     "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
       "Die automatische Synchronisierung aktualisiert importierte Anwendungsfälle. Sie importiert keine neuen Objekte und entfernt keine.",
+    "Could not load the saved Jira connection. Reload the page to change the sync settings.":
+      "Die gespeicherte Jira-Verbindung konnte nicht geladen werden. Laden Sie die Seite neu, um die Synchronisierungseinstellungen zu ändern.",
     "Could not save the sync settings. Try again.":
       "Die Synchronisierungseinstellungen konnten nicht gespeichert werden. Versuchen Sie es erneut.",
     "The sync is taking longer than expected. Check the last sync result later.":
@@ -19989,6 +19991,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Sync completed.": "Synchronisation terminée.",
     "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
       "La synchronisation automatique met à jour les cas d'usage importés. Elle n'importe pas de nouveaux objets et n'en supprime aucun.",
+    "Could not load the saved Jira connection. Reload the page to change the sync settings.":
+      "Impossible de charger la connexion Jira enregistrée. Rechargez la page pour modifier les paramètres de synchronisation.",
     "Could not save the sync settings. Try again.":
       "Impossible d'enregistrer les paramètres de synchronisation. Réessayez.",
     "The sync is taking longer than expected. Check the last sync result later.":
@@ -30181,6 +30185,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Sync completed.": "Sincronización completada.",
     "Automatic sync refreshes use cases you have imported. It does not import new objects or remove any.":
       "La sincronización automática actualiza los casos de uso importados. No importa objetos nuevos ni elimina ninguno.",
+    "Could not load the saved Jira connection. Reload the page to change the sync settings.":
+      "No se pudo cargar la conexión de Jira guardada. Recargue la página para cambiar la configuración de sincronización.",
     "Could not save the sync settings. Try again.":
       "No se pudo guardar la configuración de sincronización. Inténtelo de nuevo.",
     "The sync is taking longer than expected. Check the last sync result later.":

@@ -76,6 +76,20 @@ describe("JiraAssetsConfiguration sync section", () => {
     expect(screen.queryByRole("button", { name: "Sync Now" })).toBeNull();
   });
 
+  it("keeps the schedule locked and says why when the saved connection cannot be loaded", async () => {
+    mockGet.mockImplementation(async (url: string) => {
+      if (url.endsWith("/config")) throw new Error("network");
+      return { data: { data: [] } };
+    });
+    renderPage();
+    expect(
+      await screen.findByText(
+        "Could not load the saved Jira connection. Reload the page to change the sync settings.",
+      ),
+    ).toBeInTheDocument();
+    expect(lastPanelProps().canManage).toBe(false);
+  });
+
   it("before the first save, keeps the schedule as a draft and sends it with the connection", async () => {
     mockGet.mockImplementation(async (url: string) => ({
       data: {
