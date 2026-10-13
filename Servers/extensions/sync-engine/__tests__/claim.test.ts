@@ -545,4 +545,15 @@ describe("schedule bookkeeping", () => {
     }
     expect(resets()).toHaveLength(2);
   });
+
+  it("commits the completion and the streak reset together when no transaction is given", async () => {
+    fakeDb();
+    const ctx = createRunContext(provider, { ...RUN, kind: "scheduled" }, null);
+    await ctx.finalize({ counts: {} });
+    ctx.dispose();
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(calls("SET status = 'completed'")[0][1].transaction).toBe(TX);
+    expect(resets()[0][1].transaction).toBe(TX);
+    expect(ctx.settled).toBe(true);
+  });
 });

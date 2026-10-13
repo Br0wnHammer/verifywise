@@ -927,7 +927,8 @@ export const JiraAssetsConfiguration: React.FC = () => {
 
       <ExtensionSyncPanel
         extensionKey="jira-assets"
-        canManage={canManageSync}
+        // Until GET /config answers, a schedule change could be kept as a draft by mistake.
+        canManage={canManageSync && configLoaded}
         scheduleDescription="Automatically sync data from JIRA on a schedule"
         scheduleHelp="Automatic sync refreshes use cases you have imported. It does not import new objects or remove any."
         persistSchedule={!!localConfig.has_api_token}

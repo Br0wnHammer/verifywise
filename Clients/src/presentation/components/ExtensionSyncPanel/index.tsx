@@ -126,6 +126,8 @@ export function ExtensionSyncPanel({
   const failures = sync.status?.schedule?.consecutive_failures ?? 0;
   const failingSince = sync.status?.schedule?.failing_since ?? null;
   const running = sync.isSyncing || !!sync.status?.running || !!sync.status?.queued;
+  // Until the saved schedule has loaded, a change would be overwritten by it.
+  const scheduleLocked = !canManage || sync.isLoading;
 
   useEffect(() => {
     onScheduleChange?.(sync.schedule);
@@ -148,7 +150,7 @@ export function ExtensionSyncPanel({
           <VWToggle
             checked={sync.schedule.enabled}
             onChange={(event) => sync.setSchedule({ enabled: event.target.checked })}
-            disabled={!canManage}
+            disabled={scheduleLocked}
             label="Enable automatic sync"
             description={scheduleDescription}
           />
@@ -161,7 +163,7 @@ export function ExtensionSyncPanel({
               label="Sync interval"
               value={sync.schedule.interval_hours}
               onChange={(event) => sync.setSchedule({ interval_hours: Number(event.target.value) })}
-              disabled={!canManage}
+              disabled={scheduleLocked}
               items={intervalItems(sync.schedule.interval_hours)}
             />
             {scheduleHelp && (

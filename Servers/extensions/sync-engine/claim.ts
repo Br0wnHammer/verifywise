@@ -219,6 +219,17 @@ export class EngineRunContext implements RunContext {
   }
 
   async finalize(result: RunResult, transaction?: Transaction): Promise<void> {
+    if (!transaction) {
+      // The completion and the schedule streak reset commit together.
+      await sequelize.transaction((t) => this.completeIn(result, t));
+      this.markSettled();
+      return;
+    }
+    await this.completeIn(result, transaction);
+    this.markSettled(transaction);
+  }
+
+  private async completeIn(result: RunResult, transaction: Transaction): Promise<void> {
     const [rows] = (await sequelize.query(
       `UPDATE extension_sync_runs
           SET status = 'completed', counts = CAST(:counts AS JSONB), message = :message,
@@ -240,7 +251,6 @@ export class EngineRunContext implements RunContext {
     if (statusKinds(this.provider).includes(this.kind)) {
       await resetScheduleFailures(this.provider.key, this.orgId, transaction);
     }
-    this.markSettled(transaction);
   }
 
   async release(transaction?: Transaction): Promise<void> {

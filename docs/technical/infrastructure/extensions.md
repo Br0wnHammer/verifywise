@@ -432,6 +432,17 @@ the engine's job. **Deploy the API and the worker together**: during a mixed
 old/new rollout the old and new code use different locks and tables and would
 not exclude each other.
 
+Two effects of the deploy itself:
+
+- `Servers/start.sh` starts the worker before migrations run. A job queued just
+  before the deploy and picked up before the new tables exist fails once
+  (`attempts: 1`) and is dropped. A scheduled run is simply queued again by the
+  next tick; a "Sync now" clicked in that window has to be clicked again.
+- A Jira Assets run that was going when the old worker stopped is copied as a
+  live `started` run. Until it is closed as `abandoned`, up to 15 minutes later,
+  "Sync now", import and removal answer 409. If it was a scheduled run, that
+  close counts as one scheduled failure, so "Failing since" can appear once.
+
 ### Routes
 
 Generic routes (`Servers/routes/extensionRuns.route.ts`, mounted at

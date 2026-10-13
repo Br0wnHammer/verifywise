@@ -224,6 +224,12 @@ describe("ExtensionSyncPanel", () => {
     expect(onRunCompleted).toHaveBeenCalledWith(done);
   });
 
+  it("locks the schedule controls until the saved schedule has loaded", () => {
+    mockUseExtensionSync.mockReturnValue(hookState({ isLoading: true, status: null }));
+    const { container } = renderPanel();
+    expect(toggle(container)).toBeDisabled();
+  });
+
   it("non-admins cannot change the schedule or sync", () => {
     mockUseExtensionSync.mockReturnValue(hookState());
     const { container } = renderPanel({ canManage: false });
