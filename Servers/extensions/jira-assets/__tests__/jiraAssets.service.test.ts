@@ -1417,23 +1417,25 @@ describe("legacy PATCH /config/sync (updateSyncSettings)", () => {
       failing_since: null,
     });
 
-    await expect(updateSyncSettings(5, { sync_enabled: true })).resolves.toEqual({
+    await expect(updateSyncSettings(5, 8, { sync_enabled: true })).resolves.toEqual({
       sync_enabled: true,
       sync_interval_hours: 24,
     });
-    expect(save).toHaveBeenCalledWith("jira-assets", 5, {
-      enabled: true,
-      intervalHours: undefined,
-    });
+    expect(save).toHaveBeenCalledWith(
+      "jira-assets",
+      5,
+      { enabled: true, intervalHours: undefined },
+      { userId: 8 },
+    );
     expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 
   it("validates the input before touching the database", async () => {
-    await expect(updateSyncSettings(5, { sync_interval_hours: 0 })).rejects.toBeInstanceOf(
+    await expect(updateSyncSettings(5, 8, { sync_interval_hours: 0 })).rejects.toBeInstanceOf(
       JiraConfigValidationError,
     );
-    await expect(updateSyncSettings(5, {})).rejects.toBeInstanceOf(JiraConfigValidationError);
-    await expect(updateSyncSettings(5, { sync_enabled: "on" })).rejects.toBeInstanceOf(
+    await expect(updateSyncSettings(5, 8, {})).rejects.toBeInstanceOf(JiraConfigValidationError);
+    await expect(updateSyncSettings(5, 8, { sync_enabled: "on" })).rejects.toBeInstanceOf(
       JiraConfigValidationError,
     );
     expect(mockQuery).not.toHaveBeenCalled();
@@ -1443,7 +1445,7 @@ describe("legacy PATCH /config/sync (updateSyncSettings)", () => {
     fakeDb({ config: null });
     const save = jest.spyOn(engineSchedule, "saveSchedule");
 
-    await expect(updateSyncSettings(5, { sync_interval_hours: 6 })).rejects.toBeInstanceOf(
+    await expect(updateSyncSettings(5, 8, { sync_interval_hours: 6 })).rejects.toBeInstanceOf(
       JiraNotConfiguredError,
     );
     expect(save).not.toHaveBeenCalled();
@@ -1540,7 +1542,14 @@ describe("saveConfig validation", () => {
     const [updateSql, update] = mockQuery.mock.calls[1];
     expect(updateSql).not.toContain("sync_enabled");
     expect(update.replacements).not.toHaveProperty("syncEnabled");
-    expect(save).toHaveBeenCalledWith("jira-assets", 5, { enabled: true, intervalHours: 6 });
+    // The schedule is saved in the same transaction as the connection, as user 3.
+    expect(update.transaction).toBeDefined();
+    expect(save).toHaveBeenCalledWith(
+      "jira-assets",
+      5,
+      { enabled: true, intervalHours: 6 },
+      { userId: 3, transaction: update.transaction },
+    );
     save.mockRestore();
   });
 
@@ -1554,17 +1563,21 @@ describe("saveConfig validation", () => {
     });
 
     await saveConfig(5, 3, { ...base, sync_interval_hours: 6 });
-    expect(save).toHaveBeenLastCalledWith("jira-assets", 5, {
-      enabled: undefined,
-      intervalHours: 6,
-    });
+    expect(save).toHaveBeenLastCalledWith(
+      "jira-assets",
+      5,
+      { enabled: undefined, intervalHours: 6 },
+      expect.objectContaining({ userId: 3 }),
+    );
 
     mockQuery.mockResolvedValueOnce([{ id: 1, api_token_encrypted: "enc" }]);
     await saveConfig(5, 3, { ...base, sync_enabled: true });
-    expect(save).toHaveBeenLastCalledWith("jira-assets", 5, {
-      enabled: true,
-      intervalHours: undefined,
-    });
+    expect(save).toHaveBeenLastCalledWith(
+      "jira-assets",
+      5,
+      { enabled: true, intervalHours: undefined },
+      expect.objectContaining({ userId: 3 }),
+    );
     save.mockRestore();
   });
 

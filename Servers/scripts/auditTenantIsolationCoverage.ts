@@ -139,7 +139,7 @@ const deferredScopedTables: SharedTableEntry[] = [
   {
     name: "jira_assets_sync_history",
     justification:
-      "Extension-owned table (jira-assets), being replaced by the sync engine's extension_sync_runs (migration 20261012200000 copied every row with its organization_id). Every query on it filters by organization_id; once the engine tasks land it is no longer written or read. Kept for one release so a rollback restores the old behaviour; a follow-up migration drops it.",
+      "Extension-owned table (jira-assets), being replaced by the sync engine's extension_sync_runs (migration 20261013105301 copied every row with its organization_id). Every query on it filters by organization_id; once the engine tasks land it is no longer written or read. Kept for one release so a rollback restores the old behaviour; a follow-up migration drops it.",
   },
   {
     name: "jira_assets_use_cases",

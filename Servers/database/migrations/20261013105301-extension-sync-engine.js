@@ -39,6 +39,7 @@ module.exports = {
           consecutive_failures INTEGER NOT NULL DEFAULT 0,
           failing_since        TIMESTAMPTZ NULL,
           updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_by           INTEGER NULL REFERENCES verifywise.users(id) ON DELETE SET NULL,
           CONSTRAINT extension_sync_settings_org_key_unique UNIQUE (organization_id, extension_key),
           CONSTRAINT extension_sync_settings_interval_range_chk
             CHECK (interval_hours >= 1 AND interval_hours <= 168),

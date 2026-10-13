@@ -123,7 +123,11 @@ export function ExtensionSyncPanel({
   const sync = useExtensionSync(extensionKey, { persistSchedule });
   const [message, setMessage] = useState<PanelMessage | null>(null);
   const lastFinished = sync.status?.last_finished_run ?? null;
-  const failures = sync.status?.schedule?.consecutive_failures ?? 0;
+  // The streak is kept while automatic sync is off, but only means something
+  // while it is on.
+  const failures = sync.status?.schedule?.enabled
+    ? (sync.status.schedule.consecutive_failures ?? 0)
+    : 0;
   const failingSince = sync.status?.schedule?.failing_since ?? null;
   const running = sync.isSyncing || !!sync.status?.running || !!sync.status?.queued;
   // Until the saved schedule has loaded, the controls would show defaults, not

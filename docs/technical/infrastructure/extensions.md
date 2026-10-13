@@ -334,11 +334,12 @@ removes flagged use cases explicitly from the panel (see
   TIMESTAMPTZ `started_at`, `heartbeat_at`, `completed_at`. A partial unique
   index allows one `started` row per organization and extension.
 - `extension_sync_settings`: one row per organization and extension with a
-  schedule: `enabled`, `interval_hours` (1 to 168), `consecutive_failures`
-  and `failing_since`.
+  schedule: `enabled`, `interval_hours` (1 to 168), `consecutive_failures`,
+  `failing_since`, and `updated_by` (who last changed the schedule; null for
+  rows copied by the migration and for system changes).
 
 Both cascade with the organization. Migration
-`20261012200000-extension-sync-engine.js` created them and copied Jira Assets'
+`20261013105301-extension-sync-engine.js` created them and copied Jira Assets'
 schedule and history (ids kept). `node scripts/checkExtensionSyncMigration.js`
 and `node scripts/checkExtensionSyncEngineSql.js` check the migration and the
 engine's SQL on a throwaway Postgres.
@@ -412,7 +413,8 @@ records and logs nothing.
 A scheduled run that fails, or is closed as abandoned, adds one to
 `consecutive_failures` and, on the first failure of a streak, sets
 `failing_since` to that run's start. Any completed manual or scheduled run
-clears both. There is no auto-disable.
+clears both. There is no auto-disable; turning automatic sync off keeps the
+streak, but the panel shows "Failing since" only while it is on.
 
 Behaviour change from the Jira-only scheduler: `last_run` is now the newest
 run's start; it used to be bounded by `last_sync_at`, the finish. Scheduled
@@ -481,7 +483,8 @@ newest finished manual or scheduled run that completed or failed).
 and `useExtensionSync(key)` (`Clients/src/application/hooks/`) give any
 provider the sync section: the automatic sync toggle and interval, "Sync now",
 the last finished sync, the running state (a run going or a job queued), the
-outcome messages, and "Failing since <date>" while scheduled runs keep failing.
+outcome messages, and "Failing since <date>" while automatic sync is on and
+scheduled runs keep failing.
 The status query refreshes every 3 seconds while a run is running or queued.
 `showSyncNow` and `syncNowDisabled` keep the page's own rules for the button;
 with `persistSchedule={false}` (before a connection is saved) schedule changes
@@ -579,7 +582,7 @@ objects and before setting flags; a heartbeat that matches no row, or a
 database error, stops it with no further writes. The earlier Jira-only
 migrations (`20261012003957-jira-assets-sync-heartbeat.js`,
 `20261012062548-jira-assets-missing-flag-and-run-token.js`) shaped the old
-history table that `20261012200000-extension-sync-engine.js` copied.
+history table that `20261013105301-extension-sync-engine.js` copied.
 
 **Removing missing use cases.** <a id="removing-missing-use-cases"></a> The
 panel lists the flagged use cases under "Missing in Jira", with key, name and
@@ -787,8 +790,8 @@ message text.
 - `PATCH /api/extensions/:key/schedule` changes only `enabled` and/or
   `interval_hours` (whole hours, 1 to 168; a numeric string is accepted).
 - `POST /config` still accepts `sync_enabled` / `sync_interval_hours` and
-  writes the ones it carries to the engine schedule; a field it leaves out
-  keeps its stored value.
+  writes the ones it carries to the engine schedule, in the same transaction
+  as the connection; a field it leaves out keeps its stored value.
 - `PATCH /config/selection` changes only `selected_schema_id` and/or
   `selected_object_type_id`.
 

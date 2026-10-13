@@ -3,7 +3,7 @@
 "use strict";
 
 /**
- * Checks 20261012200000-extension-sync-engine.js on a throwaway Postgres: the
+ * Checks 20261013105301-extension-sync-engine.js on a throwaway Postgres: the
  * Jira Assets history status mapping (several `started` rows per org and
  * null-token rows included), kept ids and the sequence, the settings copy,
  * the partial unique index, down(), and up() again.
@@ -12,7 +12,7 @@
  */
 const assert = require("assert/strict");
 const { withThrowawayPostgres } = require("./lib/throwawayPostgres");
-const migration = require("../database/migrations/20261012200000-extension-sync-engine");
+const migration = require("../database/migrations/20261013105301-extension-sync-engine");
 
 const ABANDONED = "Sync stopped responding and was marked as abandoned";
 const SKIPPED = "Another sync or import was running, so this sync did not start.";

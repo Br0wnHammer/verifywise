@@ -14,7 +14,7 @@ require("ts-node").register({ transpileOnly: true, compilerOptions: { module: "c
 const assert = require("assert/strict");
 const { QueryTypes } = require("sequelize");
 const { withThrowawayPostgres } = require("./lib/throwawayPostgres");
-const migration = require("../database/migrations/20261012200000-extension-sync-engine");
+const migration = require("../database/migrations/20261013105301-extension-sync-engine");
 const {
   DUE_RUNS_SQL,
   backoffHours,

@@ -178,7 +178,7 @@ export async function patchSyncSettings(req: Request, res: Response): Promise<an
   const ctx = logContext(req, "patchSyncSettings");
   logProcessing({ ...ctx, description: "updating Jira Assets sync settings" });
   try {
-    const settings = await updateSyncSettings(orgId(req), req.body ?? {});
+    const settings = await updateSyncSettings(orgId(req), uid(req), req.body ?? {});
     await logSuccess({
       ...ctx,
       eventType: "Update",

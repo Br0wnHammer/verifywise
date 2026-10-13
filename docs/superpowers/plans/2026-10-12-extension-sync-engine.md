@@ -50,7 +50,7 @@
 
 | File | Responsibility |
 |---|---|
-| `Servers/database/migrations/20261012200000-extension-sync-engine.js` | The two tables, Jira data copy with kept ids, sequence, partial unique index; `down()` drops the new tables |
+| `Servers/database/migrations/20261013105301-extension-sync-engine.js` | The two tables, Jira data copy with kept ids, sequence, partial unique index; `down()` drops the new tables |
 | `Servers/scripts/lib/throwawayPostgres.js` | Starts a temporary Postgres cluster (initdb + pg_ctl, TCP only) for checks, always cleans up |
 | `Servers/scripts/checkExtensionSyncMigration.js` | Throwaway-Postgres check of the migration: mapping, ids, sequence, settings, index, `down()`, `up()` again |
 | `Servers/scripts/checkExtensionSyncEngineSql.js` | Throwaway-Postgres check of the due query, the backoff formula, the ownership fragment and the last-finished-run rule |
@@ -110,7 +110,7 @@
 ### Task 1: Migration, data copy and throwaway-Postgres check
 
 **Files:**
-- Create: `Servers/database/migrations/20261012200000-extension-sync-engine.js`
+- Create: `Servers/database/migrations/20261013105301-extension-sync-engine.js`
 - Create: `Servers/scripts/lib/throwawayPostgres.js`
 - Create: `Servers/scripts/checkExtensionSyncMigration.js`
 - Modify: `Servers/scripts/snapshotExtensionsData.js` (`DATA_TABLES`)
@@ -257,7 +257,7 @@ Create `Servers/scripts/checkExtensionSyncMigration.js`:
 "use strict";
 
 /**
- * Checks 20261012200000-extension-sync-engine.js on a throwaway Postgres: the
+ * Checks 20261013105301-extension-sync-engine.js on a throwaway Postgres: the
  * Jira Assets history status mapping (several `started` rows per org and
  * null-token rows included), kept ids and the sequence, the settings copy,
  * the partial unique index, down(), and up() again.
@@ -266,7 +266,7 @@ Create `Servers/scripts/checkExtensionSyncMigration.js`:
  */
 const assert = require("assert/strict");
 const { withThrowawayPostgres } = require("./lib/throwawayPostgres");
-const migration = require("../database/migrations/20261012200000-extension-sync-engine");
+const migration = require("../database/migrations/20261013105301-extension-sync-engine");
 
 const ABANDONED = "Sync stopped responding and was marked as abandoned";
 const SKIPPED = "Another sync or import was running, so this sync did not start.";
@@ -456,11 +456,11 @@ main().catch((err) => {
 - [ ] **Step 3: Run the check to verify it fails**
 
 Run: `cd Servers && node scripts/checkExtensionSyncMigration.js`
-Expected: FAIL with `Cannot find module '../database/migrations/20261012200000-extension-sync-engine'`. (If it fails with `spawnSync initdb ENOENT` instead, set `CHECK_PG_BIN` to the directory holding `initdb` and `pg_ctl` and rerun.)
+Expected: FAIL with `Cannot find module '../database/migrations/20261013105301-extension-sync-engine'`. (If it fails with `spawnSync initdb ENOENT` instead, set `CHECK_PG_BIN` to the directory holding `initdb` and `pg_ctl` and rerun.)
 
 - [ ] **Step 4: Write the migration**
 
-Create `Servers/database/migrations/20261012200000-extension-sync-engine.js`:
+Create `Servers/database/migrations/20261013105301-extension-sync-engine.js`:
 
 ```js
 "use strict";
@@ -721,7 +721,7 @@ In `Servers/scripts/auditTenantIsolationCoverage.ts`, in the entry `name: "jira_
 
 ```ts
     justification:
-      "Extension-owned table (jira-assets), being replaced by the sync engine's extension_sync_runs (migration 20261012200000 copied every row with its organization_id). Every query on it filters by organization_id; once the engine tasks land it is no longer written or read. Kept for one release so a rollback restores the old behaviour; a follow-up migration drops it.",
+      "Extension-owned table (jira-assets), being replaced by the sync engine's extension_sync_runs (migration 20261013105301 copied every row with its organization_id). Every query on it filters by organization_id; once the engine tasks land it is no longer written or read. Kept for one release so a rollback restores the old behaviour; a follow-up migration drops it.",
 ```
 
 - [ ] **Step 8: Run the isolation checks**
@@ -737,8 +737,8 @@ Expected: PASS (1 test) and the audit exits 0. If no test database is available 
 - [ ] **Step 9: Format and commit**
 
 ```bash
-cd Servers && npx prettier --write database/migrations/20261012200000-extension-sync-engine.js scripts/lib/throwawayPostgres.js scripts/checkExtensionSyncMigration.js scripts/snapshotExtensionsData.js scripts/auditTenantIsolationCoverage.ts tests/integration/tenant-isolation && node scripts/checkExtensionSyncMigration.js
-cd .. && git add Servers/database/migrations/20261012200000-extension-sync-engine.js Servers/scripts/lib/throwawayPostgres.js Servers/scripts/checkExtensionSyncMigration.js Servers/scripts/snapshotExtensionsData.js Servers/scripts/auditTenantIsolationCoverage.ts Servers/tests/integration/tenant-isolation
+cd Servers && npx prettier --write database/migrations/20261013105301-extension-sync-engine.js scripts/lib/throwawayPostgres.js scripts/checkExtensionSyncMigration.js scripts/snapshotExtensionsData.js scripts/auditTenantIsolationCoverage.ts tests/integration/tenant-isolation && node scripts/checkExtensionSyncMigration.js
+cd .. && git add Servers/database/migrations/20261013105301-extension-sync-engine.js Servers/scripts/lib/throwawayPostgres.js Servers/scripts/checkExtensionSyncMigration.js Servers/scripts/snapshotExtensionsData.js Servers/scripts/auditTenantIsolationCoverage.ts Servers/tests/integration/tenant-isolation
 git commit -m "feat(sync-engine): shared run and schedule tables with the Jira Assets data copied in" -m "Adds extension_sync_runs and extension_sync_settings (TIMESTAMPTZ, one transaction, verifywise. DDL). Copies Jira Assets history keeping ids, maps abandoned/skipped rows to real statuses, keeps only the newest live started row per org, moves the sequence, then adds the one-started-run partial unique index. down() drops only the new tables.
 
 scripts/checkExtensionSyncMigration.js verifies the mapping, ids, sequence, settings, index, down() and up() again on a throwaway Postgres (scripts/lib/throwawayPostgres.js). Both tables are registered for tenant isolation with a table-level test; the jira_assets_sync_history allow-list entry says it is being replaced."
@@ -2549,7 +2549,7 @@ require("ts-node").register({ transpileOnly: true, compilerOptions: { module: "c
 const assert = require("assert/strict");
 const { QueryTypes } = require("sequelize");
 const { withThrowawayPostgres } = require("./lib/throwawayPostgres");
-const migration = require("../database/migrations/20261012200000-extension-sync-engine");
+const migration = require("../database/migrations/20261013105301-extension-sync-engine");
 const {
   DUE_RUNS_SQL,
   backoffHours,
@@ -7952,7 +7952,7 @@ removes flagged use cases explicitly from the panel (see
   and `failing_since`.
 
 Both cascade with the organization. Migration
-`20261012200000-extension-sync-engine.js` created them and copied Jira Assets'
+`20261013105301-extension-sync-engine.js` created them and copied Jira Assets'
 schedule and history (ids kept). `node scripts/checkExtensionSyncMigration.js`
 and `node scripts/checkExtensionSyncEngineSql.js` check the migration and the
 engine's SQL on a throwaway Postgres.
@@ -8113,7 +8113,7 @@ objects and before setting flags; a heartbeat that matches no row, or a
 database error, stops it with no further writes. The earlier Jira-only
 migrations (`20261012003957-jira-assets-sync-heartbeat.js`,
 `20261012062548-jira-assets-missing-flag-and-run-token.js`) shaped the old
-history table that `20261012200000-extension-sync-engine.js` copied.
+history table that `20261013105301-extension-sync-engine.js` copied.
 ```
 
 5. In "Removing missing use cases" (from `**Removing missing use cases.**` up to `**Settings and validation.**`) apply these replacements wherever they appear: `claimSyncRun` → `withClaim`; `the run's own history row` → `the run's own row`; `history row` → `run`; `assertRunOwned` → `ctx.assertOwned`; `finalizeSuccess` → `ctx.finalize`; `releaseClaim` → `ctx.release`; `objects_deleted` → `counts.deleted`; `jira_assets_sync_history` → `extension_sync_runs`.

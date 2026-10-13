@@ -311,70 +311,77 @@ export async function saveConfig(
     userId,
   };
 
-  if (row) {
-    if (body.api_token) {
-      const { value, iv } = encryptText(body.api_token);
+  // The connection and its schedule are saved together or not at all.
+  await sequelize.transaction(async (transaction) => {
+    if (row) {
+      if (body.api_token) {
+        const { value, iv } = encryptText(body.api_token);
+        await sequelize.query(
+          `UPDATE jira_assets_config
+              SET jira_base_url = :jiraBaseUrl, workspace_id = :workspaceId, email = :email,
+                  api_token_encrypted = :apiTokenEncrypted, api_token_iv = :apiTokenIv,
+                  deployment_type = :deploymentType,
+                  selected_schema_id = :selectedSchemaId,
+                  selected_object_type_id = :selectedObjectTypeId,
+                  updated_by = :userId, updated_at = NOW()
+            WHERE id = :id AND organization_id = :organizationId;`,
+          {
+            replacements: {
+              ...commonReplacements,
+              apiTokenEncrypted: value,
+              apiTokenIv: iv,
+              id: row.id,
+            },
+            transaction,
+          },
+        );
+      } else {
+        await sequelize.query(
+          `UPDATE jira_assets_config
+              SET jira_base_url = :jiraBaseUrl, workspace_id = :workspaceId, email = :email,
+                  deployment_type = :deploymentType,
+                  selected_schema_id = :selectedSchemaId,
+                  selected_object_type_id = :selectedObjectTypeId,
+                  updated_by = :userId, updated_at = NOW()
+            WHERE id = :id AND organization_id = :organizationId;`,
+          { replacements: { ...commonReplacements, id: row.id }, transaction },
+        );
+      }
+    } else {
+      const { value, iv } = encryptText(body.api_token as string);
       await sequelize.query(
-        `UPDATE jira_assets_config
-            SET jira_base_url = :jiraBaseUrl, workspace_id = :workspaceId, email = :email,
-                api_token_encrypted = :apiTokenEncrypted, api_token_iv = :apiTokenIv,
-                deployment_type = :deploymentType,
-                selected_schema_id = :selectedSchemaId,
-                selected_object_type_id = :selectedObjectTypeId,
-                updated_by = :userId, updated_at = NOW()
-          WHERE id = :id AND organization_id = :organizationId;`,
+        `INSERT INTO jira_assets_config
+           (organization_id, jira_base_url, workspace_id, email,
+            api_token_encrypted, api_token_iv, deployment_type,
+            selected_schema_id, selected_object_type_id,
+            created_by)
+         VALUES (:organizationId, :jiraBaseUrl, :workspaceId, :email,
+                 :apiTokenEncrypted, :apiTokenIv, :deploymentType,
+                 :selectedSchemaId, :selectedObjectTypeId,
+                 :userId);`,
         {
           replacements: {
             ...commonReplacements,
             apiTokenEncrypted: value,
             apiTokenIv: iv,
-            id: row.id,
           },
+          transaction,
         },
-      );
-    } else {
-      await sequelize.query(
-        `UPDATE jira_assets_config
-            SET jira_base_url = :jiraBaseUrl, workspace_id = :workspaceId, email = :email,
-                deployment_type = :deploymentType,
-                selected_schema_id = :selectedSchemaId,
-                selected_object_type_id = :selectedObjectTypeId,
-                updated_by = :userId, updated_at = NOW()
-          WHERE id = :id AND organization_id = :organizationId;`,
-        { replacements: { ...commonReplacements, id: row.id } },
       );
     }
-  } else {
-    const { value, iv } = encryptText(body.api_token as string);
-    await sequelize.query(
-      `INSERT INTO jira_assets_config
-         (organization_id, jira_base_url, workspace_id, email,
-          api_token_encrypted, api_token_iv, deployment_type,
-          selected_schema_id, selected_object_type_id,
-          created_by)
-       VALUES (:organizationId, :jiraBaseUrl, :workspaceId, :email,
-               :apiTokenEncrypted, :apiTokenIv, :deploymentType,
-               :selectedSchemaId, :selectedObjectTypeId,
-               :userId);`,
-      {
-        replacements: {
-          ...commonReplacements,
-          apiTokenEncrypted: value,
-          apiTokenIv: iv,
-        },
-      },
-    );
-  }
 
-  // The schedule lives in the sync engine. Each sync field the body carries is
-  // saved; one it leaves out keeps its stored value (a new schedule starts off,
-  // every 24 hours). The panel no longer sends them here.
-  if (body.sync_enabled !== undefined || syncIntervalHours !== undefined) {
-    await saveSchedule(JIRA_ASSETS_KEY, organizationId, {
-      enabled: body.sync_enabled,
-      intervalHours: syncIntervalHours,
-    });
-  }
+    // The schedule lives in the sync engine. Each sync field the body carries is
+    // saved; one it leaves out keeps its stored value (a new schedule starts off,
+    // every 24 hours). The panel no longer sends them here.
+    if (body.sync_enabled !== undefined || syncIntervalHours !== undefined) {
+      await saveSchedule(
+        JIRA_ASSETS_KEY,
+        organizationId,
+        { enabled: body.sync_enabled, intervalHours: syncIntervalHours },
+        { userId, transaction },
+      );
+    }
+  });
 }
 
 /**
@@ -384,6 +391,7 @@ export async function saveConfig(
  */
 export async function updateSyncSettings(
   organizationId: number,
+  userId: number | null,
   body: { sync_enabled?: unknown; sync_interval_hours?: unknown },
 ): Promise<{ sync_enabled: boolean; sync_interval_hours: number }> {
   const hasEnabled = body?.sync_enabled !== undefined;
@@ -396,10 +404,12 @@ export async function updateSyncSettings(
   }
   const interval = hasInterval ? parseSyncIntervalHours(body.sync_interval_hours) : undefined;
   throwIfNotReady(await jiraCanSchedule(organizationId));
-  const saved = await saveSchedule(JIRA_ASSETS_KEY, organizationId, {
-    enabled: hasEnabled ? (body.sync_enabled as boolean) : undefined,
-    intervalHours: interval,
-  });
+  const saved = await saveSchedule(
+    JIRA_ASSETS_KEY,
+    organizationId,
+    { enabled: hasEnabled ? (body.sync_enabled as boolean) : undefined, intervalHours: interval },
+    { userId },
+  );
   return { sync_enabled: saved.enabled, sync_interval_hours: saved.interval_hours };
 }
 

@@ -86,7 +86,7 @@ describe("schedule rows", () => {
       [{ enabled: true, interval_hours: 24, consecutive_failures: 0, failing_since: null }],
       1,
     ]);
-    await saveSchedule("demo-ext", 5, { enabled: true });
+    await saveSchedule("demo-ext", 5, { enabled: true }, { userId: 7, transaction: TX as never });
     const [sql, options] = mockQuery.mock.calls[0];
     expect(sql).toContain("ON CONFLICT (organization_id, extension_key) DO UPDATE");
     expect(sql).toContain("COALESCE(:enabled, extension_sync_settings.enabled)");
@@ -97,7 +97,10 @@ describe("schedule rows", () => {
       enabled: true,
       intervalHours: null,
       defaultInterval: 24,
+      userId: 7,
     });
+    expect(sql).toContain("updated_by = :userId");
+    expect(options.transaction).toBe(TX);
   });
 
   it("starts a failure streak at the failed run's start and counts it up", async () => {

@@ -65,19 +65,26 @@ export async function getSchedule(key: string, orgId: number): Promise<ScheduleV
   return rows[0] ?? null;
 }
 
-/** Change the fields given; a new row starts disabled at 24 hours. */
+/**
+ * Change the fields given; a new row starts disabled at 24 hours. `userId`
+ * records who made the change (null for the system).
+ */
 export async function saveSchedule(
   key: string,
   orgId: number,
   patch: SchedulePatch,
+  { userId, transaction }: { userId: number | null; transaction?: Transaction },
 ): Promise<ScheduleView> {
   const [rows] = (await sequelize.query(
-    `INSERT INTO extension_sync_settings (organization_id, extension_key, enabled, interval_hours)
-     VALUES (:orgId, :key, COALESCE(:enabled, FALSE), COALESCE(:intervalHours, :defaultInterval))
+    `INSERT INTO extension_sync_settings
+       (organization_id, extension_key, enabled, interval_hours, updated_by)
+     VALUES (:orgId, :key, COALESCE(:enabled, FALSE), COALESCE(:intervalHours, :defaultInterval),
+             :userId)
      ON CONFLICT (organization_id, extension_key) DO UPDATE
         SET enabled = COALESCE(:enabled, extension_sync_settings.enabled),
             interval_hours = COALESCE(:intervalHours, extension_sync_settings.interval_hours),
-            updated_at = now()
+            updated_at = now(),
+            updated_by = :userId
      RETURNING ${SCHEDULE_COLUMNS};`,
     {
       replacements: {
@@ -86,7 +93,9 @@ export async function saveSchedule(
         enabled: patch.enabled ?? null,
         intervalHours: patch.intervalHours ?? null,
         defaultInterval: DEFAULT_INTERVAL_HOURS,
+        userId,
       },
+      transaction,
     },
   )) as unknown as [ScheduleView[], unknown];
   return rows[0];

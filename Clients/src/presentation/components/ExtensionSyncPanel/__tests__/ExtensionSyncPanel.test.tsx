@@ -140,6 +140,23 @@ describe("ExtensionSyncPanel", () => {
     expect(screen.getByText("Failing since")).toBeInTheDocument();
   });
 
+  it("failing since: hidden once automatic sync is off", () => {
+    mockUseExtensionSync.mockReturnValue(
+      hookState({
+        status: status({
+          schedule: {
+            enabled: false,
+            interval_hours: 6,
+            consecutive_failures: 3,
+            failing_since: "2026-10-12T08:00:00Z",
+          },
+        }),
+      }),
+    );
+    renderPanel();
+    expect(screen.queryByText("Failing since")).toBeNull();
+  });
+
   it("last sync: the same line as before, successful or with the run's message", () => {
     mockUseExtensionSync.mockReturnValue(
       hookState({ status: status({ last_finished_run: run() }) }),

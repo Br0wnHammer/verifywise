@@ -130,7 +130,7 @@ export async function patchScheduleCtrl(req: Request, res: Response): Promise<an
       const allowed = await provider.canSchedule(orgId(req));
       if (!allowed.ready) throw new SyncNotReadyError(allowed.status, allowed.reason);
     }
-    const schedule = await saveSchedule(key, orgId(req), patch);
+    const schedule = await saveSchedule(key, orgId(req), patch, { userId: uid(req) });
     await logSuccess({
       ...ctx,
       eventType: "Update",

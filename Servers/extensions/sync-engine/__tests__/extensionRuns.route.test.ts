@@ -202,10 +202,12 @@ describe("PATCH /:key/schedule", () => {
       .send({ interval_hours: "12" });
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual(SCHEDULE);
-    expect(mockSave).toHaveBeenCalledWith("demo-ext", 42, {
-      enabled: undefined,
-      intervalHours: 12,
-    });
+    expect(mockSave).toHaveBeenCalledWith(
+      "demo-ext",
+      42,
+      { enabled: undefined, intervalHours: 12 },
+      { userId: 9 },
+    );
     expect(logSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "Update",
