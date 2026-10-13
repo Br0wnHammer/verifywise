@@ -671,24 +671,41 @@ index on `projects (id, organization_id)` (valid, immediate, non-partial, key
 columns only) if there is one, otherwise it creates the generically named
 `projects_id_organization_id_key`, shared infrastructure that other
 composite FKs to `projects (id, organization_id)` can use, then adds the FK
-validated in one statement (adding it `NOT VALID` and validating in the same
-transaction would hold the same locks, so it would gain nothing). The old
+`NOT VALID` in the same short transaction as the cleanup (so no unchecked link
+can be written in between) and validates it in a later transaction. The old
 single-column FK is kept: dropping any FK from this table to `projects` takes
 `ACCESS EXCLUSIVE` on `projects`, which the migration avoids; it is redundant
 with the composite one and harmless. The old `project_id` index is replaced
 by one on `(project_id, organization_id)`.
 
-Locks and deploy: `up()` takes, up front with a 10 s `lock_timeout`, projects
-first, `SHARE ROW EXCLUSIVE` on `projects` and `ACCESS EXCLUSIVE` on
-`jira_assets_use_cases`; no other table is locked beyond a plain read
-(`organizations` is not locked). Reads of `projects` (including `SELECT ... FOR
-UPDATE`) continue; writes to `projects` pause until it commits (the unique
-index build and the FK validation run under that lock). Deploy it with the
-worker stopped and no Jira Assets removal or use-case delete in progress: an
-in-app "Remove missing" or delete running at the same time can deadlock with
-it, Postgres then aborts the migration (it rolls back cleanly), and the deploy
-has to be re-run. `down()` drops the composite FK, which needs `ACCESS
-EXCLUSIVE` on `projects` (it may wait up to 10 s for it), and its index,
+Locks and deploy: `Servers/start.sh` runs migrations on every API boot while
+the worker and older API replicas keep serving, so `up()` runs under live
+traffic as five short transactions, each with a 5 s `lock_timeout` and
+`row_security = off` wherever it reads `projects` (an RLS policy that would
+apply then raises an error instead of hiding projects and making every link
+look orphaned). A busy lock rolls the step back and it is retried, up to 12
+times with a short backoff (about 1.5 minutes at worst); every step is
+idempotent, so a failed `up()` is re-run on the next boot. Only step 3 locks
+two tables, link table first (as the sync does) and then `projects` with
+`NOWAIT`, so it never waits while holding a lock and cannot deadlock with a
+sync or a removal. Which writes pause (reads never pause except in step 5;
+`organizations` is never locked):
+1. unique index on `projects (id, organization_id)`, if none is equivalent:
+   plain `CREATE UNIQUE INDEX` (`SHARE`), so writes to `projects` pause for
+   one build pass over `projects`. Not `CONCURRENTLY`, as elsewhere: at
+   container start it would wait on every older transaction, and a failed
+   build leaves an invalid index;
+2. index on the link table (`SHARE`): link writes pause for its build;
+3. `SHARE ROW EXCLUSIVE` on both tables for the cleanup `DELETE` plus adding
+   the FK `NOT VALID`: writes to both pause for that transaction only;
+4. `VALIDATE CONSTRAINT` (skipped if `pg_constraint.convalidated`):
+   `SHARE UPDATE EXCLUSIVE` on the link table and `ROW SHARE` on `projects`,
+   so no writes pause while it scans the links;
+5. dropping the old index: `ACCESS EXCLUSIVE` on the link table (reads too)
+   for the catalog change only.
+`down()` drops the composite FK, which needs `ACCESS
+EXCLUSIVE` on `projects` (link table first, then `projects` with `NOWAIT`,
+retried as above), and its index,
 leaves the unique index on `projects (id, organization_id)` in place,
 recreates the old index, and puts the backed-up links
 back where the single-column FK allows it (organization and project still
