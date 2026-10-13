@@ -135,7 +135,7 @@ def include_internal_router(
 
     include_router copies the router's routes when it is called, so all routes
     must be defined before the router is mounted."""
-    dependencies = [Depends(verify_internal_key), *kwargs.pop("dependencies", [])]
+    dependencies = [Depends(verify_internal_key), *(kwargs.pop("dependencies", None) or [])]
     app.include_router(
         router, prefix=f"/internal{prefix}", dependencies=dependencies, **kwargs
     )

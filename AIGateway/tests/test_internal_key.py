@@ -457,3 +457,22 @@ def test_verify_internal_key_is_async():
     import inspect
 
     assert inspect.iscoroutinefunction(auth.verify_internal_key)
+
+
+def test_include_internal_router_accepts_dependencies_none(monkeypatch):
+    from fastapi import APIRouter, FastAPI
+    from fastapi.testclient import TestClient
+
+    router = APIRouter()
+
+    @router.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    app = FastAPI()
+    auth.include_internal_router(app, router, dependencies=None)
+    monkeypatch.setattr(settings, "ai_gateway_internal_key", "right-key")
+    client = TestClient(app)
+
+    assert client.get("/internal/ping").status_code == 401
+    assert client.get("/internal/ping", headers={"x-internal-key": "right-key"}).status_code == 200
