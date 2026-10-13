@@ -3,6 +3,7 @@ import { Transaction } from "sequelize";
 import { ProjectModel } from "../../domain.layer/models/project/project.model";
 import { ApprovalRequestModel } from "../../domain.layer/models/approvalWorkflow/approvalRequest.model";
 import { ApprovalRequestStatus } from "../../domain.layer/enums/approval-workflow.enum";
+import { ValidationException } from "../../domain.layer/exceptions/custom.exception";
 import { getApprovalWorkflowByIdQuery } from "../../utils/approvalWorkflow.utils";
 import {
   createApprovalRequestQuery,
@@ -38,6 +39,20 @@ export const createUseCaseApprovalRequest = async (
     organizationId,
     transaction,
   );
+
+  // #4906: a soft-deleted workflow (is_active = false) or one defined for
+  // another entity type must never start a use-case approval request. The
+  // lookup runs in the caller's transaction, so this check races no delete.
+  if (workflow && workflow.is_active === false) {
+    throw new ValidationException(
+      "The selected approval workflow has been deactivated. Choose another workflow.",
+    );
+  }
+  if (workflow && workflow.entity_type !== "use_case") {
+    throw new ValidationException(
+      "The selected approval workflow is not defined for use cases. Choose another workflow.",
+    );
+  }
 
   const workflowSteps = workflow?.steps;
   if (!workflow || !workflowSteps || workflowSteps.length === 0) {
