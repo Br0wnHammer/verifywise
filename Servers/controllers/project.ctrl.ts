@@ -44,8 +44,7 @@ import {
 } from "../utils/useCaseChangeHistory.utils";
 import { hasPendingApprovalQuery } from "../utils/approvalRequest.utils";
 import { deleteProjectWithSideEffects } from "../utils/projectDeletion.utils";
-// SSE notifications disabled for now - can be re-enabled later if needed
-// import { notifyStepApprovers } from "../services/notification.service";
+import { notifyStepApprovers } from "../services/notification.service";
 import { createUseCaseApprovalRequest } from "../services/projects/approvalRequest.service";
 import {
   notifyUserAssigned,
@@ -340,17 +339,19 @@ export async function createProject(req: Request, res: Response): Promise<any> {
         organizationId: req.organizationId!,
       });
 
-      // SSE notifications disabled for now - can be re-enabled later if needed
-      // if ((createdProject as any)._approvalRequestId) {
-      //   notifyStepApprovers(
-      //     req.organizationId!,
-      //     (createdProject as any)._approvalRequestId,
-      //     1, // Step 1
-      //     (createdProject as any)._approvalRequestName
-      //   ).catch(error => {
-      //     console.error("Error sending approval notification:", error);
-      //   });
-      // }
+      // #4905: step-1 approvers are told a request awaits them. Skipped for
+      // auto-approved requests (the requester is notified above instead).
+      // Fire-and-forget after commit; a failure never fails the creation.
+      if (approvalResult && !approvalResult.autoApproved) {
+        notifyStepApprovers(
+          req.organizationId!,
+          approvalResult.request.id!,
+          1, // Step 1
+          approvalResult.request.request_name,
+        ).catch((error) => {
+          console.error("Error sending approval notification:", error);
+        });
+      }
 
       // Send project creation notification to admin (fire-and-forget, don't block response)
       sendProjectCreatedNotification({
@@ -582,7 +583,35 @@ export async function updateProjectById(req: Request, res: Response): Promise<an
         }
       }
 
+      // #4904: a workflow attached on edit (not set before) starts an approval
+      // request, exactly as create does. An inactive or wrong-entity workflow
+      // throws ValidationException, which rolls back and maps to 400.
+      const previousWorkflowId = existingProject.approval_workflow_id ?? null;
+      const submittedWorkflowId = (updatedProject.approval_workflow_id as number | null) ?? null;
+      let updateApprovalResult: Awaited<ReturnType<typeof createUseCaseApprovalRequest>> = null;
+      if (submittedWorkflowId && submittedWorkflowId !== previousWorkflowId) {
+        updateApprovalResult = await createUseCaseApprovalRequest(
+          project as unknown as ProjectModel,
+          req.userId!,
+          req.organizationId!,
+          transaction,
+        );
+      }
+
       await transaction.commit();
+
+      // #4905: tell the workflow's step-1 approvers a request awaits them.
+      // Fire-and-forget, as on create; a failure never fails the update.
+      if (updateApprovalResult && !updateApprovalResult.autoApproved) {
+        notifyStepApprovers(
+          req.organizationId!,
+          updateApprovalResult.request.id!,
+          1,
+          updateApprovalResult.request.request_name,
+        ).catch((error) => {
+          console.error("Error sending approval notification:", error);
+        });
+      }
 
       await logSuccess({
         eventType: "Update",
