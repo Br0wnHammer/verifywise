@@ -58,12 +58,12 @@ describe("createUseCaseApprovalRequest workflow guards", () => {
       steps: [{ id: 1 }],
     } as any);
 
-    await expect(
-      createUseCaseApprovalRequest(project, 3, 1, transaction),
-    ).rejects.toThrow(ValidationException);
-    await expect(
-      createUseCaseApprovalRequest(project, 3, 1, transaction),
-    ).rejects.toThrow(/deactivated/);
+    await expect(createUseCaseApprovalRequest(project, 3, 1, transaction)).rejects.toThrow(
+      ValidationException,
+    );
+    await expect(createUseCaseApprovalRequest(project, 3, 1, transaction)).rejects.toThrow(
+      /deactivated/,
+    );
     expect(mockCreateRequest).not.toHaveBeenCalled();
   });
 
@@ -75,12 +75,12 @@ describe("createUseCaseApprovalRequest workflow guards", () => {
       steps: [{ id: 1 }],
     } as any);
 
-    await expect(
-      createUseCaseApprovalRequest(project, 3, 1, transaction),
-    ).rejects.toThrow(ValidationException);
-    await expect(
-      createUseCaseApprovalRequest(project, 3, 1, transaction),
-    ).rejects.toThrow(/not defined for use cases/);
+    await expect(createUseCaseApprovalRequest(project, 3, 1, transaction)).rejects.toThrow(
+      ValidationException,
+    );
+    await expect(createUseCaseApprovalRequest(project, 3, 1, transaction)).rejects.toThrow(
+      /not defined for use cases/,
+    );
     expect(mockCreateRequest).not.toHaveBeenCalled();
   });
 
