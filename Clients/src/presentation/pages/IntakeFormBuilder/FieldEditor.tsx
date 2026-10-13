@@ -14,6 +14,9 @@ import {
 } from "./types";
 import { IntakeEntityType } from "../../../domain/intake/enums";
 import { getLLMFieldGuidance } from "../../../application/repository/intakeForm.repository";
+import { sortFields } from "../../../application/utils/intakeFormLogic";
+import { FormulaEditor } from "./FormulaEditor";
+import { EditorSection } from "./EditorSection";
 
 const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   text: "Short text",
@@ -142,6 +145,8 @@ function OptionsEditor({ options, onChange }: OptionsEditorProps) {
 
 interface FieldEditorProps {
   field: FormField;
+  /** Every field in the form, used for rules and formulas on earlier fields. */
+  allFields: FormField[];
   entityType: IntakeEntityType;
   usedEntityMappings?: string[];
   llmKeyId?: number | null;
@@ -151,6 +156,7 @@ interface FieldEditorProps {
 
 export function FieldEditor({
   field,
+  allFields,
   entityType,
   usedEntityMappings = [],
   llmKeyId,
@@ -230,6 +236,15 @@ export function FieldEditor({
   const showOptions = localField.type === "select" || localField.type === "multiselect";
   const showMinMax = localField.type === "number";
   const showMinMaxLength = localField.type === "text" || localField.type === "textarea";
+  const isCalculated = localField.type === "calculated";
+  const earlierFields = (() => {
+    const sorted = sortFields(allFields);
+    const index = sorted.findIndex((candidate) => candidate.id === localField.id);
+    return index < 0 ? sorted : sorted.slice(0, index);
+  })();
+  const numericFields = earlierFields.filter(
+    (candidate) => candidate.type === "number" || candidate.type === "calculated",
+  );
 
   const mappingItems = [
     { _id: "", name: "None" },
@@ -313,12 +328,14 @@ export function FieldEditor({
                 value={localField.label}
                 onChange={(e) => handleChange("label", e.target.value)}
               />
-              <Field
-                id="field-placeholder"
-                label="Placeholder"
-                value={localField.placeholder || ""}
-                onChange={(e) => handleChange("placeholder", e.target.value)}
-              />
+              {!isCalculated && (
+                <Field
+                  id="field-placeholder"
+                  label="Placeholder"
+                  value={localField.placeholder || ""}
+                  onChange={(e) => handleChange("placeholder", e.target.value)}
+                />
+              )}
               <Field
                 id="field-helptext"
                 label="Help text"
@@ -326,68 +343,77 @@ export function FieldEditor({
                 onChange={(e) => handleChange("helpText", e.target.value)}
                 rows={2}
               />
-              <Box>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    mb: "4px",
-                  }}
-                >
-                  <Typography
-                    sx={{ fontSize: "13px", fontWeight: 500, color: theme.palette.text.secondary }}
+              {!isCalculated && (
+                <Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      mb: "4px",
+                    }}
                   >
-                    Guidance text
-                  </Typography>
-                  {llmKeyId && (
-                    <Tooltip
-                      title={localField.label ? "Generate with AI" : "Add a label first"}
-                      placement="top"
+                    <Typography
+                      sx={{
+                        fontSize: "13px",
+                        fontWeight: 500,
+                        color: theme.palette.text.secondary,
+                      }}
                     >
-                      <Box
-                        onClick={
-                          !guidanceLoading && localField.label ? generateGuidance : undefined
-                        }
-                        sx={{
-                          "display": "flex",
-                          "alignItems": "center",
-                          "gap": "3px",
-                          "cursor": !guidanceLoading && localField.label ? "pointer" : "default",
-                          "opacity": !localField.label ? 0.4 : 1,
-                          "color": theme.palette.primary.main,
-                          "borderRadius": "4px",
-                          "px": "6px",
-                          "py": "2px",
-                          "&:hover": localField.label
-                            ? { backgroundColor: theme.palette.background.fill }
-                            : {},
-                        }}
+                      Guidance text
+                    </Typography>
+                    {llmKeyId && (
+                      <Tooltip
+                        title={localField.label ? "Generate with AI" : "Add a label first"}
+                        placement="top"
                       >
-                        {guidanceLoading ? (
-                          <CircularProgress size={12} sx={{ color: theme.palette.primary.main }} />
-                        ) : (
-                          <Sparkles size={12} />
-                        )}
-                        <Typography sx={{ fontSize: "11px", fontWeight: 500 }}>
-                          {guidanceLoading ? "Generating..." : "AI"}
-                        </Typography>
-                      </Box>
-                    </Tooltip>
-                  )}
+                        <Box
+                          onClick={
+                            !guidanceLoading && localField.label ? generateGuidance : undefined
+                          }
+                          sx={{
+                            "display": "flex",
+                            "alignItems": "center",
+                            "gap": "3px",
+                            "cursor": !guidanceLoading && localField.label ? "pointer" : "default",
+                            "opacity": !localField.label ? 0.4 : 1,
+                            "color": theme.palette.primary.main,
+                            "borderRadius": "4px",
+                            "px": "6px",
+                            "py": "2px",
+                            "&:hover": localField.label
+                              ? { backgroundColor: theme.palette.background.fill }
+                              : {},
+                          }}
+                        >
+                          {guidanceLoading ? (
+                            <CircularProgress
+                              size={12}
+                              sx={{ color: theme.palette.primary.main }}
+                            />
+                          ) : (
+                            <Sparkles size={12} />
+                          )}
+                          <Typography sx={{ fontSize: "11px", fontWeight: 500 }}>
+                            {guidanceLoading ? "Generating..." : "AI"}
+                          </Typography>
+                        </Box>
+                      </Tooltip>
+                    )}
+                  </Box>
+                  <Field
+                    id="field-guidance"
+                    label=""
+                    placeholder="Explain why this field matters for governance..."
+                    value={localField.guidanceText || ""}
+                    onChange={(e) => handleChange("guidanceText", e.target.value)}
+                    rows={2}
+                  />
+                  <Typography sx={{ fontSize: "11px", color: theme.palette.other.icon, mt: "4px" }}>
+                    Shown as a tooltip next to the field label on the public form
+                  </Typography>
                 </Box>
-                <Field
-                  id="field-guidance"
-                  label=""
-                  placeholder="Explain why this field matters for governance..."
-                  value={localField.guidanceText || ""}
-                  onChange={(e) => handleChange("guidanceText", e.target.value)}
-                  rows={2}
-                />
-                <Typography sx={{ fontSize: "11px", color: theme.palette.other.icon, mt: "4px" }}>
-                  Shown as a tooltip next to the field label on the public form
-                </Typography>
-              </Box>
+              )}
             </Box>
           </Box>
 
@@ -404,117 +430,163 @@ export function FieldEditor({
             </>
           )}
 
-          {/* Validation settings */}
-          <Box>
-            <Typography
-              sx={{
-                fontWeight: 600,
-                color: theme.palette.other.icon,
-                fontSize: "10px",
-                letterSpacing: "0.5px",
-                textTransform: "uppercase",
-                mb: "12px",
-              }}
-            >
-              Validation
-            </Typography>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <Checkbox
-                id="field-required"
-                label="Required field"
-                isChecked={localField.validation?.required || false}
-                value="required"
-                onChange={() =>
-                  handleValidationChange("required", !localField.validation?.required)
-                }
-                size="small"
-              />
-
-              {showMinMaxLength && (
+          {isCalculated && (
+            <>
+              <EditorSection title="Calculation" defaultOpen>
+                <FormulaEditor
+                  formula={localField.formula ?? ""}
+                  numericFields={numericFields}
+                  decimals={localField.decimals}
+                  onChange={(formula) => handleChange("formula", formula)}
+                />
+                <Field
+                  id="field-decimals"
+                  label="Decimals"
+                  type="number"
+                  value={String(localField.decimals ?? 2)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    handleChange("decimals", v === "" ? undefined : Number(v));
+                  }}
+                />
                 <Box sx={{ display: "flex", gap: "8px", minWidth: 0 }}>
                   <Field
-                    id="field-minlength"
-                    label="Min length"
-                    type="number"
-                    value={String(localField.validation?.minLength ?? "")}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      handleValidationChange("minLength", v === "" ? undefined : parseInt(v));
-                    }}
+                    id="field-prefix"
+                    label="Prefix"
+                    value={localField.prefix ?? ""}
+                    onChange={(e) => handleChange("prefix", e.target.value || undefined)}
                     sx={{ flex: 1, minWidth: 0 }}
                   />
                   <Field
-                    id="field-maxlength"
-                    label="Max length"
-                    type="number"
-                    value={String(localField.validation?.maxLength || "")}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      handleValidationChange("maxLength", v === "" ? undefined : parseInt(v));
-                    }}
+                    id="field-suffix"
+                    label="Suffix"
+                    value={localField.suffix ?? ""}
+                    onChange={(e) => handleChange("suffix", e.target.value || undefined)}
                     sx={{ flex: 1, minWidth: 0 }}
                   />
                 </Box>
-              )}
+              </EditorSection>
+              <Divider sx={{ borderColor: theme.palette.border.dark }} />
+            </>
+          )}
 
-              {showMinMax && (
-                <Box sx={{ display: "flex", gap: "8px", minWidth: 0 }}>
-                  <Field
-                    id="field-min"
-                    label="Min value"
-                    type="number"
-                    value={String(localField.validation?.min || "")}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      handleValidationChange("min", v === "" ? undefined : parseInt(v));
-                    }}
-                    sx={{ flex: 1, minWidth: 0 }}
+          {!isCalculated && (
+            <>
+              {/* Validation settings */}
+              <Box>
+                <Typography
+                  sx={{
+                    fontWeight: 600,
+                    color: theme.palette.other.icon,
+                    fontSize: "10px",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
+                    mb: "12px",
+                  }}
+                >
+                  Validation
+                </Typography>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <Checkbox
+                    id="field-required"
+                    label="Required field"
+                    isChecked={localField.validation?.required || false}
+                    value="required"
+                    onChange={() =>
+                      handleValidationChange("required", !localField.validation?.required)
+                    }
+                    size="small"
                   />
-                  <Field
-                    id="field-max"
-                    label="Max value"
-                    type="number"
-                    value={String(localField.validation?.max || "")}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      handleValidationChange("max", v === "" ? undefined : parseInt(v));
-                    }}
-                    sx={{ flex: 1, minWidth: 0 }}
-                  />
+
+                  {showMinMaxLength && (
+                    <Box sx={{ display: "flex", gap: "8px", minWidth: 0 }}>
+                      <Field
+                        id="field-minlength"
+                        label="Min length"
+                        type="number"
+                        value={String(localField.validation?.minLength ?? "")}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          handleValidationChange("minLength", v === "" ? undefined : parseInt(v));
+                        }}
+                        sx={{ flex: 1, minWidth: 0 }}
+                      />
+                      <Field
+                        id="field-maxlength"
+                        label="Max length"
+                        type="number"
+                        value={String(localField.validation?.maxLength || "")}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          handleValidationChange("maxLength", v === "" ? undefined : parseInt(v));
+                        }}
+                        sx={{ flex: 1, minWidth: 0 }}
+                      />
+                    </Box>
+                  )}
+
+                  {showMinMax && (
+                    <Box sx={{ display: "flex", gap: "8px", minWidth: 0 }}>
+                      <Field
+                        id="field-min"
+                        label="Min value"
+                        type="number"
+                        value={String(localField.validation?.min || "")}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          handleValidationChange("min", v === "" ? undefined : parseInt(v));
+                        }}
+                        sx={{ flex: 1, minWidth: 0 }}
+                      />
+                      <Field
+                        id="field-max"
+                        label="Max value"
+                        type="number"
+                        value={String(localField.validation?.max || "")}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          handleValidationChange("max", v === "" ? undefined : parseInt(v));
+                        }}
+                        sx={{ flex: 1, minWidth: 0 }}
+                      />
+                    </Box>
+                  )}
                 </Box>
-              )}
-            </Box>
-          </Box>
+              </Box>
 
-          <Divider sx={{ borderColor: theme.palette.border.dark }} />
+              <Divider sx={{ borderColor: theme.palette.border.dark }} />
 
-          {/* Entity field mapping */}
-          <Box>
-            <Typography
-              sx={{
-                fontWeight: 600,
-                color: theme.palette.other.icon,
-                fontSize: "10px",
-                letterSpacing: "0.5px",
-                textTransform: "uppercase",
-                mb: "12px",
-              }}
-            >
-              Entity mapping
-            </Typography>
-            <Select
-              id="entity-mapping"
-              label="Map to entity field"
-              value={localField.entityFieldMapping || ""}
-              onChange={(e) => handleChange("entityFieldMapping", String(e.target.value))}
-              items={mappingItems}
-            />
-            {compatibleMappings.length === 0 && (
-              <Typography sx={{ color: theme.palette.text.accent, fontSize: "11px", mt: "4px" }}>
-                No compatible entity fields for this field type
-              </Typography>
-            )}
-          </Box>
+              {/* Entity field mapping */}
+              <Box>
+                <Typography
+                  sx={{
+                    fontWeight: 600,
+                    color: theme.palette.other.icon,
+                    fontSize: "10px",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
+                    mb: "12px",
+                  }}
+                >
+                  Entity mapping
+                </Typography>
+                <Select
+                  id="entity-mapping"
+                  label="Map to entity field"
+                  value={localField.entityFieldMapping || ""}
+                  onChange={(e) => handleChange("entityFieldMapping", String(e.target.value))}
+                  items={mappingItems}
+                />
+                {compatibleMappings.length === 0 && (
+                  <Typography
+                    sx={{ color: theme.palette.text.accent, fontSize: "11px", mt: "4px" }}
+                  >
+                    No compatible entity fields for this field type
+                  </Typography>
+                )}
+              </Box>
+            </>
+          )}
         </Box>
       </Box>
     </Box>

@@ -848,6 +848,7 @@ export function IntakeFormBuilder() {
                 ) : selectedField ? (
                   <FieldEditor
                     field={selectedField}
+                    allFields={form.schema.fields}
                     entityType={form.entityType}
                     usedEntityMappings={usedEntityMappingsFor(
                       form.schema.fields,

@@ -5,6 +5,10 @@ import Select from "../../components/Inputs/Select";
 import Checkbox from "../../components/Inputs/Checkbox";
 import Chip from "../../components/Chip";
 import { FormField, FieldType } from "./types";
+import {
+  describeFormula,
+  formatCalculatedValue,
+} from "../../../application/utils/intakeAnswerFormat";
 
 const TYPE_LABELS: Record<FieldType, string> = {
   text: "Short text",
@@ -29,6 +33,8 @@ interface FieldCardProps {
   onDuplicate: (field: FormField) => void;
   onMoveUp: (fieldId: string) => void;
   onMoveDown: (fieldId: string) => void;
+  /** Every field in the form, used to read formulas back with labels. */
+  fields: FormField[];
 }
 
 /**
@@ -250,6 +256,28 @@ function FieldPreview({ field }: { field: FormField }) {
         </Box>
       );
 
+    case "calculated":
+      return (
+        <Box>
+          <PreviewFieldLabel label={field.label} guidanceText={field.guidanceText} />
+          <Box
+            sx={{
+              minHeight: "30px",
+              display: "flex",
+              alignItems: "center",
+              px: "12px",
+              border: `1px solid ${theme.palette.border.dark}`,
+              borderRadius: "4px",
+              backgroundColor: theme.palette.background.accent,
+              fontSize: "13px",
+              color: theme.palette.text.accent,
+            }}
+          >
+            {formatCalculatedValue(null, field)}
+          </Box>
+        </Box>
+      );
+
     default:
       return null;
   }
@@ -265,6 +293,7 @@ export function FieldCard({
   onDuplicate,
   onMoveUp,
   onMoveDown,
+  fields,
 }: FieldCardProps) {
   const theme = useTheme();
 
@@ -318,6 +347,14 @@ export function FieldCard({
       {/* Metadata badges — always visible */}
       <Box sx={{ display: "flex", alignItems: "center", gap: "6px", mt: "8px", flexWrap: "wrap" }}>
         <Chip label={TYPE_LABELS[field.type]} variant="default" size="small" uppercase={false} />
+        {field.type === "calculated" && field.formula && (
+          <Typography sx={{ fontSize: "11px", color: theme.palette.text.accent, width: "100%" }}>
+            {describeFormula(
+              field.formula,
+              fields.filter((f) => f.type === "number" || f.type === "calculated"),
+            )}
+          </Typography>
+        )}
         {field.entityFieldMapping && (
           <Chip
             label={`Maps to: ${field.entityFieldMapping}`}

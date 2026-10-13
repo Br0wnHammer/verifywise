@@ -513,6 +513,7 @@ export const FormCanvas = forwardRef<FormCanvasHandle, FormCanvasProps>(function
                   onDuplicate={onDuplicateField}
                   onMoveUp={onMoveUp}
                   onMoveDown={onMoveDown}
+                  fields={fields}
                 />
               ))}
             </Box>

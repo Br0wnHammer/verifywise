@@ -370,6 +370,17 @@ export const PALETTE_ITEMS: PaletteItem[] = [
   },
 ];
 
+/** Field types kept out of the main palette list (few forms need them). */
+export const ADVANCED_PALETTE_ITEMS: PaletteItem[] = [
+  {
+    type: "calculated",
+    label: "Calculated",
+    icon: "Calculate",
+    description: "Read-only result of a formula",
+    defaultConfig: { formula: "", decimals: 2 },
+  },
+];
+
 /**
  * Generate unique field ID
  */
