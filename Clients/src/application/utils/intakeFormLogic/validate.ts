@@ -49,10 +49,14 @@ export function validateSchemaLogic(schema: LogicSchema, entityType: string): Sc
     ? REQUIRED_ENTITY_FIELDS[entityType]
     : [];
   const errors: SchemaLogicError[] = [];
+  const seenIds = new Set<string>();
 
   fields.forEach((field, index) => {
     const add = (message: string) =>
       errors.push({ fieldId: field.id, message: `Field "${field.label}": ${message}` });
+
+    if (seenIds.has(field.id)) add(`another field already uses the id "${field.id}"`);
+    seenIds.add(field.id);
 
     if (field.type === "calculated") {
       const parsed = parseFormula(field.formula ?? "");

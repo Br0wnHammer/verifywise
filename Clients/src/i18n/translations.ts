@@ -4995,6 +4995,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Advanced": "Erweitert",
     "Calculated": "Berechnet",
     "Other answers": "Weitere Antworten",
+    "Fix the highlighted fields before publishing":
+      "Korrigieren Sie die markierten Felder vor dem Veröffentlichen",
+    "Draft saved. Fix the highlighted fields before publishing":
+      "Entwurf gespeichert. Korrigieren Sie die markierten Felder vor dem Veröffentlichen",
     "Additional answers": "Zusätzliche Antworten",
     "Calculation": "Berechnung",
     "Decimals": "Dezimalstellen",
@@ -15313,6 +15317,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Advanced": "Avancé",
     "Calculated": "Calculé",
     "Other answers": "Autres réponses",
+    "Fix the highlighted fields before publishing":
+      "Corrigez les champs en surbrillance avant de publier",
+    "Draft saved. Fix the highlighted fields before publishing":
+      "Brouillon enregistré. Corrigez les champs en surbrillance avant de publier",
     "Additional answers": "Réponses supplémentaires",
     "Calculation": "Calcul",
     "Decimals": "Décimales",
@@ -23938,6 +23946,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Advanced": "Avanzado",
     "Calculated": "Calculado",
     "Other answers": "Otras respuestas",
+    "Fix the highlighted fields before publishing":
+      "Corrija los campos resaltados antes de publicar",
+    "Draft saved. Fix the highlighted fields before publishing":
+      "Borrador guardado. Corrija los campos resaltados antes de publicar",
     "Additional answers": "Respuestas adicionales",
     "Calculation": "Cálculo",
     "Decimals": "Decimales",

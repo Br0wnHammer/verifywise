@@ -91,7 +91,7 @@ New property `riskDimension?: string` (any number of fields may share one dimens
 
 ### 1.4 Save-time checks
 
-`Servers/utils/intakeFormSchema.validation.ts` (which today checks labels) also runs `validateSchemaLogic` (§2) on create and update. A form is rejected with 400 when:
+`Servers/utils/intakeFormSchema.validation.ts` (which today checks labels) also runs `validateSchemaLogic` (§2) on create and update when the form will be active after the save (a draft may hold unfinished logic, such as a new calculated field's empty formula; publishing it runs the check). A form is rejected with 400 when:
 
 - a condition or formula references a field id that does not exist;
 - a condition references a field at the same or a later position;
@@ -102,6 +102,7 @@ New property `riskDimension?: string` (any number of fields may share one dimens
 - a formula fails to parse, references a field that is not `number` or `calculated`, or references a field at the same or a later position;
 - `decimals` is outside 0–6;
 - `riskDimension` is not one of the six keys, or is set on a field type that cannot take it.
+- two fields share an id (the later one is reported).
 
 Each error names the field label, like the existing label errors, and carries the field id so the builder can show it on that field. The builder runs the client copy of `validateSchemaLogic` as the author edits, so errors appear before saving; the server check is the backstop for API callers.
 
@@ -202,7 +203,7 @@ Changes in `Servers/services/intakeRiskScoring.service.ts`:
 
 - Input is the cleaned submission, so hidden answers never count.
 - Answers are turned into text before matching: `select` and `multiselect` values are replaced by their option labels (stored values default to `option1`, `option2`, … so today's scoring of selects mostly sees meaningless values); a checked `checkbox` contributes its field label ("Uses biometric data"), an unchecked one contributes nothing; other text types contribute their answer.
-- Per dimension: tagged answers decide when they match any of the dimension's keywords; when nothing is tagged, every tagged field is hidden or unanswered, or the tagged answers match no keyword, all visible `text`, `textarea`, `email`, `url`, `select`, `multiselect` and `checkbox` answers are scored. `number`, `date` and `calculated` values are never scored. High-risk keywords in any answer set a floor: the dimension never scores below what those keywords alone would give. (Changed after review: a tag must never hide risk found in other answers.)
+- Per dimension: tagged answers decide when they match any of the dimension's keywords; when nothing is tagged, every tagged field is hidden or unanswered, or the tagged answers match no keyword, all visible `text`, `textarea`, `email`, `url`, `select`, `multiselect` and `checkbox` answers are scored. `number`, `date` and `calculated` values are never scored. High-risk keywords in the untagged answers set a floor: the dimension never scores below what those keywords alone would give. The tagged answers' own keywords are not part of the floor, so tagging a field never changes that field's own score (an untagged "aggregated, anonymous health statistics" and the same answer tagged both score 40). (Changed after review: a tag must never hide risk found in other answers.)
 - Keywords match at the start of a word, case-insensitive, with regex special characters escaped: "biometric" matches "biometrics", "health" matches "healthcare", "no human" matches as a phrase, and "name" does not match "renamed". (Changed after review from whole words, which missed plurals and compounds.) A keyword inside a word does not match, so the common health compounds ("telehealth", "telemedicine", "biomedical") are listed as high-risk keywords in their own right.
 - The `fieldMappings` / `entityFieldMapping` substring check is removed.
 - Signals name the field: `High-risk signal: "biometric" (Data collected)`.
@@ -212,7 +213,7 @@ Submissions created before this ships keep their stored scores.
 
 ## 8. Error handling
 
-- Invalid logic on save: 400 with per-field messages; the builder maps them onto fields.
+- Invalid logic on saving an active form or publishing: 400 with per-field messages; the builder maps them onto fields. A draft saves with its errors still highlighted and a "Draft saved. Fix the highlighted fields before publishing" warning.
 - Submit-time evaluation never throws on answer data (§2.2).
 - Formula size and depth limits (§2.1) bound work on the public endpoint.
 - A client that sends answers for hidden fields or values for calculated fields has them dropped, not rejected.

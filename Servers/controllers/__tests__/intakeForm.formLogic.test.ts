@@ -242,9 +242,48 @@ describe("saving a form with invalid logic", () => {
     intake.getIntakeFormByIdQuery.mockResolvedValue({
       id: 1,
       entityType: "use_case",
+      status: "active",
       euAiActRiskStepEnabled: false,
       schema: { version: "1.0", fields: [] },
     });
+  });
+
+  const UNFINISHED = {
+    version: "1.0",
+    fields: [{ id: "total", type: "calculated", label: "Total", order: 0, formula: "" }],
+  };
+
+  it("saves a draft whose logic is unfinished", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({
+      id: 1,
+      entityType: "use_case",
+      status: "draft",
+      euAiActRiskStepEnabled: false,
+      schema: { version: "1.0", fields: [] },
+    });
+    const r = res();
+    await ctrl.updateIntakeForm(
+      req({ params: { id: "1" }, body: { schema: UNFINISHED } }) as any,
+      r,
+    );
+    expect(intake.updateIntakeFormQuery).toHaveBeenCalled();
+  });
+
+  it("rejects publishing a draft whose logic is unfinished", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({
+      id: 1,
+      entityType: "use_case",
+      status: "draft",
+      euAiActRiskStepEnabled: false,
+      schema: { version: "1.0", fields: [] },
+    });
+    const r = res();
+    await ctrl.updateIntakeForm(
+      req({ params: { id: "1" }, body: { schema: UNFINISHED, status: "active" } }) as any,
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(400);
+    expect(intake.updateIntakeFormQuery).not.toHaveBeenCalled();
   });
 
   it("rejects a formula that uses a later field and does not save", async () => {
@@ -280,6 +319,7 @@ describe("saving a form with invalid logic", () => {
     intake.getIntakeFormByIdQuery.mockResolvedValue({
       id: 1,
       entityType: "use_case",
+      status: "active",
       euAiActRiskStepEnabled: false,
       schema: {
         version: "1.0",

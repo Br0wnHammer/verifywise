@@ -1,6 +1,11 @@
 import { IntakeFormStatus, IntakeEntityType } from "../../../domain/intake/enums";
 import { brand } from "../../themes/palette";
-import { sortFields, type Visibility } from "../../../application/utils/intakeFormLogic";
+import {
+  RISK_DIMENSIONS,
+  sortFields,
+  type RiskDimensionKey,
+  type Visibility,
+} from "../../../application/utils/intakeFormLogic";
 
 /**
  * Field types supported in the intake form builder
@@ -381,15 +386,19 @@ export const ADVANCED_PALETTE_ITEMS: PaletteItem[] = [
   },
 ];
 
+const RISK_DIMENSION_LABELS: Record<RiskDimensionKey, string> = {
+  data_sensitivity: "Data sensitivity",
+  autonomy_level: "Autonomy level",
+  impact_scope: "Impact scope",
+  transparency: "Transparency",
+  human_oversight: "Human oversight",
+  domain_criticality: "Domain criticality",
+};
+
 /** Risk dimensions a field can feed, in the order the editor lists them. */
-export const RISK_DIMENSION_OPTIONS: Array<{ _id: string; name: string }> = [
-  { _id: "data_sensitivity", name: "Data sensitivity" },
-  { _id: "autonomy_level", name: "Autonomy level" },
-  { _id: "impact_scope", name: "Impact scope" },
-  { _id: "transparency", name: "Transparency" },
-  { _id: "human_oversight", name: "Human oversight" },
-  { _id: "domain_criticality", name: "Domain criticality" },
-];
+export const RISK_DIMENSION_OPTIONS: Array<{ _id: string; name: string }> = RISK_DIMENSIONS.map(
+  (key) => ({ _id: key, name: RISK_DIMENSION_LABELS[key] }),
+);
 
 /**
  * Fields in form order with `order` matching their position. The canvas

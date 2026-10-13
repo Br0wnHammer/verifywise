@@ -1283,6 +1283,16 @@
         }
       ],
       "errorFieldIds": ["d"]
+    },
+    {
+      "name": "a duplicate field id is rejected",
+      "entityType": "use_case",
+      "fields": [
+        { "id": "x", "type": "number", "label": "Cost", "order": 0 },
+        { "id": "total", "type": "calculated", "label": "Total", "order": 1, "formula": "{x} * 2" },
+        { "id": "x", "type": "text", "label": "Notes", "order": 2 }
+      ],
+      "errorFieldIds": ["total", "x"]
     }
   ]
 }

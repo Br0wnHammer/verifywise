@@ -218,7 +218,36 @@ describe("IntakeFormBuilder Page", () => {
       expect(await savedLlmKeyId()).toBe(3);
     });
 
-    it("blocks saving while a field has a logic problem", async () => {
+    it("blocks saving a live form while a field has a logic problem", async () => {
+      mockGetLLMKeys.mockResolvedValue({ data: { data: [openAIKey] } });
+      vi.mocked(getIntakeForm).mockResolvedValue({
+        data: {
+          id: 5,
+          name: "Intake",
+          entityType: "use_case",
+          status: "active",
+          suggestedQuestionsEnabled: true,
+          llmKeyId: 3,
+          schema: {
+            version: "1.0",
+            fields: [
+              { id: "total", type: "calculated", label: "Total", order: 0, formula: "{later} + 1" },
+              { id: "later", type: "number", label: "Later", order: 1 },
+            ],
+          },
+        },
+      } as never);
+      renderEditRoute();
+      await formLoaded();
+      fireEvent.click(toggle()!);
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect(
+        await screen.findByText("Fix the highlighted fields before saving"),
+      ).toBeInTheDocument();
+      expect(updateIntakeForm).not.toHaveBeenCalled();
+    });
+
+    it("saves a draft with a logic problem and says what is left", async () => {
       mockGetLLMKeys.mockResolvedValue({ data: { data: [openAIKey] } });
       vi.mocked(getIntakeForm).mockResolvedValue({
         data: {
@@ -242,9 +271,9 @@ describe("IntakeFormBuilder Page", () => {
       fireEvent.click(toggle()!);
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
       expect(
-        await screen.findByText("Fix the highlighted fields before saving"),
+        await screen.findByText("Draft saved. Fix the highlighted fields before publishing"),
       ).toBeInTheDocument();
-      expect(updateIntakeForm).not.toHaveBeenCalled();
+      expect(updateIntakeForm).toHaveBeenCalled();
     });
 
     it("blocks publishing while a field has a logic problem", async () => {
@@ -270,7 +299,7 @@ describe("IntakeFormBuilder Page", () => {
       await formLoaded();
       fireEvent.click(screen.getByRole("button", { name: "Publish" }));
       expect(
-        await screen.findByText("Fix the highlighted fields before saving"),
+        await screen.findByText("Fix the highlighted fields before publishing"),
       ).toBeInTheDocument();
       expect(updateIntakeForm).not.toHaveBeenCalled();
     });

@@ -124,7 +124,7 @@ export function IntakeFormBuilder() {
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
-    severity: "success" | "error" | "info";
+    severity: "success" | "error" | "warning" | "info";
   }>({ open: false, message: "", severity: "info" });
 
   // ============================================================================
@@ -317,7 +317,9 @@ export function IntakeFormBuilder() {
       });
       return null;
     }
-    if (logicErrors.length > 0) {
+    // A draft may be saved with unfinished logic; a live form may not.
+    const isLive = form.status === IntakeFormStatus.ACTIVE;
+    if (logicErrors.length > 0 && isLive) {
       setSnackbar({
         open: true,
         message: "Fix the highlighted fields before saving",
@@ -325,6 +327,8 @@ export function IntakeFormBuilder() {
       });
       return null;
     }
+    const savedMessage =
+      logicErrors.length > 0 ? "Draft saved. Fix the highlighted fields before publishing" : null;
     setIsSaving(true);
     try {
       const formData = {
@@ -344,8 +348,8 @@ export function IntakeFormBuilder() {
         }
         setSnackbar({
           open: true,
-          message: "Form saved successfully",
-          severity: "success",
+          message: savedMessage ?? "Form saved successfully",
+          severity: savedMessage ? "warning" : "success",
         });
         setIsDirty(false);
         return parseInt(formId);
@@ -356,8 +360,8 @@ export function IntakeFormBuilder() {
           navigate(`/intake-forms/${response.data.id}/edit`, { replace: true });
           setSnackbar({
             open: true,
-            message: "Form created successfully",
-            severity: "success",
+            message: savedMessage ?? "Form created successfully",
+            severity: savedMessage ? "warning" : "success",
           });
           setIsDirty(false);
           return response.data.id;
@@ -419,7 +423,7 @@ export function IntakeFormBuilder() {
     if (logicErrors.length > 0) {
       setSnackbar({
         open: true,
-        message: "Fix the highlighted fields before saving",
+        message: "Fix the highlighted fields before publishing",
         severity: "error",
       });
       return;

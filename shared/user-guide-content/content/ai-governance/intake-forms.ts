@@ -259,7 +259,7 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Under "Risk scoring" in a text, dropdown or checkbox field\'s settings, choose the risk dimension its answer should feed. A dimension is scored from its tagged answers when they contain any of its keywords; otherwise every answer is used. A tag never hides risk: a high-risk keyword in any answer keeps the dimension at least as high as that keyword alone would put it.',
+      text: 'Under "Risk scoring" in a text, dropdown or checkbox field\'s settings, choose the risk dimension its answer should feed. A dimension is scored from its tagged answers when they contain any of its keywords; otherwise every answer is used. A tag never hides risk found elsewhere: a high-risk keyword in any untagged answer keeps the dimension at least as high as that keyword alone would put it. Tagging a field never changes how that field\'s own answer is scored.',
     },
     {
       type: 'heading',

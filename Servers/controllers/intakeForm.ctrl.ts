@@ -589,7 +589,12 @@ export async function createIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](schemaErrors.join("; ")));
     }
 
-    const logicErrors = validateIntakeFormSchemaLogic(schema, entityType);
+    // Drafts may hold unfinished logic (a new calculated field starts with an
+    // empty formula); only a form that will be live must be valid.
+    const logicErrors =
+      (status ?? IntakeFormStatus.DRAFT) === IntakeFormStatus.ACTIVE
+        ? validateIntakeFormSchemaLogic(schema, entityType)
+        : [];
     if (logicErrors.length > 0) {
       await transaction.rollback();
       return res.status(400).json(STATUS_CODE[400](logicErrors.join("; ")));
@@ -725,10 +730,15 @@ export async function updateIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](schemaErrors.join("; ")));
     }
 
-    const logicErrors = validateIntakeFormSchemaLogic(
-      schema ?? existingForm.schema,
-      entityType ?? existingForm.entityType,
-    );
+    // Drafts may hold unfinished logic; only a form that will be live after
+    // this update must be valid (publishing a draft sends status "active").
+    const logicErrors =
+      (status ?? existingForm.status) === IntakeFormStatus.ACTIVE
+        ? validateIntakeFormSchemaLogic(
+            schema ?? existingForm.schema,
+            entityType ?? existingForm.entityType,
+          )
+        : [];
     if (logicErrors.length > 0) {
       await transaction.rollback();
       return res.status(400).json(STATUS_CODE[400](logicErrors.join("; ")));

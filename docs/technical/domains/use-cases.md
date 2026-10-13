@@ -574,12 +574,14 @@ Intake forms support calculated fields, show/hide rules and risk dimension tags
   `cleanSubmission` before validation: answers to hidden fields and unknown
   keys are dropped, calculated values are recomputed, and a visible calculated
   field with no result is stored as `null` (hidden ones are left out).
-- **Save checks.** Create and update reject invalid formulas, conditions on
-  fields that are not above, stale option values, rules on fields mapped to
-  required entity fields (`REQUIRED_ENTITY_FIELDS`) and unknown risk
-  dimensions. The builder runs the same checks live.
+- **Save checks.** Create and update of a form that will be active reject
+  invalid formulas, conditions on fields that are not above, stale option
+  values, duplicate field ids, rules on fields mapped to required entity fields
+  (`REQUIRED_ENTITY_FIELDS`) and unknown risk dimensions. Drafts skip the check
+  so unfinished logic can be saved; publishing runs it. The builder runs the
+  same checks live.
 - **Risk scoring.** `intakeRiskScoring.service.ts` matches keywords at the start
   of a word (plurals and compounds count, "renamed" does not hit "name") in text
   answers, option labels and ticked checkbox labels. A dimension uses its tagged
   answers when they match any keyword, and all answers otherwise; high-risk
-  keywords in any answer set a floor the tagged score cannot go below.
+  keywords in any untagged answer set a floor the tagged score cannot go below.

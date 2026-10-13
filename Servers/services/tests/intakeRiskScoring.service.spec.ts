@@ -325,6 +325,19 @@ describe("intakeRiskScoring.service", () => {
       expect(data.signals).toContain('High-risk signal: "biometric" (Notes)');
     });
 
+    it("tagging a field does not change that field's own score", () => {
+      const answer = { notes: "Aggregated, anonymous health statistics" };
+      const untagged = { version: "1.0", fields: [{ id: "notes", type: "text", label: "Notes" }] };
+      const tagged = {
+        version: "1.0",
+        fields: [{ id: "notes", type: "text", label: "Notes", riskDimension: "data_sensitivity" }],
+      };
+      const before = dimension(scoreSubmissionRuleBased(answer, untagged), "data_sensitivity");
+      const after = dimension(scoreSubmissionRuleBased(answer, tagged), "data_sensitivity");
+      expect(before.score).toBe(40);
+      expect(after.score).toBe(before.score);
+    });
+
     it("scores select answers by option label", () => {
       const schema = {
         version: "1.0",

@@ -362,18 +362,25 @@ function scoreDimension(
   const usesTagged =
     taggedMatches !== null &&
     taggedMatches.highMatches + taggedMatches.mediumMatches + taggedMatches.lowMatches > 0;
-  const allMatches = usesTagged ? matchKeywords(config, answers) : null;
   const matches = usesTagged ? taggedMatches! : matchKeywords(config, answers);
   let { score } = scoreFromMatches(matches);
   let signals = matches.signals;
 
-  // Tags refine a score but never hide risk: high-risk keywords in any answer
-  // keep the dimension at least where those keywords alone would put it.
-  if (allMatches && allMatches.highMatches > 0) {
-    const floor = scoreFromMatches({ ...allMatches, mediumMatches: 0, lowMatches: 0 }).score;
+  // Tags refine a score but never hide risk found elsewhere: high-risk keywords
+  // in the untagged answers keep the dimension at least where those keywords
+  // alone would put it. The tagged answers' own keywords are already scored
+  // above, so tagging a field never changes that field's own score.
+  const otherMatches = usesTagged
+    ? matchKeywords(
+        config,
+        answers.filter((answer) => answer.riskDimension !== config.key),
+      )
+    : null;
+  if (otherMatches && otherMatches.highMatches > 0) {
+    const floor = scoreFromMatches({ ...otherMatches, mediumMatches: 0, lowMatches: 0 }).score;
     if (score < floor) {
       score = floor;
-      const highSignals = allMatches.signals.filter((signal) => signal.startsWith("High-risk"));
+      const highSignals = otherMatches.signals.filter((signal) => signal.startsWith("High-risk"));
       signals = [...new Set([...highSignals, ...signals])];
     }
   }
