@@ -224,12 +224,14 @@ describe("intakeRiskScoring.service", () => {
       expect(dimension(result, "data_sensitivity").score).toBe(50);
     });
 
-    it("matches plural forms but not words that merely contain a keyword", () => {
+    it("matches keywords at the start of a word, so plurals and compounds count", () => {
       const schema = { version: "1.0", fields: [{ id: "notes", type: "text", label: "Notes" }] };
       const plural = scoreSubmissionRuleBased({ notes: "facial biometrics at the border" }, schema);
       expect(dimension(plural, "data_sensitivity").score).toBeGreaterThan(70);
-      const inside = scoreSubmissionRuleBased({ notes: "a toolkit" }, schema);
-      expect(dimension(inside, "autonomy_level").score).toBe(50);
+      const compound = scoreSubmissionRuleBased({ notes: "healthcare records" }, schema);
+      expect(dimension(compound, "data_sensitivity").score).toBeGreaterThan(70);
+      const inside = scoreSubmissionRuleBased({ notes: "the file was renamed" }, schema);
+      expect(dimension(inside, "data_sensitivity").score).toBe(50);
     });
 
     it("matches multi-word keywords as phrases", () => {
@@ -261,7 +263,7 @@ describe("intakeRiskScoring.service", () => {
       expect(dimension(result, "data_sensitivity").score).toBeGreaterThan(70);
     });
 
-    it("an unchecked tagged checkbox is the tagged answer: unrelated text does not decide", () => {
+    it("falls back to every answer when the tagged answers match no keyword", () => {
       const schema = {
         version: "1.0",
         fields: [
@@ -274,8 +276,26 @@ describe("intakeRiskScoring.service", () => {
           },
         ],
       };
-      const result = scoreSubmissionRuleBased({ notes: "biometric", bio: false }, schema);
-      expect(dimension(result, "data_sensitivity").score).toBe(50);
+      const unchecked = scoreSubmissionRuleBased({ notes: "biometric", bio: false }, schema);
+      expect(dimension(unchecked, "data_sensitivity").score).toBeGreaterThan(70);
+      const checked = scoreSubmissionRuleBased({ notes: "biometric", bio: true }, schema);
+      expect(dimension(checked, "data_sensitivity").score).toBeGreaterThan(70);
+    });
+
+    it("an untouched tagged multiselect or blank text is not a tagged answer", () => {
+      const schema = {
+        version: "1.0",
+        fields: [
+          { id: "notes", type: "text", label: "Notes" },
+          { id: "kinds", type: "multiselect", label: "Kinds", riskDimension: "data_sensitivity" },
+          { id: "why", type: "text", label: "Why", riskDimension: "data_sensitivity" },
+        ],
+      };
+      const result = scoreSubmissionRuleBased(
+        { notes: "biometric", kinds: [], why: "   " },
+        schema,
+      );
+      expect(dimension(result, "data_sensitivity").score).toBeGreaterThan(70);
     });
 
     it("scores select answers by option label", () => {

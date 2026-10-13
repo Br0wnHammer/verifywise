@@ -17,7 +17,7 @@ Intake forms have no logic. Every field is always shown, nothing can be computed
 
 1. **Calculated fields** that show the submitter a live result computed from number fields, and store it with the submission.
 2. **Show/hide rules** on any field, built from one or more conditions on earlier fields, combined with all or any.
-3. **Risk dimension tags**: a form author can say which answers feed which risk dimension, and keyword matching works on whole words.
+3. **Risk dimension tags**: a form author can say which answers feed which risk dimension, and keyword matching works from the start of a word.
 
 Calculations are used by few form authors, so they stay out of the way: the calculated field type and the logic settings sit in collapsed sections.
 
@@ -202,8 +202,8 @@ Changes in `Servers/services/intakeRiskScoring.service.ts`:
 
 - Input is the cleaned submission, so hidden answers never count.
 - Answers are turned into text before matching: `select` and `multiselect` values are replaced by their option labels (stored values default to `option1`, `option2`, … so today's scoring of selects mostly sees meaningless values); a checked `checkbox` contributes its field label ("Uses biometric data"), an unchecked one contributes nothing; other text types contribute their answer.
-- Per dimension: if any visible, non-empty field is tagged with that dimension, only those answers are scored. Otherwise (nothing tagged, or every tagged field hidden or unanswered) all visible `text`, `textarea`, `email`, `url`, `select`, `multiselect` and `checkbox` answers are scored (today's behaviour). `number`, `date` and `calculated` values are never scored.
-- Keywords match as whole words or phrases: each keyword becomes a case-insensitive regex with word boundaries, with regex special characters escaped, so "no human" matches as a phrase, "self-driving" matches, and "name" does not match "renamed".
+- Per dimension: tagged answers decide when they match any of the dimension's keywords; when nothing is tagged, every tagged field is hidden or unanswered, or the tagged answers match no keyword, all visible `text`, `textarea`, `email`, `url`, `select`, `multiselect` and `checkbox` answers are scored. `number`, `date` and `calculated` values are never scored. (Changed after review: a tag must never hide risk found in other answers.)
+- Keywords match at the start of a word, case-insensitive, with regex special characters escaped: "biometric" matches "biometrics", "health" matches "healthcare", "no human" matches as a phrase, and "name" does not match "renamed". (Changed after review from whole words, which missed plurals and compounds.)
 - The `fieldMappings` / `entityFieldMapping` substring check is removed.
 - Signals name the field: `High-risk signal: "biometric" (Data collected)`.
 - The score formula, weights, tier thresholds and LLM adjustment are unchanged. The LLM adjustment prompt lists visible answers including calculated values, since it already lists every answered field by label.

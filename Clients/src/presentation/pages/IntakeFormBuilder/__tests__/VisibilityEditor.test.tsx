@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
-import { VisibilityEditor, operatorLabel, visibilitySummary } from "../VisibilityEditor";
+import {
+  VisibilityEditor,
+  operatorLabel,
+  visibilitySummary,
+  withOperator,
+} from "../VisibilityEditor";
 import type { FormField } from "../types";
 
 const PERSONAL: FormField = {
@@ -78,5 +83,40 @@ describe("VisibilityEditor", () => {
     expect(document.getElementById("condition-operator-0")).toBeNull();
     expect(document.getElementById("condition-value-0")).toBeNull();
     expect(screen.getByRole("button", { name: "Remove condition" })).toBeInTheDocument();
+  });
+
+  it("keeps the chosen value when only the operator changes", () => {
+    expect(
+      withOperator(
+        { fieldId: "personal", operator: "equals", value: "no" },
+        PERSONAL,
+        "not_equals",
+      ),
+    ).toEqual({ fieldId: "personal", operator: "not_equals", value: "no" });
+    expect(
+      withOperator({ fieldId: "personal", operator: "equals", value: "no" }, PERSONAL, "one_of"),
+    ).toEqual({ fieldId: "personal", operator: "one_of", value: ["no"] });
+    expect(
+      withOperator(
+        { fieldId: "personal", operator: "one_of", value: ["no", "yes"] },
+        PERSONAL,
+        "equals",
+      ),
+    ).toEqual({ fieldId: "personal", operator: "equals", value: "no" });
+    expect(
+      withOperator({ fieldId: "personal", operator: "equals", value: "no" }, PERSONAL, "is_empty"),
+    ).toEqual({ fieldId: "personal", operator: "is_empty" });
+  });
+
+  it("does not crash on stored rules without a conditions list", () => {
+    expect(visibilitySummary({ match: "all" } as never)).toBe("Always shown");
+    renderWithProviders(
+      <VisibilityEditor
+        visibility={{ match: "all" } as never}
+        earlierFields={[PERSONAL]}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Add condition" })).toBeInTheDocument();
   });
 });

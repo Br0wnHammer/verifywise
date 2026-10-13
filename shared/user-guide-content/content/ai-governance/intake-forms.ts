@@ -259,7 +259,7 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Under "Risk scoring" in a text, dropdown or checkbox field\'s settings, choose the risk dimension its answer should feed. When a dimension has tagged answers, only those answers are scored for it; otherwise every answer is used.',
+      text: 'Under "Risk scoring" in a text, dropdown or checkbox field\'s settings, choose the risk dimension its answer should feed. A dimension is scored from its tagged answers when they contain any of its keywords; otherwise every answer is used, so a tag never hides risk mentioned elsewhere.',
     },
     {
       type: 'heading',
@@ -506,7 +506,7 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Every submission is scored across six risk dimensions. Each dimension produces a score from 0 to 100 (higher is riskier), a weight and a set of signals naming the keyword and the field it came from. Keywords match whole words in text answers, the labels of chosen options and the labels of ticked checkboxes. Number, date and calculated answers are not scored. Tag a field with a risk dimension to make only tagged answers count for that dimension.',
+      text: 'Every submission is scored across six risk dimensions. Each dimension produces a score from 0 to 100 (higher is riskier), a weight and a set of signals naming the keyword and the field it came from. Keywords match at the start of a word in text answers, the labels of chosen options and the labels of ticked checkboxes, so "health" also matches "healthcare" but "name" does not match "renamed". Number, date and calculated answers are not scored. Tag a field with a risk dimension to have its answer decide that dimension first.',
     },
     {
       type: 'table',

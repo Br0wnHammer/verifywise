@@ -248,7 +248,8 @@ export function FieldEditor({
   const showMinMax = localField.type === "number";
   const showMinMaxLength = localField.type === "text" || localField.type === "textarea";
   const isCalculated = localField.type === "calculated";
-  const hasRules = (localField.visibility?.conditions.length ?? 0) > 0;
+  const hasRules =
+    Array.isArray(localField.visibility?.conditions) && localField.visibility.conditions.length > 0;
   const earlierFields = (() => {
     const sorted = sortFields(allFields);
     const index = sorted.findIndex((candidate) => candidate.id === localField.id);

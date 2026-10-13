@@ -42,7 +42,9 @@ export function operatorLabel(refType: string, operator: ConditionOperator): str
 
 /** The collapsed section's one-line summary. */
 export function visibilitySummary(visibility?: Visibility): string {
-  if (!visibility || visibility.conditions.length === 0) return "Always shown";
+  if (!visibility || !Array.isArray(visibility.conditions) || visibility.conditions.length === 0) {
+    return "Always shown";
+  }
   return visibility.match === "any"
     ? "Shown when any condition matches"
     : "Shown when all conditions match";
@@ -59,6 +61,31 @@ function defaultCondition(ref: FormField): Condition {
   return { fieldId: ref.id, operator };
 }
 
+/**
+ * The condition with a new operator, keeping the value the author chose
+ * when it still fits ("is EU" → "is not EU", "is EU" → "is one of [EU]").
+ */
+export function withOperator(
+  condition: Condition,
+  ref: FormField,
+  operator: ConditionOperator,
+): Condition {
+  const { value } = condition;
+  if (NO_VALUE.includes(operator)) return { fieldId: condition.fieldId, operator };
+  if (operator === "one_of") {
+    const list = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+    return { fieldId: condition.fieldId, operator, value: list };
+  }
+  if (SYMBOLS[operator]) {
+    return typeof value === "number"
+      ? { fieldId: condition.fieldId, operator, value }
+      : { fieldId: condition.fieldId, operator };
+  }
+  const single = Array.isArray(value) ? value[0] : value;
+  if (typeof single === "string") return { fieldId: condition.fieldId, operator, value: single };
+  return { ...defaultCondition(ref), operator };
+}
+
 interface VisibilityEditorProps {
   visibility?: Visibility;
   /** Fields above the one being edited; rules may only use these. */
@@ -68,7 +95,7 @@ interface VisibilityEditorProps {
 
 export function VisibilityEditor({ visibility, earlierFields, onChange }: VisibilityEditorProps) {
   const theme = useTheme();
-  const conditions = visibility?.conditions ?? [];
+  const conditions = Array.isArray(visibility?.conditions) ? visibility.conditions : [];
   const match = visibility?.match ?? "all";
 
   const commit = (next: Condition[], nextMatch = match) =>
@@ -149,11 +176,7 @@ export function VisibilityEditor({ visibility, earlierFields, onChange }: Visibi
                   value={operator}
                   items={operators.map((op) => ({ _id: op, name: operatorLabel(ref.type, op) }))}
                   onChange={(e) =>
-                    update(index, {
-                      ...defaultCondition(ref),
-                      operator: e.target.value as ConditionOperator,
-                      ...(e.target.value === "one_of" ? { value: [] } : {}),
-                    })
+                    update(index, withOperator(condition, ref, e.target.value as ConditionOperator))
                   }
                 />
                 {!NO_VALUE.includes(operator) &&

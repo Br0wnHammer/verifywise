@@ -354,7 +354,7 @@ export function FieldCard({
       {/* Metadata badges — always visible */}
       <Box sx={{ display: "flex", alignItems: "center", gap: "6px", mt: "8px", flexWrap: "wrap" }}>
         <Chip label={TYPE_LABELS[field.type]} variant="default" size="small" uppercase={false} />
-        {(field.visibility?.conditions.length ?? 0) > 0 && (
+        {Array.isArray(field.visibility?.conditions) && field.visibility.conditions.length > 0 && (
           <Chip label="Conditional" variant="info" size="small" uppercase={false} />
         )}
         {field.type === "calculated" && field.formula && (

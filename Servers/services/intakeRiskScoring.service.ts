@@ -3,6 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { getLLMKeysWithKeyQuery } from "../utils/llmKey.utils";
 import logger from "../utils/logger/fileLogger";
+import { isEmptyAnswer } from "./intakeFormLogic";
 
 // ============================================================================
 // TYPES
@@ -259,7 +260,8 @@ export function answersForScoring(
   const answers: ScoringAnswer[] = [];
   for (const field of schema.fields) {
     const value = submissionData[field.id];
-    if (value === undefined || value === null || value === "") continue;
+    // Same notion of blank as the show/hide rules: whitespace and [] are not answers.
+    if (isEmptyAnswer(value)) continue;
     const optionLabel = (v: unknown) =>
       field.options?.find((option) => option.value === v)?.label ?? String(v);
     let text = "";
@@ -292,53 +294,68 @@ export function answersForScoring(
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * Whole words and phrases, plus plural endings: "biometric" matches
- * "biometrics", but "name" does not match "renamed". Compiled once per keyword.
+ * Keywords match at the start of a word, so plurals and compounds count
+ * ("biometrics", "healthcare"), but a keyword inside a word does not
+ * ("name" in "renamed"). Compiled once per keyword.
  */
 const KEYWORD_PATTERNS = new Map<string, RegExp>();
 const keywordPattern = (keyword: string): RegExp => {
   let pattern = KEYWORD_PATTERNS.get(keyword);
   if (!pattern) {
-    pattern = new RegExp(`\\b${escapeRegExp(keyword.toLowerCase())}(?:s|es)?\\b`, "i");
+    pattern = new RegExp(`\\b${escapeRegExp(keyword.toLowerCase())}`, "i");
     KEYWORD_PATTERNS.set(keyword, pattern);
   }
   return pattern;
 };
 
-function scoreDimension(
+interface KeywordMatches {
+  highMatches: number;
+  mediumMatches: number;
+  lowMatches: number;
+  signals: string[];
+}
+
+function matchKeywords(
   config: (typeof DIMENSION_CONFIGS)[0],
-  answers: ScoringAnswer[],
-): { score: number; signals: string[] } {
-  // Tagged answers decide the dimension; with none answered, every answer counts.
-  const tagged = answers.filter((answer) => answer.riskDimension === config.key);
-  const pool = tagged.length > 0 ? tagged : answers;
+  pool: ScoringAnswer[],
+): KeywordMatches {
   const firstMatch = (keyword: string) => {
     const pattern = keywordPattern(keyword);
     return pool.find((answer) => pattern.test(answer.text));
   };
-
-  const signals: string[] = [];
-  let highMatches = 0;
-  let mediumMatches = 0;
-  let lowMatches = 0;
-
+  const result: KeywordMatches = { highMatches: 0, mediumMatches: 0, lowMatches: 0, signals: [] };
   for (const keyword of config.keywords.high) {
     const hit = firstMatch(keyword);
     if (hit) {
-      highMatches++;
-      signals.push(`High-risk signal: "${keyword}" (${hit.label})`);
+      result.highMatches++;
+      result.signals.push(`High-risk signal: "${keyword}" (${hit.label})`);
     }
   }
   for (const keyword of config.keywords.medium) {
-    if (firstMatch(keyword)) mediumMatches++;
+    if (firstMatch(keyword)) result.mediumMatches++;
   }
   for (const keyword of config.keywords.low) {
     const hit = firstMatch(keyword);
     if (hit) {
-      lowMatches++;
-      signals.push(`Low-risk signal: "${keyword}" (${hit.label})`);
+      result.lowMatches++;
+      result.signals.push(`Low-risk signal: "${keyword}" (${hit.label})`);
     }
   }
+  return result;
+}
+
+function scoreDimension(
+  config: (typeof DIMENSION_CONFIGS)[0],
+  answers: ScoringAnswer[],
+): { score: number; signals: string[] } {
+  // Tagged answers decide the dimension when they match any keyword; when
+  // nothing is tagged, or the tagged answers match nothing, every answer counts.
+  const tagged = answers.filter((answer) => answer.riskDimension === config.key);
+  let matches = tagged.length > 0 ? matchKeywords(config, tagged) : null;
+  if (!matches || matches.highMatches + matches.mediumMatches + matches.lowMatches === 0) {
+    matches = matchKeywords(config, answers);
+  }
+  const { highMatches, mediumMatches, lowMatches, signals } = matches;
 
   let score = 50; // Default neutral
   if (highMatches > 0 && lowMatches === 0) {
