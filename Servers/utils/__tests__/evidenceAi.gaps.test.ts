@@ -24,7 +24,9 @@ describe("getEvidenceGapsQuery", () => {
     expect(String(firstCall[0])).toContain("WHEN 'control' THEN fel.entity_id::int");
     expect(String(firstCall[0])).toContain("WHEN 'subcontrol' THEN");
     expect(String(firstCall[0])).toContain("FROM subcontrols_eu s");
-    expect(String(firstCall[0])).toContain("subcontrols_struct_eu ss ON ss.id = s.subcontrol_meta_id");
+    expect(String(firstCall[0])).toContain(
+      "subcontrols_struct_eu ss ON ss.id = s.subcontrol_meta_id",
+    );
     // Assessment-answer links have no control mapping: excluded, not miscounted.
     expect(String(firstCall[0])).not.toContain("WHEN 'assessment' THEN");
   });
