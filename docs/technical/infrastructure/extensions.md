@@ -342,7 +342,9 @@ Both cascade with the organization. Migration
 `20261013105301-extension-sync-engine.js` created them and copied Jira Assets'
 schedule and history (ids kept). `node scripts/checkExtensionSyncMigration.js`
 and `node scripts/checkExtensionSyncEngineSql.js` check the migration and the
-engine's SQL on a throwaway Postgres.
+engine's SQL on a throwaway Postgres. They need `initdb`/`pg_ctl` on the PATH
+and are not run by `npm run test` or CI (Jest mocks sequelize), so run both by
+hand after any change to `sql.ts` or the migration.
 
 ### The provider contract
 
