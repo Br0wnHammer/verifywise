@@ -558,3 +558,26 @@ Public intake submissions send `euAiActRiskAnswers` with the form data. When the
 - [Compliance Frameworks](./compliance-frameworks.md)
 - [Vendors](./vendors.md)
 - [Approvals](./approvals.md)
+
+## Intake form logic
+
+Intake forms support calculated fields, show/hide rules and risk dimension tags
+(spec: `docs/superpowers/specs/2026-10-13-intake-form-logic-design.md`).
+
+- **Logic module.** `Servers/services/intakeFormLogic/` (formula parser and
+  evaluator, conditions, `evaluateForm`, `cleanSubmission`,
+  `validateSchemaLogic`) is copied byte for byte to
+  `Clients/src/application/utils/intakeFormLogic/`. Change both together: a
+  Vitest test compares the files, and both Jest and Vitest run the cases in
+  `Servers/services/intakeFormLogic/__fixtures__/intakeFormLogic.cases.json`.
+- **Server is authoritative.** Both public submit handlers call
+  `cleanSubmission` before validation: answers to hidden fields and unknown
+  keys are dropped, calculated values are recomputed, and a visible calculated
+  field with no result is stored as `null` (hidden ones are left out).
+- **Save checks.** Create and update reject invalid formulas, conditions on
+  fields that are not above, stale option values, rules on fields mapped to
+  required entity fields (`REQUIRED_ENTITY_FIELDS`) and unknown risk
+  dimensions. The builder runs the same checks live.
+- **Risk scoring.** `intakeRiskScoring.service.ts` scores whole words in text
+  answers, option labels and ticked checkbox labels; a dimension uses only its
+  tagged answers when any are present.

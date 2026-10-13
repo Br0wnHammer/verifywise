@@ -225,6 +225,44 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'heading',
+      id: 'conditional-fields',
+      level: 2,
+      text: 'Conditional fields',
+    },
+    {
+      type: 'paragraph',
+      text: 'Open "Show this field only if…" in a field\'s settings to show it only when answers above it match. Add one or more conditions and choose whether all or any must match. A condition can only use fields above the one you are editing. Until the earlier question is answered, the field stays hidden.',
+    },
+    {
+      type: 'paragraph',
+      text: 'Hidden fields are never required and their answers are not saved. Fields mapped to the use case name, the use case goal or the model name cannot have conditions, because those values are needed to create the entity.',
+    },
+    {
+      type: 'heading',
+      id: 'calculated-fields',
+      level: 2,
+      text: 'Calculated fields',
+    },
+    {
+      type: 'paragraph',
+      text: 'A calculated field shows a read-only result that updates as the submitter types, for example annual cost from a monthly cost. Add one from the Advanced section of the field palette. Formulas use + − × ÷ (typed as + - * /), parentheses and numbers, and refer to number or calculated fields above the field. Type { in the formula box to insert a field.',
+    },
+    {
+      type: 'paragraph',
+      text: 'Set decimals (0 to 6) and an optional prefix or suffix, such as € or people. If an input is empty or hidden, the result shows a dash. The value is recalculated by VerifyWise when the form is submitted and is shown to reviewers.',
+    },
+    {
+      type: 'heading',
+      id: 'risk-dimension-tags',
+      level: 2,
+      text: 'Risk dimension tags',
+    },
+    {
+      type: 'paragraph',
+      text: 'Under "Risk scoring" in a text, dropdown or checkbox field\'s settings, choose the risk dimension its answer should feed. When a dimension has tagged answers, only those answers are scored for it; otherwise every answer is used.',
+    },
+    {
+      type: 'heading',
       id: 'entity-field-mapping',
       level: 3,
       text: 'Entity field mapping',
@@ -468,7 +506,7 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Every submission is scored across multiple risk dimensions. Each dimension produces a score from 1 to 10, a weight and a set of signals (short explanations of what drove the score).',
+      text: 'Every submission is scored across six risk dimensions. Each dimension produces a score from 0 to 100 (higher is riskier), a weight and a set of signals naming the keyword and the field it came from. Keywords match whole words in text answers, the labels of chosen options and the labels of ticked checkboxes. Number, date and calculated answers are not scored. Tag a field with a risk dimension to make only tagged answers count for that dimension.',
     },
     {
       type: 'table',
@@ -477,12 +515,12 @@ export const intakeFormsContent: ArticleContent = {
         { key: 'description', label: 'What it measures', width: '75%' },
       ],
       rows: [
-        { dimension: 'Impact', description: 'How severe the harm could be if the system fails or behaves incorrectly' },
-        { dimension: 'Likelihood', description: 'How probable a failure or unintended outcome is' },
-        { dimension: 'Scope', description: 'How many people or processes the system affects' },
-        { dimension: 'Reversibility', description: 'Whether the consequences of a mistake can be undone' },
-        { dimension: 'Contestability', description: 'Whether affected individuals can challenge the system\'s decisions' },
-        { dimension: 'Transparency', description: 'How explainable the system\'s behavior is to stakeholders' },
+        { dimension: 'Data sensitivity', description: 'Whether personal, financial, health or other sensitive data is involved (weight 20%)' },
+        { dimension: 'Autonomy level', description: 'How much the system decides without a person (weight 20%)' },
+        { dimension: 'Impact scope', description: 'How many people or how much of the organization it reaches (weight 15%)' },
+        { dimension: 'Transparency', description: 'Whether its behaviour can be explained and is documented (weight 15%)' },
+        { dimension: 'Human oversight', description: 'How closely people monitor and review it (weight 15%)' },
+        { dimension: 'Domain criticality', description: 'How critical the domain is, such as healthcare, hiring or finance (weight 15%)' },
       ],
     },
     {
