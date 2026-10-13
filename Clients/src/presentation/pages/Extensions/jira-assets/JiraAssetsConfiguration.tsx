@@ -20,7 +20,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { Download } from "lucide-react";
-import { VWField, VWSelect } from "./VWComponents";
+import { VWField, VWSelect } from "../../../components/VWComponents";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import StandardModal from "../../../components/Modals/StandardModal";

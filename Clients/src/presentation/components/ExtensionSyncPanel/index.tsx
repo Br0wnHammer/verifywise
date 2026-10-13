@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { Alert, Box, Stack, Typography } from "@mui/material";
+import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
 import { RefreshCw } from "lucide-react";
-// The section must look exactly as it does on the Jira Assets page today, so
-// it reuses that page's controls.
-import { VWSelect, VWToggle } from "../../pages/Extensions/jira-assets/VWComponents";
+import { VWSelect, VWToggle } from "../VWComponents";
 import { CustomizableButton } from "../button/customizable-button";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import {
@@ -218,7 +216,9 @@ export function ExtensionSyncPanel({
           <CustomizableButton
             variant="outlined"
             text={running ? "Syncing..." : "Sync now"}
-            startIcon={<RefreshCw size={14} strokeWidth={1.5} />}
+            startIcon={
+              running ? <CircularProgress size={14} /> : <RefreshCw size={14} strokeWidth={1.5} />
+            }
             onClick={handleSyncNow}
             isDisabled={!canManage || running || syncNowDisabled}
             testId={`${extensionKey}-sync-now`}
