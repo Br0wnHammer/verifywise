@@ -82,6 +82,15 @@ export default tseslint.config(
     },
   },
   {
+    // Playwright: fixtures receive a `use` callback (not React's `use`) and
+    // take an empty `{}` when they need no other fixtures.
+    files: ["e2e/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+      "no-empty-pattern": "off",
+    },
+  },
+  {
     files: ["**/*.{test,spec}.{ts,tsx}", "**/__tests__/**/*.{ts,tsx}"],
     languageOptions: {
       globals: {

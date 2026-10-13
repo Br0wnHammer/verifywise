@@ -13,7 +13,7 @@
     "build": "node scripts/build.js",
     "build-dev": "vite build",
     "build:original": "tsc -b && vite build",
-    "typecheck": "tsc -b",
+    "typecheck": "node node_modules/@typescript/native/bin/tsc -b",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format-check": "prettier --check .",
@@ -153,6 +153,7 @@
     "vitest": "^5.0.3"
   },
   "overrides": {
+    "@typescript/old": "6.0.3",
     "archiver": "^7.0.1",
     "shell-quote": "^1.11.0",
     "readdir-glob": "^3.0.0",

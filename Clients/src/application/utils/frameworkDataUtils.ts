@@ -103,14 +103,6 @@ export const validateApiResponse = (
     };
   }
 
-  if (!Array.isArray(extractedData)) {
-    return {
-      isValid: false,
-      data: [],
-      error: `Data is not an array for ${frameworkName} ${dataType}`,
-    };
-  }
-
   return {
     isValid: true,
     data: extractedData,
