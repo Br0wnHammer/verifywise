@@ -18,7 +18,9 @@
  * cleanly) and the deploy has to be re-run.
  *
  * Locks (taken up front, projects first, with a 10 s lock_timeout so the
- * migration fails fast instead of queueing behind live traffic):
+ * migration fails fast instead of queueing behind live traffic). These are
+ * the only tables up() locks beyond a plain read; organizations is never
+ * locked (the backup has no FK to it):
  * - projects: SHARE ROW EXCLUSIVE, the strongest mode up() needs there
  *   (CREATE UNIQUE INDEX takes SHARE, adding the FK takes SHARE ROW
  *   EXCLUSIVE). Reads of projects, including SELECT ... FOR UPDATE/SHARE,
@@ -34,19 +36,20 @@
  * 1. Links whose project_id is set but has no project in the link's own
  *    organization (missing, or another organization's) are copied into
  *    verifywise.jira_assets_use_cases_fk_cleanup_backup and deleted. The
- *    backup is created LIKE the live table (INCLUDING DEFAULTS, so every
- *    column with its real type, whatever the install has), plus cleaned_at;
- *    rows are copied by the live table's column names. No project is touched. The Jira object is then
- *    no longer linked, so it can be imported again. The count is logged.
- *    (They are deleted, not NULLed: a NULLed link whose object Jira still
- *    returns would have its missing flag cleared by every sync, never reach
- *    the panel's removal list, and block a re-import.) The backup's
- *    organization_id references organizations ON DELETE CASCADE, so a
- *    deleted organization's backup rows go with it.
+ *    backup is a plain migration backup, created LIKE the live table (every
+ *    column with its real type, whatever the install has, but no defaults,
+ *    so it is not tied to the live id sequence), plus cleaned_at (default
+ *    now()) and a primary key on id. It has no foreign keys. Rows are copied
+ *    by the live table's column names. No project is touched. The Jira object
+ *    is then no longer linked, so it can be imported again. The count is
+ *    logged. (They are deleted, not NULLed: a NULLed link whose object Jira
+ *    still returns would have its missing flag cleared by every sync, never
+ *    reach the panel's removal list, and block a re-import.)
  * 2. A unique index on projects (id, organization_id) as the composite FK
  *    target, unless an equivalent one already exists (then that one is
- *    used). This migration's own index is named
- *    projects_id_org_for_jira_link_fk_key, and down() drops only that name.
+ *    used). It is named generically, projects_id_organization_id_key, as
+ *    shared infrastructure that any composite FK to projects (id,
+ *    organization_id) can rely on, so down() leaves it in place.
  * 3. FOREIGN KEY (project_id, organization_id)
  *      REFERENCES projects (id, organization_id) ON DELETE CASCADE
  *    is added and validated in one statement (MATCH SIMPLE, the default, so a
@@ -57,23 +60,22 @@
  *
  * down() drops the composite FK, which needs ACCESS EXCLUSIVE on projects
  * (taken up front, waiting at most 10 s; reads of projects wait for it too,
- * briefly; a rollback is rare), its index and this migration's unique index,
- * recreates the old index, and puts the backed-up links back where the
- * single-column FK allows it (organization and project still exist; ON
- * CONFLICT DO NOTHING). Restored rows are removed from the backup; the backup
- * table is dropped only when nothing is left in it, otherwise it is kept and
- * the remaining count is logged.
+ * briefly; a rollback is rare), and its index, recreates the old index, and
+ * puts the backed-up links back where the single-column FK allows it
+ * (organization and project still exist; ON CONFLICT DO NOTHING). The unique
+ * index on projects (id, organization_id) stays. Restored rows are removed
+ * from the backup; the backup table is dropped only when nothing is left in
+ * it, otherwise it is kept and the remaining count is logged.
  */
 
 const TABLE = "verifywise.jira_assets_use_cases";
 const BACKUP = "verifywise.jira_assets_use_cases_fk_cleanup_backup";
 const NEW_FK = "jira_assets_use_cases_project_org_fkey";
-const OWN_UNIQUE = "projects_id_org_for_jira_link_fk_key";
+const PROJECTS_UNIQUE = "projects_id_organization_id_key";
 const NEW_INDEX = "idx_jira_use_cases_project_org";
 const OLD_INDEX = "idx_jira_use_cases_project_id";
 const LOG = "[jira-assets-link-same-org-fk]";
 
-const BACKUP_ORG_FK = "jira_assets_use_cases_fk_cleanup_backup_org_fkey";
 const BACKUP_PK = "jira_assets_use_cases_fk_cleanup_backup_pkey";
 
 const quoted = (columns) => columns.map((c) => `"${c}"`).join(", ");
@@ -109,9 +111,11 @@ module.exports = {
       await q(`LOCK TABLE ${TABLE} IN ACCESS EXCLUSIVE MODE;`);
 
       // 1. Back up and delete links whose project is not in their organization.
-      // The backup has the live table's columns with their real types.
+      // The backup has the live table's columns with their real types, but no
+      // defaults (the id default would tie it to the live sequence) and no FKs
+      // (one to organizations would lock it mid-transaction).
       const live = await columnsOf(queryInterface, "jira_assets_use_cases", transaction);
-      await q(`CREATE TABLE IF NOT EXISTS ${BACKUP} (LIKE ${TABLE} INCLUDING DEFAULTS);`);
+      await q(`CREATE TABLE IF NOT EXISTS ${BACKUP} (LIKE ${TABLE});`);
       await q(
         `ALTER TABLE ${BACKUP} ADD COLUMN IF NOT EXISTS cleaned_at TIMESTAMPTZ NOT NULL DEFAULT now();`,
       );
@@ -129,15 +133,6 @@ module.exports = {
       }
       if (!(await constraintExists(queryInterface, BACKUP_PK, transaction))) {
         await q(`ALTER TABLE ${BACKUP} ADD CONSTRAINT ${BACKUP_PK} PRIMARY KEY (id);`);
-      }
-      if (!(await constraintExists(queryInterface, BACKUP_ORG_FK, transaction))) {
-        // A deleted organization's backup rows go with it.
-        await q(
-          `ALTER TABLE ${BACKUP}
-             ADD CONSTRAINT ${BACKUP_ORG_FK}
-             FOREIGN KEY (organization_id)
-             REFERENCES verifywise.organizations (id) ON DELETE CASCADE;`,
-        );
       }
       const columnList = quoted(live);
       const [moved] = await q(
@@ -177,7 +172,9 @@ module.exports = {
           LIMIT 1;`,
       );
       if (equivalent.length === 0) {
-        await q(`CREATE UNIQUE INDEX ${OWN_UNIQUE} ON verifywise.projects (id, organization_id);`);
+        await q(
+          `CREATE UNIQUE INDEX ${PROJECTS_UNIQUE} ON verifywise.projects (id, organization_id);`,
+        );
       }
 
       // 3. The composite FK, added and validated in one statement.
@@ -207,7 +204,8 @@ module.exports = {
 
       await q(`ALTER TABLE ${TABLE} DROP CONSTRAINT IF EXISTS ${NEW_FK};`);
       await q(`DROP INDEX IF EXISTS verifywise.${NEW_INDEX};`);
-      await q(`DROP INDEX IF EXISTS verifywise.${OWN_UNIQUE};`);
+      // The unique index on projects (id, organization_id) stays: it is shared
+      // infrastructure other composite FKs to projects may rely on.
       await q(
         `CREATE INDEX IF NOT EXISTS ${OLD_INDEX}
            ON ${TABLE} (project_id)

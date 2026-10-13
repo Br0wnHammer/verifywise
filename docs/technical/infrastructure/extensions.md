@@ -661,14 +661,16 @@ Migration `20261012165625-jira-assets-link-same-org-fk.js` added the key. It
 first copied existing links whose project was missing or in another
 organization into `jira_assets_use_cases_fk_cleanup_backup` and deleted them,
 logging the count; no project was touched, and their Jira objects can be
-imported again. The backup is created `LIKE` the live table (every column
-with its real type, whatever the install has), plus `cleaned_at`; rows are
-copied by column name, and an existing backup whose column set differs from
-the live table's stops the migration with a clear message. Its
-`organization_id` cascades with the organization. The migration reuses an
-existing equivalent unique index on `projects (id, organization_id)` (valid,
-immediate, non-partial, key columns only) if there is one, otherwise it
-creates its own (`projects_id_org_for_jira_link_fk_key`), then adds the FK
+imported again. The backup is a plain migration backup created `LIKE` the
+live table (every column with its real type, whatever the install has, but
+no defaults, so it is not tied to the live id sequence), plus `cleaned_at`;
+it has no foreign keys. Rows are copied by column name, and an existing
+backup whose column set differs from the live table's stops the migration
+with a clear message. The migration reuses an existing equivalent unique
+index on `projects (id, organization_id)` (valid, immediate, non-partial, key
+columns only) if there is one, otherwise it creates the generically named
+`projects_id_organization_id_key`, shared infrastructure that other
+composite FKs to `projects (id, organization_id)` can use, then adds the FK
 validated in one statement (adding it `NOT VALID` and validating in the same
 transaction would hold the same locks, so it would gain nothing). The old
 single-column FK is kept: dropping any FK from this table to `projects` takes
@@ -678,15 +680,17 @@ by one on `(project_id, organization_id)`.
 
 Locks and deploy: `up()` takes, up front with a 10 s `lock_timeout`, projects
 first, `SHARE ROW EXCLUSIVE` on `projects` and `ACCESS EXCLUSIVE` on
-`jira_assets_use_cases`. Reads of `projects` (including `SELECT ... FOR
+`jira_assets_use_cases`; no other table is locked beyond a plain read
+(`organizations` is not locked). Reads of `projects` (including `SELECT ... FOR
 UPDATE`) continue; writes to `projects` pause until it commits (the unique
 index build and the FK validation run under that lock). Deploy it with the
 worker stopped and no Jira Assets removal or use-case delete in progress: an
 in-app "Remove missing" or delete running at the same time can deadlock with
 it, Postgres then aborts the migration (it rolls back cleanly), and the deploy
 has to be re-run. `down()` drops the composite FK, which needs `ACCESS
-EXCLUSIVE` on `projects` (it may wait up to 10 s for it), its index and only
-its own unique index, recreates the old index, and puts the backed-up links
+EXCLUSIVE` on `projects` (it may wait up to 10 s for it), and its index,
+leaves the unique index on `projects (id, organization_id)` in place,
+recreates the old index, and puts the backed-up links
 back where the single-column FK allows it (organization and project still
 exist; a link re-imported since wins). Restored rows leave the backup; the
 backup table is dropped only when it is empty, otherwise it is kept and the

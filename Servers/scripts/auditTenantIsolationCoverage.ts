@@ -64,6 +64,11 @@ const sharedTables: SharedTableEntry[] = [
       "Migration backup of duplicate shadow_ai_settings rows removed by 20261012091252; no application code reads it, only that migration's down().",
   },
   {
+    name: "jira_assets_use_cases_fk_cleanup_backup",
+    justification:
+      "Migration backup of jira_assets_use_cases links whose project was missing or in another organization, removed by 20261012165625 when the composite FK was added; no application code reads it, only that migration's down().",
+  },
+  {
     name: "*_struct_*",
     justification:
       "Framework structure/reference tables are global by convention; the wildcard matches all struct tables.",
@@ -140,11 +145,6 @@ const deferredScopedTables: SharedTableEntry[] = [
     name: "jira_assets_use_cases",
     justification:
       "Extension-owned table (jira-assets). Every query in Servers/extensions/jira-assets/jiraAssets.service.ts filters by organization_id. UNIQUE(organization_id, jira_object_id). project_id references projects through a composite FK (project_id, organization_id), so a link cannot point at another organization's project. Deferred pending matrix coverage.",
-  },
-  {
-    name: "jira_assets_use_cases_fk_cleanup_backup",
-    justification:
-      "Backup written once by migration 20261012165625-jira-assets-link-same-org-fk (links whose project was missing or in another organization, deleted when the composite FK was added) and read only by its down(). No app code reads or writes it. organization_id references organizations ON DELETE CASCADE, so a deleted organization's rows go with it. Dropped by down() once empty.",
   },
   {
     name: "model_lifecycle_change_history",
