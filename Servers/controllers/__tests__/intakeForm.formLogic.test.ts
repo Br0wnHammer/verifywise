@@ -297,3 +297,42 @@ describe("saving a form with invalid logic", () => {
     expect(intake.updateIntakeFormQuery).not.toHaveBeenCalled();
   });
 });
+
+describe("submission fields for an entity", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("marks which fields the submission stored and passes calculated display settings", async () => {
+    intake.getSubmissionByEntityQuery.mockResolvedValue({
+      submission: { id: 3, data: { cost: "10", total: null }, createdAt: new Date() },
+      formName: "F",
+      formSchema: {
+        fields: [
+          { id: "cost", type: "number", label: "Monthly cost", order: 0 },
+          {
+            id: "total",
+            type: "calculated",
+            label: "Annual cost",
+            order: 1,
+            decimals: 0,
+            prefix: "€",
+          },
+          { id: "old", type: "calculated", label: "Old", order: 2 },
+        ],
+      },
+    });
+    const r = res();
+    await ctrl.getSubmissionByEntity(
+      req({ params: { entityType: "use_case", entityId: "4" } }) as any,
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(200);
+    const fields = r.json.mock.calls[0][0].data.fields;
+    expect(fields.find((f: any) => f.fieldId === "total")).toMatchObject({
+      answered: true,
+      value: null,
+      decimals: 0,
+      prefix: "€",
+    });
+    expect(fields.find((f: any) => f.fieldId === "old").answered).toBe(false);
+  });
+});

@@ -1170,7 +1170,13 @@ export async function getSubmissionByEntity(req: Request, res: Response) {
         label: field.label,
         type: field.type,
         value: submissionData[field.id] ?? null,
+        // A visible calculated field without a result is stored as null; a
+        // hidden one, or a submission from before the field existed, has no key.
+        answered: Object.prototype.hasOwnProperty.call(submissionData ?? {}, field.id),
         options: field.options || null,
+        decimals: field.decimals ?? null,
+        prefix: field.prefix ?? null,
+        suffix: field.suffix ?? null,
         entityFieldMapping: field.entityFieldMapping || null,
         isMapped: Boolean(field.entityFieldMapping),
       }));

@@ -425,6 +425,11 @@ export interface IntakeSubmissionField {
   options: Array<{ label: string; value: string }> | null;
   entityFieldMapping: string | null;
   isMapped: boolean;
+  /** Whether the submission stored this field (a calculated field may be stored as null). */
+  answered?: boolean;
+  decimals?: number | null;
+  prefix?: string | null;
+  suffix?: string | null;
 }
 
 /**

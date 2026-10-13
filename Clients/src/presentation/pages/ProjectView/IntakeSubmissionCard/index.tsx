@@ -4,34 +4,10 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEntityIntakeSubmission } from "../../../../application/hooks/useEntityIntakeSubmission";
 import type { IntakeSubmissionField } from "../../../../application/repository/intakeForm.repository";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
+import { formatAnswer } from "../../../../application/utils/intakeAnswerFormat";
 
 interface IntakeSubmissionCardProps {
   projectId: number;
-}
-
-function renderFieldValue(
-  field: IntakeSubmissionField,
-  formatDate: ReturnType<typeof useFormattedDate>,
-): string {
-  const { value, type, options } = field;
-  if (value === null || value === undefined || value === "") return "\u2014";
-
-  if (type === "checkbox") return value ? "Yes" : "No";
-
-  if (type === "date") {
-    return formatDate(value as string);
-  }
-
-  if (type === "select" && options) {
-    const match = options.find((o) => o.value === value);
-    return match ? match.label : String(value);
-  }
-
-  if (type === "multiselect" && Array.isArray(value) && options) {
-    return value.map((v) => options.find((o) => o.value === v)?.label || v).join(", ");
-  }
-
-  return String(value);
 }
 
 function FieldRow({ field }: { field: IntakeSubmissionField }) {
@@ -63,7 +39,7 @@ function FieldRow({ field }: { field: IntakeSubmissionField }) {
           wordBreak: "break-word",
         }}
       >
-        {renderFieldValue(field, formatDate)}
+        {formatAnswer(field, field.value, formatDate)}
       </Typography>
     </Box>
   );
@@ -77,12 +53,14 @@ export default function IntakeSubmissionCard({ projectId }: IntakeSubmissionCard
 
   if (isLoading || !submission) return null;
 
-  const mappedFields = submission.fields.filter(
-    (f) => f.isMapped && f.value !== null && f.value !== undefined && f.value !== "",
-  );
-  const unmappedFields = submission.fields.filter(
-    (f) => !f.isMapped && f.value !== null && f.value !== undefined && f.value !== "",
-  );
+  // Calculated fields count when the submission stored them (null shows "—");
+  // submissions from before a field existed have no key and show nothing.
+  const hasAnswer = (f: IntakeSubmissionField) =>
+    f.type === "calculated"
+      ? Boolean(f.answered)
+      : f.value !== null && f.value !== undefined && f.value !== "";
+  const mappedFields = submission.fields.filter((f) => f.isMapped && hasAnswer(f));
+  const unmappedFields = submission.fields.filter((f) => !f.isMapped && hasAnswer(f));
 
   if (mappedFields.length === 0 && unmappedFields.length === 0) return null;
 

@@ -41,3 +41,34 @@ export function describeFormula(
   );
   return `= ${text.replace(/\s+/g, " ").trim()}`;
 }
+
+export interface AnswerField {
+  type: string;
+  options?: Array<{ label: string; value: string }> | null;
+  decimals?: number | null;
+  prefix?: string | null;
+  suffix?: string | null;
+}
+
+/** An answer as reviewers read it. "—" for no value. */
+export function formatAnswer(
+  field: AnswerField,
+  value: unknown,
+  formatDate: (date: string) => string,
+): string {
+  if (field.type === "calculated") {
+    return formatCalculatedValue(typeof value === "number" ? value : null, field);
+  }
+  if (value === null || value === undefined || value === "") return "—";
+  if (field.type === "checkbox") return value ? "Yes" : "No";
+  if (field.type === "date") return formatDate(value as string);
+  if (field.type === "select" && field.options) {
+    return field.options.find((option) => option.value === value)?.label ?? String(value);
+  }
+  if (field.type === "multiselect" && Array.isArray(value) && field.options) {
+    return value
+      .map((v) => field.options!.find((option) => option.value === v)?.label ?? v)
+      .join(", ");
+  }
+  return String(value);
+}

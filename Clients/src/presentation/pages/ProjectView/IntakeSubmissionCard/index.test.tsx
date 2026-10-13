@@ -162,4 +162,83 @@ describe("IntakeSubmissionCard", () => {
     expect(screen.getByText("Cloud")).toBeInTheDocument();
     expect(screen.getByText("Minors, Elderly")).toBeInTheDocument();
   });
+
+  it("shows a calculated value and a dash for a stored empty result", async () => {
+    mockUseEntityIntakeSubmission.mockReturnValue({
+      isLoading: false,
+      data: {
+        ...baseSubmission,
+        fields: [
+          {
+            fieldId: "total",
+            label: "Annual cost",
+            type: "calculated",
+            value: 14400,
+            answered: true,
+            decimals: 2,
+            prefix: "€",
+            suffix: null,
+            options: null,
+            entityFieldMapping: null,
+            isMapped: false,
+          },
+          {
+            fieldId: "ratio",
+            label: "Ratio",
+            type: "calculated",
+            value: null,
+            answered: true,
+            decimals: 2,
+            prefix: null,
+            suffix: null,
+            options: null,
+            entityFieldMapping: null,
+            isMapped: false,
+          },
+        ],
+      },
+    });
+    renderWithProviders(<IntakeSubmissionCard projectId={1} />);
+    fireEvent.click(await screen.findByText(/Additional answers/));
+    expect(screen.getByText("€ 14,400.00")).toBeInTheDocument();
+    expect(screen.getByText("Ratio")).toBeInTheDocument();
+  });
+
+  it("omits a calculated field the submission never stored", async () => {
+    mockUseEntityIntakeSubmission.mockReturnValue({
+      isLoading: false,
+      data: {
+        ...baseSubmission,
+        fields: [
+          {
+            fieldId: "name",
+            label: "Use case name",
+            type: "text",
+            value: "Bot",
+            answered: true,
+            options: null,
+            entityFieldMapping: "project_title",
+            isMapped: true,
+          },
+          {
+            fieldId: "old",
+            label: "Old total",
+            type: "calculated",
+            value: null,
+            answered: false,
+            decimals: null,
+            prefix: null,
+            suffix: null,
+            options: null,
+            entityFieldMapping: null,
+            isMapped: false,
+          },
+        ],
+      },
+    });
+    renderWithProviders(<IntakeSubmissionCard projectId={1} />);
+    await screen.findByText("Bot");
+    expect(screen.queryByText("Old total")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Additional answers/)).not.toBeInTheDocument();
+  });
 });

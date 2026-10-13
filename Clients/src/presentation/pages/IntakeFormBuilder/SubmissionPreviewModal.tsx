@@ -21,6 +21,9 @@ import {
   RiskAssessment,
   FormSchema,
 } from "../../../application/repository/intakeForm.repository";
+import useFormattedDate from "../../../application/hooks/useFormattedDate";
+import { formatAnswer } from "../../../application/utils/intakeAnswerFormat";
+import { sortFields } from "../../../application/utils/intakeFormLogic";
 import EuAiActClassificationPanel, {
   type EuAiActClassificationData,
 } from "./EuAiActClassificationPanel";
@@ -54,6 +57,7 @@ interface PreviewData {
   entityType: string;
   submissionStatus: string;
   euAiActClassification: EuAiActClassificationData | null;
+  submissionData: Record<string, unknown>;
 }
 
 // ============================================================================
@@ -241,6 +245,7 @@ function SubmissionPreviewModal({
   onRejected,
 }: SubmissionPreviewModalProps) {
   const theme = useTheme();
+  const formatDate = useFormattedDate();
   // Fetch state
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -264,6 +269,7 @@ function SubmissionPreviewModal({
 
   // Rejection state
   const [showRejectForm, setShowRejectForm] = useState(false);
+  const [showOtherAnswers, setShowOtherAnswers] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
 
@@ -288,6 +294,7 @@ function SubmissionPreviewModal({
       setEuAiActJustification("");
       setApproveError(null);
       setShowRejectForm(false);
+      setShowOtherAnswers(false);
       setRejectReason("");
       setIsRejecting(false);
 
@@ -305,6 +312,7 @@ function SubmissionPreviewModal({
           entityType: form?.entityType ?? "use_case",
           submissionStatus: sub?.status ?? "pending",
           euAiActClassification: response.data.euAiActClassification ?? null,
+          submissionData: sub?.data ?? {},
         });
         setEuAiActLevel(response.data.euAiActClassification?.current.level ?? "");
         setEditedEntityData({ ...(entityPreview || {}) });
@@ -426,6 +434,16 @@ function SubmissionPreviewModal({
       }
       return true;
     }) ?? [];
+
+  // Answers not mapped to the entity, including calculated values, so
+  // reviewers see everything the submitter saw before approving.
+  const submissionData = previewData?.submissionData ?? {};
+  const otherAnswers = sortFields(previewData?.formSchema?.fields ?? []).filter((field) => {
+    if (field.entityFieldMapping) return false;
+    if (!Object.prototype.hasOwnProperty.call(submissionData, field.id)) return false;
+    const value = submissionData[field.id];
+    return field.type === "calculated" || (value !== null && value !== undefined && value !== "");
+  });
 
   // Derived: entity type label
   const entityLabel = previewData?.entityType === "model" ? "model inventory" : "use case";
@@ -596,6 +614,66 @@ function SubmissionPreviewModal({
                       />
                     );
                   })}
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {otherAnswers.length > 0 && (
+            <Box>
+              <Box
+                component="button"
+                type="button"
+                aria-expanded={showOtherAnswers}
+                onClick={() => setShowOtherAnswers((prev) => !prev)}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                  color: theme.palette.text.secondary,
+                  fontSize: "13px",
+                  fontWeight: 500,
+                }}
+              >
+                Other answers ({otherAnswers.length})
+                {showOtherAnswers ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </Box>
+              {showOtherAnswers && (
+                <Box sx={{ mt: "8px", borderTop: `1px solid ${theme.palette.border.light}` }}>
+                  {otherAnswers.map((field) => (
+                    <Box
+                      key={field.id}
+                      sx={{
+                        display: "grid",
+                        gridTemplateColumns: "200px 1fr",
+                        columnGap: "16px",
+                        py: "8px",
+                      }}
+                    >
+                      <Typography
+                        sx={{
+                          fontSize: "13px",
+                          fontWeight: 500,
+                          color: theme.palette.text.secondary,
+                        }}
+                      >
+                        {field.label}
+                      </Typography>
+                      <Typography
+                        sx={{
+                          fontSize: "13px",
+                          color: theme.palette.text.primary,
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {formatAnswer(field, submissionData[field.id], formatDate)}
+                      </Typography>
+                    </Box>
+                  ))}
                 </Box>
               )}
             </Box>
