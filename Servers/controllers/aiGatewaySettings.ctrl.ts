@@ -100,12 +100,6 @@ export function isRetentionOnlyUpdate(body: Record<string, unknown>): boolean {
 }
 
 /**
- * The role to send to the gateway. The gateway's admin check accepts only
- * "Admin", so a retention-only save by a role this backend allows to change
- * retention periods (organization.admin, including custom roles) is sent as
- * Admin. The check is role-based: the SuperAdmin grant flag is never used.
- */
-/**
  * The Agent Control deployment default's days, for the ledger entry. Read only
  * when the save set the Agent Control period; a failed read gives null (the
  * entry then names the default without its days) and never fails the save.
@@ -132,6 +126,12 @@ async function deploymentDefaultDaysFor(
   }
 }
 
+/**
+ * The role to send to the gateway. The gateway's admin check accepts only
+ * "Admin", so a retention-only save by a role this backend allows to change
+ * retention periods (organization.admin, including custom roles) is sent as
+ * Admin. The check is role-based: the SuperAdmin grant flag is never used.
+ */
 async function gatewayRoleFor(req: Request, body: Record<string, unknown>) {
   if (req.role === "Admin" || !isRetentionOnlyUpdate(body)) return req.role;
   try {
