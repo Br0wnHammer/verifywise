@@ -291,9 +291,19 @@ export function answersForScoring(
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Whole words and phrases: "name" does not match "renamed". */
-const keywordPattern = (keyword: string): RegExp =>
-  new RegExp(`\\b${escapeRegExp(keyword.toLowerCase())}\\b`, "i");
+/**
+ * Whole words and phrases, plus plural endings: "biometric" matches
+ * "biometrics", but "name" does not match "renamed". Compiled once per keyword.
+ */
+const KEYWORD_PATTERNS = new Map<string, RegExp>();
+const keywordPattern = (keyword: string): RegExp => {
+  let pattern = KEYWORD_PATTERNS.get(keyword);
+  if (!pattern) {
+    pattern = new RegExp(`\\b${escapeRegExp(keyword.toLowerCase())}(?:s|es)?\\b`, "i");
+    KEYWORD_PATTERNS.set(keyword, pattern);
+  }
+  return pattern;
+};
 
 function scoreDimension(
   config: (typeof DIMENSION_CONFIGS)[0],

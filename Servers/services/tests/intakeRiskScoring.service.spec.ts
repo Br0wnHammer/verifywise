@@ -224,6 +224,14 @@ describe("intakeRiskScoring.service", () => {
       expect(dimension(result, "data_sensitivity").score).toBe(50);
     });
 
+    it("matches plural forms but not words that merely contain a keyword", () => {
+      const schema = { version: "1.0", fields: [{ id: "notes", type: "text", label: "Notes" }] };
+      const plural = scoreSubmissionRuleBased({ notes: "facial biometrics at the border" }, schema);
+      expect(dimension(plural, "data_sensitivity").score).toBeGreaterThan(70);
+      const inside = scoreSubmissionRuleBased({ notes: "a toolkit" }, schema);
+      expect(dimension(inside, "autonomy_level").score).toBe(50);
+    });
+
     it("matches multi-word keywords as phrases", () => {
       const schema = { version: "1.0", fields: [{ id: "notes", type: "text", label: "Notes" }] };
       const result = scoreSubmissionRuleBased({ notes: "There is no human in the loop" }, schema);

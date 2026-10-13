@@ -1,6 +1,6 @@
 import { IntakeFormStatus, IntakeEntityType } from "../../../domain/intake/enums";
 import { brand } from "../../themes/palette";
-import type { Visibility } from "../../../application/utils/intakeFormLogic";
+import { sortFields, type Visibility } from "../../../application/utils/intakeFormLogic";
 
 /**
  * Field types supported in the intake form builder
@@ -397,10 +397,9 @@ export const RISK_DIMENSION_OPTIONS: Array<{ _id: string; name: string }> = [
  * `order`, so the two must never disagree.
  */
 export function withSequentialOrder(fields: FormField[]): FormField[] {
-  return [...fields]
-    .map((field, index) => ({ field, index }))
-    .sort((a, b) => (a.field.order ?? 0) - (b.field.order ?? 0) || a.index - b.index)
-    .map(({ field }, order) => (field.order === order ? field : { ...field, order }));
+  return sortFields(fields).map((field, order) =>
+    field.order === order ? field : { ...field, order },
+  );
 }
 
 /**

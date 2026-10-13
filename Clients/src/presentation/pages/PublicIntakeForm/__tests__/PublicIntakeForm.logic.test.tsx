@@ -112,6 +112,17 @@ describe("public form logic", () => {
     });
   });
 
+  it("submits right after a required field is hidden, without waiting for an animation", async () => {
+    renderPage();
+    await fillContactAndCaptcha();
+    fireEvent.click(screen.getByLabelText("Uses personal data"));
+    await screen.findByLabelText(/Describe the data/);
+    fireEvent.click(screen.getByLabelText("Uses personal data"));
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => expect(repo.submitPublicFormById).toHaveBeenCalled());
+    expect(repo.submitPublicFormById.mock.calls[0][1].formData).not.toHaveProperty("details");
+  });
+
   it("does not submit pre-filled answers to hidden fields", async () => {
     repo.getPublicFormById.mockResolvedValue(
       formResponse({ previousData: { personal: false, details: "old answer", cost: "1" } }),

@@ -72,7 +72,7 @@ import {
   sendSubmissionRejectedEmail,
 } from "../services/intakeFormEmail.service";
 import { calculateSubmissionRisk } from "../services/intakeRiskScoring.service";
-import { cleanSubmission, parseFormula } from "../services/intakeFormLogic";
+import { cleanSubmission, isEmptyAnswer, parseFormula } from "../services/intakeFormLogic";
 import { generateSuggestedQuestions, generateFieldGuidance } from "../services/intakeLLM.service";
 import { getCompanyLogoQuery } from "../utils/aiTrustCentre.utils";
 
@@ -305,7 +305,8 @@ function validateFormData(
     if (visibleIds && !visibleIds.has(field.id)) continue;
     if (field.type === "calculated") continue;
     const value = formData[field.id];
-    const isEmpty = value === undefined || value === null || value === "";
+    // Same notion of blank as the show/hide rules: whitespace and [] are empty.
+    const isEmpty = isEmptyAnswer(value);
 
     // Required check — field.required (backend interface) or field.validation.required (frontend schema)
     const isRequired = field.required || field.validation?.required;

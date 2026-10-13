@@ -214,6 +214,15 @@ describe("public submit with form logic", () => {
   );
 
   it.each(["byId", "bySlug"] as const)(
+    "%s: a required field answered with only spaces counts as blank, as the rules see it",
+    async (route) => {
+      const r = await submit(route, { q: "yes", d: "   ", cost: "10" });
+      expect(r.status).toHaveBeenCalledWith(400);
+      expect(intake.createSubmissionQuery).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["byId", "bySlug"] as const)(
     "%s: a form without logic stores its answers unchanged",
     async (route) => {
       useSchema([

@@ -178,6 +178,13 @@ export function PublicIntakeForm() {
         .join("|")
     : "";
 
+  // Fields present when the form first renders appear at once; only fields a
+  // rule reveals later animate in.
+  const [fieldsShown, setFieldsShown] = useState(false);
+  useEffect(() => {
+    if (formData) setFieldsShown(true);
+  }, [formData]);
+
   // A hidden field must not block submit: drop its validation but keep the
   // typed value, so showing it again restores the answer.
   useEffect(() => {
@@ -653,15 +660,13 @@ export function PublicIntakeForm() {
               {/* Form fields */}
               <Box sx={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                 {sortedFields.map((field) => {
-                  const visible = evaluation?.visibleIds.has(field.id) ?? true;
+                  // A hidden field unmounts at once (react-hook-form re-registers a
+                  // mounted Controller with its rules on every render, so an exit
+                  // animation would keep a hidden required field blocking submit);
+                  // only showing a field is animated.
+                  if (evaluation && !evaluation.visibleIds.has(field.id)) return null;
                   return (
-                    <Collapse
-                      key={field.id}
-                      in={visible}
-                      timeout={150}
-                      unmountOnExit
-                      sx={{ opacity: visible ? 1 : 0, transition: "opacity 150ms ease" }}
-                    >
+                    <Collapse key={field.id} in appear={fieldsShown} timeout={150}>
                       {field.type === "calculated" ? (
                         <CalculatedFieldDisplay
                           field={field}
