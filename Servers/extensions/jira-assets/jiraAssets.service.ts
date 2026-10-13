@@ -295,7 +295,10 @@ export async function saveConfig(
   if (body.sync_enabled !== undefined && typeof body.sync_enabled !== "boolean") {
     throw new JiraConfigValidationError("sync_enabled must be true or false");
   }
-  const syncIntervalHours = parseSyncIntervalHours(body.sync_interval_hours);
+  const syncIntervalHours =
+    body.sync_interval_hours === undefined
+      ? undefined
+      : parseSyncIntervalHours(body.sync_interval_hours);
 
   const commonReplacements = {
     organizationId,
@@ -363,12 +366,12 @@ export async function saveConfig(
     );
   }
 
-  // The schedule lives in the sync engine. A body that carries the sync fields
-  // still sets them, as POST /config always did; one that leaves both out keeps
-  // the schedule as it is (the panel no longer sends them here).
-  if (body.sync_enabled !== undefined || body.sync_interval_hours !== undefined) {
+  // The schedule lives in the sync engine. Each sync field the body carries is
+  // saved; one it leaves out keeps its stored value (a new schedule starts off,
+  // every 24 hours). The panel no longer sends them here.
+  if (body.sync_enabled !== undefined || syncIntervalHours !== undefined) {
     await saveSchedule(JIRA_ASSETS_KEY, organizationId, {
-      enabled: body.sync_enabled ?? false,
+      enabled: body.sync_enabled,
       intervalHours: syncIntervalHours,
     });
   }

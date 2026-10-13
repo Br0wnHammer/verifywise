@@ -83,8 +83,10 @@ export function sqlBackoffHours(alias: string): string {
  * schedule is on, whose extension is enabled (jobs bypass
  * requireExtensionEnabled, so the join is the enablement check), with no live
  * run, and whose due time has passed. `last_run` is the newest start of a
- * claimed run of a status kind (:statusKinds); skipped rows have no token and
- * never count. Due when there is no last run, or when
+ * run of a status kind (:statusKinds) that was not skipped. Skipped rows are
+ * not runs, so they never count; the filter is on status, not run_token,
+ * because history copied from jira_assets_sync_history has no tokens and must
+ * still count (else every migrated org looks never-synced and runs at once). Due when there is no last run, or when
  * GREATEST(interval_hours, backoff) hours have passed since it. Nothing is
  * stored ahead of time, so an interval change applies on the next tick. This
  * system query spans organizations by design; every subquery is correlated on
@@ -102,7 +104,7 @@ export const DUE_RUNS_SQL = `
       SELECT MAX(r.started_at) AS last_run
         FROM extension_sync_runs r
        WHERE r.organization_id = s.organization_id AND r.extension_key = s.extension_key
-         AND r.kind IN (:statusKinds) AND r.run_token IS NOT NULL
+         AND r.kind IN (:statusKinds) AND r.status <> 'skipped'
     ) lr ON TRUE
    WHERE s.extension_key = :key
      AND s.enabled = TRUE

@@ -51,6 +51,56 @@ async function closeStaleRuns(
   return closed ?? [];
 }
 
+/** The per-(extension, org) advisory lock every claim and stale sweep takes. */
+async function lockOrgRuns(key: string, orgId: number, transaction: Transaction): Promise<void> {
+  await sequelize.query(`SELECT pg_advisory_xact_lock(hashtext('ext_sync:' || :key), :orgId);`, {
+    replacements: { key, orgId },
+    type: QueryTypes.SELECT,
+    transaction,
+  });
+}
+
+/**
+ * Close the org's stale runs (under the org lock); each abandoned scheduled
+ * run counts as a scheduled failure.
+ */
+async function closeStaleRunsAndRecord(
+  provider: SyncProvider,
+  orgId: number,
+  transaction: Transaction,
+): Promise<void> {
+  for (const closed of await closeStaleRuns(provider, orgId, transaction)) {
+    if (closed.kind === provider.scheduledKind) {
+      await recordFailureForSchedule(provider.key, orgId, closed.started_at, transaction);
+    }
+  }
+}
+
+/**
+ * The tick's sweep before it looks for due orgs: close every org's stale runs
+ * of this extension, so an abandoned scheduled run raises the backoff before
+ * the due query reads it (else the retry is scheduled one failure short). This
+ * system query spans organizations by design; each org is then closed in its
+ * own transaction under its own lock. Returns the orgs swept.
+ */
+export async function closeStaleRunsForProvider(provider: SyncProvider): Promise<number[]> {
+  const rows = (await sequelize.query(
+    `SELECT DISTINCT r.organization_id
+       FROM extension_sync_runs r
+      WHERE r.extension_key = :key AND r.status = 'started' AND NOT ${sqlRunIsLive("r")}
+      ORDER BY r.organization_id;`,
+    { replacements: { key: provider.key }, type: QueryTypes.SELECT },
+  )) as Array<{ organization_id: number }>;
+  const orgIds = rows.map((row) => Number(row.organization_id));
+  for (const orgId of orgIds) {
+    await sequelize.transaction(async (transaction) => {
+      await lockOrgRuns(provider.key, orgId, transaction);
+      await closeStaleRunsAndRecord(provider, orgId, transaction);
+    });
+  }
+  return orgIds;
+}
+
 /**
  * Atomically record the start of a run, or refuse with SyncInProgressError if
  * one of this extension is live for the org. One claim per (extension, org)
@@ -70,17 +120,8 @@ export async function claimRun(
   if (!provider.kinds.includes(kind)) throw new Error(`"${kind}" is not a run kind of ${key}`);
   const token = randomUUID();
   return sequelize.transaction(async (transaction) => {
-    await sequelize.query(`SELECT pg_advisory_xact_lock(hashtext('ext_sync:' || :key), :orgId);`, {
-      replacements: { key, orgId },
-      type: QueryTypes.SELECT,
-      transaction,
-    });
-    for (const closed of await closeStaleRuns(provider, orgId, transaction)) {
-      // An abandoned scheduled run counts as a scheduled failure.
-      if (closed.kind === provider.scheduledKind) {
-        await recordFailureForSchedule(key, orgId, closed.started_at, transaction);
-      }
-    }
+    await lockOrgRuns(key, orgId, transaction);
+    await closeStaleRunsAndRecord(provider, orgId, transaction);
     const running = (await sequelize.query(
       `SELECT id FROM extension_sync_runs
         WHERE organization_id = :orgId AND extension_key = :key AND status = 'started'

@@ -77,10 +77,10 @@ async function main() {
     await client.query(BASE_SCHEMA);
     await migration.up({ sequelize });
     await client.query(`
-      INSERT INTO verifywise.organizations (id, name) SELECT g, 'org ' || g FROM generate_series(1, 9) g;
+      INSERT INTO verifywise.organizations (id, name) SELECT g, 'org ' || g FROM generate_series(1, 10) g;
       INSERT INTO verifywise.extensions (id, key) VALUES (1, '${KEY}');
       INSERT INTO verifywise.extension_enablements (organization_id, extension_id, enabled)
-      SELECT g, 1, g <> 6 FROM generate_series(1, 9) g;
+      SELECT g, 1, g <> 6 FROM generate_series(1, 10) g;
       INSERT INTO verifywise.extension_sync_settings
         (organization_id, extension_key, enabled, interval_hours, consecutive_failures)
       VALUES (1, '${KEY}', TRUE, 1, 0),     -- never ran: due
@@ -91,7 +91,8 @@ async function main() {
              (6, '${KEY}', TRUE, 1, 0),     -- extension disabled: not due
              (7, '${KEY}', FALSE, 1, 0),    -- schedule off: not due
              (8, '${KEY}', TRUE, 1, 0),     -- claimed run 3 h ago, newer skip: due
-             (9, '${KEY}', TRUE, 24, 2);    -- 24 h interval, ran 3 h ago: not due until changed
+             (9, '${KEY}', TRUE, 24, 2),    -- 24 h interval, ran 3 h ago: not due until changed
+             (10, '${KEY}', TRUE, 24, 0);   -- migrated token-less run 30 min ago: not due
     `);
     await addRun(client, 2, "scheduled", "completed", 120, "t2");
     await addRun(client, 3, "scheduled", "failed", 120, "t3");
@@ -102,6 +103,8 @@ async function main() {
     await addRun(client, 8, "manual", "completed", 180, "t8");
     await addRun(client, 8, "manual", "skipped", 10, null);
     await addRun(client, 9, "scheduled", "failed", 180, "t9");
+    // History copied from jira_assets_sync_history has no run_token; it still counts.
+    await addRun(client, 10, "scheduled", "completed", 30, null);
 
     assert.deepEqual(await dueOrgs(sequelize), [1, 2, 8]);
 

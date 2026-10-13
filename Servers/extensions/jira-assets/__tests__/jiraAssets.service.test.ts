@@ -1544,6 +1544,30 @@ describe("saveConfig validation", () => {
     save.mockRestore();
   });
 
+  it("saves only the sync field the body carries, keeping the other", async () => {
+    mockQuery.mockResolvedValueOnce([{ id: 1, api_token_encrypted: "enc" }]).mockResolvedValue([]);
+    const save = jest.spyOn(engineSchedule, "saveSchedule").mockResolvedValue({
+      enabled: true,
+      interval_hours: 6,
+      consecutive_failures: 0,
+      failing_since: null,
+    });
+
+    await saveConfig(5, 3, { ...base, sync_interval_hours: 6 });
+    expect(save).toHaveBeenLastCalledWith("jira-assets", 5, {
+      enabled: undefined,
+      intervalHours: 6,
+    });
+
+    mockQuery.mockResolvedValueOnce([{ id: 1, api_token_encrypted: "enc" }]);
+    await saveConfig(5, 3, { ...base, sync_enabled: true });
+    expect(save).toHaveBeenLastCalledWith("jira-assets", 5, {
+      enabled: true,
+      intervalHours: undefined,
+    });
+    save.mockRestore();
+  });
+
   it("leaves the schedule alone when the body has no sync fields", async () => {
     mockQuery.mockResolvedValueOnce([{ id: 1, api_token_encrypted: "enc" }]).mockResolvedValue([]);
     const save = jest.spyOn(engineSchedule, "saveSchedule");

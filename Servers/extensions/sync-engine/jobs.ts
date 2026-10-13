@@ -3,7 +3,13 @@ import {
   type ExtensionSyncJobData,
   enqueueExtensionSyncRun,
 } from "../../services/automations/automationProducer";
-import { claimRun, createRunContext, recordSkippedRun, runClaimed } from "./claim";
+import {
+  claimRun,
+  closeStaleRunsForProvider,
+  createRunContext,
+  recordSkippedRun,
+  runClaimed,
+} from "./claim";
 import { SyncInProgressError, SyncNotReadyError } from "./errors";
 import { registerAllSyncProviders } from "./providers";
 import { getSyncProvider, listSyncProviders } from "./registry";
@@ -57,6 +63,12 @@ export async function runExtensionSyncTick(): Promise<TickSummary> {
   for (const provider of listSyncProviders()) {
     const kind = provider.scheduledKind;
     if (!kind) continue;
+    try {
+      await closeStaleRunsForProvider(provider);
+    } catch (error) {
+      // Not fatal: claimRun closes stale runs too, one tick later.
+      logger.error(`Extension sync tick: stale-run sweep failed for ${provider.key}:`, error);
+    }
     let due: Array<{ organization_id: number }>;
     try {
       due = await findDueRuns(provider);

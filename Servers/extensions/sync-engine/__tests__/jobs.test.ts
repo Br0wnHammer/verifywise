@@ -12,6 +12,7 @@ jest.mock("../../../services/automations/automationProducer", () => ({
 }));
 jest.mock("../claim", () => ({
   claimRun: jest.fn(),
+  closeStaleRunsForProvider: jest.fn(),
   createRunContext: jest.fn(() => ({ fake: "ctx" })),
   recordSkippedRun: jest.fn(),
   runClaimed: jest.fn(),
@@ -20,7 +21,13 @@ jest.mock("../schedule", () => ({ findDueRuns: jest.fn() }));
 jest.mock("../status", () => ({ hasLiveRun: jest.fn(), latestStatusRunId: jest.fn() }));
 
 import { enqueueExtensionSyncRun } from "../../../services/automations/automationProducer";
-import { claimRun, createRunContext, recordSkippedRun, runClaimed } from "../claim";
+import {
+  claimRun,
+  closeStaleRunsForProvider,
+  createRunContext,
+  recordSkippedRun,
+  runClaimed,
+} from "../claim";
 import { SyncInProgressError, SyncNotReadyError, UnknownSyncProviderError } from "../errors";
 import {
   handleExtensionSyncJob,
@@ -38,6 +45,7 @@ const mockReadiness = jest.fn();
 const mockEnqueue = enqueueExtensionSyncRun as jest.Mock;
 const mockClaim = claimRun as jest.Mock;
 const mockFindDue = findDueRuns as jest.Mock;
+const mockSweep = closeStaleRunsForProvider as jest.Mock;
 
 const jira: SyncProvider = {
   key: "jira-assets",
@@ -73,6 +81,7 @@ beforeEach(() => {
   mockEnqueue.mockResolvedValue({ jobId: "ext-sync-jira-assets-5", queued: true });
   mockClaim.mockResolvedValue(CLAIMED);
   mockFindDue.mockResolvedValue([]);
+  mockSweep.mockResolvedValue([]);
 });
 
 describe("runExtensionSyncTick", () => {
@@ -100,6 +109,31 @@ describe("runExtensionSyncTick", () => {
       payload: null,
     });
     expect(recordSkippedRun).not.toHaveBeenCalled();
+  });
+
+  it("closes stale runs before it looks for due orgs, so backoff counts them", async () => {
+    const order: string[] = [];
+    mockSweep.mockImplementation(async () => {
+      order.push("sweep");
+      return [5];
+    });
+    mockFindDue.mockImplementation(async () => {
+      order.push("due");
+      return [];
+    });
+
+    await runExtensionSyncTick();
+
+    expect(mockSweep).toHaveBeenCalledWith(jira);
+    expect(mockSweep).not.toHaveBeenCalledWith(manualOnly);
+    expect(order).toEqual(["sweep", "due"]);
+  });
+
+  it("still looks for due orgs when the stale-run sweep fails", async () => {
+    mockSweep.mockRejectedValue(new Error("db blip"));
+    mockFindDue.mockResolvedValue([{ organization_id: 5 }]);
+
+    await expect(runExtensionSyncTick()).resolves.toMatchObject({ candidates: 1, queued: 1 });
   });
 
   it("counts a job that is already waiting, and keeps going after one org fails", async () => {

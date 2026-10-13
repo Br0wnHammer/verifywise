@@ -11,6 +11,7 @@ import { sequelize } from "../../../database/db";
 import {
   ClaimedRun,
   claimRun,
+  closeStaleRunsForProvider,
   createRunContext,
   recordSkippedRun,
   runClaimed,
@@ -50,11 +51,15 @@ interface Db {
   owned?: boolean;
   insertError?: unknown;
   closed?: Array<{ kind: string; started_at: Date }>;
+  staleOrgs?: number[];
 }
 
 /** Route sequelize.query by SQL text, so tests read as scenarios. */
-function fakeDb({ live = [], owned = true, insertError, closed = [] }: Db = {}) {
+function fakeDb({ live = [], owned = true, insertError, closed = [], staleOrgs = [] }: Db = {}) {
   mockQuery.mockImplementation(async (sql: string) => {
+    if (sql.includes("SELECT DISTINCT r.organization_id")) {
+      return staleOrgs.map((organization_id) => ({ organization_id }));
+    }
     if (sql.includes("pg_advisory_xact_lock")) return [{}];
     if (sql.includes("SET status = 'abandoned'")) return [closed, {}];
     if (sql.includes("FOR SHARE")) return owned ? [{ id: 91 }] : [];
@@ -525,6 +530,19 @@ describe("schedule bookkeeping", () => {
       replacements: { key: "demo-ext", orgId: 5, startedAt: STARTED_AT },
       transaction: TX,
     });
+  });
+
+  it("the tick's sweep closes each org's stale runs under its lock and counts them", async () => {
+    fakeDb({ staleOrgs: [5, 7], closed: [{ kind: "scheduled", started_at: STARTED_AT }] });
+
+    await expect(closeStaleRunsForProvider(provider)).resolves.toEqual([5, 7]);
+
+    const [discoverySql, discovery] = calls("SELECT DISTINCT r.organization_id")[0];
+    expect(discoverySql).toContain("r.status = 'started' AND NOT");
+    expect(discovery.replacements).toEqual({ key: "demo-ext" });
+    expect(calls("pg_advisory_xact_lock").map(([, o]) => o.replacements.orgId)).toEqual([5, 7]);
+    expect(streakUps().map(([, o]) => o.replacements.orgId)).toEqual([5, 7]);
+    expect(mockTransaction).toHaveBeenCalledTimes(2);
   });
 
   it("counts a failed scheduled run, not a failed manual one", async () => {

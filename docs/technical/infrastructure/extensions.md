@@ -393,12 +393,16 @@ sync never overlap.
 ### Schedule, backoff and the tick
 
 `extension_sync_tick` (`scheduleExtensionSyncTick`, every 5 minutes,
-non-obliterating, registered in `addAllJobs()`) runs `DUE_RUNS_SQL` once per
-provider with a schedule. It selects settings rows that are enabled, whose
+non-obliterating, registered in `addAllJobs()`) first closes every org's stale
+`started` runs of each provider with a schedule (`closeStaleRunsForProvider`,
+each org under its own advisory lock), so an abandoned scheduled run raises the
+backoff before the due check; then it runs `DUE_RUNS_SQL` once per provider. It
+selects settings rows that are enabled, whose
 extension is enabled for the org (jobs bypass `requireExtensionEnabled`, so the
 join is the enablement check), with no live run, and whose due time has passed:
-`last_run` is the newest `started_at` of a claimed (`run_token` not null)
-manual or scheduled run, and the org is due when `last_run` is null or
+`last_run` is the newest `started_at` of a manual or scheduled run that was not
+skipped (history copied from `jira_assets_sync_history` has no `run_token` and
+still counts), and the org is due when `last_run` is null or
 `now() >= last_run + GREATEST(interval_hours, backoff(consecutive_failures))`
 hours. `backoff(n)` is 0, then 1, 2, 4, 8, 16, and 24 hours; the exponent is
 clamped, so a long streak cannot overflow. An interval change applies on the
@@ -783,8 +787,8 @@ message text.
 - `PATCH /api/extensions/:key/schedule` changes only `enabled` and/or
   `interval_hours` (whole hours, 1 to 168; a numeric string is accepted).
 - `POST /config` still accepts `sync_enabled` / `sync_interval_hours` and
-  writes them to the engine schedule; a body without them leaves the schedule
-  as it is.
+  writes the ones it carries to the engine schedule; a field it leaves out
+  keeps its stored value.
 - `PATCH /config/selection` changes only `selected_schema_id` and/or
   `selected_object_type_id`.
 

@@ -139,7 +139,7 @@ describe("backoff and the due query", () => {
   it("decides everything in one SQL statement", () => {
     expect(DUE_RUNS_SQL).toContain("ee.enabled = TRUE");
     expect(DUE_RUNS_SQL).toContain("s.enabled = TRUE");
-    expect(DUE_RUNS_SQL).toContain("r.kind IN (:statusKinds) AND r.run_token IS NOT NULL");
+    expect(DUE_RUNS_SQL).toContain("r.kind IN (:statusKinds) AND r.status <> 'skipped'");
     expect(DUE_RUNS_SQL).toContain("NOT EXISTS (SELECT 1 FROM extension_sync_runs live");
     expect(DUE_RUNS_SQL).toContain("GREATEST(s.interval_hours,");
     // The exponent is clamped, so a long failure streak cannot overflow power().
