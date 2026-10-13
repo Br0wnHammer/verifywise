@@ -62,6 +62,7 @@ import EvidenceHubTable from "./evidenceHubTable";
 import FilePreviewPanel from "../FileManager/components/FilePreviewPanel";
 import { FileMetadata } from "../../../application/repository/file.repository";
 import { earliestFileExpiry } from "../../../application/utils/fileExpiry";
+import { replaceShareLink } from "../../../application/utils/replaceShareLink";
 import ModelEvaluationsTab from "./ModelEvaluationsTab";
 import ModelRiskManagementTab from "./mrm";
 import ShareButton from "../../components/ShareViewDropdown/ShareButton";
@@ -1391,30 +1392,33 @@ const ModelInventory: React.FC = () => {
 
   const handleConfirmReplace = async () => {
     setShowReplaceConfirmation(false);
+    // A link is already being created; replacing now would disable it.
+    if (isCreatingLink) return;
 
     try {
-      // Fetch ALL existing share links for this resource and disable them
       const existingLinksResponse: any = await getShareLinksForResource("model", 0);
-      const existingLinks = existingLinksResponse?.data?.data || [];
+      const existingLinks: { id: number; is_enabled: boolean }[] =
+        existingLinksResponse?.data?.data || [];
 
-      // Disable all existing links
-      let disabledCount = 0;
-      for (const link of existingLinks) {
-        if (link.is_enabled) {
-          await updateShareMutation.mutateAsync({
-            id: link.id,
-            is_enabled: false,
-          });
-          disabledCount++;
-        }
+      const outcome = await replaceShareLink({
+        existingLinks,
+        // Shows its own error and returns "" when creation fails.
+        createLink: () => generateShareableLink(shareSettings),
+        disableLink: (id) => updateShareMutation.mutateAsync({ id, is_enabled: false }),
+      });
+      if (outcome === "not-created") return;
+
+      if (outcome === "old-links-still-active") {
+        setAlert({
+          variant: "warning",
+          body: "New share link created, but some previous links are still active. Replace the link again to disable them.",
+        });
+        return;
       }
-
-      // Create a new link
-      await generateShareableLink(shareSettings);
 
       setAlert({
         variant: "success",
-        body: `Share link replaced successfully! ${disabledCount} previous link(s) invalidated.`,
+        body: "Share link replaced. Previous links no longer work.",
       });
     } catch (error) {
       console.error("Error replacing share link:", error);

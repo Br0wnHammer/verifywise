@@ -1,4 +1,4 @@
-import { useRef, useState, ChangeEvent } from "react";
+import { useRef, useState, ChangeEvent, KeyboardEvent } from "react";
 import { Box, Menu, MenuItem, Typography, useTheme } from "@mui/material";
 import Field from "../../components/Inputs/Field";
 import type { FormField } from "./types";
@@ -41,6 +41,16 @@ export function FormulaEditor({ formula, numericFields, decimals, onChange }: Fo
     }
   };
 
+  // The picker never takes focus, so its own Escape handling never runs.
+  // Close it here, and keep the key from also closing a surrounding modal.
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape" && pickerAnchor) {
+      event.preventDefault();
+      event.stopPropagation();
+      setPickerAnchor(null);
+    }
+  };
+
   const insertField = (fieldId: string) => {
     const caret = Math.min(caretRef.current, formula.length);
     const before = formula.slice(0, caret);
@@ -74,6 +84,7 @@ export function FormulaEditor({ formula, numericFields, decimals, onChange }: Fo
         label="Formula"
         value={formula}
         onChange={handleChange}
+        onKeyDown={handleKeyDown}
         placeholder="Type { to insert a field"
       />
       <Menu

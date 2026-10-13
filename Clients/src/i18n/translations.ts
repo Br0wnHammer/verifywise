@@ -6750,6 +6750,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Failed to rename project": "Umbenennen des Projekts fehlgeschlagen",
     "Failed to replace share link. Please try again.":
       "Ersetzen des Freigabelinks fehlgeschlagen. Bitte erneut versuchen.",
+    "New share link created, but some previous links are still active. Replace the link again to disable them.":
+      "Neuer Freigabelink erstellt, aber einige vorherige Links sind noch aktiv. Ersetzen Sie den Link erneut, um sie zu deaktivieren.",
+    "Share link replaced. Previous links no longer work.":
+      "Freigabelink ersetzt. Vorherige Links funktionieren nicht mehr.",
     "Failed to restore the task. Please try again.":
       "Wiederherstellen der Aufgabe fehlgeschlagen. Bitte erneut versuchen.",
     "Failed to save": "Speichern fehlgeschlagen",
@@ -17076,6 +17080,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Failed to rename project": "Échec du renommage du projet",
     "Failed to replace share link. Please try again.":
       "Échec du remplacement du lien de partage. Veuillez réessayer.",
+    "New share link created, but some previous links are still active. Replace the link again to disable them.":
+      "Nouveau lien de partage créé, mais certains liens précédents sont encore actifs. Remplacez à nouveau le lien pour les désactiver.",
+    "Share link replaced. Previous links no longer work.":
+      "Lien de partage remplacé. Les liens précédents ne fonctionnent plus.",
     "Failed to restore the task. Please try again.":
       "Échec de la restauration de la tâche. Veuillez réessayer.",
     "Failed to save": "Échec de l'enregistrement",
@@ -28224,6 +28232,10 @@ export const translations: Record<string, Record<string, string>> = {
       "No se pudo eliminar el marco. Inténtelo de nuevo.",
     "Failed to replace share link. Please try again.":
       "No se pudo reemplazar el enlace para compartir. Inténtelo de nuevo.",
+    "New share link created, but some previous links are still active. Replace the link again to disable them.":
+      "Se creó un nuevo enlace para compartir, pero algunos enlaces anteriores siguen activos. Vuelva a reemplazar el enlace para desactivarlos.",
+    "Share link replaced. Previous links no longer work.":
+      "Enlace para compartir reemplazado. Los enlaces anteriores ya no funcionan.",
     "Failed to restore the task. Please try again.":
       "No se pudo restaurar la tarea. Inténtelo de nuevo.",
     "Failed to save configuration. Please try again.":

@@ -1,3 +1,4 @@
+import type { FormEvent } from "react";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
@@ -139,5 +140,35 @@ describe("CustomizableButton", () => {
     button.focus();
     await user.keyboard(" ");
     expect(handleClick).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["Enter", "{Enter}"],
+    ["Space", " "],
+  ])("submits its form with %s when type is submit", async (_name, key) => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn((event: FormEvent) => event.preventDefault());
+    renderWithProviders(
+      <form onSubmit={handleSubmit}>
+        <CustomizableButton type="submit">Send</CustomizableButton>
+      </form>,
+    );
+    screen.getByRole("button", { name: "Send" }).focus();
+    await user.keyboard(key);
+    expect(handleSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire onClick from the keyboard when disabled", async () => {
+    const user = userEvent.setup();
+    const handleClick = vi.fn();
+    renderWithProviders(
+      <CustomizableButton onClick={handleClick} isDisabled>
+        Disabled
+      </CustomizableButton>,
+    );
+    screen.getByRole("button", { name: "Disabled" }).focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+    expect(handleClick).not.toHaveBeenCalled();
   });
 });
