@@ -125,3 +125,15 @@ class TestRetentionConfig:
         monkeypatch.setattr(settings, "mcp_audit_retention_min_days", 10)
         body = await retention_router.get_retention_config(MagicMock())
         assert body == {"mcp_audit_retention_days": 45, "mcp_audit_retention_min_days": 10}
+
+
+class TestMinDaysSetting:
+    @pytest.mark.parametrize(
+        "raw, expected",
+        [("0", 1), ("-5", 1), ("5000", MAX_RETENTION_DAYS), ("7", 7)],
+    )
+    def test_floor_is_clamped_to_one_through_the_maximum(self, monkeypatch, raw, expected):
+        from config import Settings
+
+        monkeypatch.setenv("MCP_AUDIT_RETENTION_MIN_DAYS", raw)
+        assert Settings().mcp_audit_retention_min_days == expected
