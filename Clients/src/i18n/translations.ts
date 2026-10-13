@@ -10392,6 +10392,12 @@ export const translations: Record<string, Record<string, string>> = {
     "This setting applies to both AI Gateway log types.":
       "Diese Einstellung gilt für beide Protokolltypen des AI Gateway.",
     "At least {min} months.": "Mindestens {min} Monate.",
+    "{period} (deployment default)": "{period} (Standard der Bereitstellung)",
+    "Use the deployment default": "Standard der Bereitstellung verwenden",
+    "Use the deployment default ({period})": "Standard der Bereitstellung verwenden ({period})",
+    "From {min} to {max} days.": "Von {min} bis {max} Tagen.",
+    "Tool-call logs and decided approvals older than {period} will be deleted permanently at the next daily cleanup. Deleted records cannot be restored.":
+      "Tool-Call-Protokolle und entschiedene Genehmigungen, die älter als {period} sind, werden bei der nächsten täglichen Bereinigung dauerhaft gelöscht. Gelöschte Datensätze können nicht wiederhergestellt werden.",
     "Leave empty or enter 0 to keep indefinitely. Maximum {max}.":
       "Leer lassen oder 0 eingeben, um unbegrenzt aufzubewahren. Maximum {max}.",
     "Enter a whole number": "Geben Sie eine ganze Zahl ein",
@@ -20720,6 +20726,13 @@ export const translations: Record<string, Record<string, string>> = {
     "This setting applies to both AI Gateway log types.":
       "Ce paramètre s'applique aux deux types de journaux de l'AI Gateway.",
     "At least {min} months.": "Au moins {min} mois.",
+    "{period} (deployment default)": "{period} (valeur par défaut du déploiement)",
+    "Use the deployment default": "Utiliser la valeur par défaut du déploiement",
+    "Use the deployment default ({period})":
+      "Utiliser la valeur par défaut du déploiement ({period})",
+    "From {min} to {max} days.": "De {min} à {max} jours.",
+    "Tool-call logs and decided approvals older than {period} will be deleted permanently at the next daily cleanup. Deleted records cannot be restored.":
+      "Les journaux d'appels d'outils et les approbations traitées de plus de {period} seront définitivement supprimés lors du prochain nettoyage quotidien. Les enregistrements supprimés ne peuvent pas être restaurés.",
     "Leave empty or enter 0 to keep indefinitely. Maximum {max}.":
       "Laissez vide ou saisissez 0 pour conserver indéfiniment. Maximum {max}.",
     "Enter a whole number": "Saisissez un nombre entier",
@@ -30966,6 +30979,13 @@ export const translations: Record<string, Record<string, string>> = {
     "This setting applies to both AI Gateway log types.":
       "Este ajuste se aplica a ambos tipos de registros del AI Gateway.",
     "At least {min} months.": "Al menos {min} meses.",
+    "{period} (deployment default)": "{period} (valor predeterminado de la implementación)",
+    "Use the deployment default": "Usar el valor predeterminado de la implementación",
+    "Use the deployment default ({period})":
+      "Usar el valor predeterminado de la implementación ({period})",
+    "From {min} to {max} days.": "De {min} a {max} días.",
+    "Tool-call logs and decided approvals older than {period} will be deleted permanently at the next daily cleanup. Deleted records cannot be restored.":
+      "Los registros de llamadas a herramientas y las aprobaciones resueltas de más de {period} se eliminarán de forma permanente en la próxima limpieza diaria. Los registros eliminados no se pueden restaurar.",
     "Leave empty or enter 0 to keep indefinitely. Maximum {max}.":
       "Déjalo vacío o escribe 0 para conservar indefinidamente. Máximo {max}.",
     "Enter a whole number": "Introduce un número entero",
