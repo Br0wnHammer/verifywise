@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     mcp_circuit_breaker_timeout_seconds: int = 30
     mcp_approval_expiry_seconds: int = 900
     mcp_audit_retention_days: int = 30
+    # Shortest Agent Control log retention an organization may set
+    # (MCP_AUDIT_RETENTION_MIN_DAYS). Never applied to the default above.
+    mcp_audit_retention_min_days: int = 7
 
     @field_validator("ai_gateway_internal_key", mode="before")
     @classmethod

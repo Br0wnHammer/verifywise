@@ -162,7 +162,12 @@ def _sequenced_db(*firsts):
 
 
 async def test_save_returns_the_retention_values_it_replaced(monkeypatch):
-    stored = {"log_retention_days": 60, "spend_log_retention_days": 90, "auto_purge_enabled": False}
+    stored = {
+        "log_retention_days": 60,
+        "spend_log_retention_days": 90,
+        "auto_purge_enabled": False,
+        "mcp_audit_retention_days": None,
+    }
     saved = {"organization_id": 7, "log_retention_days": 30, "auto_purge_enabled": True}
     # Statements in turn: create-if-missing, locked read, upsert.
     get_db, executed, db = _sequenced_db(None, stored, saved)
@@ -188,7 +193,12 @@ async def test_first_save_creates_the_row_with_defaults_before_locking(monkeypat
     (ON CONFLICT DO NOTHING, column defaults only), so the locked read finds a
     row and a concurrent first save waits on its lock instead of also seeing
     nothing. The real concurrent behaviour needs Postgres; see the PR notes."""
-    defaults = {"log_retention_days": 90, "spend_log_retention_days": 90, "auto_purge_enabled": False}
+    defaults = {
+        "log_retention_days": 90,
+        "spend_log_retention_days": 90,
+        "auto_purge_enabled": False,
+        "mcp_audit_retention_days": None,
+    }
     saved = {"organization_id": 7, "log_retention_days": 30}
     get_db, executed, _ = _sequenced_db(None, defaults, saved)
     monkeypatch.setattr(guardrails_crud, "get_db", get_db)
@@ -291,6 +301,7 @@ _STORED = {
     "log_retention_days": 90,
     "spend_log_retention_days": 90,
     "auto_purge_enabled": False,
+    "mcp_audit_retention_days": None,
     "pii_on_error": "block",
     "content_filter_on_error": "allow",
     "pii_replacement_format": "<ENTITY_TYPE>",
@@ -516,7 +527,10 @@ def test_retention_routes_serve_the_right_internal_key(monkeypatch):
     purge = client.post("/internal/retention/purge", json={"organization_id": 1}, headers=headers)
 
     assert config.status_code == 200
-    assert config.json() == {"mcp_audit_retention_days": 30}
+    assert config.json() == {
+        "mcp_audit_retention_days": 30,
+        "mcp_audit_retention_min_days": 7,
+    }
     # The purge gets past the key check and looks up the organization.
     assert purge.status_code == 200
     assert "auto_purge_enabled" in str(executed[0][0])
@@ -526,7 +540,8 @@ async def test_config_returns_audit_retention_days_at_top_level(monkeypatch):
     monkeypatch.setattr(retention_router.settings, "mcp_audit_retention_days", 45)
 
     assert await retention_router.get_retention_config(_request()) == {
-        "mcp_audit_retention_days": 45
+        "mcp_audit_retention_days": 45,
+        "mcp_audit_retention_min_days": 7,
     }
 
 

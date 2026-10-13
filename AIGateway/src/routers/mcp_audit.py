@@ -124,7 +124,9 @@ async def cleanup_audit_logs(request: Request):
     """Delete audit logs older than retention period. Called by scheduled job."""
     from config import settings
 
-    deleted = await delete_expired_audit_logs(settings.mcp_audit_retention_days)
+    deleted = await delete_expired_audit_logs(
+        settings.mcp_audit_retention_days, settings.mcp_audit_retention_min_days
+    )
     return {"status": "success", "deleted": deleted}
 
 
@@ -138,5 +140,7 @@ async def cleanup_approval_requests(request: Request):
     from config import settings
     from crud.mcp_approvals import delete_expired_approval_requests
 
-    deleted = await delete_expired_approval_requests(settings.mcp_audit_retention_days)
+    deleted = await delete_expired_approval_requests(
+        settings.mcp_audit_retention_days, settings.mcp_audit_retention_min_days
+    )
     return {"status": "success", "deleted": deleted}

@@ -13,6 +13,7 @@ from crud.purge import (
     older_rows_remain,
     retention_cutoff,
 )
+from config import settings
 from database.db import get_db
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -216,7 +217,7 @@ async def get_guardrail_settings(org_id: int) -> Optional[dict]:
 
 # Settings columns a caller may write, with the value an organization has
 # before it saves its own. These equal the table's column defaults (migrations
-# a0001 and a0011), which a new row takes. Keys outside this table are ignored.
+# a0001, a0011 and a0012), which a new row takes. Keys outside this table are ignored.
 _SETTINGS_DEFAULTS: dict[str, Any] = {
     "pii_on_error": "block",
     "content_filter_on_error": "allow",
@@ -227,6 +228,7 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "log_request_body": False,
     "log_response_body": False,
     "auto_purge_enabled": False,
+    "mcp_audit_retention_days": None,
 }
 _RETENTION_DAY_KEYS = ("log_retention_days", "spend_log_retention_days")
 
@@ -239,8 +241,10 @@ _ON_ERROR_VALUES = ("block", "allow")
 _REPLACEMENT_KEYS = ("pii_replacement_format", "content_filter_replacement")
 _REPLACEMENT_MAX_LENGTH = 50
 _BOOLEAN_SETTING_KEYS = ("log_request_body", "log_response_body", "auto_purge_enabled")
-# The two body-logging columns are nullable; every other setting is NOT NULL.
-_NULLABLE_SETTING_KEYS = ("log_request_body", "log_response_body")
+# The two body-logging columns and the Agent Control period are nullable; every
+# other setting is NOT NULL. A null Agent Control period means the deployment
+# default (MCP_AUDIT_RETENTION_DAYS).
+_NULLABLE_SETTING_KEYS = ("log_request_body", "log_response_body", "mcp_audit_retention_days")
 
 
 def _validate_settings_input(data: dict) -> None:
@@ -281,6 +285,22 @@ def _validate_settings_input(data: dict) -> None:
                     status_code=400,
                     detail=f"{key} must be an integer from 1 to {MAX_RETENTION_DAYS}",
                 )
+    if data.get("mcp_audit_retention_days") is not None:
+        value = data["mcp_audit_retention_days"]
+        floor = settings.mcp_audit_retention_min_days
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < floor
+            or value > MAX_RETENTION_DAYS
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "mcp_audit_retention_days must be an integer from "
+                    f"{floor} to {MAX_RETENTION_DAYS}, or null for the deployment default"
+                ),
+            )
 
 
 def _validate_changed_text_settings(data: dict, current: dict) -> None:
@@ -310,6 +330,7 @@ _PREVIOUS_RETENTION_KEYS = (
     "log_retention_days",
     "spend_log_retention_days",
     "auto_purge_enabled",
+    "mcp_audit_retention_days",
 )
 
 
@@ -374,7 +395,7 @@ _CREATE_SETTINGS_ROW_SQL = text(
 
 _LOCK_PREVIOUS_RETENTION_SQL = text(
     """
-    SELECT log_retention_days, spend_log_retention_days, auto_purge_enabled,
+    SELECT log_retention_days, spend_log_retention_days, auto_purge_enabled, mcp_audit_retention_days,
            pii_on_error, content_filter_on_error,
            pii_replacement_format, content_filter_replacement
     FROM ai_gateway_guardrail_settings
@@ -397,6 +418,7 @@ _UPDATE_SETTINGS_SQL = text(
                     log_request_body = CASE WHEN :set_log_request_body THEN :log_request_body ELSE log_request_body END,
                     log_response_body = CASE WHEN :set_log_response_body THEN :log_response_body ELSE log_response_body END,
                     auto_purge_enabled = CASE WHEN :set_auto_purge_enabled THEN :auto_purge_enabled ELSE auto_purge_enabled END,
+                    mcp_audit_retention_days = CASE WHEN :set_mcp_audit_retention_days THEN :mcp_audit_retention_days ELSE mcp_audit_retention_days END,
                     updated_at = NOW()
                 WHERE organization_id = :org_id
                 RETURNING *
