@@ -103,7 +103,7 @@ enabled the extension. All are tenant-scoped by `organization_id`.
 | mlflow | `mlflow_model_records` (synced runs; `mlflow_integrations` also predates extensions) |
 | azure-ai-foundry | `azure_ai_model_records` |
 | model-lifecycle | `model_lifecycle_phases`, `_items`, `_values`, `_item_files`, `_item_people`, `_item_approvals`, `_change_history` |
-| jira-assets | `jira_assets_config`, `jira_assets_use_cases`, `jira_assets_sync_history`, sequence `jira_use_case_uc_id_seq` |
+| jira-assets | `jira_assets_config`, `jira_assets_use_cases`, sequence `jira_use_case_uc_id_seq`; runs and schedule in the shared `extension_sync_runs` / `extension_sync_settings` (the old `jira_assets_sync_history` is kept, unwritten, for one release) |
 | risk-import, dataset-bulk-upload | None. They write to the core `risks` and `datasets` / `files` tables. |
 
 ---
@@ -313,87 +313,185 @@ extensions are configured per organization in the UI.
 
 ## Scheduled sync
 
-Jira Assets is the first extension that syncs on a schedule. Follow the same
-pattern for any later one (for example a Jira incident sync).
+Runs of an extension (scheduled syncs, "Sync now", and any other exclusive
+operation such as an import) go through the **sync engine** in
+`Servers/extensions/sync-engine/`. Jira Assets is its first provider. MLflow
+and Azure AI Foundry still sync on their own `POST /sync` routes.
 
-**No sync deletes anything.** Neither a manual nor a scheduled sync removes a
-project or a use case. A linked object Jira no longer returns is flagged
-instead (`jira_assets_use_cases.missing_in_jira_since`). An Admin removes
-flagged use cases explicitly from the panel (see
+**No sync deletes anything** (Jira Assets). Neither a manual nor a scheduled
+sync removes a project or a use case. A linked object Jira no longer returns is
+flagged instead (`jira_assets_use_cases.missing_in_jira_since`). An Admin
+removes flagged use cases explicitly from the panel (see
 [Removing missing use cases](#removing-missing-use-cases)).
 
-**A quick check job, then one sync job per org.**
+### Tables
 
-- `scheduleJiraAssetsScheduledSyncCheck` in
-  `Servers/services/automations/automationProducer.ts` upserts the repeatable
-  `jira_assets_scheduled_sync_check` job on the `automation-actions` queue,
-  every 5 minutes (`*/5 * * * *`).
-- The job is registered in `addAllJobs()` (`Servers/jobs/producer.ts`)
-  through `safeSchedule`. `createAutomationWorker` (`automationWorker.ts`)
-  dispatches it to `runJiraAssetsScheduledSyncAllOrgs` in
-  `Servers/extensions/jira-assets/jiraAssets.scheduler.ts`.
-- The check does not sync. For each due org it only queues a
-  `jira_assets_sync_run` job (`startScheduledSync`), so it returns quickly and
-  each org syncs independently in the worker (concurrency 10).
+- `extension_sync_runs`: one row per claimed run or recorded skip, for every
+  extension: `kind` (a kind the provider declares), `status` (`started`,
+  `completed`, `failed`, `abandoned`, `skipped`), `code` (`abandoned`,
+  `skipped` or a provider code), `counts` (JSONB, provider-defined),
+  `message` (cut to 2,000 characters), `run_token`, `triggered_by`, and
+  TIMESTAMPTZ `started_at`, `heartbeat_at`, `completed_at`. A partial unique
+  index allows one `started` row per organization and extension.
+- `extension_sync_settings`: one row per organization and extension with a
+  schedule: `enabled`, `interval_hours` (1 to 168), `consecutive_failures`
+  and `failing_since`.
 
-**Jobs are queued, then claimed at pickup.** `enqueueJiraAssetsSyncRun` queues
-the job under a job id that is fixed per org (`jira-assets-sync-<orgId>`), with
-one attempt and `removeOnComplete` / `removeOnFail`.
+Both cascade with the organization. Migration
+`20261012200000-extension-sync-engine.js` created them and copied Jira Assets'
+schedule and history (ids kept). `node scripts/checkExtensionSyncMigration.js`
+and `node scripts/checkExtensionSyncEngineSql.js` check the migration and the
+engine's SQL on a throwaway Postgres.
 
-- If a job for the org is already waiting or running, nothing is added
-  (`queued: false`). A finished job left behind is removed first. If that
-  removal fails, the job is looked up again:
-  - gone: the add goes ahead
-  - now waiting: `queued: false`
-  - still there and finished: a genuine queue failure (503)
-- So overlapping scheduler ticks, or a tick plus a "Sync now", never queue two
-  jobs for one org.
-- Every queue call made for an HTTP request has a 5-second limit
-  (`QUEUE_CALL_TIMEOUT_MS`). Past it, or on any queue error, it throws
-  `BackgroundJobsUnavailableError` and the route returns 503 "Background jobs
-  are unavailable". Known edge: if the 5-second limit fires after Redis has
-  already accepted the add, the caller gets 503 although the job is queued.
-  The next attempt finds it waiting (409), and it runs normally.
+### The provider contract
 
-The worker entry `runQueuedSync` validates the payload. It fails closed
-without a valid `organizationId` or `syncType`, and falls back to no user for
-an invalid `triggeredBy`. Then it claims the run. Time spent waiting in the
-queue therefore never counts against the run's heartbeat. If another run is
-live, the job is skipped. For a manual sync, someone is waiting on the
-result, so a closed `failed` history row (no token) is recorded with "Another
-sync or import was running, so this sync did not start." The panel's poll
-reports it. Scheduled skips are not recorded. The scheduler's last-run lookup
-only counts claimed runs (`run_token IS NOT NULL`), so a skipped row never
-delays the schedule. `runClaimedSync` then owns finalization of the row:
-it records failures and returns a failed result instead of throwing.
+```ts
+interface SyncProvider {
+  key: string;                    // extensions.key, /^[a-z0-9-]+$/
+  displayName?: string;           // name in event-log text ("Jira Assets"); the key when absent
+  kinds: readonly string[];       // every exclusive operation; must include "manual"
+  scheduledKind?: string;         // the kind the tick queues; no schedule if absent
+  runDeadlineMs?: number;         // ctx.signal deadline (default 10 minutes)
+  readiness(orgId, kind): Promise<{ ready: true } | { ready: false; status: 400 | 404; reason: string }>;
+  canSchedule?(orgId): Promise<Readiness>;   // may refuse PATCH /:key/schedule
+  run(ctx: RunContext): Promise<RunResult | void>;  // void when it finalized itself
+}
+```
 
-**Candidates and timing are decided in SQL.** `getScheduledSyncCandidates`
-runs one cross-org discovery query. It selects `jira_assets_config` with
-`sync_enabled = true`, joined to `extension_enablements` (`enabled = true`)
-and `extensions` (`key = 'jira-assets'`). Jobs bypass
-`requireExtensionEnabled`, so the join is the enablement check. Every
-subquery is correlated on the row's own `organization_id`. The query returns
-these flags:
+`RunContext` gives a run `orgId`, `runId`, `kind`, `payload`, `triggeredBy`,
+`heartbeat(t?)` (throws `RunSupersededError` once the claim is lost; without
+`t` it runs in its own short transaction with a 10-second `lock_timeout`),
+`sqlOwnsRun(alias?)` (a SQL boolean that share-locks the run's row, for guarded
+writes), `assertOwned(t)`, `finalize(result, t?)`, `release(t?)` and `signal`
+(aborted at the deadline). `RunResult` is `{ counts, message?, code? }`.
 
-- `has_object_type`
-- `has_use_cases`
-- `running_is_live`: a `started` run with a heartbeat inside 15 minutes
-- `is_due`: `sync_interval_hours` have passed since the later of
-  `last_sync_at` and the newest manual or scheduled `started_at`. Imports and
-  removals do not count. "Never synced" counts as due.
+Inside a transaction that used `sqlOwnsRun` or `assertOwned`, pass that
+transaction to `heartbeat`, `finalize` and `release`. Called without it, they
+wait on the share lock the transaction itself holds.
 
-The pure `evaluateScheduledSync` turns these flags into a decision.
+### Claims
 
-**Time.** The run columns (`started_at`, `heartbeat_at`, `completed_at`,
-`last_sync_at`, `missing_in_jira_since`) are `TIMESTAMP WITHOUT TIME ZONE`
-holding UTC wall-clock time. They are written with
-`(NOW() AT TIME ZONE 'UTC')` and compared against that same expression.
-Sequelize's default `timezone: "+00:00"` also sets each session to UTC. The
-SQL does not rely on that setting. The building blocks are in
-`Servers/extensions/scheduledSync.utils.ts`: `SQL_NOW_UTC`,
-`sqlIntervalElapsed`, `sqlWithinLastMinutes`.
+`claimRun(key, orgId, kind, triggeredBy)` runs in one transaction:
+`pg_advisory_xact_lock(hashtext('ext_sync:' || key), orgId)`; close `started`
+rows with no heartbeat for 15 minutes as `abandoned` (code `abandoned`); throw
+`SyncInProgressError` if a live run remains; otherwise insert a `started` row
+with a random token. Every heartbeat and finalize matches id, org, extension,
+token and `started`, so a duplicate job delivery cannot co-own a run. One claim
+per (extension, organization) covers every kind, so a Jira import and a Jira
+sync never overlap.
 
-**What a sync does** (`runClaimedSync`):
+- `runClaimed(provider, ctx)` (the worker) finalizes a returned result. A
+  thrown error closes the run as `failed` with its message and its `code` if it
+  has one. A `RunSupersededError` writes nothing.
+- `withClaim(key, orgId, kind, triggeredBy, fn, { releaseOn })` is for
+  exclusive operations outside syncs. It claims, calls `fn(ctx)`, and then
+  finalizes `fn`'s result, or releases the claim when there is no result or
+  `releaseOn(err)` matches. Other errors fail the run. An operation that needs
+  rollback safety calls `ctx.finalize(result, t)` or `ctx.release(t)` inside
+  its own data transaction.
+
+### Schedule, backoff and the tick
+
+`extension_sync_tick` (`scheduleExtensionSyncTick`, every 5 minutes,
+non-obliterating, registered in `addAllJobs()`) runs `DUE_RUNS_SQL` once per
+provider with a schedule. It selects settings rows that are enabled, whose
+extension is enabled for the org (jobs bypass `requireExtensionEnabled`, so the
+join is the enablement check), with no live run, and whose due time has passed:
+`last_run` is the newest `started_at` of a claimed (`run_token` not null)
+manual or scheduled run, and the org is due when `last_run` is null or
+`now() >= last_run + GREATEST(interval_hours, backoff(consecutive_failures))`
+hours. `backoff(n)` is 0, then 1, 2, 4, 8, 16, and 24 hours; the exponent is
+clamped, so a long streak cannot overflow. An interval change applies on the
+next tick. A due org that is not ready (`readiness(orgId, scheduledKind)`)
+records and logs nothing.
+
+A scheduled run that fails, or is closed as abandoned, adds one to
+`consecutive_failures` and, on the first failure of a streak, sets
+`failing_since` to that run's start. Any completed manual or scheduled run
+clears both. There is no auto-disable.
+
+Behaviour change from the Jira-only scheduler: `last_run` is now the newest
+run's start; it used to be bounded by `last_sync_at`, the finish. Scheduled
+runs can move earlier by up to one run's duration.
+
+### Jobs
+
+`extension_sync_run` carries `{ key, orgId, kind, triggeredBy, payload }`
+under jobId `ext-sync-<key>-<orgId>`, with one attempt, removed on complete and
+on fail. `enqueueExtensionSyncRun` adds nothing when a job for the pair is
+already waiting (`queued: false`); a queue call made for an HTTP request gives
+up after 5 seconds with `BackgroundJobsUnavailableError` (503). The worker
+(`runExtensionSyncJob`) validates the payload and claims at pickup. If a run is
+live, a manual job records a `skipped` row (no token, "Another sync or import
+was running, so this sync did not start.") and a scheduled job records nothing.
+Enablement is not checked at pickup.
+
+The worker also accepts the old Jira job names for one release:
+`jira_assets_scheduled_sync_check` runs the tick and `jira_assets_sync_run` runs
+the engine's job. **Deploy the API and the worker together**: during a mixed
+old/new rollout the old and new code use different locks and tables and would
+not exclude each other.
+
+### Routes
+
+Generic routes (`Servers/routes/extensionRuns.route.ts`, mounted at
+`/api/extensions`) use `authenticateJWT` and `requireExtensionEnabledFromParam`;
+writes need `extension.admin`. A key without a sync provider falls through to
+the per-extension routers.
+
+- `POST /:key/runs`: a manual run. 202 `{ jobId, previousRunId }`; the
+  readiness status (400 or 404) with its reason; 409 if a run is live or a job
+  is waiting; 503 if the queue does not answer.
+- `GET /:key/runs/status`: `{ schedule, running, queued, latest_run,
+  last_finished_run }`. `latest_run` is the newest manual or scheduled run
+  (`{ id, kind, status, code, counts, message, started_at, completed_at,
+  is_live }`); `last_finished_run` is the newest one that completed or failed;
+  `queued` is null when the queue does not answer.
+- `GET /:key/runs?limit=`: default 20, maximum 200.
+- `PATCH /:key/schedule`: `{ enabled?, interval_hours? }`, 1 to 168; the
+  provider may refuse with its status; the change goes to the event log.
+
+The old Jira Assets routes stay for one release, served by the engine with
+their exact response shapes, and are deprecated (recorded here and in the
+controller comments; the generated swagger has no deprecation marker):
+`POST /sync`,
+`GET /sync/status` (`data: null` when Jira is not configured), `GET
+/sync/history` and `PATCH /config/sync`. `GET /config` derives `sync_enabled`,
+`sync_interval_hours` and `last_sync_*` from the engine (`last_sync_*` is the
+newest finished manual or scheduled run that completed or failed).
+
+### The panel
+
+`ExtensionSyncPanel` (`Clients/src/presentation/components/ExtensionSyncPanel/`)
+and `useExtensionSync(key)` (`Clients/src/application/hooks/`) give any
+provider the sync section: the automatic sync toggle and interval, "Sync now",
+the last finished sync, the running state (a run going or a job queued), the
+outcome messages, and "Failing since <date>" while scheduled runs keep failing.
+The status query refreshes every 3 seconds while a run is running or queued.
+`showSyncNow` and `syncNowDisabled` keep the page's own rules for the button;
+with `persistSchedule={false}` (before a connection is saved) schedule changes
+stay a draft that the page sends with its own save (`onScheduleChange`).
+"Sync now" polls the status every 3 seconds, for up to 20 minutes, and stops
+at the first of:
+
+- a run newer than `previousRunId` has finished: its counts, or its message
+  (`skipped` runs say why they did not start);
+- that newer run stopped heart-beating, or was closed as `abandoned`: "The sync
+  stopped responding. Try again.";
+- nothing queued or running and no newer run for three polls: "The sync did
+  not start. Try again."
+
+### Jira Assets on the engine
+
+`jiraAssetsSyncProvider` declares the kinds `manual`, `scheduled`, `import`
+and `remove_missing` (single delete is recorded as `remove_missing`).
+Readiness: `manual` needs a config (404) and an object type (400), not
+existing use cases; `scheduled` also needs at least one use case; `import`
+needs a config; `remove_missing` needs nothing. The run body is `runJiraSync`.
+Import, remove-missing and single delete use `withClaim`; removal and delete
+finalize or release inside their data transaction.
+
+**What a sync does** (`runJiraSync`):
 
 - **Scheduled** (`triggered_by = NULL`) is refresh-only. It updates the
   project and link row of every linked object Jira returns, and creates
@@ -411,47 +509,18 @@ SQL does not rely on that setting. The building blocks are in
     by that walk, and is left exactly as it was. Switching the selected type
     therefore never flags the old type's use cases.
   - Every per-object write happens only while the run still owns its claim.
-    A linked object is updated in one statement: a CTE selects the run's
-    history row (id, token, `started`) `FOR SHARE`, and the link update
-    (which clears any missing flag) and the project update run only if it
-    found the row. Ownership and both writes share one snapshot and commit
-    together, and a claim closing the row as abandoned must wait for the
-    statement. If the row is no longer the run's, nothing is written and the
-    run stops with `RunSupersededError`. A new use case is created in a
-    transaction that first takes the same `FOR SHARE` lock. Setting flags
-    carries an `EXISTS` guard on the same row.
+    The link update (which clears any missing flag) and the project update are
+    guarded by `ctx.sqlOwnsRun()`, which share-locks the run's own `started`
+    row, so a claim closing the run as abandoned must wait for the statement.
+    If the run no longer owns its claim, nothing is written and the run stops
+    with `RunSupersededError`. A new use case is created in a transaction that
+    first calls `ctx.assertOwned(t)`. Setting flags carries the same guard.
   - After an incomplete or empty walk, no flag is set. A false "complete"
     would only mis-flag, which the next complete sync clears.
-- The run's note (`error_message` on the completed row, and
-  `last_sync_message`) lists the missing objects. It also says whether they
-  were flagged, or why not. The result reports `objectsMissingInJira`,
-  `objectsNewlyMissing` and `missingInJiraIds`. `objects_deleted` is always 0
-  for a sync.
-
-**Sync now and the panel.** `POST /sync` (`startManualSync`):
-
-1. checks the config: 404 if it is not configured, 400 if no object type is
-   selected
-2. returns 409 if a run is live or a job for the org is already waiting
-3. otherwise queues the job and returns 202 with `{ jobId, previousRunId }`
-
-`previousRunId` is the newest manual or scheduled run before the click.
-`GET /sync/status` returns:
-
-- `running` and `latest_run` (with `is_live`, and `code`: `"abandoned"` or
-  `"skipped"` for a run closed for that reason, else null), computed in SQL
-- `queued`: whether a job for the org is waiting. It is `null` if the queue did
-  not answer.
-
-The panel polls every 3 seconds, for up to 20 minutes, and stops at the first
-of these:
-
-- a run newer than `previousRunId` has finished: it reports that run's counts,
-  or its error
-- that newer run stopped heart-beating, or was closed with `code`
-  `"abandoned"`: "The sync stopped responding. Try again."
-- nothing is queued or running and no newer run appears for three polls: "The
-  sync did not start. Try again."
+- The run's note (`message` on the completed run) lists the missing objects.
+  It also says whether they were flagged, or why not. The run's counts are
+  `fetched`, `created`, `updated`, `deleted` (always 0 for a sync), `missing`
+  and `newly_missing`.
 
 **Pagination, timeouts, deadline.** `JiraAssetsClient.getAllObjects` follows
 the Assets API pages. Completeness now only decides whether flags may be set.
@@ -489,38 +558,13 @@ selected for a retry.
 An import that loses its claim returns 409 with
 `{ message, code: "import_interrupted", imported, skipped }`.
 
-**Claims, tokens, heartbeats.** Every run starts with `claimSyncRun`: syncs at
-worker pickup, plus imports (`sync_type = 'import'`) and removals
-(`'remove_missing'`). In one transaction it:
-
-1. takes `pg_advisory_xact_lock(hashtext('jira_assets_sync'), orgId)`
-2. closes as failed any `started` row with no heartbeat for 15 minutes (SQL)
-3. inserts the new `started` row with a random `run_token`, or throws
-   `JiraSyncInProgressError` if another run is still `started`
-
-Heartbeats and both finalize steps match the row's id AND token, and require
-it to still be `started`. A duplicate delivery of the same job therefore cannot
-co-own the run.
-
-A run touches `heartbeat_at` after every fetched page, every 25 objects, and
-before setting flags. `touchHeartbeat` throws in two cases, and the run stops
-with no further writes:
-
-- `RunSupersededError` when the update matched no row
-- the database error itself when the database fails, because the run can no
-  longer prove it owns the row
-
-A finalize that matches no row leaves the config alone. `finalizeFailure`
-never throws. Failures are written to the history row and to the config
-(`last_sync_*`), so the scheduler's interval acts as backoff. Imports and
-removals record only on their history row.
-
-The migrations are:
-
-- `20261012003957-jira-assets-sync-heartbeat.js`: `heartbeat_at` and the
-  `'import'` type
-- `20261012062548-jira-assets-missing-flag-and-run-token.js`:
-  `missing_in_jira_since`, `run_token` and the `'remove_missing'` type
+**Claims, tokens, heartbeats.** Every Jira Assets run takes the engine claim
+(see [Claims](#claims)). A run heartbeats after every fetched page, every 25
+objects and before setting flags; a heartbeat that matches no row, or a
+database error, stops it with no further writes. The earlier Jira-only
+migrations (`20261012003957-jira-assets-sync-heartbeat.js`,
+`20261012062548-jira-assets-missing-flag-and-run-token.js`) shaped the old
+history table that `20261012200000-extension-sync-engine.js` copied.
 
 **Removing missing use cases.** <a id="removing-missing-use-cases"></a> The
 panel lists the flagged use cases under "Missing in Jira", with key, name and
@@ -611,11 +655,11 @@ All of this lives in `jira-assets/batching.ts`.
    project is touched, no change history is written and no automation fires.
    It is reported as `unlinked`, not as a removed use case. Without this,
    such a link could never leave the "Missing in Jira" list.
-5. records the run (`objects_deleted` = use cases, that is projects,
+5. records the run (`counts.deleted` = use cases, that is projects,
    removed; a note counts the links cleaned up)
 
 Steps 2 to 4 run in one transaction, which first share-locks the run's own
-history row so no other claim can close it mid-way.
+run so no other claim can close it mid-way.
 
 Deleting a project: every path goes through `deleteProjectWithSideEffects`
 (`Servers/utils/projectDeletion.utils.ts`), which runs, in this order: lock
@@ -633,7 +677,7 @@ other instead of deadlocking, and the order cannot drift between callers.
 
 `DELETE /use-cases/:id` deletes one imported use case through the same
 `deleteUseCasesUnderClaim` flow (409 while a sync, import or removal runs; its
-history row is `'remove_missing'` with `objects_deleted = 1`; 409
+run is `'remove_missing'` with `counts.deleted = 1`; 409
 `removal_interrupted` if it lost its claim). It is an explicit action on the
 project, so the project goes with all its links, and the response reports
 them (`{ success, unlinked, links_removed }`). The requested project itself
@@ -642,7 +686,7 @@ still found. A project that is not linked in
 `jira_assets_use_cases` is 404 from an unlocked check before claiming, so it
 never takes or waits on the claim (404, not 409, during a sync). If the link
 vanished between that check and the locked one under the claim, the
-transaction rolls back and the claimed history row is deleted, so nothing is
+transaction rolls back and the claimed run is deleted, so nothing is
 recorded. A link whose project is not in this organization has only its link
 row deleted and returns 200 with `unlinked: true`.
 
@@ -658,31 +702,35 @@ message text.
 
 **Settings and validation.**
 
-- `POST /config` validates `sync_interval_hours` (whole hours, 1 to 168).
-- `PATCH /config/sync` changes only `sync_enabled` and/or
-  `sync_interval_hours`.
+- `PATCH /api/extensions/:key/schedule` changes only `enabled` and/or
+  `interval_hours` (whole hours, 1 to 168; a numeric string is accepted).
+- `POST /config` still accepts `sync_enabled` / `sync_interval_hours` and
+  writes them to the engine schedule; a body without them leaves the schedule
+  as it is.
 - `PATCH /config/selection` changes only `selected_schema_id` and/or
   `selected_object_type_id`.
 
-The panel saves sync settings one request at a time, keeps the newest result,
-and reverts with an error if a save failed. The sync controls and the remove
-button are disabled for non-Admins.
+The panel saves schedule changes one request at a time, keeps the newest
+result, and reverts with an error if a save failed. The sync controls and the
+remove button are disabled for non-Admins.
 
-**Adding a scheduled sync to another extension:**
+**Adding a provider:**
 
-1. Write a candidate query that joins `extension_enablements` (jobs bypass
-   `requireExtensionEnabled`). Compute due and live flags in SQL with the
-   `scheduledSync.utils.ts` helpers.
-2. Queue one job per org under a fixed job id, with a timeout on queue calls.
-   Claim the run (with a token) when the worker picks the job up.
-3. Heartbeat while running, and stop on a lost claim or a database error.
-   Record every failure through a finalize step that never throws.
-4. Never delete on a sync. Flag instead, set flags only after a complete walk,
-   and leave removal to an explicit, confirmed Admin action.
-5. Add tests: a case in `services/automations/tests/automationProducer.spec.ts`,
-   and unit tests like those in `extensions/jira-assets/__tests__/`.
-
----
+1. Implement `SyncProvider` in the extension's folder: declare every exclusive
+   operation as a kind (including `"manual"`), set `scheduledKind` if the
+   extension syncs on a schedule, and write `readiness` per kind.
+2. In `run(ctx)`, heartbeat while working, guard writes with
+   `ctx.sqlOwnsRun()` or `ctx.assertOwned(t)`, honour `ctx.signal`, and return
+   `{ counts, message }`; throw on failure. Never delete on a sync: flag
+   instead, set flags only after a complete walk, and leave removal to an
+   explicit, confirmed Admin action.
+3. Run other exclusive operations through `withClaim`.
+4. Add the provider to `SYNC_PROVIDERS` in
+   `Servers/extensions/sync-engine/providers.ts`.
+5. Render `<ExtensionSyncPanel extensionKey="<key>" canManage={…} />` in the
+   extension's settings panel, and set `displayName` for event-log text.
+6. Add tests like `extensions/jira-assets/__tests__/` (run body on a context
+   from `createRunContext`, readiness per kind).
 
 ## Adding a new extension
 
