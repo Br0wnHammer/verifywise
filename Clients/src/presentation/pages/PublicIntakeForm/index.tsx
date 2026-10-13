@@ -1,11 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router";
 import { useForm } from "react-hook-form";
-import { Box, Typography } from "@mui/material";
+import { Box, Collapse, Typography } from "@mui/material";
 import { Send, Loader2, Info, AlertCircle } from "lucide-react";
 import Field from "../../components/Inputs/Field";
 import { CustomizableButton } from "../../components/button/customizable-button";
 import { FormFieldRenderer, FormFieldHint } from "./FormFieldRenderer";
+import { CalculatedFieldDisplay } from "./CalculatedFieldDisplay";
+import {
+  cleanSubmission,
+  evaluateForm,
+  firstMissingVisibleInput,
+  sortFields,
+} from "../../../application/utils/intakeFormLogic";
 import { MathCaptcha } from "./MathCaptcha";
 import EuAiActQuestionnaire from "../../components/EuAiActQuestionnaire";
 import { pruneHiddenAnswers } from "../../../application/utils/euAiActQuestionnaire";
@@ -155,10 +162,39 @@ export function PublicIntakeForm() {
     control,
     handleSubmit,
     reset,
+    watch,
+    unregister,
     formState: { errors },
   } = useForm<Record<string, unknown>>({
     defaultValues: {},
   });
+
+  // Show/hide rules and calculated values, recomputed on every change.
+  const watchedValues = watch();
+  const evaluation = formData ? evaluateForm(formData.schema, watchedValues) : null;
+  const hiddenFieldKey = formData
+    ? formData.schema.fields
+        .filter((field) => !evaluation?.visibleIds.has(field.id))
+        .map((field) => field.id)
+        .join("|")
+    : "";
+
+  // Fields present when the form step first renders appear at once; only
+  // fields a rule reveals later animate in. Re-armed each time the form step
+  // is entered (it follows the EU AI Act risk step when that is on).
+  const [fieldsShown, setFieldsShown] = useState(false);
+  useEffect(() => {
+    setFieldsShown(Boolean(formData) && step === "form");
+  }, [formData, step]);
+
+  // A hidden field must not block submit: drop its validation but keep the
+  // typed value, so showing it again restores the answer.
+  useEffect(() => {
+    if (!hiddenFieldKey) return;
+    for (const id of hiddenFieldKey.split("|")) {
+      unregister(id, { keepValue: true, keepDefaultValue: true });
+    }
+  }, [hiddenFieldKey, unregister]);
 
   // Submitter info
   const [submitterEmail, setSubmitterEmail] = useState("");
@@ -265,7 +301,7 @@ export function PublicIntakeForm() {
 
     try {
       const payload = {
-        formData: data,
+        formData: cleanSubmission(formData.schema, data).data,
         submitterEmail: collectContactInfo ? submitterEmail || "" : "",
         submitterName: collectContactInfo ? submitterName || undefined : undefined,
         captchaToken,
@@ -394,7 +430,8 @@ export function PublicIntakeForm() {
     return null;
   }
 
-  const sortedFields = [...formData.schema.fields].sort((a, b) => a.order - b.order);
+  // Same order the show/hide rules and formulas use.
+  const sortedFields = sortFields(formData.schema.fields);
 
   // Resolve design settings
   const ds = formData.designSettings ?? DEFAULT_DESIGN_SETTINGS;
@@ -625,14 +662,30 @@ export function PublicIntakeForm() {
 
               {/* Form fields */}
               <Box sx={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-                {sortedFields.map((field) => (
-                  <FormFieldRenderer
-                    key={field.id}
-                    field={field}
-                    control={control}
-                    errors={errors}
-                  />
-                ))}
+                {sortedFields.map((field) => {
+                  // A hidden field unmounts at once (react-hook-form re-registers a
+                  // mounted Controller with its rules on every render, so an exit
+                  // animation would keep a hidden required field blocking submit);
+                  // only showing a field is animated.
+                  if (evaluation && !evaluation.visibleIds.has(field.id)) return null;
+                  return (
+                    <Collapse key={field.id} in appear={fieldsShown} timeout={150}>
+                      {field.type === "calculated" ? (
+                        <CalculatedFieldDisplay
+                          field={field}
+                          value={evaluation?.calculated[field.id] ?? null}
+                          missingLabel={
+                            evaluation
+                              ? firstMissingVisibleInput(formData.schema, evaluation, field.id)
+                              : null
+                          }
+                        />
+                      ) : (
+                        <FormFieldRenderer field={field} control={control} errors={errors} />
+                      )}
+                    </Collapse>
+                  );
+                })}
               </Box>
 
               {/* Captcha */}

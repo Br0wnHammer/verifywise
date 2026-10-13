@@ -35,6 +35,7 @@ import {
 } from "../../../application/repository/intakeForm.repository";
 import CustomAxios from "../../../infrastructure/api/customAxios";
 import { invalidateLLMKeyQueries, useLLMKeys } from "../../../application/hooks/useLLMKeys";
+import { validateSchemaLogic } from "../../../application/utils/intakeFormLogic";
 import { getClientErrorReason, isClientError } from "../../../application/utils/apiErrorReason";
 import {
   FieldPalette,
@@ -51,6 +52,7 @@ import {
   createEmptyForm,
   isRiskStepSetField,
   generateFieldId,
+  withSequentialOrder,
   generateSlug,
   DEFAULT_DESIGN_SETTINGS,
   analyzeMappingCoverage,
@@ -122,7 +124,7 @@ export function IntakeFormBuilder() {
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
-    severity: "success" | "error" | "info";
+    severity: "success" | "error" | "warning" | "info";
   }>({ open: false, message: "", severity: "info" });
 
   // ============================================================================
@@ -136,8 +138,15 @@ export function IntakeFormBuilder() {
       setLoadFailed(false);
       getIntakeForm(parseInt(formId))
         .then((response) => {
-          if (response.data) setForm(response.data);
-          else setLoadFailed(true);
+          if (response.data) {
+            setForm({
+              ...response.data,
+              schema: {
+                ...response.data.schema,
+                fields: withSequentialOrder(response.data.schema?.fields ?? []),
+              },
+            });
+          } else setLoadFailed(true);
         })
         .catch(() => {
           setLoadFailed(true);
@@ -193,7 +202,12 @@ export function IntakeFormBuilder() {
   const addField = useCallback((field: FormField) => {
     setForm((prev) => ({
       ...prev,
-      schema: { ...prev.schema, fields: [...prev.schema.fields, field] },
+      schema: {
+        ...prev.schema,
+        fields: [...prev.schema.fields, field].map((f, i) =>
+          f.order === i ? f : { ...f, order: i },
+        ),
+      },
     }));
     setIsDirty(true);
     setSelectedFieldId(field.id);
@@ -211,7 +225,9 @@ export function IntakeFormBuilder() {
       ...prev,
       schema: {
         ...prev.schema,
-        fields: prev.schema.fields.filter((f) => f.id !== fieldToDelete),
+        fields: prev.schema.fields
+          .filter((f) => f.id !== fieldToDelete)
+          .map((f, i) => (f.order === i ? f : { ...f, order: i })),
       },
     }));
     setIsDirty(true);
@@ -220,18 +236,25 @@ export function IntakeFormBuilder() {
     setDeleteFieldModalOpen(false);
   }, [fieldToDelete, selectedFieldId]);
 
-  const duplicateField = useCallback(
-    (field: FormField) => {
-      const newField: FormField = {
-        ...field,
-        id: generateFieldId(),
-        label: `${field.label} (copy)`,
-        order: form.schema.fields.length,
+  // The copy goes right after the original, so its rules still point above it.
+  const duplicateField = useCallback((field: FormField) => {
+    const newField: FormField = {
+      ...field,
+      id: generateFieldId(),
+      label: `${field.label} (copy)`,
+    };
+    setForm((prev) => {
+      const index = prev.schema.fields.findIndex((f) => f.id === field.id);
+      const fields = [...prev.schema.fields];
+      fields.splice(index < 0 ? fields.length : index + 1, 0, newField);
+      return {
+        ...prev,
+        schema: { ...prev.schema, fields: fields.map((f, i) => ({ ...f, order: i })) },
       };
-      addField(newField);
-    },
-    [form.schema.fields.length, addField],
-  );
+    });
+    setIsDirty(true);
+    setSelectedFieldId(newField.id);
+  }, []);
 
   const moveFieldUp = useCallback((fId: string) => {
     setForm((prev) => {
@@ -294,6 +317,18 @@ export function IntakeFormBuilder() {
       });
       return null;
     }
+    // A draft may be saved with unfinished logic; a live form may not.
+    const isLive = form.status === IntakeFormStatus.ACTIVE;
+    if (logicErrors.length > 0 && isLive) {
+      setSnackbar({
+        open: true,
+        message: "Fix the highlighted fields before saving",
+        severity: "error",
+      });
+      return null;
+    }
+    const savedMessage =
+      logicErrors.length > 0 ? "Draft saved. Fix the highlighted fields before publishing" : null;
     setIsSaving(true);
     try {
       const formData = {
@@ -313,8 +348,8 @@ export function IntakeFormBuilder() {
         }
         setSnackbar({
           open: true,
-          message: "Form saved successfully",
-          severity: "success",
+          message: savedMessage ?? "Form saved successfully",
+          severity: savedMessage ? "warning" : "success",
         });
         setIsDirty(false);
         return parseInt(formId);
@@ -325,8 +360,8 @@ export function IntakeFormBuilder() {
           navigate(`/intake-forms/${response.data.id}/edit`, { replace: true });
           setSnackbar({
             open: true,
-            message: "Form created successfully",
-            severity: "success",
+            message: savedMessage ?? "Form created successfully",
+            severity: savedMessage ? "warning" : "success",
           });
           setIsDirty(false);
           return response.data.id;
@@ -342,6 +377,16 @@ export function IntakeFormBuilder() {
   };
 
   const doPublish = async () => {
+    // The "Publish anyway" path skips handlePublish, and a debounced field edit
+    // can add a logic error while its modal is open; say so instead of doing nothing.
+    if (logicErrors.length > 0) {
+      setSnackbar({
+        open: true,
+        message: "Fix the highlighted fields before publishing",
+        severity: "error",
+      });
+      return;
+    }
     setIsSaving(true);
     try {
       const formData = {
@@ -383,6 +428,14 @@ export function IntakeFormBuilder() {
   };
 
   const handlePublish = async () => {
+    if (logicErrors.length > 0) {
+      setSnackbar({
+        open: true,
+        message: "Fix the highlighted fields before publishing",
+        severity: "error",
+      });
+      return;
+    }
     if (form.schema.fields.length === 0) {
       setSnackbar({
         open: true,
@@ -482,6 +535,16 @@ export function IntakeFormBuilder() {
   // ============================================================================
   // Derived values
   // ============================================================================
+
+  // Same checks the server runs on save, shown while editing.
+  const logicErrors = useMemo(
+    () => validateSchemaLogic(form.schema, form.entityType),
+    [form.schema, form.entityType],
+  );
+  const logicErrorFieldIds = useMemo(
+    () => new Set(logicErrors.map((error) => error.fieldId)),
+    [logicErrors],
+  );
 
   const mappingCoverage = useMemo(
     () =>
@@ -826,6 +889,7 @@ export function IntakeFormBuilder() {
                       form.entityType === IntakeEntityType.USE_CASE &&
                       (form.euAiActRiskStepEnabled ?? false)
                     }
+                    errorFieldIds={logicErrorFieldIds}
                   />
                   {form.suggestedQuestionsEnabled && (
                     <SuggestedQuestionsPanel
@@ -848,6 +912,8 @@ export function IntakeFormBuilder() {
                 ) : selectedField ? (
                   <FieldEditor
                     field={selectedField}
+                    allFields={form.schema.fields}
+                    logicErrors={logicErrors.filter((error) => error.fieldId === selectedField.id)}
                     entityType={form.entityType}
                     usedEntityMappings={usedEntityMappingsFor(
                       form.schema.fields,

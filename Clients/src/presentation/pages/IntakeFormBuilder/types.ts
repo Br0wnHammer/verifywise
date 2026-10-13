@@ -1,11 +1,26 @@
 import { IntakeFormStatus, IntakeEntityType } from "../../../domain/intake/enums";
 import { brand } from "../../themes/palette";
+import {
+  RISK_DIMENSIONS,
+  sortFields,
+  type RiskDimensionKey,
+  type Visibility,
+} from "../../../application/utils/intakeFormLogic";
 
 /**
  * Field types supported in the intake form builder
  */
 export type FieldType =
-  "text" | "textarea" | "select" | "multiselect" | "checkbox" | "date" | "email" | "url" | "number";
+  | "text"
+  | "textarea"
+  | "select"
+  | "multiselect"
+  | "checkbox"
+  | "date"
+  | "email"
+  | "url"
+  | "number"
+  | "calculated";
 
 /**
  * Validation rules for form fields
@@ -42,6 +57,17 @@ export interface FormField {
   options?: FieldOption[];
   defaultValue?: string | number | boolean | string[];
   entityFieldMapping?: string;
+  /** Calculated fields: arithmetic over earlier number/calculated fields, e.g. "{cost} * 12". */
+  formula?: string;
+  /** Calculated fields: decimals to round and show, 0–6, default 2. */
+  decimals?: number;
+  /** Calculated fields: display-only text before / after the value, at most 10 characters. */
+  prefix?: string;
+  suffix?: string;
+  /** Show the field only when these conditions on earlier fields match. */
+  visibility?: Visibility;
+  /** The risk dimension this field's answer feeds. */
+  riskDimension?: string;
   order: number;
 }
 
@@ -348,6 +374,42 @@ export const PALETTE_ITEMS: PaletteItem[] = [
     },
   },
 ];
+
+/** Field types kept out of the main palette list (few forms need them). */
+export const ADVANCED_PALETTE_ITEMS: PaletteItem[] = [
+  {
+    type: "calculated",
+    label: "Calculated",
+    icon: "Calculate",
+    description: "Read-only result of a formula",
+    defaultConfig: { formula: "", decimals: 2 },
+  },
+];
+
+const RISK_DIMENSION_LABELS: Record<RiskDimensionKey, string> = {
+  data_sensitivity: "Data sensitivity",
+  autonomy_level: "Autonomy level",
+  impact_scope: "Impact scope",
+  transparency: "Transparency",
+  human_oversight: "Human oversight",
+  domain_criticality: "Domain criticality",
+};
+
+/** Risk dimensions a field can feed, in the order the editor lists them. */
+export const RISK_DIMENSION_OPTIONS: Array<{ _id: string; name: string }> = RISK_DIMENSIONS.map(
+  (key) => ({ _id: key, name: RISK_DIMENSION_LABELS[key] }),
+);
+
+/**
+ * Fields in form order with `order` matching their position. The canvas
+ * renders array order while rules, formulas and the public form sort by
+ * `order`, so the two must never disagree.
+ */
+export function withSequentialOrder(fields: FormField[]): FormField[] {
+  return sortFields(fields).map((field, order) =>
+    field.order === order ? field : { ...field, order },
+  );
+}
 
 /**
  * Generate unique field ID
