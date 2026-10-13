@@ -223,6 +223,17 @@ describe("public submit with form logic", () => {
   );
 
   it.each(["byId", "bySlug"] as const)(
+    "%s: a required checkbox sent unchecked is rejected, as the public form enforces",
+    async (route) => {
+      useSchema([{ id: "consent", type: "checkbox", label: "I agree", order: 0, required: true }]);
+      const r = await submit(route, { consent: false });
+      expect(r.status).toHaveBeenCalledWith(400);
+      expect(JSON.stringify(r.json.mock.calls[0][0])).toContain('\\"I agree\\" is required');
+      expect(intake.createSubmissionQuery).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["byId", "bySlug"] as const)(
     "%s: a form without logic stores its answers unchanged",
     async (route) => {
       useSchema([

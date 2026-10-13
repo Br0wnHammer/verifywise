@@ -48,9 +48,14 @@ interface OptionsEditorProps {
 function OptionsEditor({ options, onChange }: OptionsEditorProps) {
   const theme = useTheme();
   const handleAddOption = () => {
+    // Values must stay unique: rules and scoring look options up by value, and
+    // counting options would reuse a deleted option's value.
+    const used = new Set(options.map((option) => option.value));
+    let n = options.length + 1;
+    while (used.has(`option${n}`)) n++;
     const newOption: FieldOption = {
       label: `Option ${options.length + 1}`,
-      value: `option${options.length + 1}`,
+      value: `option${n}`,
     };
     onChange([...options, newOption]);
   };

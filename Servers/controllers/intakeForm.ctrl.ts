@@ -310,7 +310,8 @@ function validateFormData(
 
     // Required check — field.required (backend interface) or field.validation.required (frontend schema)
     const isRequired = field.required || field.validation?.required;
-    if (isRequired && isEmpty) {
+    // A required checkbox must be checked, as the public form enforces.
+    if (isRequired && (isEmpty || (field.type === "checkbox" && value !== true))) {
       errors.push(`"${field.label}" is required`);
       continue;
     }
