@@ -36,7 +36,10 @@ import CustomizableSkeleton from "../../../components/Skeletons";
 import VirtualKeysTab from "../VirtualKeys/index";
 import { validateApiKeyFormat } from "../../../../application/utils/apiKeyValidation";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
-import { getGatewayErrorDetail } from "../../../../application/utils/apiErrorReason";
+import {
+  getClientErrorReason,
+  getGatewayErrorDetail,
+} from "../../../../application/utils/apiErrorReason";
 import {
   GATEWAY_DEFAULT_RETENTION_DAYS,
   GatewayPurgeWarning,
@@ -133,9 +136,11 @@ interface RiskSuggestion {
   reviewed_by_name?: string;
 }
 
-// Prefer the gateway's own { detail } reason over the generic axios message.
-const apiErrorText = (err: any, fallback: string): string =>
-  getGatewayErrorDetail(err) || err?.message || fallback;
+// The gateway's own { detail } reason, else the server's reason for a rejected
+// request (4xx; generic status text and axios's "Request failed with status
+// code N" are filtered out), else the translated fallback.
+const apiErrorText = (err: unknown, fallback: string): string =>
+  getGatewayErrorDetail(err) || getClientErrorReason(err) || fallback;
 
 export default function AIGatewaySettingsPage() {
   const { t } = useTranslation();

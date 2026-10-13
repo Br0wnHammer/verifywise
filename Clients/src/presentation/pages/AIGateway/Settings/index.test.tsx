@@ -39,6 +39,7 @@ vi.mock("../VirtualKeys/index", () => ({
 }));
 
 import { apiServices } from "../../../../infrastructure/api/networkServices";
+import CustomException from "../../../../infrastructure/exceptions/customeException";
 import AIGatewaySettingsPage from "./index";
 
 const mockGet = apiServices.get as unknown as ReturnType<typeof vi.fn>;
@@ -348,7 +349,8 @@ describe("AIGateway - Settings", () => {
 
   it("shows the error message when the purge fails", async () => {
     mockParams = { tab: "guardrails" };
-    mockPost.mockRejectedValue(new Error("Only admins can purge logs"));
+    // networkServices moves a 4xx reason from the response envelope into the message.
+    mockPost.mockRejectedValue(new CustomException("Only admins can purge logs", 403, {}));
     renderWithProviders(<AIGatewaySettingsPage />);
     await waitFor(() => {
       expect(screen.getByText("Audit log retention")).toBeInTheDocument();
@@ -507,10 +509,11 @@ describe("AIGateway - Settings", () => {
   it("shows the gateway detail from the error shape apiServices produces", async () => {
     mockParams = { tab: "guardrails" };
     // apiServices rejects with CustomException(message, status, rawBody)
-    const err: any = new Error("Request failed with status code 400");
-    err.status = 400;
-    err.response = { detail: "spend_log_retention_days must be an integer >= 1" };
-    mockPut.mockRejectedValue(err);
+    mockPut.mockRejectedValue(
+      new CustomException("Request failed with status code 400", 400, {
+        detail: "spend_log_retention_days must be an integer >= 1",
+      }),
+    );
     renderWithProviders(<AIGatewaySettingsPage />);
     await waitFor(() => {
       expect(screen.getByText("Error behavior")).toBeInTheDocument();
@@ -524,9 +527,49 @@ describe("AIGateway - Settings", () => {
     expect(screen.queryByText("Request failed with status code 400")).not.toBeInTheDocument();
   });
 
+  it("shows the gateway's message from an object detail", async () => {
+    mockParams = { tab: "guardrails" };
+    mockPut.mockRejectedValue(
+      new CustomException("Request failed with status code 401", 401, {
+        detail: { message: "Invalid internal key", code: "internal_key_rejected" },
+      }),
+    );
+    renderWithProviders(<AIGatewaySettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Error behavior")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    expect(await screen.findByText("Invalid internal key")).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "axios's generic message",
+      new CustomException("Request failed with status code 500", 500, {}),
+    ],
+    ["a server error's reason", new CustomException("database exploded", 500, { error: "x" })],
+    ["a network error", new Error("Network Error")],
+  ])("shows the translated fallback instead of %s", async (_case, err) => {
+    mockParams = { tab: "guardrails" };
+    mockPut.mockRejectedValue(err);
+    renderWithProviders(<AIGatewaySettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Error behavior")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    expect(await screen.findByText("Failed to save settings")).toBeInTheDocument();
+    expect(screen.queryByText((err as Error).message)).not.toBeInTheDocument();
+  });
+
   it("shows the server error when saving settings fails", async () => {
     mockParams = { tab: "guardrails" };
-    mockPut.mockRejectedValue(new Error("spend_log_retention_days must be at least 1"));
+    mockPut.mockRejectedValue(
+      new CustomException("spend_log_retention_days must be at least 1", 400, {}),
+    );
     renderWithProviders(<AIGatewaySettingsPage />);
     await waitFor(() => {
       expect(screen.getByText("Error behavior")).toBeInTheDocument();

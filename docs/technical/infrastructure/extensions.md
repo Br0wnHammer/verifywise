@@ -665,12 +665,16 @@ All of this lives in `jira-assets/batching.ts`.
    (another organization's, or a bad id), deletes only the link row: no
    project is touched, no change history is written and no automation fires.
    It is reported as `unlinked`, not as a removed use case. Without this,
-   such a link could never leave the "Missing in Jira" list.
+   such a link could never leave the "Missing in Jira" list. The database
+   now enforces same-organization links (see below), so in practice this
+   only handles links with a NULL `project_id`; the cross-organization check
+   is unreachable and stays only until that migration's rollback window has
+   passed.
 5. records the run (`counts.deleted` = use cases, that is projects,
    removed; a note counts the links cleaned up)
 
 Steps 2 to 4 run in one transaction, which first share-locks the run's own
-run so no other claim can close it mid-way.
+row so no other claim can close it mid-way.
 
 Deleting a project: every path goes through `deleteProjectWithSideEffects`
 (`Servers/utils/projectDeletion.utils.ts`), which runs, in this order: lock
@@ -700,6 +704,69 @@ vanished between that check and the locked one under the claim, the
 transaction rolls back and the claimed run is deleted, so nothing is
 recorded. A link whose project is not in this organization has only its link
 row deleted and returns 200 with `unlinked: true`.
+
+**Same-organization links (database).** `jira_assets_use_cases.project_id`
+references `projects` through a composite foreign key,
+`(project_id, organization_id) REFERENCES projects (id, organization_id) ON
+DELETE CASCADE` (`projects` has `UNIQUE (id, organization_id)` as its
+target), so a link can only point at a project in its own organization; a
+NULL `project_id` is allowed. The app only ever creates a link together with
+its project, in one transaction, and never changes `project_id` afterwards.
+Migration `20261012165625-jira-assets-link-same-org-fk.js` added the key. It
+first copied existing links whose project was missing or in another
+organization into `jira_assets_use_cases_fk_cleanup_backup` and deleted them,
+logging the count; no project was touched, and their Jira objects can be
+imported again. The backup is a plain migration backup created `LIKE` the
+live table (every column with its real type, whatever the install has, but
+no defaults, so it is not tied to the live id sequence), plus `cleaned_at`;
+it has no foreign keys. Rows are copied by column name, and an existing
+backup whose column set differs from the live table's stops the migration
+with a clear message. The migration reuses an existing equivalent unique
+index on `projects (id, organization_id)` (valid, immediate, non-partial, key
+columns only) if there is one, otherwise it creates the generically named
+`projects_id_organization_id_key`, shared infrastructure that other
+composite FKs to `projects (id, organization_id)` can use, then adds the FK
+`NOT VALID` in the same short transaction as the cleanup (so no unchecked link
+can be written in between) and validates it in a later transaction. The old
+single-column FK is kept: dropping any FK from this table to `projects` takes
+`ACCESS EXCLUSIVE` on `projects`, which the migration avoids; it is redundant
+with the composite one and harmless. The old `project_id` index is replaced
+by one on `(project_id, organization_id)`.
+
+Locks and deploy: `Servers/start.sh` runs migrations on every API boot while
+the worker and older API replicas keep serving, so `up()` runs under live
+traffic as five short transactions, each with a 5 s `lock_timeout` and
+`row_security = off` wherever it reads `projects` (an RLS policy that would
+apply then raises an error instead of hiding projects and making every link
+look orphaned). A busy lock rolls the step back and it is retried, up to 12
+times with a short backoff (about 1.5 minutes at worst); every step is
+idempotent, so a failed `up()` is re-run on the next boot. Only step 3 locks
+two tables, link table first (as the sync does) and then `projects` with
+`NOWAIT`, so it never waits while holding a lock and cannot deadlock with a
+sync or a removal. Which writes pause (reads never pause except in step 5;
+`organizations` is never locked):
+1. unique index on `projects (id, organization_id)`, if none is equivalent:
+   plain `CREATE UNIQUE INDEX` (`SHARE`), so writes to `projects` pause for
+   one build pass over `projects`. Not `CONCURRENTLY`, as elsewhere: at
+   container start it would wait on every older transaction, and a failed
+   build leaves an invalid index;
+2. index on the link table (`SHARE`): link writes pause for its build;
+3. `SHARE ROW EXCLUSIVE` on both tables for the cleanup `DELETE` plus adding
+   the FK `NOT VALID`: writes to both pause for that transaction only;
+4. `VALIDATE CONSTRAINT` (skipped if `pg_constraint.convalidated`):
+   `SHARE UPDATE EXCLUSIVE` on the link table and `ROW SHARE` on `projects`,
+   so no writes pause while it scans the links;
+5. dropping the old index: `ACCESS EXCLUSIVE` on the link table (reads too)
+   for the catalog change only.
+`down()` drops the composite FK, which needs `ACCESS
+EXCLUSIVE` on `projects` (link table first, then `projects` with `NOWAIT`,
+retried as above), and its index,
+leaves the unique index on `projects (id, organization_id)` in place,
+recreates the old index, and puts the backed-up links
+back where the single-column FK allows it (organization and project still
+exist; a link re-imported since wins). Restored rows leave the backup; the
+backup table is dropped only when it is empty, otherwise it is kept and the
+remaining count is logged. The id sequence is never moved backwards.
 
 A use case a sync found again in the
 meantime is no longer flagged and is skipped. The response is

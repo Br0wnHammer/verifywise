@@ -6,6 +6,7 @@ import type {
   DataRetentionOverview,
   RetentionRow,
 } from "../../../../../application/repository/dataRetention.repository";
+import CustomException from "../../../../../infrastructure/exceptions/customeException";
 
 const mockGetDataRetention = vi.fn();
 const mockPreview = vi.fn();
@@ -426,7 +427,11 @@ describe("Edit retention modal", () => {
   });
 
   it("shows the gateway's validation detail on the form", async () => {
-    mockUpdateGateway.mockRejectedValue({ response: { detail: "Admin access required" } });
+    mockUpdateGateway.mockRejectedValue(
+      new CustomException("Request failed with status code 403", 403, {
+        detail: "Admin access required",
+      }),
+    );
     await open("ai_gateway_guardrail_logs");
     fireEvent.change(screen.getByLabelText(/Keep for \(days\)/), { target: { value: "120" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -435,7 +440,11 @@ describe("Edit retention modal", () => {
   });
 
   it("returns from the confirmation to the form with the gateway's detail", async () => {
-    mockUpdateGateway.mockRejectedValue({ response: { detail: "Admin role required" } });
+    mockUpdateGateway.mockRejectedValue(
+      new CustomException("Request failed with status code 403", 403, {
+        detail: "Admin role required",
+      }),
+    );
     await open("ai_gateway_spend_logs");
     fireEvent.click(screen.getByRole("switch"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

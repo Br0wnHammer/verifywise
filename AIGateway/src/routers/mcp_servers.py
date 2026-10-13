@@ -3,7 +3,6 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from typing import Any, Optional
 
-from middlewares.auth import verify_internal_key
 from utils.auth import get_org_id, get_user_id, require_admin
 from utils.notifications import notify_config_change
 import crud.mcp_servers as mcp_servers_crud
@@ -28,7 +27,6 @@ def _validate_slug(slug: str) -> None:
 
 @router.get("")
 async def list_mcp_servers(request: Request) -> Any:
-    verify_internal_key(request)
 
     org_id = get_org_id(request)
 
@@ -38,7 +36,6 @@ async def list_mcp_servers(request: Request) -> Any:
 
 @router.get("/{server_id}")
 async def get_mcp_server(server_id: int, request: Request) -> Any:
-    verify_internal_key(request)
 
     org_id = get_org_id(request)
 
@@ -51,7 +48,6 @@ async def get_mcp_server(server_id: int, request: Request) -> Any:
 
 @router.post("")
 async def create_mcp_server(request: Request) -> Any:
-    verify_internal_key(request)
     require_admin(request)
 
     org_id = get_org_id(request)
@@ -94,7 +90,6 @@ async def create_mcp_server(request: Request) -> Any:
 
 @router.patch("/{server_id}")
 async def update_mcp_server(server_id: int, request: Request) -> Any:
-    verify_internal_key(request)
     require_admin(request)
 
     org_id = get_org_id(request)
@@ -124,7 +119,6 @@ async def update_mcp_server(server_id: int, request: Request) -> Any:
 
 @router.delete("/{server_id}")
 async def delete_mcp_server(server_id: int, request: Request) -> Any:
-    verify_internal_key(request)
     require_admin(request)
 
     org_id = get_org_id(request)
@@ -149,7 +143,6 @@ async def delete_mcp_server(server_id: int, request: Request) -> Any:
 @router.post("/{server_id}/discover")
 async def discover_server_tools(server_id: int, request: Request) -> Any:
     """Trigger tool discovery for a registered MCP server."""
-    verify_internal_key(request)
     require_admin(request)
 
     org_id = get_org_id(request)
