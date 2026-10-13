@@ -65,6 +65,7 @@ jest.mock("../../services/slack/slackNotificationService", () => ({
 }));
 jest.mock("../../services/inAppNotification.service", () => ({
   notifyUserAssigned: jest.fn().mockResolvedValue(undefined),
+  notifyApprovalAutoApproved: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("../../utils/logger/logHelper", () => ({
   logProcessing: jest.fn(),
@@ -101,6 +102,14 @@ jest.mock("../../domain.layer/exceptions/custom.exception", () => ({
   ValidationException: class ValidationException extends Error {},
   BusinessLogicException: class BusinessLogicException extends Error {},
 }));
+jest.mock("../../services/notification.service", () => ({
+  ...jest.requireActual("../../services/notification.service"),
+  notifyStepApprovers: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("../../services/projects/approvalRequest.service", () => ({
+  ...jest.requireActual("../../services/projects/approvalRequest.service"),
+  createUseCaseApprovalRequest: jest.fn().mockResolvedValue(null),
+}));
 
 import { buildProject, buildManyProject } from "../../tests/factories/project.factory";
 import { sequelize } from "../../database/db";
@@ -131,6 +140,10 @@ import {
 } from "../../utils/project.utils";
 import { getUserByIdQuery } from "../../utils/user.utils";
 import { trackUseCaseChanges } from "../../utils/useCaseChangeHistory.utils";
+import { createUseCaseApprovalRequest } from "../../services/projects/approvalRequest.service";
+import { notifyStepApprovers } from "../../services/notification.service";
+import { notifyApprovalAutoApproved } from "../../services/inAppNotification.service";
+import { ValidationException } from "../../domain.layer/exceptions/custom.exception";
 import {
   getPendingApprovalRequestIdQuery,
   withdrawApprovalRequestQuery,
@@ -155,6 +168,15 @@ const mockGetPendingApproval = getPendingApprovalRequestIdQuery as jest.MockedFu
 const mockWithdrawApproval = withdrawApprovalRequestQuery as jest.MockedFunction<
   typeof withdrawApprovalRequestQuery
 >;
+const mockCreateApproval = createUseCaseApprovalRequest as jest.MockedFunction<
+  typeof createUseCaseApprovalRequest
+>;
+const mockNotifyStepApprovers = notifyStepApprovers as jest.MockedFunction<
+  typeof notifyStepApprovers
+>;
+const mockNotifyAutoApproved = notifyApprovalAutoApproved as jest.MockedFunction<
+  typeof notifyApprovalAutoApproved
+>;
 
 function createReq(overrides?: Partial<Request>): any {
   return {
@@ -176,7 +198,12 @@ function createRes(): any {
 }
 
 describe("project.ctrl", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Rejection/return values set per test must never leak into the next one.
+    mockCreateApproval.mockReset();
+    mockCreateApproval.mockResolvedValue(null);
+  });
   afterEach(() => jest.restoreAllMocks());
 
   describe("getAllProjects", () => {
@@ -272,6 +299,38 @@ describe("project.ctrl", () => {
       const res = createRes();
       await createProject(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+    it("notifies step-1 approvers when a created use case starts an approval request (#4905)", async () => {
+      const project = { ...buildProject(), owner: 1, approval_workflow_id: 5, members: [] };
+      mockCreate.mockResolvedValue(project as any);
+      mockCreateApproval.mockResolvedValue({
+        request: { id: 44, request_name: "Use Case: P1" },
+        autoApproved: false,
+      } as any);
+      const req = createReq({
+        body: { project_title: "P1", owner: 1, framework: [], members: [] },
+      });
+      const res = createRes();
+      await createProject(req, res);
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockNotifyStepApprovers).toHaveBeenCalledWith(1, 44, 1, "Use Case: P1");
+    });
+    it("skips approver notification when the request is auto-approved (#4905)", async () => {
+      const project = { ...buildProject(), owner: 1, approval_workflow_id: 5, members: [] };
+      mockCreate.mockResolvedValue(project as any);
+      mockCreateApproval.mockResolvedValue({
+        request: { id: 44, request_name: "Use Case: P1" },
+        autoApproved: true,
+        riskLevel: "Minimal risk",
+        threshold: "High",
+      } as any);
+      const req = createReq({
+        body: { project_title: "P1", owner: 1, framework: [], members: [] },
+      });
+      const res = createRes();
+      await createProject(req, res);
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockNotifyStepApprovers).not.toHaveBeenCalled();
     });
   });
 
@@ -406,6 +465,52 @@ describe("project.ctrl", () => {
       const res = createRes();
       await updateProjectById(req, res);
       expect(mockGetUser).toHaveBeenCalledWith(6, null, 1);
+    });
+    it("starts an approval request when a workflow is newly attached on edit (#4904)", async () => {
+      const existing = { ...buildProject(), owner: 1, approval_workflow_id: null };
+      const updated = { ...existing, approval_workflow_id: 5, members: [] };
+      mockGetById.mockResolvedValue(existing as any);
+      mockGetMembers.mockResolvedValue([] as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      mockGetUser.mockResolvedValue({ id: 1, name: "A", surname: "B", role_id: 1 } as any);
+      mockCreateApproval.mockResolvedValue({
+        request: { id: 44, request_name: "Use Case: P1" },
+        autoApproved: false,
+      } as any);
+      const req = createReq({ params: { id: "1" }, body: { approval_workflow_id: 5 } });
+      const res = createRes();
+      await updateProjectById(req, res);
+      expect(res.status).toHaveBeenCalledWith(202);
+      expect(mockCreateApproval).toHaveBeenCalled();
+      expect(mockNotifyStepApprovers).toHaveBeenCalledWith(1, 44, 1, "Use Case: P1");
+    });
+    it("starts no request when the attached workflow is unchanged (#4904)", async () => {
+      const existing = { ...buildProject(), owner: 1, approval_workflow_id: 5 };
+      const updated = { ...existing, members: [] };
+      mockGetById.mockResolvedValue(existing as any);
+      mockGetMembers.mockResolvedValue([] as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      mockGetUser.mockResolvedValue({ id: 1, name: "A", surname: "B", role_id: 1 } as any);
+      const req = createReq({ params: { id: "1" }, body: { approval_workflow_id: 5 } });
+      const res = createRes();
+      await updateProjectById(req, res);
+      expect(res.status).toHaveBeenCalledWith(202);
+      expect(mockCreateApproval).not.toHaveBeenCalled();
+    });
+    it("returns 400 when the attached workflow is inactive or not a use-case workflow (#4906)", async () => {
+      const existing = { ...buildProject(), owner: 1, approval_workflow_id: null };
+      const updated = { ...existing, approval_workflow_id: 9, members: [] };
+      mockGetById.mockResolvedValue(existing as any);
+      mockGetMembers.mockResolvedValue([] as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      mockCreateApproval.mockRejectedValue(
+        new ValidationException("The selected approval workflow has been deactivated."),
+      );
+      const req = createReq({ params: { id: "1" }, body: { approval_workflow_id: 9 } });
+      const res = createRes();
+      await updateProjectById(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect((await openedTransaction()).rollback).toHaveBeenCalled();
     });
     it("should return 500 on error", async () => {
       mockGetById.mockRejectedValue(new Error("DB error"));
