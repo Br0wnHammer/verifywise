@@ -52,6 +52,7 @@ import {
   createEmptyForm,
   isRiskStepSetField,
   generateFieldId,
+  withSequentialOrder,
   generateSlug,
   DEFAULT_DESIGN_SETTINGS,
   analyzeMappingCoverage,
@@ -137,8 +138,15 @@ export function IntakeFormBuilder() {
       setLoadFailed(false);
       getIntakeForm(parseInt(formId))
         .then((response) => {
-          if (response.data) setForm(response.data);
-          else setLoadFailed(true);
+          if (response.data) {
+            setForm({
+              ...response.data,
+              schema: {
+                ...response.data.schema,
+                fields: withSequentialOrder(response.data.schema?.fields ?? []),
+              },
+            });
+          } else setLoadFailed(true);
         })
         .catch(() => {
           setLoadFailed(true);
@@ -194,7 +202,12 @@ export function IntakeFormBuilder() {
   const addField = useCallback((field: FormField) => {
     setForm((prev) => ({
       ...prev,
-      schema: { ...prev.schema, fields: [...prev.schema.fields, field] },
+      schema: {
+        ...prev.schema,
+        fields: [...prev.schema.fields, field].map((f, i) =>
+          f.order === i ? f : { ...f, order: i },
+        ),
+      },
     }));
     setIsDirty(true);
     setSelectedFieldId(field.id);
@@ -212,7 +225,9 @@ export function IntakeFormBuilder() {
       ...prev,
       schema: {
         ...prev.schema,
-        fields: prev.schema.fields.filter((f) => f.id !== fieldToDelete),
+        fields: prev.schema.fields
+          .filter((f) => f.id !== fieldToDelete)
+          .map((f, i) => (f.order === i ? f : { ...f, order: i })),
       },
     }));
     setIsDirty(true);
@@ -221,18 +236,25 @@ export function IntakeFormBuilder() {
     setDeleteFieldModalOpen(false);
   }, [fieldToDelete, selectedFieldId]);
 
-  const duplicateField = useCallback(
-    (field: FormField) => {
-      const newField: FormField = {
-        ...field,
-        id: generateFieldId(),
-        label: `${field.label} (copy)`,
-        order: form.schema.fields.length,
+  // The copy goes right after the original, so its rules still point above it.
+  const duplicateField = useCallback((field: FormField) => {
+    const newField: FormField = {
+      ...field,
+      id: generateFieldId(),
+      label: `${field.label} (copy)`,
+    };
+    setForm((prev) => {
+      const index = prev.schema.fields.findIndex((f) => f.id === field.id);
+      const fields = [...prev.schema.fields];
+      fields.splice(index < 0 ? fields.length : index + 1, 0, newField);
+      return {
+        ...prev,
+        schema: { ...prev.schema, fields: fields.map((f, i) => ({ ...f, order: i })) },
       };
-      addField(newField);
-    },
-    [form.schema.fields.length, addField],
-  );
+    });
+    setIsDirty(true);
+    setSelectedFieldId(newField.id);
+  }, []);
 
   const moveFieldUp = useCallback((fId: string) => {
     setForm((prev) => {

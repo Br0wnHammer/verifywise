@@ -607,6 +607,21 @@
       "answers": {},
       "visibleIds": ["d"],
       "calculated": {}
+    },
+    {
+      "name": "malformed stored rule counts as absent",
+      "fields": [
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 0,
+          "visibility": { "match": "all", "conditions": [null] }
+        }
+      ],
+      "answers": {},
+      "visibleIds": ["d"],
+      "calculated": {}
     }
   ],
   "cleanSubmission": [
@@ -742,6 +757,53 @@
           "label": "Total",
           "order": 2,
           "formula": "{a} / {b}"
+        }
+      ],
+      "answers": { "a": 1, "b": 0 },
+      "fieldId": "total",
+      "expected": null
+    },
+    {
+      "name": "chained calculation names the root input",
+      "fields": [
+        { "id": "a", "type": "number", "label": "A", "order": 0 },
+        {
+          "id": "sub",
+          "type": "calculated",
+          "label": "Subtotal",
+          "order": 1,
+          "formula": "{a} * 2"
+        },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 2,
+          "formula": "{sub} + 1"
+        }
+      ],
+      "answers": {},
+      "fieldId": "total",
+      "expected": "A"
+    },
+    {
+      "name": "chained division by zero gives no hint",
+      "fields": [
+        { "id": "a", "type": "number", "label": "A", "order": 0 },
+        { "id": "b", "type": "number", "label": "B", "order": 1 },
+        {
+          "id": "sub",
+          "type": "calculated",
+          "label": "Subtotal",
+          "order": 2,
+          "formula": "{a} / {b}"
+        },
+        {
+          "id": "total",
+          "type": "calculated",
+          "label": "Total",
+          "order": 3,
+          "formula": "{sub} * 2"
         }
       ],
       "answers": { "a": 1, "b": 0 },
@@ -1185,6 +1247,24 @@
         { "id": "n", "type": "number", "label": "N", "order": 0, "riskDimension": "impact_scope" }
       ],
       "errorFieldIds": ["n"]
+    },
+    {
+      "name": "unknown entity type does not throw",
+      "entityType": "constructor",
+      "fields": [
+        { "id": "t", "type": "text", "label": "T", "order": 0 },
+        {
+          "id": "d",
+          "type": "text",
+          "label": "D",
+          "order": 1,
+          "visibility": {
+            "match": "all",
+            "conditions": [{ "fieldId": "t", "operator": "is_empty" }]
+          }
+        }
+      ],
+      "errorFieldIds": []
     }
   ]
 }

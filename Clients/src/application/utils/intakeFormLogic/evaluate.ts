@@ -27,6 +27,10 @@ function isShown(field: LogicField, byId: Map<string, LogicField>, effective: An
   if (!visibility || !Array.isArray(visibility.conditions) || visibility.conditions.length === 0) {
     return true;
   }
+  // Malformed stored rules count as absent (the save check rejects them).
+  if (visibility.conditions.some((condition) => !condition || typeof condition !== "object")) {
+    return true;
+  }
   const results = visibility.conditions.map((condition) =>
     conditionHolds(condition, byId.get(condition.fieldId), effective[condition.fieldId]),
   );
@@ -109,7 +113,10 @@ export function firstMissingVisibleInput(
   schema: LogicSchema,
   evaluation: FormEvaluation,
   fieldId: string,
+  seen: Set<string> = new Set(),
 ): string | null {
+  if (seen.has(fieldId)) return null;
+  seen.add(fieldId);
   const fields = fieldsOf(schema);
   const field = fields.find((candidate) => candidate.id === fieldId);
   if (!field || field.type !== "calculated") return null;
@@ -118,9 +125,14 @@ export function firstMissingVisibleInput(
   for (const id of parsed.refs) {
     const ref = fields.find((candidate) => candidate.id === id);
     if (!ref || !evaluation.visibleIds.has(id)) continue;
-    const value =
-      ref.type === "calculated" ? evaluation.calculated[id] : evaluation.effectiveAnswers[id];
-    if (toNumber(value) === null) return ref.label;
+    if (ref.type === "calculated") {
+      // A calculated input cannot be filled in: name what it is missing, if anything.
+      if (toNumber(evaluation.calculated[id]) !== null) continue;
+      const nested = firstMissingVisibleInput(schema, evaluation, id, seen);
+      if (nested !== null) return nested;
+      continue;
+    }
+    if (toNumber(evaluation.effectiveAnswers[id]) === null) return ref.label;
   }
   return null;
 }

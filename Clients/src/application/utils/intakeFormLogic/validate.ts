@@ -42,7 +42,12 @@ export function validateSchemaLogic(schema: LogicSchema, entityType: string): Sc
   const fields = sortFields(schema && Array.isArray(schema.fields) ? schema.fields : []);
   const position = new Map(fields.map((field, index) => [field.id, index] as const));
   const byId = new Map(fields.map((field) => [field.id, field] as const));
-  const requiredEntityFields = REQUIRED_ENTITY_FIELDS[entityType] ?? [];
+  const requiredEntityFields = Object.prototype.hasOwnProperty.call(
+    REQUIRED_ENTITY_FIELDS,
+    entityType,
+  )
+    ? REQUIRED_ENTITY_FIELDS[entityType]
+    : [];
   const errors: SchemaLogicError[] = [];
 
   fields.forEach((field, index) => {

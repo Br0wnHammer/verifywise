@@ -63,4 +63,20 @@ describe("VisibilityEditor", () => {
       visibilitySummary({ match: "any", conditions: [{ fieldId: "a", operator: "is_empty" }] }),
     ).toBe("Shown when any condition matches");
   });
+
+  it("does not dress a removed field up as another field's condition", () => {
+    renderWithProviders(
+      <VisibilityEditor
+        visibility={{
+          match: "all",
+          conditions: [{ fieldId: "gone", operator: "equals", value: "x" }],
+        }}
+        earlierFields={[PERSONAL]}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(document.getElementById("condition-operator-0")).toBeNull();
+    expect(document.getElementById("condition-value-0")).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove condition" })).toBeInTheDocument();
+  });
 });

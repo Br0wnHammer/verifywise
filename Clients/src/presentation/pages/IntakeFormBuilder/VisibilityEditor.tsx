@@ -98,8 +98,10 @@ export function VisibilityEditor({ visibility, earlierFields, onChange }: Visibi
         />
       )}
       {conditions.map((condition, index) => {
-        const ref = earlierFields.find((f) => f.id === condition.fieldId) ?? earlierFields[0];
-        const operators = OPERATORS_BY_TYPE[ref.type] ?? ["is_empty", "is_not_empty"];
+        // A removed field, or one moved below this field, is not offered:
+        // the row says so instead of showing a different field's condition.
+        const ref = earlierFields.find((f) => f.id === condition.fieldId);
+        const operators = (ref && OPERATORS_BY_TYPE[ref.type]) ?? ["is_empty", "is_not_empty"];
         const operator = condition.operator as ConditionOperator;
         return (
           <Box
@@ -118,8 +120,11 @@ export function VisibilityEditor({ visibility, earlierFields, onChange }: Visibi
                 <Select
                   id={`condition-field-${index}`}
                   label="Field"
-                  value={ref.id}
-                  items={earlierFields.map((f) => ({ _id: f.id, name: f.label }))}
+                  value={ref?.id ?? ""}
+                  items={[
+                    ...(ref ? [] : [{ _id: "", name: "Choose a field above this one" }]),
+                    ...earlierFields.map((f) => ({ _id: f.id, name: f.label })),
+                  ]}
                   onChange={(e) => {
                     const next = earlierFields.find((f) => f.id === e.target.value);
                     if (next) update(index, defaultCondition(next));
@@ -135,76 +140,82 @@ export function VisibilityEditor({ visibility, earlierFields, onChange }: Visibi
                 <Trash2 size={14} />
               </IconButton>
             </Box>
-            <Select
-              id={`condition-operator-${index}`}
-              label="Condition"
-              value={operator}
-              items={operators.map((op) => ({ _id: op, name: operatorLabel(ref.type, op) }))}
-              onChange={(e) =>
-                update(index, {
-                  ...defaultCondition(ref),
-                  operator: e.target.value as ConditionOperator,
-                  ...(e.target.value === "one_of" ? { value: [] } : {}),
-                })
-              }
-            />
-            {!NO_VALUE.includes(operator) &&
-              (ref.type === "select" || ref.type === "multiselect") &&
-              operator !== "one_of" && (
+            {ref && (
+              <>
                 <Select
-                  id={`condition-value-${index}`}
-                  label="Value"
-                  value={typeof condition.value === "string" ? condition.value : ""}
-                  items={(ref.options ?? []).map((o) => ({ _id: o.value, name: o.label }))}
-                  onChange={(e) => update(index, { ...condition, value: String(e.target.value) })}
+                  id={`condition-operator-${index}`}
+                  label="Condition"
+                  value={operator}
+                  items={operators.map((op) => ({ _id: op, name: operatorLabel(ref.type, op) }))}
+                  onChange={(e) =>
+                    update(index, {
+                      ...defaultCondition(ref),
+                      operator: e.target.value as ConditionOperator,
+                      ...(e.target.value === "one_of" ? { value: [] } : {}),
+                    })
+                  }
                 />
-              )}
-            {operator === "one_of" &&
-              (ref.options ?? []).map((option) => {
-                const selected = Array.isArray(condition.value) ? condition.value : [];
-                const checked = selected.includes(option.value);
-                return (
-                  <Checkbox
-                    key={option.value}
-                    id={`condition-${index}-option-${option.value}`}
-                    label={option.label}
-                    value={option.value}
-                    isChecked={checked}
-                    size="small"
-                    onChange={() =>
+                {!NO_VALUE.includes(operator) &&
+                  (ref.type === "select" || ref.type === "multiselect") &&
+                  operator !== "one_of" && (
+                    <Select
+                      id={`condition-value-${index}`}
+                      label="Value"
+                      value={typeof condition.value === "string" ? condition.value : ""}
+                      items={(ref.options ?? []).map((o) => ({ _id: o.value, name: o.label }))}
+                      onChange={(e) =>
+                        update(index, { ...condition, value: String(e.target.value) })
+                      }
+                    />
+                  )}
+                {operator === "one_of" &&
+                  (ref.options ?? []).map((option) => {
+                    const selected = Array.isArray(condition.value) ? condition.value : [];
+                    const checked = selected.includes(option.value);
+                    return (
+                      <Checkbox
+                        key={option.value}
+                        id={`condition-${index}-option-${option.value}`}
+                        label={option.label}
+                        value={option.value}
+                        isChecked={checked}
+                        size="small"
+                        onChange={() =>
+                          update(index, {
+                            ...condition,
+                            value: checked
+                              ? selected.filter((v) => v !== option.value)
+                              : [...selected, option.value],
+                          })
+                        }
+                      />
+                    );
+                  })}
+                {!NO_VALUE.includes(operator) && SYMBOLS[operator] && (
+                  <Field
+                    id={`condition-value-${index}`}
+                    label="Value"
+                    type="number"
+                    value={typeof condition.value === "number" ? String(condition.value) : ""}
+                    onChange={(e) =>
                       update(index, {
                         ...condition,
-                        value: checked
-                          ? selected.filter((v) => v !== option.value)
-                          : [...selected, option.value],
+                        value: e.target.value === "" ? undefined : Number(e.target.value),
                       })
                     }
                   />
-                );
-              })}
-            {!NO_VALUE.includes(operator) && SYMBOLS[operator] && (
-              <Field
-                id={`condition-value-${index}`}
-                label="Value"
-                type="number"
-                value={typeof condition.value === "number" ? String(condition.value) : ""}
-                onChange={(e) =>
-                  update(index, {
-                    ...condition,
-                    value: e.target.value === "" ? undefined : Number(e.target.value),
-                  })
-                }
-              />
+                )}
+                {(operator === "equals" || operator === "contains") &&
+                  !(ref.type === "select" || ref.type === "multiselect") && (
+                    <Field
+                      id={`condition-value-${index}`}
+                      label="Value"
+                      value={typeof condition.value === "string" ? condition.value : ""}
+                      onChange={(e) => update(index, { ...condition, value: e.target.value })}
+                    />
+                  )}
+              </>
             )}
-            {(operator === "equals" || operator === "contains") &&
-              !(ref.type === "select" || ref.type === "multiselect") && (
-                <Field
-                  id={`condition-value-${index}`}
-                  label="Value"
-                  value={typeof condition.value === "string" ? condition.value : ""}
-                  onChange={(e) => update(index, { ...condition, value: e.target.value })}
-                />
-              )}
           </Box>
         );
       })}

@@ -377,7 +377,8 @@ export async function enhanceWithLLM(
 
     // Build context from submission
     const fieldSummary = schema.fields
-      .filter((f) => submissionData[f.id] !== undefined)
+      // A calculated field stored as null had no result; leave it out.
+      .filter((f) => submissionData[f.id] !== undefined && submissionData[f.id] !== null)
       .map((f) => `${f.label}: ${JSON.stringify(submissionData[f.id])}`)
       .join("\n");
 

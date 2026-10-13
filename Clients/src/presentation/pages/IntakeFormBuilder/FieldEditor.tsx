@@ -465,6 +465,7 @@ export function FieldEditor({
                   id="field-decimals"
                   label="Decimals"
                   type="number"
+                  InputProps={{ inputProps: { min: 0, max: 6, step: 1 } }}
                   value={String(localField.decimals ?? 2)}
                   onChange={(e) => {
                     const v = e.target.value;

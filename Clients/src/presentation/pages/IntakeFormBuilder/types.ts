@@ -392,6 +392,18 @@ export const RISK_DIMENSION_OPTIONS: Array<{ _id: string; name: string }> = [
 ];
 
 /**
+ * Fields in form order with `order` matching their position. The canvas
+ * renders array order while rules, formulas and the public form sort by
+ * `order`, so the two must never disagree.
+ */
+export function withSequentialOrder(fields: FormField[]): FormField[] {
+  return [...fields]
+    .map((field, index) => ({ field, index }))
+    .sort((a, b) => (a.field.order ?? 0) - (b.field.order ?? 0) || a.index - b.index)
+    .map(({ field }, order) => (field.order === order ? field : { ...field, order }));
+}
+
+/**
  * Generate unique field ID
  */
 export function generateFieldId(): string {
