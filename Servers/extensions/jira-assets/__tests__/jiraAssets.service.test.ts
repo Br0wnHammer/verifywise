@@ -10,25 +10,27 @@ import {
   JiraConfigValidationError,
   JiraImportInterruptedError,
   JiraNotConfiguredError,
+  jiraReadiness,
   JiraSyncInProgressError,
   JiraUseCaseDeleteFailedError,
   JiraUseCaseNotFoundError,
   parseSyncIntervalHours,
   removeMissingUseCases,
   REMOVAL_SKIP_REASONS,
-  RunRef,
-  runClaimedSync,
-  runQueuedSync,
+  runJiraSync,
   saveConfig,
   startManualSync,
-  startScheduledSync,
   SKIPPED_RUN_MESSAGE,
   SQL_RUN_IS_LIVE,
-  touchHeartbeat,
+  RunRef,
   RunSupersededError,
+  touchHeartbeat,
   updateSelection,
   updateSyncSettings,
 } from "../jiraAssets.service";
+import { jiraAssetsSyncProvider } from "../jiraAssets.syncProvider";
+import { createRunContext, runClaimed } from "../../sync-engine/claim";
+import { __resetSyncProvidersForTests, registerSyncProvider } from "../../sync-engine/registry";
 import { sequelize } from "../../../database/db";
 import { decryptText } from "../../../tools/createSecureValue";
 import { JiraAssetsClient } from "../jira.client";
@@ -43,7 +45,24 @@ import {
   enqueueJiraAssetsSyncRun,
 } from "../../../services/automations/automationProducer";
 
-const FAKE_TX = { id: "tx" };
+// afterCommit runs at once: the mocked transaction always commits.
+const FAKE_TX = { id: "tx", afterCommit: (fn: () => void) => fn() };
+const TOKEN = "00000000-0000-4000-8000-000000000077";
+/** What the run's ownership fragment inlines; present in every guarded write. */
+const OWNS = `own.run_token = '${TOKEN}'`;
+
+/** A claimed Jira run, as the engine hands it to the provider. */
+const ctxFor = (kind: "manual" | "scheduled" = "manual", triggeredBy: number | null = 8) =>
+  createRunContext(
+    jiraAssetsSyncProvider,
+    { runId: 77, token: TOKEN, orgId: 5, key: "jira-assets", kind, triggeredBy },
+    null,
+  );
+
+beforeAll(() => {
+  __resetSyncProvidersForTests();
+  registerSyncProvider(jiraAssetsSyncProvider);
+});
 const RUN: RunRef = { historyId: 77, token: "tok-77" };
 
 jest.mock("../../../database/db", () => ({
@@ -169,11 +188,23 @@ function fakeDb({
   latestRunId = 40,
 }: FakeDb = {}) {
   mockQuery.mockImplementation(async (sql: string, opts: any = {}) => {
-    if (sql.includes("WITH own AS")) {
+    // Guarded writes carry the ownership fragment (FOR SHARE), so match them first.
+    if (sql.includes("WITH link AS")) {
       const isOwned = owned.length > 0;
-      return [{ owned: owned.length, links: isOwned && linkExists ? 1 : 0, projects: 0 }];
+      return [{ owned: isOwned, links: isOwned && linkExists ? 1 : 0 }];
     }
+    if (sql.includes("SET missing_in_jira_since = (NOW()")) return [flagged, {}];
     if (sql.includes("FOR SHARE")) return owned;
+    if (sql.includes("AS has_use_cases")) {
+      return config
+        ? [
+            {
+              has_object_type: !!config.selected_object_type_id,
+              has_use_cases: existing.length > 0,
+            },
+          ]
+        : [];
+    }
     if (sql.includes("WHERE project_id = :projectId")) return linkedProject;
     if (sql.includes("SELECT id FROM projects")) {
       return (opts.replacements?.projectIds ?? [])
@@ -182,12 +213,16 @@ function fakeDb({
     }
     if (sql.includes("SET heartbeat_at")) return [heartbeat, {}];
     if (sql.includes("pg_advisory_xact_lock")) return [{}];
-    if (sql.includes("SET status = 'failed', completed_at")) return [[], 0];
+    if (sql.includes("SET status = 'abandoned'")) return [[], 0];
     if (sql.includes("ORDER BY started_at DESC, id DESC LIMIT 1")) {
       return latestRunId === null ? [] : [{ id: latestRunId }];
     }
+    // Old Jira claim (imports and removals until Task 6b).
+    if (sql.includes("SET status = 'failed', completed_at")) return [[], 0];
     if (sql.includes("SELECT id FROM jira_assets_sync_history")) return running;
     if (sql.includes("INSERT INTO jira_assets_sync_history")) return [[{ id: 77 }], 1];
+    if (sql.includes("SELECT id FROM extension_sync_runs")) return running;
+    if (sql.includes("INSERT INTO extension_sync_runs")) return [[{ id: 77 }], 1];
     if (sql.includes("AS live")) return [{ live }];
     if (sql.includes("SELECT id, jira_base_url")) return config ? [config] : [];
     if (sql.includes("SELECT * FROM jira_assets_config")) return config ? [config] : [];
@@ -225,9 +260,10 @@ function fakeDb({
     if (sql.includes("SELECT id FROM jira_assets_use_cases")) return [];
     if (sql.includes("nextval")) return [{ seq: "9" }];
     if (sql.includes("INSERT INTO projects")) return [[{ id: 500 }], 1];
-    if (sql.includes("SET missing_in_jira_since = (NOW()")) return [flagged, {}];
     if (sql.includes("SET status = 'completed'")) return [ownRow, {}];
-    if (sql.includes("SET status = 'failed', error_message")) return [ownRow, {}];
+    if (sql.includes("SET status = 'failed'")) {
+      return [ownRow.map(() => ({ started_at: new Date("2026-10-12T10:00:00Z") })), {}];
+    }
     if (sql.includes("DELETE FROM jira_assets_use_cases")) {
       return [(opts.replacements?.linkIds ?? []).map((id: number) => ({ id })), {}];
     }
@@ -338,16 +374,19 @@ describe("touchHeartbeat", () => {
   });
 });
 
-describe("runClaimedSync — never deletes, flags missing objects", () => {
+describe("runJiraSync — never deletes, flags missing objects", () => {
+  const run = (kind: "manual" | "scheduled" = "manual", triggeredBy: number | null = 8) => {
+    const ctx = ctxFor(kind, triggeredBy);
+    return runJiraSync(ctx).finally(() => ctx.dispose());
+  };
+
   it("scheduled: updates linked use cases, clears their flag, creates nothing", async () => {
     fakeDb({ existing: [link("1", 101)] });
     clientReturning([jiraObject("1"), jiraObject("3")]);
 
-    const result = await runClaimedSync(5, RUN, null, "scheduled");
+    const result = await run("scheduled", null);
 
-    expect(result.success).toBe(true);
-    expect(result.objectsUpdated).toBe(1);
-    expect(result.objectsCreated).toBe(0);
+    expect(result.counts).toMatchObject({ updated: 1, created: 0, deleted: 0 });
     expect(sqlCalls("INSERT INTO projects")).toHaveLength(0);
     expect(sqlCalls("missing_in_jira_since = NULL")).toHaveLength(1);
     expect(sqlCalls("DELETE FROM")).toHaveLength(0);
@@ -357,27 +396,21 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     fakeDb({ existing: [link("1", 101), link("2", 102), link("4", null)], flagged: [{ id: 2 }] });
     clientReturning([jiraObject("1")], true);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
+    const result = await run();
 
-    expect(result.success).toBe(true);
-    expect(result.objectsMissingInJira).toBe(2);
-    expect(result.objectsNewlyMissing).toBe(1);
-    expect(result.missingInJiraIds).toEqual(["2", "4"]);
+    expect(result.counts).toMatchObject({ missing: 2, newly_missing: 1, deleted: 0 });
+    expect(result.message).toContain("flagged as missing (nothing was removed): 2, 4.");
     const [flagSql, flagOptions] = sqlCalls("SET missing_in_jira_since = (NOW()")[0];
     expect(flagSql).toContain("AND missing_in_jira_since IS NULL");
     expect(flagSql).toContain("data->'objectType'->>'id' = :objectTypeId");
-    expect(flagSql).toMatch(/own\.run_token = :runToken\s+AND own\.status = 'started'/);
+    expect(flagSql).toContain(OWNS);
+    expect(flagSql).toContain("FOR SHARE");
     expect(flagOptions.replacements).toEqual({
       organizationId: 5,
       missingIds: ["2", "4"],
       objectTypeId: "42",
-      historyId: 77,
-      runToken: "tok-77",
     });
     expect(sqlCalls("DELETE FROM")).toHaveLength(0);
-    const [, completed] = sqlCalls("SET status = 'completed'")[0];
-    expect(completed.replacements).toMatchObject({ objectsDeleted: 0 });
-    expect(completed.replacements.note).toContain("flagged as missing (nothing was removed)");
   });
 
   it("never flags links from another object type (type switched A → B)", async () => {
@@ -385,13 +418,11 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     fakeDb({ existing: [link("a1", 201, "7"), link("a2", 202, "7"), link("b1", 101)] });
     clientReturning([jiraObject("b1")], true);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
+    const result = await run();
 
-    expect(result.success).toBe(true);
-    expect(result.objectsMissingInJira).toBe(0);
+    expect(result.counts.missing).toBe(0);
     expect(sqlCalls("SET missing_in_jira_since = (NOW()")).toHaveLength(0);
-    const [, completed] = sqlCalls("SET status = 'completed'")[0];
-    expect(completed.replacements.note).toContain(
+    expect(result.message).toContain(
       "2 use case(s) from another or an unknown object type were left as they were",
     );
   });
@@ -403,9 +434,9 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     });
     clientReturning([jiraObject("1")], true);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
+    const result = await run();
 
-    expect(result.missingInJiraIds).toEqual(["2"]);
+    expect(result.counts.missing).toBe(1);
     expect(sqlCalls("SET missing_in_jira_since = (NOW()")[0][1].replacements.missingIds).toEqual([
       "2",
     ]);
@@ -415,61 +446,66 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     fakeDb({ existing: [link("1", 101)] });
     clientReturning([jiraObject("1")], true);
 
-    await runClaimedSync(5, RUN, 8, "manual");
+    await run();
 
-    const [clearSql, clear] = sqlCalls("missing_in_jira_since = NULL")[0];
-    expect(clearSql).toMatch(/run_token = :runToken\s+AND status = 'started'/);
+    const [clearSql] = sqlCalls("missing_in_jira_since = NULL")[0];
+    // Once in the link update's WHERE, once in the `owned` column.
+    expect(clearSql.split(OWNS)).toHaveLength(3);
     expect(clearSql).toContain("FOR SHARE");
-    expect(clearSql).toContain("AND EXISTS (SELECT 1 FROM own)");
-    expect(clear.replacements).toMatchObject({ historyId: 77, runToken: "tok-77" });
   });
 
   it("sets no flags after an incomplete walk, but still clears flags for objects it saw", async () => {
     fakeDb({ existing: [link("1", 101), link("2", 102)] });
     clientReturning([jiraObject("1")], false);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
+    const result = await run();
 
-    expect(result.success).toBe(true);
     expect(sqlCalls("SET missing_in_jira_since = (NOW()")).toHaveLength(0);
     expect(sqlCalls("missing_in_jira_since = NULL")).toHaveLength(1);
-    const [, completed] = sqlCalls("SET status = 'completed'")[0];
-    expect(completed.replacements.note).toContain("did not confirm it returned every object");
+    expect(result.message).toContain("did not confirm it returned every object");
   });
 
   it("sets no flags when Jira returns no objects at all", async () => {
     fakeDb({ existing: [link("1", 101)] });
     clientReturning([], true);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
+    const result = await run();
 
-    expect(result.success).toBe(true);
     expect(sqlCalls("SET missing_in_jira_since = (NOW()")).toHaveLength(0);
-    const [, completed] = sqlCalls("SET status = 'completed'")[0];
-    expect(completed.replacements.note).toContain("returned no objects");
+    expect(result.message).toContain("returned no objects");
   });
 
-  it("manual: creates new objects owned by the user, in one transaction", async () => {
+  it("manual: creates new objects owned by the user, in one owned transaction", async () => {
     fakeDb({ existing: [link("1", 101)] });
     clientReturning([jiraObject("1"), jiraObject("3")], true);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
+    const result = await run();
 
-    expect(result.objectsCreated).toBe(1);
+    expect(result.counts.created).toBe(1);
     const [, projectInsert] = sqlCalls("INSERT INTO projects")[0];
     expect(projectInsert.replacements.owner).toBe(8);
     expect(projectInsert.transaction).toBe(FAKE_TX);
     expect(sqlCalls("INSERT INTO jira_assets_use_cases")[0][1].transaction).toBe(FAKE_TX);
+    expect(sqlCalls("FOR SHARE").some(([, o]) => o?.transaction === FAKE_TX)).toBe(true);
+  });
+
+  it("walks Jira under the run's deadline signal and heartbeats per page", async () => {
+    fakeDb();
+    const getAllObjects = clientReturning([]);
+    const ctx = ctxFor();
+
+    await runJiraSync(ctx);
+
+    expect(getAllObjects.mock.calls[0][1].deadline).toBe(ctx.signal);
+    expect(sqlCalls("SET heartbeat_at")).toHaveLength(1);
+    ctx.dispose();
   });
 
   it("fails without changing anything when the fetch deadline is hit", async () => {
     fakeDb({ existing: [link("1", 101)] });
     clientReturning([jiraObject("1")], false, "deadline");
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
-
-    expect(result.success).toBe(false);
-    expect(result.status).toContain("did not return every object within 10 minutes");
+    await expect(run()).rejects.toThrow("did not return every object within 10 minutes");
     expect(sqlCalls("UPDATE projects")).toHaveLength(0);
   });
 
@@ -477,12 +513,9 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     fakeDb({ existing: [link("1", 101)], heartbeat: [] });
     clientReturning([jiraObject("1")]);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
-
-    expect(result.success).toBe(false);
-    expect(result.status).toContain("closed by another run");
+    await expect(run()).rejects.toBeInstanceOf(RunSupersededError);
     expect(sqlCalls("UPDATE projects")).toHaveLength(0);
-    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
+    expect(sqlCalls("SET status = 'failed'")).toHaveLength(0);
     expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 
@@ -490,35 +523,34 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     fakeDb({ existing: [link("1", 101), link("2", 102)] });
     clientReturning([jiraObject("1"), jiraObject("2")]);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
+    const result = await run();
 
-    expect(result.objectsUpdated).toBe(2);
+    expect(result.counts.updated).toBe(2);
     // One round trip per object: no separate ownership query or transaction.
-    const updates = sqlCalls("WITH own AS");
+    const updates = sqlCalls("WITH link AS");
     expect(updates).toHaveLength(2);
-    expect(mockTransaction).not.toHaveBeenCalled();
+    // The only transactions are the heartbeats' own (lock_timeout) ones.
+    expect(mockTransaction).toHaveBeenCalledTimes(sqlCalls("SET heartbeat_at").length);
     const [sql, options] = updates[0];
     expect(sql).toContain("UPDATE jira_assets_use_cases");
     expect(sql).toContain("UPDATE projects p");
     expect(sql).toContain("FROM link");
-    expect(sql).not.toContain("AS projects");
+    expect(sql).toContain(OWNS);
     expect(options.replacements).toMatchObject({
       jiraObjectId: "1",
       title: "System 1",
-      historyId: 77,
-      runToken: "tok-77",
       organizationId: 5,
     });
+    expect(options.replacements).not.toHaveProperty("historyId");
   });
 
   it("does not count an object whose link row was deleted since the walk began", async () => {
     fakeDb({ existing: [link("1", 101)], linkExists: false });
     clientReturning([jiraObject("1")]);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
+    const result = await run();
 
-    expect(result.success).toBe(true);
-    expect(result.objectsUpdated).toBe(0);
+    expect(result.counts.updated).toBe(0);
   });
 
   it("stops at the next object, writing nothing, once another claim closed the run", async () => {
@@ -526,30 +558,21 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
     fakeDb({ existing: [link("1", 101), link("2", 102)], owned: [] });
     clientReturning([jiraObject("1"), jiraObject("2"), jiraObject("3")]);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
-
-    expect(result.success).toBe(false);
-    expect(result.status).toContain("closed by another run");
-    // The first object's guarded statement found no claim (so wrote nothing);
-    // no later object was tried.
-    expect(sqlCalls("WITH own AS")).toHaveLength(1);
+    await expect(run()).rejects.toBeInstanceOf(RunSupersededError);
+    expect(sqlCalls("WITH link AS")).toHaveLength(1);
     expect(sqlCalls("INSERT INTO projects")).toHaveLength(0);
-    expect(sqlCalls("SET status = 'failed', error_message")).toHaveLength(0);
-    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
   });
 
   it("manual: does not create a use case once the run lost its claim", async () => {
     fakeDb({ existing: [], owned: [] });
     clientReturning([jiraObject("3")]);
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
-
-    expect(result.success).toBe(false);
+    await expect(run()).rejects.toBeInstanceOf(RunSupersededError);
     expect(sqlCalls("nextval")).toHaveLength(0);
     expect(sqlCalls("INSERT INTO projects")).toHaveLength(0);
   });
 
-  it("stops (and records the failure) when a heartbeat hits a database error", async () => {
+  it("stops when a heartbeat hits a database error", async () => {
     fakeDb({ existing: [link("1", 101)] });
     clientReturning([jiraObject("1")]);
     const base = mockQuery.getMockImplementation()!;
@@ -558,33 +581,105 @@ describe("runClaimedSync — never deletes, flags missing objects", () => {
       return base(sql, opts);
     });
 
-    const result = await runClaimedSync(5, RUN, 8, "manual");
-
-    expect(result.success).toBe(false);
-    expect(result.status).toContain("db hiccup");
+    await expect(run()).rejects.toThrow("db hiccup");
     expect(sqlCalls("UPDATE projects")).toHaveLength(0);
   });
 
-  it("records a token decrypt failure on the history row and the config", async () => {
+  it("throws a token decrypt failure for the engine to record", async () => {
     fakeDb({ existing: [link("1", 101)] });
     mockDecrypt.mockReturnValue({ success: false, error: "bad key" });
 
-    const result = await runClaimedSync(5, RUN, null, "scheduled");
+    await expect(run("scheduled", null)).rejects.toThrow("bad key");
+  });
+});
 
-    expect(result.success).toBe(false);
-    const [, history] = sqlCalls("SET status = 'failed', error_message")[0];
-    expect(history.replacements).toMatchObject({ id: 77, organizationId: 5, token: "tok-77" });
-    expect(sqlCalls("last_sync_status = 'failed'")).toHaveLength(1);
+describe("runJiraSync through the engine", () => {
+  it("declares Jira's kinds, its scheduled kind and its walk deadline", () => {
+    expect(jiraAssetsSyncProvider).toMatchObject({
+      key: "jira-assets",
+      displayName: "Jira Assets",
+      kinds: ["manual", "scheduled", "import", "remove_missing"],
+      scheduledKind: "scheduled",
+      runDeadlineMs: 600_000,
+    });
   });
 
-  it("leaves the config alone when its own row was already closed at finish", async () => {
-    fakeDb({ existing: [link("1", 101)], ownRow: [] });
-    clientReturning([jiraObject("1")]);
+  it("records a failure on the run row only, never on the config, and counts it for the schedule", async () => {
+    fakeDb({ existing: [link("1", 101)] });
+    mockDecrypt.mockReturnValue({ success: false, error: "bad key" });
 
-    const result = await runClaimedSync(5, RUN, null, "scheduled");
+    await runClaimed(jiraAssetsSyncProvider, ctxFor("scheduled", null));
 
-    expect(result.success).toBe(false);
+    const [, failed] = sqlCalls("SET status = 'failed'")[0];
+    expect(failed.replacements).toMatchObject({
+      runId: 77,
+      orgId: 5,
+      key: "jira-assets",
+      token: TOKEN,
+    });
+    expect(failed.replacements.message).toContain("bad key");
     expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
+    expect(sqlCalls("consecutive_failures = consecutive_failures + 1")).toHaveLength(1);
+  });
+
+  it("finalizes the counts and note of a successful run", async () => {
+    fakeDb({ existing: [link("1", 101)] });
+    clientReturning([jiraObject("1")], true);
+
+    await runClaimed(jiraAssetsSyncProvider, ctxFor());
+
+    const [, completed] = sqlCalls("SET status = 'completed'")[0];
+    expect(JSON.parse(completed.replacements.counts)).toEqual({
+      fetched: 1,
+      created: 0,
+      updated: 1,
+      deleted: 0,
+      missing: 0,
+      newly_missing: 0,
+    });
+  });
+});
+
+describe("jiraReadiness", () => {
+  it("manual: 404 without a config, 400 without an object type, no use cases needed", async () => {
+    fakeDb({ config: null });
+    await expect(jiraReadiness(5, "manual")).resolves.toEqual({
+      ready: false,
+      status: 404,
+      reason: "Jira Assets is not configured. Save the connection first.",
+    });
+    fakeDb({ config: { ...CONFIG_ROW, selected_object_type_id: null } });
+    await expect(jiraReadiness(5, "manual")).resolves.toEqual({
+      ready: false,
+      status: 400,
+      reason: "Select an object type before syncing",
+    });
+    fakeDb({ existing: [] });
+    await expect(jiraReadiness(5, "manual")).resolves.toEqual({ ready: true });
+  });
+
+  it("scheduled: not ready without an object type or without use cases", async () => {
+    fakeDb({ existing: [] });
+    await expect(jiraReadiness(5, "scheduled")).resolves.toMatchObject({
+      ready: false,
+      reason: "No imported use cases to refresh",
+    });
+    fakeDb({
+      config: { ...CONFIG_ROW, selected_object_type_id: null },
+      existing: [link("1", 101)],
+    });
+    await expect(jiraReadiness(5, "scheduled")).resolves.toMatchObject({
+      ready: false,
+      reason: "No object type selected for sync",
+    });
+    fakeDb({ existing: [link("1", 101)] });
+    await expect(jiraReadiness(5, "scheduled")).resolves.toEqual({ ready: true });
+  });
+
+  it("import needs a config; remove_missing needs nothing", async () => {
+    fakeDb({ config: null });
+    await expect(jiraReadiness(5, "import")).resolves.toMatchObject({ ready: false, status: 404 });
+    await expect(jiraReadiness(5, "remove_missing")).resolves.toEqual({ ready: true });
   });
 });
 
@@ -633,77 +728,6 @@ describe("startManualSync (Sync now queues a job)", () => {
     fakeDb({ config: { ...CONFIG_ROW, selected_object_type_id: null } });
     await expect(startManualSync(5, 8)).rejects.toBeInstanceOf(JiraConfigValidationError);
     expect(mockEnqueue).not.toHaveBeenCalled();
-  });
-
-  it("scheduled: queues a refresh-only job with no user", async () => {
-    await startScheduledSync(5);
-
-    expect(mockEnqueue).toHaveBeenCalledWith({
-      organizationId: 5,
-      triggeredBy: null,
-      syncType: "scheduled",
-    });
-  });
-});
-
-describe("runQueuedSync (worker claims at pickup)", () => {
-  it("fails closed without a valid org or sync type, before claiming", async () => {
-    await expect(runQueuedSync({ syncType: "manual" })).rejects.toThrow("organizationId");
-    await expect(runQueuedSync({ organizationId: 5, syncType: "full" })).rejects.toThrow(
-      "syncType",
-    );
-    expect(mockQuery).not.toHaveBeenCalled();
-  });
-
-  it("claims the run when the job is picked up, then runs it", async () => {
-    fakeDb({ existing: [link("1", 101)] });
-    clientReturning([jiraObject("1")]);
-
-    const result = await runQueuedSync({ organizationId: 5, triggeredBy: 8, syncType: "manual" });
-
-    expect(result?.success).toBe(true);
-    const [, insert] = sqlCalls("INSERT INTO jira_assets_sync_history")[0];
-    expect(insert.replacements).toMatchObject({ syncType: "manual", triggeredBy: 8 });
-  });
-
-  it("skips a scheduled run quietly when another run is live", async () => {
-    fakeDb({ running: [{ id: 3 }] });
-    const getAllObjects = clientReturning([jiraObject("1")]);
-
-    await expect(
-      runQueuedSync({ organizationId: 5, triggeredBy: null, syncType: "scheduled" }),
-    ).resolves.toBeNull();
-    expect(getAllObjects).not.toHaveBeenCalled();
-    expect(sqlCalls("INSERT INTO jira_assets_sync_history")).toHaveLength(0);
-  });
-
-  it("records a skipped manual run so the panel can say why it did not start", async () => {
-    fakeDb({ running: [{ id: 3 }] });
-
-    await expect(
-      runQueuedSync({ organizationId: 5, triggeredBy: 8, syncType: "manual" }),
-    ).resolves.toBeNull();
-
-    const inserts = sqlCalls("INSERT INTO jira_assets_sync_history");
-    expect(inserts).toHaveLength(1);
-    const [sql, options] = inserts[0];
-    expect(sql).toContain("'manual', 'failed'");
-    expect(sql).not.toContain("run_token");
-    expect(options.replacements).toEqual({
-      organizationId: 5,
-      triggeredBy: 8,
-      message: SKIPPED_RUN_MESSAGE,
-    });
-    expect(sqlCalls("UPDATE jira_assets_config")).toHaveLength(0);
-  });
-
-  it("falls back to no user when triggeredBy is invalid", async () => {
-    fakeDb({ existing: [link("1", 101)] });
-    clientReturning([jiraObject("1"), jiraObject("3")]);
-
-    await runQueuedSync({ organizationId: 5, triggeredBy: "nobody", syncType: "manual" });
-
-    expect(sqlCalls("INSERT INTO projects")[0][1].replacements.owner).toBeNull();
   });
 });
 

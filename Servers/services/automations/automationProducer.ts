@@ -478,30 +478,20 @@ export async function enqueueExtensionSyncRun(
 export async function scheduleExtensionSyncTick() {
   logger.info("Adding extension sync tick job to the queue...");
   // No obliterate here: the scheduler upsert is idempotent by scheduler id.
+  // The tick replaces the Jira-only check job. Its queued jobs still run (the
+  // worker routes the old names to the engine) for one release.
+  try {
+    await automationQueue.removeJobScheduler("jira_assets_scheduled_sync_check");
+  } catch (error) {
+    logger.warn(
+      `Could not remove the old Jira Assets check scheduler: ${(error as Error).message}`,
+    );
+  }
   await automationQueue.upsertJobScheduler(
     "extension_sync_tick",
     { pattern: "*/5 * * * *" },
     {
       name: "extension_sync_tick",
-      data: {},
-      opts: {
-        removeOnComplete: true,
-        removeOnFail: false,
-      },
-    },
-  );
-}
-
-export async function scheduleJiraAssetsScheduledSyncCheck() {
-  logger.info("Adding Jira Assets scheduled sync check job to the queue...");
-  // Every 5 minutes, check which orgs' Jira Assets sync interval has elapsed.
-  // The interval itself (1–168 hours) is per org in jira_assets_config. No
-  // obliterate here -- the scheduler upsert is idempotent by scheduler id.
-  await automationQueue.upsertJobScheduler(
-    "jira_assets_scheduled_sync_check",
-    { pattern: "*/5 * * * *" },
-    {
-      name: "jira_assets_scheduled_sync_check",
       data: {},
       opts: {
         removeOnComplete: true,

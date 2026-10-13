@@ -27,16 +27,6 @@ function assertWholeNumber(value: number, name: string): void {
     throw new Error(`${name} must be a non-negative whole number`);
   }
 }
-
-/**
- * True when `intervalHoursExpr` hours have passed since `lastRunExpr`, or when
- * there has been no run (NULL). Use GREATEST(a, b) for "the later of" —
- * Postgres GREATEST ignores NULLs.
- */
-export function sqlIntervalElapsed(lastRunExpr: string, intervalHoursExpr: string): string {
-  return `(${lastRunExpr} IS NULL OR ${lastRunExpr} + make_interval(hours => ${intervalHoursExpr}) <= ${SQL_NOW_UTC})`;
-}
-
 /** True when `timestampExpr` is within the last `minutes` minutes. */
 export function sqlWithinLastMinutes(timestampExpr: string, minutes: number): string {
   assertWholeNumber(minutes, "minutes");

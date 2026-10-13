@@ -27,7 +27,6 @@ import {
   scheduleEvidenceFreshnessSweep,
   scheduleDeadlineEscalationSweep,
   scheduleStaleInheritanceNotifySweep,
-  scheduleJiraAssetsScheduledSyncCheck,
   scheduleExtensionSyncTick,
   scheduleApprovalOverdueSweep,
 } from "../services/automations/automationProducer";
@@ -72,7 +71,6 @@ export async function addAllJobs(): Promise<void> {
   await safeSchedule("stale-inheritance-notify-sweep", scheduleStaleInheritanceNotifySweep); // non-obliterating — safe to run after the obliterating schedulers
   await safeSchedule("approval-overdue-sweep", scheduleApprovalOverdueSweep); // non-obliterating — safe to run after the obliterating schedulers
   await safeSchedule("ai-trust-index-sync", scheduleAiTrustIndexSync);
-  await safeSchedule("jira-assets-scheduled-sync-check", scheduleJiraAssetsScheduledSyncCheck); // non-obliterating — safe to run after the obliterating schedulers
   await safeSchedule("extension-sync-tick", scheduleExtensionSyncTick); // non-obliterating — safe to run after the obliterating schedulers
   // Ordering constraint: obliterate-using schedulers (e.g. vendor-review,
   // report-notification) must run BEFORE all non-obliterating ones, or they wipe

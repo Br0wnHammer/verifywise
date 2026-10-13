@@ -11,12 +11,14 @@ jest.mock("bullmq", () => {
   const mockObliterate = jest.fn().mockResolvedValue(undefined);
   const mockUpsertJobScheduler = jest.fn().mockResolvedValue({ id: "job-1" });
   const mockGetJob = jest.fn().mockResolvedValue(undefined);
+  const mockRemoveJobScheduler = jest.fn().mockResolvedValue(true);
   return {
     Queue: jest.fn().mockImplementation(() => ({
       add: mockAdd,
       obliterate: mockObliterate,
       upsertJobScheduler: mockUpsertJobScheduler,
       getJob: mockGetJob,
+      removeJobScheduler: mockRemoveJobScheduler,
     })),
   };
 });
@@ -49,7 +51,6 @@ import {
   scheduleMcpGatewayCleanup,
   scheduleFileExpirySweep,
   scheduleDataRetentionPrune,
-  scheduleJiraAssetsScheduledSyncCheck,
   enqueueJiraAssetsSyncRun,
   hasPendingJiraAssetsSyncJob,
   BackgroundJobsUnavailableError,
@@ -342,15 +343,6 @@ describe("automationProducer", () => {
     });
   });
 
-  describe("scheduleJiraAssetsScheduledSyncCheck", () => {
-    it("should add a repeating job every 5 minutes without obliterating", async () => {
-      await scheduleJiraAssetsScheduledSyncCheck();
-
-      expect(mockObliterate).not.toHaveBeenCalled();
-      expectSchedulerCall("jira_assets_scheduled_sync_check", {}, "*/5 * * * *");
-    });
-  });
-
   describe("extension sync engine jobs", () => {
     const mockGetJob = automationQueue.getJob as unknown as jest.Mock;
     const payload = {
@@ -401,6 +393,19 @@ describe("automationProducer", () => {
     it("schedules the tick every 5 minutes without obliterating", async () => {
       await scheduleExtensionSyncTick();
       expect(mockObliterate).not.toHaveBeenCalled();
+      expectSchedulerCall("extension_sync_tick", {}, "*/5 * * * *");
+    });
+
+    it("retires the old Jira check scheduler before scheduling the tick", async () => {
+      const remove = automationQueue.removeJobScheduler as unknown as jest.Mock;
+      await scheduleExtensionSyncTick();
+      expect(remove).toHaveBeenCalledWith("jira_assets_scheduled_sync_check");
+    });
+
+    it("still schedules the tick when retiring the old scheduler fails", async () => {
+      const remove = automationQueue.removeJobScheduler as unknown as jest.Mock;
+      remove.mockRejectedValueOnce(new Error("redis hiccup"));
+      await scheduleExtensionSyncTick();
       expectSchedulerCall("extension_sync_tick", {}, "*/5 * * * *");
     });
   });
