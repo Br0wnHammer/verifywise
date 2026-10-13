@@ -38,6 +38,7 @@ interface FormField {
   label: string;
   entityFieldMapping?: string;
   options?: Array<{ value: string; label: string }>;
+  riskDimension?: string;
 }
 
 interface FormSchema {
@@ -83,7 +84,6 @@ const DIMENSION_CONFIGS = [
       ],
       low: ["anonymous", "aggregated", "public", "synthetic", "no personal data", "non-personal"],
     },
-    fieldMappings: ["personal_data_type", "data_type", "data_sensitivity"],
   },
   {
     key: "autonomy_level",
@@ -116,7 +116,6 @@ const DIMENSION_CONFIGS = [
         "support only",
       ],
     },
-    fieldMappings: ["autonomy_level", "decision_making", "autonomous"],
   },
   {
     key: "impact_scope",
@@ -136,7 +135,6 @@ const DIMENSION_CONFIGS = [
       medium: ["department", "team", "hundreds", "regional", "business unit"],
       low: ["individual", "single user", "internal", "pilot", "prototype", "poc", "few users"],
     },
-    fieldMappings: ["user_count", "geographic_scope", "impact_scope"],
   },
   {
     key: "transparency",
@@ -162,7 +160,6 @@ const DIMENSION_CONFIGS = [
         "full documentation",
       ],
     },
-    fieldMappings: ["explainability", "transparency", "model_transparency"],
   },
   {
     key: "human_oversight",
@@ -179,7 +176,6 @@ const DIMENSION_CONFIGS = [
         "human approval required",
       ],
     },
-    fieldMappings: ["human_oversight", "human_in_the_loop", "oversight_level"],
   },
   {
     key: "domain_criticality",
@@ -224,7 +220,6 @@ const DIMENSION_CONFIGS = [
         "testing",
       ],
     },
-    fieldMappings: ["domain", "industry", "sector", "use_case_domain"],
   },
 ];
 
@@ -245,60 +240,97 @@ const TIER_THRESHOLDS: Record<string, Array<{ max: number; tier: string }>> = {
 // RULE-BASED SCORING
 // ============================================================================
 
-function scoreDimension(
-  config: (typeof DIMENSION_CONFIGS)[0],
+interface ScoringAnswer {
+  label: string;
+  text: string;
+  riskDimension?: string;
+}
+
+/**
+ * The text each answer contributes to keyword scoring. Selects contribute
+ * their option labels (stored values default to "option1", "option2", ...),
+ * a checked checkbox contributes its field label, and number, date and
+ * calculated values contribute nothing.
+ */
+export function answersForScoring(
   submissionData: Record<string, unknown>,
   schema: FormSchema,
-): { score: number; signals: string[] } {
-  const signals: string[] = [];
-  let score = 50; // Default neutral
-
-  // Collect all text from submission fields
-  const allText: string[] = [];
-  const mappedFieldValues: string[] = [];
-
+): ScoringAnswer[] {
+  const answers: ScoringAnswer[] = [];
   for (const field of schema.fields) {
     const value = submissionData[field.id];
-    if (value === undefined || value === null) continue;
-
-    const textValue = Array.isArray(value) ? value.join(" ") : String(value);
-    allText.push(textValue.toLowerCase());
-
-    // Check if this field is mapped to a relevant entity field
-    const fieldMapping = field.entityFieldMapping?.toLowerCase() || "";
-    if (config.fieldMappings.some((m) => fieldMapping.includes(m))) {
-      mappedFieldValues.push(textValue.toLowerCase());
+    if (value === undefined || value === null || value === "") continue;
+    const optionLabel = (v: unknown) =>
+      field.options?.find((option) => option.value === v)?.label ?? String(v);
+    let text = "";
+    switch (field.type) {
+      case "text":
+      case "textarea":
+      case "email":
+      case "url":
+        text = typeof value === "string" ? value : "";
+        break;
+      case "select":
+        text = optionLabel(value);
+        break;
+      case "multiselect":
+        text = Array.isArray(value) ? value.map(optionLabel).join(", ") : "";
+        break;
+      case "checkbox":
+        text = value === true ? field.label : "";
+        break;
+      default:
+        text = "";
+    }
+    if (text.trim() !== "") {
+      answers.push({ label: field.label, text, riskDimension: field.riskDimension });
     }
   }
+  return answers;
+}
 
-  const combinedText = [...mappedFieldValues, ...allText].join(" ");
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  // Score based on keyword matching
+/** Whole words and phrases: "name" does not match "renamed". */
+const keywordPattern = (keyword: string): RegExp =>
+  new RegExp(`\\b${escapeRegExp(keyword.toLowerCase())}\\b`, "i");
+
+function scoreDimension(
+  config: (typeof DIMENSION_CONFIGS)[0],
+  answers: ScoringAnswer[],
+): { score: number; signals: string[] } {
+  // Tagged answers decide the dimension; with none answered, every answer counts.
+  const tagged = answers.filter((answer) => answer.riskDimension === config.key);
+  const pool = tagged.length > 0 ? tagged : answers;
+  const firstMatch = (keyword: string) => {
+    const pattern = keywordPattern(keyword);
+    return pool.find((answer) => pattern.test(answer.text));
+  };
+
+  const signals: string[] = [];
   let highMatches = 0;
   let mediumMatches = 0;
   let lowMatches = 0;
 
   for (const keyword of config.keywords.high) {
-    if (combinedText.includes(keyword.toLowerCase())) {
+    const hit = firstMatch(keyword);
+    if (hit) {
       highMatches++;
-      signals.push(`High-risk signal: "${keyword}"`);
+      signals.push(`High-risk signal: "${keyword}" (${hit.label})`);
     }
   }
-
   for (const keyword of config.keywords.medium) {
-    if (combinedText.includes(keyword.toLowerCase())) {
-      mediumMatches++;
-    }
+    if (firstMatch(keyword)) mediumMatches++;
   }
-
   for (const keyword of config.keywords.low) {
-    if (combinedText.includes(keyword.toLowerCase())) {
+    const hit = firstMatch(keyword);
+    if (hit) {
       lowMatches++;
-      signals.push(`Low-risk signal: "${keyword}"`);
+      signals.push(`Low-risk signal: "${keyword}" (${hit.label})`);
     }
   }
 
-  // Calculate score based on match distribution
+  let score = 50; // Default neutral
   if (highMatches > 0 && lowMatches === 0) {
     score = 70 + Math.min(highMatches * 5, 30);
   } else if (highMatches > 0 && lowMatches > 0) {
@@ -309,25 +341,17 @@ function scoreDimension(
     score = 10 + Math.max(20 - lowMatches * 5, 0);
   }
 
-  // Clamp
-  score = Math.max(0, Math.min(100, score));
-
-  return { score, signals };
+  return { score: Math.max(0, Math.min(100, score)), signals };
 }
 
 export function scoreSubmissionRuleBased(
   submissionData: Record<string, unknown>,
   schema: FormSchema,
 ): RiskDimension[] {
+  const answers = answersForScoring(submissionData, schema);
   return DIMENSION_CONFIGS.map((config) => {
-    const { score, signals } = scoreDimension(config, submissionData, schema);
-    return {
-      key: config.key,
-      label: config.label,
-      weight: config.weight,
-      score,
-      signals,
-    };
+    const { score, signals } = scoreDimension(config, answers);
+    return { key: config.key, label: config.label, weight: config.weight, score, signals };
   });
 }
 
