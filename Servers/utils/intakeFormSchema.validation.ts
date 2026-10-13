@@ -1,4 +1,5 @@
 import { IIntakeFormField, IIntakeFormSchema } from "../domain.layer/interfaces/i.intakeForm";
+import { validateSchemaLogic } from "../services/intakeFormLogic";
 
 /**
  * Accessibility validation for intake-form schemas.
@@ -108,4 +109,23 @@ export function resolveEuAiActRiskStep(input: {
         ]
       : [],
   };
+}
+
+/**
+ * Calculated fields, show/hide rules and risk dimension tags (see
+ * services/intakeFormLogic). Runs only on a well-formed schema; the label
+ * check above reports malformed ones.
+ */
+export function validateIntakeFormSchemaLogic(schema: unknown, entityType: string): string[] {
+  if (
+    schema === undefined ||
+    schema === null ||
+    typeof schema !== "object" ||
+    Array.isArray(schema)
+  ) {
+    return [];
+  }
+  const { fields } = schema as Partial<IIntakeFormSchema>;
+  if (!Array.isArray(fields)) return [];
+  return validateSchemaLogic({ fields }, entityType).map((error) => error.message);
 }

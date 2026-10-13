@@ -40,6 +40,7 @@ import { ModelInventoryModel } from "../domain.layer/models/modelInventory/model
 import { IIntakeFormSchema } from "../domain.layer/interfaces/i.intakeForm";
 import {
   validateIntakeFormSchemaLabels,
+  validateIntakeFormSchemaLogic,
   resolveEuAiActRiskStep,
 } from "../utils/intakeFormSchema.validation";
 import {
@@ -71,6 +72,7 @@ import {
   sendSubmissionRejectedEmail,
 } from "../services/intakeFormEmail.service";
 import { calculateSubmissionRisk } from "../services/intakeRiskScoring.service";
+import { cleanSubmission, parseFormula } from "../services/intakeFormLogic";
 import { generateSuggestedQuestions, generateFieldGuidance } from "../services/intakeLLM.service";
 import { getCompanyLogoQuery } from "../utils/aiTrustCentre.utils";
 
@@ -291,10 +293,17 @@ async function buildPublicRiskStep(
  * Validate submitted form data against the form schema.
  * Returns an array of error messages (empty if valid).
  */
-function validateFormData(formData: Record<string, unknown>, schema: IIntakeFormSchema): string[] {
+function validateFormData(
+  formData: Record<string, unknown>,
+  schema: IIntakeFormSchema,
+  visibleIds?: Set<string>,
+): string[] {
   const errors: string[] = [];
 
   for (const field of schema.fields) {
+    // Hidden fields are never required; calculated values come from the server.
+    if (visibleIds && !visibleIds.has(field.id)) continue;
+    if (field.type === "calculated") continue;
     const value = formData[field.id];
     const isEmpty = value === undefined || value === null || value === "";
 
@@ -407,6 +416,25 @@ function validateFormData(formData: Record<string, unknown>, schema: IIntakeForm
   }
 
   return errors;
+}
+
+/**
+ * Applies the form's show/hide rules and formulas to submitted answers. The
+ * browser is never trusted: answers to hidden fields and unknown keys are
+ * dropped and calculated values are recomputed here.
+ */
+function prepareSubmissionData(
+  formData: Record<string, unknown>,
+  schema: IIntakeFormSchema,
+): { data: Record<string, unknown>; visibleIds: Set<string> } {
+  for (const field of schema.fields ?? []) {
+    if (field.type === "calculated" && !parseFormula(field.formula ?? "").ok) {
+      logger.warn(
+        `Intake form field ${field.id} has a formula that does not parse; storing no value`,
+      );
+    }
+  }
+  return cleanSubmission(schema, formData);
 }
 
 // ============================================================================
@@ -560,6 +588,12 @@ export async function createIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](schemaErrors.join("; ")));
     }
 
+    const logicErrors = validateIntakeFormSchemaLogic(schema, entityType);
+    if (logicErrors.length > 0) {
+      await transaction.rollback();
+      return res.status(400).json(STATUS_CODE[400](logicErrors.join("; ")));
+    }
+
     const riskStep = resolveEuAiActRiskStep({
       entityType: entityType,
       enabled: Boolean(euAiActRiskStepEnabled),
@@ -688,6 +722,15 @@ export async function updateIntakeForm(req: Request, res: Response) {
     if (schemaErrors.length > 0) {
       await transaction.rollback();
       return res.status(400).json(STATUS_CODE[400](schemaErrors.join("; ")));
+    }
+
+    const logicErrors = validateIntakeFormSchemaLogic(
+      schema ?? existingForm.schema,
+      entityType ?? existingForm.entityType,
+    );
+    if (logicErrors.length > 0) {
+      await transaction.rollback();
+      return res.status(400).json(STATUS_CODE[400](logicErrors.join("; ")));
     }
 
     const riskStep = resolveEuAiActRiskStep({
@@ -1853,9 +1896,16 @@ export async function submitPublicFormByPublicId(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Form data must be an object")));
     }
 
-    // Validate form data against schema
+    // Apply show/hide rules and formulas, then validate what will be stored
+    let cleanedData: Record<string, unknown> = formData;
     if (fullFormForValidation?.schema) {
-      const validationErrors = validateFormData(formData, fullFormForValidation.schema);
+      const prepared = prepareSubmissionData(formData, fullFormForValidation.schema);
+      cleanedData = prepared.data;
+      const validationErrors = validateFormData(
+        cleanedData,
+        fullFormForValidation.schema,
+        prepared.visibleIds,
+      );
       if (validationErrors.length > 0) {
         return res.status(400).json(
           STATUS_CODE[400]({
@@ -1942,7 +1992,7 @@ export async function submitPublicFormByPublicId(req: Request, res: Response) {
           formId: form.id,
           submitterEmail: resolvedEmail,
           submitterName: resolvedName,
-          data: formData,
+          data: cleanedData,
           entityType: form.entityType,
           originalSubmissionId,
           ipAddress: clientIp,
@@ -2011,7 +2061,7 @@ export async function submitPublicFormByPublicId(req: Request, res: Response) {
       // Trigger async risk scoring
       if (fullForm) {
         calculateSubmissionRisk(
-          formData,
+          cleanedData,
           fullForm.schema,
           fullForm.riskTierSystem || "eu_ai_act",
           fullForm.llmKeyId,
@@ -2203,9 +2253,16 @@ export async function submitPublicForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Form data must be an object")));
     }
 
-    // Validate form data against schema
+    // Apply show/hide rules and formulas, then validate what will be stored
+    let cleanedData: Record<string, unknown> = formData;
     if (fullFormForValidation?.schema) {
-      const validationErrors = validateFormData(formData, fullFormForValidation.schema);
+      const prepared = prepareSubmissionData(formData, fullFormForValidation.schema);
+      cleanedData = prepared.data;
+      const validationErrors = validateFormData(
+        cleanedData,
+        fullFormForValidation.schema,
+        prepared.visibleIds,
+      );
       if (validationErrors.length > 0) {
         return res.status(400).json(
           STATUS_CODE[400]({
@@ -2292,7 +2349,7 @@ export async function submitPublicForm(req: Request, res: Response) {
           formId: form.id,
           submitterEmail: resolvedEmail,
           submitterName: resolvedName,
-          data: formData,
+          data: cleanedData,
           entityType: form.entityType,
           originalSubmissionId,
           ipAddress: clientIp,
@@ -2368,7 +2425,7 @@ export async function submitPublicForm(req: Request, res: Response) {
       // Trigger async risk scoring
       if (fullForm) {
         calculateSubmissionRisk(
-          formData,
+          cleanedData,
           fullForm.schema,
           fullForm.riskTierSystem || "eu_ai_act",
           fullForm.llmKeyId,
