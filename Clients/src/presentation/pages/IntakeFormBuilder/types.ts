@@ -1,11 +1,21 @@
 import { IntakeFormStatus, IntakeEntityType } from "../../../domain/intake/enums";
 import { brand } from "../../themes/palette";
+import type { Visibility } from "../../../application/utils/intakeFormLogic";
 
 /**
  * Field types supported in the intake form builder
  */
 export type FieldType =
-  "text" | "textarea" | "select" | "multiselect" | "checkbox" | "date" | "email" | "url" | "number";
+  | "text"
+  | "textarea"
+  | "select"
+  | "multiselect"
+  | "checkbox"
+  | "date"
+  | "email"
+  | "url"
+  | "number"
+  | "calculated";
 
 /**
  * Validation rules for form fields
@@ -42,6 +52,17 @@ export interface FormField {
   options?: FieldOption[];
   defaultValue?: string | number | boolean | string[];
   entityFieldMapping?: string;
+  /** Calculated fields: arithmetic over earlier number/calculated fields, e.g. "{cost} * 12". */
+  formula?: string;
+  /** Calculated fields: decimals to round and show, 0–6, default 2. */
+  decimals?: number;
+  /** Calculated fields: display-only text before / after the value, at most 10 characters. */
+  prefix?: string;
+  suffix?: string;
+  /** Show the field only when these conditions on earlier fields match. */
+  visibility?: Visibility;
+  /** The risk dimension this field's answer feeds. */
+  riskDimension?: string;
   order: number;
 }
 

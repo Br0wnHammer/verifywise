@@ -25,6 +25,7 @@ const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   select: "Dropdown",
   multiselect: "Multi-select",
   checkbox: "Checkbox",
+  calculated: "Calculated",
 };
 
 interface OptionsEditorProps {

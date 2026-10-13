@@ -14,6 +14,7 @@ import type {
   FieldType,
   FormDesignSettings,
 } from "../../presentation/pages/IntakeFormBuilder/types";
+import type { Visibility } from "../utils/intakeFormLogic";
 
 // Re-export enums for convenience
 export { IntakeFormStatus, IntakeEntityType, IntakeSubmissionStatus };
@@ -68,6 +69,17 @@ export interface FormField {
   options?: FieldOption[];
   defaultValue?: string | number | boolean | string[];
   entityFieldMapping?: string;
+  /** Calculated fields: arithmetic over earlier number/calculated fields, e.g. "{cost} * 12". */
+  formula?: string;
+  /** Calculated fields: decimals to round and show, 0–6, default 2. */
+  decimals?: number;
+  /** Calculated fields: display-only text before / after the value, at most 10 characters. */
+  prefix?: string;
+  suffix?: string;
+  /** Show the field only when these conditions on earlier fields match. */
+  visibility?: Visibility;
+  /** The risk dimension this field's answer feeds. */
+  riskDimension?: string;
   order: number;
 }
 
@@ -146,6 +158,8 @@ export interface IntakeSubmission {
   id: number;
   formId: number;
   formData: Record<string, unknown>;
+  /** The stored answers, as the server sends them. */
+  data?: Record<string, unknown>;
   submitterEmail: string;
   submitterName?: string;
   status: IntakeSubmissionStatus;
