@@ -18,6 +18,10 @@ import {
   recordEvidenceFieldChangeForModel,
 } from "../utils/modelInventoryChangeHistory.utils";
 import { runEvidenceFreshnessSweep } from "../services/automations/actions/evidenceFreshnessSweep";
+import {
+  trackEntityChanges,
+  recordMultipleFieldChanges,
+} from "../utils/changeHistory.base.utils";
 
 export async function getAllEvidences(req: Request, res: Response) {
   logStructured(
@@ -198,6 +202,14 @@ export async function updateEvidenceById(req: Request, res: Response) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Evidence not found")));
     }
 
+    // Snapshot the fields the evidence hub change history tracks, before
+    // the Object.assign below replaces them (#4915).
+    const evidenceHubBefore = {
+      evidence_name: existingEvidence.evidence_name,
+      evidence_type: existingEvidence.evidence_type,
+      description: existingEvidence.description,
+    };
+
     // Track model mapping changes
     const oldMappedModels = existingEvidence.mapped_model_ids || [];
     const newMappedModels = req.body.mapped_model_ids || [];
@@ -244,6 +256,23 @@ export async function updateEvidenceById(req: Request, res: Response) {
         req.organizationId!,
         existingEvidence.evidence_name,
         existingEvidence.evidence_type,
+        transaction,
+      );
+    }
+
+    // Record evidence hub field changes in its change history (#4915)
+    const evidenceHubChanges = await trackEntityChanges(
+      "evidence_hub",
+      evidenceHubBefore,
+      updatedEvidence,
+    );
+    if (evidenceHubChanges.length > 0) {
+      await recordMultipleFieldChanges(
+        "evidence_hub",
+        evidenceId,
+        req.userId!,
+        req.organizationId!,
+        evidenceHubChanges,
         transaction,
       );
     }
