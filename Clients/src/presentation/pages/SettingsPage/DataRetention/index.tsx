@@ -130,7 +130,13 @@ export default function DataRetention() {
                     )}
                   </TableCell>
                   <TableCell sx={cellStyle}>
-                    {row.unavailable ? "—" : periodLabel(t, row.period)}
+                    {row.unavailable
+                      ? "—"
+                      : row.usesDeploymentDefault
+                        ? fill(t("{period} (deployment default)"), {
+                            period: periodLabel(t, row.period),
+                          })
+                        : periodLabel(t, row.period)}
                   </TableCell>
                   <TableCell sx={cellStyle}>
                     {row.unavailable ? "—" : automaticDeletionLabel(t, row.automaticDeletion)}

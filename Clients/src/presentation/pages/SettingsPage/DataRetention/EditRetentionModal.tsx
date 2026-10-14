@@ -29,7 +29,7 @@ import {
   MIN_GATEWAY_RETENTION_DAYS,
   needsGatewayPurgeConfirmation,
 } from "../../../components/GatewayPurgeConfirmation";
-import { AUDIT_PERIOD_MONTHS, ROW_TITLES, monthsLabel } from "./retentionLabels";
+import { AUDIT_PERIOD_MONTHS, ROW_TITLES, monthsLabel, periodLabel } from "./retentionLabels";
 
 /** Lowest value the MRM settings endpoint accepts. */
 export const MIN_MRM_RETENTION_MONTHS = 13;
@@ -66,6 +66,8 @@ const rank = (months: number | null) => (months === null ? Infinity : months);
 
 const initialValue = (row: RetentionRow): string => {
   const { period } = row;
+  // Turning the default off must not silently pin the default's value.
+  if (row.key === "agent_control_logs" && row.usesDeploymentDefault === true) return "";
   if (period === null) return row.key === "audit_records" ? INDEFINITE : "";
   if (period.unit === "policy") return period.value ?? "";
   return String(period.value);
@@ -78,6 +80,12 @@ export default function EditRetentionModal({ row, rows, onClose }: EditRetention
 
   const [value, setValue] = useState(initialValue(row));
   const [autoDelete, setAutoDelete] = useState(row.automaticDeletion === "yes");
+  const [useDefault, setUseDefault] = useState(row.usesDeploymentDefault === true);
+  // Set once an Agent Control change that shortens the period is waiting for the go-ahead.
+  const [pendingAgent, setPendingAgent] = useState<{
+    update: GatewayRetentionUpdate;
+    days: number;
+  } | null>(null);
   const [error, setError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Set once a shortening has been previewed and is waiting for the user's go-ahead.
@@ -91,6 +99,7 @@ export default function EditRetentionModal({ row, rows, onClose }: EditRetention
 
   const currentAuditMonths = row.period?.unit === "months" ? row.period.value : null;
   const title = t(ROW_TITLES[row.key].title);
+  const isAgentControl = row.key === "agent_control_logs";
   const isGateway = row.key === "ai_gateway_guardrail_logs" || row.key === "ai_gateway_spend_logs";
 
   /** Current days of a gateway log type, from the page's rows; null if not shown. */
@@ -143,6 +152,7 @@ export default function EditRetentionModal({ row, rows, onClose }: EditRetention
       const detail = getGatewayErrorDetail(err);
       if (detail === null) throw err;
       setPendingGateway(null);
+      setPendingAgent(null);
       setError(detail);
       return;
     }
@@ -214,6 +224,37 @@ export default function EditRetentionModal({ row, rows, onClose }: EditRetention
         return;
       }
 
+      if (isAgentControl) {
+        if (pendingAgent !== null) {
+          await saveGateway(pendingAgent.update);
+          return;
+        }
+        const minDays = row.minDays ?? MIN_GATEWAY_RETENTION_DAYS;
+        const days = useDefault ? null : validateNumber(minDays, MAX_GATEWAY_RETENTION_DAYS);
+        if (!useDefault && days === null) return;
+        const defaultDays = row.deploymentDefaultDays ?? 0;
+        /** Days kept, with "kept indefinitely" (0 or less) as the longest. */
+        const kept = (d: number) => (d > 0 ? d : Infinity);
+        const currentKept = row.period?.unit === "days" ? row.period.value : Infinity;
+        const nextKept = useDefault ? kept(defaultDays) : (days as number);
+        const unchanged =
+          useDefault === (row.usesDeploymentDefault === true) &&
+          (useDefault || days === currentKept);
+        if (unchanged) {
+          await finish();
+          return;
+        }
+        const update: GatewayRetentionUpdate = {
+          mcp_audit_retention_days: useDefault ? null : days,
+        };
+        if (nextKept < currentKept) {
+          setPendingAgent({ update, days: nextKept });
+          return;
+        }
+        await saveGateway(update);
+        return;
+      }
+
       if (row.key === "mrm_metrics") {
         const months = validateNumber(MIN_MRM_RETENTION_MONTHS);
         if (months === null) return;
@@ -246,7 +287,7 @@ export default function EditRetentionModal({ row, rows, onClose }: EditRetention
     }
   };
 
-  const confirming = pendingDelete !== null || pendingGateway !== null;
+  const confirming = pendingDelete !== null || pendingGateway !== null || pendingAgent !== null;
   const selectedMonths = value === INDEFINITE ? null : Number(value);
 
   return (
@@ -262,7 +303,16 @@ export default function EditRetentionModal({ row, rows, onClose }: EditRetention
       maxWidth="560px"
       fitContent
     >
-      {pendingGateway !== null ? (
+      {pendingAgent !== null ? (
+        <Typography sx={{ fontSize: 13 }}>
+          {fill(
+            t(
+              "Tool-call logs and decided approvals older than {period} will be deleted permanently at the next daily cleanup. Deleted records cannot be restored.",
+            ),
+            { period: periodLabel(t, { unit: "days", value: pendingAgent.days }) },
+          )}
+        </Typography>
+      ) : pendingGateway !== null ? (
         <GatewayPurgeWarning
           guardrailDays={pendingGateway.guardrailDays}
           spendDays={pendingGateway.spendDays}
@@ -321,6 +371,47 @@ export default function EditRetentionModal({ row, rows, onClose }: EditRetention
               <Typography sx={{ fontSize: 12, color: "text.secondary" }}>
                 {t("This setting applies to both AI Gateway log types.")}
               </Typography>
+            </>
+          )}
+          {isAgentControl && (
+            <>
+              <Box sx={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Toggle
+                  checked={useDefault}
+                  onChange={(event) => setUseDefault(event.target.checked)}
+                  ariaLabel={t("Use the deployment default")}
+                />
+                <Typography sx={{ fontSize: 13 }}>
+                  {fill(t("Use the deployment default ({period})"), {
+                    period: periodLabel(
+                      t,
+                      (row.deploymentDefaultDays ?? 0) > 0
+                        ? { unit: "days", value: row.deploymentDefaultDays as number }
+                        : null,
+                    ),
+                  })}
+                </Typography>
+              </Box>
+              {/* The days field shows errors itself; while it is hidden, show the gateway's here. */}
+              {useDefault && error && (
+                <Typography role="alert" sx={{ fontSize: 12, color: theme.palette.error.main }}>
+                  {error}
+                </Typography>
+              )}
+              {!useDefault && (
+                <Field
+                  id="retention-days"
+                  label={t("Keep for (days)")}
+                  value={value}
+                  onChange={(event) => setValue(event.target.value)}
+                  error={error}
+                  sx={FIELD_HEIGHT_SX}
+                  helperText={fill(t("From {min} to {max} days."), {
+                    min: row.minDays ?? MIN_GATEWAY_RETENTION_DAYS,
+                    max: MAX_GATEWAY_RETENTION_DAYS,
+                  })}
+                />
+              )}
             </>
           )}
           {row.key === "mrm_metrics" && (

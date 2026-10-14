@@ -89,7 +89,95 @@ describe("dataRetention.ctrl", () => {
           },
         };
       }
-      return { mcp_audit_retention_days: 60 };
+      return { mcp_audit_retention_days: 60, mcp_audit_retention_min_days: 7 };
+    });
+  });
+
+  describe("agent_control_logs row", () => {
+    const mockGateway = (settings: Record<string, unknown> | null, config: unknown) =>
+      m(aiGatewayRequest).mockImplementation(async (_method: string, path: string) =>
+        path === "/internal/guardrails/settings" ? { settings } : config,
+      );
+
+    it("uses the deployment default when the organization has no period", async () => {
+      mockGateway({}, { mcp_audit_retention_days: 30, mcp_audit_retention_min_days: 7 });
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs")).toMatchObject({
+        period: { unit: "days", value: 30 },
+        automaticDeletion: "yes",
+        source: "app",
+        usesDeploymentDefault: true,
+        deploymentDefaultDays: 30,
+        minDays: 7,
+      });
+    });
+
+    it("uses the organization's own period", async () => {
+      mockGateway(
+        { mcp_audit_retention_days: 90 },
+        { mcp_audit_retention_days: 30, mcp_audit_retention_min_days: 7 },
+      );
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs")).toMatchObject({
+        period: { unit: "days", value: 90 },
+        usesDeploymentDefault: false,
+      });
+    });
+
+    it("raises an organization's own period below the floor to the floor", async () => {
+      mockGateway(
+        { mcp_audit_retention_days: 7 },
+        { mcp_audit_retention_days: 30, mcp_audit_retention_min_days: 14 },
+      );
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs")).toMatchObject({
+        period: { unit: "days", value: 14 },
+        automaticDeletion: "yes",
+        usesDeploymentDefault: false,
+        minDays: 14,
+      });
+    });
+
+    it("keeps an organization's own period above the floor unchanged", async () => {
+      mockGateway(
+        { mcp_audit_retention_days: 20 },
+        { mcp_audit_retention_days: 30, mcp_audit_retention_min_days: 14 },
+      );
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs").period).toEqual({ unit: "days", value: 20 });
+    });
+
+    it("never raises the deployment default to the floor", async () => {
+      mockGateway({}, { mcp_audit_retention_days: 3, mcp_audit_retention_min_days: 7 });
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs")).toMatchObject({
+        period: { unit: "days", value: 3 },
+        usesDeploymentDefault: true,
+        deploymentDefaultDays: 3,
+      });
+    });
+
+    it("shows kept indefinitely when the default is off and no period is set", async () => {
+      mockGateway({}, { mcp_audit_retention_days: 0, mcp_audit_retention_min_days: 7 });
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs")).toMatchObject({
+        period: null,
+        automaticDeletion: "no",
+        usesDeploymentDefault: true,
+      });
+    });
+
+    it("is unavailable when the gateway does not report the floor (older gateway)", async () => {
+      mockGateway({}, { mcp_audit_retention_days: 30 });
+      const res = createRes();
+      await getDataRetention(createReq(), res);
+      expect(row(res, "agent_control_logs").unavailable).toBe(true);
     });
   });
 
@@ -149,8 +237,10 @@ describe("dataRetention.ctrl", () => {
       expect(row(res, "ai_gateway_spend_logs").period).toEqual({ unit: "days", value: 120 });
       expect(row(res, "agent_control_logs")).toMatchObject({
         period: { unit: "days", value: 60 },
-        source: "deployment",
-        deploymentSetting: "MCP_AUDIT_RETENTION_DAYS",
+        source: "app",
+        usesDeploymentDefault: true,
+        deploymentDefaultDays: 60,
+        minDays: 7,
       });
       for (const call of m(aiGatewayRequest).mock.calls) {
         expect(call[2]).toEqual({ organizationId: 9, role: "Admin" });
@@ -161,7 +251,7 @@ describe("dataRetention.ctrl", () => {
       m(aiGatewayRequest).mockImplementation(async (_m: string, path: string) =>
         path === "/internal/guardrails/settings"
           ? { settings: { log_retention_days: 30 } }
-          : { mcp_audit_retention_days: 60 },
+          : { mcp_audit_retention_days: 60, mcp_audit_retention_min_days: 7 },
       );
       const res = createRes();
       await getDataRetention(createReq(), res);

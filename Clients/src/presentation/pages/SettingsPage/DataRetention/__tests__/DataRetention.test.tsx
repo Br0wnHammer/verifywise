@@ -63,11 +63,13 @@ const buildRows = (overrides: Partial<Record<RetentionRow["key"], Partial<Retent
     },
     {
       key: "agent_control_logs",
-      period: { unit: "days", value: 90 },
+      period: { unit: "days", value: 30 },
       automaticDeletion: "yes",
       lastCleanup: null,
-      source: "deployment",
-      deploymentSetting: "MCP_AUDIT_RETENTION_DAYS",
+      source: "app",
+      usesDeploymentDefault: true,
+      deploymentDefaultDays: 30,
+      minDays: 7,
     },
     {
       key: "mrm_metrics",
@@ -220,12 +222,19 @@ describe("DataRetention table", () => {
     expect(await screen.findByTestId("retention-row-audit_records")).toBeInTheDocument();
   });
 
+  it("shows the Agent Control default and lets an Admin edit it", async () => {
+    respond(buildRows());
+    renderWithProviders(<DataRetention />);
+    const row = await screen.findByTestId("retention-row-agent_control_logs");
+    expect(within(row).getByText("30 days (deployment default)")).toBeInTheDocument();
+    expect(within(row).getByTestId("retention-edit-agent_control_logs")).toBeInTheDocument();
+  });
+
   it("gives deployment rows no Edit button", async () => {
     respond(buildRows());
     renderWithProviders(<DataRetention />);
     await screen.findByTestId("retention-row-server_logs");
     expect(screen.queryByTestId("retention-edit-server_logs")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("retention-edit-agent_control_logs")).not.toBeInTheDocument();
     expect(screen.getByText("Set by deployment: LOG_RETENTION_DAYS")).toBeInTheDocument();
     expect(screen.getByTestId("retention-edit-audit_records")).toBeInTheDocument();
   });

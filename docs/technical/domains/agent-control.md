@@ -138,6 +138,10 @@ Env: `VW_GATEWAY_URL`, `VW_AGENT_KEY` (sk-mcp-*), `VW_FAIL_MODE` (open|closed, d
 for gateway-unreachable and rate_limited), `VW_TIMEOUT`, `VW_APPROVAL_WAIT`,
 `VW_APPROVAL_FAIL_MODE` (default closed).
 
+## Log retention
+
+Each organization can set its own period for Agent Control logs in **Settings → Data retention**. It defaults to the deployment value `MCP_AUDIT_RETENTION_DAYS`. See `docs/technical/domains/data-retention.md`.
+
 ## UI
 
 No bespoke screens for governance: rules are authored in **Guardrails**, decisions made in

@@ -34,7 +34,10 @@ class PurgeRequest(BaseModel):
 
 @router.get("/config")
 async def get_retention_config(request: Request):
-    return {"mcp_audit_retention_days": settings.mcp_audit_retention_days}
+    return {
+        "mcp_audit_retention_days": settings.mcp_audit_retention_days,
+        "mcp_audit_retention_min_days": settings.mcp_audit_retention_min_days,
+    }
 
 
 def _deleted_before(error: Exception) -> int:

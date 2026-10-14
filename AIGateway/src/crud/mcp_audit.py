@@ -277,13 +277,16 @@ async def get_audit_log_by_id(org_id: int, log_id: int) -> dict | None:
         return dict(row) if row else None
 
 
-async def delete_expired_audit_logs(retention_days: int = 30, batch_size: int = 5000) -> int:
-    """Delete audit logs older than retention_days in batches. Returns count of deleted rows."""
-    from utils.batch_delete import batch_delete_expired
+async def delete_expired_audit_logs(
+    default_days: int, min_days: int, batch_size: int = 5000
+) -> int:
+    """Delete audit logs older than each organization's retention period, in batches."""
+    from utils.batch_delete import batch_delete_expired_per_org
 
-    return await batch_delete_expired(
+    return await batch_delete_expired_per_org(
         table="ai_gateway_mcp_audit_logs",
         where_clause="",
-        retention_days=retention_days,
+        default_days=default_days,
+        min_days=min_days,
         batch_size=batch_size,
     )

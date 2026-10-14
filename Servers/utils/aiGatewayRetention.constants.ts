@@ -8,6 +8,8 @@ export const GATEWAY_DEFAULTS = {
   log_retention_days: 90,
   spend_log_retention_days: 90,
   auto_purge_enabled: false,
+  /** null: the deployment default (MCP_AUDIT_RETENTION_DAYS) applies. */
+  mcp_audit_retention_days: null,
 } as const;
 
 /**

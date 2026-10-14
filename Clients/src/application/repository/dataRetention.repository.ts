@@ -33,6 +33,10 @@ export interface RetentionRow {
   deploymentSetting?: string;
   /** The AI Gateway could not be reached, so the values are unknown. */
   unavailable?: boolean;
+  /** Agent Control: no own period is set, so the deployment default applies. */
+  usesDeploymentDefault?: boolean;
+  deploymentDefaultDays?: number;
+  minDays?: number;
 }
 
 export interface DataRetentionOverview {
@@ -45,6 +49,8 @@ export interface GatewayRetentionUpdate {
   log_retention_days?: number;
   spend_log_retention_days?: number;
   auto_purge_enabled?: boolean;
+  /** Agent Control log retention in days; null returns to the deployment default. */
+  mcp_audit_retention_days?: number | null;
 }
 
 const ROUTE = "/data-retention";

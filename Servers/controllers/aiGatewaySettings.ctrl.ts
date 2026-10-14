@@ -25,6 +25,7 @@ import { GATEWAY_DEFAULTS } from "../utils/aiGatewayRetention.constants";
 
 const FILE_NAME = "aiGatewaySettings.ctrl.ts";
 const SETTINGS_PATH = "/internal/guardrails/settings";
+const RETENTION_CONFIG_PATH = "/internal/retention/config";
 /** Same as the generic AI Gateway proxy this route used to go through. */
 const SETTINGS_UPDATE_TIMEOUT_MS = 30_000;
 
@@ -34,14 +35,30 @@ const RETENTION_LABELS: Record<RetentionKey, string> = {
   log_retention_days: "guardrail log retention",
   spend_log_retention_days: "spend log retention",
   auto_purge_enabled: "automatic deletion",
+  mcp_audit_retention_days: "Agent Control log retention",
 };
 
 function hasOwn(object: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
-function formatValue(key: RetentionKey, value: unknown): string {
+/** The deployment default, with its days when known (0 or less keeps indefinitely). */
+function deploymentDefaultLabel(days: number | null): string {
+  if (days === null) return "the deployment default";
+  return days > 0
+    ? `the deployment default (${days} days)`
+    : "the deployment default (kept indefinitely)";
+}
+
+function formatValue(
+  key: RetentionKey,
+  value: unknown,
+  deploymentDefaultDays: number | null,
+): string {
   if (key === "auto_purge_enabled") return value ? "on" : "off";
+  if (key === "mcp_audit_retention_days" && value === null) {
+    return deploymentDefaultLabel(deploymentDefaultDays);
+  }
   return `${value} days`;
 }
 
@@ -49,23 +66,28 @@ function formatValue(key: RetentionKey, value: unknown): string {
  * Describe each retention value the request set that differs from before.
  * Keys absent from the request are never described. `before` is null when the
  * old settings could not be read; the new value is then written as "set to".
+ * `deploymentDefaultDays` is the Agent Control deployment default, named in
+ * the description when known; null describes it without its days.
  */
 export function describeRetentionChanges(
   before: Record<string, unknown> | null,
   after: Record<string, unknown>,
   requested: Record<string, unknown>,
+  deploymentDefaultDays: number | null = null,
 ): string[] {
   const changes: string[] = [];
   for (const key of Object.keys(RETENTION_LABELS) as RetentionKey[]) {
     if (!hasOwn(requested, key) || !hasOwn(after, key)) continue;
-    const newValue = formatValue(key, after[key]);
+    const newValue = formatValue(key, after[key], deploymentDefaultDays);
     if (before === null) {
       changes.push(`${RETENTION_LABELS[key]} set to ${newValue}`);
       continue;
     }
     const oldValue = before[key] ?? GATEWAY_DEFAULTS[key];
     if (oldValue === after[key]) continue;
-    changes.push(`${RETENTION_LABELS[key]} from ${formatValue(key, oldValue)} to ${newValue}`);
+    changes.push(
+      `${RETENTION_LABELS[key]} from ${formatValue(key, oldValue, deploymentDefaultDays)} to ${newValue}`,
+    );
   }
   return changes;
 }
@@ -75,6 +97,33 @@ export function isRetentionOnlyUpdate(body: Record<string, unknown>): boolean {
   const keys = Object.keys(body);
   // Own keys only: `in` would also accept inherited names like "constructor".
   return keys.length > 0 && keys.every((key) => hasOwn(RETENTION_LABELS, key));
+}
+
+/**
+ * The Agent Control deployment default's days, for the ledger entry. Read only
+ * when the save set the Agent Control period; a failed read gives null (the
+ * entry then names the default without its days) and never fails the save.
+ */
+async function deploymentDefaultDaysFor(
+  req: Request,
+  body: Record<string, unknown>,
+): Promise<number | null> {
+  if (!hasOwn(body, "mcp_audit_retention_days")) return null;
+  try {
+    const config = await aiGatewayRequest("GET", RETENTION_CONFIG_PATH, {
+      organizationId: req.organizationId!,
+      role: req.role,
+      userId: req.userId,
+      requestId: req.requestId,
+    });
+    const days = config?.mcp_audit_retention_days;
+    return typeof days === "number" ? days : null;
+  } catch (error) {
+    logger.warn(
+      `Reading the Agent Control retention default failed: ${(error as Error)?.message ?? error}`,
+    );
+    return null;
+  }
 }
 
 /**
@@ -159,7 +208,12 @@ export async function updateGuardrailSettings(req: Request, res: Response): Prom
   const { previous_retention: previous, ...gatewayResponse } = updated ?? {};
   const before: Record<string, unknown> | null =
     updated && "previous_retention" in updated ? (previous ?? {}) : null;
-  const changes = describeRetentionChanges(before, gatewayResponse.settings ?? {}, body);
+  const changes = describeRetentionChanges(
+    before,
+    gatewayResponse.settings ?? {},
+    body,
+    await deploymentDefaultDaysFor(req, body),
+  );
   if (changes.length > 0) {
     await appendRetentionChangeToLedger({
       organizationId: req.organizationId!,
