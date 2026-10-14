@@ -235,6 +235,9 @@ export const getEvidenceGapsQuery = async (
              ON mapped.struct_id IS NOT NULL
           WHERE fel.organization_id = :organizationId
             AND fel.framework_type = :fwType
+            -- Feedback files (e.g. subcontrol feedback) are not evidence;
+            -- only links created as evidence count toward coverage (#4911).
+            AND fel.link_type = 'evidence'
             AND (:projectId IS NULL OR EXISTS (
                   SELECT 1 FROM files pf
                    WHERE pf.id = fel.file_id AND pf.organization_id = fel.organization_id
