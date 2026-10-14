@@ -1,6 +1,7 @@
 import { sequelize } from "../../database/db";
 import logger from "../../utils/logger/fileLogger";
-import { getEvidenceGapsQuery } from "../../utils/evidenceAi.utils";
+import { getEvidenceGapsQuery, upsertAnalysisQuery } from "../../utils/evidenceAi.utils";
+import { parseDocument, isSupportedMimeType } from "../parsers";
 import { analyzeEvidence } from "../evidenceAnalyzer/analyzer.service";
 import { getLLMKeysWithKeyQuery, getLLMProviderUrl } from "../../utils/llmKey.utils";
 import type { LLMProvider } from "../../domain.layer/interfaces/i.llmKey";
@@ -27,14 +28,19 @@ export interface MatchControlsParams {
 export interface DetectGapsParams {
   framework_type?: string;
   project_id?: number;
-  quality_threshold?: number;
 }
 
 /**
  * Analyze a document with the real evidence analyzer (#4913) — the same
- * LLM-backed analyzer the "Analyze with AI" endpoint runs. Loads the file's
- * metadata from the files table (falling back to the caller-supplied text
- * when the row has no content) and requires an LLM key to be configured.
+ * LLM-backed analyzer the "Analyze with AI" endpoint runs.
+ *
+ * The file's STORED content is always what gets graded: binary types go
+ * through parseDocument, exactly like the endpoint, so a PDF/DOCX is parsed
+ * rather than sent as bytes. The caller-supplied document_text is used only
+ * when the stored row has no content — it can never replace real file
+ * content, so invented text cannot be graded as a file. The result is
+ * persisted through upsertAnalysisQuery, so it feeds the same gaps and
+ * quality views as the endpoint's analysis. Requires an LLM key.
  */
 const analyzeDocument = async (
   params: AnalyzeDocumentParams,
@@ -54,10 +60,19 @@ const analyzeDocument = async (
       throw new Error(`File ${file_id} not found in this organization`);
     }
 
-    let text = document_text || "";
-    if (!text.trim() && file.content) {
+    // Stored content wins; caller text is only a fallback for content-less
+    // rows.
+    let text = "";
+    if (file.content) {
       const buffer = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content);
-      text = buffer.toString("utf-8");
+      if (isSupportedMimeType(file.type)) {
+        text = (await parseDocument(buffer, file.type)).text;
+      } else {
+        text = buffer.toString("utf-8");
+      }
+    }
+    if (!text.trim()) {
+      text = document_text || "";
     }
     if (!text.trim()) {
       throw new Error(`File ${file_id} has no extractable text content`);
@@ -83,6 +98,24 @@ const analyzeDocument = async (
         headers: llmKey.custom_headers || undefined,
       },
     });
+
+    // Persist so the analysis feeds the gaps and quality views like the
+    // endpoint's does. Never fails the call.
+    try {
+      await upsertAnalysisQuery(file_id, organizationId, {
+        summary: result.summary,
+        key_findings: result.key_findings,
+        compliance_areas: result.compliance_areas,
+        quality_score: result.quality_score,
+        overall_quality_grade: result.overall_quality_grade,
+        suggested_control_links: result.suggested_control_links,
+        analysis_model: result.analysis_model,
+        analyzed_by: null,
+        audit_metadata: result.audit,
+      });
+    } catch (persistError) {
+      logger.error("Failed to persist advisor document analysis:", persistError);
+    }
 
     return { file_id, ...result };
   } catch (error) {
@@ -240,7 +273,7 @@ const detectEvidenceGaps = async (
   organizationId: number,
 ): Promise<any> => {
   try {
-    const { framework_type, project_id, quality_threshold = 50 } = params;
+    const { framework_type, project_id } = params;
 
     const fwType =
       framework_type && ["eu_ai_act", "iso_42001"].includes(framework_type)
@@ -272,7 +305,6 @@ const detectEvidenceGaps = async (
       controls_without_evidence: noEvidence.length,
       controls_with_low_quality: lowQuality.length,
       controls_adequate: gapResults.length - noEvidence.length - lowQuality.length,
-      quality_threshold,
       framework_type: fwType ?? "all",
       project_id: project_id ?? null,
       truncated: false,
