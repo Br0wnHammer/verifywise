@@ -38,6 +38,7 @@ from services.mcp_proxy_service import (
 )
 from services.mcp_session import create_session, get_backend_session, set_backend_session
 from utils.acl import matches_acl
+from utils.safe_outbound_url import UnsafeOutboundUrlError
 from utils.mcp_arguments import hash_arguments
 from utils.notifications import notify_approval_pending
 
@@ -93,7 +94,7 @@ async def mcp_jsonrpc(request: Request):
 
     # ── tools/list ──────────────────────────────────────────────────────
     if method == "tools/list":
-        all_tools = await get_all_tools(org_id)
+        all_tools = await get_all_tools(org_id, active_servers_only=True)
         allowed = agent_key.get("allowed_tools") or []
         blocked = agent_key.get("blocked_tools") or []
 
@@ -263,6 +264,15 @@ async def mcp_jsonrpc(request: Request):
 
             return JSONResponse(content=_jsonrpc_result(msg_id, result))
 
+        except UnsafeOutboundUrlError as e:
+            # The stored server address breaks the outbound policy. This is an
+            # admin configuration problem, not bad agent arguments, and it never
+            # reached the upstream, so it is not counted against the breaker.
+            await _audit("error", str(e), True)
+            return JSONResponse(
+                content=_jsonrpc_error(msg_id, -32603, "This MCP server's address is not allowed"),
+                status_code=200,
+            )
         except ValueError as e:
             await _audit("error", str(e), True)
             # Return a generic JSON-RPC error message to avoid leaking internal

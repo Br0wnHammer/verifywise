@@ -25,6 +25,15 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    "Server saved": "Server gespeichert",
+    "Server switched on": "Server eingeschaltet",
+    "The server offered no tools": "Der Server hat keine Tools angeboten",
+    "One tool found": "Ein Tool gefunden",
+    "Discovery failed": "Erkennung fehlgeschlagen",
+    "Server saved, but discovery failed":
+      "Server gespeichert, aber die Erkennung ist fehlgeschlagen",
+    "Server switched on, but discovery failed":
+      "Server eingeschaltet, aber die Erkennung ist fehlgeschlagen",
     "Deployment name": "Bereitstellungsname",
     "Save the deployment name first, then generate the token.":
       "Speichern Sie zuerst den Bereitstellungsnamen, dann generieren Sie das Token.",
@@ -1806,6 +1815,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Confirm your password": "Passwort bestätigen",
     "Connect data sources": "Datenquellen verbinden",
     "Connect external tool servers": "Externe Tool-Server verbinden",
+    "Tool discovery": "Tool-Erkennung",
+    "Tools are discovered when you save a server, and you can run discovery again at any time from the server list.":
+      "Tools werden beim Speichern eines Servers erkannt. Die Erkennung lässt sich jederzeit in der Serverliste erneut ausführen.",
     "Connect your GitHub repositories": "GitHub-Repositories verbinden",
     "Copy key": "Schlüssel kopieren",
     "Copy link": "Link kopieren",
@@ -10417,6 +10429,13 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    "Server saved": "Serveur enregistré",
+    "Server switched on": "Serveur activé",
+    "The server offered no tools": "Le serveur n'a proposé aucun outil",
+    "One tool found": "Un outil trouvé",
+    "Discovery failed": "Échec de la découverte",
+    "Server saved, but discovery failed": "Serveur enregistré, mais la découverte a échoué",
+    "Server switched on, but discovery failed": "Serveur activé, mais la découverte a échoué",
     "Deployment name": "Nom du déploiement",
     "Save the deployment name first, then generate the token.":
       "Enregistrez d'abord le nom du déploiement, puis générez le jeton.",
@@ -12338,6 +12357,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Confirm your password": "Confirmez votre mot de passe",
     "Connect data sources": "Connecter les sources de données",
     "Connect external tool servers": "Connecter des serveurs d'outils externes",
+    "Tool discovery": "Découverte d'outils",
+    "Tools are discovered when you save a server, and you can run discovery again at any time from the server list.":
+      "Les outils sont découverts lorsque vous enregistrez un serveur, et vous pouvez relancer la découverte à tout moment depuis la liste des serveurs.",
     "Connect your GitHub repositories": "Connectez vos dépôts GitHub",
     "Copy key": "Copier la clé",
     "Copy link": "Copier le lien",
@@ -20751,6 +20773,13 @@ export const translations: Record<string, Record<string, string>> = {
       "Les journaux des garde-fous de plus de {guardrailDays} jours et les journaux de dépenses de plus de {spendDays} jours seront supprimés définitivement chaque jour. Les journaux supprimés ne peuvent pas être restaurés.",
   },
   es: {
+    "Server saved": "Servidor guardado",
+    "Server switched on": "Servidor activado",
+    "The server offered no tools": "El servidor no ofreció herramientas",
+    "One tool found": "Se encontró una herramienta",
+    "Discovery failed": "Error en la detección",
+    "Server saved, but discovery failed": "Servidor guardado, pero la detección falló",
+    "Server switched on, but discovery failed": "Servidor activado, pero la detección falló",
     "Deployment name": "Nombre del despliegue",
     "Save the deployment name first, then generate the token.":
       "Primero guarde el nombre del despliegue y luego genere el token.",
@@ -22071,6 +22100,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Confirm your password": "Confirme su contraseña",
     "Connect data sources": "Conectar fuentes de datos",
     "Connect external tool servers": "Conectar servidores de herramientas externas",
+    "Tool discovery": "Descubrimiento de herramientas",
+    "Tools are discovered when you save a server, and you can run discovery again at any time from the server list.":
+      "Las herramientas se descubren al guardar un servidor, y puede volver a ejecutar el descubrimiento en cualquier momento desde la lista de servidores.",
     "Connect your GitHub repositories": "Conecte sus repositorios de GitHub",
     "Copy key": "Copiar clave",
     "Copy link": "Copiar enlace",

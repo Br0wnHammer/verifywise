@@ -4,7 +4,7 @@
 > capture + events timeline + invocation drawer (PR #4103); run correlation, multi-agent
 > wiring (Claude Code + Cursor) and the developer guide (PR #4112); per-agent rules, decision
 > provenance and the agent activity drawer (#4320, restored after the #4265 revert).
-> Last updated 2026-10-09.
+> Last updated 2026-10-13.
 
 Agent Control gates a coding agent's tool calls through the AI Gateway's guardrails,
 human-approval and audit machinery. It covers two entry paths that share one governance
@@ -229,6 +229,32 @@ describes that same detection.
 reachable as `/ai-gateway/mcp/audit/agent/{id}`) returns `summary`, `by_tool` and the 50 most
 recent calls. "Denied" excludes circuit-breaker outages, which the proxy logs as `blocked` with
 a fixed summary (`CIRCUIT_BREAKER_SUMMARY`).
+
+## MCP server registration and discovery
+
+Servers are registered in the UI (Admin only) and stored in the gateway's MCP server table.
+Registration is what feeds the proxy's tool catalog.
+
+- **Auth config** (`auth_config`, migration `a0013`): `{}` for none, `{"token_enc"}` for bearer,
+  `{"header", "key_enc"}` for API key (header defaults to `X-API-Key`). Secrets are AES-256-GCM
+  encrypted via `utils/encryption.py`; `utils/mcp_credentials.py` handles encrypt, decrypt and the
+  masked hint (shown to Admins only). A blank credential on edit keeps the stored one. OAuth is
+  not supported. Transport is Streamable HTTP; tools only (no resources or prompts).
+- **Outbound URL policy** (`utils/safe_outbound_url.py`, a port of `Servers/utils/safeOutboundUrl.ts`):
+  http or https only, no embedded username or password, and cloud metadata (169.254.169.254) and
+  `0.0.0.0` are refused. Private network addresses are allowed (on-prem).
+- **Discovery** (`services/mcp_proxy_service.py`): `fetch_server_tools` (bounded, sends
+  `notifications/initialized`, follows `nextCursor` up to 20 pages), `store_discovered_tools`,
+  `run_discovery`. It runs on create, on an edit that changes the URL, auth type or credentials,
+  and when a server is switched on, with a 10-second budget. The Discover tools button (Admin)
+  reruns it with a 25-second budget. The server is always saved even if discovery fails.
+- **Health** is the result of the last discovery. Failures are stored in `last_discovery_error`
+  and shown on hover over "Unhealthy". There are no periodic health checks yet and unhealthy
+  servers are not bypassed by the proxy.
+- **Tool lifecycle:** tools a server no longer offers are deactivated on the next discovery;
+  risk level and approval settings are kept and apply again if the tool returns.
+- **Disabled servers:** proxy `tools/list` passes `active_servers_only=True`, so agents do not see
+  tools of disabled servers, and calls to them are rejected. The admin MCP tools page still lists them (they are active tools of an inactive server). Tools deactivated by discovery are neither listed nor counted in `tool_count`.
 
 ## Not yet built (Phase 4+)
 
