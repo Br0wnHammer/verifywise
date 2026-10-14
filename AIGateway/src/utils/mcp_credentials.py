@@ -120,6 +120,13 @@ def build_auth_headers(auth_type: str, cfg: Optional[dict]) -> dict:
     return {}
 
 
+def _hint(secret: str) -> str:
+    # mask_api_key shows first and last 4; on a short token that is most of it.
+    if len(secret) < 24:
+        return f"...{secret[-4:]}" if len(secret) > 8 else "***"
+    return mask_api_key(secret)
+
+
 def public_auth_fields(auth_type: str, cfg: Optional[dict], is_admin: bool) -> dict:
     """What an API response may say about credentials: a masked hint, Admins only."""
     if not is_admin or auth_type not in _SECRET_FIELD:
@@ -129,5 +136,5 @@ def public_auth_fields(auth_type: str, cfg: Optional[dict], is_admin: bool) -> d
         fields["auth_header"] = _header(cfg or {}) or DEFAULT_API_KEY_HEADER
     secret = get_secret(auth_type, cfg)
     if secret:
-        fields["auth_secret_hint"] = mask_api_key(secret)
+        fields["auth_secret_hint"] = _hint(secret)
     return fields

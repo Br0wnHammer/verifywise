@@ -83,7 +83,7 @@ class TestResponses:
         srv = out["servers"][0]
         assert "auth_config" not in srv
         assert srv["auth_header"] == "X-K"
-        assert srv["auth_secret_hint"] == "abcd...wxyz"
+        assert srv["auth_secret_hint"] == "...wxyz"
 
     async def test_non_admin_gets_no_credential_fields(self, fakes):
         out = await router.get_mcp_server(9, _request(role="Editor"))
@@ -234,9 +234,10 @@ class TestUnsafeUrl:
         assert fakes["discovery"] == []
 
     async def test_create_stores_normalized_url(self, fakes):
-        body = {"name": "S", "slug": "s", "url": "https://a/mcp/", "auth_type": "none"}
+        body = {"name": "S", "slug": "s", "url": "HTTPS://A/mcp/", "auth_type": "none"}
         await router.create_mcp_server(_request(body))
-        assert fakes["saved"]["url"] == "https://a/mcp"
+        # Scheme and host lowercased; the trailing slash is part of the path and kept.
+        assert fakes["saved"]["url"] == "https://a/mcp/"
 
     async def test_patch_file_url_is_400_and_nothing_saved(self, fakes):
         with pytest.raises(HTTPException) as err:
@@ -246,8 +247,8 @@ class TestUnsafeUrl:
         assert fakes["saved"] is None
 
     async def test_patch_stores_normalized_url(self, fakes):
-        await router.update_mcp_server(9, _request({"url": "https://b/mcp//"}))
-        assert fakes["saved"]["url"] == "https://b/mcp"
+        await router.update_mcp_server(9, _request({"url": "HTTPS://B/mcp/"}))
+        assert fakes["saved"]["url"] == "https://b/mcp/"
 
     async def test_patch_without_url_does_not_validate_stored_url(self, fakes):
         fakes["row"]["url"] = "http://0.0.0.0/"

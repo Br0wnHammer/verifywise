@@ -115,8 +115,14 @@ class TestUse:
         cfg = normalize_auth_config("api_key", {"header": "X-K", "key": "abcd1234wxyz"}, None)
         assert public_auth_fields("api_key", cfg, True) == {
             "auth_header": "X-K",
-            "auth_secret_hint": "abcd...wxyz",
+            "auth_secret_hint": "...wxyz",
         }
+
+    def test_hint_masks_short_and_long_secrets(self):
+        hint = lambda s: public_auth_fields("bearer", normalize_auth_config("bearer", {"token": s}, None), True)["auth_secret_hint"]
+        assert hint("12345678") == "***"
+        assert hint("abcd12wxyz") == "...wxyz"
+        assert hint("a" * 20 + "wxyz") == "aaaa...wxyz"
 
     def test_public_fields_non_admin_is_empty(self):
         cfg = normalize_auth_config("bearer", {"token": "abcd1234wxyz"}, None)

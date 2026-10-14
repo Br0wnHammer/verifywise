@@ -23,10 +23,10 @@ def test_allowed_urls_pass_unchanged(url):
     assert assert_safe_outbound_url(url) == url
 
 
-def test_query_preserved_and_trailing_slashes_trimmed():
-    assert assert_safe_outbound_url("https://a.example.com/mcp///") == "https://a.example.com/mcp"
-    assert assert_safe_outbound_url("https://a.example.com/mcp/?api-version=v1#f") == "https://a.example.com/mcp?api-version=v1#f"
-    assert assert_safe_outbound_url("HTTPS://A.Example.com:8443/") == "https://a.example.com:8443"
+def test_query_and_path_preserved():
+    assert assert_safe_outbound_url("https://a.example.com/mcp/") == "https://a.example.com/mcp/"
+    assert assert_safe_outbound_url("https://a.example.com/mcp/?api-version=v1#f") == "https://a.example.com/mcp/?api-version=v1#f"
+    assert assert_safe_outbound_url("HTTPS://A.Example.com:8443/") == "https://a.example.com:8443/"
 
 
 def test_ipv6_literal_keeps_brackets():

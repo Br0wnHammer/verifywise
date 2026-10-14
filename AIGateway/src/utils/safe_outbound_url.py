@@ -11,7 +11,14 @@ blocked, exactly as in the Express policy. What is refused:
   * non-http(s) schemes (file:, ftp:, gopher:, ...)
   * embedded credentials (``user:pass@host``), which leak into logs
   * cloud metadata endpoints (169.254.169.254, fd00:ec2::254) and kernel
-    wildcards (0.0.0.0, ::), in any spelling that resolves to the same address
+    wildcards (0.0.0.0, ::), in any literal spelling of those addresses
+    (decimal, hex, octal, IPv4-mapped, Unicode dots). Hostnames are not
+    resolved, so a DNS name pointing at the metadata IP is not caught; this
+    matches the Express policy and is an accepted residual risk.
+
+Unlike the Express version, the path is kept exactly as entered: some MCP
+servers mount at a slash-terminated path and redirect, and httpx does not
+follow redirects.
 
 Unlike the Express version, error messages never echo the raw URL: it may carry
 a token in its query string.
@@ -30,16 +37,6 @@ _BLOCKED_IPS = frozenset(ipaddress.ip_address(h) for h in _BLOCKED_HOSTS)
 
 class UnsafeOutboundUrlError(ValueError):
     """The URL violates the outbound policy. The message is safe to show users."""
-
-
-def _trim_slashes(path: str) -> str:
-    # Bounded trim (max 32 trailing slashes), mirroring the Express version.
-    end = len(path)
-    stripped = 0
-    while end > 0 and path[end - 1] == "/" and stripped < 32:
-        end -= 1
-        stripped += 1
-    return path[:end]
 
 
 def _as_ip(host: str) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
@@ -80,8 +77,8 @@ def _is_blocked(host: str) -> bool:
 
 
 def assert_safe_outbound_url(raw: str) -> str:
-    """Validate ``raw`` and return it normalized (scheme and host lowercased,
-    trailing slashes on the path trimmed, query and fragment preserved).
+    """Validate ``raw`` and return it normalized (scheme and host lowercased;
+    path, query and fragment preserved).
 
     Raises ``UnsafeOutboundUrlError`` on any violation; callers surface it as a
     400, not a 500.
@@ -120,7 +117,7 @@ def assert_safe_outbound_url(raw: str) -> str:
         netloc = f"{netloc}:{port}"
     query = f"?{parts.query}" if parts.query else ""
     fragment = f"#{parts.fragment}" if parts.fragment else ""
-    normalized = f"{parts.scheme}://{netloc}{_trim_slashes(parts.path)}{query}{fragment}"
+    normalized = f"{parts.scheme}://{netloc}{parts.path}{query}{fragment}"
 
     # httpx makes the actual request and parses the host its own way: IDNA
     # turns Unicode dots ("169\u3002254\u3002169\u3002254") into ASCII ones.
