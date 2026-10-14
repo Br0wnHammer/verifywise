@@ -204,7 +204,7 @@ class TestUndecryptableSecret:
             r for r in caplog.records
             if r.levelname == "WARNING" and r.name == router.logger.name
         ]
-        assert [r.getMessage() for r in warnings] == ["Could not build credential hint for MCP server 9"]
+        assert [r.getMessage() for r in warnings] == ["Skipped the masked auth hint for MCP server 9: stored value unreadable"]
         for r in caplog.records:
             assert "SECRET-CIPHERTEXT" not in r.getMessage() and "abcd1234wxyz" not in r.getMessage()
         assert "SECRET-CIPHERTEXT" not in caplog.text and "abcd1234wxyz" not in caplog.text
@@ -267,7 +267,7 @@ def _capture_db(monkeypatch):
     db = MagicMock()
 
     async def execute(stmt, params=None):
-        seen.append(str(stmt))
+        seen.append((str(stmt), params or {}))
         result = MagicMock()
         result.mappings.return_value.all.return_value = []
         return result
@@ -283,15 +283,18 @@ def _capture_db(monkeypatch):
 
 
 class TestToolList:
+    # The filter is a bound flag so the SQL stays a fixed literal.
     async def test_agents_see_only_active_servers(self, monkeypatch):
         seen = _capture_db(monkeypatch)
         await tools_crud.get_all_tools(1, active_servers_only=True)
-        assert "s.is_active = true" in seen[0]
+        sql, params = seen[0]
+        assert "(:active_servers_only = false OR s.is_active = true)" in sql
+        assert params["active_servers_only"] is True
 
     async def test_catalog_keeps_every_server(self, monkeypatch):
         seen = _capture_db(monkeypatch)
         await tools_crud.get_all_tools(1)
-        assert "s.is_active" not in seen[0]
+        assert seen[0][1]["active_servers_only"] is False
 
 
 import routers.mcp_proxy as proxy_router

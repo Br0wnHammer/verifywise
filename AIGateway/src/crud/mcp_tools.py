@@ -14,11 +14,9 @@ async def get_all_tools(org_id: int, active_servers_only: bool = False) -> list[
 
     With active_servers_only=True (agent-facing tools/list), tools of disabled
     servers are hidden. The admin catalog passes False and keeps every server."""
-    # Fixed literals only; never user input.
-    server_filter = "AND s.is_active = true" if active_servers_only else ""
     async with get_db() as db:
         result = await db.execute(
-            text(f"""
+            text("""
                 SELECT
                     t.id,
                     t.organization_id,
@@ -37,10 +35,10 @@ async def get_all_tools(org_id: int, active_servers_only: bool = False) -> list[
                 JOIN ai_gateway_mcp_servers s ON t.server_id = s.id
                 WHERE t.organization_id = :org_id
                   AND t.is_active = true
-                  {server_filter}
+                  AND (:active_servers_only = false OR s.is_active = true)
                 ORDER BY t.tool_name
             """),
-            {"org_id": org_id},
+            {"org_id": org_id, "active_servers_only": active_servers_only},
         )
         rows = result.mappings().all()
         return [

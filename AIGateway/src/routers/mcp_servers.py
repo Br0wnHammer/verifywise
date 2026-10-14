@@ -48,7 +48,7 @@ def _present(server: dict, request: Request) -> dict:
         )
     except Exception:
         # e.g. a secret that can no longer be decrypted after a key change.
-        logger.warning("Could not build credential hint for MCP server %s", server.get("id"))
+        logger.warning("Skipped the masked auth hint for MCP server %s: stored value unreadable", server.get("id"))
     return out
 
 
