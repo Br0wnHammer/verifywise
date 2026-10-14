@@ -129,7 +129,7 @@ export const mcpServersContent: ArticleContent = {
     },
     {
       type: 'heading',
-      id: 'health-monitoring',
+      id: 'server-health',
       level: 2,
       text: 'Server health',
     },

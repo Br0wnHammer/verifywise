@@ -254,7 +254,7 @@ Registration is what feeds the proxy's tool catalog.
 - **Tool lifecycle:** tools a server no longer offers are deactivated on the next discovery;
   risk level and approval settings are kept and apply again if the tool returns.
 - **Disabled servers:** proxy `tools/list` passes `active_servers_only=True`, so agents do not see
-  tools of disabled servers, and calls to them are rejected. The admin MCP tools page still lists them.
+  tools of disabled servers, and calls to them are rejected. The admin MCP tools page still lists them (they are active tools of an inactive server). Tools deactivated by discovery are neither listed nor counted in `tool_count`.
 
 ## Not yet built (Phase 4+)
 
