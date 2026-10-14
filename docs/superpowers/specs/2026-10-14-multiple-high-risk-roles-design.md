@@ -56,10 +56,27 @@ term; the closest is "downstream provider" in the general-purpose AI chapter.
     when the list contains Provider, else `Deployer` when it contains Deployer,
     else null; drop `high_risk_roles`. A use case with both roles loses Deployer;
     the migration file says so.
-- Every raw SQL reader of the old column is updated in the same change (known:
-  `eu.utils.ts` filter, `approvalRequest.utils.ts`, `project.utils.ts` create and
-  update, `euAiActClassification.utils.ts` write-back, Jira Assets sync,
-  seeds). A missed one fails with an SQL error, not wrong data.
+- Every reader of the old column is updated in the same change. Two kinds:
+  - **Named in SQL** (`eu.utils.ts` filter, `approvalRequest.utils.ts`,
+    `project.utils.ts` create and update, `euAiActClassification.utils.ts`
+    write-back, seeds). A missed one fails with an SQL error.
+  - **Read as a property of a `SELECT *` row** (`project.utils.ts` get-by-id
+    and update return, the project automation diff in
+    `project.automation.utils.ts`, the Jira Assets sync in
+    `jiraAssets.service.ts`). A missed one does **not** fail: the property is
+    `undefined` and the value silently disappears. So project rows leaving the
+    data layer go through one helper, `withLegacyHighRiskRole(row)`, which adds
+    the derived `type_of_high_risk_role`, and a grep for
+    `.type_of_high_risk_role` property access across `Servers/` is part of the
+    task, not just for the column name.
+- **Binding arrays in raw SQL.** Sequelize expands an array replacement into a
+  comma list, so `= ANY(:roles)` and `SET high_risk_roles = :roles` are wrong
+  (other files note this: `services/reporting/dataCollector.ts`,
+  `reportScope.ts`). Reads use `= ANY(ARRAY[:roles]::text[])`; writes use
+  `ARRAY[:roles]::text[]`. Sequelize turns an empty array into `NULL`
+  (`ARRAY[NULL]`), so an empty list is never bound: writes use the literal
+  `'{}'::text[]` and the filter skips the role condition (no role-filtered
+  category matches). One helper builds both.
 - The application always stores the list normalised: no duplicates, fixed
   order Provider then Deployer. One helper (`normalizeHighRiskRoles`) does this
   and is used by every write path.
@@ -96,7 +113,7 @@ term; the closest is "downstream provider" in the general-purpose AI chapter.
 
 `getVisibleEuCategoryIdsForProject` (`Servers/utils/eu.utils.ts`) reads
 `p.high_risk_roles` and matches a role-filtered category (tiers High risk and
-GPAI) when `r.name = ANY(:roles)`. An empty list matches no role-filtered
+GPAI) when `r.name = ANY(ARRAY[:roles]::text[])`. An empty list matches no role-filtered
 category, exactly as a null role does today. Its callers — compliance counts,
 the requirements tracker, readiness scoring, the compliance report, the
 categories endpoint — need no change beyond what they pass through.
@@ -108,8 +125,16 @@ categories endpoint — need no change beyond what they pass through.
 - `questionnaire.v2.ts` role question: `inputType: "multi_select"` (already
   supported; the transparency question uses it), same options and article
   reference, text "What is your role for this AI system? Select all that apply."
-  The questionnaire version is not bumped: every saved single-role answer is a
-  valid answer to the new question.
+  The questionnaire version is not bumped.
+- **Saved single-role answers must keep validating.** `validate.ts` rejects a
+  string for a `multi_select` question, and stored runs are re-validated in
+  three places: intake approval (`rescoreStoredRun`, `intakeForm.ctrl.ts`),
+  intake resubmission prefill (same file) and the intake risk step
+  (`intakeStep.ts`). Without a fix, every intake submission pending at deploy
+  would be approved as if it had no EU AI Act result (no level, no role), and
+  prefills would come back empty. Fix: `validateAnswers` accepts a single
+  string for a `multi_select` question and returns it as a one-item array.
+  Test it with a stored v2 run whose `role` is `"deployer"`.
 - `score.v2.ts`:
   - `toRoles(answer)` returns the normalised list from a string or an array.
   - `highRiskObligations(routes, roles)` iterates roles in order Provider then
@@ -130,20 +155,34 @@ categories endpoint — need no change beyond what they pass through.
 - The risk step on the public form renders the same multi-select question; on
   approval (`intakeForm.ctrl.ts`) all roles go to the new use case
   (`high_risk_roles: computed.roles`).
-- The mapping target for the role field (`IntakeFormBuilder/types.ts`) accepts
-  `select` and `multiselect` questions. Each selected option sets one role,
-  matched by label as today. Options that are not Provider or Deployer are
-  ignored, and the submission preview names them ("Not a high-risk role:
-  <label>") instead of dropping them silently.
-- `RISK_STEP_SET_FIELDS` keeps working with the field name unchanged.
+- **A form question mapped to the role field.** How it works today:
+  `buildEntityDataFromSubmission` copies the stored answer as is, which for a
+  select is the option's *value*, not its label; the review dialog shows it in a
+  free-text field; project creation accepts it only if it is exactly `Provider`
+  or `Deployer`. So it works only when the form author typed those values.
+  Default forms do not include this mapping. New behaviour:
+  - The mapping target (`IntakeFormBuilder/types.ts`) accepts `select` and
+    `multiselect` questions.
+  - On building entity data, each selected option is resolved to its label and
+    matched to a role by label or value, case-insensitive (`provider`,
+    `Provider`, `Deployer`). The result is a list.
+  - The review dialog shows a "High-risk roles" multi-select for this mapping
+    instead of the free-text field, pre-filled with the matched roles. Selected
+    options that match no role are listed under it ("Not a high-risk role:
+    <label>") so the reviewer can see and fix it before approving.
+- When the form has the EU AI Act risk step, the step's roles win, exactly as
+  today (the mapped question is hidden in the review dialog and unmapped in the
+  builder via `RISK_STEP_SET_FIELDS`).
 
 ### Other consumers
 
 - **Change history** (`changeHistory.config.ts`): the field is compared as a set
   and displayed as "Provider, Deployer"; reordering records nothing.
 - **Automations** (`project.automation.utils.ts`): `{{project.type_of_high_risk_role}}`
-  renders the full list ("Provider, Deployer"); the role-changed comparison
-  compares sets.
+  renders the full list ("Provider, Deployer"). The project-updated message's
+  change summary ("Type of High-Risk Role: old → new") becomes "High-risk
+  roles: Provider → Provider, Deployer" and compares sets, so reordering adds no
+  line.
 - **Approval requests** (`approvalRequest.utils.ts`, `entityTypeConfig.tsx`):
   select and display the list.
 - **Jira Assets sync** (`jiraAssets.service.ts`): passes `high_risk_roles` and
@@ -158,8 +197,10 @@ categories endpoint — need no change beyond what they pass through.
 ### Screens
 
 - The role field becomes a multi-select (`AutoCompleteField` with `multiple`,
-  as used for "Applicable regulations") in `Forms/ProjectForm`,
-  `CreateProjectForm` and `ProjectView/ProjectSettings`.
+  as used for "Applicable regulations") in `Forms/ProjectForm` and
+  `ProjectView/ProjectSettings`. `components/CreateProjectForm` is not imported
+  anywhere in `Clients/src`; it is left alone (removing dead code is a separate
+  change).
 - Label "High-risk roles" (was "Type of high risk role"); required message
   "Select at least one high-risk role when EU AI Act is selected." The "If you are
   not sure…" link to the questionnaire stays.
@@ -194,13 +235,17 @@ categories endpoint — need no change beyond what they pass through.
   rule (no-op on an existing role, replace on a new one, 400 on conflict); validation with and
   without the EU AI Act and for organizational projects; scorer (both roles →
   union without repeats; old single-role answers unchanged; transparency filter);
-  intake approval with both roles; change-history set comparison.
+  intake approval with both roles; a stored v2 run with `role: "deployer"`
+  still validates and scores the same (approval, resubmission prefill, risk
+  step); mapped role question resolution (option value vs label, case,
+  unmatched options); `withLegacyHighRiskRole`; change-history set comparison.
 - **Requirements filter** against the test database: Provider only, Deployer only,
   both, empty — both shows the union of the first two.
 - **Migration:** up, down, up on the local dev database; existing rows keep the
   same visible categories.
 - **Frontend (Vitest):** forms (multi-select, required rule, payload), mapper,
-  table display and sort, intake mapping with a multi-select question; existing
+  table display and sort, intake mapping with a multi-select question, the
+  review dialog's role multi-select and unmatched-option note; existing
   tests, factories and e2e fixtures updated to the list shape.
 - **Gates:** `cd Servers && npm run build && npm run format-check`;
   `cd Clients && npm run typecheck && npm run i18n:audit:strict && npm run lint && npx vitest run`;
@@ -208,9 +253,14 @@ categories endpoint — need no change beyond what they pass through.
 
 ## Risks
 
-- **Missed raw SQL reader of the dropped column.** Mitigation: grep for
-  `type_of_high_risk_role` across `Servers/` after the change; every remaining
-  hit must be the derived API field, the legacy input or docs.
+- **Missed reader of the dropped column.** SQL readers fail loudly; `SELECT *`
+  property readers fail silently (see Storage). Mitigation: the
+  `withLegacyHighRiskRole` helper, and a grep for `type_of_high_risk_role`
+  across `Servers/` and `Clients/src` after the change; every remaining hit
+  must be the derived API field, the legacy input or docs.
+- **Stored questionnaire answers** with a single role must keep validating
+  (see Questionnaire); otherwise pending intake approvals lose their EU AI Act
+  result.
 - **Down migration is lossy** for both-role use cases (documented).
 - **Integrators writing `type_of_high_risk_role`** can only set a single role; the
   no-op rule keeps them from removing one.
