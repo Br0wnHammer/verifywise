@@ -200,7 +200,13 @@ class TestUndecryptableSecret:
         srv = out["servers"][0]
         assert srv["id"] == 9
         assert "auth_secret_hint" not in srv and "auth_header" not in srv
-        assert "9" in caplog.text
+        warnings = [
+            r for r in caplog.records
+            if r.levelname == "WARNING" and r.name == router.logger.name
+        ]
+        assert [r.getMessage() for r in warnings] == ["Could not build credential hint for MCP server 9"]
+        for r in caplog.records:
+            assert "SECRET-CIPHERTEXT" not in r.getMessage() and "abcd1234wxyz" not in r.getMessage()
         assert "SECRET-CIPHERTEXT" not in caplog.text and "abcd1234wxyz" not in caplog.text
 
 
