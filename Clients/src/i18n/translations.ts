@@ -1020,6 +1020,8 @@ export const translations: Record<string, Record<string, string>> = {
     "EVIDENCE NAME": "NACHWEISNAME",
     "Evidence type": "Nachweistyp",
     "Evidence coverage": "Nachweisabdeckung",
+    "controls adequate": "Kontrollen angemessen",
+    "without evidence": "ohne Nachweis",
     "Report name": "Berichtsname",
     "Report type": "Berichtstyp",
     "Type of report": "Art des Berichts",
@@ -4169,8 +4171,8 @@ export const translations: Record<string, Record<string, string>> = {
       'Wenn Prüfer fragen „Wann haben Sie diese Kontrolle eingeführt?" oder „Wie haben Sie auf diesen Vorfall reagiert?", liefern Ereignisprotokolle klare Antworten. Ein detaillierter Ereignisverlauf macht Erinnerungsabhängigkeit überflüssig und erzeugt objektive Nachweise.',
     "Filter events to find relevant information quickly.":
       "Filtern Sie Ereignisse, um relevante Informationen schnell zu finden.",
-    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities. Export filtered events for reports or documentation.":
-      "Bei vielen protokollierten Ereignissen helfen Filter, das Gesuchte zu finden. Filtern Sie nach Zeitraum, Ereignistyp oder verknüpfter Entität, um Governance-Aktivitäten schnell zu lokalisieren. Exportieren Sie gefilterte Ereignisse für Berichte oder Dokumentation.",
+    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities.":
+      "Bei vielen protokollierten Ereignissen helfen Filter, das Gesuchte zu finden. Filtern Sie nach Zeitraum, Ereignistyp oder verknüpfter Entität, um Governance-Aktivitäten schnell zu lokalisieren.",
 
     "Settings customize VerifyWise to your organization's needs.":
       "Einstellungen passen VerifyWise an die Anforderungen Ihrer Organisation an.",
@@ -10426,6 +10428,23 @@ export const translations: Record<string, Record<string, string>> = {
       "Die Aufbewahrungseinstellungen konnten nicht geladen werden.",
     "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
       "Guardrail-Protokolle, die älter als {guardrailDays} Tage sind, und Kostenprotokolle, die älter als {spendDays} Tage sind, werden täglich dauerhaft gelöscht. Gelöschte Protokolle können nicht wiederhergestellt werden.",
+    "No evidence": "Keine Nachweise",
+    "This use case is waiting for approval. You can read this overview, but the other tabs stay disabled until the request is approved or rejected, and the frameworks picked at creation are added only once it is approved. Follow the request under Approval requests in the header.":
+      "Dieser Anwendungsfall wartet auf Genehmigung. Sie können diese Übersicht lesen, aber die übrigen Tabs bleiben deaktiviert, bis die Anfrage genehmigt oder abgelehnt wird, und die bei der Erstellung gewählten Rahmenwerke werden erst nach der Genehmigung hinzugefügt. Verfolgen Sie die Anfrage unter Genehmigungsanfragen in der Kopfzeile.",
+    "This use case was rejected, so it can no longer be used. The tabs stay disabled and the frameworks picked at creation were never added. See the rejection comment under Approval requests in the header.":
+      "Dieser Anwendungsfall wurde abgelehnt und kann nicht mehr verwendet werden. Die Tabs bleiben deaktiviert und die bei der Erstellung gewählten Rahmenwerke wurden nie hinzugefügt. Den Ablehnungskommentar finden Sie unter Genehmigungsanfragen in der Kopfzeile.",
+    "Adequate evidence": "Ausreichende Nachweise",
+    "Low-quality evidence": "Nachweise von geringer Qualität",
+    "Loading evidence coverage": "Nachweisabdeckung wird geladen",
+    "Show all {count}": "Alle {count} anzeigen",
+    "Show fewer": "Weniger anzeigen",
+    "Controls needing attention": "Kontrollen, die Aufmerksamkeit brauchen",
+    "file": "Datei",
+    "files": "Dateien",
+    "none adequate": "keine ausreichend",
+    "Evidence graded": "Mit",
+    "counts as low quality. Files with no AI analysis are not counted as adequate.":
+      "bewertete Nachweise gelten als von geringer Qualität. Dateien ohne KI-Analyse zählen nicht als ausreichend.",
   },
 
   fr: {
@@ -11775,6 +11794,8 @@ export const translations: Record<string, Record<string, string>> = {
     "EVIDENCE NAME": "NOM DE LA PREUVE",
     "Evidence type": "Type de preuve",
     "Evidence coverage": "Couverture des preuves",
+    "controls adequate": "contrôles adéquats",
+    "without evidence": "sans preuve",
     "Report name": "Nom du rapport",
     "Report type": "Type de rapport",
     "Type of report": "Type de rapport",
@@ -14634,8 +14655,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Lorsque les auditeurs demandent « Quand avez-vous mis en œuvre ce contrôle ? » ou « Comment avez-vous répondu à cet incident ? », les journaux d'événements fournissent des réponses précises. Un historique détaillé élimine la dépendance à la mémoire et constitue une preuve objective.",
     "Filter events to find relevant information quickly.":
       "Filtrer les événements pour trouver rapidement les informations pertinentes.",
-    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities. Export filtered events for reports or documentation.":
-      "Avec de nombreux événements journalisés dans le temps, les filtres vous aident à trouver ce dont vous avez besoin. Filtrez par plage de dates, type d'événement ou entité liée pour localiser rapidement des activités de gouvernance. Exportez les événements filtrés pour les rapports ou la documentation.",
+    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities.":
+      "Avec de nombreux événements journalisés dans le temps, les filtres vous aident à trouver ce dont vous avez besoin. Filtrez par plage de dates, type d'événement ou entité liée pour localiser rapidement des activités de gouvernance.",
     "Settings customize VerifyWise to your organization's needs.":
       "Les paramètres adaptent VerifyWise aux besoins de votre organisation.",
     "Configure user roles and system defaults to match your governance workflows. Taking time to properly configure settings upfront saves time and reduces confusion later. Review settings periodically as your organization grows.":
@@ -20771,6 +20792,23 @@ export const translations: Record<string, Record<string, string>> = {
       "Les paramètres de conservation n'ont pas pu être chargés.",
     "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
       "Les journaux des garde-fous de plus de {guardrailDays} jours et les journaux de dépenses de plus de {spendDays} jours seront supprimés définitivement chaque jour. Les journaux supprimés ne peuvent pas être restaurés.",
+    "No evidence": "Aucune preuve",
+    "This use case is waiting for approval. You can read this overview, but the other tabs stay disabled until the request is approved or rejected, and the frameworks picked at creation are added only once it is approved. Follow the request under Approval requests in the header.":
+      "Ce cas d'usage est en attente d'approbation. Vous pouvez consulter cette vue d'ensemble, mais les autres onglets restent désactivés tant que la demande n'est pas approuvée ou rejetée, et les référentiels choisis à la création ne sont ajoutés qu'une fois l'approbation obtenue. Suivez la demande sous Demandes d'approbation dans l'en-tête.",
+    "This use case was rejected, so it can no longer be used. The tabs stay disabled and the frameworks picked at creation were never added. See the rejection comment under Approval requests in the header.":
+      "Ce cas d'usage a été rejeté : il ne peut plus être utilisé. Les onglets restent désactivés et les référentiels choisis à la création n'ont jamais été ajoutés. Consultez le commentaire de rejet sous Demandes d'approbation dans l'en-tête.",
+    "Adequate evidence": "Preuves suffisantes",
+    "Low-quality evidence": "Preuves de faible qualité",
+    "Loading evidence coverage": "Chargement de la couverture des preuves",
+    "Show all {count}": "Afficher les {count}",
+    "Show fewer": "Afficher moins",
+    "Controls needing attention": "Contrôles nécessitant une attention",
+    "file": "fichier",
+    "files": "fichiers",
+    "none adequate": "aucun suffisant",
+    "Evidence graded": "Les preuves notées",
+    "counts as low quality. Files with no AI analysis are not counted as adequate.":
+      "sont considérées comme de faible qualité. Les fichiers sans analyse IA ne comptent pas comme suffisants.",
   },
   es: {
     "Server saved": "Servidor guardado",
@@ -21538,6 +21576,8 @@ export const translations: Record<string, Record<string, string>> = {
     "EVIDENCE NAME": "NOMBRE DE LA EVIDENCIA",
     "Evidence type": "Tipo de evidencia",
     "Evidence coverage": "Cobertura de evidencias",
+    "controls adequate": "controles adecuados",
+    "without evidence": "sin evidencia",
     "Report name": "Nombre del informe",
     "Report type": "Tipo de informe",
     "Type of report": "Tipo de informe",
@@ -27102,8 +27142,8 @@ export const translations: Record<string, Record<string, string>> = {
       'Cuando los auditores preguntan "¿Cuándo implementaron este control?" o "¿Cómo respondieron a ese incidente?", los registros de eventos proporcionan respuestas definitivas. Un historial de eventos detallado elimina la dependencia de la memoria y crea evidencia objetiva.',
     "Filter events to find relevant information quickly.":
       "Filtre los eventos para encontrar rápidamente la información relevante.",
-    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities. Export filtered events for reports or documentation.":
-      "Con muchos eventos registrados a lo largo del tiempo, los filtros le ayudan a encontrar lo que necesita. Filtre por intervalo de fechas, tipo de evento o entidad relacionada para localizar rápidamente actividades de gobernanza específicas. Exporte los eventos filtrados para informes o documentación.",
+    "With many events logged over time, filters help you find what you need. Filter by date range, event type, or related entity to quickly locate specific governance activities.":
+      "Con muchos eventos registrados a lo largo del tiempo, los filtros le ayudan a encontrar lo que necesita. Filtre por intervalo de fechas, tipo de evento o entidad relacionada para localizar rápidamente actividades de gobernanza específicas.",
     "Settings customize VerifyWise to your organization's needs.":
       "La configuración adapta VerifyWise a las necesidades de su organización.",
     "Configure user roles and system defaults to match your governance workflows. Taking time to properly configure settings upfront saves time and reduces confusion later. Review settings periodically as your organization grows.":
@@ -31033,5 +31073,22 @@ export const translations: Record<string, Record<string, string>> = {
     "Retention settings could not be loaded.": "No se pudo cargar la configuración de retención.",
     "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
       "Los registros de guardrails con más de {guardrailDays} días y los registros de gasto con más de {spendDays} días se eliminarán de forma permanente cada día. Los registros eliminados no se pueden restaurar.",
+    "No evidence": "Sin evidencia",
+    "This use case is waiting for approval. You can read this overview, but the other tabs stay disabled until the request is approved or rejected, and the frameworks picked at creation are added only once it is approved. Follow the request under Approval requests in the header.":
+      "Este caso de uso está esperando aprobación. Puede leer esta vista general, pero las demás pestañas permanecen deshabilitadas hasta que la solicitud se apruebe o se rechace, y los marcos elegidos al crearlo solo se añaden una vez aprobado. Siga la solicitud en Solicitudes de aprobación en la cabecera.",
+    "This use case was rejected, so it can no longer be used. The tabs stay disabled and the frameworks picked at creation were never added. See the rejection comment under Approval requests in the header.":
+      "Este caso de uso fue rechazado, por lo que ya no se puede usar. Las pestañas permanecen deshabilitadas y los marcos elegidos al crearlo nunca se añadieron. Consulte el comentario de rechazo en Solicitudes de aprobación en la cabecera.",
+    "Adequate evidence": "Evidencia suficiente",
+    "Low-quality evidence": "Evidencia de baja calidad",
+    "Loading evidence coverage": "Cargando la cobertura de evidencia",
+    "Show all {count}": "Mostrar los {count}",
+    "Show fewer": "Mostrar menos",
+    "Controls needing attention": "Controles que requieren atención",
+    "file": "archivo",
+    "files": "archivos",
+    "none adequate": "ninguno suficiente",
+    "Evidence graded": "La evidencia calificada",
+    "counts as low quality. Files with no AI analysis are not counted as adequate.":
+      "se considera de baja calidad. Los archivos sin análisis de IA no cuentan como suficientes.",
   },
 };
