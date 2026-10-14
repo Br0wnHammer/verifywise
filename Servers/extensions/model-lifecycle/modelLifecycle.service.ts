@@ -1,5 +1,6 @@
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../../database/db";
+import { appendToAuditLedger } from "../../utils/auditLedger.utils";
 
 /**
  * DB helpers for the model-lifecycle extension.
@@ -294,31 +295,63 @@ export async function updateItem(
   )) as unknown as [any[], number];
   const updated = (rows[0] as any)?.[0] ?? null;
   if (updated && before) {
+    // Snapshot only the columns this function can actually write, normalized
+    // for comparison (review: raw req.body keys recorded phantom "changes"
+    // and mixed stringified/raw types). No row is written when nothing
+    // differs.
+    const TRACKED = [
+      "name",
+      "description",
+      "item_type",
+      "is_required",
+      "display_order",
+      "config",
+      "is_active",
+    ] as const;
+    const normalize = (value: unknown): string | null =>
+      value === undefined || value === null
+        ? null
+        : typeof value === "object"
+          ? JSON.stringify(value)
+          : String(value);
+
     const oldSnapshot: Record<string, unknown> = {};
     const newSnapshot: Record<string, unknown> = {};
-    for (const key of Object.keys(patch)) {
-      const column = key === "item_type" ? "item_type" : key;
-      const oldRaw = before[column];
-      oldSnapshot[key] =
-        oldRaw !== null && typeof oldRaw === "object"
-          ? oldRaw
-          : oldRaw == null
-            ? null
-            : String(oldRaw);
-      newSnapshot[key] = (patch as Record<string, unknown>)[key] ?? null;
+    for (const key of TRACKED) {
+      if (!(key in patch)) continue;
+      const oldValue = (before as Record<string, unknown>)[key];
+      const newValue = (patch as Record<string, unknown>)[key];
+      if (normalize(oldValue) === normalize(newValue)) continue;
+      oldSnapshot[key] = oldValue ?? null;
+      newSnapshot[key] = newValue ?? null;
     }
-    try {
-      await recordItemChange(
-        organizationId,
-        itemId,
-        "updated",
-        changedBy,
-        oldSnapshot,
-        newSnapshot,
-      );
-    } catch (error) {
-      // History must never fail the edit.
-      console.error("Failed to record model lifecycle item change:", error);
+
+    if (Object.keys(newSnapshot).length > 0) {
+      try {
+        await recordItemChange(
+          organizationId,
+          itemId,
+          "updated",
+          changedBy,
+          oldSnapshot,
+          newSnapshot,
+        );
+        // Same tamper-evident trail the generic change-history writer keeps.
+        appendToAuditLedger({
+          organizationId,
+          entryType: "change_history",
+          userId: changedBy,
+          entityType: "model_lifecycle_item",
+          entityId: itemId,
+          action: "updated",
+          description: `Model lifecycle item ${itemId} updated (${Object.keys(newSnapshot).join(", ")})`,
+        }).catch((error) => {
+          console.error("Failed to append model lifecycle change to the audit ledger:", error);
+        });
+      } catch (error) {
+        // History must never fail the edit.
+        console.error("Failed to record model lifecycle item change:", error);
+      }
     }
   }
   return updated;

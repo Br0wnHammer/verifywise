@@ -238,6 +238,9 @@ const buildLinkSourceSql = (source: EvidenceLinkSource): string =>
     WHERE fel.organization_id = :organizationId
       AND fel.framework_type = :fwType
       AND fel.entity_type = '${source.entityType}'
+      -- Feedback files (e.g. subcontrol feedback) are not evidence;
+      -- only links created as evidence count toward coverage (#4911).
+      AND fel.link_type = 'evidence'
       AND (:projectId IS NULL OR EXISTS (
             SELECT 1 FROM files pf
              WHERE pf.id = fel.file_id
@@ -255,22 +258,28 @@ const buildLinkSourceSql = (source: EvidenceLinkSource): string =>
  */
 const logLinkBreakdown = async (organizationId: number, fwTypes: string[]) => {
   const [rows] = await sequelize.query(
-    `SELECT framework_type, entity_type,
+    `SELECT framework_type, entity_type, link_type,
             COUNT(*)::int as links,
             COUNT(DISTINCT file_id)::int as files
        FROM file_entity_links
       WHERE organization_id = :organizationId
         AND framework_type IN (:fwTypes)
-      GROUP BY framework_type, entity_type
-      ORDER BY framework_type, entity_type`,
+      GROUP BY framework_type, entity_type, link_type
+      ORDER BY framework_type, entity_type, link_type`,
     { replacements: { organizationId, fwTypes } },
   );
 
   const breakdown = (rows as any[]).map((r) => {
-    const counted = (EVIDENCE_REQUIREMENT_SOURCES[r.framework_type]?.linkSources ?? []).some(
-      (source) => source.entityType === r.entity_type,
-    );
-    return `${r.framework_type}/${r.entity_type}=${r.files} file(s)${counted ? "" : " NOT COUNTED"}`;
+    // A link counts only if its entity type is one this framework maps AND it
+    // was created as evidence — feedback files live in the same table (#4911).
+    const counted =
+      r.link_type === "evidence" &&
+      (EVIDENCE_REQUIREMENT_SOURCES[r.framework_type]?.linkSources ?? []).some(
+        (source) => source.entityType === r.entity_type,
+      );
+    return `${r.framework_type}/${r.entity_type}/${r.link_type}=${r.files} file(s)${
+      counted ? "" : " NOT COUNTED"
+    }`;
   });
 
   logStructured(

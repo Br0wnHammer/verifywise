@@ -20,6 +20,12 @@ jest.mock("../../utils/logger/fileLogger", () => ({
 
 jest.mock("../../utils/evidenceAi.utils", () => ({
   getEvidenceGapsQuery: jest.fn(),
+  upsertAnalysisQuery: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock("../parsers", () => ({
+  parseDocument: jest.fn().mockResolvedValue({ text: "parsed pdf text" }),
+  isSupportedMimeType: jest.fn().mockReturnValue(true),
 }));
 
 jest.mock("../evidenceAnalyzer/analyzer.service", () => ({
@@ -32,8 +38,9 @@ jest.mock("../../utils/llmKey.utils", () => ({
 }));
 
 import { availableEvidenceAiTools } from "./evidenceAiFunctions";
-import { getEvidenceGapsQuery } from "../../utils/evidenceAi.utils";
+import { getEvidenceGapsQuery, upsertAnalysisQuery } from "../../utils/evidenceAi.utils";
 import { analyzeEvidence } from "../evidenceAnalyzer/analyzer.service";
+import { parseDocument } from "../parsers";
 import { getLLMKeysWithKeyQuery } from "../../utils/llmKey.utils";
 
 const detectEvidenceGaps = availableEvidenceAiTools.detect_evidence_gaps as any;
@@ -78,14 +85,14 @@ describe("detect_evidence_gaps (#4912)", () => {
 describe("analyze_document (#4913)", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("routes to the real analyzer with the file's stored content and metadata", async () => {
+  it("routes to the real analyzer with the parsed stored content and persists it", async () => {
     mockQuery.mockResolvedValue([
       [
         {
           id: 4,
           filename: "policy.pdf",
           type: "application/pdf",
-          content: Buffer.from("hello world evidence"),
+          content: Buffer.from("%PDF-1.7 binary"),
           uploaded_time: "2026-01-01T00:00:00Z",
         },
       ],
@@ -96,18 +103,50 @@ describe("analyze_document (#4913)", () => {
     (analyzeEvidence as jest.Mock).mockResolvedValue({
       summary: "S",
       overall_quality_grade: "B",
+      audit: { analyzer_version: "evidence-analyzer-v3" },
     });
 
-    const result = await analyzeDocument({ file_id: 4 }, 1);
+    // Stored content exists: the parsed file text wins, caller text is ignored.
+    const result = await analyzeDocument({ file_id: 4, document_text: "invented text" }, 1);
 
+    expect(parseDocument).toHaveBeenCalled();
     expect(analyzeEvidence).toHaveBeenCalledWith(
       expect.objectContaining({
         filename: "policy.pdf",
-        documentText: "hello world evidence",
+        documentText: "parsed pdf text",
       }),
+    );
+    expect(upsertAnalysisQuery).toHaveBeenCalledWith(
+      4,
+      1,
+      expect.objectContaining({ overall_quality_grade: "B" }),
     );
     expect(result.file_id).toBe(4);
     expect(result.overall_quality_grade).toBe("B");
+  });
+
+  it("falls back to document_text only when the file has no content", async () => {
+    mockQuery.mockResolvedValue([
+      [
+        {
+          id: 4,
+          filename: "notes.txt",
+          type: "text/plain",
+          content: null,
+          uploaded_time: "2026-01-01T00:00:00Z",
+        },
+      ],
+    ]);
+    (getLLMKeysWithKeyQuery as jest.Mock).mockResolvedValue([
+      { key: "k", url: "", name: "OpenAI", model: "gpt-4", custom_headers: null },
+    ]);
+    (analyzeEvidence as jest.Mock).mockResolvedValue({ overall_quality_grade: "C" });
+
+    await analyzeDocument({ file_id: 4, document_text: "caller supplied text" }, 1);
+
+    expect(analyzeEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({ documentText: "caller supplied text" }),
+    );
   });
 
   it("fails clearly when the file does not exist", async () => {

@@ -61,8 +61,20 @@ describe("getEvidenceGapsQuery", () => {
   it("logs how the organization's links break down, marking the ones it cannot count", async () => {
     mockQuery.mockResolvedValue([
       [
-        { framework_type: "eu_ai_act", entity_type: "subcontrol", links: 2, files: 2 },
-        { framework_type: "eu_ai_act", entity_type: "assessment", links: 1, files: 1 },
+        {
+          framework_type: "eu_ai_act",
+          entity_type: "subcontrol",
+          link_type: "evidence",
+          links: 2,
+          files: 2,
+        },
+        {
+          framework_type: "eu_ai_act",
+          entity_type: "subcontrol",
+          link_type: "feedback",
+          links: 1,
+          files: 1,
+        },
       ],
       0,
     ]);
@@ -72,10 +84,12 @@ describe("getEvidenceGapsQuery", () => {
     const logged: string[] = (logStructured as jest.MockedFunction<any>).mock.calls.map((c: any) =>
       String(c[1]),
     );
-    expect(logged.some((line) => line.includes("eu_ai_act/subcontrol=2 file(s)"))).toBe(true);
-    expect(logged.some((line) => line.includes("eu_ai_act/assessment=1 file(s) NOT COUNTED"))).toBe(
+    expect(logged.some((line) => line.includes("eu_ai_act/subcontrol/evidence=2 file(s)"))).toBe(
       true,
     );
+    expect(
+      logged.some((line) => line.includes("eu_ai_act/subcontrol/feedback=1 file(s) NOT COUNTED")),
+    ).toBe(true);
   });
 
   it("counts EU links by entity type, mapping subcontrols up to their control template", async () => {
@@ -89,6 +103,14 @@ describe("getEvidenceGapsQuery", () => {
     expect(sql).toContain("ce.control_meta_id AS requirement_id");
     expect(sql).toContain("JOIN subcontrols_eu sc ON sc.id = fel.entity_id");
     expect(sql).toContain("JOIN controls_eu ce ON ce.id = sc.control_id");
+  });
+
+  it("counts only evidence links, never feedback files", async () => {
+    await getEvidenceGapsQuery(1);
+    for (const fw of ["eu_ai_act", "iso_42001"]) {
+      // one filter per link source, so a feedback file can enter through neither
+      expect(callFor(fw).sql.match(/fel.link_type = 'evidence'/g)).toHaveLength(2);
+    }
   });
 
   it("leaves assessment links out of the control counts — they are a separate axis", async () => {

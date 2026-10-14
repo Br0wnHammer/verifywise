@@ -43,7 +43,11 @@ import {
   trackUseCaseChanges,
   recordMultipleFieldChanges,
 } from "../utils/useCaseChangeHistory.utils";
-import { hasPendingApprovalQuery } from "../utils/approvalRequest.utils";
+import {
+  hasPendingApprovalQuery,
+  getPendingApprovalRequestIdQuery,
+  withdrawApprovalRequestQuery,
+} from "../utils/approvalRequest.utils";
 import { deleteProjectWithSideEffects } from "../utils/projectDeletion.utils";
 import {
   createUseCaseApprovalRequest,
@@ -606,20 +610,37 @@ export async function updateProjectById(req: Request, res: Response): Promise<an
       const previousWorkflowId = existingProject.approval_workflow_id ?? null;
       const submittedWorkflowId = (updatedProject.approval_workflow_id as number | null) ?? null;
       let updateApprovalResult: Awaited<ReturnType<typeof createUseCaseApprovalRequest>> = null;
-      if (submittedWorkflowId && submittedWorkflowId !== previousWorkflowId) {
-        updateApprovalResult = await createUseCaseApprovalRequest(
-          project as unknown as ProjectModel,
-          req.userId!,
-          req.organizationId!,
-          transaction,
-        );
+      if (submittedWorkflowId !== previousWorkflowId) {
+        // Replacing or clearing the workflow makes any pending request under
+        // the old workflow obsolete (review: A→B left A pending). Withdraw it
+        // in the same transaction so a use case never has two pending
+        // requests; approved/rejected history is untouched.
+        const staleRequestId = previousWorkflowId
+          ? await getPendingApprovalRequestIdQuery(
+              projectId,
+              "use_case",
+              req.organizationId!,
+              transaction,
+            )
+          : null;
+        if (staleRequestId) {
+          await withdrawApprovalRequestQuery(staleRequestId, req.organizationId!, transaction);
+        }
+        if (submittedWorkflowId) {
+          updateApprovalResult = await createUseCaseApprovalRequest(
+            project as unknown as ProjectModel,
+            req.userId!,
+            req.organizationId!,
+            transaction,
+          );
+        }
       }
 
       await transaction.commit();
 
-      // #4905: tell the workflow's step-1 approvers a request awaits them.
-      // Fire-and-forget, as on create; a failure never fails the update.
       if (updateApprovalResult && !updateApprovalResult.autoApproved) {
+        // #4905: tell the workflow's step-1 approvers a request awaits them.
+        // Fire-and-forget, as on create; a failure never fails the update.
         notifyUseCaseApprovalRequested(
           project as unknown as ProjectModel,
           updateApprovalResult,
@@ -635,6 +656,22 @@ export async function updateProjectById(req: Request, res: Response): Promise<an
             userId: req.userId!,
             organizationId: req.organizationId!,
           });
+        });
+      } else if (updateApprovalResult?.autoApproved) {
+        // Same courtesy as the create path: the requester learns the edit-time
+        // request was auto-approved.
+        notifyApprovalAutoApproved(
+          req.organizationId!,
+          req.userId!,
+          {
+            id: updateApprovalResult.request.id!,
+            name: updateApprovalResult.request.request_name,
+          },
+          updateApprovalResult.riskLevel!,
+          updateApprovalResult.threshold!,
+          process.env.FRONTEND_URL || "http://localhost:3000",
+        ).catch((error) => {
+          console.error("Error sending auto-approval notification:", error);
         });
       }
 

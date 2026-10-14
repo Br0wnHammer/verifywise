@@ -1,5 +1,6 @@
 import { Box, Typography, LinearProgress, Stack } from "@mui/material";
 import { status, text as textColors, border, background } from "../../themes/palette";
+import { useTranslation } from "../../../application/hooks/useTranslation";
 
 /** One requirement that has no evidence, or only evidence graded as low quality. */
 interface GapItem {
@@ -75,6 +76,10 @@ function CoverageBar({
 }
 
 export default function EvidenceGapChart({ data, isLoading }: EvidenceGapChartProps) {
+  // Interpolated strings never reach the DOM translator as a whole text node,
+  // so the counted fragments are translated through the hook (#4911 review).
+  const { t } = useTranslation();
+
   if (isLoading) {
     return (
       <Box sx={{ p: 2 }}>
@@ -141,7 +146,7 @@ export default function EvidenceGapChart({ data, isLoading }: EvidenceGapChartPr
       {data.gaps.length > 0 && (
         <Box sx={{ mt: 2 }}>
           <Typography sx={{ fontSize: 12, fontWeight: 600, color: textColors.secondary, mb: 1 }}>
-            Controls needing attention ({data.gaps.length})
+            {t("Controls needing attention")} ({data.gaps.length})
           </Typography>
           <Stack spacing={0.5}>
             {data.gaps.slice(0, VISIBLE_GAPS).map((gap) => {
@@ -185,8 +190,10 @@ export default function EvidenceGapChart({ data, isLoading }: EvidenceGapChartPr
                     }}
                   >
                     {noEvidence
-                      ? "No evidence"
-                      : `${gap.evidence_count} file${gap.evidence_count === 1 ? "" : "s"}, none adequate`}
+                      ? t("No evidence")
+                      : `${gap.evidence_count} ${
+                          gap.evidence_count === 1 ? t("file") : t("files")
+                        }, ${t("none adequate")}`}
                   </Typography>
                 </Box>
               );
@@ -194,7 +201,7 @@ export default function EvidenceGapChart({ data, isLoading }: EvidenceGapChartPr
           </Stack>
           {hiddenGaps > 0 && (
             <Typography sx={{ mt: 1, fontSize: 11, color: textColors.tertiary }}>
-              and {hiddenGaps} more
+              {t("and")} {hiddenGaps} {t("more")}
             </Typography>
           )}
         </Box>
@@ -202,8 +209,8 @@ export default function EvidenceGapChart({ data, isLoading }: EvidenceGapChartPr
 
       {/* What counts as low quality */}
       <Typography sx={{ mt: 2, fontSize: 10, color: textColors.accent }}>
-        Evidence graded {lowGrades} counts as low quality. Files with no AI analysis are not counted
-        as adequate.
+        {t("Evidence graded")} {lowGrades}{" "}
+        {t("counts as low quality. Files with no AI analysis are not counted as adequate.")}
       </Typography>
     </Box>
   );
