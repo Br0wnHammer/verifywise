@@ -123,6 +123,32 @@ describe("analyze_document (#4913)", () => {
     );
     expect(result.file_id).toBe(4);
     expect(result.overall_quality_grade).toBe("B");
+    expect(result.persisted).toBe(true);
+  });
+
+  // Review: a private analysis is visible only to its author. The advisor
+  // must not overwrite it as a public one.
+  it("does not overwrite an existing private analysis", async () => {
+    const fileRow = {
+      id: 4,
+      filename: "policy.pdf",
+      type: "application/pdf",
+      content: Buffer.from("%PDF-1.7 binary"),
+      uploaded_time: "2026-01-01T00:00:00Z",
+    };
+    mockQuery
+      .mockResolvedValueOnce([[fileRow]])
+      .mockResolvedValueOnce([[{ visibility: "private", analyzed_by: 7 }]]);
+    (getLLMKeysWithKeyQuery as jest.Mock).mockResolvedValue([
+      { key: "k", url: "", name: "OpenAI", model: "gpt-4", custom_headers: null },
+    ]);
+    (analyzeEvidence as jest.Mock).mockResolvedValue({ overall_quality_grade: "B" });
+
+    const result = await analyzeDocument({ file_id: 4 }, 1);
+
+    expect(upsertAnalysisQuery).not.toHaveBeenCalled();
+    expect(result.persisted).toBe(false);
+    expect(result.not_persisted_reason).toMatch(/private/i);
   });
 
   it("falls back to document_text only when the file has no content", async () => {
@@ -147,6 +173,25 @@ describe("analyze_document (#4913)", () => {
     expect(analyzeEvidence).toHaveBeenCalledWith(
       expect.objectContaining({ documentText: "caller supplied text" }),
     );
+  });
+
+  // Review: text the model supplied is not the file. Grading it is fine as an
+  // answer in the conversation, but storing it as the file's analysis would
+  // let the gaps view count a control as covered by text never in the file.
+  it("does not store an analysis graded from caller-supplied text", async () => {
+    mockQuery.mockResolvedValue([
+      [{ id: 4, filename: "notes.txt", type: "text/plain", content: null, uploaded_time: null }],
+    ]);
+    (getLLMKeysWithKeyQuery as jest.Mock).mockResolvedValue([
+      { key: "k", url: "", name: "OpenAI", model: "gpt-4", custom_headers: null },
+    ]);
+    (analyzeEvidence as jest.Mock).mockResolvedValue({ overall_quality_grade: "A" });
+
+    const result = await analyzeDocument({ file_id: 4, document_text: "caller supplied text" }, 1);
+
+    expect(upsertAnalysisQuery).not.toHaveBeenCalled();
+    expect(result.persisted).toBe(false);
+    expect(result.not_persisted_reason).toMatch(/stored content/i);
   });
 
   it("fails clearly when the file does not exist", async () => {

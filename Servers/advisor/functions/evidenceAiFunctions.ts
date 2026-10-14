@@ -40,7 +40,9 @@ export interface DetectGapsParams {
  * when the stored row has no content — it can never replace real file
  * content, so invented text cannot be graded as a file. The result is
  * persisted through upsertAnalysisQuery, so it feeds the same gaps and
- * quality views as the endpoint's analysis. Requires an LLM key.
+ * quality views as the endpoint's analysis, except when it was graded from
+ * caller text or would replace a private analysis; `persisted` and
+ * `not_persisted_reason` say which. Requires an LLM key.
  */
 const analyzeDocument = async (
   params: AnalyzeDocumentParams,
@@ -63,6 +65,7 @@ const analyzeDocument = async (
     // Stored content wins; caller text is only a fallback for content-less
     // rows.
     let text = "";
+    let fromStoredContent = false;
     if (file.content) {
       const buffer = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content);
       if (isSupportedMimeType(file.type)) {
@@ -71,7 +74,8 @@ const analyzeDocument = async (
         text = buffer.toString("utf-8");
       }
     }
-    if (!text.trim()) {
+    fromStoredContent = text.trim() !== "";
+    if (!fromStoredContent) {
       text = document_text || "";
     }
     if (!text.trim()) {
@@ -100,24 +104,66 @@ const analyzeDocument = async (
     });
 
     // Persist so the analysis feeds the gaps and quality views like the
-    // endpoint's does. Never fails the call.
+    // endpoint's does, but only when that is safe to do:
+    //  - the text was the file's own stored content. Text the model supplied
+    //    is not the file, and storing a grade for it would let the gaps view
+    //    count a control as covered by text the file never contained;
+    //  - no private analysis exists. A private analysis is visible only to
+    //    its author, and the advisor has no author to keep it private for.
+    // Never fails the call.
+    let persisted = false;
+    let notPersistedReason: string | undefined;
+    let existingAuthor: number | null = null;
     try {
-      await upsertAnalysisQuery(file_id, organizationId, {
-        summary: result.summary,
-        key_findings: result.key_findings,
-        compliance_areas: result.compliance_areas,
-        quality_score: result.quality_score,
-        overall_quality_grade: result.overall_quality_grade,
-        suggested_control_links: result.suggested_control_links,
-        analysis_model: result.analysis_model,
-        analyzed_by: null,
-        audit_metadata: result.audit,
-      });
-    } catch (persistError) {
-      logger.error("Failed to persist advisor document analysis:", persistError);
+      if (!fromStoredContent) {
+        notPersistedReason =
+          "Not stored: the file has no stored content, so this was graded from text supplied in the conversation.";
+      } else {
+        const [existingRows] = await sequelize.query(
+          `SELECT visibility, analyzed_by
+             FROM evidence_ai_analysis
+            WHERE file_id = :fileId AND organization_id = :organizationId
+            LIMIT 1`,
+          { replacements: { fileId: file_id, organizationId } },
+        );
+        const existing = (existingRows as any[])[0];
+        existingAuthor = existing?.analyzed_by ?? null;
+        if (existing?.visibility === "private") {
+          notPersistedReason =
+            "Not stored: this file already has a private analysis, which is left as it is.";
+        }
+      }
+    } catch (lookupError) {
+      logger.error("Failed to check for an existing document analysis:", lookupError);
+      notPersistedReason = "Not stored: the existing analysis could not be checked.";
+    }
+    if (!notPersistedReason) {
+      try {
+        await upsertAnalysisQuery(file_id, organizationId, {
+          summary: result.summary,
+          key_findings: result.key_findings,
+          compliance_areas: result.compliance_areas,
+          quality_score: result.quality_score,
+          overall_quality_grade: result.overall_quality_grade,
+          suggested_control_links: result.suggested_control_links,
+          analysis_model: result.analysis_model,
+          // Keep the author of a public analysis this replaces.
+          analyzed_by: existingAuthor,
+          audit_metadata: result.audit,
+        });
+        persisted = true;
+      } catch (persistError) {
+        logger.error("Failed to persist advisor document analysis:", persistError);
+        notPersistedReason = "Not stored: saving the analysis failed.";
+      }
     }
 
-    return { file_id, ...result };
+    return {
+      file_id,
+      ...result,
+      persisted,
+      ...(notPersistedReason ? { not_persisted_reason: notPersistedReason } : {}),
+    };
   } catch (error) {
     logger.error("Error analyzing document:", error);
     throw new Error(
