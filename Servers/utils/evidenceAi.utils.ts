@@ -295,14 +295,48 @@ const logLinkBreakdown = async (organizationId: number, fwTypes: string[]) => {
 /**
  * Get evidence gap analysis — controls lacking evidence or with low quality.
  */
+/** Platform framework ids for the frameworks evidence gaps are computed for. */
+const EVIDENCE_FRAMEWORK_IDS: Record<string, number> = { eu_ai_act: 1, iso_42001: 2 };
+
+/**
+ * The evidence frameworks the organization has adopted on at least one use
+ * case. Coverage over a framework nobody uses reads as a gap in every one of
+ * its controls, so an unfiltered coverage view is limited to these.
+ */
+export const getAdoptedEvidenceFrameworksQuery = async (
+  organizationId: number,
+): Promise<string[]> => {
+  const [rows] = await sequelize.query(
+    `SELECT DISTINCT framework_id
+       FROM projects_frameworks
+      WHERE organization_id = :organizationId
+        AND framework_id IN (:frameworkIds)`,
+    {
+      replacements: { organizationId, frameworkIds: Object.values(EVIDENCE_FRAMEWORK_IDS) },
+    },
+  );
+  const adopted = new Set((rows as any[]).map((r) => Number(r.framework_id)));
+  return Object.entries(EVIDENCE_FRAMEWORK_IDS)
+    .filter(([, id]) => adopted.has(id))
+    .map(([key]) => key);
+};
+
 export const getEvidenceGapsQuery = async (
   organizationId: number,
   frameworkType?: string,
   lowGrades: QualityGrade[] = ["D", "F"],
   /** Restrict counted evidence to files uploaded under this project. */
   projectId?: number,
+  /**
+   * With no `frameworkType`, check only these frameworks instead of every one
+   * this module knows (see getAdoptedEvidenceFrameworksQuery).
+   */
+  onlyFrameworks?: string[],
 ) => {
-  const fwTypes = frameworkType ? [frameworkType] : Object.keys(EVIDENCE_REQUIREMENT_SOURCES);
+  const fwTypes = frameworkType
+    ? [frameworkType]
+    : (onlyFrameworks ?? Object.keys(EVIDENCE_REQUIREMENT_SOURCES));
+  if (fwTypes.length === 0) return [];
   const known = fwTypes.filter((fw) => EVIDENCE_REQUIREMENT_SOURCES[fw]);
 
   if (known.length === 0) {

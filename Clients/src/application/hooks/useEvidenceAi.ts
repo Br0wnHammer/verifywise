@@ -103,6 +103,9 @@ export const useTriggerAnalysis = () => {
       queryClient.invalidateQueries({ queryKey: evidenceAiQueryKeys.analysis(fileId) });
       queryClient.invalidateQueries({ queryKey: evidenceAiQueryKeys.qualityScores() });
       queryClient.invalidateQueries({ queryKey: evidenceAiQueryKeys.suggestions(fileId) });
+      // Analysis writes a grade and may auto-link controls, both of which
+      // change the coverage counts.
+      queryClient.invalidateQueries({ queryKey: evidenceAiQueryKeys.gapsAll() });
     },
   });
 };

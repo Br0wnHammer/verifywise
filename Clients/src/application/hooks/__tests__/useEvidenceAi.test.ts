@@ -199,6 +199,21 @@ describe("useEvidenceAi", () => {
 
       expect(mockTriggerAnalysis).toHaveBeenCalledWith(2, "public");
     });
+
+    // Review: analysis writes a grade and can link controls, both of which
+    // change the coverage panel's counts.
+    it("refreshes evidence gaps after an analysis", async () => {
+      mockTriggerAnalysis.mockResolvedValue({ data: { success: true } });
+      const { wrapper, queryClient } = createWrapperWithClient();
+      const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+      const { result } = renderHook(() => useTriggerAnalysis(), { wrapper });
+
+      await act(async () => {
+        await result.current.mutateAsync(3);
+      });
+
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: evidenceAiQueryKeys.gapsAll() });
+    });
   });
 
   describe("useApplySuggestions", () => {

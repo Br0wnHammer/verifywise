@@ -15,7 +15,7 @@ jest.mock("../logger/fileLogger", () => ({
 }));
 
 import { sequelize } from "../../database/db";
-import { getEvidenceGapsQuery } from "../evidenceAi.utils";
+import { getAdoptedEvidenceFrameworksQuery, getEvidenceGapsQuery } from "../evidenceAi.utils";
 import { logStructured } from "../logger/fileLogger";
 
 const mockQuery = sequelize.query as jest.MockedFunction<any>;
@@ -50,6 +50,20 @@ describe("getEvidenceGapsQuery", () => {
     await getEvidenceGapsQuery(1, "iso_42001");
     expect(gapQueries()).toHaveLength(1);
     expect(callFor("iso_42001").sql).toContain("annexcategories_struct_iso");
+  });
+
+  // Review: the panel counted every EU AI Act and ISO 42001 control for an
+  // org that uses only one of them, so coverage read near zero.
+  it("queries only the frameworks it is limited to", async () => {
+    await getEvidenceGapsQuery(1, undefined, undefined, undefined, ["iso_42001"]);
+    expect(gapQueries()).toHaveLength(1);
+    expect(callFor("iso_42001").sql).toContain("annexcategories_struct_iso");
+  });
+
+  it("returns no gaps when limited to no frameworks", async () => {
+    const gaps = await getEvidenceGapsQuery(1, undefined, undefined, undefined, []);
+    expect(gaps).toEqual([]);
+    expect(gapQueries()).toHaveLength(0);
   });
 
   it("ignores an unknown framework rather than building SQL for it", async () => {
@@ -171,5 +185,25 @@ describe("getEvidenceGapsQuery", () => {
   it("passes the low grades through to the adequacy filter", async () => {
     await getEvidenceGapsQuery(1, "eu_ai_act", ["C", "D", "F"]);
     expect(callFor("eu_ai_act").replacements.lowGrades).toEqual(["C", "D", "F"]);
+  });
+});
+
+describe("getAdoptedEvidenceFrameworksQuery", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("maps the organization's adopted framework ids to evidence frameworks", async () => {
+    mockQuery.mockResolvedValueOnce([[{ framework_id: 2 }, { framework_id: 3 }]]);
+    const adopted = await getAdoptedEvidenceFrameworksQuery(9);
+    expect(adopted).toEqual(["iso_42001"]);
+    const [sql, options] = mockQuery.mock.calls[0];
+    expect(sql).toContain("projects_frameworks");
+    expect(options.replacements).toMatchObject({ organizationId: 9 });
+  });
+
+  it("returns both when both are adopted, in a stable order", async () => {
+    mockQuery.mockResolvedValueOnce([[{ framework_id: 2 }, { framework_id: 1 }]]);
+    expect(await getAdoptedEvidenceFrameworksQuery(9)).toEqual(["eu_ai_act", "iso_42001"]);
   });
 });
