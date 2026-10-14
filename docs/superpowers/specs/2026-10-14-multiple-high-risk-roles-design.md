@@ -66,7 +66,12 @@ term; the closest is "downstream provider" in the general-purpose AI chapter.
     `jiraAssets.service.ts`). A missed one does **not** fail: the property is
     `undefined` and the value silently disappears. So project rows leaving the
     data layer go through one helper, `withLegacyHighRiskRole(row)`, which adds
-    the derived `type_of_high_risk_role`, and a grep for
+    the derived `type_of_high_risk_role`. Known `SELECT *` / `p.*` project
+    readers that feed API responses: the project list (`project.utils.ts`
+    base query), user projects (`user.utils.ts`), report data
+    (`services/reporting/dataCollector.ts`) and share links
+    (`shareLink.ctrl.ts`); none read the role by name, but project responses
+    built from them get the derived field. A grep for
     `.type_of_high_risk_role` property access across `Servers/` is part of the
     task, not just for the column name.
 - **Binding arrays in raw SQL.** Sequelize expands an array replacement into a
@@ -210,6 +215,10 @@ categories endpoint — need no change beyond what they pass through.
 - `project.mapper.ts`: `mapHighRiskRoles` maps to the list; unknown values are
   dropped (no more silent default to Provider). Legacy inputs (`not_applicable`,
   1, 2, a single string) still map.
+- `ComplianceTracker/1.0ComplianceTracker/index.tsx` re-fetches when the role
+  changes; its effect depends on a joined string key
+  (`high_risk_roles.join(",")`), not the array, so a re-fetched project with
+  the same roles does not reload.
 - Frontend DTOs, types and ports carry `high_risk_roles: HighRiskRole[]`; the
   legacy field is read only where an external shape needs it.
 - New and changed strings get de, fr and es entries in `Clients/src/i18n/translations.ts`.
@@ -226,8 +235,10 @@ categories endpoint — need no change beyond what they pass through.
 - `Servers/swagger.yaml` regenerated (`npm run generate:swagger`,
   `generate:endpoints`, `check:api-drift`); `Servers/docs/api/projects-openapi.yaml`
   updated by hand if it is not generated.
-- Stale schema copies (`Servers/SQL_Commands.sql`, `Servers/docs/schema.dbml`)
-  updated for the new column.
+- Stale schema copies (`Servers/SQL_Commands.sql`, `Servers/docs/schema.dbml`,
+  `docs/technical/architecture/database-schema.md`) updated for the new column;
+  `docs/technical/domains/readiness.md` and `Servers/documentation/*/project.md`
+  updated where they name the field.
 
 ### Testing
 
