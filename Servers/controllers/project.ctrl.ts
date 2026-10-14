@@ -292,7 +292,10 @@ export async function createProject(req: Request, res: Response): Promise<any> {
             start_date: createdProject.start_date,
             geography: createdProject.geography,
             ai_risk_classification: createdProject.ai_risk_classification,
-            type_of_high_risk_role: createdProject.type_of_high_risk_role,
+            // An empty list is no value, so creation records no roles line.
+            high_risk_roles: createdProject.high_risk_roles?.length
+              ? createdProject.high_risk_roles
+              : undefined,
             goal: createdProject.goal,
             target_industry: createdProject.target_industry,
             description: createdProject.description,

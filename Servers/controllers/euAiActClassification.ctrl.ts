@@ -141,7 +141,7 @@ export async function classifyUseCase(req: Request, res: Response) {
     const updated = await setUseCaseClassificationQuery(
       useCaseId,
       result.level,
-      result.role,
+      result.role ? [result.role] : [],
       req.userId!,
       req.organizationId!,
       transaction,

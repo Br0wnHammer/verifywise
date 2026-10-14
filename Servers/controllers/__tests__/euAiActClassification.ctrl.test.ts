@@ -132,7 +132,7 @@ describe("euAiActClassification.ctrl", () => {
     expect(setUseCaseClassificationQuery).toHaveBeenCalledWith(
       3,
       "High risk",
-      "Provider",
+      ["Provider"],
       7,
       5,
       expect.anything(),

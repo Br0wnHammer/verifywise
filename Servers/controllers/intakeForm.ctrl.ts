@@ -77,6 +77,7 @@ import { generateSuggestedQuestions, generateFieldGuidance } from "../services/i
 import { getCompanyLogoQuery } from "../utils/aiTrustCentre.utils";
 
 import { translateError } from "../utils/i18n.utils";
+import { highRiskRolesFromEntityData } from "../utils/highRiskRoles.utils";
 import { toId } from "../utils/validations/validation.utils";
 import { isEmail } from "../utils/validations/email.utils";
 /** Safely extract a single string from req.params (which may be string | string[]). */
@@ -1469,7 +1470,7 @@ export async function approveSubmission(req: Request, res: Response) {
           goal: (entityData.goal as string) || (entityData.description as string) || "",
           owner: req.userId!,
           ai_risk_classification: aiRiskClassification as any,
-          type_of_high_risk_role: (entityData.type_of_high_risk_role as string as any) || undefined,
+          high_risk_roles: highRiskRolesFromEntityData(entityData),
           geography: entityData.geography ? Number(entityData.geography) : 1,
           status: ProjectStatus.UNDER_REVIEW,
         },

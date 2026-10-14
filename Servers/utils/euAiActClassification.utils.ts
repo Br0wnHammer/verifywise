@@ -1,5 +1,6 @@
 import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../database/db";
+import { highRiskRolesArraySql, normalizeHighRiskRoles } from "./highRiskRoles.utils";
 import {
   Answers,
   ClassificationResult,
@@ -96,25 +97,31 @@ export const getLatestRunForSubmissionQuery = (
 ) => latestRun("intake_submission_id", submissionId, organizationId, transaction);
 
 /**
- * Set a use case's level (and role, when the questionnaire asked it) without
- * going through the general project update, which also rewrites members and
- * fires the project-updated automation.
+ * Set a use case's level, and its roles when the questionnaire named any,
+ * without going through the general project update, which also rewrites
+ * members and fires the project-updated automation. An empty role list leaves
+ * the stored roles unchanged (an Out of scope result names no role).
  */
 export const setUseCaseClassificationQuery = async (
   useCaseId: number,
   level: string,
-  role: ClassificationRole | null,
+  roles: readonly string[],
   userId: number,
   organizationId: number,
   transaction: Transaction,
 ): Promise<boolean> => {
+  const roleList = normalizeHighRiskRoles(roles);
+  const rolesWrite = highRiskRolesArraySql(roleList, "roles");
+  const rolesClause = roleList.length > 0 ? `high_risk_roles = ${rolesWrite.sql},` : "";
   const [rows] = (await sequelize.query(
-    `UPDATE projects SET ai_risk_classification = :level,
-       type_of_high_risk_role = COALESCE(:role, type_of_high_risk_role),
+    `UPDATE projects SET ai_risk_classification = :level, ${rolesClause}
        last_updated = NOW(), last_updated_by = :userId
      WHERE organization_id = :organizationId AND id = :useCaseId
      RETURNING id`,
-    { replacements: { level, role, userId, organizationId, useCaseId }, transaction },
+    {
+      replacements: { level, userId, organizationId, useCaseId, ...rolesWrite.replacements },
+      transaction,
+    },
   )) as [Array<{ id: number }>, number];
   return rows.length > 0;
 };

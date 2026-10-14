@@ -51,9 +51,18 @@ describe("euAiActClassification.utils", () => {
   it("updates only the classification columns of a use case in the organization", async () => {
     query.mockResolvedValue([[{ id: 3 }], 1]);
     await expect(
-      setUseCaseClassificationQuery(3, "High risk", "Provider", 7, 5, {} as any),
+      setUseCaseClassificationQuery(3, "High risk", ["Deployer", "Provider"], 7, 5, {} as any),
     ).resolves.toBe(true);
     expect(sql()).toContain("UPDATE projects SET ai_risk_classification = :level");
+    expect(sql()).toContain("high_risk_roles = ARRAY[:roles]::text[]");
+    expect(replacements().roles).toEqual(["Provider", "Deployer"]);
     expect(sql()).toContain("WHERE organization_id = :organizationId AND id = :useCaseId");
+  });
+
+  it("leaves the roles unchanged when the result names none", async () => {
+    query.mockResolvedValue([[{ id: 3 }], 1]);
+    await setUseCaseClassificationQuery(3, "Out of scope", [], 7, 5, {} as any);
+    expect(sql()).not.toContain("high_risk_roles");
+    expect(replacements()).not.toHaveProperty("roles");
   });
 });

@@ -356,7 +356,7 @@ describe("approval with the EU AI Act step", () => {
     expect(r.status).toHaveBeenCalledWith(200);
     expect(projects.createNewProjectQuery.mock.calls[0][0]).toMatchObject({
       ai_risk_classification: "High risk",
-      type_of_high_risk_role: "Provider",
+      high_risk_roles: ["Provider"],
     });
     expect(projects.createNewProjectQuery.mock.calls[0][2]).toEqual([]);
     expect(euFramework.createEUFrameworkQuery).not.toHaveBeenCalled();
@@ -377,7 +377,7 @@ describe("approval with the EU AI Act step", () => {
     expect(r.status).toHaveBeenCalledWith(200);
     expect(projects.createNewProjectQuery.mock.calls[0][0]).toMatchObject({
       ai_risk_classification: "Out of scope",
-      type_of_high_risk_role: "Provider",
+      high_risk_roles: ["Provider"],
     });
   });
 
@@ -389,7 +389,7 @@ describe("approval with the EU AI Act step", () => {
     expect(r.status).toHaveBeenCalledWith(200);
     expect(projects.createNewProjectQuery.mock.calls[0][0]).toMatchObject({
       ai_risk_classification: "Limited risk",
-      type_of_high_risk_role: "Deployer",
+      high_risk_roles: ["Deployer"],
     });
     expect(runs.insertClassificationRunQuery.mock.calls[0][0]).toMatchObject({
       useCaseId: 50,
@@ -477,7 +477,7 @@ describe("approval with the EU AI Act step", () => {
     expect(euFramework.createEUFrameworkQuery).not.toHaveBeenCalled();
     expect(projects.createNewProjectQuery.mock.calls[0][0]).toMatchObject({
       ai_risk_classification: "High risk",
-      type_of_high_risk_role: "Provider",
+      high_risk_roles: ["Provider"],
     });
     expect(runs.insertClassificationRunQuery).not.toHaveBeenCalled();
     expect(history.recordMultipleFieldChanges).not.toHaveBeenCalled();
