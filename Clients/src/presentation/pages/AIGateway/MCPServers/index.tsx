@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Typography, Stack, IconButton, Tooltip } from "@mui/material";
 import {
   CirclePlus,
@@ -94,10 +94,19 @@ export default function MCPServersPage() {
 
   // Fixed phrases go in the title (and the 0/1 tool counts in the body) so each
   // renders as its own text node and the DOM translator can match it.
+  // One dismiss timer at a time: an older alert's timer must not close a newer one.
+  const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showAlert = (variant: "success" | "warning" | "error", title: string, body?: string) => {
+    if (alertTimer.current) clearTimeout(alertTimer.current);
     setAlert({ variant, title, body });
-    setTimeout(() => setAlert(null), 6000);
+    alertTimer.current = setTimeout(() => setAlert(null), 6000);
   };
+  useEffect(
+    () => () => {
+      if (alertTimer.current) clearTimeout(alertTimer.current);
+    },
+    [],
+  );
 
   type Discovery = {
     status: "success" | "failed" | "skipped";
