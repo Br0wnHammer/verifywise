@@ -52,13 +52,17 @@ def fakes(monkeypatch):
 
     async def create(org_id, data):
         state["saved"] = data
-        return {**_row(), **data, "id": 9}
+        row = {**_row(), **data, "id": 9}
+        row.pop("tool_count")  # RETURNING * has no computed tool_count
+        return row
 
     async def update(org_id, server_id, data):
         state["saved"] = data
         merged = {**state["row"], **data}
         state["row"] = merged
-        return dict(merged)
+        merged = dict(merged)
+        merged.pop("tool_count", None)  # RETURNING * has no computed tool_count
+        return merged
 
     async def discover(org_id, server, budget):
         state["discovery"].append((server["id"], budget))
@@ -182,3 +186,32 @@ class TestUndecryptableSecret:
         assert srv["id"] == 9
         assert "auth_secret_hint" not in srv
         assert "auth_config" not in srv
+
+    async def test_forced_failure_is_logged_without_secrets(self, fakes, monkeypatch, caplog):
+        from cryptography.exceptions import InvalidTag
+
+        def boom(*a, **k):
+            raise InvalidTag()
+
+        monkeypatch.setattr(router, "public_auth_fields", boom)
+        fakes["row"] = _row(auth_config={"header": "X-K", "key_enc": "SECRET-CIPHERTEXT"})
+        with caplog.at_level("WARNING"):
+            out = await router.list_mcp_servers(_request())
+        srv = out["servers"][0]
+        assert srv["id"] == 9
+        assert "auth_secret_hint" not in srv and "auth_header" not in srv
+        assert "9" in caplog.text
+        assert "SECRET-CIPHERTEXT" not in caplog.text and "abcd1234wxyz" not in caplog.text
+
+
+class TestToolCountAlways:
+    async def test_create_skipped_has_tool_count(self, fakes):
+        body = {"name": "S", "slug": "s", "url": "https://a/mcp", "auth_type": "none", "is_active": False}
+        out = await router.create_mcp_server(_request(body))
+        assert out["discovery"]["status"] == "skipped"
+        assert "tool_count" in out["server"]
+
+    async def test_patch_skipped_has_tool_count(self, fakes):
+        out = await router.update_mcp_server(9, _request({"name": "Renamed"}))
+        assert out["discovery"]["status"] == "skipped"
+        assert "tool_count" in out["server"]

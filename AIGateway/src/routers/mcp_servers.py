@@ -125,7 +125,7 @@ async def create_mcp_server(request: Request) -> Any:
     discovery = SKIPPED
     if server.get("is_active", True):
         discovery = await run_discovery(org_id, server, ON_SAVE_DISCOVERY_SECONDS)
-        server = await mcp_servers_crud.get_mcp_server(org_id, server["id"]) or server
+    server = await mcp_servers_crud.get_mcp_server(org_id, server["id"]) or server
     return {"server": _present(server, request), "discovery": discovery}
 
 
@@ -172,7 +172,7 @@ async def update_mcp_server(server_id: int, request: Request) -> Any:
     discovery = SKIPPED
     if updated.get("is_active") and (connection_changed or enabling):
         discovery = await run_discovery(org_id, updated, ON_SAVE_DISCOVERY_SECONDS)
-        updated = await mcp_servers_crud.get_mcp_server(org_id, server_id) or updated
+    updated = await mcp_servers_crud.get_mcp_server(org_id, server_id) or updated
     return {"server": _present(updated, request), "discovery": discovery}
 
 
