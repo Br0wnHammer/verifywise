@@ -45,7 +45,7 @@
 
 1. **A client that reads the derived `type_of_high_risk_role` and writes it back** (`PATCH {type_of_high_risk_role: "Provider"}` on a use case with both roles) must keep both roles. Pinned in Task 3, Step 1 (`keeps both roles when an older client writes back the derived role`).
 2. **An empty role list reaching SQL** (a use case with no role in the requirements filter, a create with no role, a wizard result with no role) must not bind `[]` (Sequelize makes it `NULL`) and must match no role-filtered category. Pinned in Task 2, Step 1 (eu.utils and project.utils SQL tests) and the Task 2 integration test.
-3. **A stored questionnaire run whose `role` is the string `"deployer"`** (every run saved before deploy) must still validate on approval, on resubmission prefill and in the public risk step, and score exactly as before. Pinned in Task 4, Step 1 (validate, intakeStep, score tests) and Task 5, Step 1 (approval and prefill tests).
+3. **A stored questionnaire run whose `role` is the string `"deployer"`** (every run saved before deploy) must still validate on approval, on resubmission prefill and in the public risk step, and score exactly as before. Pinned in Task 4, Step 1 (validate, intakeStep, score tests and the resubmission prefill in 1g) and Task 5, Step 1 (approval tests).
 4. **The same roles in another order** (`["Deployer","Provider"]` saved over `["Provider","Deployer"]`) must record no change-history entry and add no "changed" line to the project-updated automation. Pinned in Task 3, Step 1 (change history) and Task 6, Step 1 (automation summary).
 5. **An intake select whose option values are codes** (`opt_1` labelled "Provider", `opt_2` labelled "Importer") mapped to the role field must resolve by label, and the unmatched option must be visible to the reviewer. Pinned in Task 5, Step 1 (preview) and Task 10, Step 1 (review dialog note).
 
@@ -1262,6 +1262,8 @@ psql -h localhost -p 5432 -U "$DBU" -d verifywise -At -f "$SP/visible-after.sql"
 
 Expected: `SAME-ROLES`, then `SAME-VISIBLE-AGAIN`. The dev DB ends migrated up.
 
+**The dev database is shared.** Once it is migrated up, a backend started from `develop` (or any branch without this migration) fails on every project read and write, because `projects.type_of_high_risk_role` no longer exists. To work on another branch, roll this migration back first from this branch: `cd Servers && npm run build && npx sequelize db:migrate:undo` (lossy only for use cases given both roles). Say in the task report that the dev DB is now migrated up.
+
 - [ ] **Step 12: Run the integration tests touched here**
 
 Run: `cd Servers && npm run test:integration -- tests/integration/euVisibleCategories.highRiskRoles.test.ts tests/integration/report-scope-authorization.test.ts tests/integration/report-scope-membership.test.ts tests/integration/report-run-visibility.test.ts`
@@ -1951,7 +1953,8 @@ projects OpenAPI file document the list and mark the single role deprecated."
 - Consumes (Task 1): `formatHighRiskRoles`, `sameHighRiskRoles`, `legacyHighRiskRole`, `highRiskRolesArraySql`. (Task 2): `setUseCaseClassificationQuery(useCaseId, level, roles: readonly string[], ...)`.
 - Produces:
   - `Question.acceptsSingleValue?: boolean` — a `multi_select` question that was `single_select` in saved answers.
-  - `ClassificationResult.roles: ClassificationRole[]` (Provider first) next to `role: ClassificationRole | null` (= `roles[0] ?? null`). Results stored before this change have no `roles`; readers fall back to `role`.
+  - `ClassificationResult.roles: ClassificationRole[]` (Provider first, always set by the scorer) next to `role: ClassificationRole | null` (= `roles[0] ?? null`).
+  - `StoredClassificationResult = Omit<ClassificationResult, "roles"> & { roles?: ClassificationRole[] }` — what `ClassificationRun.result` holds; results stored before this change have no `roles`, so readers use `result.roles ?? result.role`.
   - `toRoles(answer: string | string[] | undefined): ClassificationRole[]` exported from `score.v2.ts`.
   - `validateAnswers` returns a saved string answer to an `acceptsSingleValue` question as a one-item array.
   - `ClassificationRun.roles: ClassificationRole[]`; `NewClassificationRun = Omit<ClassificationRun, "id" | "organizationId" | "createdAt" | "role">` — callers pass `roles`; the insert stores `roles` and the derived `role`.
@@ -2123,6 +2126,19 @@ and add:
 
 1f. `Servers/controllers/__tests__/intakeForm.riskStep.test.ts`, test `"stores and shows the computed role, not the role stored with the run"`: replace `expect(runs.insertClassificationRunQuery.mock.calls[0][0].role).toBe("Deployer");` with `expect(runs.insertClassificationRunQuery.mock.calls[0][0].roles).toEqual(["Deployer"]);`. In `"%s: stores a server-scored run and returns no classification"` add `expect(run.roles).toEqual(["Deployer"]);`.
 
+1g. Same file, `describe("public form with a resubmission token", ...)`, test `"returns the previous risk answers when the step is on"` (around line 533): `validateAnswers` now returns the saved `role: "deployer"` as a list, so the resubmission prefill returns the array. Replace
+
+```ts
+    expect(data.previousRiskAnswers).toEqual(ANSWERS);
+```
+
+with
+
+```ts
+    // A run saved with a single-role string comes back as a one-item list.
+    expect(data.previousRiskAnswers).toEqual({ ...ANSWERS, role: ["deployer"] });
+```
+
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `cd Servers && npx jest services/euAiActClassification utils/__tests__/euAiActClassification.utils.test.ts controllers/__tests__/euAiActClassification.ctrl.test.ts controllers/__tests__/intakeForm.riskStep.test.ts`
@@ -2143,10 +2159,23 @@ Expected: FAIL — a string role still validates without being converted, result
 and in `ClassificationResult` replace `role: ClassificationRole | null;` with:
 
 ```ts
-  /** The roles the answers name, Provider first. Results stored before roles existed lack it. */
+  /** The roles the answers name, Provider first. Always set by the scorer. */
   roles: ClassificationRole[];
   /** Deprecated single role: Provider when present, else Deployer, else null. */
   role: ClassificationRole | null;
+```
+
+and add after the `ClassificationResult` interface:
+
+```ts
+/**
+ * A result as stored in eu_ai_act_classifications.result (JSONB). Results
+ * stored before the role list existed have no `roles`; read them with
+ * `result.roles ?? result.role`.
+ */
+export type StoredClassificationResult = Omit<ClassificationResult, "roles"> & {
+  roles?: ClassificationRole[];
+};
 ```
 
 `Servers/services/euAiActClassification/questionnaire.v2.ts`: the role question becomes (options and `showWhen` unchanged; the version is not bumped):
@@ -2254,8 +2283,8 @@ In `scoreV2`: `const role = toRole(answers.role);` becomes `const roles = toRole
 - [ ] **Step 6: Run storage**
 
 In `Servers/utils/euAiActClassification.utils.ts`:
-- `import { highRiskRolesArraySql, legacyHighRiskRole } from "./highRiskRoles.utils";` (merge with the Task 2 import; `normalizeHighRiskRoles` stays used by `setUseCaseClassificationQuery`).
-- `ClassificationRun`: after `role: ClassificationRole | null;` add `roles: ClassificationRole[];`.
+- The file already imports `{ highRiskRolesArraySql, normalizeHighRiskRoles } from "./highRiskRoles.utils"`; change that line to `import { highRiskRolesArraySql, legacyHighRiskRole, normalizeHighRiskRoles } from "./highRiskRoles.utils";` (`normalizeHighRiskRoles` stays used by `setUseCaseClassificationQuery`).
+- `ClassificationRun`: after `role: ClassificationRole | null;` add `roles: ClassificationRole[];` (the column is `NOT NULL DEFAULT '{}'` and was backfilled, so it is always present), and change `result: ClassificationResult;` to `result: StoredClassificationResult;` (import `StoredClassificationResult` from `../services/euAiActClassification` next to the existing imports) — old stored results lack `roles`. A freshly scored `ClassificationResult` is still assignable to it when inserting.
 - `export type NewClassificationRun = Omit<ClassificationRun, "id" | "organizationId" | "createdAt" | "role">;` with the comment `/** The single role column is derived from roles on insert. */` above it.
 - `RUN_COLUMNS`: `questionnaire_version AS "questionnaireVersion", role, roles, answers, result,`.
 - `insertClassificationRunQuery`: before the query add `const roles = highRiskRolesArraySql(run.roles, "roles");`; the column list becomes `(organization_id, use_case_id, intake_submission_id, questionnaire_version, role, roles, answers, result, reviewer_level, reviewer_justification, reviewed_by, source, created_by)`; the values `(:organizationId, :useCaseId, :intakeSubmissionId, :questionnaireVersion, :role, ${roles.sql}, :answers, :result, :reviewerLevel, :reviewerJustification, :reviewedBy, :source, :createdBy)`; in `replacements` replace `role: run.role,` with `role: legacyHighRiskRole(run.roles),` and add `...roles.replacements,`.
@@ -2281,7 +2310,7 @@ In `Servers/utils/euAiActClassification.utils.ts`:
 - [ ] **Step 8: Run the tests and the gate**
 
 Run: `cd Servers && npx jest services/euAiActClassification utils/__tests__/euAiActClassification.utils.test.ts controllers/__tests__/euAiActClassification.ctrl.test.ts controllers/__tests__/intakeForm.riskStep.test.ts && npm run build && npm run format-check && npm run test`
-Expected: PASS. If an intake test still expects `previousRiskAnswers` to equal `ANSWERS` with `role: "deployer"`, it is fixed in Task 5 Step 1; do not change it here unless it fails here, in which case apply Task 5 Step 1b now.
+Expected: PASS.
 
 - [ ] **Step 9: Commit**
 
@@ -2434,12 +2463,7 @@ In `Servers/controllers/__tests__/intakeForm.riskStep.test.ts`:
   });
 ```
 
-1b. In `describe("public form with a resubmission token", ...)`, test `"returns the previous risk answers when the step is on"`: change the expectation to
-
-```ts
-    // A run saved with a single-role string comes back as a one-item list.
-    expect(data.previousRiskAnswers).toEqual({ ...ANSWERS, role: ["deployer"] });
-```
+(The resubmission-prefill expectation for a single-role string was already updated in Task 4, Step 1g.)
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -2448,7 +2472,7 @@ Expected: FAIL — the preview copies the raw answer to `type_of_high_risk_role`
 
 - [ ] **Step 3: Implement**
 
-In `Servers/controllers/intakeForm.ctrl.ts` extend the Task 2 import to `import { HIGH_RISK_ROLE_MAPPING, highRiskRolesFromEntityData, resolveMappedHighRiskRoles, sameHighRiskRoles } from "../utils/highRiskRoles.utils";`.
+In `Servers/controllers/intakeForm.ctrl.ts` the file already has `import { highRiskRolesFromEntityData } from "../utils/highRiskRoles.utils";`; replace that line with `import { HIGH_RISK_ROLE_MAPPING, highRiskRolesFromEntityData, resolveMappedHighRiskRoles, sameHighRiskRoles } from "../utils/highRiskRoles.utils";`.
 
 `buildEntityDataFromSubmission` becomes:
 
@@ -2512,7 +2536,7 @@ with
         ...(computed.roles.length > 0 ? { high_risk_roles: computed.roles } : {}),
 ```
 
-Update the comment above (`The computed role replaces the dialog's role, which stays only when the result has no role`) to say "roles". The `createNewProjectQuery` argument from Task 2 (`high_risk_roles: highRiskRolesFromEntityData(entityData)`) already reads the list first and the legacy field second.
+Update the comment above (`The computed role replaces the dialog's role, which stays only when the result has no role`) to say "roles". The `createNewProjectQuery` argument already reads `high_risk_roles: highRiskRolesFromEntityData(entityData)`, which takes the list first and the legacy field second; leave it.
 
 - [ ] **Step 4: Run the tests and the gate**
 
@@ -2545,7 +2569,7 @@ submission. Runs saved with a single-role string still approve and prefill."
 - Modify: `Servers/utils/automation/project.automation.utils.ts`
 - Modify: `Servers/extensions/jira-assets/jiraAssets.service.ts:1404-1412`
 - Modify: `Servers/controllers/shareLink.ctrl.ts` (both `resourceData = ...` assignments, ~800 and ~823)
-- Modify: `Servers/advisor/functions/useCaseFunctions.ts` (`created` after the INSERT, ~221)
+- Modify: `Servers/advisor/functions/useCaseFunctions.ts` (`created` after the INSERT ~224; `updated` in the update tools ~269 and ~283)
 - Test: create `Servers/utils/__tests__/project.automation.utils.test.ts`; modify `Servers/extensions/jira-assets/__tests__/jiraAssets.service.test.ts`
 
 **Interfaces:**
@@ -2683,7 +2707,9 @@ and `resourceData = resourceResult[0]; // Return single record` with
         resourceType === "project" ? withLegacyHighRiskRole(resourceResult[0]) : resourceResult[0];
 ```
 
-`Servers/advisor/functions/useCaseFunctions.ts`: add `import { withLegacyHighRiskRole } from "../../utils/highRiskRoles.utils";` and wrap the created row: `const created = withLegacyHighRiskRole((result as any)[0]?.[0] || (result as any)[0]);`.
+`Servers/advisor/functions/useCaseFunctions.ts`: add `import { withLegacyHighRiskRole } from "../../utils/highRiskRoles.utils";` and wrap the three `RETURNING *` rows the tools hand back:
+- create (~224): `const created = withLegacyHighRiskRole((result as any)[0]?.[0] || (result as any)[0]);`
+- update use case (~269) and update status (~283): each `const updated = (result as any)[0]?.[0] || (result as any)[0];` becomes `const updated = withLegacyHighRiskRole((result as any)[0]?.[0] || (result as any)[0]);`
 
 - [ ] **Step 4: Grep every backend reader**
 
@@ -2691,7 +2717,7 @@ Run: `cd Servers && git grep -n -E "type_of_high_risk_role" -- '*.ts' '*.js' '*.
 Expected — every remaining hit is one of: the derived API field (`project.model.ts` toJSON, `jiraAssets.service.ts`, `highRiskRoles.utils.ts`), the legacy input (`project.validator.ts`, `project.ctrl.ts` resolution, `highRiskRoles.utils.ts`), the intake mapping key (`HIGH_RISK_ROLE_MAPPING`), the automation variable names (`project.automation.utils.ts`), the interface's deprecated field (`i.project.ts`), or tests. Fix any other hit (it is a reader that silently gets `undefined`).
 
 Run: `cd Servers && git grep -n -E "\.type_of_high_risk_role" -- '*.ts' ':!**/__tests__/**' ':!**/*.spec.ts' ':!**/*.test.ts'`
-Expected: only `project.automation.utils.ts` (`rolesOf` fallback) and `highRiskRoles.utils.ts`.
+Expected: only `project.automation.utils.ts` (`rolesOf` fallback), `highRiskRoles.utils.ts`, and `controllers/project.ctrl.ts` (`delete projectData.type_of_high_risk_role` in `createProject` and `delete updateData.type_of_high_risk_role` in `updateProjectById`). Those two `delete` lines are intentional — they stop the legacy field reaching the data layer after it is resolved — do not remove them.
 
 - [ ] **Step 5: Run the tests and the gate**
 
@@ -2714,7 +2740,7 @@ one now reads the list:
   reorder adds no changed line
 - Jira Assets: the use case view returns high_risk_roles and keeps sending
   the derived single role for existing mappings
-- share links and the advisor's created use case get the derived field
+- share links and the advisor's created and updated use cases get the derived field
 
 Existing automation templates keep working unchanged."
 ```
@@ -3056,7 +3082,7 @@ to the list and no longer turns unknown values into Provider."
 - Modify: `Clients/src/presentation/pages/ProjectView/ProjectSettings/index.tsx` (73-76, 140, 164, 183, 249, 344-348, 656-659, 738-757, 1449-1477, 1696-1712)
 - Modify: `Clients/src/presentation/components/EuAiActQuestionnaire/QuestionView.tsx:30`
 - Modify: `Clients/src/i18n/translations.ts`
-- Test: modify `Clients/src/presentation/pages/ProjectView/ProjectSettings/index.test.tsx`, `Clients/src/presentation/components/EuAiActQuestionnaire/__tests__/EuAiActQuestionnaire.test.tsx`
+- Test: modify `Clients/src/presentation/pages/ProjectView/ProjectSettings/index.test.tsx`, `Clients/src/presentation/components/EuAiActQuestionnaire/__tests__/EuAiActQuestionnaire.test.tsx`, `Clients/src/presentation/components/Forms/ProjectForm/__tests__/ProjectForm.test.tsx`
 
 **Interfaces:**
 - Consumes (Task 7): `normalizeHighRiskRoles`, `formatHighRiskRoles`, `projectHighRiskRoles`, `classificationRoles`, `highRiskRolesError`, `highRiskRolesPayload`, `HIGH_RISK_ROLE_ORDER`. `AutoCompleteField` from `Clients/src/presentation/components/Inputs/Autocomplete` (props: `label`, `placeholder`, `error`, `isRequired`, `sx`, plus MUI `Autocomplete` props).
@@ -3212,6 +3238,93 @@ In `Clients/src/presentation/pages/ProjectView/ProjectSettings/index.test.tsx`:
 
 (Add `within` to the `@testing-library/react` import if it is not there. Clicking Save calls `updateProject` directly, as the existing wizard test shows.)
 
+In `Clients/src/presentation/components/Forms/ProjectForm/__tests__/ProjectForm.test.tsx`:
+
+The file's current mocks keep EU AI Act out of reach: `useFrameworks` returns `{ frameworks: [] }` (the component reads `allFrameworks`), and `useFormValidation`, `checkStringValidation` and `selectValidation` are stubbed, so `handleSubmit` would call an undefined `validateAll`. Change the mocks as follows (the existing "renders without crashing" test still passes with the real hook and validators):
+
+- Replace the `useFrameworks` mock with
+
+```tsx
+vi.mock("../../../../../application/hooks/useFrameworks", () => ({
+  default: () => ({
+    frameworks: [],
+    allFrameworks: [{ id: 1, name: "EU AI Act", is_organizational: false }],
+  }),
+}));
+```
+
+- Delete the three `vi.mock` calls for `application/hooks/useFormValidation`, `application/validations/stringValidation` and `application/validations/selectValidation`.
+
+Then add, below the existing `describe`:
+
+```tsx
+import { act, fireEvent, screen, within } from "@testing-library/react";
+import { updateProject } from "../../../../../application/repository/project.repository";
+
+/** A use case with EU AI Act, edited through the form; every other required field is valid. */
+const euAiActUseCase = (roles: string[]) => ({
+  id: 7,
+  project_title: "Hiring tool",
+  owner: 1,
+  start_date: "2026-01-01T00:00:00.000Z",
+  goal: "Screen candidates",
+  geography: 1,
+  ai_risk_classification: 2, // "High risk" item id in the form
+  status: "In progress",
+  is_organizational: false,
+  members: [],
+  monitored_regulations_and_standards: [{ _id: 1, name: "EU AI Act" }],
+  high_risk_roles: roles,
+});
+
+function renderEditForm(roles: string[]) {
+  const submitRef = { current: undefined } as React.MutableRefObject<(() => void) | undefined>;
+  renderWithProviders(
+    <ProjectForm
+      onClose={vi.fn()}
+      projectToEdit={euAiActUseCase(roles)}
+      useStandardModal
+      onSubmitRef={submitRef}
+    />,
+  );
+  return submitRef;
+}
+
+const submit = async (submitRef: React.MutableRefObject<(() => void) | undefined>) => {
+  await act(async () => {
+    await (submitRef.current?.() as unknown as Promise<void>);
+  });
+};
+
+describe("ProjectForm high-risk roles", () => {
+  beforeEach(() => {
+    vi.mocked(updateProject).mockClear();
+  });
+
+  it("sends both roles, Provider first, when both are chosen", async () => {
+    const submitRef = renderEditForm(["Deployer"]);
+    fireEvent.keyDown(document.getElementById("high-risk-roles-input")!, { key: "ArrowDown" });
+    fireEvent.click(within(screen.getByRole("listbox")).getByText("Provider"));
+    await submit(submitRef);
+    expect((vi.mocked(updateProject).mock.calls[0][0] as any).body.high_risk_roles).toEqual([
+      "Provider",
+      "Deployer",
+    ]);
+  });
+
+  it("shows the required message and sends nothing when no role is chosen", async () => {
+    const submitRef = renderEditForm([]);
+    await submit(submitRef);
+    expect(
+      screen.getByText("Select at least one high-risk role when EU AI Act is selected."),
+    ).toBeInTheDocument();
+    expect(updateProject).not.toHaveBeenCalled();
+  });
+});
+```
+
+(Move the two new imports to the top of the file, next to the existing imports; `vi.mock` calls are hoisted, so the mocked `updateProject` is what the form calls.)
+
 In `Clients/src/presentation/components/EuAiActQuestionnaire/__tests__/EuAiActQuestionnaire.test.tsx` add:
 
 ```tsx
@@ -3232,8 +3345,8 @@ In `Clients/src/presentation/components/EuAiActQuestionnaire/__tests__/EuAiActQu
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cd Clients && npx vitest run src/presentation/components/Inputs/HighRiskRolesField src/presentation/pages/ProjectView/ProjectSettings/index.test.tsx src/presentation/components/EuAiActQuestionnaire`
-Expected: FAIL — component missing; settings still render a single select; the questionnaire drops a string answer to a multi-select.
+Run: `cd Clients && npx vitest run src/presentation/components/Inputs/HighRiskRolesField src/presentation/pages/ProjectView/ProjectSettings/index.test.tsx src/presentation/components/Forms/ProjectForm src/presentation/components/EuAiActQuestionnaire`
+Expected: FAIL — component missing; both forms still render a single select; the questionnaire drops a string answer to a multi-select.
 
 - [ ] **Step 3: The shared field**
 
@@ -3345,7 +3458,7 @@ export default function HighRiskRolesField({
 - [ ] **Step 5: Settings form (ProjectSettings)**
 
 In `Clients/src/presentation/pages/ProjectView/ProjectSettings/index.tsx`:
-- imports: remove the `HighRiskRole` import if unused after the edits; add `import HighRiskRolesField from "../../../components/Inputs/HighRiskRolesField";`, `import { HighRiskRole } from "../../../../domain/enums/highRiskRole.enum";` (type for `FormValues`) and `import { classificationRoles, formatHighRiskRoles, highRiskRolesError, highRiskRolesPayload, projectHighRiskRoles } from "../../../../application/utils/highRiskRoles";`.
+- imports: keep the existing `import { HighRiskRole } from "../../../../domain/enums/highRiskRole.enum";` (line 50) — it is still used, as the element type of `FormValues.highRiskRoles`. Add `import HighRiskRolesField from "../../../components/Inputs/HighRiskRolesField";` and `import { classificationRoles, formatHighRiskRoles, highRiskRolesError, highRiskRolesPayload, projectHighRiskRoles } from "../../../../application/utils/highRiskRoles";`.
 - delete the module-level `highRiskRoleItems`.
 - `FormValues`: `typeOfHighRiskRole: number | null;` → `highRiskRoles: HighRiskRole[];`. `FormErrors`: `typeOfHighRiskRole?: string;` → `highRiskRoles?: string;`. `initialState`: `typeOfHighRiskRole: null,` → `highRiskRoles: [],`.
 - `isModified`: `values.typeOfHighRiskRole !== initialValuesRef.current.typeOfHighRiskRole ||` → `formatHighRiskRoles(values.highRiskRoles) !== formatHighRiskRoles(initialValuesRef.current.highRiskRoles) ||`.
@@ -3449,6 +3562,7 @@ In `Clients/src/i18n/translations.ts`, add directly after the `de: {` line:
     "Not a high-risk role:": "Keine Hochrisiko-Rolle:",
     "Roles:": "Rollen:",
     "Provider, Deployer or both": "Anbieter, Betreiber oder beides",
+    "Provider, Deployer": "Anbieter, Betreiber",
     "What is your role for this AI system? Select all that apply.":
       "Welche Rolle haben Sie für dieses KI-System? Wählen Sie alle zutreffenden aus.",
 ```
@@ -3465,6 +3579,7 @@ after the `fr: {` line:
     "Not a high-risk role:": "Pas un rôle à haut risque :",
     "Roles:": "Rôles :",
     "Provider, Deployer or both": "Fournisseur, déployeur ou les deux",
+    "Provider, Deployer": "Fournisseur, Déployeur",
     "What is your role for this AI system? Select all that apply.":
       "Quel est votre rôle pour ce système d'IA ? Sélectionnez tout ce qui s'applique.",
 ```
@@ -3481,11 +3596,12 @@ and after the `es: {` line:
     "Not a high-risk role:": "No es un rol de alto riesgo:",
     "Roles:": "Roles:",
     "Provider, Deployer or both": "Proveedor, responsable del despliegue o ambos",
+    "Provider, Deployer": "Proveedor, Responsable del despliegue",
     "What is your role for this AI system? Select all that apply.":
       "¿Cuál es su rol para este sistema de IA? Seleccione todos los que correspondan.",
 ```
 
-Before adding, `grep -n '"Roles:"\|"Select roles"\|"High-risk roles"' Clients/src/i18n/translations.ts`: skip any key that already exists in that language block (a duplicate key fails typecheck). The strings used only in later tasks are added now so the dictionary changes once.
+`"Provider, Deployer"` is needed because the DOM translator matches whole text nodes, and that joined label is shown as one string in the use case table, its group headers, the entity graph sidebar, approval request details and the intake EU AI Act panel; the single words are already translated. Before adding, `grep -n '"Roles:"\|"Select roles"\|"High-risk roles"\|"Provider, Deployer"' Clients/src/i18n/translations.ts`: skip any key that already exists in that language block (a duplicate key fails typecheck). The strings used only in later tasks are added now so the dictionary changes once.
 
 - [ ] **Step 8: Run the tests and the gate**
 
@@ -3497,6 +3613,7 @@ Expected: PASS; typecheck 0 errors; i18n audit reports no gaps (add any string i
 ```bash
 git add Clients/src/presentation/components/Inputs/HighRiskRolesField \
   Clients/src/presentation/components/Forms/ProjectForm/constants.ts Clients/src/presentation/components/Forms/ProjectForm/index.tsx \
+  Clients/src/presentation/components/Forms/ProjectForm/__tests__/ProjectForm.test.tsx \
   Clients/src/presentation/constants/formValidationFieldMaps.ts \
   Clients/src/presentation/pages/ProjectView/ProjectSettings/index.tsx \
   Clients/src/presentation/pages/ProjectView/ProjectSettings/index.test.tsx \
@@ -3667,7 +3784,7 @@ Automation defaults label the line 'High-risk roles'."
 - Modify: `Clients/src/presentation/pages/IntakeFormBuilder/types.ts:265-270`
 - Modify: `Clients/src/presentation/pages/IntakeFormBuilder/SubmissionPreviewModal.tsx` (imports, 427-436, 600-617)
 - Modify: `Clients/src/presentation/pages/IntakeFormBuilder/EuAiActClassificationPanel.tsx:40,78-82`
-- Modify: `Clients/e2e/factories/api.factory.ts:236`, `Clients/e2e/fixtures/project.fixture.ts:51`, `Clients/e2e/global.setup.ts:62`, `Clients/e2e/risk-inheritance.setup.ts:45`
+- Modify: `Clients/e2e/factories/api.factory.ts:236`, `Clients/e2e/fixtures/project.fixture.ts:51`, `Clients/e2e/global.setup.ts:62`, `Clients/e2e/risk-inheritance.setup.ts:45`, `Clients/e2e/use-cases.spec.ts:166-181`
 - Test: create `Clients/src/presentation/pages/IntakeFormBuilder/__tests__/SubmissionPreviewModal.highRiskRoles.test.tsx`; modify `Clients/src/presentation/pages/IntakeFormBuilder/__tests__/analyzeMappingCoverage.test.ts`, `Clients/src/presentation/pages/IntakeFormBuilder/__tests__/EuAiActClassificationPanel.test.tsx`
 
 **Interfaces:**
@@ -3881,9 +3998,34 @@ In `Clients/src/presentation/pages/IntakeFormBuilder/EuAiActClassificationPanel.
 
 `Clients/e2e/factories/api.factory.ts`: in `CreateProjectPayload` replace `type_of_high_risk_role?: string;` with `high_risk_roles?: string[];`. In `Clients/e2e/fixtures/project.fixture.ts`, `Clients/e2e/global.setup.ts` and `Clients/e2e/risk-inheritance.setup.ts` replace `type_of_high_risk_role: "Deployer",` with `high_risk_roles: ["Deployer"],`.
 
+`Clients/e2e/use-cases.spec.ts` (lines 166-181) still looks for the old "Type of high risk role" select. Replace that block with:
+
+```ts
+    // Pick a high-risk role in the multi-select if it is shown (EU AI Act selected)
+    const highRiskRoles = page
+      .getByText(/^High-risk roles/i)
+      .locator("..")
+      .getByRole("combobox");
+    if (
+      await highRiskRoles
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await highRiskRoles.first().click();
+      const option = page.getByRole("option", { name: "Deployer" });
+      if (await option.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await option.click();
+      }
+      // A multi-select stays open after a pick; close it before submitting.
+      await page.keyboard.press("Escape");
+    }
+```
+
+
 - [ ] **Step 7: Run the tests and the gate**
 
-Run: `cd Clients && npx vitest run src/presentation/pages/IntakeFormBuilder && npm run typecheck && npm run i18n:audit:strict && npm run lint -- --quiet && npx prettier --check src/presentation/pages/IntakeFormBuilder e2e/factories/api.factory.ts e2e/fixtures/project.fixture.ts e2e/global.setup.ts e2e/risk-inheritance.setup.ts`
+Run: `cd Clients && npx vitest run src/presentation/pages/IntakeFormBuilder && npm run typecheck && npm run i18n:audit:strict && npm run lint -- --quiet && npx prettier --check src/presentation/pages/IntakeFormBuilder e2e/factories/api.factory.ts e2e/fixtures/project.fixture.ts e2e/global.setup.ts e2e/risk-inheritance.setup.ts e2e/use-cases.spec.ts`
 Expected: PASS (including the existing `SubmissionPreviewModal.riskStep.test.tsx`, whose role field `entity-f3` must still exist when no classification is shown and be hidden when one with a role is); typecheck 0 errors; no i18n gaps; lint and prettier clean.
 
 - [ ] **Step 8: Commit**
@@ -3896,7 +4038,7 @@ git add Clients/src/presentation/pages/IntakeFormBuilder/types.ts \
   Clients/src/presentation/pages/IntakeFormBuilder/__tests__/analyzeMappingCoverage.test.ts \
   Clients/src/presentation/pages/IntakeFormBuilder/__tests__/EuAiActClassificationPanel.test.tsx \
   Clients/e2e/factories/api.factory.ts Clients/e2e/fixtures/project.fixture.ts \
-  Clients/e2e/global.setup.ts Clients/e2e/risk-inheritance.setup.ts
+  Clients/e2e/global.setup.ts Clients/e2e/risk-inheritance.setup.ts Clients/e2e/use-cases.spec.ts
 git commit -m "feat(intake): map select and multi-select questions to high-risk roles" -m "The builder accepts a select or multi-select question for the use case's
 roles ('High-risk roles'). The review dialog shows the roles the server
 matched in a multi-select instead of a free-text field, lists selected
@@ -4024,7 +4166,7 @@ Expected — each remaining hit is one of:
 Anything else is a missed reader: fix it in place and add it to this task's commit.
 
 Run: `git grep -n "\.type_of_high_risk_role" -- Servers Clients/src ':!**/__tests__/**' ':!**/*.test.ts' ':!**/*.test.tsx' ':!**/*.spec.ts' ':!Servers/dist'`
-Expected: only the helper fallbacks (`highRiskRoles.utils.ts`, `Clients/src/application/utils/highRiskRoles.ts`, `project.automation.utils.ts`) and the dead `CreateProjectForm`.
+Expected: only the helper fallbacks (`Servers/utils/highRiskRoles.utils.ts`, `Clients/src/application/utils/highRiskRoles.ts`, `Servers/utils/automation/project.automation.utils.ts`), `Clients/src/application/mappers/project.mapper.ts` (`dto.type_of_high_risk_role`, the legacy input fallback), `Servers/controllers/project.ctrl.ts` (`delete projectData.type_of_high_risk_role` and `delete updateData.type_of_high_risk_role`, intentional — do not remove them) and the dead `CreateProjectForm`.
 
 - [ ] **Step 2: Backend gates**
 
@@ -4032,7 +4174,7 @@ Run: `cd Servers && npm run build && npm run format-check && npm run test && npm
 Expected: all pass; `git status` shows no change to `swagger.yaml`, `enum-manifest.json` or `docs/api-docs/src/config/endpoints.ts` (they were regenerated and committed in Tasks 3 and 6).
 
 Run: `cd Servers && npm run test:integration -- tests/integration/euVisibleCategories.highRiskRoles.test.ts tests/integration/projects.test.ts tests/integration/report-scope-authorization.test.ts tests/integration/report-scope-membership.test.ts tests/integration/report-run-visibility.test.ts tests/integration/approval-workflows.test.ts`
-Expected: PASS (or the same harness limitation reported in Task 2, stated with its error).
+Expected: PASS. If the harness cannot run here (no test database server, missing `Servers/.env.test`), report that with the exact error; never run the sequelize CLI against the test database by hand.
 
 - [ ] **Step 3: Frontend gates**
 
@@ -4071,6 +4213,6 @@ git add <each changed file by path>
 git commit -m "fix(use-cases): <what the sweep found>" -m "<which reader or gate it was and how it is fixed>"
 ```
 
-Do not push. Report the final `git log --oneline develop..HEAD`.
+Do not push. Report the final `git log --oneline develop..HEAD`, and state in the report that the shared dev database (postgresql@16 on :5432, `verifywise`) is left migrated up: a backend run from `develop` will fail on project reads until `cd Servers && npm run build && npx sequelize db:migrate:undo` is run from this branch.
 
 
