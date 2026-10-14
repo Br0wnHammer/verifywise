@@ -1,18 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  Alert,
-  Box,
-  Typography,
-  Stack,
-  IconButton,
-  Tooltip,
-  CircularProgress,
-} from "@mui/material";
+import { useState, useEffect, useCallback } from "react";
+import { Box, Typography, Stack, IconButton, Tooltip } from "@mui/material";
 import {
   CirclePlus,
   Server,
   Trash2,
   Pencil,
+  Search,
   Activity,
   AlertTriangle,
   RotateCcw,
@@ -86,17 +79,6 @@ export default function MCPServersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
-  // Row whose "Discover tools" call is in flight, and the last discovery error.
-  const [discoveringId, setDiscoveringId] = useState<number | null>(null);
-  const [discoverError, setDiscoverError] = useState<string | null>(null);
-  // One delayed refresh after creating a server, so the background tool
-  // discovery started by the gateway has time to land before we reload.
-  const createRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (createRefreshTimer.current) clearTimeout(createRefreshTimer.current);
-    };
-  }, []);
 
   const [form, setForm] = useState<ServerForm>({ ...EMPTY_FORM });
 
@@ -187,11 +169,6 @@ export default function MCPServersPage() {
       setIsModalOpen(false);
       setForm({ ...EMPTY_FORM });
       await loadData();
-      if (editingId === null) {
-        // The gateway discovers tools in the background right after create;
-        // refresh once more shortly so the tools and health show up.
-        createRefreshTimer.current = setTimeout(() => loadData(), 8000);
-      }
     } catch (err: any) {
       setFormError(
         err?.response?.data?.detail ||
@@ -220,23 +197,6 @@ export default function MCPServersPage() {
       await loadData();
     } catch {
       // Silently handle
-    }
-  };
-
-  // Discover an existing server's tools (the gateway also discovers on create).
-  const handleDiscover = async (id: number) => {
-    if (discoveringId !== null) return;
-    setDiscoveringId(id);
-    setDiscoverError(null);
-    try {
-      await apiServices.post(`/ai-gateway/mcp/servers/${id}/discover`);
-      await loadData();
-    } catch (err: any) {
-      setDiscoverError(
-        err?.response?.data?.detail || err?.response?.data?.message || "Failed to discover tools",
-      );
-    } finally {
-      setDiscoveringId(null);
     }
   };
 
@@ -293,16 +253,11 @@ export default function MCPServersPage() {
           <EmptyStateTip
             icon={Activity}
             title="Health monitoring and tool discovery"
-            description="Tools are discovered automatically when a server is linked, and you can re-run discovery anytime from the server list. Health shows the result of the last discovery."
+            description="The gateway periodically checks server health and can discover available tools automatically. Unhealthy servers are temporarily bypassed to keep agents running."
           />
         </EmptyState>
       ) : (
         <Box sx={{ px: 3, pb: 3 }}>
-          {discoverError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDiscoverError(null)}>
-              {discoverError}
-            </Alert>
-          )}
           <MCPTable
             id="mcp-servers-table"
             columns={[
@@ -361,20 +316,10 @@ export default function MCPServersPage() {
                 gap="2px"
                 onClick={(e) => e.stopPropagation()}
               >
-                <Tooltip title="Discover tools" arrow>
+                <Tooltip title="Coming soon" arrow>
                   <span>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDiscover(srv.id)}
-                      disabled={discoveringId !== null}
-                      sx={{ p: 0.5 }}
-                      aria-label="Discover tools"
-                    >
-                      {discoveringId === srv.id ? (
-                        <CircularProgress size={12} />
-                      ) : (
-                        <RotateCcw size={14} strokeWidth={1.5} color={palette.text.tertiary} />
-                      )}
+                    <IconButton size="small" disabled sx={{ p: 0.5 }} aria-label="Discover tools">
+                      <Search size={14} strokeWidth={1.5} color={palette.text.disabled} />
                     </IconButton>
                   </span>
                 </Tooltip>

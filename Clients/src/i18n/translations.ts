@@ -2863,8 +2863,6 @@ export const translations: Record<string, Record<string, string>> = {
     "No linked items found.": "Keine verknüpften Elemente gefunden.",
     "No MCP servers registered yet. Add your first server to expose its tools to AI agents through the gateway.":
       "Noch keine MCP-Server registriert. Fügen Sie Ihren ersten Server hinzu, um seine Tools KI-Agenten über das Gateway bereitzustellen.",
-    "Tools are discovered automatically when a server is linked, and you can re-run discovery anytime from the server list. Health shows the result of the last discovery.":
-      "Tools werden automatisch erkannt, wenn ein Server verknüpft wird; Sie können die Erkennung jederzeit über die Serverliste erneut ausführen. Der Status zeigt das Ergebnis der letzten Erkennung.",
     "No MCP tools discovered yet. Tools will appear here after servers are connected and their tools are fetched.":
       "Noch keine MCP-Tools erkannt. Tools erscheinen hier, nachdem Server verbunden und ihre Tools abgerufen wurden.",
     "No members have been assigned to the use case":
@@ -13303,8 +13301,6 @@ export const translations: Record<string, Record<string, string>> = {
     "No linked items found.": "Aucun élément lié trouvé.",
     "No MCP servers registered yet. Add your first server to expose its tools to AI agents through the gateway.":
       "Aucun serveur MCP enregistré pour le moment. Ajoutez votre premier serveur pour exposer ses outils aux agents IA via la passerelle.",
-    "Tools are discovered automatically when a server is linked, and you can re-run discovery anytime from the server list. Health shows the result of the last discovery.":
-      "Les outils sont découverts automatiquement lorsqu'un serveur est lié, et vous pouvez relancer la découverte à tout moment depuis la liste des serveurs. L'état affiche le résultat de la dernière découverte.",
     "No MCP tools discovered yet. Tools will appear here after servers are connected and their tools are fetched.":
       "Aucun outil MCP découvert pour le moment. Les outils apparaîtront ici une fois les serveurs connectés et leurs outils récupérés.",
     "No members have been assigned to the use case":
@@ -26176,8 +26172,6 @@ export const translations: Record<string, Record<string, string>> = {
       "Aún no se han ejecutado experimentos. Cree un experimento para evaluar el rendimiento del modelo.",
     "No MCP servers registered yet. Add your first server to expose its tools to AI agents through the gateway.":
       "Aún no hay servidores MCP registrados. Añada su primer servidor para exponer sus herramientas a los agentes de IA a través del gateway.",
-    "Tools are discovered automatically when a server is linked, and you can re-run discovery anytime from the server list. Health shows the result of the last discovery.":
-      "Las herramientas se descubren automáticamente cuando se vincula un servidor, y puede repetir el descubrimiento en cualquier momento desde la lista de servidores. El estado muestra el resultado del último descubrimiento.",
     "No MCP tools discovered yet. Tools will appear here after servers are connected and their tools are fetched.":
       "Aún no se han descubierto herramientas MCP. Las herramientas aparecerán aquí una vez que se conecten los servidores y se obtengan sus herramientas.",
     "No members have been assigned to the use case":
