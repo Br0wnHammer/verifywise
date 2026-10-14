@@ -1806,6 +1806,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Confirm your password": "Passwort bestätigen",
     "Connect data sources": "Datenquellen verbinden",
     "Connect external tool servers": "Externe Tool-Server verbinden",
+    "Tool discovery": "Tool-Erkennung",
+    "Tools are discovered when you save a server, and you can run discovery again at any time from the server list.":
+      "Tools werden beim Speichern eines Servers erkannt. Die Erkennung lässt sich jederzeit in der Serverliste erneut ausführen.",
     "Connect your GitHub repositories": "GitHub-Repositories verbinden",
     "Copy key": "Schlüssel kopieren",
     "Copy link": "Link kopieren",
@@ -12338,6 +12341,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Confirm your password": "Confirmez votre mot de passe",
     "Connect data sources": "Connecter les sources de données",
     "Connect external tool servers": "Connecter des serveurs d'outils externes",
+    "Tool discovery": "Découverte d'outils",
+    "Tools are discovered when you save a server, and you can run discovery again at any time from the server list.":
+      "Les outils sont découverts lorsque vous enregistrez un serveur, et vous pouvez relancer la découverte à tout moment depuis la liste des serveurs.",
     "Connect your GitHub repositories": "Connectez vos dépôts GitHub",
     "Copy key": "Copier la clé",
     "Copy link": "Copier le lien",
@@ -22071,6 +22077,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Confirm your password": "Confirme su contraseña",
     "Connect data sources": "Conectar fuentes de datos",
     "Connect external tool servers": "Conectar servidores de herramientas externas",
+    "Tool discovery": "Descubrimiento de herramientas",
+    "Tools are discovered when you save a server, and you can run discovery again at any time from the server list.":
+      "Las herramientas se descubren al guardar un servidor, y puede volver a ejecutar el descubrimiento en cualquier momento desde la lista de servidores.",
     "Connect your GitHub repositories": "Conecte sus repositorios de GitHub",
     "Copy key": "Copiar clave",
     "Copy link": "Copiar enlace",
