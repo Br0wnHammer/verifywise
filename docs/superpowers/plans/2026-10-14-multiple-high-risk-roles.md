@@ -39,7 +39,7 @@
 - **Saved single-role answers (spec §2).** The spec says `validateAnswers` accepts a string for any `multi_select` question. Two existing tests deliberately reject a string for other multi-select questions (`transparency`, `essential_services_use`). This plan adds `acceptsSingleValue: true` to the role question only, so a saved `"deployer"` validates and comes back as `["deployer"]` while the existing rule holds for every other question.
 - **Empty list in the filter.** The spec says the filter "skips the role condition" for an empty list. This plan uses `r.name = ANY('{}'::text[])`, which matches nothing — the same result with one SQL shape and no empty-array binding.
 - **Backend "EU AI Act → at least one role" rule.** `validateCompleteProjectWithBusinessRules` and `validateUpdateProjectWithBusinessRules` in `projectValidation.utils.ts` are not called by any route today (only `aiRiskClassificationIneligibility`, `extractFrameworkIds` and `EU_AI_ACT_FRAMEWORK_ID` are imported). The server has never enforced "role required with EU AI Act"; the forms do. This plan converts those functions to the list (so they stay correct and the final grep is clean) but does not wire them into routes: doing so would make previously valid API calls fail (success criterion 3) and would break intake approval of an "Out of scope" result, which attaches the EU AI Act framework with no role. Wiring it in is a separate decision for the user.
-- **Use case list grouping by role** groups by the joined string ("Provider, Deployer" is its own group), so each use case is counted once.
+- **Use case list grouping by role** groups by role list: a use case with both roles appears in both the Provider and the Deployer group (`useTableGrouping` accepts a list); one with no role is in "Unknown".
 
 ## Review Focus
 
@@ -3768,8 +3768,8 @@ git add Clients/src/presentation/components/ProjectsList/ProjectsList.tsx \
   Clients/src/presentation/pages/Automations/index.tsx
 git commit -m "feat(use-cases): show every high-risk role across the app" -m "The use case table, its sort and grouping, the CSV export, the entity graph
 sidebar and approval request details show the roles as 'Provider, Deployer'
-(older responses fall back to the single role). Grouping by role puts each
-combination in its own group, so a use case is counted once.
+(older responses fall back to the single role). Grouping by role puts a use
+case in each of its role groups.
 
 The requirements tracker reloads when the roles change, keyed on a joined
 string so a re-fetched project with the same roles does not reload.

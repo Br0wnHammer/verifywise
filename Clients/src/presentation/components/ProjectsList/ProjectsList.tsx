@@ -210,8 +210,10 @@ const ProjectList = ({
     switch (field) {
       case "risk_level":
         return project.ai_risk_classification || "Unknown";
-      case "role":
-        return formatHighRiskRoles(projectHighRiskRoles(project)) || "Unknown";
+      case "role": {
+        const roles = projectHighRiskRoles(project);
+        return roles.length > 0 ? roles : "Unknown";
+      }
       case "owner":
         if (project.owner) {
           return getUserNameById(project.owner.toString());
