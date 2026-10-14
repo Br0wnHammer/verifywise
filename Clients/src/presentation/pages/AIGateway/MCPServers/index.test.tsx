@@ -387,7 +387,7 @@ describe("MCPServersPage", () => {
     fireEvent.click(submitButtons[submitButtons.length - 1]);
 
     await waitFor(() => {
-      expect(screen.getByText("Discovery failed")).toBeInTheDocument();
+      expect(screen.getByText("Server saved, but discovery failed")).toBeInTheDocument();
       expect(
         screen.getByText("The server rejected the credentials (HTTP 401)"),
       ).toBeInTheDocument();

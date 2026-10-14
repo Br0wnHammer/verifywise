@@ -114,7 +114,8 @@ export default function MCPServersPage() {
     } else if (discovery.status === "success") {
       showAlert("success", prefix, toolsFound(discovery.tools_discovered));
     } else {
-      showAlert("warning", "Discovery failed", discovery.error || undefined);
+      // The server is saved either way; say so, or the admin may think the save failed.
+      showAlert("warning", `${prefix}, but discovery failed`, discovery.error || undefined);
     }
   };
 

@@ -30,6 +30,10 @@ export const translations: Record<string, Record<string, string>> = {
     "The server offered no tools": "Der Server hat keine Tools angeboten",
     "One tool found": "Ein Tool gefunden",
     "Discovery failed": "Erkennung fehlgeschlagen",
+    "Server saved, but discovery failed":
+      "Server gespeichert, aber die Erkennung ist fehlgeschlagen",
+    "Server switched on, but discovery failed":
+      "Server eingeschaltet, aber die Erkennung ist fehlgeschlagen",
     "Deployment name": "Bereitstellungsname",
     "Save the deployment name first, then generate the token.":
       "Speichern Sie zuerst den Bereitstellungsnamen, dann generieren Sie das Token.",
@@ -10430,6 +10434,8 @@ export const translations: Record<string, Record<string, string>> = {
     "The server offered no tools": "Le serveur n'a proposé aucun outil",
     "One tool found": "Un outil trouvé",
     "Discovery failed": "Échec de la découverte",
+    "Server saved, but discovery failed": "Serveur enregistré, mais la découverte a échoué",
+    "Server switched on, but discovery failed": "Serveur activé, mais la découverte a échoué",
     "Deployment name": "Nom du déploiement",
     "Save the deployment name first, then generate the token.":
       "Enregistrez d'abord le nom du déploiement, puis générez le jeton.",
@@ -20772,6 +20778,8 @@ export const translations: Record<string, Record<string, string>> = {
     "The server offered no tools": "El servidor no ofreció herramientas",
     "One tool found": "Se encontró una herramienta",
     "Discovery failed": "Error en la detección",
+    "Server saved, but discovery failed": "Servidor guardado, pero la detección falló",
+    "Server switched on, but discovery failed": "Servidor activado, pero la detección falló",
     "Deployment name": "Nombre del despliegue",
     "Save the deployment name first, then generate the token.":
       "Primero guarde el nombre del despliegue y luego genere el token.",
