@@ -93,7 +93,7 @@ async def mcp_jsonrpc(request: Request):
 
     # ── tools/list ──────────────────────────────────────────────────────
     if method == "tools/list":
-        all_tools = await get_all_tools(org_id)
+        all_tools = await get_all_tools(org_id, active_servers_only=True)
         allowed = agent_key.get("allowed_tools") or []
         blocked = agent_key.get("blocked_tools") or []
 

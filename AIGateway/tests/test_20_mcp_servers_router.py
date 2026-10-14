@@ -253,3 +253,41 @@ class TestUnsafeUrl:
         fakes["row"]["url"] = "http://0.0.0.0/"
         out = await router.update_mcp_server(9, _request({"name": "Renamed"}))
         assert out["discovery"]["status"] == "skipped"
+
+
+from contextlib import asynccontextmanager
+from unittest.mock import MagicMock
+
+import crud.mcp_tools as tools_crud
+
+
+def _capture_db(monkeypatch):
+    seen = []
+    db = MagicMock()
+
+    async def execute(stmt, params=None):
+        seen.append(str(stmt))
+        result = MagicMock()
+        result.mappings.return_value.all.return_value = []
+        return result
+
+    db.execute = execute
+
+    @asynccontextmanager
+    async def get_db():
+        yield db
+
+    monkeypatch.setattr(tools_crud, "get_db", get_db)
+    return seen
+
+
+class TestToolList:
+    async def test_agents_see_only_active_servers(self, monkeypatch):
+        seen = _capture_db(monkeypatch)
+        await tools_crud.get_all_tools(1, active_servers_only=True)
+        assert "s.is_active = true" in seen[0]
+
+    async def test_catalog_keeps_every_server(self, monkeypatch):
+        seen = _capture_db(monkeypatch)
+        await tools_crud.get_all_tools(1)
+        assert "s.is_active" not in seen[0]
