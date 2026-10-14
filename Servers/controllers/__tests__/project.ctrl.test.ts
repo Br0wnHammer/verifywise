@@ -484,6 +484,46 @@ describe("project.ctrl", () => {
       expect(mockCreateApproval).toHaveBeenCalled();
       expect(mockNotifyStepApprovers).toHaveBeenCalledWith(1, 44, 1, "Use Case: P1");
     });
+    it("withdraws the previous pending request when the workflow is replaced", async () => {
+      const existing = { ...buildProject(), owner: 1, approval_workflow_id: 3 };
+      const updated = { ...existing, approval_workflow_id: 5, members: [] };
+      mockGetById.mockResolvedValue(existing as any);
+      mockGetMembers.mockResolvedValue([] as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      mockGetUser.mockResolvedValue({ id: 1, name: "A", surname: "B", role_id: 1 } as any);
+      mockGetPendingApproval.mockResolvedValue(77 as any);
+      mockCreateApproval.mockResolvedValue({
+        request: { id: 44, request_name: "Use Case: P1" },
+        autoApproved: false,
+      } as any);
+      const req = createReq({ params: { id: "1" }, body: { approval_workflow_id: 5 } });
+      const res = createRes();
+      await updateProjectById(req, res);
+      expect(res.status).toHaveBeenCalledWith(202);
+      expect(mockGetPendingApproval).toHaveBeenCalledWith(1, "use_case", 1, expect.anything());
+      expect(mockWithdrawApproval).toHaveBeenCalledWith(77, 1, expect.anything());
+      expect(mockCreateApproval).toHaveBeenCalled();
+    });
+    it("notifies the requester when the edit-time request is auto-approved", async () => {
+      const existing = { ...buildProject(), owner: 1, approval_workflow_id: null };
+      const updated = { ...existing, approval_workflow_id: 5, members: [] };
+      mockGetById.mockResolvedValue(existing as any);
+      mockGetMembers.mockResolvedValue([] as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      mockGetUser.mockResolvedValue({ id: 1, name: "A", surname: "B", role_id: 1 } as any);
+      mockCreateApproval.mockResolvedValue({
+        request: { id: 44, request_name: "Use Case: P1" },
+        autoApproved: true,
+        riskLevel: "Minimal risk",
+        threshold: "High",
+      } as any);
+      const req = createReq({ params: { id: "1" }, body: { approval_workflow_id: 5 } });
+      const res = createRes();
+      await updateProjectById(req, res);
+      expect(res.status).toHaveBeenCalledWith(202);
+      expect(mockNotifyAutoApproved).toHaveBeenCalled();
+      expect(mockNotifyStepApprovers).not.toHaveBeenCalled();
+    });
     it("starts no request when the attached workflow is unchanged (#4904)", async () => {
       const existing = { ...buildProject(), owner: 1, approval_workflow_id: 5 };
       const updated = { ...existing, members: [] };
