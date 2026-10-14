@@ -47,6 +47,7 @@ import {
   hasPendingApprovalQuery,
   getPendingApprovalRequestIdQuery,
   withdrawApprovalRequestQuery,
+  createPendingFrameworksForApprovedUseCase,
 } from "../utils/approvalRequest.utils";
 import { deleteProjectWithSideEffects } from "../utils/projectDeletion.utils";
 import {
@@ -609,8 +610,15 @@ export async function updateProjectById(req: Request, res: Response): Promise<an
       // throws ValidationException, which rolls back and maps to 400.
       const previousWorkflowId = existingProject.approval_workflow_id ?? null;
       const submittedWorkflowId = (updatedProject.approval_workflow_id as number | null) ?? null;
+      // Only a body that carries the field changes the workflow. The update
+      // query leaves an omitted column as it is, so reading "absent" as
+      // "cleared" withdrew the request while the workflow stayed attached.
+      const workflowSubmitted = Object.prototype.hasOwnProperty.call(
+        updateData ?? {},
+        "approval_workflow_id",
+      );
       let updateApprovalResult: Awaited<ReturnType<typeof createUseCaseApprovalRequest>> = null;
-      if (submittedWorkflowId !== previousWorkflowId) {
+      if (workflowSubmitted && submittedWorkflowId !== previousWorkflowId) {
         // Replacing or clearing the workflow makes any pending request under
         // the old workflow obsolete (review: A→B left A pending). Withdraw it
         // in the same transaction so a use case never has two pending
@@ -626,7 +634,15 @@ export async function updateProjectById(req: Request, res: Response): Promise<an
         if (staleRequestId) {
           await withdrawApprovalRequestQuery(staleRequestId, req.organizationId!, transaction);
         }
-        if (submittedWorkflowId) {
+        if (!submittedWorkflowId) {
+          // Cleared: the frameworks chosen at creation waited for an approval
+          // that no longer exists, so create them now rather than never.
+          await createPendingFrameworksForApprovedUseCase(
+            projectId,
+            req.organizationId!,
+            transaction,
+          );
+        } else {
           updateApprovalResult = await createUseCaseApprovalRequest(
             project as unknown as ProjectModel,
             req.userId!,

@@ -48,6 +48,7 @@ jest.mock("../../utils/approvalRequest.utils", () => ({
   getPendingApprovalRequestIdQuery: jest.fn(),
   withdrawApprovalRequestQuery: jest.fn(),
   getApprovalStatusQuery: jest.fn(),
+  createPendingFrameworksForApprovedUseCase: jest.fn(),
 }));
 jest.mock("../../utils/useCaseChangeHistory.utils", () => ({
   recordUseCaseCreation: jest.fn().mockResolvedValue(undefined),
@@ -142,6 +143,7 @@ import { notifyUseCaseApprovalRequested } from "../../services/projects/approval
 import { notifyApprovalAutoApproved } from "../../services/inAppNotification.service";
 import { ValidationException } from "../../domain.layer/exceptions/custom.exception";
 import {
+  createPendingFrameworksForApprovedUseCase,
   getPendingApprovalRequestIdQuery,
   withdrawApprovalRequestQuery,
 } from "../../utils/approvalRequest.utils";
@@ -165,6 +167,10 @@ const mockGetPendingApproval = getPendingApprovalRequestIdQuery as jest.MockedFu
 const mockWithdrawApproval = withdrawApprovalRequestQuery as jest.MockedFunction<
   typeof withdrawApprovalRequestQuery
 >;
+const mockCreatePendingFrameworks =
+  createPendingFrameworksForApprovedUseCase as jest.MockedFunction<
+    typeof createPendingFrameworksForApprovedUseCase
+  >;
 const mockCreateApproval = createUseCaseApprovalRequest as jest.MockedFunction<
   typeof createUseCaseApprovalRequest
 >;
@@ -562,6 +568,44 @@ describe("project.ctrl", () => {
       expect(res.status).toHaveBeenCalledWith(202);
       expect(mockNotifyAutoApproved).toHaveBeenCalled();
       expect(mockNotifyApprovers).not.toHaveBeenCalled();
+    });
+    // Review: an omitted field is not a cleared workflow. The update query
+    // skips omitted columns, so treating it as null withdrew the request
+    // while the use case kept its workflow.
+    it("leaves the workflow and its pending request alone when the body omits it", async () => {
+      const existing = { ...buildProject(), owner: 1, approval_workflow_id: 3 };
+      const updated = { ...existing, name: "Renamed", members: [] };
+      mockGetById.mockResolvedValue(existing as any);
+      mockGetMembers.mockResolvedValue([] as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      mockGetUser.mockResolvedValue({ id: 1, name: "A", surname: "B", role_id: 1 } as any);
+      mockGetPendingApproval.mockResolvedValue(77 as any);
+      const req = createReq({ params: { id: "1" }, body: { name: "Renamed" } });
+      const res = createRes();
+      await updateProjectById(req, res);
+      expect(res.status).toHaveBeenCalledWith(202);
+      expect(mockWithdrawApproval).not.toHaveBeenCalled();
+      expect(mockCreateApproval).not.toHaveBeenCalled();
+      expect(mockCreatePendingFrameworks).not.toHaveBeenCalled();
+    });
+    // Review: frameworks chosen at creation wait for approval. Clearing the
+    // workflow withdraws that approval, so they are created now instead of
+    // never.
+    it("creates the deferred frameworks when the workflow is cleared", async () => {
+      const existing = { ...buildProject(), owner: 1, approval_workflow_id: 3 };
+      const updated = { ...existing, approval_workflow_id: null, members: [] };
+      mockGetById.mockResolvedValue(existing as any);
+      mockGetMembers.mockResolvedValue([] as any);
+      mockUpdate.mockResolvedValue(updated as any);
+      mockGetUser.mockResolvedValue({ id: 1, name: "A", surname: "B", role_id: 1 } as any);
+      mockGetPendingApproval.mockResolvedValue(77 as any);
+      const req = createReq({ params: { id: "1" }, body: { approval_workflow_id: null } });
+      const res = createRes();
+      await updateProjectById(req, res);
+      expect(res.status).toHaveBeenCalledWith(202);
+      expect(mockWithdrawApproval).toHaveBeenCalledWith(77, 1, expect.anything());
+      expect(mockCreatePendingFrameworks).toHaveBeenCalledWith(1, 1, expect.anything());
+      expect(mockCreateApproval).not.toHaveBeenCalled();
     });
     it("starts no request when the attached workflow is unchanged (#4904)", async () => {
       const existing = { ...buildProject(), owner: 1, approval_workflow_id: 5 };
