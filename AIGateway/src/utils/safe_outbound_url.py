@@ -55,7 +55,18 @@ def _as_ip(host: str) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Add
         return None
 
 
+def _normalize_host(host: str) -> str:
+    """Drop one trailing dot (``169.254.169.254.`` is the same host) and any
+    IPv6 zone id (``%eth0``, or ``%25eth0`` as URL-encoded)."""
+    if "%" in host:
+        host = host.split("%", 1)[0]
+    if host.endswith("."):
+        host = host[:-1]
+    return host
+
+
 def _is_blocked(host: str) -> bool:
+    host = _normalize_host(host)
     if host in _BLOCKED_HOSTS:
         return True
     ip = _as_ip(host)

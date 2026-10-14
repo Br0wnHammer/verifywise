@@ -387,10 +387,9 @@ describe("MCPServersPage", () => {
     fireEvent.click(submitButtons[submitButtons.length - 1]);
 
     await waitFor(() => {
+      expect(screen.getByText("Discovery failed")).toBeInTheDocument();
       expect(
-        screen.getByText(
-          "Server saved, but discovery failed: The server rejected the credentials (HTTP 401)",
-        ),
+        screen.getByText("The server rejected the credentials (HTTP 401)"),
       ).toBeInTheDocument();
     });
   });
@@ -421,9 +420,8 @@ describe("MCPServersPage", () => {
 
     fireEvent.click(screen.getByRole("switch"));
 
-    await waitFor(() =>
-      expect(screen.getByText("Server switched on. 2 tools found")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Server switched on")).toBeInTheDocument());
+    expect(screen.getByText("2 tools found")).toBeInTheDocument();
   });
 
   it("explains an unhealthy status on hover", async () => {
@@ -474,6 +472,28 @@ describe("MCPServersPage", () => {
       const payload = mockPatch.mock.calls[0][1];
       expect(payload.auth_config).toBeUndefined();
     });
+  });
+
+  it("requires a new key and hides the current-key hint when the auth type changed", async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        servers: [makeServer({ auth_type: "bearer", auth_secret_hint: "abcd...wxyz" })],
+      },
+    });
+    renderWithProviders(<MCPServersPage />, { route: "/ai-gateway/mcp/servers" });
+    await waitFor(() => expect(screen.getByText("Search Server")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit server" }));
+    expect(
+      screen.getByText("Current token: abcd...wxyz. Leave blank to keep it."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^Bearer token/, { selector: "label" }).textContent).not.toContain("*");
+
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: "API key" }));
+
+    expect(screen.queryByText(/Leave blank to keep it/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^API key/, { selector: "label" }).textContent).toContain("*");
   });
 
   it("sends only the header when the header changes and the key is left blank", async () => {

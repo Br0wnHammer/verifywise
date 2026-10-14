@@ -60,9 +60,18 @@ def upgrade() -> None:
         "ADD COLUMN IF NOT EXISTS last_discovery_error TEXT NULL"
     )
     _rewrite(migrate_stored_config)
+    # Rows whose auth type is none (or was switched away from bearer/api_key)
+    # can still hold the old plaintext secret; it is dead data, so clear it.
+    op.execute(
+        "UPDATE ai_gateway_mcp_servers SET auth_config = '{}'::jsonb "
+        "WHERE COALESCE(auth_type, 'none') NOT IN ('bearer', 'api_key') "
+        "AND auth_config IS NOT NULL AND auth_config <> '{}'::jsonb"
+    )
 
 
 def downgrade() -> None:
+    # The plaintext scrubbed from non-bearer/api_key rows in upgrade() was dead
+    # data and is deliberately not restored.
     op.execute("SET search_path TO verifywise")
     _rewrite(legacy_config)
     op.execute(

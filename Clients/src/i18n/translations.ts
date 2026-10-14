@@ -25,6 +25,11 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    "Server saved": "Server gespeichert",
+    "Server switched on": "Server eingeschaltet",
+    "The server offered no tools": "Der Server hat keine Tools angeboten",
+    "One tool found": "Ein Tool gefunden",
+    "Discovery failed": "Erkennung fehlgeschlagen",
     "Deployment name": "Bereitstellungsname",
     "Save the deployment name first, then generate the token.":
       "Speichern Sie zuerst den Bereitstellungsnamen, dann generieren Sie das Token.",
@@ -10420,6 +10425,11 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    "Server saved": "Serveur enregistré",
+    "Server switched on": "Serveur activé",
+    "The server offered no tools": "Le serveur n'a proposé aucun outil",
+    "One tool found": "Un outil trouvé",
+    "Discovery failed": "Échec de la découverte",
     "Deployment name": "Nom du déploiement",
     "Save the deployment name first, then generate the token.":
       "Enregistrez d'abord le nom du déploiement, puis générez le jeton.",
@@ -20757,6 +20767,11 @@ export const translations: Record<string, Record<string, string>> = {
       "Les journaux des garde-fous de plus de {guardrailDays} jours et les journaux de dépenses de plus de {spendDays} jours seront supprimés définitivement chaque jour. Les journaux supprimés ne peuvent pas être restaurés.",
   },
   es: {
+    "Server saved": "Servidor guardado",
+    "Server switched on": "Servidor activado",
+    "The server offered no tools": "El servidor no ofreció herramientas",
+    "One tool found": "Se encontró una herramienta",
+    "Discovery failed": "Error en la detección",
     "Deployment name": "Nombre del despliegue",
     "Save the deployment name first, then generate the token.":
       "Primero guarde el nombre del despliegue y luego genere el token.",

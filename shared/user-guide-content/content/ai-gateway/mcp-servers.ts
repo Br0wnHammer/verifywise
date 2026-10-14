@@ -173,7 +173,7 @@ export const mcpServersContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Admins can also click **Discover tools** on a server to run discovery again. This has a 30-second limit.',
+      text: 'Admins can also click **Discover tools** on a server to run discovery again. This has a 25-second limit.',
     },
     {
       type: 'paragraph',

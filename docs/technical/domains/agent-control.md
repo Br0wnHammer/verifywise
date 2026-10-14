@@ -247,7 +247,7 @@ Registration is what feeds the proxy's tool catalog.
   `notifications/initialized`, follows `nextCursor` up to 20 pages), `store_discovered_tools`,
   `run_discovery`. It runs on create, on an edit that changes the URL, auth type or credentials,
   and when a server is switched on, with a 10-second budget. The Discover tools button (Admin)
-  reruns it with a 30-second budget. The server is always saved even if discovery fails.
+  reruns it with a 25-second budget. The server is always saved even if discovery fails.
 - **Health** is the result of the last discovery. Failures are stored in `last_discovery_error`
   and shown on hover over "Unhealthy". There are no periodic health checks yet and unhealthy
   servers are not bypassed by the proxy.

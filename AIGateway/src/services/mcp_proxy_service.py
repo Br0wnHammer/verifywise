@@ -122,6 +122,8 @@ async def resolve_tool(org_id: int, tool_name: str) -> dict:
                 WHERE t.organization_id = :org_id
                   AND t.tool_name = :tool_name
                   AND t.is_active = true
+                ORDER BY s.is_active DESC, s.id ASC
+                LIMIT 1
             """),
             {"org_id": org_id, "tool_name": tool_name},
         )
@@ -162,7 +164,9 @@ def _parse_response(resp: httpx.Response) -> dict:
 # ─── Server Tool Discovery ─────────────────────────────────────────────────
 
 ON_SAVE_DISCOVERY_SECONDS = 10
-MANUAL_DISCOVERY_SECONDS = 30
+# Kept under the Express proxy timeout (30 s) so this error, not a generic
+# gateway timeout, is what the user sees.
+MANUAL_DISCOVERY_SECONDS = 25
 MAX_TOOL_PAGES = 20
 MAX_DISCOVERY_ERROR_CHARS = 500
 _PROTOCOL_VERSION = "2025-03-26"

@@ -87,12 +87,15 @@ export default function MCPServersPage() {
   const [form, setForm] = useState<ServerForm>({ ...EMPTY_FORM });
   const [alert, setAlert] = useState<{
     variant: "success" | "warning" | "error";
-    body: string;
+    title: string;
+    body?: string;
   } | null>(null);
   const [discoveringId, setDiscoveringId] = useState<number | null>(null);
 
-  const showAlert = (variant: "success" | "warning" | "error", body: string) => {
-    setAlert({ variant, body });
+  // Fixed phrases go in the title (and the 0/1 tool counts in the body) so each
+  // renders as its own text node and the DOM translator can match it.
+  const showAlert = (variant: "success" | "warning" | "error", title: string, body?: string) => {
+    setAlert({ variant, title, body });
     setTimeout(() => setAlert(null), 6000);
   };
 
@@ -103,15 +106,15 @@ export default function MCPServersPage() {
   };
 
   const toolsFound = (n: number) =>
-    n === 0 ? "The server offered no tools" : n === 1 ? "1 tool found" : `${n} tools found`;
+    n === 0 ? "The server offered no tools" : n === 1 ? "One tool found" : `${n} tools found`;
 
   const reportDiscovery = (prefix: string, discovery?: Discovery) => {
     if (!discovery || discovery.status === "skipped") {
       showAlert("success", prefix);
     } else if (discovery.status === "success") {
-      showAlert("success", `${prefix}. ${toolsFound(discovery.tools_discovered)}`);
+      showAlert("success", prefix, toolsFound(discovery.tools_discovered));
     } else {
-      showAlert("warning", `${prefix}, but discovery failed: ${discovery.error}`);
+      showAlert("warning", "Discovery failed", discovery.error || undefined);
     }
   };
 
@@ -134,6 +137,9 @@ export default function MCPServersPage() {
 
   const isEditing = editingId !== null;
   const editingServer = servers.find((s) => s.id === editingId);
+  // The stored secret only carries over while the auth type is unchanged;
+  // switching type means a new secret is required and no "current" hint applies.
+  const keepsStoredSecret = isEditing && editingServer?.auth_type === form.auth_type;
 
   const handleNameChange = (value: string) => {
     setForm((p) => ({
@@ -240,7 +246,7 @@ export default function MCPServersPage() {
       );
       showAlert("success", toolsFound(res?.data?.tools_discovered ?? 0));
     } catch (err: any) {
-      showAlert("error", err?.response?.data?.detail || "Discovery failed");
+      showAlert("error", "Discovery failed", err?.response?.data?.detail);
     } finally {
       setDiscoveringId(null);
       await loadData();
@@ -286,7 +292,13 @@ export default function MCPServersPage() {
       }
     >
       {alert && (
-        <Alert variant={alert.variant} body={alert.body} isToast onClick={() => setAlert(null)} />
+        <Alert
+          variant={alert.variant}
+          title={alert.title}
+          body={alert.body ?? ""}
+          isToast
+          onClick={() => setAlert(null)}
+        />
       )}
       {loading ? (
         <CustomizableSkeleton variant="rectangular" width="100%" height={400} />
@@ -489,10 +501,10 @@ export default function MCPServersPage() {
               placeholder="Enter the bearer token"
               value={form.auth_token}
               onChange={(e) => setForm((p) => ({ ...p, auth_token: e.target.value }))}
-              isRequired={!isEditing}
+              isRequired={!keepsStoredSecret}
             />
           )}
-          {form.auth_type === "bearer" && isEditing && editingServer?.auth_secret_hint && (
+          {form.auth_type === "bearer" && keepsStoredSecret && editingServer?.auth_secret_hint && (
             <Typography sx={{ fontSize: 11, color: palette.text.tertiary }}>
               {`Current token: ${editingServer.auth_secret_hint}. Leave blank to keep it.`}
             </Typography>
@@ -511,9 +523,9 @@ export default function MCPServersPage() {
                 placeholder="Enter the API key value"
                 value={form.auth_api_key}
                 onChange={(e) => setForm((p) => ({ ...p, auth_api_key: e.target.value }))}
-                isRequired={!isEditing}
+                isRequired={!keepsStoredSecret}
               />
-              {isEditing && editingServer?.auth_secret_hint && (
+              {keepsStoredSecret && editingServer?.auth_secret_hint && (
                 <Typography sx={{ fontSize: 11, color: palette.text.tertiary }}>
                   {`Current key: ${editingServer.auth_secret_hint}. Leave blank to keep it.`}
                 </Typography>

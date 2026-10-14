@@ -83,3 +83,19 @@ def test_rejection_never_echoes_query_token():
 
 def test_is_a_value_error():
     assert issubclass(UnsafeOutboundUrlError, ValueError)
+
+
+@pytest.mark.parametrize("url", [
+    "http://169.254.169.254./latest",
+    "http://0.0.0.0./",
+    "http://[fd00:ec2::254%25eth0]/",
+    "http://[fd00:ec2::254%eth0]/",
+    "http://[::%25lo]/",
+])
+def test_trailing_dot_and_zone_id_spellings_are_rejected(url):
+    with pytest.raises(UnsafeOutboundUrlError, match="not allowed"):
+        assert_safe_outbound_url(url)
+
+
+def test_trailing_dot_on_ordinary_host_is_allowed():
+    assert assert_safe_outbound_url("https://mcp.example.com./mcp") == "https://mcp.example.com./mcp"

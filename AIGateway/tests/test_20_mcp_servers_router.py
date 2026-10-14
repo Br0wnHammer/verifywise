@@ -158,7 +158,7 @@ class TestPatch:
 
 
 class TestDiscoverEndpoint:
-    async def test_manual_discovery_uses_30s_budget(self, fakes):
+    async def test_manual_discovery_uses_25s_budget(self, fakes):
         out = await router.discover_server_tools(9, _request())
         assert out == {"status": "success", "tools_discovered": 3}
         assert fakes["discovery"] == [(9, router.MANUAL_DISCOVERY_SECONDS)]
@@ -291,3 +291,90 @@ class TestToolList:
         seen = _capture_db(monkeypatch)
         await tools_crud.get_all_tools(1)
         assert "s.is_active" not in seen[0]
+
+
+import routers.mcp_proxy as proxy_router
+import services.mcp_proxy_service as proxy_svc
+from utils.safe_outbound_url import UnsafeOutboundUrlError
+
+
+class TestResolveToolOrdering:
+    async def test_prefers_active_server_on_name_collision(self, monkeypatch):
+        seen = _capture_db_for(monkeypatch, proxy_svc)
+        with pytest.raises(ValueError):
+            await proxy_svc.resolve_tool(1, "search")
+        assert "organization_id = :org_id" in seen[0]
+        assert "ORDER BY s.is_active DESC, s.id ASC" in seen[0]
+
+
+def _capture_db_for(monkeypatch, module):
+    seen = []
+    db = MagicMock()
+
+    async def execute(stmt, params=None):
+        seen.append(str(stmt))
+        result = MagicMock()
+        result.mappings.return_value.fetchone.return_value = None
+        return result
+
+    db.execute = execute
+
+    @asynccontextmanager
+    async def get_db():
+        yield db
+
+    monkeypatch.setattr(module, "get_db", get_db)
+    return seen
+
+
+class TestUnsafeServerUrlOnToolCall:
+    async def test_reports_clear_error_audits_and_spares_breaker(self, monkeypatch):
+        agent_key = {"id": 3, "organization_id": 1, "name": "k"}
+        audits, failures = [], []
+
+        async def extract(_request):
+            return agent_key
+
+        async def noop(*_a, **_k):
+            return None
+
+        async def resolve(_org, _name):
+            return {"id": 5, "server_id": 9, "url": "http://169.254.169.254/", "requires_approval": False}
+
+        async def audit(**kwargs):
+            audits.append(kwargs)
+
+        async def forward(**_kwargs):
+            raise UnsafeOutboundUrlError("URL host is not allowed")
+
+        async def is_open(_server_id):
+            return False
+
+        async def record_failure(server_id):
+            failures.append(server_id)
+
+        monkeypatch.setattr(proxy_router, "extract_agent_key", extract)
+        monkeypatch.setattr(proxy_router, "resolve_tool", resolve)
+        monkeypatch.setattr(proxy_router, "enforce_tool_acls", lambda *_a, **_k: None)
+        monkeypatch.setattr(proxy_router, "enforce_mcp_rate_limits", noop)
+        monkeypatch.setattr(proxy_router, "scan_tool_input", noop)
+        monkeypatch.setattr(proxy_router, "check_anomaly", noop)
+        monkeypatch.setattr(proxy_router, "log_tool_call", audit)
+        monkeypatch.setattr(proxy_router, "forward_tool_call", forward)
+        monkeypatch.setattr(proxy_router.CircuitBreaker, "is_open", is_open)
+        monkeypatch.setattr(proxy_router.CircuitBreaker, "record_failure", record_failure)
+
+        request = MagicMock()
+        request.headers = {}
+        request.json = AsyncMock(return_value={
+            "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+            "params": {"name": "search", "arguments": {}},
+        })
+
+        response = await proxy_router.mcp_jsonrpc(request)
+        import json as _json
+        body = _json.loads(response.body)
+        assert body["error"]["code"] == -32603
+        assert body["error"]["message"] == "This MCP server's address is not allowed"
+        assert failures == []
+        assert audits and audits[0]["result_status"] == "error" and audits[0]["is_error"] is True
