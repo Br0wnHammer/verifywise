@@ -15,7 +15,7 @@ export const evidenceAiQueryKeys = {
   qualityScores: () => [...evidenceAiQueryKeys.all, "quality-scores"] as const,
   /** Every gaps query, whatever its params — the key to invalidate against. */
   gapsAll: () => [...evidenceAiQueryKeys.all, "gaps"] as const,
-  gaps: (params?: { framework_type?: string; quality_threshold?: number }) =>
+  gaps: (params?: { framework_type?: string; low_grades?: string[] }) =>
     [...evidenceAiQueryKeys.gapsAll(), params] as const,
   suggestions: (fileId: number) => [...evidenceAiQueryKeys.all, "suggestions", fileId] as const,
 };
@@ -46,10 +46,7 @@ export const useQualityScores = () => {
 };
 
 /** Fetch evidence gap analysis */
-export const useEvidenceGaps = (params?: {
-  framework_type?: string;
-  quality_threshold?: number;
-}) => {
+export const useEvidenceGaps = (params?: { framework_type?: string; low_grades?: string[] }) => {
   return useQuery({
     queryKey: evidenceAiQueryKeys.gaps(params),
     queryFn: async () => {

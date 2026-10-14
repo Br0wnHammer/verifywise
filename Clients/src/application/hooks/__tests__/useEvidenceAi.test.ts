@@ -114,7 +114,7 @@ describe("useEvidenceAi", () => {
       mockGetEvidenceGaps.mockResolvedValue({ data: { gaps: [{ id: 1 }], total_controls: 5 } });
 
       const { result } = renderHook(
-        () => useEvidenceGaps({ framework_type: "iso27001", quality_threshold: 80 }),
+        () => useEvidenceGaps({ framework_type: "iso27001", low_grades: ["C", "D", "F"] }),
         {
           wrapper: createWrapper(),
         },
@@ -123,7 +123,7 @@ describe("useEvidenceAi", () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockGetEvidenceGaps).toHaveBeenCalledWith({
         framework_type: "iso27001",
-        quality_threshold: 80,
+        low_grades: ["C", "D", "F"],
       });
       expect(result.current.data).toEqual({ gaps: [{ id: 1 }], total_controls: 5 });
     });
