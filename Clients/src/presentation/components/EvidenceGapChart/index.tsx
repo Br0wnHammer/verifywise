@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Box, Typography, LinearProgress, Stack } from "@mui/material";
 import { status, text as textColors, border, background } from "../../themes/palette";
 import { useTranslation } from "../../../application/hooks/useTranslation";
+import { fill } from "../../../i18n/fill";
+import { CustomizableButton } from "../button/customizable-button";
 
 /** One requirement that has no evidence, or only evidence graded as low quality. */
 interface GapItem {
@@ -33,7 +36,7 @@ const FRAMEWORK_LABELS: Record<string, string> = {
   iso_42001: "ISO 42001",
 };
 
-/** How many gaps to list before falling back to a count. */
+/** How many gaps to list before the rest are folded behind "Show all". */
 const VISIBLE_GAPS = 8;
 
 function CoverageBar({
@@ -79,6 +82,7 @@ export default function EvidenceGapChart({ data, isLoading }: EvidenceGapChartPr
   // Interpolated strings never reach the DOM translator as a whole text node,
   // so the counted fragments are translated through the hook (#4911 review).
   const { t } = useTranslation();
+  const [showAllGaps, setShowAllGaps] = useState(false);
 
   if (isLoading) {
     return (
@@ -107,7 +111,8 @@ export default function EvidenceGapChart({ data, isLoading }: EvidenceGapChartPr
   }
 
   const lowGrades = data.low_grades?.length ? data.low_grades.join(", ") : "D, F";
-  const hiddenGaps = Math.max(data.gaps.length - VISIBLE_GAPS, 0);
+  const hasHiddenGaps = data.gaps.length > VISIBLE_GAPS;
+  const listedGaps = showAllGaps ? data.gaps : data.gaps.slice(0, VISIBLE_GAPS);
 
   return (
     <Box
@@ -149,7 +154,7 @@ export default function EvidenceGapChart({ data, isLoading }: EvidenceGapChartPr
             {t("Controls needing attention")} ({data.gaps.length})
           </Typography>
           <Stack spacing={0.5}>
-            {data.gaps.slice(0, VISIBLE_GAPS).map((gap) => {
+            {listedGaps.map((gap) => {
               const noEvidence = gap.gap_type === "no_evidence";
               const tone = noEvidence ? status.error : status.warning;
 
@@ -199,10 +204,19 @@ export default function EvidenceGapChart({ data, isLoading }: EvidenceGapChartPr
               );
             })}
           </Stack>
-          {hiddenGaps > 0 && (
-            <Typography sx={{ mt: 1, fontSize: 11, color: textColors.tertiary }}>
-              {t("and")} {hiddenGaps} {t("more")}
-            </Typography>
+          {hasHiddenGaps && (
+            <Box sx={{ mt: 1 }}>
+              <CustomizableButton
+                variant="text"
+                size="small"
+                text={
+                  showAllGaps
+                    ? t("Show fewer")
+                    : fill(t("Show all {count}"), { count: data.gaps.length })
+                }
+                onClick={() => setShowAllGaps((shown) => !shown)}
+              />
+            </Box>
           )}
         </Box>
       )}

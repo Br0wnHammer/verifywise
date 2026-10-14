@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import EvidenceGapChart from "../index";
 
@@ -112,7 +112,7 @@ describe("EvidenceGapChart", () => {
     expect(screen.getByText(/Evidence graded D, F counts as low quality/)).toBeInTheDocument();
   });
 
-  it("lists 8 gaps and counts the rest", () => {
+  it("lists 8 gaps until asked for the rest", () => {
     const manyGaps = Array.from({ length: 12 }, (_, i) => ({
       framework_type: "eu_ai_act",
       control_id: i + 1,
@@ -126,6 +126,29 @@ describe("EvidenceGapChart", () => {
     expect(screen.getByText(/Control 1$/)).toBeInTheDocument();
     expect(screen.getByText(/Control 8$/)).toBeInTheDocument();
     expect(screen.queryByText(/Control 9$/)).not.toBeInTheDocument();
-    expect(screen.getByText("and 4 more")).toBeInTheDocument();
+  });
+
+  it("can list every gap past the first 8, and collapse again", () => {
+    const manyGaps = Array.from({ length: 12 }, (_, i) => ({
+      framework_type: "eu_ai_act",
+      control_id: i + 1,
+      control_title: `Control ${i + 1}`,
+      evidence_count: 0,
+      adequate_count: 0,
+      gap_type: "no_evidence" as const,
+    }));
+    renderWithProviders(<EvidenceGapChart data={{ ...mockData, gaps: manyGaps }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show all 12" }));
+    expect(screen.getByText(/Control 9$/)).toBeInTheDocument();
+    expect(screen.getByText(/Control 12$/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+    expect(screen.queryByText(/Control 9$/)).not.toBeInTheDocument();
+  });
+
+  it("offers no toggle when every gap already fits", () => {
+    renderWithProviders(<EvidenceGapChart data={mockData} />);
+    expect(screen.queryByRole("button", { name: /Show all/ })).not.toBeInTheDocument();
   });
 });
