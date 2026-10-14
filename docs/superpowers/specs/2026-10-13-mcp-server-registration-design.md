@@ -14,7 +14,7 @@ April 2026. Registered servers therefore show Health "Unknown" and Tools "—"
 forever, and agents on the MCP proxy (`POST /v1/mcp`) see none of their tools.
 A customer reported exactly this for their server "Test MCP" (`api_key` auth).
 
-Four defects sit behind the disabled button and would surface as soon as
+Five defects sit behind the disabled button and would surface as soon as
 discovery is switched on:
 
 1. **API keys are sent blank.** The form saves `{header_name, api_key}`; the
@@ -25,7 +25,10 @@ discovery is switched on:
 3. **Disabled servers still advertise tools.** `get_all_tools` filters on
    `t.is_active` only, so the proxy's `tools/list` shows tools from disabled
    servers (calls to them are blocked).
-4. **The copy overpromises.** The empty state and the user guide promise
+4. **The Tools column is always empty.** The page reads `tool_count`, but no
+   server query returns it, so a server shows "—" even after discovery. List and
+   get responses now include the count of active tools.
+5. **The copy overpromises.** The empty state and the user guide promise
    automatic discovery, periodic health checks and bypassing unhealthy servers.
    None of it exists.
 
