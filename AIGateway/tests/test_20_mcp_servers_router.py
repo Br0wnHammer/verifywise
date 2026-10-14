@@ -221,3 +221,35 @@ class TestToolCountAlways:
         out = await router.update_mcp_server(9, _request({"name": "Renamed"}))
         assert out["discovery"]["status"] == "skipped"
         assert "tool_count" in out["server"]
+
+
+class TestUnsafeUrl:
+    async def test_create_metadata_url_is_400_and_nothing_saved(self, fakes):
+        body = {"name": "S", "slug": "s", "url": "http://169.254.169.254/", "auth_type": "none"}
+        with pytest.raises(HTTPException) as err:
+            await router.create_mcp_server(_request(body))
+        assert err.value.status_code == 400
+        assert "not allowed" in err.value.detail
+        assert fakes["saved"] is None
+        assert fakes["discovery"] == []
+
+    async def test_create_stores_normalized_url(self, fakes):
+        body = {"name": "S", "slug": "s", "url": "https://a/mcp/", "auth_type": "none"}
+        await router.create_mcp_server(_request(body))
+        assert fakes["saved"]["url"] == "https://a/mcp"
+
+    async def test_patch_file_url_is_400_and_nothing_saved(self, fakes):
+        with pytest.raises(HTTPException) as err:
+            await router.update_mcp_server(9, _request({"url": "file:///x"}))
+        assert err.value.status_code == 400
+        assert "protocol" in err.value.detail
+        assert fakes["saved"] is None
+
+    async def test_patch_stores_normalized_url(self, fakes):
+        await router.update_mcp_server(9, _request({"url": "https://b/mcp//"}))
+        assert fakes["saved"]["url"] == "https://b/mcp"
+
+    async def test_patch_without_url_does_not_validate_stored_url(self, fakes):
+        fakes["row"]["url"] = "http://0.0.0.0/"
+        out = await router.update_mcp_server(9, _request({"name": "Renamed"}))
+        assert out["discovery"]["status"] == "skipped"

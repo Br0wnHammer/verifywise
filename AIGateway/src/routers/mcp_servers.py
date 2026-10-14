@@ -11,6 +11,7 @@ from services.mcp_proxy_service import (
     run_discovery,
 )
 from utils.notifications import notify_config_change
+from utils.safe_outbound_url import UnsafeOutboundUrlError, assert_safe_outbound_url
 import crud.mcp_servers as mcp_servers_crud
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,13 @@ async def get_mcp_server(server_id: int, request: Request) -> Any:
     return {"server": _present(server, request)}
 
 
+def _safe_url(raw: Any) -> str:
+    try:
+        return assert_safe_outbound_url(raw)
+    except UnsafeOutboundUrlError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("")
 async def create_mcp_server(request: Request) -> Any:
     require_admin(request)
@@ -99,6 +107,7 @@ async def create_mcp_server(request: Request) -> Any:
 
     if not body.get("url"):
         raise HTTPException(status_code=400, detail="url is required")
+    body["url"] = _safe_url(body["url"])
 
     auth_type = body.get("auth_type") or "none"
     body["auth_type"] = auth_type
@@ -140,6 +149,9 @@ async def update_mcp_server(server_id: int, request: Request) -> Any:
     slug: Optional[str] = body.get("slug")
     if slug is not None:
         _validate_slug(slug)
+
+    if "url" in body:
+        body["url"] = _safe_url(body["url"])
 
     existing = await mcp_servers_crud.get_mcp_server(org_id, server_id)
     if not existing:

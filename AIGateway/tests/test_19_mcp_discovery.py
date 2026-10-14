@@ -187,5 +187,32 @@ class TestErrorMessages:
         for exc in (self._status_error(401), self._status_error(500), httpx.ConnectError("https://mcp.example.com/mcp?token=supersecret"), ValueError("token=supersecret")):
             assert "supersecret" not in svc.describe_discovery_error(exc, 10)
 
+    def test_describe_maps_unsafe_before_generic_value_error(self):
+        from utils.safe_outbound_url import UnsafeOutboundUrlError
+        msg = svc.describe_discovery_error(UnsafeOutboundUrlError("URL protocol 'file:' is not allowed (only http/https)"), 10)
+        assert msg == "The server address is not allowed: URL protocol 'file:' is not allowed (only http/https)"
+
     def test_max_length(self):
         assert len(svc.describe_discovery_error(svc.McpRpcError("y" * 5000), 10)) <= 500
+
+
+@pytest.mark.asyncio
+class TestUnsafeStoredUrl:
+    async def test_discovery_refuses_without_any_request(self, recorded):
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(200)
+
+        out = await svc.run_discovery(1, _server(url="http://0.0.0.0/?token=supersecret"), 10, transport=httpx.MockTransport(handler))
+        assert out["status"] == "failed"
+        assert out["error"].startswith("The server address is not allowed: ")
+        assert "0.0.0.0" in out["error"] and "supersecret" not in out["error"]
+        assert seen == []
+        assert recorded["store"] == []
+        assert recorded["result"] == [(1, 5, out["error"])]
+
+    async def test_forward_tool_call_refuses_unsafe_url(self):
+        with pytest.raises(ValueError, match="not allowed"):
+            await svc.forward_tool_call("http://169.254.169.254/", "none", {}, "t", {})

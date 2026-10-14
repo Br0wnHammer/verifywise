@@ -20,6 +20,7 @@ from config import settings
 from database.db import get_db
 from utils.mcp_credentials import build_auth_headers
 from utils.rate_limit import check_rate_limit
+from utils.safe_outbound_url import UnsafeOutboundUrlError, assert_safe_outbound_url
 
 logger = logging.getLogger("uvicorn")
 
@@ -192,6 +193,7 @@ async def fetch_server_tools(
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> list[dict]:
     """Network phase of discovery: initialize, initialized, every tools/list page."""
+    server_url = assert_safe_outbound_url(server_url)
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
@@ -334,6 +336,8 @@ def describe_discovery_error(exc: BaseException, budget_seconds) -> str:
         message = "Could not connect to the server address"
     elif isinstance(exc, McpRpcError):
         message = f"The server returned an error: {exc.message[:200]}"
+    elif isinstance(exc, UnsafeOutboundUrlError):
+        message = f"The server address is not allowed: {exc}"
     elif isinstance(exc, (ValueError, KeyError, TypeError)):
         message = "The server's reply was not a valid MCP response"
     else:
@@ -402,6 +406,7 @@ async def forward_tool_call(
     Initializes a session if no session_id is provided.
     Returns (result_dict, backend_session_id).
     """
+    server_url = assert_safe_outbound_url(server_url)
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
