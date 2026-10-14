@@ -15,7 +15,7 @@ export const toolsDefinition: any[] = [
           document_text: {
             type: "string",
             description:
-              "Optional extracted text content of the document. When omitted, the analyzer reads the file's stored content directly.",
+              "Optional extracted text content of the document. The file's stored content is always used when present; this is only a fallback when the file has no content. Never fabricate or infer content from the filename.",
           },
         },
         required: ["file_id"],
@@ -94,10 +94,6 @@ export const toolsDefinition: any[] = [
           project_id: {
             type: "number",
             description: "Filter to a specific project.",
-          },
-          quality_threshold: {
-            type: "number",
-            description: "Minimum quality score to consider evidence adequate (default: 50).",
           },
         },
         required: [],
