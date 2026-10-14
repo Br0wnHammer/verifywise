@@ -113,6 +113,20 @@ describe("updateItem change history", () => {
     expect(appendToAuditLedger).not.toHaveBeenCalled();
   });
 
+  // Review: JSONB comes back with its keys reordered, so a string compare saw
+  // an unchanged config as edited.
+  it("records nothing when a config differs only in key order", async () => {
+    mockQuery
+      .mockReset()
+      .mockResolvedValueOnce([{ ...BEFORE, config: { max: 2, threshold: 1 } }])
+      .mockResolvedValueOnce([[{ id: 6 }], 1]);
+
+    await updateItem(1, 6, { config: { threshold: 1, max: 2 } }, 7);
+
+    expect(historyInsert()).toBeUndefined();
+    expect(appendToAuditLedger).not.toHaveBeenCalled();
+  });
+
   it("records nothing when there are no fields to update", async () => {
     const result = await updateItem(1, 5, {}, 7);
     expect(result).toBeNull();

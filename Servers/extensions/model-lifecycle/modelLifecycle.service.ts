@@ -308,11 +308,23 @@ export async function updateItem(
       "config",
       "is_active",
     ] as const;
+    // JSONB does not keep key order, so objects compare with sorted keys:
+    // otherwise re-saving an unchanged config records a change.
+    const canonical = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map(canonical)
+        : value !== null && typeof value === "object"
+          ? Object.fromEntries(
+              Object.keys(value as Record<string, unknown>)
+                .sort()
+                .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
+            )
+          : value;
     const normalize = (value: unknown): string | null =>
       value === undefined || value === null
         ? null
         : typeof value === "object"
-          ? JSON.stringify(value)
+          ? JSON.stringify(canonical(value))
           : String(value);
 
     const oldSnapshot: Record<string, unknown> = {};
