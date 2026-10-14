@@ -46,6 +46,12 @@ describe("getEvidenceGapsQuery", () => {
     expect(firstCall[1].replacements.projectId).toBe(7);
   });
 
+  it("counts only evidence links, never feedback files", async () => {
+    await getEvidenceGapsQuery(1, "eu_ai_act");
+    const firstCall = mockQuery.mock.calls[0] as any[];
+    expect(String(firstCall[0])).toContain("AND fel.link_type = 'evidence'");
+  });
+
   it("passes a null project filter when no project is given", async () => {
     await getEvidenceGapsQuery(1);
     const firstCall = mockQuery.mock.calls[0] as any[];
