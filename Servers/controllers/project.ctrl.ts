@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 
+import { resolveHighRiskRolesWrite } from "../utils/highRiskRoles.utils";
 import { STATUS_CODE } from "../utils/statusCode.utils";
 import {
   calculateProjectRisks,
@@ -213,11 +214,14 @@ export async function createProject(req: Request, res: Response): Promise<any> {
   });
 
   try {
+    // Either role field may be sent; store the resolved list only.
+    const highRiskRoles = resolveHighRiskRolesWrite(projectData, []) ?? [];
+    delete projectData.type_of_high_risk_role;
     const newProject: Partial<ProjectModel> & {
       members: number[] | undefined;
       framework: number[];
       enable_ai_data_insertion: boolean;
-    } = projectData;
+    } = { ...projectData, high_risk_roles: highRiskRoles };
 
     const createdProject = await createNewProjectQuery(
       newProject,
@@ -531,6 +535,13 @@ export async function updateProjectById(req: Request, res: Response): Promise<an
 
     delete updatedProject.members;
     delete updatedProject.id;
+
+    // Either role field may be sent. Resolve them against the stored list, so a
+    // client that writes back the derived single role cannot drop the other one.
+    const highRiskRoles = resolveHighRiskRolesWrite(updateData, existingProject.high_risk_roles);
+    delete updateData.type_of_high_risk_role;
+    if (highRiskRoles === undefined) delete updatedProject.high_risk_roles;
+    else updatedProject.high_risk_roles = highRiskRoles;
 
     // if (!updatedProject.project_title || !updatedProject.owner) {
     //   return res.status(400).json(
