@@ -53,6 +53,7 @@ import { getAllApprovalWorkflows } from "../../../../application/repository/appr
 import { AiRiskClassification } from "../../../../domain/enums/aiRiskClassification.enum";
 import { HighRiskRole } from "../../../../domain/enums/highRiskRole.enum";
 import CustomException from "../../../../infrastructure/exceptions/customeException";
+import { applyApprovalWorkflowSelection } from "./approvalWorkflowField";
 
 const PROJECT_STATUS_ITEMS = [
   { _id: 1, name: "Not started" },
@@ -491,11 +492,8 @@ export const ProjectForm = ({
           deploymentContextItems.find((item) => item._id === values.deployment_context)?.name ||
           null;
 
-        // Approval workflow is optional; a value of 0 means "not selected" and
-        // should not be sent to the backend as a foreign-key value.
-        if (body.approval_workflow_id === 0) {
-          delete body.approval_workflow_id;
-        }
+        // Approval workflow is optional; "none" is never sent as a foreign key.
+        applyApprovalWorkflowSelection(body, { isEdit: Boolean(projectToEdit) });
 
         let res;
         if (projectToEdit) {
