@@ -162,7 +162,7 @@ export const mcpOverviewContent: ArticleContent = {
       type: 'bullet-list',
       items: [
         { bold: 'Agent keys', text: 'Create and manage API keys for agents' },
-        { bold: 'Servers', text: 'Register and monitor backend MCP servers' },
+        { bold: 'Servers', text: 'Register backend MCP servers and see their discovery results' },
         { bold: 'MCP Tools', text: 'View all discovered tools, set risk levels' },
         { bold: 'Activity', text: 'Review tool invocation history and stats' },
         { bold: 'Approvals', text: 'Approve or deny pending tool calls' },

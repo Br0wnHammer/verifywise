@@ -31,7 +31,7 @@ export const mcpServersContent: ArticleContent = {
       items: [
         { bold: 'Server name', text: 'The display name you gave the server.' },
         { bold: 'Health status', text: 'A color-coded chip: green for "Healthy", red for "Unhealthy" or gray for "Unknown".' },
-        { bold: 'Tool count', text: 'How many tools have been discovered on this server.' },
+        { bold: 'Tool count', text: 'How many of this server\'s tools are currently available. Tools the server no longer offers aren\'t counted.' },
         { bold: 'URL', text: 'The server\'s address.' },
         { bold: 'Auth type', text: 'Shows "no auth", "bearer" or "api_key".' },
         { bold: 'Slug', text: 'The URL-safe identifier, shown as a path segment (e.g., /my-server).' },
@@ -131,7 +131,7 @@ export const mcpServersContent: ArticleContent = {
       type: 'heading',
       id: 'health-monitoring',
       level: 2,
-      text: 'Health monitoring',
+      text: 'Server health',
     },
     {
       type: 'paragraph',

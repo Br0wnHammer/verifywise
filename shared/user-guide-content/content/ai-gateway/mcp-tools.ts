@@ -148,7 +148,7 @@ export const mcpToolsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'You can\'t manually add tools. They always come from a server\'s discovery response. If a server stops offering a tool, the tool is deactivated on the next discovery. Its risk level and approval settings are kept, so they apply again if the tool comes back. Tools from a disabled server are hidden from agents, but this page still lists them.',
+      text: 'You can\'t manually add tools. They always come from a server\'s discovery response. If a server stops offering a tool, the tool is deactivated on the next discovery. Its risk level and approval settings are kept, so they apply again if the tool comes back. Tools a server stops offering are hidden from this page until it offers them again. Tools from a disabled server are hidden from agents, but this page still lists them.',
     },
     {
       type: 'heading',
