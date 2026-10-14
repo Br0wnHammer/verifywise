@@ -1,7 +1,7 @@
 # MCP server registration: make it work (phase 1)
 
 **Date:** 2026-10-13
-**Status:** Approved in conversation, awaiting written-spec review
+**Status:** Approved; written spec reviewed 2026-10-13 (review delegated by the user)
 **Branch:** `fix/mcp-server-registration` (from `develop` @ `47fa3cf37`)
 
 ## Problem
@@ -29,10 +29,14 @@ discovery is switched on:
    automatic discovery, periodic health checks and bypassing unhealthy servers.
    None of it exists.
 
-Open PR #4968 (bug sweep) contains commit `5d1cd01f4`, which enables the button
-and claims discovery runs "in the background right after create". That claim is
-false. **Decision:** this branch owns the button, discovery and the copy; the
-#4968 owner drops `5d1cd01f4` before merging.
+Open PR #4968 (bug sweep) carried five #4908 commits that overlapped this
+work: background discovery on create (`935c62473`) and its test (`929c9ca32`),
+the enabled button and new empty-state copy (`5d1cd01f4`), its test
+(`bc3ff43d7`) and the de/fr/es strings (`df19d5b41`). Background discovery
+there only logged failures, and none of the credential defects were fixed.
+**Decision:** this branch owns discovery, the button and the copy. The #4908
+work was reverted on #4968 in `3203b1443` (one revert commit, no history
+rewrite), so the two PRs do not conflict.
 
 ## Goals
 
@@ -60,7 +64,7 @@ whatever discovery returns.
 | Trigger | Runs discovery |
 |---|---|
 | Create, server active | Yes |
-| Edit that changes `url`, `auth_type` or `auth_config`, server active | Yes |
+| Edit whose body has a `url` or `auth_type` different from the stored value, or any `auth_config`, server active | Yes |
 | Edit that sets `is_active` from false to true | Yes |
 | Edit of name, slug, description or metadata only | No |
 | Server inactive after the edit | No (`skipped`) |
@@ -77,6 +81,12 @@ Create and PATCH responses gain a `discovery` object:
 
 The existing `POST /mcp/servers/{id}/discover` keeps its 502-on-failure
 contract, with the friendly message as `detail`.
+
+**Budget scope.** The budget bounds only the network phase (`initialize`,
+`notifications/initialized`, every `tools/list` page). Discovery is split into
+`fetch_server_tools` (network, wrapped in `asyncio.wait_for`) and
+`store_discovered_tools` (database upsert and deactivation, never cancelled),
+so a timeout can never leave a half-written tool list.
 
 **Outcome recording.** Success sets `health_status = 'healthy'`, clears
 `last_discovery_error`, stamps `last_health_check_at`. Failure sets `unhealthy`,
@@ -125,14 +135,17 @@ and encrypts. Rules:
 - PATCH that changes `auth_type` to `bearer` or `api_key` must include the new
   secret, else 400 "Enter the credentials for the new auth type".
 - PATCH that changes `auth_type` to `none` clears `auth_config`.
-- PATCH with `auth_type` unchanged and `api_key` header but no key keeps the
-  stored key and updates the header.
+- PATCH with `auth_type` unchanged and an `api_key` header but no key keeps
+  the stored key and updates the header. The form sends `{header}` alone when
+  only the header name was edited, and nothing when both fields are untouched.
 
 **Reads.** List and get responses never include `auth_config`. Instead:
 
 - Admins: `auth_header` (api_key only) and `auth_secret_hint` (`mask_api_key`
   output, e.g. `abcd...wxyz`).
 - Everyone else: neither field.
+- Everyone: `last_discovery_error` (it never contains secrets), so the
+  "Unhealthy" tooltip works for every role.
 
 **Use.** `_build_auth_headers` is the only place secrets are decrypted. It reads
 `token_enc` / `key_enc`; for rows not yet migrated it falls back to plaintext
@@ -224,4 +237,5 @@ changed client files (the untracked `Clients/dist-analyze/` breaks
 - **Saves now make an outbound call.** Bounded at 10 seconds; the server is
   saved regardless. Server URLs are admin-entered, so this adds no new
   server-side request surface beyond what the existing discover endpoint has.
-- **#4968 conflict** if its owner does not drop `5d1cd01f4`.
+- **#4968 history:** its branch now carries the #4908 commits plus their
+  revert. Net effect on those files is zero.
