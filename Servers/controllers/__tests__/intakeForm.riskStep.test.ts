@@ -196,6 +196,7 @@ describe("public submit with the EU AI Act step", () => {
         createdBy: null,
       });
       expect(run.result.level).toBe("Limited risk");
+      expect(run.roles).toEqual(["Deployer"]);
       const data = r.json.mock.calls[0][0].data;
       expect(data).not.toHaveProperty("result");
       expect(data).not.toHaveProperty("level");
@@ -497,7 +498,7 @@ describe("approval with the EU AI Act step", () => {
     runs.getLatestRunForSubmissionQuery.mockResolvedValue({ ...RUN, role: "Provider" });
     const r = await approve({ confirmedEntityData: { project_title: "P" } });
     expect(r.status).toHaveBeenCalledWith(200);
-    expect(runs.insertClassificationRunQuery.mock.calls[0][0].role).toBe("Deployer");
+    expect(runs.insertClassificationRunQuery.mock.calls[0][0].roles).toEqual(["Deployer"]);
 
     const p = res();
     await ctrl.getSubmissionPreview(req({ params: { id: "9" } }) as any, p);
@@ -530,7 +531,8 @@ describe("public form with a resubmission token", () => {
 
   it("returns the previous risk answers when the step is on", async () => {
     const data = await load(true);
-    expect(data.previousRiskAnswers).toEqual(ANSWERS);
+    // A run saved with a single-role string comes back as a one-item list.
+    expect(data.previousRiskAnswers).toEqual({ ...ANSWERS, role: ["deployer"] });
   });
 
   it("returns only the answers to visible questions", async () => {
