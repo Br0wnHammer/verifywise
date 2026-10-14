@@ -24,6 +24,7 @@ import { IProjectAttributes } from "../domain.layer/interfaces/i.project";
 import { IControl } from "../domain.layer/interfaces/i.control";
 import { IControlCategory } from "../domain.layer/interfaces/i.controlCategory";
 import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper";
+import { logStructured } from "../utils/logger/fileLogger";
 import { createISO27001FrameworkQuery } from "../utils/iso27001.utils";
 import { createNISTAI_RMFFrameworkQuery } from "../utils/nistAiRmfCorrect.utils";
 import {
@@ -44,8 +45,10 @@ import {
 } from "../utils/useCaseChangeHistory.utils";
 import { hasPendingApprovalQuery } from "../utils/approvalRequest.utils";
 import { deleteProjectWithSideEffects } from "../utils/projectDeletion.utils";
-import { notifyStepApprovers } from "../services/notification.service";
-import { createUseCaseApprovalRequest } from "../services/projects/approvalRequest.service";
+import {
+  createUseCaseApprovalRequest,
+  notifyUseCaseApprovalRequested,
+} from "../services/projects/approvalRequest.service";
 import {
   notifyUserAssigned,
   notifyApprovalAutoApproved,
@@ -302,6 +305,12 @@ export async function createProject(req: Request, res: Response): Promise<any> {
       }
 
       // Create approval request if an approval workflow is assigned to the use-case
+      logStructured(
+        "processing",
+        `use case ${createdProject.id} created with approval_workflow_id=${createdProject.approval_workflow_id ?? "none"} (body sent ${projectData.approval_workflow_id ?? "none"})`,
+        "createProject",
+        "project.ctrl.ts",
+      );
       const approvalResult = await createUseCaseApprovalRequest(
         createdProject,
         req.userId!,
@@ -343,13 +352,21 @@ export async function createProject(req: Request, res: Response): Promise<any> {
       // auto-approved requests (the requester is notified above instead).
       // Fire-and-forget after commit; a failure never fails the creation.
       if (approvalResult && !approvalResult.autoApproved) {
-        notifyStepApprovers(
+        notifyUseCaseApprovalRequested(
+          createdProject,
+          approvalResult,
+          req.userId!,
           req.organizationId!,
-          approvalResult.request.id!,
-          1, // Step 1
-          approvalResult.request.request_name,
-        ).catch((error) => {
-          console.error("Error sending approval notification:", error);
+        ).catch(async (notifyError) => {
+          await logFailure({
+            eventType: "Create",
+            description: "Failed to notify step 1 approvers of the use case approval request",
+            functionName: "createProject",
+            fileName: "project.ctrl.ts",
+            error: notifyError as Error,
+            userId: req.userId!,
+            organizationId: req.organizationId!,
+          });
         });
       }
 
@@ -603,13 +620,21 @@ export async function updateProjectById(req: Request, res: Response): Promise<an
       // #4905: tell the workflow's step-1 approvers a request awaits them.
       // Fire-and-forget, as on create; a failure never fails the update.
       if (updateApprovalResult && !updateApprovalResult.autoApproved) {
-        notifyStepApprovers(
+        notifyUseCaseApprovalRequested(
+          project as unknown as ProjectModel,
+          updateApprovalResult,
+          req.userId!,
           req.organizationId!,
-          updateApprovalResult.request.id!,
-          1,
-          updateApprovalResult.request.request_name,
-        ).catch((error) => {
-          console.error("Error sending approval notification:", error);
+        ).catch(async (notifyError) => {
+          await logFailure({
+            eventType: "Update",
+            description: "Failed to notify step 1 approvers of the use case approval request",
+            functionName: "updateProjectById",
+            fileName: "project.ctrl.ts",
+            error: notifyError as Error,
+            userId: req.userId!,
+            organizationId: req.organizationId!,
+          });
         });
       }
 

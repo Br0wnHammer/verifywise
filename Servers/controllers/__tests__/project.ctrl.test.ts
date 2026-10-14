@@ -102,13 +102,10 @@ jest.mock("../../domain.layer/exceptions/custom.exception", () => ({
   ValidationException: class ValidationException extends Error {},
   BusinessLogicException: class BusinessLogicException extends Error {},
 }));
-jest.mock("../../services/notification.service", () => ({
-  ...jest.requireActual("../../services/notification.service"),
-  notifyStepApprovers: jest.fn().mockResolvedValue(undefined),
-}));
 jest.mock("../../services/projects/approvalRequest.service", () => ({
   ...jest.requireActual("../../services/projects/approvalRequest.service"),
   createUseCaseApprovalRequest: jest.fn().mockResolvedValue(null),
+  notifyUseCaseApprovalRequested: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { buildProject, buildManyProject } from "../../tests/factories/project.factory";
@@ -141,7 +138,7 @@ import {
 import { getUserByIdQuery } from "../../utils/user.utils";
 import { trackUseCaseChanges } from "../../utils/useCaseChangeHistory.utils";
 import { createUseCaseApprovalRequest } from "../../services/projects/approvalRequest.service";
-import { notifyStepApprovers } from "../../services/notification.service";
+import { notifyUseCaseApprovalRequested } from "../../services/projects/approvalRequest.service";
 import { notifyApprovalAutoApproved } from "../../services/inAppNotification.service";
 import { ValidationException } from "../../domain.layer/exceptions/custom.exception";
 import {
@@ -171,8 +168,8 @@ const mockWithdrawApproval = withdrawApprovalRequestQuery as jest.MockedFunction
 const mockCreateApproval = createUseCaseApprovalRequest as jest.MockedFunction<
   typeof createUseCaseApprovalRequest
 >;
-const mockNotifyStepApprovers = notifyStepApprovers as jest.MockedFunction<
-  typeof notifyStepApprovers
+const mockNotifyApprovers = notifyUseCaseApprovalRequested as jest.MockedFunction<
+  typeof notifyUseCaseApprovalRequested
 >;
 const mockNotifyAutoApproved = notifyApprovalAutoApproved as jest.MockedFunction<
   typeof notifyApprovalAutoApproved
@@ -313,7 +310,42 @@ describe("project.ctrl", () => {
       const res = createRes();
       await createProject(req, res);
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(mockNotifyStepApprovers).toHaveBeenCalledWith(1, 44, 1, "Use Case: P1");
+      expect(mockNotifyApprovers).toHaveBeenCalledWith(
+        project,
+        expect.objectContaining({ request: expect.objectContaining({ id: 44 }) }),
+        1,
+        1,
+      );
+    });
+    it("notifies nobody when the use case has no approval workflow", async () => {
+      mockCreate.mockResolvedValue({ ...buildProject(), owner: 1, members: [] } as any);
+      mockCreateApproval.mockResolvedValue(null);
+      const req = createReq({
+        body: { project_title: "P1", owner: 1, framework: [], members: [] },
+      });
+      const res = createRes();
+      await createProject(req, res);
+      expect(mockNotifyApprovers).not.toHaveBeenCalled();
+    });
+    it("returns 400 and rolls the use case back when the workflow is rejected", async () => {
+      mockCreate.mockResolvedValue({ ...buildProject(), owner: 1, members: [] } as any);
+      mockCreateApproval.mockRejectedValue(
+        new ValidationException("The selected approval workflow is no longer active"),
+      );
+      const req = createReq({
+        body: {
+          project_title: "P1",
+          owner: 1,
+          framework: [],
+          members: [],
+          approval_workflow_id: 5,
+        },
+      });
+      const res = createRes();
+      await createProject(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect((await openedTransaction()).rollback).toHaveBeenCalled();
+      expect(mockNotifyApprovers).not.toHaveBeenCalled();
     });
     it("skips approver notification when the request is auto-approved (#4905)", async () => {
       const project = { ...buildProject(), owner: 1, approval_workflow_id: 5, members: [] };
@@ -330,7 +362,7 @@ describe("project.ctrl", () => {
       const res = createRes();
       await createProject(req, res);
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(mockNotifyStepApprovers).not.toHaveBeenCalled();
+      expect(mockNotifyApprovers).not.toHaveBeenCalled();
     });
   });
 
@@ -482,7 +514,14 @@ describe("project.ctrl", () => {
       await updateProjectById(req, res);
       expect(res.status).toHaveBeenCalledWith(202);
       expect(mockCreateApproval).toHaveBeenCalled();
-      expect(mockNotifyStepApprovers).toHaveBeenCalledWith(1, 44, 1, "Use Case: P1");
+      // The notifier must get the UPDATED row: it builds the approver's link
+      // from project.id, so passing anything else sends them to the wrong page.
+      expect(mockNotifyApprovers).toHaveBeenCalledWith(
+        expect.objectContaining({ id: updated.id, approval_workflow_id: 5 }),
+        expect.objectContaining({ request: expect.objectContaining({ id: 44 }) }),
+        1,
+        1,
+      );
     });
     it("starts no request when the attached workflow is unchanged (#4904)", async () => {
       const existing = { ...buildProject(), owner: 1, approval_workflow_id: 5 };

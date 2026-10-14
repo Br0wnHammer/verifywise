@@ -10347,6 +10347,14 @@ export const translations: Record<string, Record<string, string>> = {
       "Die Aufbewahrungseinstellungen konnten nicht geladen werden.",
     "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
       "Guardrail-Protokolle, die älter als {guardrailDays} Tage sind, und Kostenprotokolle, die älter als {spendDays} Tage sind, werden täglich dauerhaft gelöscht. Gelöschte Protokolle können nicht wiederhergestellt werden.",
+    "No evidence": "Keine Nachweise",
+    "This use case is waiting for approval. You can read this overview, but the other tabs stay disabled until the request is approved or rejected, and the frameworks picked at creation are added only once it is approved. Follow the request under Approval requests in the header.":
+      "Dieser Anwendungsfall wartet auf Genehmigung. Sie können diese Übersicht lesen, aber die übrigen Tabs bleiben deaktiviert, bis die Anfrage genehmigt oder abgelehnt wird, und die bei der Erstellung gewählten Rahmenwerke werden erst nach der Genehmigung hinzugefügt. Verfolgen Sie die Anfrage unter Genehmigungsanfragen in der Kopfzeile.",
+    "This use case was rejected, so it can no longer be used. The tabs stay disabled and the frameworks picked at creation were never added. See the rejection comment under Approval requests in the header.":
+      "Dieser Anwendungsfall wurde abgelehnt und kann nicht mehr verwendet werden. Die Tabs bleiben deaktiviert und die bei der Erstellung gewählten Rahmenwerke wurden nie hinzugefügt. Den Ablehnungskommentar finden Sie unter Genehmigungsanfragen in der Kopfzeile.",
+    "Adequate evidence": "Ausreichende Nachweise",
+    "Low-quality evidence": "Nachweise von geringer Qualität",
+    "Loading evidence coverage": "Nachweisabdeckung wird geladen",
   },
 
   fr: {
@@ -20614,6 +20622,14 @@ export const translations: Record<string, Record<string, string>> = {
       "Les paramètres de conservation n'ont pas pu être chargés.",
     "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
       "Les journaux des garde-fous de plus de {guardrailDays} jours et les journaux de dépenses de plus de {spendDays} jours seront supprimés définitivement chaque jour. Les journaux supprimés ne peuvent pas être restaurés.",
+    "No evidence": "Aucune preuve",
+    "This use case is waiting for approval. You can read this overview, but the other tabs stay disabled until the request is approved or rejected, and the frameworks picked at creation are added only once it is approved. Follow the request under Approval requests in the header.":
+      "Ce cas d'usage est en attente d'approbation. Vous pouvez consulter cette vue d'ensemble, mais les autres onglets restent désactivés tant que la demande n'est pas approuvée ou rejetée, et les référentiels choisis à la création ne sont ajoutés qu'une fois l'approbation obtenue. Suivez la demande sous Demandes d'approbation dans l'en-tête.",
+    "This use case was rejected, so it can no longer be used. The tabs stay disabled and the frameworks picked at creation were never added. See the rejection comment under Approval requests in the header.":
+      "Ce cas d'usage a été rejeté : il ne peut plus être utilisé. Les onglets restent désactivés et les référentiels choisis à la création n'ont jamais été ajoutés. Consultez le commentaire de rejet sous Demandes d'approbation dans l'en-tête.",
+    "Adequate evidence": "Preuves suffisantes",
+    "Low-quality evidence": "Preuves de faible qualité",
+    "Loading evidence coverage": "Chargement de la couverture des preuves",
   },
   es: {
     "Deployment name": "Nombre del despliegue",
@@ -30800,5 +30816,13 @@ export const translations: Record<string, Record<string, string>> = {
     "Retention settings could not be loaded.": "No se pudo cargar la configuración de retención.",
     "Guardrail logs older than {guardrailDays} days and spend logs older than {spendDays} days will be deleted permanently every day. Deleted logs cannot be restored.":
       "Los registros de guardrails con más de {guardrailDays} días y los registros de gasto con más de {spendDays} días se eliminarán de forma permanente cada día. Los registros eliminados no se pueden restaurar.",
+    "No evidence": "Sin evidencia",
+    "This use case is waiting for approval. You can read this overview, but the other tabs stay disabled until the request is approved or rejected, and the frameworks picked at creation are added only once it is approved. Follow the request under Approval requests in the header.":
+      "Este caso de uso está esperando aprobación. Puede leer esta vista general, pero las demás pestañas permanecen deshabilitadas hasta que la solicitud se apruebe o se rechace, y los marcos elegidos al crearlo solo se añaden una vez aprobado. Siga la solicitud en Solicitudes de aprobación en la cabecera.",
+    "This use case was rejected, so it can no longer be used. The tabs stay disabled and the frameworks picked at creation were never added. See the rejection comment under Approval requests in the header.":
+      "Este caso de uso fue rechazado, por lo que ya no se puede usar. Las pestañas permanecen deshabilitadas y los marcos elegidos al crearlo nunca se añadieron. Consulte el comentario de rechazo en Solicitudes de aprobación en la cabecera.",
+    "Adequate evidence": "Evidencia suficiente",
+    "Low-quality evidence": "Evidencia de baja calidad",
+    "Loading evidence coverage": "Cargando la cobertura de evidencia",
   },
 };
