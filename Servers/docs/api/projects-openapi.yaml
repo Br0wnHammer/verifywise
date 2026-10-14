@@ -660,10 +660,6 @@ components:
       enum:
         - Deployer
         - Provider
-        - Distributor
-        - Importer
-        - Product manufacturer
-        - Authorized representative
       description: Role of the organization under the EU AI Act for high-risk systems
 
     ProjectStatus:
