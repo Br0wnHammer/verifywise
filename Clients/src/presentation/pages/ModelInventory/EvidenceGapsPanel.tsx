@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { Alert, Box, Stack, Typography } from "@mui/material";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { useEvidenceGaps } from "../../../application/hooks/useEvidenceAi";
-import { useTranslation } from "../../../../application/hooks/useTranslation";
+import { useTranslation } from "../../../application/hooks/useTranslation";
 import Chip from "../../components/Chip";
 import { palette } from "../../themes/palette";
 
