@@ -251,8 +251,10 @@ export async function updateEvidenceById(req: Request, res: Response) {
         modelId,
         req.userId!,
         req.organizationId!,
-        existingEvidence.evidence_name,
-        existingEvidence.evidence_type,
+        // The row was overwritten by the Object.assign above; the removal is
+        // recorded under the evidence's name before this edit.
+        evidenceHubBefore.evidence_name,
+        evidenceHubBefore.evidence_type,
         transaction,
       );
     }
@@ -284,7 +286,8 @@ export async function updateEvidenceById(req: Request, res: Response) {
       ];
 
       for (const { field, label } of fieldsToTrack) {
-        const oldValue = (existingEvidence as any)[field];
+        // From the snapshot: existingEvidence already holds the new values.
+        const oldValue = (evidenceHubBefore as Record<string, unknown>)[field];
         const newValue = req.body[field];
 
         if (newValue !== undefined && oldValue !== newValue) {
