@@ -24,6 +24,14 @@ async def get_all_mcp_servers(org_id: int) -> list[dict]:
                     s.is_active,
                     s.health_status,
                     s.last_health_check_at,
+                    s.last_discovery_error,
+                    (
+                        SELECT COUNT(*)
+                        FROM ai_gateway_mcp_tools t
+                        WHERE t.organization_id = s.organization_id
+                          AND t.server_id = s.id
+                          AND t.is_active = true
+                    ) AS tool_count,
                     s.description,
                     s.metadata,
                     s.created_by,
@@ -69,6 +77,14 @@ async def get_mcp_server(org_id: int, server_id: int) -> Optional[dict]:
                     s.is_active,
                     s.health_status,
                     s.last_health_check_at,
+                    s.last_discovery_error,
+                    (
+                        SELECT COUNT(*)
+                        FROM ai_gateway_mcp_tools t
+                        WHERE t.organization_id = s.organization_id
+                          AND t.server_id = s.id
+                          AND t.is_active = true
+                    ) AS tool_count,
                     s.description,
                     s.metadata,
                     s.created_by,
@@ -113,6 +129,14 @@ async def get_mcp_server_by_slug(org_id: int, slug: str) -> Optional[dict]:
                     s.is_active,
                     s.health_status,
                     s.last_health_check_at,
+                    s.last_discovery_error,
+                    (
+                        SELECT COUNT(*)
+                        FROM ai_gateway_mcp_tools t
+                        WHERE t.organization_id = s.organization_id
+                          AND t.server_id = s.id
+                          AND t.is_active = true
+                    ) AS tool_count,
                     s.description,
                     s.metadata,
                     s.created_by,
