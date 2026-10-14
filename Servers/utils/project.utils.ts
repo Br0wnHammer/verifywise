@@ -598,6 +598,9 @@ export const updateProjectByIdQuery = async (
     "use_case_purpose",
     "use_case_audience",
     "deployment_context",
+    // #4904: without this, attaching an approval workflow on edit was
+    // silently dropped (the INSERT list has it; the update list did not).
+    "approval_workflow_id",
   ]
     .filter((f) => {
       // Include fields that are explicitly provided, including null, 0, or empty string

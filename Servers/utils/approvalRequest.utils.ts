@@ -182,10 +182,11 @@ export const evaluateAutoApproval = (
 
 /**
  * Create the compliance frameworks a use case had queued while awaiting
- * approval. Shared by the manual final-step approval path and the
- * risk-based auto-approval path.
+ * approval. Shared by the manual final-step approval path, the risk-based
+ * auto-approval path, and an edit that clears the use case's workflow (the
+ * approval the frameworks waited for no longer exists).
  */
-const createPendingFrameworksForApprovedUseCase = async (
+export const createPendingFrameworksForApprovedUseCase = async (
   entityId: number,
   organizationId: number,
   transaction: Transaction,
