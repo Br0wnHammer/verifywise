@@ -22,6 +22,8 @@ import socket
 from typing import Optional, Union
 from urllib.parse import urlsplit
 
+import httpx
+
 _BLOCKED_HOSTS = frozenset({"169.254.169.254", "fd00:ec2::254", "0.0.0.0", "::"})
 _BLOCKED_IPS = frozenset(ipaddress.ip_address(h) for h in _BLOCKED_HOSTS)
 
@@ -118,4 +120,17 @@ def assert_safe_outbound_url(raw: str) -> str:
         netloc = f"{netloc}:{port}"
     query = f"?{parts.query}" if parts.query else ""
     fragment = f"#{parts.fragment}" if parts.fragment else ""
-    return f"{parts.scheme}://{netloc}{_trim_slashes(parts.path)}{query}{fragment}"
+    normalized = f"{parts.scheme}://{netloc}{_trim_slashes(parts.path)}{query}{fragment}"
+
+    # httpx makes the actual request and parses the host its own way: IDNA
+    # turns Unicode dots ("169\u3002254\u3002169\u3002254") into ASCII ones.
+    # Check the host it will connect to as well, so the two parsers can't differ.
+    try:
+        request_host = httpx.URL(normalized).host
+    except Exception:
+        raise UnsafeOutboundUrlError("URL is not parseable") from None
+    if _is_blocked(request_host):
+        raise UnsafeOutboundUrlError(
+            f"URL host '{request_host}' is not allowed (cloud metadata / wildcard target)"
+        )
+    return normalized

@@ -99,3 +99,18 @@ def test_trailing_dot_and_zone_id_spellings_are_rejected(url):
 
 def test_trailing_dot_on_ordinary_host_is_allowed():
     assert assert_safe_outbound_url("https://mcp.example.com./mcp") == "https://mcp.example.com./mcp"
+
+
+@pytest.mark.parametrize("url", [
+    "http://169\u3002254\u3002169\u3002254/",  # ideographic full stop
+    "http://169\uff0e254\uff0e169\uff0e254/",  # fullwidth full stop
+    "http://0\u30020\u30020\u30020/",
+])
+def test_unicode_dot_spellings_are_rejected(url):
+    # httpx IDNA-normalizes these to the ASCII metadata/wildcard address.
+    with pytest.raises(UnsafeOutboundUrlError, match="not allowed|not parseable"):
+        assert_safe_outbound_url(url)
+
+
+def test_unicode_hostname_is_allowed():
+    assert assert_safe_outbound_url("https://bücher.example/mcp") == "https://bücher.example/mcp"
