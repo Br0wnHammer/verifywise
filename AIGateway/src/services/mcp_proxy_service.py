@@ -352,6 +352,14 @@ async def run_discovery(
     Only the network phase is bounded, so a timeout never leaves a half-written
     tool list. Never raises: failures come back as status "failed".
     """
+    server_id = server.get("id")
+
+    async def record_failure(error: str) -> None:
+        try:
+            await mcp_servers_crud.record_discovery_result(org_id, server_id, error)
+        except Exception:  # noqa: BLE001 — must not replace the returned result
+            logger.exception("Could not record MCP discovery failure for server %s", server_id)
+
     try:
         tools = await asyncio.wait_for(
             fetch_server_tools(
@@ -364,12 +372,18 @@ async def run_discovery(
         )
     except Exception as exc:  # noqa: BLE001 — every failure becomes a stored message
         error = describe_discovery_error(exc, budget_seconds)
-        logger.warning("MCP discovery failed for server %s: %s", server.get("id"), error)
-        await mcp_servers_crud.record_discovery_result(org_id, server["id"], error)
+        logger.warning("MCP discovery failed for server %s: %s", server_id, error)
+        await record_failure(error)
         return {"status": "failed", "tools_discovered": 0, "error": error}
 
-    stored = await store_discovered_tools(org_id, server["id"], tools)
-    await mcp_servers_crud.record_discovery_result(org_id, server["id"], None)
+    try:
+        stored = await store_discovered_tools(org_id, server["id"], tools)
+        await mcp_servers_crud.record_discovery_result(org_id, server["id"], None)
+    except Exception:  # noqa: BLE001 — database or malformed-tool failure
+        logger.exception("MCP discovery could not save tools for server %s", server_id)
+        error = "Could not save the discovered tools"
+        await record_failure(error)
+        return {"status": "failed", "tools_discovered": 0, "error": error}
     return {"status": "success", "tools_discovered": len(stored), "error": None}
 
 

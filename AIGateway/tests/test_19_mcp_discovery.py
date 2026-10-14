@@ -128,6 +128,28 @@ class TestRunDiscovery:
         out = await svc.run_discovery(1, _server(), 10, transport=t)
         assert out["error"] == "The server rejected the credentials (HTTP 401)"
 
+    async def test_store_failure_returns_failed_and_records(self, recorded, monkeypatch):
+        async def boom(org_id, server_id, tools):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(svc, "store_discovered_tools", boom)
+        out = await svc.run_discovery(1, _server(), 10, transport=_transport([[{"name": "a"}]], []))
+        assert out == {"status": "failed", "tools_discovered": 0, "error": "Could not save the discovered tools"}
+        assert recorded["result"] == [(1, 5, "Could not save the discovered tools")]
+
+    async def test_record_failure_does_not_replace_result(self, monkeypatch):
+        async def boom(org_id, server_id, error):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(svc.mcp_servers_crud, "record_discovery_result", boom)
+        t = httpx.MockTransport(lambda r: httpx.Response(401))
+        out = await svc.run_discovery(1, _server(), 10, transport=t)
+        assert out == {
+            "status": "failed",
+            "tools_discovered": 0,
+            "error": "The server rejected the credentials (HTTP 401)",
+        }
+
 
 class TestErrorMessages:
     def _status_error(self, code):
