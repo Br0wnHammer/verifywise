@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from config import settings
 from database.db import get_db
+from utils.mcp_credentials import build_auth_headers
 from utils.rate_limit import check_rate_limit
 
 logger = logging.getLogger("uvicorn")
@@ -133,12 +134,7 @@ async def resolve_tool(org_id: int, tool_name: str) -> dict:
 
 def _build_auth_headers(auth_type: str, auth_config: dict) -> dict:
     """Build authentication headers for backend MCP server requests."""
-    if auth_type == "bearer":
-        return {"Authorization": f"Bearer {auth_config.get('token', '')}"}
-    elif auth_type == "api_key":
-        header_name = auth_config.get("header", "x-api-key")
-        return {header_name: auth_config.get("key", "")}
-    return {}
+    return build_auth_headers(auth_type, auth_config)
 
 
 # ─── SSE Response Parser ──────────────────────────────────────────────────
