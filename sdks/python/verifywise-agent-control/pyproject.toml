@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.24"]
+requires = ["hatchling>=1.27"]  # 1.27+ for PEP 639 license metadata
 build-backend = "hatchling.build"
 
 [project]
@@ -8,8 +8,13 @@ version = "0.1.0"
 description = "VerifyWise Agent Control connector: checks every agent tool call with the VerifyWise AI Gateway before it runs and records the result after."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Business Source License 1.1 (see LICENSE.md in the VerifyWise repository)" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "VerifyWise" }]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+]
 dependencies = ["httpx>=0.27,<1"]
 
 [project.optional-dependencies]

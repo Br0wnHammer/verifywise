@@ -180,6 +180,10 @@ A refused call returns the refusal text instead of running the function. Async f
 
 All three frameworks install together in one environment (`pip install -e ".[all,dev]"` resolves on Python 3.10 and 3.12). CrewAI itself requires Python 3.10 to 3.13.
 
+## License
+
+MIT. This SDK directory is MIT licensed; the rest of the VerifyWise repository remains under its own license (see the root LICENSE.md).
+
 ## Development
 
 ```bash
