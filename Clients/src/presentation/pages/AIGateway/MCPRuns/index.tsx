@@ -17,6 +17,9 @@ interface RunRow {
   model_count: number;
   tool_count: number;
   denied_count: number;
+  /** Monitor-only tool calls in the run (absent on older gateways). */
+  would_block_count?: number;
+  would_need_approval_count?: number;
   total_tokens: number;
   total_cost: number;
   started_at: string;
@@ -32,6 +35,7 @@ const COLUMNS: MCPTableColumn[] = [
   { label: "Model calls", align: "right" },
   { label: "Tool calls", align: "right" },
   { label: "Denied", align: "right" },
+  { label: "Would block", align: "right" },
 ];
 
 export default function MCPRuns() {
@@ -100,6 +104,7 @@ export default function MCPRuns() {
                 r.model_count,
                 r.tool_count,
                 r.denied_count || "—",
+                r.would_block_count || "—",
               ]}
             />
             {rows.length >= RUNS_LIMIT && (

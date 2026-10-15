@@ -14,8 +14,12 @@ import {
   CODE_BLOCK_BG,
   CODE_BLOCK_TEXT,
   drawerLabelSx as labelSx,
+  describeMcpDecision,
+  formatMcpStatus,
 } from "./shared";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
+import { useTranslation } from "../../../application/hooks/useTranslation";
+import { fill } from "../../../i18n/fill";
 
 interface InvocationDrawerProps {
   logId: number | null;
@@ -48,6 +52,7 @@ interface AuditLogDetail {
 
 export default function MCPInvocationDrawer({ logId, open, onClose }: InvocationDrawerProps) {
   const formatDate = useFormattedDate();
+  const { t: tr } = useTranslation();
   const [row, setRow] = useState<AuditLogDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -69,6 +74,7 @@ export default function MCPInvocationDrawer({ logId, open, onClose }: Invocation
   const colors = row
     ? MCP_STATUS_COLORS[row.result_status] || MCP_STATUS_FALLBACK
     : MCP_STATUS_FALLBACK;
+  const decision = row ? describeMcpDecision(row.result_status, row.matched_rule_name) : null;
   const codeBlockSx = {
     fontSize: 12,
     fontFamily: "monospace",
@@ -118,7 +124,7 @@ export default function MCPInvocationDrawer({ logId, open, onClose }: Invocation
                   {row.tool_name}
                 </Typography>
                 <Chip
-                  label={row.result_status}
+                  label={formatMcpStatus(row.result_status)}
                   backgroundColor={colors.bg}
                   textColor={colors.text}
                 />
@@ -137,8 +143,9 @@ export default function MCPInvocationDrawer({ logId, open, onClose }: Invocation
 
           <Divider />
 
-          {/* Decision provenance — which rule produced a block / approval. */}
-          {row.matched_rule_name && (
+          {/* Decision provenance — which rule produced a block / approval, or
+              for a monitor-only key, what would have happened. */}
+          {decision && (
             <Box
               sx={{
                 p: "12px",
@@ -147,15 +154,11 @@ export default function MCPInvocationDrawer({ logId, open, onClose }: Invocation
                 backgroundColor: palette.status.warning.bg,
               }}
             >
-              <Typography sx={labelSx}>
-                {row.result_status === "approval_required"
-                  ? "Approval required by rule"
-                  : "Blocked by rule"}
-              </Typography>
+              <Typography sx={labelSx}>{tr(decision.heading)}</Typography>
               <Typography
                 sx={{ fontSize: 13, fontWeight: 600, color: palette.status.warning.text }}
               >
-                {row.matched_rule_name}
+                {fill(tr(decision.template), decision.values)}
               </Typography>
             </Box>
           )}

@@ -200,4 +200,66 @@ describe("MCPInvocationDrawer", () => {
       expect(mockGet).toHaveBeenCalledWith("/ai-gateway/mcp/audit/logs/99");
     });
   });
+
+  describe("monitor only rows", () => {
+    it("names the rule a call would have been blocked by", async () => {
+      mockGet.mockResolvedValue({
+        data: {
+          data: { ...baseDetail, result_status: "would_block", matched_rule_name: "No emails" },
+        },
+      });
+      renderWithProviders(<MCPInvocationDrawer logId={42} open onClose={vi.fn()} />);
+
+      expect(await screen.findByText("Would have been blocked by No emails")).toBeInTheDocument();
+      expect(screen.getByText("Would block")).toBeInTheDocument();
+    });
+
+    it("explains a would block with no rule as the key's tool list", async () => {
+      mockGet.mockResolvedValue({
+        data: { data: { ...baseDetail, result_status: "would_block", matched_rule_name: null } },
+      });
+      renderWithProviders(<MCPInvocationDrawer logId={42} open onClose={vi.fn()} />);
+
+      expect(
+        await screen.findByText("Would have been blocked by this key's tool list"),
+      ).toBeInTheDocument();
+    });
+
+    it("explains a would need approval with and without a rule", async () => {
+      mockGet.mockResolvedValue({
+        data: {
+          data: {
+            ...baseDetail,
+            result_status: "would_need_approval",
+            matched_rule_name: "Approve rm",
+          },
+        },
+      });
+      const { unmount } = renderWithProviders(
+        <MCPInvocationDrawer logId={42} open onClose={vi.fn()} />,
+      );
+      expect(await screen.findByText("Would have needed approval: Approve rm")).toBeInTheDocument();
+      unmount();
+
+      mockGet.mockResolvedValue({
+        data: {
+          data: { ...baseDetail, result_status: "would_need_approval", matched_rule_name: null },
+        },
+      });
+      renderWithProviders(<MCPInvocationDrawer logId={42} open onClose={vi.fn()} />);
+      expect(
+        await screen.findByText("Would have needed approval (tool requires approval)"),
+      ).toBeInTheDocument();
+    });
+
+    it("keeps the blocked by rule label for enforced rows", async () => {
+      mockGet.mockResolvedValue({
+        data: { data: { ...baseDetail, result_status: "blocked", matched_rule_name: "No emails" } },
+      });
+      renderWithProviders(<MCPInvocationDrawer logId={42} open onClose={vi.fn()} />);
+
+      expect(await screen.findByText("Blocked by rule")).toBeInTheDocument();
+      expect(screen.getByText("No emails")).toBeInTheDocument();
+    });
+  });
 });

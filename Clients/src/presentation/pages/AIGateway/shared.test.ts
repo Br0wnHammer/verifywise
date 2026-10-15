@@ -6,6 +6,8 @@ import { light } from "../../themes";
 import {
   formatEntityType,
   formatMcpStatus,
+  describeMcpDecision,
+  MCP_STATUS_COLORS,
   getProviderIcon,
   ProviderIcon,
   useCardSx,
@@ -499,6 +501,54 @@ describe("AIGateway shared utilities", () => {
       expect(formatMcpStatus("approval_required")).toBe("approval required");
       expect(formatMcpStatus("a_b_c")).toBe("a b c");
       expect(formatMcpStatus("blocked")).toBe("blocked");
+    });
+
+    it("labels the monitor only statuses", () => {
+      expect(formatMcpStatus("would_block")).toBe("Would block");
+      expect(formatMcpStatus("would_need_approval")).toBe("Would need approval");
+    });
+  });
+
+  describe("MCP_STATUS_COLORS", () => {
+    it("gives the monitor only statuses their own colours, distinct from blocked and denied", () => {
+      const { would_block, would_need_approval, blocked, denied, approval_required } =
+        MCP_STATUS_COLORS;
+      expect(would_block).toBeDefined();
+      expect(would_need_approval).toBeDefined();
+      for (const other of [blocked, denied, approval_required]) {
+        expect(would_block.bg).not.toBe(other.bg);
+        expect(would_need_approval.bg).not.toBe(other.bg);
+      }
+    });
+  });
+
+  describe("describeMcpDecision", () => {
+    it("names the rule for monitor only rows", () => {
+      expect(describeMcpDecision("would_block", "No emails")).toEqual({
+        heading: "Monitor only",
+        template: "Would have been blocked by {rule}",
+        values: { rule: "No emails" },
+      });
+      expect(describeMcpDecision("would_need_approval", "Approve rm")?.template).toBe(
+        "Would have needed approval: {rule}",
+      );
+    });
+
+    it("explains monitor only rows that have no rule", () => {
+      expect(describeMcpDecision("would_block", null)?.template).toBe(
+        "Would have been blocked by this key's tool list",
+      );
+      expect(describeMcpDecision("would_need_approval", undefined)?.template).toBe(
+        "Would have needed approval (tool requires approval)",
+      );
+    });
+
+    it("keeps the existing labels for enforced rows", () => {
+      expect(describeMcpDecision("blocked", "No emails")?.heading).toBe("Blocked by rule");
+      expect(describeMcpDecision("approval_required", "Approve rm")?.heading).toBe(
+        "Approval required by rule",
+      );
+      expect(describeMcpDecision("success", null)).toBeNull();
     });
   });
 });

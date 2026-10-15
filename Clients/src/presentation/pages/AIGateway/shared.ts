@@ -31,12 +31,81 @@ export const MCP_STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   pending: { bg: "#FFFBEB", text: "#92400E" },
   rate_limited: { bg: "#FFFBEB", text: "#92400E" },
   approval_required: { bg: "#F5F3FF", text: "#5B21B6" },
+  // Monitor-only keys: the call went through, so these use softer tones than
+  // the blocked / denied / approval colours above.
+  would_block: { bg: palette.status.warning.bg, text: palette.status.warning.text },
+  would_need_approval: { bg: palette.status.default.bg, text: palette.status.default.text },
 } as const;
 
 export const MCP_STATUS_FALLBACK = { bg: "#F3F4F6", text: "#374151" } as const;
 
+/** Statuses recorded for a monitor-only agent key instead of a block or a pause. */
+export const MONITOR_STATUSES = ["would_block", "would_need_approval"] as const;
+
+const MCP_STATUS_LABELS: Record<string, string> = {
+  would_block: "Would block",
+  would_need_approval: "Would need approval",
+};
+
 /** A stored tool-call status ("approval_required") as screen text ("approval required"). */
-export const formatMcpStatus = (status: string) => status.replace(/_/g, " ");
+export const formatMcpStatus = (status: string) =>
+  MCP_STATUS_LABELS[status] ?? status.replace(/_/g, " ");
+
+/**
+ * The decision-provenance line for an invocation: which rule blocked, paused,
+ * or (for a monitor-only key) would have blocked or paused the call. Returns
+ * an English template for `t()` plus the values to `fill()` it with, or null
+ * when there is nothing to show. A monitor row can have no rule: the outcome
+ * then came from the key's tool lists or the tool's own approval flag.
+ */
+export function describeMcpDecision(
+  status: string,
+  ruleName: string | null | undefined,
+): { heading: string; template: string; values: Record<string, string> } | null {
+  if (status === "would_block") {
+    return ruleName
+      ? {
+          heading: "Monitor only",
+          template: "Would have been blocked by {rule}",
+          values: { rule: ruleName },
+        }
+      : {
+          heading: "Monitor only",
+          template: "Would have been blocked by this key's tool list",
+          values: {},
+        };
+  }
+  if (status === "would_need_approval") {
+    return ruleName
+      ? {
+          heading: "Monitor only",
+          template: "Would have needed approval: {rule}",
+          values: { rule: ruleName },
+        }
+      : {
+          heading: "Monitor only",
+          template: "Would have needed approval (tool requires approval)",
+          values: {},
+        };
+  }
+  if (!ruleName) return null;
+  return {
+    heading: status === "approval_required" ? "Approval required by rule" : "Blocked by rule",
+    template: "{rule}",
+    values: { rule: ruleName },
+  };
+}
+
+/** How an agent key applies policy: "enforce" blocks and pauses, "monitor" only records. */
+export type EnforcementMode = "enforce" | "monitor";
+
+export const ENFORCEMENT_MODE_ITEMS: { _id: EnforcementMode; name: string }[] = [
+  { _id: "enforce", name: "Enforce" },
+  { _id: "monitor", name: "Monitor only" },
+];
+
+export const MONITOR_MODE_HELPER =
+  "Rules are checked and logged but never block or pause calls. Rate limits still apply.";
 
 export function useCardSx() {
   const theme = useTheme();

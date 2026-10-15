@@ -25,6 +25,33 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    // Agent Control monitor only mode
+    "Enforce": "Durchsetzen",
+    "Monitor only": "Nur überwachen",
+    "Rules are checked and logged but never block or pause calls. Rate limits still apply.":
+      "Regeln werden geprüft und protokolliert, blockieren oder pausieren Aufrufe aber nie. Ratenlimits gelten weiterhin.",
+    "Change mode": "Modus ändern",
+    'Choose how policies apply to calls made with "{name}".':
+      "Legen Sie fest, wie Richtlinien auf Aufrufe mit „{name}“ angewendet werden.",
+    "Use monitor only mode?": "Modus „Nur überwachen“ verwenden?",
+    "Use monitor only": "Nur überwachen verwenden",
+    "Calls made with this key will no longer be blocked or paused for approval.":
+      "Aufrufe mit diesem Schlüssel werden nicht mehr blockiert oder zur Genehmigung pausiert.",
+    'Guardrails, approval rules and the key\'s tool lists are still checked, and every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
+      "Guardrails, Genehmigungsregeln und die Tool-Listen des Schlüssels werden weiterhin geprüft, und jeder Treffer wird unter „Aktivität“ als „Würde blockieren“ oder „Würde Genehmigung erfordern“ protokolliert. Es werden keine Genehmigungsanfragen erstellt. Ratenlimits gelten weiterhin.",
+    "Failed to change the mode": "Der Modus konnte nicht geändert werden",
+    "Monitor only since {date} · by {name}": "Nur überwachen seit {date} · von {name}",
+    "Monitor only since {date}": "Nur überwachen seit {date}",
+    "Would block": "Würde blockieren",
+    "Would need approval": "Würde Genehmigung erfordern",
+    "{count} would block": "{count} würden blockiert",
+    "{count} would need approval": "{count} würden Genehmigung erfordern",
+    "Would have been blocked by {rule}": "Wäre blockiert worden durch {rule}",
+    "Would have been blocked by this key's tool list":
+      "Wäre durch die Tool-Liste dieses Schlüssels blockiert worden",
+    "Would have needed approval: {rule}": "Hätte eine Genehmigung erfordert: {rule}",
+    "Would have needed approval (tool requires approval)":
+      "Hätte eine Genehmigung erfordert (Tool erfordert Genehmigung)",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Hochrisiko-Rollen",
     "High-risk roles *": "Hochrisiko-Rollen *",
@@ -10460,6 +10487,34 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    // Agent Control monitor only mode
+    "Enforce": "Appliquer",
+    "Monitor only": "Surveillance uniquement",
+    "Rules are checked and logged but never block or pause calls. Rate limits still apply.":
+      "Les règles sont vérifiées et journalisées, mais ne bloquent ni ne suspendent jamais les appels. Les limites de débit s'appliquent toujours.",
+    "Change mode": "Changer de mode",
+    'Choose how policies apply to calls made with "{name}".':
+      "Choisissez comment les politiques s'appliquent aux appels effectués avec « {name} ».",
+    "Use monitor only mode?": "Utiliser le mode surveillance uniquement ?",
+    "Use monitor only": "Utiliser la surveillance uniquement",
+    "Calls made with this key will no longer be blocked or paused for approval.":
+      "Les appels effectués avec cette clé ne seront plus bloqués ni suspendus pour approbation.",
+    'Guardrails, approval rules and the key\'s tool lists are still checked, and every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
+      "Les garde-fous, les règles d'approbation et les listes d'outils de la clé sont toujours vérifiés, et chaque correspondance est journalisée dans Activité comme « Bloquerait » ou « Nécessiterait une approbation ». Aucune demande d'approbation n'est créée. Les limites de débit s'appliquent toujours.",
+    "Failed to change the mode": "Impossible de changer le mode",
+    "Monitor only since {date} · by {name}":
+      "Surveillance uniquement depuis le {date} · par {name}",
+    "Monitor only since {date}": "Surveillance uniquement depuis le {date}",
+    "Would block": "Bloquerait",
+    "Would need approval": "Nécessiterait une approbation",
+    "{count} would block": "{count} bloqueraient",
+    "{count} would need approval": "{count} nécessiteraient une approbation",
+    "Would have been blocked by {rule}": "Aurait été bloqué par {rule}",
+    "Would have been blocked by this key's tool list":
+      "Aurait été bloqué par la liste d'outils de cette clé",
+    "Would have needed approval: {rule}": "Aurait nécessité une approbation : {rule}",
+    "Would have needed approval (tool requires approval)":
+      "Aurait nécessité une approbation (l'outil exige une approbation)",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Rôles à haut risque",
     "High-risk roles *": "Rôles à haut risque *",
@@ -20835,6 +20890,33 @@ export const translations: Record<string, Record<string, string>> = {
       "sont considérées comme de faible qualité. Les fichiers sans analyse IA ne comptent pas comme suffisants.",
   },
   es: {
+    // Agent Control monitor only mode
+    "Enforce": "Aplicar",
+    "Monitor only": "Solo supervisión",
+    "Rules are checked and logged but never block or pause calls. Rate limits still apply.":
+      "Las reglas se comprueban y registran, pero nunca bloquean ni pausan las llamadas. Los límites de frecuencia siguen aplicándose.",
+    "Change mode": "Cambiar modo",
+    'Choose how policies apply to calls made with "{name}".':
+      "Elija cómo se aplican las políticas a las llamadas realizadas con «{name}».",
+    "Use monitor only mode?": "¿Usar el modo solo supervisión?",
+    "Use monitor only": "Usar solo supervisión",
+    "Calls made with this key will no longer be blocked or paused for approval.":
+      "Las llamadas realizadas con esta clave ya no se bloquearán ni se pausarán para aprobación.",
+    'Guardrails, approval rules and the key\'s tool lists are still checked, and every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
+      "Las barreras de protección, las reglas de aprobación y las listas de herramientas de la clave se siguen comprobando, y cada coincidencia se registra en Actividad como «Bloquearía» o «Requeriría aprobación». No se crean solicitudes de aprobación. Los límites de frecuencia siguen aplicándose.",
+    "Failed to change the mode": "No se pudo cambiar el modo",
+    "Monitor only since {date} · by {name}": "Solo supervisión desde {date} · por {name}",
+    "Monitor only since {date}": "Solo supervisión desde {date}",
+    "Would block": "Bloquearía",
+    "Would need approval": "Requeriría aprobación",
+    "{count} would block": "{count} se bloquearían",
+    "{count} would need approval": "{count} requerirían aprobación",
+    "Would have been blocked by {rule}": "Habría sido bloqueado por {rule}",
+    "Would have been blocked by this key's tool list":
+      "Habría sido bloqueado por la lista de herramientas de esta clave",
+    "Would have needed approval: {rule}": "Habría requerido aprobación: {rule}",
+    "Would have needed approval (tool requires approval)":
+      "Habría requerido aprobación (la herramienta requiere aprobación)",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Roles de alto riesgo",
     "High-risk roles *": "Roles de alto riesgo *",
