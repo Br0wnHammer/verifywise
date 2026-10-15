@@ -108,22 +108,23 @@ async def evaluate_hook_policies(
     org_id: int,
     tool_name: str,
     arguments: dict,
-    agent_key_id: int,
     *,
+    agent_key: dict,
     first_only: bool,
-    agent_key: dict | None = None,
 ) -> list[PolicyHit]:
-    """Evaluate the key's tool lists (only when agent_key is given and opted in),
-    then the guardrails, then the require_approval rules, for one native tool
-    call. Read-only: creates no approval request and sends nothing.
+    """Evaluate the key's tool lists (only when the key opted in), then the
+    guardrails, then the require_approval rules, for one native tool call.
+    Read-only: creates no approval request and sends nothing. The key's id
+    scopes the guardrails and approval rules.
 
     first_only=True (enforce mode) returns as soon as a policy hits, so a
     tool-list or guardrail deny skips the later checks. first_only=False
     (monitor mode) evaluates all of them and returns every hit, in that order.
     """
     hits: list[PolicyHit] = []
+    agent_key_id = agent_key["id"]
 
-    acl_hit = _tool_acl_hit(agent_key, tool_name) if agent_key else None
+    acl_hit = _tool_acl_hit(agent_key, tool_name)
     if acl_hit:
         hits.append(acl_hit)
         if first_only:
@@ -175,24 +176,42 @@ async def evaluate_hook_policies(
     return hits
 
 
+async def _json_object(request: Request) -> dict:
+    """The request body, which must be a JSON object (400 otherwise)."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="request body must be a JSON object")
+    return body
+
+
+def _require_optional_strings(**fields) -> None:
+    """400 unless each field is either absent (None) or a string."""
+    for name, value in fields.items():
+        if value is not None and not isinstance(value, str):
+            raise HTTPException(status_code=400, detail=f"{name} must be a string")
+
+
 @router.post("/v1/mcp/hook")
 async def mcp_hook(request: Request):
     """Adjudicate a native tool call. Never forwards or executes it."""
     agent_key = await extract_agent_key(request)
     org_id = agent_key["organization_id"]
 
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    body = await _json_object(request)
 
     tool_name = body.get("tool_name")
-    arguments = body.get("arguments") or {}
+    arguments = body.get("arguments")
+    if arguments is None:
+        arguments = {}
     session_id = body.get("session_id")
     tool_use_id = body.get("tool_use_id")
 
-    if not tool_name or not isinstance(arguments, dict):
+    if not isinstance(tool_name, str) or not tool_name or not isinstance(arguments, dict):
         raise HTTPException(status_code=400, detail="tool_name (str) and arguments (object) are required")
+    _require_optional_strings(session_id=session_id, tool_use_id=tool_use_id)
 
     start_time = time.time()
     received_at = datetime.now(timezone.utc).isoformat()
@@ -237,9 +256,7 @@ async def mcp_hook(request: Request):
     # limit so a rate-limited agent cannot burst past its cap to get a
     # policy-violating command allowed (rate_limited fails open by default).
     # Enforce mode stops at the first hit, exactly as before.
-    hits = await evaluate_hook_policies(
-        org_id, tool_name, arguments, agent_key["id"], first_only=True, agent_key=agent_key
-    )
+    hits = await evaluate_hook_policies(org_id, tool_name, arguments, agent_key=agent_key, first_only=True)
     hit = hits[0] if hits else None
     if hit and hit.kind == "tool_acl":
         await _audit("blocked", f"Hook deny: {hit.audit_summary}", "deny")
@@ -336,9 +353,7 @@ async def _monitor_hook(agent_key: dict, org_id: int, tool_name: str, arguments:
     created, reused or notified. The rate limit is still enforced: it protects
     the gateway rather than expressing policy.
     """
-    hits = await evaluate_hook_policies(
-        org_id, tool_name, arguments, agent_key["id"], first_only=False, agent_key=agent_key
-    )
+    hits = await evaluate_hook_policies(org_id, tool_name, arguments, agent_key=agent_key, first_only=False)
     outcomes = [h.as_outcome() for h in hits]
 
     events = outcome_events(outcomes)
@@ -382,17 +397,18 @@ async def mcp_hook_result(request: Request):
     Never executes anything. Best-effort: returns 200 even when no row matches."""
     agent_key = await extract_agent_key(request)
     org_id = agent_key["organization_id"]
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    body = await _json_object(request)
 
     session_id = body.get("session_id")
     tool_use_id = body.get("tool_use_id")
-    tool_name = body.get("tool_name") or "unknown"
+    tool_name = body.get("tool_name")
     tool_response = body.get("tool_response")
-    if not session_id or not tool_use_id:
-        raise HTTPException(status_code=400, detail="session_id and tool_use_id are required")
+    if not isinstance(session_id, str) or not session_id or not isinstance(tool_use_id, str) or not tool_use_id:
+        raise HTTPException(status_code=400, detail="session_id and tool_use_id (str) are required")
+    if tool_name is None:
+        tool_name = "unknown"
+    elif not isinstance(tool_name, str) or not tool_name:
+        raise HTTPException(status_code=400, detail="tool_name must be a non-empty string")
 
     serialized = json.dumps(tool_response) if tool_response is not None else "{}"
     truncated = len(serialized.encode("utf-8")) > MCP_RESULT_CAP_BYTES

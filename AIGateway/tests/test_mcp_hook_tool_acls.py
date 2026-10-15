@@ -216,12 +216,26 @@ async def test_monitor_key_tool_on_the_allowed_list_has_no_outcome(hook):
 
 async def test_policy_helper_reports_a_tool_list_hit_first(hook):
     hits = await hook_router.evaluate_hook_policies(
-        9, "Bash", {}, 5, first_only=False, agent_key=_key(allowed=["Read"])
+        9, "Bash", {}, agent_key=_key(allowed=["Read"]), first_only=False
     )
 
     assert [h.kind for h in hits] == ["tool_acl"]
     assert hits[0].as_outcome()["source"] == "tool_acl"
     assert hits[0].as_outcome()["status"] == "would_block"
+
+
+async def test_policy_helper_takes_the_key_id_from_the_agent_key(hook):
+    key = {**_key(apply=False), "id": 77}
+
+    await hook_router.evaluate_hook_policies(9, "Bash", {"command": "ls"}, agent_key=key, first_only=False)
+
+    assert hook.scan.await_args.kwargs["agent_key_id"] == 77
+    assert hook.approval.await_args.kwargs["agent_key_id"] == 77
+
+
+async def test_policy_helper_requires_the_agent_key(hook):
+    with pytest.raises(TypeError):
+        await hook_router.evaluate_hook_policies(9, "Bash", {}, first_only=True)
 
 
 # ─── Key auth, API, storage, migration ──────────────────────────────────────
