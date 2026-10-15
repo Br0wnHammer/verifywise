@@ -17,6 +17,7 @@ export const agentControlApiContent: ArticleContent = {
     ]},
     { type: 'heading', id: 'hook', level: 2, text: 'POST /v1/mcp/hook' },
     { type: 'paragraph', text: 'Ask for a decision on a native tool call. The gateway never runs the tool; it only returns a decision.' },
+    { type: 'paragraph', text: 'Checks run in this order: the agent key\'s allowed and blocked tool lists, then the guardrail scan, then approval rules, then the rate limit. A tool the key\'s lists don\'t permit gets a deny with the reason "Tool \'<name>\' is not allowed for this agent key".' },
     { type: 'paragraph', text: 'Request body:' },
     { type: 'table', columns: [
       { key: 'field', label: 'Field', width: '30%' },
