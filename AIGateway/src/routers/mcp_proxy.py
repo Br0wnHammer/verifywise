@@ -28,7 +28,6 @@ from services.mcp_audit_service import log_tool_call
 from services.mcp_monitor import (
     WOULD_BLOCK,
     WOULD_NEED_APPROVAL,
-    audit_summary,
     is_monitor,
     monitored_payload,
     most_severe,
@@ -306,10 +305,12 @@ async def mcp_jsonrpc(request: Request):
             if result.get("content"):
                 content_text = str(result["content"][0].get("text", ""))
             if outcomes:
+                # The summary stays the upstream result; what the call would
+                # have hit is recorded in the status, matched rule and events.
                 chosen = most_severe(outcomes)
                 await _audit(
                     chosen["status"],
-                    audit_summary(chosen),
+                    content_text,
                     False,
                     matched_rule_id=chosen["rule_id"],
                     matched_rule_name=chosen["rule_name"],

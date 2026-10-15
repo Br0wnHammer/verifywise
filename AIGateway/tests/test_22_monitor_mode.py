@@ -149,6 +149,8 @@ class TestHookMonitor:
         assert audit["is_error"] is False
         assert audit["matched_rule_id"] == 11
         assert audit["matched_rule_name"] == "No emails"
+        # Same summary as a normal allow; the would-outcome lives in events.
+        assert audit["result_summary"] == "Hook allow"
         assert "would_block" in _event_types(audit)
 
     async def test_mask_hit_counts_as_would_block(self, hook_fakes):
@@ -177,6 +179,7 @@ class TestHookMonitor:
         (audit,) = hook_fakes.audits
         assert audit["result_status"] == "would_need_approval"
         assert audit["matched_rule_id"] == 21
+        assert audit["result_summary"] == "Hook allow"
         assert "would_need_approval" in _event_types(audit)
 
     async def test_both_match_records_both_and_picks_would_block(self, hook_fakes):
@@ -361,8 +364,11 @@ class TestProxyMonitor:
         (audit,) = proxy_fakes.audits
         assert audit["result_status"] == "would_block"
         assert audit["is_error"] is False
-        assert "blocks tool" in audit["result_summary"]
-        assert [e["type"] for e in audit["events"]].count("would_block") == 1
+        # The summary is the upstream result; the would-outcome lives in events.
+        assert audit["result_summary"] == "deleted"
+        would = [e for e in audit["events"] if e["type"] == "would_block"]
+        assert len(would) == 1
+        assert "blocks tool" in would[0]["detail"]
         monitored = body["result"]["_meta"]["verifywise.ai/monitored"]
         assert monitored["would"] == "deny"
         assert monitored["rule"] is None
@@ -380,6 +386,7 @@ class TestProxyMonitor:
         proxy_fakes.get_pending.assert_not_awaited()
         proxy_fakes.notify.assert_not_awaited()
         assert proxy_fakes.audits[0]["result_status"] == "would_need_approval"
+        assert proxy_fakes.audits[0]["result_summary"] == "deleted"
 
     async def test_all_three_recorded_with_most_severe_status(self, proxy_fakes):
         proxy_fakes.key = _key("monitor", allowed_tools=["read_*"])
@@ -391,6 +398,7 @@ class TestProxyMonitor:
         assert len(proxy_fakes.forwarded) == 1
         (audit,) = proxy_fakes.audits
         assert audit["result_status"] == "would_block"
+        assert audit["result_summary"] == "deleted"
         types = [e["type"] for e in audit["events"]]
         assert types.count("would_block") == 2
         assert types.count("would_need_approval") == 1

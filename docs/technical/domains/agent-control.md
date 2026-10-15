@@ -266,7 +266,9 @@ row's `result_status` is the most severe (`would_block` > `would_need_approval`)
 `matched_rule_id` / `matched_rule_name` name the rule behind it (null for an ACL violation or a
 tool-level approval flag). **Every** outcome is added to the row's `events` as an entry of type
 `would_block` / `would_need_approval` with `detail`, `rule_id` and `rule_name`. The
-`decided` event says `allow`. `update_tool_result` leaves `would_*` statuses as they are (it only
+`decided` event says `allow`. `result_summary` stays what an unmonitored call would record
+(the upstream result text on the proxy, `Hook allow` on the hook), so the would-outcome is only
+in the status, the matched rule and the events. `update_tool_result` leaves `would_*` statuses as they are (it only
 flips `approval_required`). The shared helpers are in `services/mcp_monitor.py`.
 
 **Native hook.** Response is `{"decision": "allow"}` when nothing matched, otherwise:

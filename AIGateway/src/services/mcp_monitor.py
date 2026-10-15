@@ -77,9 +77,3 @@ def monitored_payload(outcomes: list[dict]) -> dict:
     chosen = _public(most_severe(outcomes))
     return {**chosen, "outcomes": [_public(o) for o in outcomes]}
 
-
-def audit_summary(chosen: dict) -> str:
-    """Activity-log summary for a monitored call."""
-    if chosen["status"] == WOULD_BLOCK:
-        return f"Monitor only, would deny: {chosen['reason']}"
-    return f"Monitor only, would require approval: {chosen['reason']}"

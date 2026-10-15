@@ -31,7 +31,6 @@ from services.mcp_guardrail_service import blocking_rule, scan_tool_input, scan_
 from services.mcp_monitor import (
     WOULD_BLOCK,
     WOULD_NEED_APPROVAL,
-    audit_summary,
     is_monitor,
     monitored_payload,
     most_severe,
@@ -268,9 +267,11 @@ async def _monitor_hook(agent_key: dict, org_id: int, tool_name: str, arguments:
         return JSONResponse(content={"decision": "allow"})
 
     chosen = most_severe(outcomes)
+    # Same summary as a normal allow; the would-outcomes live in the status,
+    # the matched rule and the events timeline.
     await _audit(
         chosen["status"],
-        audit_summary(chosen),
+        "Hook allow",
         "allow",
         matched_rule_id=chosen["rule_id"],
         matched_rule_name=chosen["rule_name"],
