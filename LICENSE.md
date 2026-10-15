@@ -470,7 +470,7 @@ The Software does not replace professional legal, auditing, security, or regulat
 
 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSOR SHALL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, CONSEQUENTIAL, EXEMPLARY, SPECIAL, OR PUNITIVE DAMAGES ARISING FROM THIS LICENSE OR THE SOFTWARE, INCLUDING LOST PROFITS, BUSINESS INTERRUPTION, OR LOSS OF DATA.
 
-TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSOR'S TOTAL AGGREGATE LIABILITY ARISING FROM THIS LICENSE SHALL NOT EXCEED CAD $100.
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSOR'S TOTAL AGGREGATE LIABILITY ARISING FROM THIS LICENSE SHALL NOT EXCEED £100 (ONE HUNDRED POUNDS STERLING).
 
 This limitation does not apply to liability that cannot lawfully be excluded or limited.
 
@@ -532,7 +532,7 @@ Commercial licenses, enterprise deployments, redistribution permissions, written
 
 - Website: https://verifywise.ai
 - Legal entity: VerifyWise Ltd. (United Kingdom)
-- Licensing contact: [OFFICIAL LICENSING EMAIL]
+- Licensing contact: hello@verifywise.ai
 
 ---
 
