@@ -3,8 +3,9 @@
 > **Status:** Shipped to `develop`. Core governance (PRs #4078, #4083, #4084); tool result
 > capture + events timeline + invocation drawer (PR #4103); run correlation, multi-agent
 > wiring (Claude Code + Cursor) and the developer guide (PR #4112); per-agent rules, decision
-> provenance and the agent activity drawer (#4320, restored after the #4265 revert).
-> Last updated 2026-10-13.
+> provenance and the agent activity drawer (#4320, restored after the #4265 revert);
+> per-key monitor-only enforcement mode (migration `a0014`).
+> Last updated 2026-10-15.
 
 Agent Control gates a coding agent's tool calls through the AI Gateway's guardrails,
 human-approval and audit machinery. It covers two entry paths that share one governance
@@ -31,6 +32,11 @@ extract_agent_key (sk-mcp-*)                    -- shared with the proxy
   → enforce_mcp_rate_limits                     -- LAST, and skipped on an approved re-call
   → allow
 ```
+
+For a **monitor-only** key (see *Monitor-only mode* below) the flow is different: the
+guardrail scan and `check_require_approval` both run (no early return), no approval request is
+looked up, created or notified, the rate limit is still enforced, and the answer is always
+`allow` (or `rate_limited`).
 
 Every path writes an audit row (`log_tool_call`), seeded with a `received` + `decided` event
 and the call's `tool_use_id`. Audit and the approval argument-hash use the **full** arguments;
@@ -229,6 +235,67 @@ describes that same detection.
 reachable as `/ai-gateway/mcp/audit/agent/{id}`) returns `summary`, `by_tool` and the 50 most
 recent calls. "Denied" excludes circuit-breaker outages, which the proxy logs as `blocked` with
 a fixed summary (`CIRCUIT_BREAKER_SUMMARY`).
+
+## Monitor-only mode (per agent key)
+
+An Admin can set an agent key's `enforcement_mode` to `'monitor'` (default `'enforce'`, the
+behaviour described everywhere else in this doc). A monitor key is evaluated against every
+policy, but its calls are never blocked or paused: they go through, and the audit row records
+what would have happened. It lets an organization roll out rules against real agent traffic
+before enforcing them.
+
+**Data model** (migration `a0014`, on `ai_gateway_mcp_agent_keys`):
+
+| Column | Type | Notes |
+|---|---|---|
+| `enforcement_mode` | `VARCHAR(20) NOT NULL DEFAULT 'enforce'` | CHECK `ai_gateway_mcp_agent_keys_enforcement_mode_check`: `'enforce'` or `'monitor'` |
+| `enforcement_mode_changed_at` | `TIMESTAMPTZ NULL` | when the mode last changed |
+| `enforcement_mode_changed_by` | `INTEGER NULL REFERENCES users(id)` | VerifyWise user who changed it (like `created_by`) |
+
+**API** (`routers/mcp_agent_keys.py`, Admin only): `enforcement_mode` is accepted on create and
+PATCH; anything other than the two values is a 400. List, create and PATCH responses return all
+three fields. The change stamp is set on create only for a non-default mode, and on PATCH only
+when the stored value actually changes (compared in the same `UPDATE`); a same-value PATCH
+keeps the previous stamp. `authenticate_agent_key` reads `enforcement_mode`, so both entry
+paths see it; a missing value is treated as `'enforce'`.
+
+**New audit statuses.** `would_block` (a guardrail block or mask hit on the hook, a guardrail
+block, a tool-list (ACL) violation on the proxy) and `would_need_approval` (a `require_approval`
+rule on the hook, a tool flagged `requires_approval` on the proxy). When several apply, the
+row's `result_status` is the most severe (`would_block` > `would_need_approval`) and
+`matched_rule_id` / `matched_rule_name` name the rule behind it (null for an ACL violation or a
+tool-level approval flag). **Every** outcome is added to the row's `events` as an entry of type
+`would_block` / `would_need_approval` with `detail`, `rule_id` and `rule_name`. The
+`decided` event says `allow`. `update_tool_result` leaves `would_*` statuses as they are (it only
+flips `approval_required`). The shared helpers are in `services/mcp_monitor.py`.
+
+**Native hook.** Response is `{"decision": "allow"}` when nothing matched, otherwise:
+
+```json
+{"decision": "allow",
+ "monitored": {"would": "deny" | "approval_required", "reason": "...",
+               "rule": {"id": 11, "name": "No emails"} | null,
+               "outcomes": [{"would": "...", "reason": "...", "rule": {...} | null}]}}
+```
+
+`scripts/vw-tool-hook.sh` ignores the extra field (allow exits 0).
+
+**MCP proxy.** `tools/list` is not filtered by the key's `allowed_tools` / `blocked_tools`
+(the proxy does not scope tools by `allowed_server_ids` in either mode). `tools/call` evaluates
+the tool lists, the tool's `requires_approval` flag and the guardrail scan, records them, then
+forwards the call. The JSON-RPC result carries the same `monitored` object under
+`result._meta["verifywise.ai/monitored"]` when something matched.
+
+**Still enforced for a monitor key:** the per-key rate limit (both paths) and the circuit
+breaker (proxy). They protect the gateway and upstream servers rather than express policy.
+Anomaly detection is unchanged (warn-only). Enforce mode is unchanged, including the proxy
+logging an ACL denial as `error`.
+
+**Counts.** `would_*` rows never count as denied or as approvals. They are counted separately:
+`GET /internal/mcp/audit/agent/{id}` returns `summary.would_block_count`,
+`summary.would_need_approval_count` and `by_tool[].would_block_count`; `GET /internal/mcp/runs`
+returns `would_block_count` and `would_need_approval_count` per run. The Activity list's
+`result_status` filter accepts the new values.
 
 ## MCP server registration and discovery
 

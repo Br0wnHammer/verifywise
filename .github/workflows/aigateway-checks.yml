@@ -98,4 +98,5 @@ jobs:
             tests/test_19_mcp_discovery.py \
             tests/test_20_mcp_servers_router.py \
             tests/test_21_safe_outbound_url.py \
+            tests/test_22_monitor_mode.py \
             -v

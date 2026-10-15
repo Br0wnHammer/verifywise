@@ -9,6 +9,10 @@ audit log, rate limiter, and approval flow. MASK detections are treated as DENY.
 require_approval rules (matched in the hook-only mcp_approval_match module) create
 an approval request and tell the caller to poll. Rate-limit exceed is reported as
 a distinct decision so the adapter can apply its infra fail-mode.
+
+A monitor-only agent key (enforcement_mode = 'monitor') is always allowed (rate
+limit aside); what would have happened is returned under "monitored" and
+recorded as a would_block / would_need_approval audit row.
 """
 
 import json
@@ -24,6 +28,16 @@ from crud.mcp_approvals import create_approval_request, get_active_request
 from services.mcp_audit_service import log_tool_call, update_tool_result
 from services.mcp_approval_match import check_require_approval
 from services.mcp_guardrail_service import blocking_rule, scan_tool_input, scan_result_blob
+from services.mcp_monitor import (
+    WOULD_BLOCK,
+    WOULD_NEED_APPROVAL,
+    audit_summary,
+    is_monitor,
+    monitored_payload,
+    most_severe,
+    outcome,
+    outcome_events,
+)
 from services.mcp_proxy_service import extract_agent_key, enforce_mcp_rate_limits
 from utils.mcp_arguments import hash_arguments
 from utils.notifications import notify_approval_pending
@@ -62,9 +76,11 @@ async def mcp_hook(request: Request):
         is_error: bool = False,
         matched_rule_id: int | None = None,
         matched_rule_name: str | None = None,
+        extra_events: list | None = None,
     ):
         events = [
             {"type": "received", "at": received_at},
+            *(extra_events or []),
             {"type": "decided", "at": datetime.now(timezone.utc).isoformat(), "detail": decided_detail},
         ]
         await log_tool_call(
@@ -83,6 +99,9 @@ async def mcp_hook(request: Request):
             matched_rule_id=matched_rule_id,
             matched_rule_name=matched_rule_name,
         )
+
+    if is_monitor(agent_key):
+        return await _monitor_hook(agent_key, org_id, tool_name, arguments, _audit)
 
     # ── Guardrail scan (UNCHANGED shared path): block / mask -> deny ─────────
     # Policy (block / mask / require_approval) is evaluated BEFORE the rate
@@ -194,6 +213,70 @@ async def mcp_hook(request: Request):
 
     await _audit("success", "Hook allow", "allow")
     return JSONResponse(content={"decision": "allow"})
+
+
+async def _monitor_hook(agent_key: dict, org_id: int, tool_name: str, arguments: dict, _audit):
+    """Monitor-only key: evaluate every policy, never deny or pause the call.
+
+    The guardrail scan and the require_approval match both run (in enforce mode a
+    guardrail hit returns before the approval check). No approval request is
+    created, reused or notified. The rate limit is still enforced: it protects
+    the gateway rather than expressing policy.
+    """
+    outcomes = []
+
+    scan_result = await scan_tool_input(
+        org_id, tool_name, arguments, field_aware=True, agent_key_id=agent_key["id"]
+    )
+    # Same deny condition as enforce mode: a mask hit counts as a deny here.
+    mask_hit = any(getattr(d, "action", None) == "mask" for d in scan_result.detections)
+    if scan_result.blocked or mask_hit:
+        reason = scan_result.block_reason
+        if not reason and mask_hit:
+            reason = "mask rule matched (masking not supported for native tool calls)"
+        rule_id, rule_name = blocking_rule(scan_result, include_mask=True)
+        outcomes.append(outcome(WOULD_BLOCK, reason or "policy violation", rule_id, rule_name))
+
+    approval_rule = await check_require_approval(
+        org_id, tool_name, arguments, agent_key_id=agent_key["id"]
+    )
+    if approval_rule:
+        name = approval_rule.get("name")
+        outcomes.append(outcome(
+            WOULD_NEED_APPROVAL,
+            f"rule '{name}' requires approval" if name else "a rule requires approval",
+            approval_rule.get("id"),
+            name,
+        ))
+
+    events = outcome_events(outcomes)
+
+    try:
+        await enforce_mcp_rate_limits(agent_key, tool_name)
+    except HTTPException as e:
+        if e.status_code == 429:
+            await _audit("rate_limited", "Hook rate limited", "rate_limited", extra_events=events)
+            return JSONResponse(content={"decision": "rate_limited", "reason": "rate limit exceeded"})
+        await _audit(
+            "error", f"Hook error during rate-limit check: {e.detail}", "error",
+            is_error=True, extra_events=events,
+        )
+        return JSONResponse(content={"decision": "deny", "reason": "internal error during adjudication"})
+
+    if not outcomes:
+        await _audit("success", "Hook allow", "allow")
+        return JSONResponse(content={"decision": "allow"})
+
+    chosen = most_severe(outcomes)
+    await _audit(
+        chosen["status"],
+        audit_summary(chosen),
+        "allow",
+        matched_rule_id=chosen["rule_id"],
+        matched_rule_name=chosen["rule_name"],
+        extra_events=events,
+    )
+    return JSONResponse(content={"decision": "allow", "monitored": monitored_payload(outcomes)})
 
 
 MCP_RESULT_CAP_BYTES = getattr(settings, "mcp_result_cap_bytes", 10240)

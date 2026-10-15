@@ -10,10 +10,22 @@ from crud.mcp_agent_keys import (
     revoke_agent_key,
     update_agent_key,
 )
+from services.mcp_monitor import ENFORCE, ENFORCEMENT_MODES
 from utils.auth import get_org_id, get_user_id, require_admin
 from utils.notifications import notify_config_change
 
 router = APIRouter(prefix="/mcp/agent-keys", tags=["mcp-agent-keys"])
+
+
+def _validated_enforcement_mode(value: Any) -> str:
+    """'enforce' blocks and pauses calls per policy; 'monitor' only records
+    what would have happened. Raises 400 for anything else."""
+    if not isinstance(value, str) or value not in ENFORCEMENT_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="enforcement_mode must be one of: " + ", ".join(ENFORCEMENT_MODES),
+        )
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +124,10 @@ async def create_key(request: Request):
                 detail="allowed_server_ids must be an array of integers",
             )
 
+    enforcement_mode = ENFORCE
+    if "enforcement_mode" in body:
+        enforcement_mode = _validated_enforcement_mode(body["enforcement_mode"])
+
     org_id = get_org_id(request)
     user_id = get_user_id(request)
 
@@ -124,6 +140,9 @@ async def create_key(request: Request):
         "rate_limit_rpm": body.get("rate_limit_rpm"),
         "metadata": body.get("metadata"),
         "expires_at": expires_at,
+        "enforcement_mode": enforcement_mode,
+        # Recorded only when the key starts in a non-default mode.
+        "enforcement_mode_changed_by": user_id,
         "created_by": user_id,
     }
 
@@ -262,8 +281,16 @@ async def update_key(key_id: int, request: Request):
                     detail="expires_at must be a valid ISO 8601 datetime string",
                 )
 
+    # enforcement_mode
+    if "enforcement_mode" in body:
+        updates["enforcement_mode"] = _validated_enforcement_mode(body["enforcement_mode"])
+
     org_id = get_org_id(request)
     user_id = get_user_id(request)
+
+    if "enforcement_mode" in updates:
+        # Stamped only if the stored mode actually changes (see update_agent_key).
+        updates["enforcement_mode_changed_by"] = user_id
 
     record = await update_agent_key(org_id, key_id, updates)
     if record is None:
