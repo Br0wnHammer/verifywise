@@ -502,9 +502,9 @@ Rights validly granted under earlier licensing arrangements, including any appli
 
 ## 20. Governing Law and Jurisdiction
 
-This License is governed by the laws of the Province of Ontario and the applicable federal laws of Canada, without regard to conflict-of-law principles.
+This License is governed by the laws of England and Wales, without regard to conflict-of-law principles.
 
-Subject to mandatory applicable law, the parties submit to the jurisdiction of the courts of competent jurisdiction in Ontario, Canada, for disputes arising from this License.
+Subject to mandatory applicable law, the parties submit to the jurisdiction of the courts of England and Wales for disputes arising from this License.
 
 Nothing in this Section limits legal rights or remedies that cannot lawfully be excluded.
 
