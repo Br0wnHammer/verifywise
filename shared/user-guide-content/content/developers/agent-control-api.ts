@@ -37,10 +37,11 @@ export const agentControlApiContent: ArticleContent = {
     ], rows: [
       { field: 'monitored.would', desc: 'What an enforcing key would have got: "deny" or "approval_required". The most severe match.' },
       { field: 'monitored.reason', desc: 'Why, for that match.' },
+      { field: 'monitored.source', desc: 'Which check produced that match: "guardrail", "approval_rule" (a require approval rule), "tool_acl" (the key\'s allowed or blocked tool lists, MCP proxy only) or "tool_requires_approval" (a tool marked as requiring approval, MCP proxy only).' },
       { field: 'monitored.rule', desc: '{ "id", "name" } of the rule behind that match, or null when it came from the key\'s tool lists or a tool marked as requiring approval.' },
-      { field: 'monitored.outcomes', desc: 'Every match, each with would, reason and rule.' },
+      { field: 'monitored.outcomes', desc: 'Every match, each with would, reason, source and rule.' },
     ]},
-    { type: 'code', language: 'json', code: '{ "decision": "allow",\n  "monitored": { "would": "approval_required",\n    "reason": "rule \'Approve rm\' requires approval",\n    "rule": { "id": 21, "name": "Approve rm" },\n    "outcomes": [ { "would": "approval_required",\n      "reason": "rule \'Approve rm\' requires approval",\n      "rule": { "id": 21, "name": "Approve rm" } } ] } }' },
+    { type: 'code', language: 'json', code: '{ "decision": "allow",\n  "monitored": { "would": "approval_required",\n    "reason": "rule \'Approve rm\' requires approval",\n    "source": "approval_rule",\n    "rule": { "id": 21, "name": "Approve rm" },\n    "outcomes": [ { "would": "approval_required",\n      "reason": "rule \'Approve rm\' requires approval",\n      "source": "approval_rule",\n      "rule": { "id": 21, "name": "Approve rm" } } ] } }' },
     { type: 'heading', id: 'result', level: 2, text: 'POST /v1/mcp/hook/result' },
     { type: 'paragraph', text: 'Report the result of a tool that has already run, so the run shows what happened. Best-effort; it never blocks.' },
     { type: 'table', columns: [
@@ -73,7 +74,8 @@ export const agentControlApiContent: ArticleContent = {
     ], rows: [
       { field: 'enforcement_mode', desc: '"enforce" or "monitor". Accepted when creating or updating a key (Admin only); any other value is rejected with a 400.' },
       { field: 'enforcement_mode_changed_at', desc: 'When the mode last changed (ISO 8601), or null if it was never changed from enforce.' },
-      { field: 'enforcement_mode_changed_by', desc: 'Id of the user who last changed the mode, or null.' },
+      { field: 'enforcement_mode_changed_by', desc: 'Id of the user who last changed the mode, or null (also when that user has since been deleted).' },
+      { field: 'enforcement_mode_changed_by_name', desc: 'Name of that user, or null. Returned when listing keys.' },
     ]},
     { type: 'heading', id: 'scanning', level: 2, text: 'What gets scanned' },
     { type: 'paragraph', text: 'For file-write tools, the gateway scans the content being written, not the file path or the text being removed. For other tools it scans the full arguments. This means writing sensitive data can be blocked, while deleting it is allowed.' },

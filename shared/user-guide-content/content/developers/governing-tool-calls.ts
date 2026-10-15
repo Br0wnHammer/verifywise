@@ -33,7 +33,7 @@ export const governingToolCallsContent: ArticleContent = {
       { bold: 'Tool list on the proxy', text: 'tools/list is not filtered by the key\'s tool lists, so the agent sees every tool.' },
     ]},
     { type: 'paragraph', text: 'When something matched, the allow response carries a monitored object saying what would have happened. On the MCP proxy the same object is in the tool result under _meta["verifywise.ai/monitored"]. See the API reference for its fields.' },
-    { type: 'code', language: 'json', code: '{\n  "decision": "allow",\n  "monitored": {\n    "would": "deny",\n    "reason": "PII detected",\n    "rule": { "id": 11, "name": "No emails" },\n    "outcomes": [\n      { "would": "deny", "reason": "PII detected", "rule": { "id": 11, "name": "No emails" } }\n    ]\n  }\n}' },
+    { type: 'code', language: 'json', code: '{\n  "decision": "allow",\n  "monitored": {\n    "would": "deny",\n    "reason": "PII detected",\n    "source": "guardrail",\n    "rule": { "id": 11, "name": "No emails" },\n    "outcomes": [\n      { "would": "deny", "reason": "PII detected", "source": "guardrail", "rule": { "id": 11, "name": "No emails" } }\n    ]\n  }\n}' },
     { type: 'paragraph', text: 'In Activity these calls appear with the status Would block or Would need approval instead of blocked or approval required. When a call matched several things, the status is the most severe one and each match is listed in the call\'s events. The result summary is the tool\'s own result, as for any allowed call.' },
     { type: 'heading', id: 'runs', level: 2, text: 'Grouping calls into a run' },
     { type: 'paragraph', text: 'A run groups one turn of work: the model calls and the tool calls that belong together. They are tied by a shared run id.' },

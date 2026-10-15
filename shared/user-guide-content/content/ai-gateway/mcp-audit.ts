@@ -129,13 +129,13 @@ export const mcpAuditContent: ArticleContent = {
         { bold: 'blocked', text: 'A guardrail rule blocked the call before it reached the server.' },
         { bold: 'rate_limited', text: 'The agent key exceeded its requests-per-minute limit.' },
         { bold: 'approval_required', text: 'The tool requires approval. An approval request was created.' },
-        { bold: 'Would block', text: 'A monitor only agent key made the call, and a guardrail or the key\'s tool lists would have blocked it. The call went through.' },
+        { bold: 'Would block', text: 'A monitor only agent key made the call, and a guardrail, or for a call through the MCP proxy the key\'s tool lists, would have blocked it. The call went through.' },
         { bold: 'Would need approval', text: 'A monitor only agent key made the call, and it would have needed approval. The call went through and no approval request was created.' },
       ],
     },
     {
       type: 'paragraph',
-      text: 'Open a Would block or Would need approval entry to see the rule behind it, for example "Would have been blocked by No emails". When there is no rule, the drawer says the key\'s tool list or the tool\'s own approval setting was the reason. Every match is also listed in the entry\'s events.',
+      text: 'Open a Would block or Would need approval entry to see the rule behind it, for example "Would have been blocked by No emails". When there is no rule, the drawer names the reason the gateway recorded: the key\'s tool list or the tool\'s own approval setting (both only for calls through the MCP proxy). Otherwise it says the call would have been blocked by a guardrail, or would have needed approval. Every match is also listed in the entry\'s events, labelled Would block or Would need approval, with the time it was checked.',
     },
     {
       type: 'heading',

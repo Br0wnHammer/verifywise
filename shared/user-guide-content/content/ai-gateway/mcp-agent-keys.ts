@@ -77,11 +77,11 @@ export const mcpAgentKeysContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'In monitor only mode, rules are checked and logged but never block or pause calls. Guardrails, approval rules and the key\'s tool lists are still evaluated, and each match shows in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply, as does the circuit breaker on the MCP proxy.',
+      text: 'In monitor only mode, rules are checked and logged but never block or pause calls. Guardrails and approval rules are still evaluated, and so are the key\'s tool lists for calls through the MCP proxy. Each match shows in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply, as does the circuit breaker on the MCP proxy.',
     },
     {
       type: 'paragraph',
-      text: 'To change the mode of an existing key, click the sliders icon on its row, pick a mode and click **Save**. Switching to Monitor only asks you to confirm; switching back to Enforce does not.',
+      text: 'To change the mode of an existing key, click the sliders icon on its row, pick a mode and click **Save**. Switching to Monitor only asks you to confirm; switching back to Enforce does not. Other admins get a notification whenever a key\'s mode changes.',
     },
     {
       type: 'callout',
