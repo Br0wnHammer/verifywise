@@ -1759,8 +1759,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Team & Compliance": "Team und Compliance",
     "Templates are grouped by framework (EU AI Act, ISO 42001, etc.). Use the search bar to find templates relevant to your compliance needs.":
       "Vorlagen sind nach Rahmenwerk gruppiert (EU-KI-Verordnung, ISO 42001 usw.). Nutzen Sie die Suchleiste, um Vorlagen passend zu Ihren Compliance-Anforderungen zu finden.",
-    "The gateway periodically checks server health and can discover available tools automatically. Unhealthy servers are temporarily bypassed to keep agents running.":
-      "Die Passerelle prüft regelmäßig den Zustand der Server und kann verfügbare Tools automatisch erkennen. Nicht erreichbare Server werden vorübergehend umgangen, damit die Agenten weiterlaufen.",
     "The marketplace tab above lists available plugins for frameworks (SOC 2, GDPR, HIPAA), integrations (Slack, Jira), and more.":
       "Der Marktplatz-Tab oben listet verfügbare Plugins für Rahmenwerke (SOC 2, DSGVO, HIPAA), Integrationen (Slack, Jira) und mehr auf.",
     "This registry manages all AI/LLM models and their associated risks within your organization. You can view, add, and manage model details and track model-specific risks and mitigation plans.":
@@ -12378,8 +12376,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Team & Compliance": "Équipe et conformité",
     "Templates are grouped by framework (EU AI Act, ISO 42001, etc.). Use the search bar to find templates relevant to your compliance needs.":
       "Les modèles sont groupés par référentiel (règlement IA de l'UE, ISO 42001, etc.). Utilisez la barre de recherche pour trouver des modèles correspondant à vos besoins de conformité.",
-    "The gateway periodically checks server health and can discover available tools automatically. Unhealthy servers are temporarily bypassed to keep agents running.":
-      "La passerelle vérifie périodiquement l'état des serveurs et peut découvrir automatiquement les outils disponibles. Les serveurs en mauvais état sont temporairement contournés pour que les agents continuent de fonctionner.",
     "The marketplace tab above lists available plugins for frameworks (SOC 2, GDPR, HIPAA), integrations (Slack, Jira), and more.":
       "L'onglet Place de marché ci-dessus liste les plugins disponibles pour les référentiels (SOC 2, RGPD, HIPAA), les intégrations (Slack, Jira) et plus encore.",
     "This registry manages all AI/LLM models and their associated risks within your organization. You can view, add, and manage model details and track model-specific risks and mitigation plans.":
@@ -26488,8 +26484,6 @@ export const translations: Record<string, Record<string, string>> = {
       "Los eventos del sistema, las llamadas a la API y los resultados de los trabajos en segundo plano se registran automáticamente. Los registros aparecen a medida que su espacio de trabajo genera actividad.",
     "Templates are grouped by framework (EU AI Act, ISO 42001, etc.). Use the search bar to find templates relevant to your compliance needs.":
       "Las plantillas se agrupan por marco (EU AI Act, ISO 42001, etc.). Utilice la barra de búsqueda para encontrar plantillas relevantes para sus necesidades de cumplimiento.",
-    "The gateway periodically checks server health and can discover available tools automatically. Unhealthy servers are temporarily bypassed to keep agents running.":
-      "El gateway comprueba periódicamente el estado de los servidores y puede descubrir automáticamente las herramientas disponibles. Los servidores en mal estado se omiten temporalmente para mantener los agentes en funcionamiento.",
     "The marketplace tab above lists available plugins for frameworks (SOC 2, GDPR, HIPAA), integrations (Slack, Jira), and more.":
       "La pestaña de marketplace de arriba muestra los plugins disponibles para marcos (SOC 2, GDPR, HIPAA), integraciones (Slack, Jira) y más.",
     "This registry manages all AI/LLM models and their associated risks within your organization. You can view, add, and manage model details and track model-specific risks and mitigation plans.":
