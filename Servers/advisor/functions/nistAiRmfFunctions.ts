@@ -20,7 +20,9 @@ const getProjectFrameworkId = async (
     { replacements: { organizationId, project_id: projectId } },
   )) as [{ id: number }[], number];
   if (!result[0] || result[0].length === 0) {
-    throw new Error(`NIST AI RMF framework not found for project #${projectId}`);
+    throw new Error(
+      `NIST AI RMF is not linked to project #${projectId}. To set it up: (1) go to the Frameworks page, (2) select your organizational project, (3) add the NIST AI RMF framework, then try again.`,
+    );
   }
   return result[0][0].id;
 };
