@@ -5,7 +5,7 @@
 > wiring (Claude Code + Cursor) and the developer guide (PR #4112); per-agent rules, decision
 > provenance and the agent activity drawer (#4320, restored after the #4265 revert);
 > per-key monitor-only enforcement mode (migration `a0014`).
-> Last updated 2026-10-15 (hook enforces agent key tool lists).
+> Last updated 2026-10-15 (hook enforces agent key tool lists; Python SDK adapters).
 
 Agent Control gates a coding agent's tool calls through the AI Gateway's guardrails,
 human-approval and audit machinery. It covers two entry paths that share one governance
@@ -151,6 +151,25 @@ Two Claude Code hooks point at the same script:
 Env: `VW_GATEWAY_URL`, `VW_AGENT_KEY` (sk-mcp-*), `VW_FAIL_MODE` (open|closed, default open —
 for gateway-unreachable and rate_limited), `VW_TIMEOUT`, `VW_APPROVAL_WAIT`,
 `VW_APPROVAL_FAIL_MODE` (default closed).
+
+## Adapters: Python SDK (`sdks/python/verifywise-agent-control/`)
+
+An MIT-licensed Python package that calls the same two endpoints as the shell hook
+(`POST /v1/mcp/hook` before, `POST /v1/mcp/hook/result` after), with the same `VW_*` env vars
+and defaults. Installed from GitHub by tag (`sdk-py-vX.Y.Z`, `#subdirectory=`), not PyPI.
+CI: `.github/workflows/python-sdk-checks.yml` (ruff + pytest, real frameworks, no network).
+Each adapter uses the framework's own agent-level interception point, so no tool is missed:
+
+| Framework | Interception | Refusal reaches the model as | `on_deny="raise"` |
+|---|---|---|---|
+| LangChain v1 | `AgentMiddleware.wrap_tool_call` / `awrap_tool_call` | `ToolMessage(status="error")` | raises `VerifyWiseDenied` |
+| CrewAI (≥1.15.28) | process-wide `pre_tool_call` / `post_tool_call` hooks (+ `execution_start/end` for per-kickoff run ids) | pre hook blocks; post hook replaces CrewAI's fixed "blocked by hook" text with the refusal | post hook raises a `VerifyWiseDenied` that is also CrewAI's `HookAborted` (passed through, no retry) |
+| Microsoft Agent Framework (core ≥1.21) | `FunctionMiddleware.process` | `context.result` set, `call_next` skipped | raises a `VerifyWiseDenied` that is also `MiddlewareFailure` |
+| Plain Python | `@governed` / `govern_tool()` | the refusal string is returned | raises `VerifyWiseDenied` |
+
+Run id: explicit `vw_session` → framework id (LangGraph `thread_id`, CrewAI per-kickoff id,
+Agent Framework `AgentSession.session_id`) → per-invocation/per-client uuid. Spec:
+`docs/superpowers/specs/2026-10-15-agent-control-python-sdk-design.md`.
 
 ## Log retention
 
@@ -392,9 +411,11 @@ Registration is what feeds the proxy's tool catalog.
   (the recorded rule is there to build on; see *Per-agent rules and decision provenance*).
 - An Agent Control overview/landing page; a priority rule engine; tamper-evident audit;
   metering MCP calls into the existing budgets; an LLM "summarize" for captured results.
-- Adapters for agents without a pre-tool hook (Codex CLI, Aider, Gemini CLI). The integration
-  contract is documented (see the developer guide) so users can wire these themselves; no
-  bundled adapter ships yet. Cursor and Claude Code both work today via `scripts/vw-tool-hook.sh`.
+- Adapters for terminal agents without a pre-tool hook (Codex CLI, Aider, Gemini CLI). The
+  integration contract is documented (see the developer guide) so users can wire these
+  themselves; no bundled adapter ships yet. Cursor and Claude Code work via
+  `scripts/vw-tool-hook.sh`; Python agents (LangChain, CrewAI, Microsoft Agent Framework,
+  plain Python) via the Python SDK (see *Adapters: Python SDK*).
 
 ## Design history
 
@@ -409,6 +430,6 @@ The spec/plan trail for each increment lives under `docs/superpowers/`:
 
 Customer developers connecting their own agent use the **Developer guide** collection in the
 in-app user guide (`shared/user-guide-content/content/developers/`): overview, connect your
-agent (Claude Code + Cursor wiring), connect any agent (the generic hook contract + MCP proxy +
-bring-your-own), governing tool calls, and an API reference. Keep that collection in sync when
+agent (Claude Code + Cursor wiring), connect Python agents (the Python SDK), connect any agent
+(the generic hook contract + MCP proxy + bring-your-own), governing tool calls, and an API reference. Keep that collection in sync when
 the hook request/response shape, the `x-vw-agent-run-id` header, or the endpoints change.
