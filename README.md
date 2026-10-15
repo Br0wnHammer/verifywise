@@ -55,7 +55,7 @@ We are democratizing AI best practices with a solution that can be hosted on-pre
 ![VerifyWise platform](https://github.com/user-attachments/assets/2d05cd1f-f67b-45d2-aca4-1fdcde287a44)
 
 - Option to host the application on-premises or in a private cloud
-- Source available license (BSL 1.1). Dual licensing is also available for enterprises
+- Source-available license ([VCEL 1.0](LICENSE.md)): free for personal, educational, public sector, noncommercial research and evaluation use. Commercial use needs a commercial license ([licensing FAQ](LICENSING-FAQ.md))
 - Faster audits using AI-generated answers for compliance and assessment questions
 - Full access to the source code for transparency, security audits, and customization
 - Docker and Kubernetes deployment (also deployable on render.com and similar platforms)
