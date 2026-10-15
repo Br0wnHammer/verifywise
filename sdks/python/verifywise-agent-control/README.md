@@ -73,7 +73,7 @@ The recorded result is `{"output": "..."}` or `{"error": "..."}`. When it is too
 
 When the tool itself raises, the error text is recorded and the original exception is re-raised unchanged, so your framework handles it as it would without the SDK (CrewAI and Agent Framework turn it into an error message for the model). Otherwise the SDK never raises into your agent. Result recording and logging failures are swallowed.
 
-All log lines use the logger `verifywise_agent_control`.
+All log lines use the logger `verifywise_agent_control`. Text from outside the SDK (tool names, arguments, exception messages, and reasons or rule names sent by the gateway) is logged on one line: line breaks and other control characters are escaped (`\n`, `\x1b`), terminal escape sequences are removed and long values are cut, so it can't forge or recolour log lines. An internal error's traceback is logged the same way. The agent key and the `Authorization` header are never logged, and `Settings` leaves the key out of its `repr()`.
 
 ## Runs
 

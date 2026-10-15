@@ -41,6 +41,7 @@ from typing import Any
 from crewai.hooks import HookAborted, InterceptionPoint, register_hook, unregister_hook
 
 from ._core import default_client
+from ._logsafe import log_safe
 from .client import AgentControlClient, arguments_changed
 from .decision import Decision, VerifyWiseDenied
 from .session import current_session_id, new_session_id
@@ -176,7 +177,7 @@ class CrewAIGovernance:
             logger.error(
                 "VerifyWise: tool '%s' ran with arguments that changed after they were checked. "
                 "Call enable_crewai_governance() after registering hooks that modify tool input.",
-                entry.tool_name,
+                log_safe(entry.tool_name),
             )
             error, output = ARGUMENTS_CHANGED_AFTER_RUN, None
         self.client.report(

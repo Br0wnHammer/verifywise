@@ -16,6 +16,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from ._logsafe import log_safe
+
 logger = logging.getLogger("verifywise_agent_control")
 
 ENV_GATEWAY_URL = "VW_GATEWAY_URL"
@@ -62,7 +64,7 @@ def _number(value: Any, default: float, name: str, *, allow_zero: bool) -> float
     except (TypeError, ValueError):
         number = math.nan
     if not math.isfinite(number) or number < 0 or (number == 0 and not allow_zero):
-        logger.warning("Ignoring invalid %s=%r; using %s", name, value, default)
+        logger.warning("Ignoring invalid %s=%s; using %s", name, log_safe(repr(value)), default)
         return default
     return number
 
@@ -84,7 +86,7 @@ def _max_result_bytes(value: Any) -> int:
     if number > MAX_RESULT_BYTES:
         logger.warning(
             "max_result_bytes=%s is above what the gateway stores without cutting; using %s",
-            value,
+            log_safe(value),
             MAX_RESULT_BYTES,
         )
         return MAX_RESULT_BYTES
@@ -114,7 +116,8 @@ class Settings:
     """
 
     gateway_url: str | None = None
-    agent_key: str | None = None
+    # Kept out of repr() so a logged Settings (or client) never shows the key.
+    agent_key: str | None = dataclasses.field(default=None, repr=False)
     fail_mode: str = "open"
     timeout: float = DEFAULT_TIMEOUT
     approval_wait: float = DEFAULT_APPROVAL_WAIT

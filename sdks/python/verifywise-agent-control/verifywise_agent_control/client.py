@@ -27,6 +27,7 @@ from typing import Any
 import httpx
 
 from . import decision as d
+from ._logsafe import log_safe, safe_traceback
 from ._version import __version__
 from .config import GATEWAY_RESULT_CAP_BYTES, MAX_RESULT_BYTES, Settings
 from .decision import Decision
@@ -115,11 +116,6 @@ def arguments_json(arguments: Any) -> str:
     return json.dumps(arguments, allow_nan=False)
 
 
-def _clean(text: Any) -> str:
-    """Gateway-supplied text for a log line, without line breaks or control characters."""
-    return "".join(ch if ch.isprintable() else " " for ch in str(text))
-
-
 def _stringify(value: Any) -> str:
     if isinstance(value, str):
         return value
@@ -160,21 +156,29 @@ def _result_envelope(key: str, text: str, max_bytes: int) -> dict[str, Any]:
     return {key: text[:low], "truncated": True}
 
 
-def _describe_monitored(tool_name: str, monitored: Any) -> str:
+def _log_monitored(tool_name: str, monitored: Any) -> None:
+    """One WARNING saying what a monitor-only key's call would have met.
+    Every gateway-supplied value goes through log_safe."""
     if not isinstance(monitored, dict):
-        return f"VerifyWise monitor mode: tool '{tool_name}' ran, but a policy would have stopped it"
+        logger.warning(
+            "VerifyWise monitor mode: tool '%s' ran, but a policy would have stopped it", log_safe(tool_name)
+        )
+        return
     would = monitored.get("would")
     action = {
         "deny": "would have been denied",
         "approval_required": "would have required approval",
-    }.get(would, f"would have been {_clean(would or 'stopped')}")
-    message = f"VerifyWise monitor mode: tool '{tool_name}' ran, but {action}"
-    if monitored.get("reason"):
-        message += f": {_clean(monitored['reason'])}"
+    }.get(would) or f"would have been {log_safe(would or 'stopped')}"
+    reason = monitored.get("reason")
     rule = monitored.get("rule")
-    if isinstance(rule, dict) and rule.get("name"):
-        message += f" (rule: {_clean(rule['name'])})"
-    return message
+    rule_name = rule.get("name") if isinstance(rule, dict) else None
+    logger.warning(
+        "VerifyWise monitor mode: tool '%s' ran, but %s%s%s",
+        log_safe(tool_name),
+        action,
+        f": {log_safe(reason)}" if reason else "",
+        f" (rule: {log_safe(rule_name)})" if rule_name else "",
+    )
 
 
 def _with_checked(decision: Decision, checked: str) -> Decision:
@@ -275,8 +279,8 @@ class _ClientBase:
         allowed = self.settings.fail_mode == "open"
         logger.warning(
             "VerifyWise gateway could not decide tool '%s' (%s); fail mode %s: %s",
-            tool_name,
-            problem,
+            log_safe(tool_name),
+            log_safe(problem),
             self.settings.fail_mode,
             "running it" if allowed else "refusing it",
         )
@@ -290,7 +294,7 @@ class _ClientBase:
             "VerifyWise rejected the agent key (HTTP %s) while checking tool '%s'; refusing it. "
             "Check that VW_AGENT_KEY is a current, unrevoked agent key.",
             status_code,
-            tool_name,
+            log_safe(tool_name),
         )
         return Decision(
             allowed=False, status=d.AUTH_REJECTED, reason=KEY_REJECTED_REASON, approval_id=approval_id
@@ -302,18 +306,20 @@ class _ClientBase:
         whatever the fail mode."""
         logger.error(
             "VerifyWise could not send the arguments of tool '%s' for checking (%s); refusing it",
-            tool_name,
-            exc,
+            log_safe(tool_name),
+            log_safe(exc),
         )
         return Decision(allowed=False, status=d.ARGUMENTS_UNSENDABLE, reason=UNSENDABLE_REASON)
 
     def _internal_error(self, tool_name: str, exc: BaseException) -> Decision:
         """A bug inside the SDK is not a gateway outage, so the fail mode does not
         apply: the call is refused (closed semantics) and the error logged."""
+        # The traceback is logged as one escaped line: an exception message is
+        # untrusted text (it can quote tool arguments).
         logger.error(
-            "VerifyWise SDK internal error while checking tool '%s'; refusing it",
-            tool_name,
-            exc_info=(type(exc), exc, exc.__traceback__),
+            "VerifyWise SDK internal error while checking tool '%s'; refusing it: %s",
+            log_safe(tool_name),
+            safe_traceback(exc),
         )
         return Decision(
             allowed=False,
@@ -326,9 +332,9 @@ class _ClientBase:
         allowed = self.settings.approval_fail_mode == "open"
         logger.warning(
             "VerifyWise approval %s for tool '%s' %s; approval fail mode %s: %s",
-            approval_id,
-            tool_name,
-            problem,
+            log_safe(approval_id),
+            log_safe(tool_name),
+            log_safe(problem),
             self.settings.approval_fail_mode,
             "running it" if allowed else "refusing it",
         )
@@ -356,7 +362,7 @@ class _ClientBase:
         if decision == "allow":
             monitored = body.get("monitored")
             if monitored:
-                logger.warning(_describe_monitored(tool_name, monitored))
+                _log_monitored(tool_name, monitored)
             return Decision(
                 allowed=True,
                 status=d.ALLOW,
@@ -364,7 +370,7 @@ class _ClientBase:
             )
         if decision == "deny":
             reason = body.get("reason") or "policy violation"
-            logger.info("VerifyWise denied tool '%s': %s", tool_name, _clean(reason))
+            logger.info("VerifyWise denied tool '%s': %s", log_safe(tool_name), log_safe(reason))
             return Decision(allowed=False, status=d.DENY, reason=str(reason))
         if decision == "rate_limited":
             return self._fail(tool_name, "rate limited", status=d.RATE_LIMITED)
@@ -379,8 +385,8 @@ class _ClientBase:
                 return self._fail(tool_name, "approval reply had no valid approval_id/poll_endpoint")
             logger.info(
                 "VerifyWise: tool '%s' awaits human approval (id=%s, up to %ss)",
-                tool_name,
-                approval_id,
+                log_safe(tool_name),
+                log_safe(approval_id),
                 f"{self.settings.approval_wait:g}",
             )
             return _Pending(str(approval_id), endpoint)
@@ -398,12 +404,19 @@ class _ClientBase:
             return None
         status = body.get("status") if isinstance(body, dict) else None
         if status == "approved":
-            logger.info("VerifyWise: approval %s for tool '%s' approved", pending.approval_id, tool_name)
+            logger.info(
+                "VerifyWise: approval %s for tool '%s' approved",
+                log_safe(pending.approval_id),
+                log_safe(tool_name),
+            )
             return Decision(allowed=True, status=d.APPROVED, approval_id=pending.approval_id)
         if status == "denied":
             reason = body.get("decision_reason") or "denied by approver"
             logger.info(
-                "VerifyWise: approval %s for tool '%s' denied: %s", pending.approval_id, tool_name, reason
+                "VerifyWise: approval %s for tool '%s' denied: %s",
+                log_safe(pending.approval_id),
+                log_safe(tool_name),
+                log_safe(reason),
             )
             return Decision(
                 allowed=False, status=d.APPROVAL_DENIED, reason=str(reason), approval_id=pending.approval_id
@@ -426,11 +439,13 @@ class _ClientBase:
             logger.error(
                 "VerifyWise rejected the agent key (HTTP %s) when recording the result of tool '%s'",
                 status_code,
-                tool_name,
+                log_safe(tool_name),
             )
         elif status_code != 200:
             logger.warning(
-                "VerifyWise did not record the result of tool '%s' (HTTP %s)", tool_name, status_code
+                "VerifyWise did not record the result of tool '%s' (HTTP %s)",
+                log_safe(tool_name),
+                status_code,
             )
 
 
@@ -524,7 +539,9 @@ class AgentControlClient(_ClientBase):
             self._log_report_status(tool_name, response.status_code)
         except Exception as exc:  # noqa: BLE001 - result capture is best-effort
             logger.warning(
-                "VerifyWise could not record the result of tool '%s': %s", tool_name, type(exc).__name__
+                "VerifyWise could not record the result of tool '%s': %s",
+                log_safe(tool_name),
+                log_safe(type(exc).__name__),
             )
 
     def close(self) -> None:
@@ -671,7 +688,9 @@ class AsyncAgentControlClient(_ClientBase):
             self._log_report_status(tool_name, response.status_code)
         except Exception as exc:  # noqa: BLE001 - result capture is best-effort
             logger.warning(
-                "VerifyWise could not record the result of tool '%s': %s", tool_name, type(exc).__name__
+                "VerifyWise could not record the result of tool '%s': %s",
+                log_safe(tool_name),
+                log_safe(type(exc).__name__),
             )
 
     async def aclose(self) -> None:
@@ -691,8 +710,10 @@ class AsyncAgentControlClient(_ClientBase):
                 future = asyncio.run_coroutine_threadsafe(closer.aclose(), loop)
                 try:
                     await asyncio.wait_for(asyncio.wrap_future(future), timeout=5)
-                except Exception:  # noqa: BLE001 - closing is best-effort
-                    logger.debug("VerifyWise could not close an HTTP pool on another loop", exc_info=True)
+                except Exception as exc:  # noqa: BLE001 - closing is best-effort
+                    logger.debug(
+                        "VerifyWise could not close an HTTP pool on another loop: %s", safe_traceback(exc)
+                    )
 
     async def __aenter__(self) -> AsyncAgentControlClient:
         return self

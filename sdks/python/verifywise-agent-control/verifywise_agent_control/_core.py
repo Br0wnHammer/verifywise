@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
 from . import decision as d
+from ._logsafe import log_safe, safe_traceback
 from .client import AgentControlClient, AsyncAgentControlClient, arguments_changed
 from .decision import Decision, VerifyWiseDenied
 
@@ -92,7 +93,8 @@ def _changed_since_check(tool_name: str, decision: Decision, current: Any) -> De
     if not arguments_changed(decision, current):
         return None
     logger.error(
-        "VerifyWise: the arguments of tool '%s' changed after they were checked; refusing it", tool_name
+        "VerifyWise: the arguments of tool '%s' changed after they were checked; refusing it",
+        log_safe(tool_name),
     )
     return Decision(allowed=False, status=d.ARGUMENTS_CHANGED, reason=ARGUMENTS_CHANGED_REASON)
 
@@ -102,8 +104,8 @@ def _describe(describe: Describe | None, result: Any) -> tuple[Any, Any]:
         return result, None
     try:
         return describe(result)
-    except Exception:  # noqa: BLE001 - never let result capture break the agent
-        logger.debug("VerifyWise could not describe a tool result", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - never let result capture break the agent
+        logger.debug("VerifyWise could not describe a tool result: %s", safe_traceback(exc))
         return result, None
 
 
