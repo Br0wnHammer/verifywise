@@ -14,8 +14,9 @@ dependencies = ["httpx>=0.27,<1"]
 
 [project.optional-dependencies]
 langchain = ["langchain>=1.0,<2", "langchain-core>=1.0,<2"]
-crewai = []
-agent-framework = []
+# Lower bounds are the versions the adapters were verified against.
+crewai = ["crewai>=1.15.28,<2"]
+agent-framework = ["agent-framework-core>=1.21,<2"]
 all = ["verifywise-agent-control[langchain,crewai,agent-framework]"]
 dev = [
   "pytest>=8",
@@ -33,6 +34,10 @@ packages = ["verifywise_agent_control"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+  # crewai warns about its own deprecated fields on every kickoff
+  "ignore::DeprecationWarning:crewai.*",
+]
 
 [tool.ruff]
 line-length = 110

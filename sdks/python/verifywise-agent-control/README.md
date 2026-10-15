@@ -16,6 +16,8 @@ pip install "verifywise-agent-control @ git+https://github.com/verifywise-ai/ver
 pip install "verifywise-agent-control[langchain] @ git+https://github.com/verifywise-ai/verifywise.git@sdk-py-v0.1.0#subdirectory=sdks/python/verifywise-agent-control"
 ```
 
+The extras are `langchain`, `crewai`, `agent-framework` (installs `agent-framework-core`) and `all`.
+
 Requires Python 3.10 or later. The core depends only on `httpx`.
 
 ## Configuration
@@ -54,7 +56,7 @@ If the gateway URL or key is missing, the SDK logs a warning and applies `VW_FAI
 
 To stop the agent instead of handing the model a refusal, pass `on_deny="raise"`; a refused call then raises `VerifyWiseDenied`.
 
-When the tool itself raises, the error text is recorded and the original exception is re-raised unchanged. Otherwise the SDK never raises into your agent. Result recording and logging failures are swallowed.
+When the tool itself raises, the error text is recorded and the original exception is re-raised unchanged, so your framework handles it as it would without the SDK (CrewAI and Agent Framework turn it into an error message for the model). Otherwise the SDK never raises into your agent. Result recording and logging failures are swallowed.
 
 All log lines use the logger `verifywise_agent_control`.
 
@@ -63,8 +65,8 @@ All log lines use the logger `verifywise_agent_control`.
 Tool calls are grouped into runs. The run id is chosen in this order:
 
 1. An explicit `with vw_session("my-run-id"):` block
-2. The framework's thread id, when there is one (LangGraph `thread_id`)
-3. A new id per agent invocation (LangChain), or per client (`@governed`)
+2. The framework's own id, when there is one: LangGraph `thread_id`, a new id per CrewAI kickoff, or the Agent Framework `AgentSession.session_id`
+3. A new id per agent invocation (LangChain), or the client's own id (`@governed`, Agent Framework runs without a session, CrewAI agents used outside a crew)
 
 If your model calls also go through the VerifyWise AI Gateway, send the same id as the `x-vw-agent-run-id` header on them so model calls and tool calls appear in one run:
 
@@ -97,11 +99,53 @@ A refused call becomes a `ToolMessage` with `status="error"` and the refusal tex
 
 ## CrewAI
 
-_Coming in the next release._
+Uses CrewAI's tool-call hooks. Call `enable_crewai_governance()` once, before `kickoff()`:
+
+```python
+from crewai import Agent, Crew, Task
+from verifywise_agent_control.crewai import enable_crewai_governance
+
+governance = enable_crewai_governance()   # or enable_crewai_governance(client=AgentControlClient(...))
+
+crew = Crew(agents=[researcher], tasks=[report])
+crew.kickoff()
+
+governance.disable()   # optional: stop checking tool calls
+```
+
+The hooks are process-wide: they govern every crew and agent in the process, on every tool-execution path CrewAI has (native function calling, the text ReAct loop, parallel tool calls, `Agent.kickoff`). Calling `enable_crewai_governance()` again replaces the earlier registration. `kickoff_async()` and `akickoff()` work too; the check runs synchronously inside CrewAI's hook, as CrewAI requires.
+
+How it behaves, verified against crewai 1.15.28 with a scripted LLM:
+
+- **Refused call.** The pre-tool hook blocks the call, so the tool does not run. CrewAI still runs the post-tool hooks on a blocked call, and the adapter's post-tool hook replaces CrewAI's fixed "Tool execution blocked by hook" text with `Blocked by VerifyWise policy: <reason>`. The model gets that text as the tool result and the agent continues. If you register your own post-tool hook after this one and it returns a string, it can overwrite the refusal text.
+- **`on_deny="raise"`.** CrewAI swallows ordinary exceptions raised inside hooks, so the adapter raises `VerifyWiseCrewAIDenied` instead: a `VerifyWiseDenied` that is also CrewAI's `HookAborted`. CrewAI passes it through without retrying the task, and `kickoff()` raises it.
+- **Tool errors.** CrewAI catches tool exceptions itself and gives the model an error message. The adapter leaves that alone and records the error on the call in Activity.
 
 ## Microsoft Agent Framework
 
-_Coming in the next release._
+Uses the Agent Framework function middleware, which wraps every function the agent's function-calling loop invokes:
+
+```python
+from agent_framework import Agent
+from verifywise_agent_control.agent_framework import VerifyWiseFunctionMiddleware
+
+agent = Agent(
+    client=chat_client,
+    tools=[search, send_email],
+    middleware=[VerifyWiseFunctionMiddleware()],
+)
+
+session = agent.create_session()   # optional: groups the calls into one run
+result = await agent.run("Email the weekly report", session=session)
+```
+
+How it behaves, verified against agent-framework-core 1.21.0 with a scripted chat client:
+
+- **Refused call.** The middleware sets `context.result` to the refusal text and does not call `call_next`, so the tool does not run. The model gets the refusal as the function result and the agent continues.
+- **`on_deny="raise"`.** The loop turns ordinary middleware exceptions into tool-error results, so the adapter raises `VerifyWiseAgentFrameworkDenied`: a `VerifyWiseDenied` that is also the framework's `MiddlewareFailure`. `agent.run()` raises it.
+- **Tool errors.** The tool's exception reaches the middleware through `call_next`. The adapter records it and re-raises it unchanged, and the framework turns it into an error result for the model, as it normally does.
+
+The middleware is async, like the framework. Pass an `AsyncAgentControlClient` as `client=` for explicit settings; an `AgentControlClient` is accepted too and its settings reused.
 
 ## Plain Python
 
@@ -131,6 +175,10 @@ A refused call returns the refusal text instead of running the function. Async f
 | httpx | 0.28.1 |
 | langchain | 1.4.6 |
 | langchain-core | 1.6.10 |
+| crewai | 1.15.28 |
+| agent-framework-core | 1.21.0 |
+
+All three frameworks install together in one environment (`pip install -e ".[all,dev]"` resolves on Python 3.10 and 3.12). CrewAI itself requires Python 3.10 to 3.13.
 
 ## Development
 
@@ -142,4 +190,4 @@ python -m venv .venv
 .venv/bin/pytest
 ```
 
-The tests use `respx` for the gateway and a scripted fake chat model for LangChain, so they need no network access and no LLM.
+The tests use `respx` for the gateway and scripted fake models for LangChain, CrewAI and Agent Framework, so they need no network access and no LLM.
