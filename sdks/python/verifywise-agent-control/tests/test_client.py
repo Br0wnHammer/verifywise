@@ -63,15 +63,14 @@ def test_session_context_sets_the_run_id(gateway, make_client):
     assert client.session_id != "chosen-run"
 
 
-def test_non_serialisable_arguments_are_stringified(gateway, make_client):
+def test_non_serialisable_arguments_are_refused_not_converted(gateway, make_client):
     route = gateway.post(HOOK).respond(200, json={"decision": "allow"})
-    when = datetime(2026, 1, 2, 3, 4, 5)
 
-    make_client().check("schedule", {"when": when, "obj": object})
+    decision = make_client(fail_mode="open").check("schedule", {"when": datetime(2026, 1, 2, 3, 4, 5)})
 
-    args = body_of(route.calls.last)["arguments"]
-    assert args["when"] == str(when)
-    assert args["obj"] == str(object)
+    assert not decision.allowed
+    assert decision.status == "arguments_unsendable"
+    assert not route.called
 
 
 def test_non_dict_arguments_are_wrapped(gateway, make_client):

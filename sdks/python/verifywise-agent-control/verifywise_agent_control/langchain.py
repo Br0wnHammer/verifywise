@@ -143,6 +143,8 @@ class VerifyWiseMiddleware(AgentMiddleware):
             call_id=call_id,
             refuse=self._refuse(tool_name, call_id),
             describe=_describe,
+            # The handler runs request.tool_call["args"]; read it again right before.
+            current_arguments=lambda: self._call(request)[1],
         )
 
     async def awrap_tool_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
@@ -156,4 +158,6 @@ class VerifyWiseMiddleware(AgentMiddleware):
             call_id=call_id,
             refuse=self._refuse(tool_name, call_id),
             describe=_describe,
+            # The handler runs request.tool_call["args"]; read it again right before.
+            current_arguments=lambda: self._call(request)[1],
         )

@@ -41,11 +41,15 @@ from typing import Any
 from crewai.hooks import HookAborted, InterceptionPoint, register_hook, unregister_hook
 
 from ._core import default_client
-from .client import AgentControlClient
+from .client import AgentControlClient, arguments_changed
 from .decision import Decision, VerifyWiseDenied
 from .session import current_session_id, new_session_id
 
 logger = logging.getLogger("verifywise_agent_control")
+
+ARGUMENTS_CHANGED_AFTER_RUN = (
+    "arguments changed after VerifyWise checked them; the tool ran with arguments that were not checked"
+)
 
 # How CrewAI hands a tool exception to the model: native function calling and
 # the ReAct loop use different texts (crewai 1.15).
@@ -166,6 +170,15 @@ class CrewAIGovernance:
             output = None if error else ctx.raw_tool_result
         except Exception:  # noqa: BLE001 - never let result capture break the agent
             error, output = None, None
+        if arguments_changed(entry.decision, ctx.tool_input or {}):
+            # A pre-tool hook registered after ours changed the input in place.
+            # The tool has already run, so this can only be recorded loudly.
+            logger.error(
+                "VerifyWise: tool '%s' ran with arguments that changed after they were checked. "
+                "Call enable_crewai_governance() after registering hooks that modify tool input.",
+                entry.tool_name,
+            )
+            error, output = ARGUMENTS_CHANGED_AFTER_RUN, None
         self.client.report(
             session_id=entry.session_id,
             call_id=entry.call_id,

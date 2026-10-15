@@ -13,9 +13,11 @@ whatever the fail mode, since neither is a gateway outage. ``report`` only logs.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import math
+import re
 import threading
 import time
 import uuid
@@ -35,12 +37,18 @@ logger = logging.getLogger("verifywise_agent_control")
 HOOK_PATH = "/v1/mcp/hook"
 RESULT_PATH = "/v1/mcp/hook/result"
 USER_AGENT = f"verifywise-agent-control/{__version__}"
+UNSENDABLE_REASON = "arguments could not be sent to VerifyWise for checking"
 KEY_REJECTED_REASON = "VerifyWise rejected the agent key (revoked, expired or invalid)"
 AUTH_FAILURES = (401, 403)
 _MAX_DEPTH = 64
+# The only poll endpoint the gateway hands out; anything else is not followed.
+_POLL_ENDPOINT = re.compile(r"/v1/mcp/approvals/([A-Za-z0-9_-]{1,64})/status")
 
 __all__ = [
     "GATEWAY_RESULT_CAP_BYTES",
+    "UnsendableArguments",
+    "arguments_changed",
+    "arguments_json",
     "MAX_RESULT_BYTES",
     "AgentControlClient",
     "AsyncAgentControlClient",
@@ -55,53 +63,61 @@ class _Pending:
         self.endpoint = endpoint
 
 
-def _text(value: Any) -> str:
-    """str(value), else repr(value), else a placeholder. Never raises."""
-    for convert in (str, repr):
-        try:
-            return convert(value)
-        except Exception:  # noqa: BLE001 - user objects may raise anything
-            continue
-    return f"<unrepresentable {type(value).__name__}>"
+class UnsendableArguments(ValueError):
+    """The tool's arguments can't be sent to the gateway exactly as the tool gets them."""
 
 
-def _json_key(key: Any) -> str:
-    if isinstance(key, str):
-        return key
-    if key is None or isinstance(key, (bool, int, float)):
-        return json.dumps(key)  # what json.dumps does with these keys
-    return _text(key)
-
-
-def _json_safe(value: Any, _path: set[int] | None = None, _depth: int = 0) -> Any:
-    """A JSON-encodable copy of ``value``. Never raises.
-
-    Non-string keys are stringified, a container that contains itself becomes
-    "<circular reference>", nesting deeper than 64 levels is cut, non-finite
-    floats become strings and anything else falls back to str() / repr().
-    """
-    if value is None or isinstance(value, (str, bool)):
-        return value
-    if isinstance(value, int):
-        return int(value)
+def _check_sendable(value: Any, where: str, path: set[int], depth: int) -> None:
+    """Raise UnsendableArguments unless json.dumps represents ``value`` exactly:
+    dicts with string keys, lists and tuples, strings, finite numbers, booleans
+    and None. Anything else would reach the gateway as something other than
+    what the tool runs with, so the guardrails would check the wrong thing."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return
     if isinstance(value, float):
-        return value if math.isfinite(value) else str(value)
-    if not isinstance(value, (Mapping, list, tuple, set, frozenset)):
-        return _text(value)
-    if _depth >= _MAX_DEPTH:
-        return "<nested too deeply>"
-    path = _path if _path is not None else set()
+        if not math.isfinite(value):
+            raise UnsendableArguments(f"{where} is {value!r}, which JSON can't represent")
+        return
+    if not isinstance(value, (dict, list, tuple)):
+        raise UnsendableArguments(f"{where} is a {type(value).__name__}, which JSON can't represent")
+    if depth >= _MAX_DEPTH:
+        raise UnsendableArguments(f"{where} is nested more than {_MAX_DEPTH} levels deep")
     if id(value) in path:
-        return "<circular reference>"
+        raise UnsendableArguments(f"{where} contains itself")
     path.add(id(value))
     try:
-        if isinstance(value, Mapping):
-            return {_json_key(k): _json_safe(v, path, _depth + 1) for k, v in value.items()}
-        return [_json_safe(item, path, _depth + 1) for item in value]
-    except Exception:  # noqa: BLE001 - e.g. a mapping whose items() raises
-        return _text(value)
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    raise UnsendableArguments(f"{where} has a {type(key).__name__} key, not a string")
+                _check_sendable(item, f"{where}[{key!r}]", path, depth + 1)
+        else:
+            for index, item in enumerate(value):
+                _check_sendable(item, f"{where}[{index}]", path, depth + 1)
     finally:
         path.discard(id(value))
+
+
+def arguments_json(arguments: Any) -> str:
+    """The exact JSON the gateway checks for these arguments.
+
+    Arguments that are not a mapping are sent as ``{"input": arguments}``; a
+    missing value as ``{}``. Raises :class:`UnsendableArguments` when the
+    arguments can't be represented losslessly; nothing is ever converted.
+    """
+    if arguments is None:
+        arguments = {}
+    elif isinstance(arguments, Mapping) and not isinstance(arguments, dict):
+        arguments = dict(arguments)
+    elif not isinstance(arguments, dict):
+        arguments = {"input": arguments}
+    _check_sendable(arguments, "arguments", set(), 0)
+    return json.dumps(arguments, allow_nan=False)
+
+
+def _clean(text: Any) -> str:
+    """Gateway-supplied text for a log line, without line breaks or control characters."""
+    return "".join(ch if ch.isprintable() else " " for ch in str(text))
 
 
 def _stringify(value: Any) -> str:
@@ -151,14 +167,33 @@ def _describe_monitored(tool_name: str, monitored: Any) -> str:
     action = {
         "deny": "would have been denied",
         "approval_required": "would have required approval",
-    }.get(would, f"would have been {would or 'stopped'}")
+    }.get(would, f"would have been {_clean(would or 'stopped')}")
     message = f"VerifyWise monitor mode: tool '{tool_name}' ran, but {action}"
     if monitored.get("reason"):
-        message += f": {monitored['reason']}"
+        message += f": {_clean(monitored['reason'])}"
     rule = monitored.get("rule")
     if isinstance(rule, dict) and rule.get("name"):
-        message += f" (rule: {rule['name']})"
+        message += f" (rule: {_clean(rule['name'])})"
     return message
+
+
+def _with_checked(decision: Decision, checked: str) -> Decision:
+    """Record on an allowed decision the exact arguments the gateway checked."""
+    if not decision.allowed:
+        return decision
+    return dataclasses.replace(decision, checked_arguments=checked)
+
+
+def arguments_changed(decision: Decision, arguments: Any) -> bool:
+    """True when ``arguments`` no longer match what the gateway checked for
+    ``decision`` (or can no longer be sent). False when nothing was checked,
+    e.g. a fail-open decision made without reaching the gateway."""
+    if decision.checked_arguments is None:
+        return False
+    try:
+        return arguments_json(arguments) != decision.checked_arguments
+    except UnsendableArguments:
+        return True
 
 
 class _ClientBase:
@@ -213,18 +248,11 @@ class _ClientBase:
             headers["x-vw-agent-run-id"] = session_id
         return headers
 
-    def _hook_body(self, tool_name: str, arguments: Any, session_id: str, call_id: str) -> bytes:
-        if arguments is None:
-            arguments = {}
-        if not isinstance(arguments, dict):
-            arguments = {"input": arguments}
-        payload = {
-            "tool_name": str(tool_name),
-            "arguments": _json_safe(arguments),
-            "session_id": session_id,
-            "tool_use_id": call_id,
-        }
-        return json.dumps(payload).encode("utf-8")
+    def _hook_body(self, tool_name: str, checked: str, session_id: str, call_id: str) -> bytes:
+        """``checked`` is :func:`arguments_json` output, embedded byte for byte."""
+        head = json.dumps({"tool_name": str(tool_name)})[:-1]
+        tail = json.dumps({"session_id": session_id, "tool_use_id": call_id})[1:]
+        return f'{head}, "arguments": {checked}, {tail}'.encode()
 
     def _result_body(self, session_id: str, call_id: str, tool_name: str, output: Any, error: Any) -> bytes:
         if error is not None:
@@ -267,6 +295,17 @@ class _ClientBase:
         return Decision(
             allowed=False, status=d.AUTH_REJECTED, reason=KEY_REJECTED_REASON, approval_id=approval_id
         )
+
+    def _unsendable(self, tool_name: str, exc: UnsendableArguments) -> Decision:
+        """Arguments that can't be sent exactly are never checked in a lossy form:
+        the guardrails would scan something other than what runs. Refused
+        whatever the fail mode."""
+        logger.error(
+            "VerifyWise could not send the arguments of tool '%s' for checking (%s); refusing it",
+            tool_name,
+            exc,
+        )
+        return Decision(allowed=False, status=d.ARGUMENTS_UNSENDABLE, reason=UNSENDABLE_REASON)
 
     def _internal_error(self, tool_name: str, exc: BaseException) -> Decision:
         """A bug inside the SDK is not a gateway outage, so the fail mode does not
@@ -325,17 +364,19 @@ class _ClientBase:
             )
         if decision == "deny":
             reason = body.get("reason") or "policy violation"
-            logger.info("VerifyWise denied tool '%s': %s", tool_name, reason)
+            logger.info("VerifyWise denied tool '%s': %s", tool_name, _clean(reason))
             return Decision(allowed=False, status=d.DENY, reason=str(reason))
         if decision == "rate_limited":
             return self._fail(tool_name, "rate limited", status=d.RATE_LIMITED)
         if decision == "approval_required":
             approval_id = body.get("approval_id")
             endpoint = body.get("poll_endpoint")
-            # The poll URL is always gateway_url + a gateway path, so the agent key
-            # is never sent to another host.
-            if approval_id is None or not isinstance(endpoint, str) or not endpoint.startswith("/"):
-                return self._fail(tool_name, "approval reply missing approval_id/poll_endpoint")
+            # The agent key goes with every poll, so only the gateway's own
+            # approval status path for this approval id is followed (never
+            # another host, path, query or a different approval).
+            match = _POLL_ENDPOINT.fullmatch(endpoint) if isinstance(endpoint, str) else None
+            if approval_id is None or match is None or match.group(1) != str(approval_id):
+                return self._fail(tool_name, "approval reply had no valid approval_id/poll_endpoint")
             logger.info(
                 "VerifyWise: tool '%s' awaits human approval (id=%s, up to %ss)",
                 tool_name,
@@ -417,6 +458,8 @@ class AgentControlClient(_ClientBase):
         """Ask the gateway whether this tool call may run. Never raises."""
         try:
             return self._check(tool_name, arguments, session_id, call_id)
+        except UnsendableArguments as exc:
+            return self._unsendable(tool_name, exc)
         except Exception as exc:  # noqa: BLE001 - the SDK must never break the agent
             return self._internal_error(tool_name, exc)
 
@@ -425,26 +468,30 @@ class AgentControlClient(_ClientBase):
             return self._fail(tool_name, "VW_GATEWAY_URL or VW_AGENT_KEY not set")
         session_id = session_id or self.session_id
         call_id = call_id or str(uuid.uuid4())
+        checked = arguments_json(arguments)
         try:
             response = self._http.post(
                 self.settings.gateway_url + HOOK_PATH,
-                content=self._hook_body(tool_name, arguments, session_id, call_id),
+                content=self._hook_body(tool_name, checked, session_id, call_id),
                 headers=self._headers(session_id),
                 timeout=self.settings.timeout,
+                follow_redirects=False,
             )
         except (httpx.HTTPError, httpx.InvalidURL) as exc:
             return self._fail(tool_name, f"gateway unreachable: {type(exc).__name__}")
         outcome = self._interpret(tool_name, response)
-        if isinstance(outcome, Decision):
-            return outcome
-        return self._wait_for_approval(tool_name, outcome)
+        if not isinstance(outcome, Decision):
+            outcome = self._wait_for_approval(tool_name, outcome)
+        return _with_checked(outcome, checked)
 
     def _wait_for_approval(self, tool_name: str, pending: _Pending) -> Decision:
         url = self.settings.gateway_url + pending.endpoint
         deadline = self._clock() + self.settings.approval_wait
         while self._clock() < deadline:
             try:
-                response = self._http.get(url, headers=self._headers(), timeout=self.settings.timeout)
+                response = self._http.get(
+                    url, headers=self._headers(), timeout=self.settings.timeout, follow_redirects=False
+                )
             except (httpx.HTTPError, httpx.InvalidURL):
                 response = None
             if response is not None:
@@ -472,6 +519,7 @@ class AgentControlClient(_ClientBase):
                 content=self._result_body(session_id, call_id, tool_name, output, error),
                 headers=self._headers(session_id),
                 timeout=self.settings.timeout,
+                follow_redirects=False,
             )
             self._log_report_status(tool_name, response.status_code)
         except Exception as exc:  # noqa: BLE001 - result capture is best-effort
@@ -554,6 +602,8 @@ class AsyncAgentControlClient(_ClientBase):
         """Ask the gateway whether this tool call may run. Never raises."""
         try:
             return await self._check(tool_name, arguments, session_id, call_id)
+        except UnsendableArguments as exc:
+            return self._unsendable(tool_name, exc)
         except Exception as exc:  # noqa: BLE001 - the SDK must never break the agent
             return self._internal_error(tool_name, exc)
 
@@ -562,20 +612,22 @@ class AsyncAgentControlClient(_ClientBase):
             return self._fail(tool_name, "VW_GATEWAY_URL or VW_AGENT_KEY not set")
         session_id = session_id or self.session_id
         call_id = call_id or str(uuid.uuid4())
+        checked = arguments_json(arguments)
         try:
             http = await self._client()
             response = await http.post(
                 self.settings.gateway_url + HOOK_PATH,
-                content=self._hook_body(tool_name, arguments, session_id, call_id),
+                content=self._hook_body(tool_name, checked, session_id, call_id),
                 headers=self._headers(session_id),
                 timeout=self.settings.timeout,
+                follow_redirects=False,
             )
         except (httpx.HTTPError, httpx.InvalidURL) as exc:
             return self._fail(tool_name, f"gateway unreachable: {type(exc).__name__}")
         outcome = self._interpret(tool_name, response)
-        if isinstance(outcome, Decision):
-            return outcome
-        return await self._wait_for_approval(tool_name, outcome)
+        if not isinstance(outcome, Decision):
+            outcome = await self._wait_for_approval(tool_name, outcome)
+        return _with_checked(outcome, checked)
 
     async def _wait_for_approval(self, tool_name: str, pending: _Pending) -> Decision:
         url = self.settings.gateway_url + pending.endpoint
@@ -583,7 +635,9 @@ class AsyncAgentControlClient(_ClientBase):
         while self._clock() < deadline:
             try:
                 http = await self._client()
-                response = await http.get(url, headers=self._headers(), timeout=self.settings.timeout)
+                response = await http.get(
+                    url, headers=self._headers(), timeout=self.settings.timeout, follow_redirects=False
+                )
             except (httpx.HTTPError, httpx.InvalidURL):
                 response = None
             if response is not None:
@@ -612,6 +666,7 @@ class AsyncAgentControlClient(_ClientBase):
                 content=self._result_body(session_id, call_id, tool_name, output, error),
                 headers=self._headers(session_id),
                 timeout=self.settings.timeout,
+                follow_redirects=False,
             )
             self._log_report_status(tool_name, response.status_code)
         except Exception as exc:  # noqa: BLE001 - result capture is best-effort

@@ -19,7 +19,7 @@ from verifywise_agent_control import (
     govern_tool,
     governed,
 )
-from verifywise_agent_control.client import GATEWAY_RESULT_CAP_BYTES, MAX_RESULT_BYTES, _json_safe
+from verifywise_agent_control.client import GATEWAY_RESULT_CAP_BYTES, MAX_RESULT_BYTES
 
 POLL = f"{GATEWAY}/v1/mcp/approvals/42/status"
 APPROVAL = {
@@ -153,88 +153,6 @@ def test_report_logs_a_rejected_key_as_an_error(gateway, make_client, caplog):
     make_client().report(session_id="s", call_id="c", tool_name="t", output="x")
 
     assert any(r.levelno == logging.ERROR for r in caplog.records)
-
-
-# ── Arguments that JSON can't encode as-is ──────────────────────────────────
-
-
-def test_json_safe_stringifies_non_string_keys():
-    assert _json_safe({(1, 2): "a", 3: "b", None: "c", True: "d"}) == {
-        "(1, 2)": "a",
-        "3": "b",
-        "null": "c",
-        "true": "d",
-    }
-
-
-def test_json_safe_breaks_cycles():
-    loop = {"name": "a"}
-    loop["self"] = loop
-    items = [1]
-    items.append(items)
-
-    assert _json_safe(loop) == {"name": "a", "self": "<circular reference>"}
-    assert _json_safe(items) == [1, "<circular reference>"]
-
-
-def test_json_safe_keeps_shared_but_acyclic_values():
-    shared = {"k": 1}
-    assert _json_safe({"a": shared, "b": shared}) == {"a": {"k": 1}, "b": {"k": 1}}
-
-
-def test_json_safe_falls_back_per_value():
-    class NoStr:
-        def __str__(self):
-            raise RuntimeError("no str")
-
-        def __repr__(self):
-            return "<NoStr>"
-
-    class Nothing:
-        def __str__(self):
-            raise RuntimeError("no")
-
-        __repr__ = __str__
-
-    out = _json_safe({"a": NoStr(), "b": Nothing(), "c": 1, "d": {1, 2}, "e": math.nan, "f": (1, "x")})
-
-    assert out["a"] == "<NoStr>"
-    assert out["b"].startswith("<unrepresentable")
-    assert out["c"] == 1
-    assert sorted(out["d"]) == [1, 2]
-    assert out["e"] == "nan"
-    assert out["f"] == [1, "x"]
-    json.dumps(out, allow_nan=False)
-
-
-def test_json_safe_limits_depth():
-    deep: list = []
-    node = deep
-    for _ in range(5000):
-        child: list = []
-        node.append(child)
-        node = child
-
-    json.dumps(_json_safe(deep))
-
-
-@pytest.mark.parametrize(
-    "arguments",
-    [
-        {(1, 2): "tuple key"},
-        "circular",
-    ],
-)
-def test_awkward_arguments_reach_the_gateway(gateway, make_client, arguments):
-    if arguments == "circular":
-        arguments = {"a": 1}
-        arguments["me"] = arguments
-    route = gateway.post(HOOK).respond(200, json={"decision": "deny", "reason": "checked"})
-
-    decision = make_client(fail_mode="open").check("x", arguments)
-
-    assert decision.status == "deny"
-    assert route.called
 
 
 # ── An SDK bug is not a gateway outage ──────────────────────────────────────

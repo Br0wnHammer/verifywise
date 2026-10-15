@@ -45,6 +45,10 @@ class VerifyWiseAgentFrameworkDenied(VerifyWiseDenied, MiddlewareFailure):
 
 
 def _arguments(context: FunctionInvocationContext) -> Any:
+    """The function's arguments as checked: a pydantic arguments model is
+    dumped in Python mode (field values unchanged, nested models as dicts), so
+    a value JSON can't represent exactly makes the check refuse the call
+    rather than send a converted copy."""
     arguments = context.arguments
     if hasattr(arguments, "model_dump"):
         return arguments.model_dump()
@@ -114,6 +118,8 @@ class VerifyWiseFunctionMiddleware(FunctionMiddleware):
                 session_id=self._session_id(context),
                 call_id=str(call_id) if call_id else None,
                 describe=_describe,
+                # call_next runs context.arguments; dump them again right before.
+                current_arguments=lambda: _arguments(context),
             )
         except VerifyWiseDenied as denied:
             # Raised only before the tool runs (on_deny="raise"). A plain

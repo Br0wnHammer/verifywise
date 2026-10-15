@@ -54,13 +54,18 @@ If the gateway URL or key is missing, the SDK logs a warning and applies `VW_FAI
 | `rate_limited` | Applies `VW_FAIL_MODE` |
 | Unreachable, timeout, HTTP 5xx or other non-200, unreadable reply | Applies `VW_FAIL_MODE` (default: run the tool) |
 | HTTP 401 or 403 (agent key revoked, expired or invalid) | Always refuses, whatever `VW_FAIL_MODE` says, and logs an `ERROR`. The refusal reads `VerifyWise rejected the agent key (revoked, expired or invalid)` |
+| Arguments JSON can't represent exactly | Always refuses, without contacting the gateway, and logs an `ERROR` (see below) |
 | An error inside the SDK itself | Always refuses (as if `VW_FAIL_MODE=closed`) and logs an `ERROR` with the traceback. A bug in the SDK is not a gateway outage, so it never opens the gate |
 
 To stop the agent instead of handing the model a refusal, pass `on_deny="raise"`; a refused call then raises `VerifyWiseDenied`.
 
 `VW_FAIL_MODE=open` exists so that a gateway outage doesn't stop your agent. It never covers a rejected key: revoking a key in VerifyWise stops every agent that uses it.
 
-Tool arguments are sent as JSON. Values JSON can't encode are converted rather than dropped: non-string keys become strings, a value that contains itself becomes `"<circular reference>"`, and other objects are sent as `str()` (or `repr()`).
+Tool arguments are sent to the gateway exactly as the tool gets them, so the guardrails check what actually runs. JSON-native values (dicts with string keys, lists and tuples, strings, finite numbers, booleans, `None`) go unchanged. Anything JSON can't represent exactly (a non-string key, a value that contains itself, a `datetime`, `Decimal`, `set`, `bytes`, NaN or any other object) is never converted: the call is refused with `arguments could not be sent to VerifyWise for checking`, whatever `VW_FAIL_MODE` says, and an `ERROR` is logged. Pass such values as strings or numbers if the tool should run.
+
+Right before the tool runs, the adapters compare its arguments with what the gateway checked. If they changed in between (another thread, or code that edited them during an approval wait), the call is refused with `arguments changed after VerifyWise checked them`.
+
+Only the approval status path the gateway hands out for that approval (`/v1/mcp/approvals/<id>/status`) is polled, on the configured gateway URL, and redirects are never followed, so the agent key is never sent anywhere else.
 
 The recorded result is `{"output": "..."}` or `{"error": "..."}`. When it is too long, the text is cut so that the whole JSON envelope fits in 9216 bytes (`max_result_bytes` on `Settings`, which can be lowered but not raised), and `"truncated": true` is added. The gateway stores up to 10240 bytes, so it never has to cut the result again.
 
@@ -105,7 +110,7 @@ agent = create_agent(
 agent.invoke({"messages": [{"role": "user", "content": "Email the weekly report"}]})
 ```
 
-A refused call becomes a `ToolMessage` with `status="error"` and the refusal text, so the model can explain or try something else. `ainvoke` and `astream` work the same way. Pass `client=` / `async_client=` to use explicit settings. Without them, every `VerifyWiseMiddleware` shares the same clients (built from the `VW_*` variables), as `@governed` and the other adapters do.
+A refused call becomes a `ToolMessage` with `status="error"` and the refusal text, so the model can explain or try something else. `ainvoke` and `astream` work the same way. Put `VerifyWiseMiddleware` last in the `middleware` list, so it is the innermost tool-call wrapper: a middleware placed after it could change the arguments after they were checked. Pass `client=` / `async_client=` to use explicit settings. Without them, every `VerifyWiseMiddleware` shares the same clients (built from the `VW_*` variables), as `@governed` and the other adapters do.
 
 ## CrewAI
 
@@ -123,7 +128,7 @@ crew.kickoff()
 governance.disable()   # optional: stop checking tool calls
 ```
 
-The hooks are process-wide: they govern every crew and agent in the process, on every tool-execution path CrewAI has (native function calling, the text ReAct loop, parallel tool calls, `Agent.kickoff`). Calling `enable_crewai_governance()` again replaces the earlier registration. `kickoff_async()` and `akickoff()` work too; the check runs synchronously inside CrewAI's hook, as CrewAI requires.
+The hooks are process-wide: they govern every crew and agent in the process, on every tool-execution path CrewAI has (native function calling, the text ReAct loop, parallel tool calls, `Agent.kickoff`). Calling `enable_crewai_governance()` again replaces the earlier registration. CrewAI runs pre-tool hooks in registration order and lets them edit the tool input, so call `enable_crewai_governance()` after registering any hook of your own that does: a hook registered later could change the input after VerifyWise checked it. If that happens the tool has already run, so the adapter records the call as an error (`arguments changed after VerifyWise checked them...`) and logs an `ERROR`. `kickoff_async()` and `akickoff()` work too; the check runs synchronously inside CrewAI's hook, as CrewAI requires.
 
 CrewAI's tool-call hooks are synchronous. Under `akickoff()` the check, and any wait for a human approval, therefore blocks the event loop: other coroutines on that loop don't run until the approval is decided or `VW_APPROVAL_WAIT` runs out. Keep `VW_APPROVAL_WAIT` short for crews that share a loop with other work, or run them with `kickoff()` in a thread.
 

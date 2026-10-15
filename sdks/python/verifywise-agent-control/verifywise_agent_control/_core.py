@@ -10,7 +10,8 @@ import weakref
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
-from .client import AgentControlClient, AsyncAgentControlClient
+from . import decision as d
+from .client import AgentControlClient, AsyncAgentControlClient, arguments_changed
 from .decision import Decision, VerifyWiseDenied
 
 logger = logging.getLogger("verifywise_agent_control")
@@ -78,6 +79,24 @@ def _refusal(client, tool_name: str, decision: Decision, refuse: Refuse | None) 
     return refuse(decision) if refuse else decision.refusal_message
 
 
+ARGUMENTS_CHANGED_REASON = "arguments changed after VerifyWise checked them; the tool was not run"
+
+
+def _changed_since_check(tool_name: str, decision: Decision, current: Any) -> Decision | None:
+    """A refusal when the arguments about to run differ from the checked ones.
+
+    The gateway's verdict covers only the arguments it saw. If anything
+    (another thread, middleware, the framework) changed them since, running
+    the tool would run unchecked input.
+    """
+    if not arguments_changed(decision, current):
+        return None
+    logger.error(
+        "VerifyWise: the arguments of tool '%s' changed after they were checked; refusing it", tool_name
+    )
+    return Decision(allowed=False, status=d.ARGUMENTS_CHANGED, reason=ARGUMENTS_CHANGED_REASON)
+
+
 def _describe(describe: Describe | None, result: Any) -> tuple[Any, Any]:
     if describe is None:
         return result, None
@@ -98,8 +117,15 @@ def run_governed(
     call_id: str | None = None,
     refuse: Refuse | None = None,
     describe: Describe | None = None,
+    current_arguments: Callable[[], Any] | None = None,
 ) -> T | Any:
     """Check a tool call, run it if allowed, report its result.
+
+    ``execute`` must run the tool with the very arguments passed here (the same
+    object, not a copy). Right before it runs, the arguments (or
+    ``current_arguments()``, for adapters that read them from a framework
+    object) are compared with what the gateway checked; a difference refuses
+    the call.
 
     Returns the tool's result, or ``refuse(decision)`` (default: the refusal text)
     when the call is refused. Raises only ``VerifyWiseDenied`` (when
@@ -110,6 +136,12 @@ def run_governed(
     decision = client.check(tool_name, arguments, session_id=session_id, call_id=call_id)
     if not decision.allowed:
         return _refusal(client, tool_name, decision, refuse)
+    changed = _changed_since_check(
+        tool_name, decision, current_arguments() if current_arguments else arguments
+    )
+    if changed:
+        client.report(session_id=session_id, call_id=call_id, tool_name=tool_name, error=changed.reason)
+        return _refusal(client, tool_name, changed, refuse)
     try:
         result = execute()
     except Exception as exc:
@@ -142,6 +174,7 @@ async def arun_governed(
     call_id: str | None = None,
     refuse: Refuse | None = None,
     describe: Describe | None = None,
+    current_arguments: Callable[[], Any] | None = None,
 ) -> T | Any:
     """Async version of :func:`run_governed`."""
     session_id = session_id or client.session_id
@@ -149,6 +182,12 @@ async def arun_governed(
     decision = await client.check(tool_name, arguments, session_id=session_id, call_id=call_id)
     if not decision.allowed:
         return _refusal(client, tool_name, decision, refuse)
+    changed = _changed_since_check(
+        tool_name, decision, current_arguments() if current_arguments else arguments
+    )
+    if changed:
+        await client.report(session_id=session_id, call_id=call_id, tool_name=tool_name, error=changed.reason)
+        return _refusal(client, tool_name, changed, refuse)
     try:
         result = await execute()
     except Exception as exc:

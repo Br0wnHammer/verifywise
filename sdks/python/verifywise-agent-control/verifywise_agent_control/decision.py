@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 REFUSAL_PREFIX = "Blocked by VerifyWise policy: "
@@ -18,6 +18,8 @@ RATE_LIMITED = "rate_limited"  # gateway rate limit; general fail mode applied
 GATEWAY_ERROR = "gateway_error"  # unreachable / non-200 / bad reply / not configured; fail mode applied
 AUTH_REJECTED = "auth_rejected"  # gateway rejected the agent key (HTTP 401/403); always refused
 SDK_ERROR = "sdk_error"  # a bug inside the SDK; always refused (not a gateway outage)
+ARGUMENTS_UNSENDABLE = "arguments_unsendable"  # arguments not representable exactly as JSON; always refused
+ARGUMENTS_CHANGED = "arguments_changed"  # arguments changed between the check and the run; refused
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,8 @@ class Decision:
             monitor-only mode (what would have happened), else None.
         fail_mode_applied: True when the outcome came from a fail mode rather
             than from a policy decision.
+        checked_arguments: On an allowed decision that reached the gateway, the
+            exact JSON of the arguments it checked.
     """
 
     allowed: bool
@@ -41,6 +45,9 @@ class Decision:
     approval_id: str | None = None
     monitored: dict[str, Any] | None = None
     fail_mode_applied: bool = False
+    # The exact JSON the gateway checked, on allowed decisions; adapters compare
+    # it with the arguments right before the tool runs.
+    checked_arguments: str | None = field(default=None, repr=False, compare=False)
 
     @property
     def refusal_message(self) -> str:
