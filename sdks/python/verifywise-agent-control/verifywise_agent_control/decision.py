@@ -16,6 +16,8 @@ APPROVAL_EXPIRED = "approval_expired"  # the approval request expired; approval 
 APPROVAL_TIMEOUT = "approval_timeout"  # no decision within approval_wait; approval fail mode applied
 RATE_LIMITED = "rate_limited"  # gateway rate limit; general fail mode applied
 GATEWAY_ERROR = "gateway_error"  # unreachable / non-200 / bad reply / not configured; fail mode applied
+AUTH_REJECTED = "auth_rejected"  # gateway rejected the agent key (HTTP 401/403); always refused
+SDK_ERROR = "sdk_error"  # a bug inside the SDK; always refused (not a gateway outage)
 
 
 @dataclass(frozen=True)

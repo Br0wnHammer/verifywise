@@ -13,7 +13,7 @@ def test_defaults_match_the_shell_hook():
     assert s.approval_fail_mode == "closed"
     assert s.approval_poll_interval == 2.0
     assert s.on_deny == "refuse"
-    assert s.max_result_bytes == 10240
+    assert s.max_result_bytes == 9216
     assert not s.configured
 
 

@@ -4,8 +4,10 @@
 waits for a human approval when one is required, and applies the fail modes.
 ``report()`` records the tool's result (``POST /v1/mcp/hook/result``).
 
-Neither method raises: every network, protocol or internal failure becomes a
-Decision chosen by the fail mode (``check``) or a logged warning (``report``).
+Neither method raises. In ``check``, a network failure, timeout, 5xx or
+unreadable reply becomes a Decision chosen by the fail mode; a rejected agent
+key (HTTP 401/403) and an error inside the SDK itself are always refused,
+whatever the fail mode, since neither is a gateway outage. ``report`` only logs.
 """
 
 from __future__ import annotations
@@ -13,15 +15,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
+import threading
 import time
 import uuid
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 import httpx
 
 from . import decision as d
 from ._version import __version__
-from .config import Settings
+from .config import GATEWAY_RESULT_CAP_BYTES, MAX_RESULT_BYTES, Settings
 from .decision import Decision
 from .session import current_session_id, new_session_id
 
@@ -30,6 +35,16 @@ logger = logging.getLogger("verifywise_agent_control")
 HOOK_PATH = "/v1/mcp/hook"
 RESULT_PATH = "/v1/mcp/hook/result"
 USER_AGENT = f"verifywise-agent-control/{__version__}"
+KEY_REJECTED_REASON = "VerifyWise rejected the agent key (revoked, expired or invalid)"
+AUTH_FAILURES = (401, 403)
+_MAX_DEPTH = 64
+
+__all__ = [
+    "GATEWAY_RESULT_CAP_BYTES",
+    "MAX_RESULT_BYTES",
+    "AgentControlClient",
+    "AsyncAgentControlClient",
+]
 
 
 class _Pending:
@@ -40,9 +55,53 @@ class _Pending:
         self.endpoint = endpoint
 
 
-def _json_safe(value: Any) -> Any:
-    """Round-trip through JSON, stringifying anything JSON can't encode."""
-    return json.loads(json.dumps(value, default=str))
+def _text(value: Any) -> str:
+    """str(value), else repr(value), else a placeholder. Never raises."""
+    for convert in (str, repr):
+        try:
+            return convert(value)
+        except Exception:  # noqa: BLE001 - user objects may raise anything
+            continue
+    return f"<unrepresentable {type(value).__name__}>"
+
+
+def _json_key(key: Any) -> str:
+    if isinstance(key, str):
+        return key
+    if key is None or isinstance(key, (bool, int, float)):
+        return json.dumps(key)  # what json.dumps does with these keys
+    return _text(key)
+
+
+def _json_safe(value: Any, _path: set[int] | None = None, _depth: int = 0) -> Any:
+    """A JSON-encodable copy of ``value``. Never raises.
+
+    Non-string keys are stringified, a container that contains itself becomes
+    "<circular reference>", nesting deeper than 64 levels is cut, non-finite
+    floats become strings and anything else falls back to str() / repr().
+    """
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return value if math.isfinite(value) else str(value)
+    if not isinstance(value, (Mapping, list, tuple, set, frozenset)):
+        return _text(value)
+    if _depth >= _MAX_DEPTH:
+        return "<nested too deeply>"
+    path = _path if _path is not None else set()
+    if id(value) in path:
+        return "<circular reference>"
+    path.add(id(value))
+    try:
+        if isinstance(value, Mapping):
+            return {_json_key(k): _json_safe(v, path, _depth + 1) for k, v in value.items()}
+        return [_json_safe(item, path, _depth + 1) for item in value]
+    except Exception:  # noqa: BLE001 - e.g. a mapping whose items() raises
+        return _text(value)
+    finally:
+        path.discard(id(value))
 
 
 def _stringify(value: Any) -> str:
@@ -62,11 +121,27 @@ def _error_text(error: Any) -> str:
     return _stringify(error)
 
 
-def _truncate(text: str, max_bytes: int) -> tuple[str, bool]:
-    raw = text.encode("utf-8")
-    if len(raw) <= max_bytes:
-        return text, False
-    return raw[:max_bytes].decode("utf-8", "ignore"), True
+def _serialized_size(envelope: dict[str, Any]) -> int:
+    # Sized exactly as the gateway sizes it: len(json.dumps(tool_response)).
+    return len(json.dumps(envelope).encode("utf-8"))
+
+
+def _result_envelope(key: str, text: str, max_bytes: int) -> dict[str, Any]:
+    """``{key: text}``, with text cut so the serialized envelope (including
+    ``"truncated": true``) fits in ``max_bytes``. Escapes such as ``\\n`` or
+    ``\\u00e9`` count at their serialized size and are never split."""
+    envelope: dict[str, Any] = {key: text}
+    if _serialized_size(envelope) <= max_bytes:
+        return envelope
+    text = text[:max_bytes]  # every character serializes to at least one byte
+    low, high = 0, len(text)
+    while low < high:
+        mid = (low + high + 1) // 2
+        if _serialized_size({key: text[:mid], "truncated": True}) <= max_bytes:
+            low = mid
+        else:
+            high = mid - 1
+    return {key: text[:low], "truncated": True}
 
 
 def _describe_monitored(tool_name: str, monitored: Any) -> str:
@@ -156,10 +231,7 @@ class _ClientBase:
             key, text = "error", _error_text(error)
         else:
             key, text = "output", _stringify(output)
-        text, truncated = _truncate(text, self.settings.max_result_bytes)
-        response: dict[str, Any] = {key: text}
-        if truncated:
-            response["truncated"] = True
+        response = _result_envelope(key, text, self.settings.max_result_bytes)
         payload = {
             "session_id": session_id,
             "tool_use_id": call_id,
@@ -183,6 +255,33 @@ class _ClientBase:
         reason = None if allowed else f"VerifyWise gateway unavailable ({problem})"
         return Decision(allowed=allowed, status=status, reason=reason, fail_mode_applied=True)
 
+    def _key_rejected(self, tool_name: str, status_code: int, approval_id: str | None = None) -> Decision:
+        """HTTP 401/403: the key is revoked, expired or wrong. Never fails open:
+        an open fail mode must not turn a revoked key into unlimited access."""
+        logger.error(
+            "VerifyWise rejected the agent key (HTTP %s) while checking tool '%s'; refusing it. "
+            "Check that VW_AGENT_KEY is a current, unrevoked agent key.",
+            status_code,
+            tool_name,
+        )
+        return Decision(
+            allowed=False, status=d.AUTH_REJECTED, reason=KEY_REJECTED_REASON, approval_id=approval_id
+        )
+
+    def _internal_error(self, tool_name: str, exc: BaseException) -> Decision:
+        """A bug inside the SDK is not a gateway outage, so the fail mode does not
+        apply: the call is refused (closed semantics) and the error logged."""
+        logger.error(
+            "VerifyWise SDK internal error while checking tool '%s'; refusing it",
+            tool_name,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        return Decision(
+            allowed=False,
+            status=d.SDK_ERROR,
+            reason=f"VerifyWise SDK internal error ({type(exc).__name__})",
+        )
+
     def _approval_fallback(self, tool_name: str, status: str, approval_id: str, problem: str) -> Decision:
         """Apply the approval fail mode (VW_APPROVAL_FAIL_MODE)."""
         allowed = self.settings.approval_fail_mode == "open"
@@ -203,6 +302,8 @@ class _ClientBase:
         )
 
     def _interpret(self, tool_name: str, response: httpx.Response) -> Decision | _Pending:
+        if response.status_code in AUTH_FAILURES:
+            return self._key_rejected(tool_name, response.status_code)
         if response.status_code != 200:
             return self._fail(tool_name, f"HTTP {response.status_code}")
         try:
@@ -246,6 +347,8 @@ class _ClientBase:
 
     def _interpret_poll(self, tool_name: str, pending: _Pending, response: httpx.Response) -> Decision | None:
         """A final Decision, or None while the approval is still pending/unreadable."""
+        if response.status_code in AUTH_FAILURES:
+            return self._key_rejected(tool_name, response.status_code, pending.approval_id)
         if response.status_code != 200:
             return None
         try:
@@ -276,6 +379,19 @@ class _ClientBase:
             f"got no decision within {self.settings.approval_wait:g}s",
         )
 
+    @staticmethod
+    def _log_report_status(tool_name: str, status_code: int) -> None:
+        if status_code in AUTH_FAILURES:
+            logger.error(
+                "VerifyWise rejected the agent key (HTTP %s) when recording the result of tool '%s'",
+                status_code,
+                tool_name,
+            )
+        elif status_code != 200:
+            logger.warning(
+                "VerifyWise did not record the result of tool '%s' (HTTP %s)", tool_name, status_code
+            )
+
 
 class AgentControlClient(_ClientBase):
     """Synchronous Agent Control client.
@@ -302,8 +418,7 @@ class AgentControlClient(_ClientBase):
         try:
             return self._check(tool_name, arguments, session_id, call_id)
         except Exception as exc:  # noqa: BLE001 - the SDK must never break the agent
-            logger.debug("VerifyWise check failed unexpectedly", exc_info=True)
-            return self._fail(tool_name, f"internal error: {type(exc).__name__}")
+            return self._internal_error(tool_name, exc)
 
     def _check(self, tool_name, arguments, session_id, call_id) -> Decision:
         if not self.settings.configured:
@@ -317,7 +432,7 @@ class AgentControlClient(_ClientBase):
                 headers=self._headers(session_id),
                 timeout=self.settings.timeout,
             )
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             return self._fail(tool_name, f"gateway unreachable: {type(exc).__name__}")
         outcome = self._interpret(tool_name, response)
         if isinstance(outcome, Decision):
@@ -330,7 +445,7 @@ class AgentControlClient(_ClientBase):
         while self._clock() < deadline:
             try:
                 response = self._http.get(url, headers=self._headers(), timeout=self.settings.timeout)
-            except httpx.HTTPError:
+            except (httpx.HTTPError, httpx.InvalidURL):
                 response = None
             if response is not None:
                 outcome = self._interpret_poll(tool_name, pending, response)
@@ -358,12 +473,7 @@ class AgentControlClient(_ClientBase):
                 headers=self._headers(session_id),
                 timeout=self.settings.timeout,
             )
-            if response.status_code != 200:
-                logger.warning(
-                    "VerifyWise did not record the result of tool '%s' (HTTP %s)",
-                    tool_name,
-                    response.status_code,
-                )
+            self._log_report_status(tool_name, response.status_code)
         except Exception as exc:  # noqa: BLE001 - result capture is best-effort
             logger.warning(
                 "VerifyWise could not record the result of tool '%s': %s", tool_name, type(exc).__name__
@@ -380,27 +490,58 @@ class AgentControlClient(_ClientBase):
         self.close()
 
 
+async def _close_with_loop(http: httpx.AsyncClient) -> AsyncIterator[None]:
+    """Parked on the loop that owns ``http``. The loop's async-generator
+    shutdown (``asyncio.run`` calls it before closing the loop) resumes it,
+    which closes the pool on its own loop."""
+    try:
+        yield
+    finally:
+        await http.aclose()
+
+
 class AsyncAgentControlClient(_ClientBase):
-    """Asynchronous Agent Control client (same behaviour as AgentControlClient)."""
+    """Asynchronous Agent Control client (same behaviour as AgentControlClient).
+
+    Safe to share between event loops and threads: an ``httpx.AsyncClient``
+    pool is bound to the loop that first used it, so this client keeps one pool
+    per running loop. A loop's pool is closed when ``asyncio.run`` shuts that
+    loop down, and :meth:`aclose` closes every pool still open. A supplied
+    ``http_client`` is used as is and left for the caller to close.
+    """
 
     def __init__(self, *, http_client: httpx.AsyncClient | None = None, **kwargs: Any):
         super().__init__(**kwargs)
         self._owns_http = http_client is None
         self._http: httpx.AsyncClient | None = http_client
-        self._http_loop: asyncio.AbstractEventLoop | None = None
+        self._pools: dict[asyncio.AbstractEventLoop, tuple[httpx.AsyncClient, Any]] = {}
+        self._pools_lock = threading.Lock()
         self._sleep = asyncio.sleep
 
-    def _client(self) -> httpx.AsyncClient:
-        # An httpx.AsyncClient's connection pool is bound to the event loop that
-        # used it. Our own client is recreated when the loop changes (e.g. several
-        # asyncio.run() calls); a supplied client is the caller's to manage.
+    def _current_pool(self) -> httpx.AsyncClient | None:
+        """The HTTP client the running loop uses, if one exists yet."""
+        if not self._owns_http:
+            return self._http
+        entry = self._pools.get(asyncio.get_running_loop())
+        return entry[0] if entry else None
+
+    async def _client(self) -> httpx.AsyncClient:
         if not self._owns_http:
             return self._http
         loop = asyncio.get_running_loop()
-        if self._http is None or self._http_loop is not loop or self._http.is_closed:
-            self._http = httpx.AsyncClient()
-            self._http_loop = loop
-        return self._http
+        with self._pools_lock:
+            # Loops that have closed can't be used again; drop their pools.
+            for stale in [lp for lp in self._pools if lp.is_closed()]:
+                del self._pools[stale]
+            entry = self._pools.get(loop)
+            if entry is not None and not entry[0].is_closed:
+                return entry[0]
+            http = httpx.AsyncClient()
+            closer = _close_with_loop(http)
+            self._pools[loop] = (http, closer)
+        # First iteration registers the generator with this loop's shutdown.
+        await closer.__anext__()
+        return http
 
     async def check(
         self,
@@ -414,8 +555,7 @@ class AsyncAgentControlClient(_ClientBase):
         try:
             return await self._check(tool_name, arguments, session_id, call_id)
         except Exception as exc:  # noqa: BLE001 - the SDK must never break the agent
-            logger.debug("VerifyWise check failed unexpectedly", exc_info=True)
-            return self._fail(tool_name, f"internal error: {type(exc).__name__}")
+            return self._internal_error(tool_name, exc)
 
     async def _check(self, tool_name, arguments, session_id, call_id) -> Decision:
         if not self.settings.configured:
@@ -423,13 +563,14 @@ class AsyncAgentControlClient(_ClientBase):
         session_id = session_id or self.session_id
         call_id = call_id or str(uuid.uuid4())
         try:
-            response = await self._client().post(
+            http = await self._client()
+            response = await http.post(
                 self.settings.gateway_url + HOOK_PATH,
                 content=self._hook_body(tool_name, arguments, session_id, call_id),
                 headers=self._headers(session_id),
                 timeout=self.settings.timeout,
             )
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             return self._fail(tool_name, f"gateway unreachable: {type(exc).__name__}")
         outcome = self._interpret(tool_name, response)
         if isinstance(outcome, Decision):
@@ -441,10 +582,9 @@ class AsyncAgentControlClient(_ClientBase):
         deadline = self._clock() + self.settings.approval_wait
         while self._clock() < deadline:
             try:
-                response = await self._client().get(
-                    url, headers=self._headers(), timeout=self.settings.timeout
-                )
-            except httpx.HTTPError:
+                http = await self._client()
+                response = await http.get(url, headers=self._headers(), timeout=self.settings.timeout)
+            except (httpx.HTTPError, httpx.InvalidURL):
                 response = None
             if response is not None:
                 outcome = self._interpret_poll(tool_name, pending, response)
@@ -466,26 +606,38 @@ class AsyncAgentControlClient(_ClientBase):
         try:
             if not self.settings.configured:
                 return
-            response = await self._client().post(
+            http = await self._client()
+            response = await http.post(
                 self.settings.gateway_url + RESULT_PATH,
                 content=self._result_body(session_id, call_id, tool_name, output, error),
                 headers=self._headers(session_id),
                 timeout=self.settings.timeout,
             )
-            if response.status_code != 200:
-                logger.warning(
-                    "VerifyWise did not record the result of tool '%s' (HTTP %s)",
-                    tool_name,
-                    response.status_code,
-                )
+            self._log_report_status(tool_name, response.status_code)
         except Exception as exc:  # noqa: BLE001 - result capture is best-effort
             logger.warning(
                 "VerifyWise could not record the result of tool '%s': %s", tool_name, type(exc).__name__
             )
 
     async def aclose(self) -> None:
-        if self._owns_http and self._http is not None:
-            await self._http.aclose()
+        """Close every pool this client opened, on whichever loop owns it."""
+        if not self._owns_http:
+            return
+        with self._pools_lock:
+            pools = list(self._pools.items())
+            self._pools.clear()
+        current = asyncio.get_running_loop()
+        for loop, (http, closer) in pools:
+            if http.is_closed:
+                continue
+            if loop is current:
+                await closer.aclose()
+            elif loop.is_running() and not loop.is_closed():
+                future = asyncio.run_coroutine_threadsafe(closer.aclose(), loop)
+                try:
+                    await asyncio.wait_for(asyncio.wrap_future(future), timeout=5)
+                except Exception:  # noqa: BLE001 - closing is best-effort
+                    logger.debug("VerifyWise could not close an HTTP pool on another loop", exc_info=True)
 
     async def __aenter__(self) -> AsyncAgentControlClient:
         return self

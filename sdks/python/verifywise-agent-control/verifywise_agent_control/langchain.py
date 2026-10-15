@@ -25,7 +25,14 @@ from langchain.agents.middleware.types import PrivateStateAttr
 from langchain_core.messages import ToolMessage
 from typing_extensions import NotRequired
 
-from ._core import arun_governed, run_governed
+from ._core import (
+    arun_governed,
+    async_client_for,
+    default_async_client,
+    default_client,
+    run_governed,
+    sync_client_for,
+)
 from .client import AgentControlClient, AsyncAgentControlClient
 from .decision import Decision
 from .session import current_session_id, new_session_id
@@ -72,10 +79,12 @@ class VerifyWiseMiddleware(AgentMiddleware):
     """Checks every tool call with VerifyWise Agent Control before it runs.
 
     Args:
-        client: Client for synchronous agents (``invoke``/``stream``). Built from
-            the ``VW_*`` environment variables when omitted.
-        async_client: Client for async agents (``ainvoke``/``astream``). Built
-            from ``client``'s settings when omitted.
+        client: Client for synchronous agents (``invoke``/``stream``).
+        async_client: Client for async agents (``ainvoke``/``astream``).
+
+    With neither, the shared clients built from the ``VW_*`` environment
+    variables are used (the same ones ``@governed`` uses). With only one, the
+    other is a shared client with the same settings.
     """
 
     state_schema = VerifyWiseState
@@ -86,12 +95,14 @@ class VerifyWiseMiddleware(AgentMiddleware):
         async_client: AsyncAgentControlClient | None = None,
     ):
         super().__init__()
-        if client is None:
-            client = (
-                AgentControlClient(settings=async_client.settings) if async_client else AgentControlClient()
-            )
+        if client is None and async_client is None:
+            client, async_client = default_client(), default_async_client()
+        elif client is None:
+            client = sync_client_for(async_client)
+        elif async_client is None:
+            async_client = async_client_for(client)
         self.client = client
-        self.async_client = async_client or AsyncAgentControlClient(settings=client.settings)
+        self.async_client = async_client
 
     # A fresh run id per agent invocation, used when there is no vw_session and
     # no thread_id. Kept in private state, so it never reaches the caller.

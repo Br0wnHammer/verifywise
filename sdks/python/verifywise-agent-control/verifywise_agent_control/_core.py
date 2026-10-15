@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 import threading
 import uuid
+import weakref
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
@@ -24,6 +26,14 @@ Refuse = Callable[[Decision], Any]
 _lock = threading.Lock()
 _default_sync: AgentControlClient | None = None
 _default_async: AsyncAgentControlClient | None = None
+# A client's counterpart of the other kind, built once from its settings, so
+# adapters that need both never build a new client per instance.
+_async_twins: weakref.WeakKeyDictionary[AgentControlClient, AsyncAgentControlClient] = (
+    weakref.WeakKeyDictionary()
+)
+_sync_twins: weakref.WeakKeyDictionary[AsyncAgentControlClient, AgentControlClient] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def default_client() -> AgentControlClient:
@@ -42,6 +52,24 @@ def default_async_client() -> AsyncAgentControlClient:
         if _default_async is None:
             _default_async = AsyncAgentControlClient()
         return _default_async
+
+
+def async_client_for(client: AgentControlClient) -> AsyncAgentControlClient:
+    """The shared async client with ``client``'s settings."""
+    with _lock:
+        twin = _async_twins.get(client)
+        if twin is None:
+            twin = _async_twins[client] = AsyncAgentControlClient(settings=client.settings)
+        return twin
+
+
+def sync_client_for(client: AsyncAgentControlClient) -> AgentControlClient:
+    """The shared sync client with ``client``'s settings."""
+    with _lock:
+        twin = _sync_twins.get(client)
+        if twin is None:
+            twin = _sync_twins[client] = AgentControlClient(settings=client.settings)
+        return twin
 
 
 def _refusal(client, tool_name: str, decision: Decision, refuse: Refuse | None) -> Any:
@@ -87,6 +115,18 @@ def run_governed(
     except Exception as exc:
         client.report(session_id=session_id, call_id=call_id, tool_name=tool_name, error=exc)
         raise
+    if inspect.isawaitable(result):
+        # An async tool reached the sync path: nothing ran, so don't report a
+        # coroutine object as its output.
+        if inspect.iscoroutine(result):
+            result.close()
+        error = TypeError(
+            f"tool '{tool_name}' returned an awaitable on the synchronous path; "
+            "make it an async def (or an object with an async __call__) and govern it "
+            "with an AsyncAgentControlClient"
+        )
+        client.report(session_id=session_id, call_id=call_id, tool_name=tool_name, error=error)
+        raise error
     output, error = _describe(describe, result)
     client.report(session_id=session_id, call_id=call_id, tool_name=tool_name, output=output, error=error)
     return result

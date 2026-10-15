@@ -38,6 +38,12 @@ def _call_arguments(signature: inspect.Signature | None, args: tuple, kwargs: di
     return {"args": list(args), "kwargs": dict(kwargs)}
 
 
+def _is_async(fn: Any) -> bool:
+    """An ``async def`` function, or an object whose ``__call__`` is one."""
+    call = getattr(fn, "__call__", None)  # noqa: B004 - we need the method itself, not callable()
+    return inspect.iscoroutinefunction(fn) or inspect.iscoroutinefunction(call)
+
+
 def _wrap(fn: F, client: AgentControlClient | AsyncAgentControlClient | None, name: str | None) -> F:
     tool_name = name or getattr(fn, "__name__", "tool")
     try:
@@ -45,7 +51,7 @@ def _wrap(fn: F, client: AgentControlClient | AsyncAgentControlClient | None, na
     except (TypeError, ValueError):
         signature = None
 
-    if inspect.iscoroutinefunction(fn):
+    if _is_async(fn):
         if client is not None and not isinstance(client, AsyncAgentControlClient):
             raise TypeError("an async function needs an AsyncAgentControlClient")
 

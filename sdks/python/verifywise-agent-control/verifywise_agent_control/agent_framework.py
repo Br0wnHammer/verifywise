@@ -31,7 +31,7 @@ from typing import Any
 
 from agent_framework import FunctionInvocationContext, FunctionMiddleware, MiddlewareFailure
 
-from ._core import arun_governed
+from ._core import arun_governed, async_client_for, default_async_client
 from .client import AgentControlClient, AsyncAgentControlClient
 from .decision import Decision, VerifyWiseDenied
 from .session import current_session_id
@@ -77,15 +77,16 @@ class VerifyWiseFunctionMiddleware(FunctionMiddleware):
 
     Args:
         client: An ``AsyncAgentControlClient``. An ``AgentControlClient`` is
-            accepted too and its settings reused. Built from the ``VW_*``
-            environment variables when omitted.
+            accepted too and its settings reused (one shared async client per
+            sync client). When omitted, the shared client built from the
+            ``VW_*`` environment variables is used.
     """
 
     def __init__(self, client: AsyncAgentControlClient | AgentControlClient | None = None):
         super().__init__()
         if isinstance(client, AgentControlClient):
-            client = AsyncAgentControlClient(settings=client.settings)
-        self.client = client or AsyncAgentControlClient()
+            client = async_client_for(client)
+        self.client = client or default_async_client()
 
     def _session_id(self, context: FunctionInvocationContext) -> str:
         session = getattr(context, "session", None)

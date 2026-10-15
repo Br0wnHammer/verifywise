@@ -1,6 +1,6 @@
 # verifywise-agent-control
 
-Connect a Python agent to VerifyWise Agent Control. Every tool call the agent makes is checked by the VerifyWise AI Gateway before it runs, and its result is recorded after. Guardrail rules, approval rules and the agent key's allowed/blocked tool lists all apply, and each call shows up in AI Gateway → Agent Control → Activity.
+Connect a Python agent to VerifyWise Agent Control. Every tool call the agent makes is checked by the VerifyWise AI Gateway before it runs, and its result is recorded after. Guardrail rules and approval rules apply, and each call shows up in AI Gateway → Agent Control → Activity. The agent key's allowed/blocked tool lists apply too when the key has **Also apply tool lists to native tool calls** turned on (it is off by default, because those lists were written for MCP proxy tools).
 
 The package behaves the same way as the Claude Code shell hook (`scripts/vw-tool-hook.sh`). It reads the same environment variables and uses the same defaults.
 
@@ -47,14 +47,24 @@ If the gateway URL or key is missing, the SDK logs a warning and applies `VW_FAI
 
 | Gateway answer | What the SDK does |
 |---|---|
-| `allow` | Runs the tool, then records its output (truncated to 10 KB) |
-| `allow` in monitor mode | Runs the tool and logs one `WARNING` describing what would have happened |
+| `allow` | Runs the tool, then records its output (cut to 9 KB, see below) |
+| `allow` in monitor mode | Runs the tool, records its output, and logs one `WARNING` describing what would have happened. The Activity log shows the call as monitored (would have been blocked, or would have needed approval) |
 | `deny` | Doesn't run the tool. The model gets `Blocked by VerifyWise policy: <reason>` and the agent continues |
 | `approval_required` | Polls every 2 s for up to `VW_APPROVAL_WAIT`. Approved → runs. Denied → refusal. Expired or timed out → `VW_APPROVAL_FAIL_MODE` |
 | `rate_limited` | Applies `VW_FAIL_MODE` |
-| Unreachable, non-200, unreadable reply | Applies `VW_FAIL_MODE` (default: run the tool) |
+| Unreachable, timeout, HTTP 5xx or other non-200, unreadable reply | Applies `VW_FAIL_MODE` (default: run the tool) |
+| HTTP 401 or 403 (agent key revoked, expired or invalid) | Always refuses, whatever `VW_FAIL_MODE` says, and logs an `ERROR`. The refusal reads `VerifyWise rejected the agent key (revoked, expired or invalid)` |
+| An error inside the SDK itself | Always refuses (as if `VW_FAIL_MODE=closed`) and logs an `ERROR` with the traceback. A bug in the SDK is not a gateway outage, so it never opens the gate |
 
 To stop the agent instead of handing the model a refusal, pass `on_deny="raise"`; a refused call then raises `VerifyWiseDenied`.
+
+`VW_FAIL_MODE=open` exists so that a gateway outage doesn't stop your agent. It never covers a rejected key: revoking a key in VerifyWise stops every agent that uses it.
+
+Tool arguments are sent as JSON. Values JSON can't encode are converted rather than dropped: non-string keys become strings, a value that contains itself becomes `"<circular reference>"`, and other objects are sent as `str()` (or `repr()`).
+
+The recorded result is `{"output": "..."}` or `{"error": "..."}`. When it is too long, the text is cut so that the whole JSON envelope fits in 9216 bytes (`max_result_bytes` on `Settings`, which can be lowered but not raised), and `"truncated": true` is added. The gateway stores up to 10240 bytes, so it never has to cut the result again.
+
+`approval_poll_interval` (seconds between approval polls, default 2) must be at least 0.5; a smaller value raises `ValueError` when the client is created.
 
 When the tool itself raises, the error text is recorded and the original exception is re-raised unchanged, so your framework handles it as it would without the SDK (CrewAI and Agent Framework turn it into an error message for the model). Otherwise the SDK never raises into your agent. Result recording and logging failures are swallowed.
 
@@ -95,7 +105,7 @@ agent = create_agent(
 agent.invoke({"messages": [{"role": "user", "content": "Email the weekly report"}]})
 ```
 
-A refused call becomes a `ToolMessage` with `status="error"` and the refusal text, so the model can explain or try something else. `ainvoke` and `astream` work the same way. Pass `client=` / `async_client=` to use explicit settings.
+A refused call becomes a `ToolMessage` with `status="error"` and the refusal text, so the model can explain or try something else. `ainvoke` and `astream` work the same way. Pass `client=` / `async_client=` to use explicit settings. Without them, every `VerifyWiseMiddleware` shares the same clients (built from the `VW_*` variables), as `@governed` and the other adapters do.
 
 ## CrewAI
 
@@ -114,6 +124,8 @@ governance.disable()   # optional: stop checking tool calls
 ```
 
 The hooks are process-wide: they govern every crew and agent in the process, on every tool-execution path CrewAI has (native function calling, the text ReAct loop, parallel tool calls, `Agent.kickoff`). Calling `enable_crewai_governance()` again replaces the earlier registration. `kickoff_async()` and `akickoff()` work too; the check runs synchronously inside CrewAI's hook, as CrewAI requires.
+
+CrewAI's tool-call hooks are synchronous. Under `akickoff()` the check, and any wait for a human approval, therefore blocks the event loop: other coroutines on that loop don't run until the approval is decided or `VW_APPROVAL_WAIT` runs out. Keep `VW_APPROVAL_WAIT` short for crews that share a loop with other work, or run them with `kickoff()` in a thread.
 
 How it behaves, verified against crewai 1.15.28 with a scripted LLM:
 
@@ -165,7 +177,9 @@ async def lookup(email: str) -> dict:
 safe_tool = govern_tool(existing_function, name="existing_tool")
 ```
 
-A refused call returns the refusal text instead of running the function. Async functions are supported; pass an `AsyncAgentControlClient` as `client=` for them, or let the SDK build one from the environment.
+A refused call returns the refusal text instead of running the function. Async functions are supported, and so are objects whose `__call__` is `async def`; pass an `AsyncAgentControlClient` as `client=` for them, or let the SDK build one from the environment. A regular function that returns a coroutine (or other awaitable) instead of a result raises `TypeError`, because the call would otherwise never run; make it `async def`.
+
+One `AsyncAgentControlClient` can be shared across event loops and threads (for example several `asyncio.run()` calls): it keeps one connection pool per running loop, closes a loop's pool when `asyncio.run` shuts that loop down, and `aclose()` closes all of them.
 
 ## Tested versions
 

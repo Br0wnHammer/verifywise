@@ -1,8 +1,9 @@
 """Settings, read from the same environment variables as ``scripts/vw-tool-hook.sh``.
 
 Explicit keyword arguments win over the environment. Invalid values never stop the
-agent: they fall back to the default and log a warning. The one exception is
-``on_deny``, which only comes from code and is rejected at construction.
+agent: they fall back to the default and log a warning. The exceptions are
+``on_deny`` and ``approval_poll_interval``, which only come from code and are
+rejected at construction.
 """
 
 from __future__ import annotations
@@ -27,7 +28,13 @@ ENV_APPROVAL_FAIL_MODE = "VW_APPROVAL_FAIL_MODE"
 DEFAULT_TIMEOUT = 3.0
 DEFAULT_APPROVAL_WAIT = 120.0
 DEFAULT_POLL_INTERVAL = 2.0
-DEFAULT_MAX_RESULT_BYTES = 10240
+MIN_POLL_INTERVAL = 0.5
+# The gateway caps json.dumps(tool_response) at this many bytes and cuts
+# anything longer. The SDK keeps the envelope it sends a margin below that, so
+# the gateway never cuts it again (which could split an escape sequence).
+GATEWAY_RESULT_CAP_BYTES = 10240
+MAX_RESULT_BYTES = 9216
+DEFAULT_MAX_RESULT_BYTES = MAX_RESULT_BYTES
 ON_DENY_VALUES = ("refuse", "raise")
 
 _ENV_FIELDS = {
@@ -60,6 +67,30 @@ def _number(value: Any, default: float, name: str, *, allow_zero: bool) -> float
     return number
 
 
+def _poll_interval(value: Any) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = math.nan
+    if not math.isfinite(number) or number < MIN_POLL_INTERVAL:
+        raise ValueError(
+            f"approval_poll_interval must be at least {MIN_POLL_INTERVAL:g} seconds, got {value!r}"
+        )
+    return number
+
+
+def _max_result_bytes(value: Any) -> int:
+    number = int(_number(value, DEFAULT_MAX_RESULT_BYTES, "max_result_bytes", allow_zero=False))
+    if number > MAX_RESULT_BYTES:
+        logger.warning(
+            "max_result_bytes=%s is above what the gateway stores without cutting; using %s",
+            value,
+            MAX_RESULT_BYTES,
+        )
+        return MAX_RESULT_BYTES
+    return number
+
+
 @dataclass(frozen=True)
 class Settings:
     """Connection and behaviour settings for Agent Control.
@@ -73,10 +104,13 @@ class Settings:
         approval_wait: Max seconds to wait for a human approval (``VW_APPROVAL_WAIT``, default 120).
         approval_fail_mode: What to do when no approval decision arrives in time
             (``VW_APPROVAL_FAIL_MODE``, default ``closed``).
-        approval_poll_interval: Seconds between approval status polls (default 2).
+        approval_poll_interval: Seconds between approval status polls (default 2,
+            at least 0.5; a smaller value raises ``ValueError``).
         on_deny: ``refuse`` returns a refusal to the model; ``raise`` raises
             :class:`~verifywise_agent_control.VerifyWiseDenied`.
-        max_result_bytes: Tool output sent to the gateway is cut to this many bytes.
+        max_result_bytes: The serialized result envelope sent to the gateway
+            (``{"output": ...}`` or ``{"error": ...}``) is cut to fit this many
+            bytes (default and maximum 9216, safely under the gateway's 10240).
     """
 
     gateway_url: str | None = None
@@ -104,12 +138,8 @@ class Settings:
             "approval_wait": _number(
                 self.approval_wait, DEFAULT_APPROVAL_WAIT, "approval_wait", allow_zero=True
             ),
-            "approval_poll_interval": _number(
-                self.approval_poll_interval, DEFAULT_POLL_INTERVAL, "approval_poll_interval", allow_zero=True
-            ),
-            "max_result_bytes": int(
-                _number(self.max_result_bytes, DEFAULT_MAX_RESULT_BYTES, "max_result_bytes", allow_zero=False)
-            ),
+            "approval_poll_interval": _poll_interval(self.approval_poll_interval),
+            "max_result_bytes": _max_result_bytes(self.max_result_bytes),
         }
         on_deny = (_text(self.on_deny) or "refuse").lower()
         if on_deny not in ON_DENY_VALUES:

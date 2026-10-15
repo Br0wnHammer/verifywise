@@ -1,4 +1,5 @@
 import asyncio
+import threading
 
 import httpx
 import pytest
@@ -90,5 +91,95 @@ async def test_async_context_manager_closes(gateway):
     gateway.post(HOOK).respond(200, json={"decision": "allow"})
     async with AsyncAgentControlClient(gateway_url=GATEWAY, agent_key=KEY) as client:
         await client.check("x", {})
-        http = client._http
+        http = client._current_pool()
     assert http.is_closed
+
+
+def test_a_finished_asyncio_run_closes_its_pool(gateway):
+    """The pool made for a loop is closed when asyncio.run() shuts that loop down."""
+    gateway.post(HOOK).respond(200, json={"decision": "allow"})
+    client = AsyncAgentControlClient(gateway_url=GATEWAY, agent_key=KEY)
+
+    async def run():
+        assert (await client.check("x", {})).allowed
+        return client._current_pool()
+
+    first = asyncio.run(run())
+    second = asyncio.run(run())
+
+    assert first is not second
+    assert first.is_closed and second.is_closed
+
+
+def test_two_threads_with_their_own_loops_share_one_client(gateway):
+    """Each running loop gets its own pool; none is used from another loop."""
+    gateway.post(HOOK).respond(200, json={"decision": "allow"})
+    client = AsyncAgentControlClient(gateway_url=GATEWAY, agent_key=KEY)
+    barrier = threading.Barrier(2)
+    pools, errors = {}, []
+
+    def worker(name):
+        async def run():
+            barrier.wait(timeout=5)  # both loops alive at the same time
+            for _ in range(3):
+                assert (await client.check("x", {})).allowed
+            pools[name] = client._current_pool()
+            barrier.wait(timeout=5)
+
+        try:
+            asyncio.run(run())
+        except Exception as exc:  # noqa: BLE001 - surfaced by the assertion below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(n,)) for n in ("a", "b")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert errors == []
+    assert pools["a"] is not pools["b"]
+    assert pools["a"].is_closed and pools["b"].is_closed
+
+
+def test_aclose_closes_the_pools_of_every_live_loop(gateway):
+    gateway.post(HOOK).respond(200, json={"decision": "allow"})
+    client = AsyncAgentControlClient(gateway_url=GATEWAY, agent_key=KEY)
+    other_loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=other_loop.run_forever, daemon=True)
+    thread.start()
+    try:
+
+        async def use():
+            assert (await client.check("x", {})).allowed
+            return client._current_pool()
+
+        other_pool = asyncio.run_coroutine_threadsafe(use(), other_loop).result(timeout=5)
+
+        async def main():
+            own_pool = await use()
+            await client.aclose()
+            return own_pool
+
+        own_pool = asyncio.run(main())
+
+        assert own_pool.is_closed
+        assert other_pool.is_closed
+    finally:
+        other_loop.call_soon_threadsafe(other_loop.stop)
+        thread.join(timeout=5)
+        other_loop.close()
+
+
+def test_a_supplied_http_client_is_used_as_is(gateway):
+    gateway.post(HOOK).respond(200, json={"decision": "allow"})
+    http = httpx.AsyncClient()
+    client = AsyncAgentControlClient(gateway_url=GATEWAY, agent_key=KEY, http_client=http)
+
+    async def main():
+        await client.check("x", {})
+        assert client._current_pool() is http
+        await client.aclose()
+
+    asyncio.run(main())
+    assert not http.is_closed

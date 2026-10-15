@@ -151,7 +151,7 @@ FAILURES = {
     "unreachable": lambda route: route.mock(side_effect=httpx.ConnectError("down")),
     "timeout": lambda route: route.mock(side_effect=httpx.ReadTimeout("slow")),
     "http_500": lambda route: route.respond(500, text="boom"),
-    "http_401": lambda route: route.respond(401, json={"detail": "bad key"}),
+    # 401/403 are refused whatever the fail mode (see test_review_fixes.py).
     "not_json": lambda route: route.respond(200, text="<html>"),
     "unknown_decision": lambda route: route.respond(200, json={"decision": "maybe"}),
     "not_an_object": lambda route: route.respond(200, json=["allow"]),
