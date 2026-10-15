@@ -53,6 +53,7 @@ async def get_all_agent_keys(org_id: int) -> list[dict]:
                     ak.enforcement_mode,
                     ak.enforcement_mode_changed_at,
                     ak.enforcement_mode_changed_by,
+                    ak.apply_tool_lists_to_hook,
                     ak.created_by,
                     ak.created_at,
                     ak.updated_at,
@@ -85,6 +86,7 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
     allowed_tools = data.get("allowed_tools") or []
     blocked_tools = data.get("blocked_tools") or []
     enforcement_mode = data.get("enforcement_mode") or "enforce"
+    apply_tool_lists_to_hook = bool(data.get("apply_tool_lists_to_hook", False))
     # A key created in a non-default mode records who chose it and when; a
     # default key has no mode change to record.
     mode_changed = enforcement_mode != "enforce"
@@ -107,6 +109,7 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
                     enforcement_mode,
                     enforcement_mode_changed_at,
                     enforcement_mode_changed_by,
+                    apply_tool_lists_to_hook,
                     created_by
                 ) VALUES (
                     :org_id,
@@ -123,6 +126,7 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
                     :enforcement_mode,
                     CASE WHEN :mode_changed THEN NOW() ELSE NULL END,
                     :enforcement_mode_changed_by,
+                    :apply_tool_lists_to_hook,
                     :created_by
                 )
                 RETURNING
@@ -141,6 +145,7 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
                     enforcement_mode,
                     enforcement_mode_changed_at,
                     enforcement_mode_changed_by,
+                    apply_tool_lists_to_hook,
                     created_by,
                     created_at,
                     updated_at
@@ -162,6 +167,7 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
                 "enforcement_mode_changed_by": (
                     data.get("enforcement_mode_changed_by") if mode_changed else None
                 ),
+                "apply_tool_lists_to_hook": apply_tool_lists_to_hook,
                 "created_by": created_by,
             },
         )
@@ -225,6 +231,10 @@ async def update_agent_key(org_id: int, key_id: int, data: dict) -> Optional[dic
         params["enforcement_mode"] = data["enforcement_mode"]
         params["enforcement_mode_changed_by"] = data.get("enforcement_mode_changed_by")
 
+    if "apply_tool_lists_to_hook" in data:
+        set_clauses.append("apply_tool_lists_to_hook = :apply_tool_lists_to_hook")
+        params["apply_tool_lists_to_hook"] = bool(data["apply_tool_lists_to_hook"])
+
     if not set_clauses:
         return None
 
@@ -254,6 +264,7 @@ async def update_agent_key(org_id: int, key_id: int, data: dict) -> Optional[dic
             -- NOW() is the transaction start time, so this is true only when
             -- this UPDATE stamped enforcement_mode_changed_at (the mode changed).
             enforcement_mode_changed_at IS NOT DISTINCT FROM NOW() AS enforcement_mode_changed,
+            apply_tool_lists_to_hook,
             created_by,
             created_at,
             updated_at

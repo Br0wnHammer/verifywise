@@ -28,6 +28,18 @@ def _validated_enforcement_mode(value: Any) -> str:
     return value
 
 
+def _validated_apply_tool_lists_to_hook(value: Any) -> bool:
+    """Whether the key's tool lists also apply to native tool calls (the hook
+    and the SDKs). Off by default: the lists were written for MCP proxy tools.
+    Raises 400 for anything but a boolean."""
+    if not isinstance(value, bool):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="apply_tool_lists_to_hook must be a boolean",
+        )
+    return value
+
+
 _MODE_FIELDS = ("enforcement_mode", "enforcement_mode_changed_by")
 _MODE_LABELS = {ENFORCE: "enforce", MONITOR: "monitor only"}
 
@@ -153,6 +165,10 @@ async def create_key(request: Request):
     if "enforcement_mode" in body:
         enforcement_mode = _validated_enforcement_mode(body["enforcement_mode"])
 
+    apply_tool_lists_to_hook = False
+    if "apply_tool_lists_to_hook" in body:
+        apply_tool_lists_to_hook = _validated_apply_tool_lists_to_hook(body["apply_tool_lists_to_hook"])
+
     org_id = get_org_id(request)
     user_id = get_user_id(request)
 
@@ -168,6 +184,7 @@ async def create_key(request: Request):
         "enforcement_mode": enforcement_mode,
         # Recorded only when the key starts in a non-default mode.
         "enforcement_mode_changed_by": user_id,
+        "apply_tool_lists_to_hook": apply_tool_lists_to_hook,
         "created_by": user_id,
     }
 
@@ -309,6 +326,12 @@ async def update_key(key_id: int, request: Request):
     # enforcement_mode
     if "enforcement_mode" in body:
         updates["enforcement_mode"] = _validated_enforcement_mode(body["enforcement_mode"])
+
+    # apply_tool_lists_to_hook
+    if "apply_tool_lists_to_hook" in body:
+        updates["apply_tool_lists_to_hook"] = _validated_apply_tool_lists_to_hook(
+            body["apply_tool_lists_to_hook"]
+        )
 
     org_id = get_org_id(request)
     user_id = get_user_id(request)

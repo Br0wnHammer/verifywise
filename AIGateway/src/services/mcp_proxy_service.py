@@ -46,7 +46,7 @@ async def authenticate_agent_key(bearer_token: str) -> dict:
             text("""
                 SELECT id, organization_id, name, allowed_tools, blocked_tools,
                        rate_limit_rpm, is_active, revoked_at, expires_at,
-                       enforcement_mode
+                       enforcement_mode, apply_tool_lists_to_hook
                 FROM ai_gateway_mcp_agent_keys
                 WHERE key_hash = :key_hash
             """),
