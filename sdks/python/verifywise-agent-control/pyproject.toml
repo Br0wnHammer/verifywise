@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "verifywise-agent-control"
+version = "0.1.0"
+description = "VerifyWise Agent Control connector: checks every agent tool call with the VerifyWise AI Gateway before it runs and records the result after."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Business Source License 1.1 (see LICENSE.md in the VerifyWise repository)" }
+authors = [{ name = "VerifyWise" }]
+dependencies = ["httpx>=0.27,<1"]
+
+[project.optional-dependencies]
+langchain = ["langchain>=1.0,<2", "langchain-core>=1.0,<2"]
+crewai = []
+agent-framework = []
+all = ["verifywise-agent-control[langchain,crewai,agent-framework]"]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "respx>=0.21",
+  "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/verifywise-ai/verifywise"
+
+[tool.hatch.build.targets.wheel]
+packages = ["verifywise_agent_control"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = [".venv"]
+
+[tool.ruff.format]
+# README snippets are written for readers, not reformatted.
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
