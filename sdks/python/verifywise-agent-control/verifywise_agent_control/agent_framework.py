@@ -1,0 +1,121 @@
+"""Microsoft Agent Framework adapter: function middleware that governs every tool call.
+
+    from agent_framework import Agent
+    from verifywise_agent_control.agent_framework import VerifyWiseFunctionMiddleware
+
+    agent = Agent(client=chat_client, tools=tools, middleware=[VerifyWiseFunctionMiddleware()])
+
+Uses ``FunctionMiddleware.process(context, call_next)``, which wraps every
+function the agent's function-calling loop invokes. Behaviour verified against
+agent-framework-core 1.21.0:
+
+- A refused call sets ``context.result`` to the refusal text and does not call
+  ``call_next``, so the tool does not run, the model gets
+  ``Blocked by VerifyWise policy: <reason>`` as the function result, and the
+  agent continues.
+- With ``on_deny="raise"`` the middleware raises
+  :class:`VerifyWiseAgentFrameworkDenied`, a ``VerifyWiseDenied`` that is also
+  the framework's ``MiddlewareFailure``, the one exception the loop does not
+  turn into a tool-error result, so ``agent.run()`` raises it.
+- A tool exception reaches the middleware through ``call_next``; it is recorded
+  and re-raised unchanged, and the framework turns it into an error result.
+
+Run id: the active ``vw_session`` id, else the ``AgentSession.session_id`` passed
+to ``agent.run(..., session=...)``, else the middleware client's own id.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from agent_framework import FunctionInvocationContext, FunctionMiddleware, MiddlewareFailure
+
+from ._core import arun_governed
+from .client import AgentControlClient, AsyncAgentControlClient
+from .decision import Decision, VerifyWiseDenied
+from .session import current_session_id
+
+
+class VerifyWiseAgentFrameworkDenied(VerifyWiseDenied, MiddlewareFailure):
+    """``VerifyWiseDenied`` that stops the agent run (``on_deny="raise"``)."""
+
+    def __init__(self, tool_name: str, decision: Decision):
+        VerifyWiseDenied.__init__(self, tool_name, decision)
+
+
+def _arguments(context: FunctionInvocationContext) -> Any:
+    arguments = context.arguments
+    if hasattr(arguments, "model_dump"):
+        return arguments.model_dump()
+    try:
+        return dict(arguments)
+    except (TypeError, ValueError):
+        return arguments
+
+
+def _text(item: Any) -> Any:
+    text = getattr(item, "text", None)
+    if isinstance(text, str):
+        return text
+    result = getattr(item, "result", None)
+    return result if result is not None else str(item)
+
+
+def _describe(result: Any) -> tuple[Any, Any]:
+    """What to record for ``context.result``: the text of the function's output."""
+    if isinstance(result, list):
+        parts = [_text(item) for item in result]
+        if len(parts) == 1:
+            return parts[0], None
+        return parts, None
+    return result, None
+
+
+class VerifyWiseFunctionMiddleware(FunctionMiddleware):
+    """Checks every function call with VerifyWise Agent Control before it runs.
+
+    Args:
+        client: An ``AsyncAgentControlClient``. An ``AgentControlClient`` is
+            accepted too and its settings reused. Built from the ``VW_*``
+            environment variables when omitted.
+    """
+
+    def __init__(self, client: AsyncAgentControlClient | AgentControlClient | None = None):
+        super().__init__()
+        if isinstance(client, AgentControlClient):
+            client = AsyncAgentControlClient(settings=client.settings)
+        self.client = client or AsyncAgentControlClient()
+
+    def _session_id(self, context: FunctionInvocationContext) -> str:
+        session = getattr(context, "session", None)
+        session_id = getattr(session, "session_id", None)
+        return current_session_id() or (str(session_id) if session_id else self.client.session_id)
+
+    async def process(
+        self,
+        context: FunctionInvocationContext,
+        call_next: Callable[[], Awaitable[None]],
+    ) -> None:
+        tool_name = getattr(context.function, "name", None) or "unknown"
+        call_id = context.metadata.get("call_id")
+
+        async def execute() -> Any:
+            await call_next()
+            return context.result
+
+        try:
+            outcome = await arun_governed(
+                self.client,
+                tool_name=tool_name,
+                arguments=_arguments(context),
+                execute=execute,
+                session_id=self._session_id(context),
+                call_id=str(call_id) if call_id else None,
+                describe=_describe,
+            )
+        except VerifyWiseDenied as denied:
+            # Raised only before the tool runs (on_deny="raise"). A plain
+            # exception would become a tool-error result and the loop would go on.
+            raise VerifyWiseAgentFrameworkDenied(denied.tool_name, denied.decision) from None
+        context.result = outcome
