@@ -36,6 +36,7 @@ const COLUMNS: MCPTableColumn[] = [
   { label: "Tool calls", align: "right" },
   { label: "Denied", align: "right" },
   { label: "Would block", align: "right" },
+  { label: "Would need approval", align: "right" },
 ];
 
 export default function MCPRuns() {
@@ -105,6 +106,7 @@ export default function MCPRuns() {
                 r.tool_count,
                 r.denied_count || "—",
                 r.would_block_count || "—",
+                r.would_need_approval_count || "—",
               ]}
             />
             {rows.length >= RUNS_LIMIT && (

@@ -55,6 +55,7 @@ interface ToolRow {
   count: number;
   denied: number;
   would_block_count?: number;
+  would_need_approval_count?: number;
 }
 
 interface RecentRow {
@@ -230,6 +231,15 @@ export default function AgentActivityDrawer({
                           })}
                           backgroundColor={MCP_STATUS_COLORS.would_block.bg}
                           textColor={MCP_STATUS_COLORS.would_block.text}
+                        />
+                      )}
+                      {(t.would_need_approval_count ?? 0) > 0 && (
+                        <Chip
+                          label={fill(tr("{count} would need approval"), {
+                            count: t.would_need_approval_count ?? 0,
+                          })}
+                          backgroundColor={MCP_STATUS_COLORS.would_need_approval.bg}
+                          textColor={MCP_STATUS_COLORS.would_need_approval.text}
                         />
                       )}
                     </Stack>

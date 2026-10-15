@@ -41,7 +41,6 @@ import MCPTable from "../MCPTable";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import AgentActivityDrawer from "../AgentActivityDrawer";
 import CustomizableSkeleton from "../../../components/Skeletons";
-import useUsers from "../../../../application/hooks/useUsers";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
 import { fill } from "../../../../i18n/fill";
 import dayjs from "dayjs";
@@ -73,6 +72,8 @@ interface AgentKey {
   enforcement_mode?: EnforcementMode;
   enforcement_mode_changed_at?: string | null;
   enforcement_mode_changed_by?: number | null;
+  /** Name of the user who last changed the mode; null when unknown or since deleted. */
+  enforcement_mode_changed_by_name?: string | null;
 }
 
 const EMPTY_CREATE_FORM = {
@@ -86,7 +87,7 @@ const EMPTY_CREATE_FORM = {
 };
 
 const MONITOR_CONFIRM_BODY =
-  'Guardrails, approval rules and the key\'s tool lists are still checked, and every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.';
+  'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.';
 
 const keyMode = (key: AgentKey): EnforcementMode => key.enforcement_mode ?? "enforce";
 
@@ -127,7 +128,6 @@ function EnforcementModeSelect({
 export default function MCPAgentKeysPage() {
   const formatDate = useFormattedDate();
   const { t: tr } = useTranslation();
-  const { users } = useUsers();
   const [keys, setKeys] = useState<AgentKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -159,6 +159,9 @@ export default function MCPAgentKeysPage() {
   const [monitorConfirm, setMonitorConfirm] = useState<"create" | "change" | null>(null);
 
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set synchronously on the first submit so a second click in the same tick
+  // (before the isSubmitting state re-renders) cannot send a second request.
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -196,7 +199,8 @@ export default function MCPAgentKeysPage() {
   };
 
   const submitCreate = async () => {
-    setMonitorConfirm(null);
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setCreateSubmitting(true);
     setCreateError("");
     try {
@@ -235,7 +239,9 @@ export default function MCPAgentKeysPage() {
     } catch (err: unknown) {
       setCreateError(apiErrorText(err) || "Failed to create agent key");
     } finally {
+      submittingRef.current = false;
       setCreateSubmitting(false);
+      setMonitorConfirm(null);
     }
   };
 
@@ -259,8 +265,8 @@ export default function MCPAgentKeysPage() {
   };
 
   const submitModeChange = async () => {
-    if (!modeTarget) return;
-    setMonitorConfirm(null);
+    if (!modeTarget || submittingRef.current) return;
+    submittingRef.current = true;
     setModeSubmitting(true);
     setModeError("");
     try {
@@ -272,7 +278,9 @@ export default function MCPAgentKeysPage() {
     } catch (err: unknown) {
       setModeError(apiErrorText(err) || "Failed to change the mode");
     } finally {
+      submittingRef.current = false;
       setModeSubmitting(false);
+      setMonitorConfirm(null);
     }
   };
 
@@ -280,8 +288,7 @@ export default function MCPAgentKeysPage() {
   const monitorSinceText = (key: AgentKey): string | null => {
     if (!key.enforcement_mode_changed_at) return null;
     const date = formatDate(key.enforcement_mode_changed_at);
-    const user = users.find((u) => u.id === key.enforcement_mode_changed_by);
-    const userName = user ? `${user.name} ${user.surname}`.trim() : "";
+    const userName = key.enforcement_mode_changed_by_name?.trim() ?? "";
     return userName
       ? fill(tr("Monitor only since {date} · by {name}"), { date, name: userName })
       : fill(tr("Monitor only since {date}"), { date });
@@ -697,6 +704,7 @@ curl -H "Authorization: Bearer ${newKey}" \\
         description="Calls made with this key will no longer be blocked or paused for approval."
         onSubmit={monitorConfirm === "create" ? submitCreate : submitModeChange}
         submitButtonText="Use monitor only"
+        isSubmitting={createSubmitting || modeSubmitting}
         maxWidth="440px"
       >
         <Typography sx={{ fontSize: 13, color: palette.text.secondary }}>

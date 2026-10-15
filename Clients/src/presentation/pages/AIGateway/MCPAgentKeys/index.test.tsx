@@ -443,6 +443,88 @@ describe("MCPAgentKeysPage", () => {
       expect(screen.queryByText("Use monitor only mode?")).not.toBeInTheDocument();
     });
 
+    it("creates one key when the monitor only confirmation is double clicked", async () => {
+      (apiServices.get as any).mockResolvedValue({ data: { data: [] } });
+      let resolvePost: (v: unknown) => void = () => {};
+      (apiServices.post as any).mockImplementation(
+        () => new Promise((resolve) => (resolvePost = resolve)),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<MCPAgentKeysPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Create agent key/i })).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole("button", { name: /Create agent key/i }));
+      await user.type(screen.getByLabelText(/^Name/), "Observer");
+      pickMode("select-mcp-agent-key-mode", "Monitor only");
+      await user.click(screen.getByRole("button", { name: "Create key" }));
+      const confirm = await screen.findByRole("button", { name: "Use monitor only" });
+
+      // Two clicks in the same tick, before React re-renders.
+      fireEvent.click(confirm);
+      fireEvent.click(confirm);
+      await user.dblClick(confirm);
+
+      expect(apiServices.post).toHaveBeenCalledTimes(1);
+      resolvePost({ data: { data: { id: 5, plain_key: "vw_plaintext_secret" } } });
+      await waitFor(() => {
+        expect(screen.queryByText("Use monitor only mode?")).not.toBeInTheDocument();
+      });
+      expect(apiServices.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("sends one PATCH when the monitor only confirmation is double clicked", async () => {
+      (apiServices.get as any).mockResolvedValue({ data: { data: mockKeys } });
+      let resolvePatch: (v: unknown) => void = () => {};
+      (apiServices.patch as any).mockImplementation(
+        () => new Promise((resolve) => (resolvePatch = resolve)),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<MCPAgentKeysPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Production agent key")).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole("button", { name: "Change mode" }));
+      pickMode("select-mcp-agent-key-mode-edit", "Monitor only");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const confirm = await screen.findByRole("button", { name: "Use monitor only" });
+
+      fireEvent.click(confirm);
+      fireEvent.click(confirm);
+      await user.dblClick(confirm);
+
+      expect(apiServices.patch).toHaveBeenCalledTimes(1);
+      resolvePatch({ data: {} });
+      await waitFor(() => {
+        expect(screen.queryByText("Use monitor only mode?")).not.toBeInTheDocument();
+      });
+      expect(apiServices.patch).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows who switched a key to monitor only from the key list itself", async () => {
+      (apiServices.get as any).mockResolvedValue({
+        data: {
+          data: [
+            {
+              ...mockKeys[0],
+              enforcement_mode: "monitor",
+              enforcement_mode_changed_at: "2025-06-02T12:00:00Z",
+              enforcement_mode_changed_by: 9,
+              enforcement_mode_changed_by_name: "Ada",
+            },
+          ],
+        },
+      });
+      renderWithProviders(<MCPAgentKeysPage />);
+
+      expect(await screen.findByText(/^Monitor only since .* · by Ada$/)).toBeInTheDocument();
+      // The name comes with the keys; no separate users request.
+      const urls = (apiServices.get as any).mock.calls.map((c: unknown[]) => c[0]);
+      expect(urls).toEqual(["/ai-gateway/mcp/agent-keys"]);
+    });
+
     it("marks monitor only keys in the list with the date the mode was set", async () => {
       (apiServices.get as any).mockResolvedValue({
         data: {
@@ -451,8 +533,9 @@ describe("MCPAgentKeysPage", () => {
               ...mockKeys[0],
               enforcement_mode: "monitor",
               enforcement_mode_changed_at: "2025-06-02T12:00:00Z",
-              // Not in the (empty) users list, so only the date is shown.
+              // No name for the user (for example, since deleted), so only the date is shown.
               enforcement_mode_changed_by: 9,
+              enforcement_mode_changed_by_name: null,
             },
             mockKeys[1],
           ],

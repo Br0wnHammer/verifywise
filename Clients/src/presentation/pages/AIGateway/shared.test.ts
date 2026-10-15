@@ -7,6 +7,7 @@ import {
   formatEntityType,
   formatMcpStatus,
   describeMcpDecision,
+  formatMcpEventType,
   MCP_STATUS_COLORS,
   getProviderIcon,
   ProviderIcon,
@@ -503,7 +504,10 @@ describe("AIGateway shared utilities", () => {
       expect(formatMcpStatus("blocked")).toBe("blocked");
     });
 
-    it("labels the monitor only statuses", () => {
+    it("labels the monitor only statuses and event types", () => {
+      expect(formatMcpEventType("would_block")).toBe("Would block");
+      expect(formatMcpEventType("would_need_approval")).toBe("Would need approval");
+      expect(formatMcpEventType("received")).toBe("received");
       expect(formatMcpStatus("would_block")).toBe("Would block");
       expect(formatMcpStatus("would_need_approval")).toBe("Would need approval");
     });
@@ -534,13 +538,34 @@ describe("AIGateway shared utilities", () => {
       );
     });
 
-    it("explains monitor only rows that have no rule", () => {
-      expect(describeMcpDecision("would_block", null)?.template).toBe(
+    it("names the tool list only when the outcome came from a tool list check", () => {
+      expect(describeMcpDecision("would_block", null, "tool_acl")?.template).toBe(
         "Would have been blocked by this key's tool list",
       );
-      expect(describeMcpDecision("would_need_approval", undefined)?.template).toBe(
-        "Would have needed approval (tool requires approval)",
+      expect(
+        describeMcpDecision("would_need_approval", undefined, "tool_requires_approval")?.template,
+      ).toBe("Would have needed approval (tool requires approval)");
+    });
+
+    it("never claims a tool list without a tool list source", () => {
+      expect(describeMcpDecision("would_block", null)?.template).toBe(
+        "Would have been blocked by a guardrail",
       );
+      expect(describeMcpDecision("would_block", null, "guardrail")?.template).toBe(
+        "Would have been blocked by a guardrail",
+      );
+      expect(describeMcpDecision("would_need_approval", null)?.template).toBe(
+        "Would have needed approval",
+      );
+      expect(describeMcpDecision("would_need_approval", null, "approval_rule")?.template).toBe(
+        "Would have needed approval",
+      );
+    });
+
+    it("prefers the rule name when there is one", () => {
+      expect(describeMcpDecision("would_block", "No emails", "guardrail")?.values).toEqual({
+        rule: "No emails",
+      });
     });
 
     it("keeps the existing labels for enforced rows", () => {

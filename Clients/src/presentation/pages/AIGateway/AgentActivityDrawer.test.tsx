@@ -85,7 +85,15 @@ describe("AgentActivityDrawer", () => {
       data: {
         data: {
           ...activity({ would_block_count: 4, would_need_approval_count: 2 }),
-          by_tool: [{ tool_name: "Bash", count: 3, denied: 0, would_block_count: 3 }],
+          by_tool: [
+            {
+              tool_name: "Bash",
+              count: 5,
+              denied: 0,
+              would_block_count: 3,
+              would_need_approval_count: 1,
+            },
+          ],
           recent: [
             {
               id: 2,
@@ -106,6 +114,7 @@ describe("AgentActivityDrawer", () => {
     expect(screen.getByText("4")).toBeInTheDocument();
     expect(screen.getByText("2 would need approval")).toBeInTheDocument();
     expect(screen.getByText("3 would block")).toBeInTheDocument();
+    expect(screen.getByText("1 would need approval")).toBeInTheDocument();
   });
 
   it("shows the empty state when the agent has no calls", async () => {

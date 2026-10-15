@@ -15,6 +15,7 @@ import {
   CODE_BLOCK_TEXT,
   drawerLabelSx as labelSx,
   describeMcpDecision,
+  formatMcpEventType,
   formatMcpStatus,
 } from "./shared";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
@@ -31,6 +32,8 @@ interface InvocationEvent {
   type: string;
   at: string;
   detail?: string;
+  /** would_* events only: which check produced the outcome. */
+  source?: string;
 }
 
 interface AuditLogDetail {
@@ -74,7 +77,15 @@ export default function MCPInvocationDrawer({ logId, open, onClose }: Invocation
   const colors = row
     ? MCP_STATUS_COLORS[row.result_status] || MCP_STATUS_FALLBACK
     : MCP_STATUS_FALLBACK;
-  const decision = row ? describeMcpDecision(row.result_status, row.matched_rule_name) : null;
+  // The row's status is the first outcome of its kind, so the first event of
+  // that type is the one the status and the matched rule came from.
+  const decision = row
+    ? describeMcpDecision(
+        row.result_status,
+        row.matched_rule_name,
+        (row.events || []).find((e) => e.type === row.result_status)?.source,
+      )
+    : null;
   const codeBlockSx = {
     fontSize: 12,
     fontFamily: "monospace",
@@ -203,7 +214,7 @@ export default function MCPInvocationDrawer({ logId, open, onClose }: Invocation
               {(row.events || []).map((e: InvocationEvent, i: number) => (
                 <Stack key={i} direction="row" justifyContent="space-between" gap="12px">
                   <Typography sx={{ fontSize: 12 }}>
-                    {e.type}
+                    {tr(formatMcpEventType(e.type))}
                     {e.detail ? ` · ${e.detail}` : ""}
                   </Typography>
                   <Typography

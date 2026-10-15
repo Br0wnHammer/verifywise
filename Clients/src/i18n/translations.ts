@@ -37,8 +37,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Use monitor only": "Nur überwachen verwenden",
     "Calls made with this key will no longer be blocked or paused for approval.":
       "Aufrufe mit diesem Schlüssel werden nicht mehr blockiert oder zur Genehmigung pausiert.",
-    'Guardrails, approval rules and the key\'s tool lists are still checked, and every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
-      "Guardrails, Genehmigungsregeln und die Tool-Listen des Schlüssels werden weiterhin geprüft, und jeder Treffer wird unter „Aktivität“ als „Würde blockieren“ oder „Würde Genehmigung erfordern“ protokolliert. Es werden keine Genehmigungsanfragen erstellt. Ratenlimits gelten weiterhin.",
+    'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
+      "Guardrails und Genehmigungsregeln werden weiterhin geprüft, bei Aufrufen über den MCP-Proxy auch die Tool-Listen des Schlüssels. Jeder Treffer wird unter „Aktivität“ als „Würde blockieren“ oder „Würde Genehmigung erfordern“ protokolliert. Es werden keine Genehmigungsanfragen erstellt. Ratenlimits gelten weiterhin.",
     "Failed to change the mode": "Der Modus konnte nicht geändert werden",
     "Monitor only since {date} · by {name}": "Nur überwachen seit {date} · von {name}",
     "Monitor only since {date}": "Nur überwachen seit {date}",
@@ -52,6 +52,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Would have needed approval: {rule}": "Hätte eine Genehmigung erfordert: {rule}",
     "Would have needed approval (tool requires approval)":
       "Hätte eine Genehmigung erfordert (Tool erfordert Genehmigung)",
+    "Would have been blocked by a guardrail": "Wäre durch einen Guardrail blockiert worden",
+    "Would have needed approval": "Hätte eine Genehmigung erfordert",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Hochrisiko-Rollen",
     "High-risk roles *": "Hochrisiko-Rollen *",
@@ -10499,8 +10501,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Use monitor only": "Utiliser la surveillance uniquement",
     "Calls made with this key will no longer be blocked or paused for approval.":
       "Les appels effectués avec cette clé ne seront plus bloqués ni suspendus pour approbation.",
-    'Guardrails, approval rules and the key\'s tool lists are still checked, and every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
-      "Les garde-fous, les règles d'approbation et les listes d'outils de la clé sont toujours vérifiés, et chaque correspondance est journalisée dans Activité comme « Bloquerait » ou « Nécessiterait une approbation ». Aucune demande d'approbation n'est créée. Les limites de débit s'appliquent toujours.",
+    'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
+      "Les garde-fous et les règles d'approbation sont toujours vérifiés, ainsi que les listes d'outils de la clé pour les appels passant par le proxy MCP. Chaque correspondance est journalisée dans Activité comme « Bloquerait » ou « Nécessiterait une approbation ». Aucune demande d'approbation n'est créée. Les limites de débit s'appliquent toujours.",
     "Failed to change the mode": "Impossible de changer le mode",
     "Monitor only since {date} · by {name}":
       "Surveillance uniquement depuis le {date} · par {name}",
@@ -10515,6 +10517,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Would have needed approval: {rule}": "Aurait nécessité une approbation : {rule}",
     "Would have needed approval (tool requires approval)":
       "Aurait nécessité une approbation (l'outil exige une approbation)",
+    "Would have been blocked by a guardrail": "Aurait été bloqué par un garde-fou",
+    "Would have needed approval": "Aurait nécessité une approbation",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Rôles à haut risque",
     "High-risk roles *": "Rôles à haut risque *",
@@ -20902,8 +20906,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Use monitor only": "Usar solo supervisión",
     "Calls made with this key will no longer be blocked or paused for approval.":
       "Las llamadas realizadas con esta clave ya no se bloquearán ni se pausarán para aprobación.",
-    'Guardrails, approval rules and the key\'s tool lists are still checked, and every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
-      "Las barreras de protección, las reglas de aprobación y las listas de herramientas de la clave se siguen comprobando, y cada coincidencia se registra en Actividad como «Bloquearía» o «Requeriría aprobación». No se crean solicitudes de aprobación. Los límites de frecuencia siguen aplicándose.",
+    'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
+      "Las barreras de protección y las reglas de aprobación se siguen comprobando, y también las listas de herramientas de la clave en las llamadas a través del proxy MCP. Cada coincidencia se registra en Actividad como «Bloquearía» o «Requeriría aprobación». No se crean solicitudes de aprobación. Los límites de frecuencia siguen aplicándose.",
     "Failed to change the mode": "No se pudo cambiar el modo",
     "Monitor only since {date} · by {name}": "Solo supervisión desde {date} · por {name}",
     "Monitor only since {date}": "Solo supervisión desde {date}",
@@ -20917,6 +20921,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Would have needed approval: {rule}": "Habría requerido aprobación: {rule}",
     "Would have needed approval (tool requires approval)":
       "Habría requerido aprobación (la herramienta requiere aprobación)",
+    "Would have been blocked by a guardrail": "Habría sido bloqueado por una barrera de protección",
+    "Would have needed approval": "Habría requerido aprobación",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Roles de alto riesgo",
     "High-risk roles *": "Roles de alto riesgo *",
