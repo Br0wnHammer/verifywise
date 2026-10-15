@@ -16,8 +16,7 @@ import { deleteEntityById, getEntityById } from "../../../application/repository
 import CustomizableToast from "../../components/Toast";
 import CustomizableSkeleton from "../../components/Skeletons";
 import allowedRoles from "../../../application/constants/permissions";
-import AddNewRiskMITModal from "../../components/AddNewRiskMITForm";
-import AddNewRiskIBMModal from "../../components/AddNewRiskIBMForm";
+import RiskCatalogModal from "../../components/RiskCatalogModal";
 import { getAllProjectRisks } from "../../../application/repository/projectRisk.repository";
 import { useAuth } from "../../../application/hooks/useAuth";
 import useUsers from "../../../application/hooks/useUsers";
@@ -1051,12 +1050,14 @@ const RiskManagement = () => {
           />
         </StandardModal>
       </Stack>
-      <AddNewRiskMITModal
+      <RiskCatalogModal
+        source="mit"
         isOpen={isAIModalOpen}
         setIsOpen={setIsAIModalOpen}
         onRiskSelected={handleRiskSelected}
       />
-      <AddNewRiskIBMModal
+      <RiskCatalogModal
+        source="ibm"
         isOpen={isIBMModalOpen}
         setIsOpen={setIsIBMModalOpen}
         onRiskSelected={handleRiskSelected}
