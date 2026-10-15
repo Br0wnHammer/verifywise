@@ -315,7 +315,7 @@ What is evaluated depends on the path, exactly as in enforce mode:
 |---|---|---|
 | `enforcement_mode` | `VARCHAR(20) NOT NULL DEFAULT 'enforce'` | CHECK `ai_gateway_mcp_agent_keys_enforcement_mode_check`: `'enforce'` or `'monitor'` |
 | `enforcement_mode_changed_at` | `TIMESTAMPTZ NULL` | when the mode last changed |
-| `enforcement_mode_changed_by` | `INTEGER NULL REFERENCES users(id) ON DELETE SET NULL` | VerifyWise user who changed it. Deleting that user clears the column instead of blocking the delete. (`created_by` on this table predates this and has no `ON DELETE` action.) |
+| `enforcement_mode_changed_by` | `INTEGER NULL REFERENCES users(id) ON DELETE SET NULL` | VerifyWise user who changed it. Deleting that user clears the column instead of blocking the delete. Since `a0016`, `created_by` and every other gateway reference to `users` are `ON DELETE SET NULL` too. |
 
 **API** (`routers/mcp_agent_keys.py`, Admin only): `enforcement_mode` is accepted on create and
 PATCH; anything other than the two values is a 400. List, create and PATCH responses return all

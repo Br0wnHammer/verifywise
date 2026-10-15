@@ -102,4 +102,5 @@ jobs:
             tests/test_mcp_hook_tool_acls.py \
             tests/test_mcp_hook_result_outcome.py \
             tests/test_mcp_hook_request_validation.py \
+            tests/test_config_change_notifications.py \
             -v

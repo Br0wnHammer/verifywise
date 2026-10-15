@@ -12,7 +12,7 @@ from crud.mcp_agent_keys import (
 )
 from services.mcp_monitor import ENFORCE, ENFORCEMENT_MODES, MONITOR
 from utils.auth import get_org_id, get_user_id, require_admin
-from utils.notifications import notify_config_change
+from utils.notifications import config_event, notify_config_change
 
 router = APIRouter(prefix="/mcp/agent-keys", tags=["mcp-agent-keys"])
 
@@ -52,16 +52,15 @@ def _mode_change_event(key_id: int, name: str, new_mode: str) -> dict:
     # Only two modes exist (CHECK constraint), so a real change came from the other one.
     old_mode = MONITOR if new_mode == ENFORCE else ENFORCE
     return {
-        "action": "enforcement_mode_changed",
-        "entityType": "Agent key",
-        "entityName": name,
-        "entity_type": "mcp_agent_key",
-        "entity_id": str(key_id),
+        **config_event(
+            "mcp_agent_key",
+            "enforcement_mode_changed",
+            name,
+            key_id,
+            detail=f"Enforcement mode: {_MODE_LABELS[old_mode]} to {_MODE_LABELS[new_mode]}",
+        ),
         "oldMode": old_mode,
         "newMode": new_mode,
-        "detail": f"Enforcement mode: {_MODE_LABELS[old_mode]} to {_MODE_LABELS[new_mode]}",
-        "actionUrl": "/ai-gateway/mcp/agent-keys",
-        "actionLabel": "View agent keys",
     }
 
 
@@ -198,12 +197,7 @@ async def create_key(request: Request):
     await notify_config_change(
         organization_id=org_id,
         changed_by_user_id=user_id,
-        event={
-            "action": "created",
-            "entity_type": "mcp_agent_key",
-            "entity_id": str(record["id"]),
-            "entity_name": name,
-        },
+        event=config_event("mcp_agent_key", "created", name, record["id"]),
     )
 
     return {
@@ -355,12 +349,7 @@ async def update_key(key_id: int, request: Request):
         await notify_config_change(
             organization_id=org_id,
             changed_by_user_id=user_id,
-            event={
-                "action": "updated",
-                "entity_type": "mcp_agent_key",
-                "entity_id": str(key_id),
-                "entity_name": record.get("name", ""),
-            },
+            event=config_event("mcp_agent_key", "updated", record.get("name", ""), key_id),
         )
 
     if mode_changed:
@@ -396,11 +385,7 @@ async def revoke_key(key_id: int, request: Request):
     await notify_config_change(
         organization_id=org_id,
         changed_by_user_id=user_id,
-        event={
-            "action": "revoked",
-            "entity_type": "mcp_agent_key",
-            "entity_id": str(key_id),
-        },
+        event=config_event("mcp_agent_key", "revoked", revoked["name"], key_id),
     )
 
     return {"status": "success", "message": "MCP agent key revoked"}
@@ -427,11 +412,7 @@ async def delete_key(key_id: int, request: Request):
     await notify_config_change(
         organization_id=org_id,
         changed_by_user_id=user_id,
-        event={
-            "action": "deleted",
-            "entity_type": "mcp_agent_key",
-            "entity_id": str(key_id),
-        },
+        event=config_event("mcp_agent_key", "deleted", deleted["name"], key_id),
     )
 
     return {"status": "success", "message": "MCP agent key deleted"}
