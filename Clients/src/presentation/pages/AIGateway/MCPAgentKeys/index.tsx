@@ -21,6 +21,7 @@ import Field from "../../../components/Inputs/Field";
 import Select from "../../../components/Inputs/Select";
 import DatePicker from "../../../components/Inputs/Datepicker";
 import Chip from "../../../components/Chip";
+import Toggle from "../../../components/Inputs/Toggle";
 import StandardModal from "../../../components/Modals/StandardModal";
 import { PageHeaderExtended } from "../../../components/Layout/PageHeaderExtended";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
@@ -53,6 +54,7 @@ interface CreateAgentKeyPayload {
   rate_limit_rpm?: number;
   expires_at?: string;
   enforcement_mode?: EnforcementMode;
+  apply_tool_lists_to_hook?: boolean;
 }
 
 interface AgentKey {
@@ -74,6 +76,8 @@ interface AgentKey {
   enforcement_mode_changed_by?: number | null;
   /** Name of the user who last changed the mode; null when unknown or since deleted. */
   enforcement_mode_changed_by_name?: string | null;
+  /** Missing on older gateways; treated as off (tool lists apply to the MCP proxy only). */
+  apply_tool_lists_to_hook?: boolean;
 }
 
 const EMPTY_CREATE_FORM = {
@@ -84,12 +88,44 @@ const EMPTY_CREATE_FORM = {
   rate_limit_rpm: "",
   expires_at: "",
   enforcement_mode: "enforce" as EnforcementMode,
+  apply_tool_lists_to_hook: false,
 };
 
 const MONITOR_CONFIRM_BODY =
-  'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.';
+  'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy, and for native tool calls when the key\'s "Also apply tool lists to native tool calls" setting is on. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.';
 
 const keyMode = (key: AgentKey): EnforcementMode => key.enforcement_mode ?? "enforce";
+const appliesToNative = (key: AgentKey): boolean => key.apply_tool_lists_to_hook === true;
+
+const NATIVE_TOOL_LISTS_LABEL = "Also apply tool lists to native tool calls (hooks and SDK)";
+const NATIVE_TOOL_LISTS_HELPER =
+  "Off: the allowed and blocked tool lists apply only to MCP server tools called through the proxy. On: they also apply to the agent's own tool calls checked by the hook script or the Python SDK, such as Bash, Edit or your Python functions. Leave it off for keys used by Claude Code or Cursor unless the lists name those tools.";
+
+/** Opt-in for checking the key's tool lists on native tool calls, shared by both modals. */
+function NativeToolListsToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <Box>
+      <Stack direction="row" alignItems="center" gap="8px">
+        <Toggle
+          checked={checked}
+          onChange={(_e, value) => onChange(value)}
+          ariaLabel={NATIVE_TOOL_LISTS_LABEL}
+          data-testid="toggle-apply-tool-lists-to-hook"
+        />
+        <Typography sx={{ fontSize: 13 }}>{NATIVE_TOOL_LISTS_LABEL}</Typography>
+      </Stack>
+      <Typography sx={{ fontSize: 12, color: palette.text.tertiary, mt: "6px" }}>
+        {NATIVE_TOOL_LISTS_HELPER}
+      </Typography>
+    </Box>
+  );
+}
 
 /** Pulls the gateway's error text out of a failed request, if it sent one. */
 const apiErrorText = (err: unknown): string | undefined => {
@@ -152,6 +188,7 @@ export default function MCPAgentKeysPage() {
   // Change-mode modal for an existing key
   const [modeTarget, setModeTarget] = useState<AgentKey | null>(null);
   const [modeValue, setModeValue] = useState<EnforcementMode>("enforce");
+  const [nativeListsValue, setNativeListsValue] = useState(false);
   const [modeError, setModeError] = useState("");
   const [modeSubmitting, setModeSubmitting] = useState(false);
 
@@ -208,6 +245,8 @@ export default function MCPAgentKeysPage() {
         name: createForm.name.trim(),
         enforcement_mode: createForm.enforcement_mode,
       };
+      // Sent only when on, so older gateways without the setting accept the request.
+      if (createForm.apply_tool_lists_to_hook) payload.apply_tool_lists_to_hook = true;
       if (createForm.description.trim()) payload.description = createForm.description.trim();
       if (createForm.rate_limit_rpm) payload.rate_limit_rpm = Number(createForm.rate_limit_rpm);
       if (createForm.expires_at) payload.expires_at = new Date(createForm.expires_at).toISOString();
@@ -248,16 +287,27 @@ export default function MCPAgentKeysPage() {
   const openModeModal = (key: AgentKey) => {
     setModeTarget(key);
     setModeValue(keyMode(key));
+    setNativeListsValue(appliesToNative(key));
     setModeError("");
+  };
+
+  /** Only the settings that differ from the key's current values. */
+  const settingsChanges = (key: AgentKey) => {
+    const changes: { enforcement_mode?: EnforcementMode; apply_tool_lists_to_hook?: boolean } = {};
+    if (modeValue !== keyMode(key)) changes.enforcement_mode = modeValue;
+    if (nativeListsValue !== appliesToNative(key))
+      changes.apply_tool_lists_to_hook = nativeListsValue;
+    return changes;
   };
 
   const handleModeSave = () => {
     if (!modeTarget) return;
-    if (modeValue === keyMode(modeTarget)) {
+    const changes = settingsChanges(modeTarget);
+    if (Object.keys(changes).length === 0) {
       setModeTarget(null);
       return;
     }
-    if (modeValue === "monitor") {
+    if (changes.enforcement_mode === "monitor") {
       setMonitorConfirm("change");
       return;
     }
@@ -270,13 +320,14 @@ export default function MCPAgentKeysPage() {
     setModeSubmitting(true);
     setModeError("");
     try {
-      await apiServices.patch(`/ai-gateway/mcp/agent-keys/${modeTarget.id}`, {
-        enforcement_mode: modeValue,
-      });
+      await apiServices.patch(
+        `/ai-gateway/mcp/agent-keys/${modeTarget.id}`,
+        settingsChanges(modeTarget),
+      );
       setModeTarget(null);
       await loadData();
     } catch (err: unknown) {
-      setModeError(apiErrorText(err) || "Failed to change the mode");
+      setModeError(apiErrorText(err) || "Failed to save the key settings");
     } finally {
       submittingRef.current = false;
       setModeSubmitting(false);
@@ -363,7 +414,7 @@ export default function MCPAgentKeysPage() {
             <EmptyStateTip
               icon={Shield}
               title="Tool-level access control"
-              description="Each agent key can restrict which MCP tools the agent is allowed or blocked from calling. Combine with rate limits for fine-grained governance."
+              description="Each agent key can list the MCP server tools it may or may not call through the proxy, and can apply the same lists to native tool calls from the hook script or the Python SDK. Combine with rate limits for fine-grained governance."
             />
             <EmptyStateTip
               icon={Wrench}
@@ -448,6 +499,11 @@ export default function MCPAgentKeysPage() {
                   {!key.allowed_tools?.length && !key.blocked_tools?.length && (
                     <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>All</Typography>
                   )}
+                  {(key.allowed_tools?.length > 0 || key.blocked_tools?.length > 0) && (
+                    <Typography sx={{ fontSize: 12, color: palette.text.tertiary, width: "100%" }}>
+                      {appliesToNative(key) ? "MCP proxy and native calls" : "MCP proxy only"}
+                    </Typography>
+                  )}
                 </Stack>,
                 <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>
                   by {key.created_by_name} &middot; {formatDate(key.created_at)}
@@ -469,7 +525,7 @@ export default function MCPAgentKeysPage() {
                       size="small"
                       onClick={() => openModeModal(key)}
                       sx={{ p: 0.5 }}
-                      aria-label="Change mode"
+                      aria-label="Enforcement settings"
                     >
                       <SlidersHorizontal
                         size={14}
@@ -535,14 +591,20 @@ export default function MCPAgentKeysPage() {
             placeholder="e.g., search, get_weather, run_query"
             value={createForm.allowed_tools}
             onChange={(e) => setCreateForm((p) => ({ ...p, allowed_tools: e.target.value }))}
-            helperText="Allowlist for MCP server tools called through the proxy: if set, this key may call only these tools. Comma-separated; leave empty to allow all. (Does not apply to native tools like Bash/Edit/Write — govern those with guardrails.)"
+            helperText="Allowlist for MCP server tools called through the proxy: if set, this key may call only these tools. Comma-separated; leave empty to allow all. Applies to native tool calls (Bash, Edit, SDK functions) only when the setting below is on."
           />
           <Field
             label="Blocked tools"
             placeholder="e.g., delete_record, drop_table"
             value={createForm.blocked_tools}
             onChange={(e) => setCreateForm((p) => ({ ...p, blocked_tools: e.target.value }))}
-            helperText="Denylist for MCP server tools called through the proxy: these are always denied, even if also in the allowlist. Comma-separated; leave empty to block none."
+            helperText="Denylist for MCP server tools called through the proxy: these are always denied, even if also in the allowlist. Comma-separated; leave empty to block none. Applies to native tool calls only when the setting below is on."
+          />
+          <NativeToolListsToggle
+            checked={createForm.apply_tool_lists_to_hook}
+            onChange={(checked) =>
+              setCreateForm((p) => ({ ...p, apply_tool_lists_to_hook: checked }))
+            }
           />
           <Field
             label="Rate limit (requests per minute)"
@@ -673,7 +735,7 @@ curl -H "Authorization: Bearer ${newKey}" \\
       <StandardModal
         isOpen={!!modeTarget}
         onClose={() => setModeTarget(null)}
-        title="Change mode"
+        title="Enforcement settings"
         description={fill(tr('Choose how policies apply to calls made with "{name}".'), {
           name: modeTarget?.name ?? "",
         })}
@@ -688,6 +750,7 @@ curl -H "Authorization: Bearer ${newKey}" \\
             value={modeValue}
             onChange={setModeValue}
           />
+          <NativeToolListsToggle checked={nativeListsValue} onChange={setNativeListsValue} />
           {modeError && (
             <Typography sx={{ fontSize: 12, color: palette.status.error.text }}>
               {modeError}

@@ -395,7 +395,7 @@ describe("MCPAgentKeysPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Production agent key")).toBeInTheDocument();
       });
-      await user.click(screen.getByRole("button", { name: "Change mode" }));
+      await user.click(screen.getByRole("button", { name: "Enforcement settings" }));
       pickMode("select-mcp-agent-key-mode-edit", "Monitor only");
       await user.click(screen.getByRole("button", { name: "Save" }));
 
@@ -431,7 +431,7 @@ describe("MCPAgentKeysPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Production agent key")).toBeInTheDocument();
       });
-      await user.click(screen.getByRole("button", { name: "Change mode" }));
+      await user.click(screen.getByRole("button", { name: "Enforcement settings" }));
       pickMode("select-mcp-agent-key-mode-edit", "Enforce");
       await user.click(screen.getByRole("button", { name: "Save" }));
 
@@ -486,7 +486,7 @@ describe("MCPAgentKeysPage", () => {
       await waitFor(() => {
         expect(screen.getByText("Production agent key")).toBeInTheDocument();
       });
-      await user.click(screen.getByRole("button", { name: "Change mode" }));
+      await user.click(screen.getByRole("button", { name: "Enforcement settings" }));
       pickMode("select-mcp-agent-key-mode-edit", "Monitor only");
       await user.click(screen.getByRole("button", { name: "Save" }));
       const confirm = await screen.findByRole("button", { name: "Use monitor only" });
@@ -549,6 +549,99 @@ describe("MCPAgentKeysPage", () => {
       expect(screen.getAllByText("Monitor only")).toHaveLength(1);
       expect(screen.getByText(/^Monitor only since /)).toBeInTheDocument();
       expect(screen.queryByText(/ · by /)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("tool lists on native tool calls", () => {
+    const toggle = () => screen.getByRole("switch", { name: /Also apply tool lists to native/ });
+
+    it("sends the setting when it is turned on at creation", async () => {
+      (apiServices.get as any).mockResolvedValue({ data: { data: [] } });
+      (apiServices.post as any).mockResolvedValue({ data: { data: { id: 5, plain_key: "k" } } });
+      const user = userEvent.setup();
+      renderWithProviders(<MCPAgentKeysPage />);
+
+      await user.click(await screen.findByRole("button", { name: /Create agent key/i }));
+      await user.type(screen.getByLabelText(/^Name/), "Shell bot");
+      await user.type(screen.getByLabelText("Allowed tools"), "Read");
+      expect(toggle()).not.toBeChecked();
+      await user.click(toggle());
+      await user.click(screen.getByRole("button", { name: "Create key" }));
+
+      await waitFor(() => {
+        expect(apiServices.post).toHaveBeenCalledWith("/ai-gateway/mcp/agent-keys", {
+          name: "Shell bot",
+          allowed_tools: ["Read"],
+          enforcement_mode: "enforce",
+          apply_tool_lists_to_hook: true,
+        });
+      });
+    });
+
+    it("leaves the setting out when it stays off", async () => {
+      (apiServices.get as any).mockResolvedValue({ data: { data: [] } });
+      (apiServices.post as any).mockResolvedValue({ data: { data: { id: 5, plain_key: "k" } } });
+      const user = userEvent.setup();
+      renderWithProviders(<MCPAgentKeysPage />);
+
+      await user.click(await screen.findByRole("button", { name: /Create agent key/i }));
+      await user.type(screen.getByLabelText(/^Name/), "Proxy bot");
+      await user.click(screen.getByRole("button", { name: "Create key" }));
+
+      await waitFor(() => expect(apiServices.post).toHaveBeenCalled());
+      expect((apiServices.post as any).mock.calls[0][1]).not.toHaveProperty(
+        "apply_tool_lists_to_hook",
+      );
+    });
+
+    it("patches only the setting when it is changed on an existing key", async () => {
+      (apiServices.get as any).mockResolvedValue({ data: { data: mockKeys } });
+      (apiServices.patch as any).mockResolvedValue({ data: {} });
+      const user = userEvent.setup();
+      renderWithProviders(<MCPAgentKeysPage />);
+
+      await screen.findByText("Production agent key");
+      await user.click(screen.getByRole("button", { name: "Enforcement settings" }));
+      await user.click(toggle());
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => {
+        expect(apiServices.patch).toHaveBeenCalledWith("/ai-gateway/mcp/agent-keys/1", {
+          apply_tool_lists_to_hook: true,
+        });
+      });
+      expect(screen.queryByText("Use monitor only mode?")).not.toBeInTheDocument();
+    });
+
+    it("can turn the setting off again", async () => {
+      (apiServices.get as any).mockResolvedValue({
+        data: { data: [{ ...mockKeys[0], apply_tool_lists_to_hook: true }] },
+      });
+      (apiServices.patch as any).mockResolvedValue({ data: {} });
+      const user = userEvent.setup();
+      renderWithProviders(<MCPAgentKeysPage />);
+
+      await screen.findByText("Production agent key");
+      await user.click(screen.getByRole("button", { name: "Enforcement settings" }));
+      expect(toggle()).toBeChecked();
+      await user.click(toggle());
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => {
+        expect(apiServices.patch).toHaveBeenCalledWith("/ai-gateway/mcp/agent-keys/1", {
+          apply_tool_lists_to_hook: false,
+        });
+      });
+    });
+
+    it("shows where each key's tool lists apply", async () => {
+      (apiServices.get as any).mockResolvedValue({
+        data: { data: [{ ...mockKeys[0], apply_tool_lists_to_hook: true }, mockKeys[1]] },
+      });
+      renderWithProviders(<MCPAgentKeysPage />);
+
+      expect(await screen.findByText("MCP proxy and native calls")).toBeInTheDocument();
+      expect(screen.getByText("MCP proxy only")).toBeInTheDocument();
     });
   });
 });
