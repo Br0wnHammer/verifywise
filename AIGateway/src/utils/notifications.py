@@ -58,6 +58,26 @@ _CONFIG_ENTITIES: dict[str, tuple[str, str, str]] = {
 }
 
 
+# Changes that also email admins. Every config change gets an in-app notice;
+# email is kept for changes that weaken or remove a control or change what the
+# gateway can reach, so routine edits and approval decisions do not flood
+# admin inboxes.
+_EMAIL_EVENTS: frozenset[tuple[str, str]] = frozenset({
+    ("mcp_agent_key", "revoked"),
+    ("mcp_agent_key", "deleted"),
+    ("mcp_agent_key", "enforcement_mode_changed"),
+    ("virtual_key", "revoked"),
+    ("virtual_key", "deleted"),
+    ("api_key", "created"),
+    ("api_key", "deleted"),
+    ("mcp_server", "created"),
+    ("mcp_server", "deleted"),
+    ("guardrail", "deleted"),
+    ("guardrail", "disabled"),
+    ("mcp_guardrail", "deleted"),
+})
+
+
 def config_event(
     entity: str,
     action: str,
@@ -67,7 +87,8 @@ def config_event(
 ) -> dict[str, Any]:
     """Build a config-change event in the shape the backend's
     notifyConfigChange reads (entityType, entityName, action, actionUrl,
-    actionLabel, optional detail). Without a name, the entity id stands in so
+    actionLabel, email, optional detail). `email` says whether admins also
+    get an email (see _EMAIL_EVENTS). Without a name, the entity id stands in so
     the message still says which record changed."""
     label, path, button = _CONFIG_ENTITIES[entity]
     if not name and entity_id is not None:
@@ -78,6 +99,7 @@ def config_event(
         "action": action,
         "actionUrl": path,
         "actionLabel": button,
+        "email": (entity, action) in _EMAIL_EVENTS,
     }
     if detail:
         event["detail"] = detail

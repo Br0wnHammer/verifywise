@@ -84,7 +84,7 @@ Express backend at `Servers/routes/aiGateway.route.ts` proxies `/api/ai-gateway/
 
 ## Admin notifications
 
-Config changes reach the Express backend through `utils/notifications.py`. Build the event with `config_event(entity, action, name, entity_id, detail)` and pass it to `notify_config_change(org_id, user_id, event)`, which sends it in the background so the admin request does not wait for the backend's emails; add a new entity to `_CONFIG_ENTITIES` (label, frontend path, button label). The backend reads only these camelCase fields, and a test fails on any router call that builds the event another way.
+Config changes reach the Express backend through `utils/notifications.py`. Build the event with `config_event(entity, action, name, entity_id, detail)` and pass it to `notify_config_change(org_id, user_id, event)`, which sends it in the background so the admin request does not wait for the backend's emails; add a new entity to `_CONFIG_ENTITIES` (label, frontend path, button label). Every change is an in-app notice; only the (entity, action) pairs in `_EMAIL_EVENTS` (keys revoked or deleted, monitor only switched, API keys and MCP servers added or removed, guardrails deleted or disabled) also email admins. The backend reads only these camelCase fields, and a test fails on any router call that builds the event another way.
 
 ---
 

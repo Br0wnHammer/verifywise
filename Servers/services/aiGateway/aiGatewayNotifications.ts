@@ -268,6 +268,7 @@ export async function notifyConfigChange(
     actionLabel?: string; // button text e.g., "View endpoints"
     oldMode?: string; // enforcement_mode_changed only: "enforce" | "monitor"
     newMode?: string; // enforcement_mode_changed only: "enforce" | "monitor"
+    email?: boolean; // true = also email admins; absent or false = in-app only
   },
 ): Promise<void> {
   const admins = await getOrgAdmins(organizationId);
@@ -330,6 +331,9 @@ export async function notifyConfigChange(
   const rawUrl = event?.actionUrl || "/ai-gateway";
   const actionUrl = rawUrl.startsWith("/") ? `${FRONTEND_URL}${rawUrl}` : rawUrl;
   const actionLabel = event?.actionLabel || "Open AI Gateway";
+  // The gateway marks the changes worth an email (keys revoked, monitor only
+  // switched, guardrails removed, ...); everything else is in-app only.
+  const sendEmail = event?.email === true;
 
   await Promise.allSettled(
     admins
@@ -345,7 +349,7 @@ export async function notifyConfigChange(
             entity_type: NotificationEntityType.AI_GATEWAY,
             action_url: actionUrl,
           },
-          true,
+          sendEmail,
           {
             template: EMAIL_TEMPLATES.AI_GATEWAY_CONFIG_CHANGE,
             subject: `AI Gateway: ${entityLower} ${actionText}`,

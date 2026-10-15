@@ -196,6 +196,27 @@ describe("aiGatewayNotifications", () => {
       );
     });
 
+    it("emails only the changes the gateway marks for email", async () => {
+      mockQuery
+        .mockResolvedValueOnce([{ id: 1, name: "Admin One" }] as any)
+        .mockResolvedValueOnce([{ name: "Jane", surname: "Doe" }] as any)
+        .mockResolvedValueOnce([{ id: 1, name: "Admin One" }] as any)
+        .mockResolvedValueOnce([{ name: "Jane", surname: "Doe" }] as any);
+      const base = {
+        entityType: "Agent key",
+        entityName: "build-bot",
+        actionUrl: "/ai-gateway/mcp/agent-keys",
+        actionLabel: "View agent keys",
+      };
+
+      await notifyConfigChange(1, 99, { ...base, action: "revoked", email: true });
+      await notifyConfigChange(1, 99, { ...base, action: "updated" });
+
+      expect(mockSendInApp).toHaveBeenCalledTimes(2);
+      expect(mockSendInApp.mock.calls[0][2]).toBe(true);
+      expect(mockSendInApp.mock.calls[1][2]).toBe(false);
+    });
+
     it("does not warn for a complete event", async () => {
       mockQuery
         .mockResolvedValueOnce([{ id: 1, name: "Admin One" }] as any)

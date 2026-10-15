@@ -21,7 +21,7 @@ SRC = Path(__file__).resolve().parent.parent / "src"
 sys.path.insert(0, str(SRC))
 
 from utils import notifications  # noqa: E402
-from utils.notifications import _CONFIG_ENTITIES, config_event  # noqa: E402
+from utils.notifications import _CONFIG_ENTITIES, _EMAIL_EVENTS, config_event  # noqa: E402
 ROUTERS = sorted((SRC / "routers").glob("*.py"))
 MIGRATIONS = SRC / "database" / "migrations" / "versions"
 
@@ -39,6 +39,7 @@ class TestConfigEvent:
             "action": "created",
             "actionUrl": "/ai-gateway/mcp/agent-keys",
             "actionLabel": "View agent keys",
+            "email": False,
             "detail": "Mode: monitor",
         }
 
@@ -52,6 +53,22 @@ class TestConfigEvent:
         event = config_event("guardrail_settings", "updated")
 
         assert event["entityName"] == ""
+
+    @pytest.mark.parametrize("entity,action,email", [
+        ("mcp_agent_key", "revoked", True),
+        ("mcp_agent_key", "enforcement_mode_changed", True),
+        ("api_key", "created", True),
+        ("guardrail", "disabled", True),
+        ("mcp_agent_key", "updated", False),
+        ("mcp_approval", "approved", False),
+        ("prompt", "published", False),
+        ("guardrail_logs", "purged", False),
+    ])
+    def test_only_security_relevant_changes_email(self, entity, action, email):
+        assert config_event(entity, action, "x")["email"] is email
+
+    def test_email_rules_name_real_entities(self):
+        assert {entity for entity, _ in _EMAIL_EVENTS} <= set(_CONFIG_ENTITIES)
 
     def test_unknown_entity_is_rejected(self):
         with pytest.raises(KeyError):
