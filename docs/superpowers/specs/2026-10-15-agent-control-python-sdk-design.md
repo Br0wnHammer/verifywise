@@ -81,3 +81,13 @@ Core depends only on `httpx`. Extras: `langchain`, `crewai`, `agent-framework`, 
 ## Out of scope
 
 PyPI publishing, legacy AutoGen/AG2, LlamaIndex/Semantic Kernel, TypeScript SDK, auto-registering SDK agents in the AI agents register, changing the MCP proxy.
+
+## Amendments after review (2026-10-15)
+
+These supersede the matching lines above.
+
+- **Tool lists on the hook are opt-in** (gateway change, line "Gateway change"): enforced only when the key's `apply_tool_lists_to_hook` is true (migration `a0015`, default false), because lists written for MCP proxy tools would otherwise deny Bash/Edit for keys shared with Claude Code or Cursor. Enforce key → deny; monitor key → `would_block` with source `tool_acl`.
+- **Arguments are never converted** (step 3): JSON-native arguments are sent unchanged; anything JSON can't represent exactly is refused (`arguments_unsendable`) whatever the fail mode, and arguments that change between the check and the run are refused (`arguments_changed`).
+- **Fail mode covers outages only**: 401/403 (`auth_rejected`) and SDK-internal errors (`sdk_error`) are always refused.
+- **Result cap** (step 5): the serialized envelope is cut to 9216 bytes as the gateway measures it, under the gateway's 10240-byte cap. The gateway records `{"error": ...}` as a failed call for every client.
+- **Approval polling**: only `/v1/mcp/approvals/<same id>/status`, never following redirects; `approval_poll_interval` must be at least 0.5 s.

@@ -4,8 +4,9 @@
 > capture + events timeline + invocation drawer (PR #4103); run correlation, multi-agent
 > wiring (Claude Code + Cursor) and the developer guide (PR #4112); per-agent rules, decision
 > provenance and the agent activity drawer (#4320, restored after the #4265 revert);
-> per-key monitor-only enforcement mode (migration `a0014`).
-> Last updated 2026-10-15 (hook enforces agent key tool lists; Python SDK adapters).
+> per-key monitor-only enforcement mode (migration `a0014`); per-key opt-in for tool lists on
+> native calls (migration `a0015`).
+> Last updated 2026-10-15 (opt-in hook tool lists; Python SDK adapters and review fixes).
 
 Agent Control gates a coding agent's tool calls through the AI Gateway's guardrails,
 human-approval and audit machinery. It covers two entry paths that share one governance
@@ -27,24 +28,34 @@ what the AI *does* (tool calls).
 
 ```
 extract_agent_key (sk-mcp-*)                    -- shared with the proxy
-  → enforce_tool_acls                           -- key's allowed_tools / blocked_tools; violation → deny
+  → tool lists (only if apply_tool_lists_to_hook) -- key's allowed_tools / blocked_tools; violation → deny
   → scan_tool_input(field_aware=True)           -- guardrail scan; block/mask → deny
   → check_require_approval                      -- hook-only; match → create/reuse approval
   → enforce_mcp_rate_limits                     -- LAST, and skipped on an approved re-call
   → allow
 ```
 
-For a **monitor-only** key (see *Monitor-only mode* below) the flow is different: the
-guardrail scan and `check_require_approval` both run (no early return), no approval request is
+For a **monitor-only** key (see *Monitor-only mode* below) the flow is different: the tool
+lists (when opted in), the guardrail scan and `check_require_approval` all run (no early
+return), no approval request is
 looked up, created or notified, the rate limit is still enforced, and the answer is always
 `allow` (or `rate_limited`).
 
-For an enforce key the tool-list check runs first, before any guardrail, and applies to every hook client
-(the shell hook and the Python SDK alike). A violation returns
-`{"decision": "deny", "reason": "Tool '<name>' is not allowed for this agent key"}` and
-audits `result_status='blocked'` with a summary naming the key's lists. A key with no lists
-is unaffected. Matching uses `utils/acl.py` (exact name or trailing `*` wildcard), the same
-as the MCP proxy.
+**Tool lists on the hook are opt-in per key.** A key's `allowed_tools` / `blocked_tools` were
+written for MCP proxy tools; applying them to native calls unconditionally would deny Bash, Edit
+and friends for every key shared with Claude Code or Cursor. So the hook checks them only when
+the key's `apply_tool_lists_to_hook` is true (migration `a0015`: `BOOLEAN NOT NULL DEFAULT
+FALSE` on `ai_gateway_mcp_agent_keys`; Admin-only on create / PATCH, boolean or 400; returned by
+list / create / PATCH and selected by `authenticate_agent_key`; a missing value means off).
+When on, the check is the first `PolicyHit` (kind `tool_acl`) in `evaluate_hook_policies(...,
+agent_key=)` and applies to every hook client (the shell hook and the Python SDK alike). An
+enforce key gets `{"decision": "deny", "reason": "Tool '<name>' is not allowed for this agent
+key"}` and an audit row `result_status='blocked'` whose summary names the key's lists. A monitor
+key gets a `would_block` outcome with source `tool_acl` and the call is allowed. Matching uses
+`utils/acl.py` (exact name or trailing `*` wildcard), the same as the MCP proxy. UI: the
+"Also apply tool lists to native tool calls (hooks and SDK)" toggle in the create modal and
+the row's "Enforcement settings" modal; the Tools column says "MCP proxy only" or "MCP proxy
+and native calls".
 
 Every path writes an audit row (`log_tool_call`), seeded with a `received` + `decided` event
 and the call's `tool_use_id`. Audit and the approval argument-hash use the **full** arguments;
@@ -110,8 +121,9 @@ PostToolUse → POST /v1/mcp/hook/result  -- find row by (org, session_id, tool_
   `error` → 500, and `ok`/`no_match` → 200. A missing row (deny, rate-limited, or an old
   adapter that never sends the result) is a benign `no_match`, not an error.
 - **Per-tool outcome event.** `tool_response` shape differs per tool and has no exit code, so
-  the result is stored as a generic `result_response` JSONB and the outcome event is derived
-  per tool: Bash `interrupted` → `interrupted`; Write/Edit `success === false` → `failed`;
+  the result is stored as a generic `result_response` JSONB and the outcome event is derived:
+  a dict with a non-null `"error"` key → `failed` for any tool (how the SDKs report a raised
+  tool); Bash `interrupted` → `interrupted`; Write/Edit `success === false` → `failed`;
   otherwise `completed`.
 - **Approval flow stays one row.** When an approval-gated call is approved and re-runs, its
   PostToolUse result updates the original `approval_required` row in place
@@ -168,7 +180,26 @@ Each adapter uses the framework's own agent-level interception point, so no tool
 | Plain Python | `@governed` / `govern_tool()` | the refusal string is returned | raises `VerifyWiseDenied` |
 
 Run id: explicit `vw_session` → framework id (LangGraph `thread_id`, CrewAI per-kickoff id,
-Agent Framework `AgentSession.session_id`) → per-invocation/per-client uuid. Spec:
+Agent Framework `AgentSession.session_id`) → per-invocation/per-client uuid.
+
+Fail behaviour and integrity rules (`client.py`, `_core.py`):
+
+- `VW_FAIL_MODE` covers only gateway outages: unreachable, timeout, 5xx / other non-200,
+  unreadable reply, `rate_limited`, missing config. Always refused regardless: HTTP 401/403
+  (`auth_rejected`, "VerifyWise rejected the agent key (revoked, expired or invalid)"), an
+  exception inside the SDK (`sdk_error`), arguments JSON can't represent exactly
+  (`arguments_unsendable`, "arguments could not be sent to VerifyWise for checking"; nothing
+  is ever converted, so the guardrails scan exactly what runs) and arguments that changed
+  between the check and the run (`arguments_changed`; CrewAI can only record it, the tool has
+  run). All logged at ERROR.
+- Only `/v1/mcp/approvals/<same id>/status` is polled; requests never follow redirects.
+- The result envelope (`{"output"|"error": ...}` + `"truncated": true`) is cut to 9216 bytes as
+  the gateway measures it (`len(json.dumps(tool_response))`), under `MCP_RESULT_CAP_BYTES`, so
+  the gateway never re-slices.
+- `AsyncAgentControlClient` keeps one httpx pool per running event loop; middlewares without an
+  explicit client share `_core.default_client()` / `default_async_client()`.
+
+Spec:
 `docs/superpowers/specs/2026-10-15-agent-control-python-sdk-design.md`.
 
 ## Log retention
@@ -275,7 +306,7 @@ What is evaluated depends on the path, exactly as in enforce mode:
 
 | Path | Evaluated |
 |---|---|
-| Native hook (`/v1/mcp/hook`) | guardrail rules (block, and mask escalated to deny) and `require_approval` rules. The key's `allowed_tools` / `blocked_tools` are **not** checked on this path, in either mode. |
+| Native hook (`/v1/mcp/hook`) | the key's `allowed_tools` / `blocked_tools` **only when** `apply_tool_lists_to_hook` is on, then guardrail rules (block, and mask escalated to deny) and `require_approval` rules |
 | MCP proxy (`tools/call`) | the key's `allowed_tools` / `blocked_tools`, the tool's `requires_approval` flag, and guardrail rules |
 
 **Data model** (migration `a0014`, on `ai_gateway_mcp_agent_keys`):
@@ -317,7 +348,7 @@ entry of type `would_block` / `would_need_approval` with `detail`, `rule_id`, `r
 |---|---|
 | `guardrail` | a guardrail rule (hook and proxy) |
 | `approval_rule` | a `require_approval` rule (hook) |
-| `tool_acl` | the key's allowed / blocked tool lists (proxy) |
+| `tool_acl` | the key's allowed / blocked tool lists (proxy; hook when the key opted in) |
 | `tool_requires_approval` | a tool flagged `requires_approval` (proxy) |
 
 The invocation drawer reads `source` from the first event matching the row's status to explain a
@@ -334,8 +365,8 @@ so the would-outcome is only in the status, the matched rule and the events.
 The shared helpers are in `services/mcp_monitor.py`.
 
 **Policy evaluation is shared.** On the hook, `evaluate_hook_policies(..., first_only=)` in
-`routers/mcp_hook.py` runs the guardrail scan and then the `require_approval` match and returns
-the hits. Enforce mode passes `first_only=True` (a guardrail deny returns before the approval
+`routers/mcp_hook.py` runs the opted-in tool-list check, the guardrail scan and then the
+`require_approval` match and returns the hits. Enforce mode passes `first_only=True` (a guardrail deny returns before the approval
 check, then creates or reuses the approval request and notifies, as before); monitor mode passes
 `first_only=False` and records every hit. The helper itself creates nothing and sends nothing.
 On the proxy the checks are interleaved with the rate limit and the approval lookups, so each

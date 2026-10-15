@@ -17,7 +17,7 @@ export const agentControlApiContent: ArticleContent = {
     ]},
     { type: 'heading', id: 'hook', level: 2, text: 'POST /v1/mcp/hook' },
     { type: 'paragraph', text: 'Ask for a decision on a native tool call. The gateway never runs the tool; it only returns a decision.' },
-    { type: 'paragraph', text: 'Checks run in this order: the agent key\'s allowed and blocked tool lists, then the guardrail scan, then approval rules, then the rate limit. A tool the key\'s lists don\'t permit gets a deny with the reason "Tool \'<name>\' is not allowed for this agent key".' },
+    { type: 'paragraph', text: 'Checks run in this order: the agent key\'s allowed and blocked tool lists (only when the key\'s apply_tool_lists_to_hook setting is on), then the guardrail scan, then approval rules, then the rate limit. A tool the key\'s lists don\'t permit gets a deny with the reason "Tool \'<name>\' is not allowed for this agent key".' },
     { type: 'paragraph', text: 'Request body:' },
     { type: 'table', columns: [
       { key: 'field', label: 'Field', width: '30%' },
@@ -38,7 +38,7 @@ export const agentControlApiContent: ArticleContent = {
     ], rows: [
       { field: 'monitored.would', desc: 'What an enforcing key would have got: "deny" or "approval_required". The most severe match.' },
       { field: 'monitored.reason', desc: 'Why, for that match.' },
-      { field: 'monitored.source', desc: 'Which check produced that match: "guardrail", "approval_rule" (a require approval rule), "tool_acl" (the key\'s allowed or blocked tool lists, MCP proxy only) or "tool_requires_approval" (a tool marked as requiring approval, MCP proxy only).' },
+      { field: 'monitored.source', desc: 'Which check produced that match: "guardrail", "approval_rule" (a require approval rule), "tool_acl" (the key\'s allowed or blocked tool lists: on the MCP proxy, and on native calls when the key\'s apply_tool_lists_to_hook is on) or "tool_requires_approval" (a tool marked as requiring approval, MCP proxy only).' },
       { field: 'monitored.rule', desc: '{ "id", "name" } of the rule behind that match, or null when it came from the key\'s tool lists or a tool marked as requiring approval.' },
       { field: 'monitored.outcomes', desc: 'Every match, each with would, reason, source and rule.' },
     ]},
@@ -50,7 +50,7 @@ export const agentControlApiContent: ArticleContent = {
       { key: 'desc', label: 'Description', width: '70%' },
     ], rows: [
       { field: 'tool_name', desc: 'Name of the tool that ran.' },
-      { field: 'tool_response', desc: 'Object with the tool result.' },
+      { field: 'tool_response', desc: 'Object with the tool result. An object with a non-null "error" key is recorded as a failed call, whatever the tool. Results over 10240 bytes (as serialized JSON) are cut.' },
       { field: 'session_id', desc: 'Same run id used on the hook call.' },
       { field: 'tool_use_id', desc: 'Same call id used on the hook call.' },
     ]},
@@ -77,6 +77,7 @@ export const agentControlApiContent: ArticleContent = {
       { field: 'enforcement_mode_changed_at', desc: 'When the mode last changed (ISO 8601), or null if it was never changed from enforce.' },
       { field: 'enforcement_mode_changed_by', desc: 'Id of the user who last changed the mode, or null (also when that user has since been deleted).' },
       { field: 'enforcement_mode_changed_by_name', desc: 'Name of that user, or null. Returned when listing keys.' },
+      { field: 'apply_tool_lists_to_hook', desc: 'true or false (default false). When true, the key\'s allowed and blocked tool lists also apply to native tool calls through POST /v1/mcp/hook; when false they apply to the MCP proxy only. Accepted when creating or updating a key (Admin only); a value that is not a boolean is rejected with a 400.' },
     ]},
     { type: 'heading', id: 'scanning', level: 2, text: 'What gets scanned' },
     { type: 'paragraph', text: 'For file-write tools, the gateway scans the content being written, not the file path or the text being removed. For other tools it scans the full arguments. This means writing sensitive data can be blocked, while deleting it is allowed.' },
