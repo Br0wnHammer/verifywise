@@ -12,7 +12,7 @@ name: Warm E2E caches
 
 on:
   push:
-    branches: [develop, master]
+    branches: [develop, master, ci/warm-pr-caches] # TEMP: test only, remove before merge
     paths:
       - "Servers/package-lock.json"
       - "Clients/package-lock.json"
