@@ -147,6 +147,21 @@ const deferredScopedTables: SharedTableEntry[] = [
       "Extension-owned table (jira-assets). Every query in Servers/extensions/jira-assets/jiraAssets.service.ts filters by organization_id. UNIQUE(organization_id, jira_object_id). project_id references projects through a composite FK (project_id, organization_id), so a link cannot point at another organization's project. Deferred pending matrix coverage.",
   },
   {
+    name: "jira_incidents_config",
+    justification:
+      "Extension-owned table (jira-incidents). Every query in Servers/extensions/jira-incidents/ filters by organization_id; UNIQUE(organization_id). Route coverage: tests/integration/tenant-isolation/jiraIncidents.isolation.test.ts.",
+  },
+  {
+    name: "jira_incident_links",
+    justification:
+      "Extension-owned table (jira-incidents). Every query filters by organization_id; a composite FK (incident_id, organization_id) keeps a link in its incident's organization. Route coverage: tests/integration/tenant-isolation/jiraIncidents.isolation.test.ts.",
+  },
+  {
+    name: "jira_incident_sync_events",
+    justification:
+      "Extension-owned audit table (jira-incidents sync activity). Every query filters by organization_id. Route coverage: tests/integration/tenant-isolation/jiraIncidents.isolation.test.ts.",
+  },
+  {
     name: "model_lifecycle_change_history",
     justification:
       "Extension-owned table (model-lifecycle). Every INSERT/SELECT in Servers/extensions/model-lifecycle/modelLifecycle.service.ts filters by organization_id. Deferred pending matrix coverage.",
