@@ -50,12 +50,17 @@ async def get_all_agent_keys(org_id: int) -> list[dict]:
                     ak.expires_at,
                     ak.is_active,
                     ak.revoked_at,
+                    ak.enforcement_mode,
+                    ak.enforcement_mode_changed_at,
+                    ak.enforcement_mode_changed_by,
                     ak.created_by,
                     ak.created_at,
                     ak.updated_at,
-                    u.name AS created_by_name
+                    u.name AS created_by_name,
+                    mu.name AS enforcement_mode_changed_by_name
                 FROM ai_gateway_mcp_agent_keys ak
                 LEFT JOIN users u ON u.id = ak.created_by
+                LEFT JOIN users mu ON mu.id = ak.enforcement_mode_changed_by
                 WHERE ak.organization_id = :org_id
                 ORDER BY ak.created_at DESC
             """),
@@ -79,6 +84,10 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
     description = data.get("description")
     allowed_tools = data.get("allowed_tools") or []
     blocked_tools = data.get("blocked_tools") or []
+    enforcement_mode = data.get("enforcement_mode") or "enforce"
+    # A key created in a non-default mode records who chose it and when; a
+    # default key has no mode change to record.
+    mode_changed = enforcement_mode != "enforce"
 
     async with get_db() as db:
         result = await db.execute(
@@ -95,6 +104,9 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
                     rate_limit_rpm,
                     metadata,
                     expires_at,
+                    enforcement_mode,
+                    enforcement_mode_changed_at,
+                    enforcement_mode_changed_by,
                     created_by
                 ) VALUES (
                     :org_id,
@@ -108,6 +120,9 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
                     :rate_limit_rpm,
                     CAST(:metadata AS jsonb),
                     :expires_at,
+                    :enforcement_mode,
+                    CASE WHEN :mode_changed THEN NOW() ELSE NULL END,
+                    :enforcement_mode_changed_by,
                     :created_by
                 )
                 RETURNING
@@ -123,6 +138,9 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
                     expires_at,
                     is_active,
                     revoked_at,
+                    enforcement_mode,
+                    enforcement_mode_changed_at,
+                    enforcement_mode_changed_by,
                     created_by,
                     created_at,
                     updated_at
@@ -139,6 +157,11 @@ async def create_agent_key(org_id: int, data: dict) -> Optional[dict]:
                 "rate_limit_rpm": rate_limit_rpm,
                 "metadata": metadata_json,
                 "expires_at": expires_at,
+                "enforcement_mode": enforcement_mode,
+                "mode_changed": mode_changed,
+                "enforcement_mode_changed_by": (
+                    data.get("enforcement_mode_changed_by") if mode_changed else None
+                ),
                 "created_by": created_by,
             },
         )
@@ -186,6 +209,22 @@ async def update_agent_key(org_id: int, key_id: int, data: dict) -> Optional[dic
         set_clauses.append("expires_at = :expires_at")
         params["expires_at"] = data["expires_at"]
 
+    if "enforcement_mode" in data:
+        # Compared with the stored value in the same statement (the right-hand
+        # side of SET sees the pre-update row), so the change is stamped only
+        # when the mode actually changes; a same-value PATCH keeps the stamps.
+        set_clauses.append("enforcement_mode = :enforcement_mode")
+        set_clauses.append(
+            "enforcement_mode_changed_at = CASE WHEN enforcement_mode IS DISTINCT FROM "
+            ":enforcement_mode THEN NOW() ELSE enforcement_mode_changed_at END"
+        )
+        set_clauses.append(
+            "enforcement_mode_changed_by = CASE WHEN enforcement_mode IS DISTINCT FROM "
+            ":enforcement_mode THEN :enforcement_mode_changed_by ELSE enforcement_mode_changed_by END"
+        )
+        params["enforcement_mode"] = data["enforcement_mode"]
+        params["enforcement_mode_changed_by"] = data.get("enforcement_mode_changed_by")
+
     if not set_clauses:
         return None
 
@@ -209,6 +248,12 @@ async def update_agent_key(org_id: int, key_id: int, data: dict) -> Optional[dic
             expires_at,
             is_active,
             revoked_at,
+            enforcement_mode,
+            enforcement_mode_changed_at,
+            enforcement_mode_changed_by,
+            -- NOW() is the transaction start time, so this is true only when
+            -- this UPDATE stamped enforcement_mode_changed_at (the mode changed).
+            enforcement_mode_changed_at IS NOT DISTINCT FROM NOW() AS enforcement_mode_changed,
             created_by,
             created_at,
             updated_at

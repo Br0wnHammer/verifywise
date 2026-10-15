@@ -10,10 +10,47 @@ from crud.mcp_agent_keys import (
     revoke_agent_key,
     update_agent_key,
 )
+from services.mcp_monitor import ENFORCE, ENFORCEMENT_MODES, MONITOR
 from utils.auth import get_org_id, get_user_id, require_admin
 from utils.notifications import notify_config_change
 
 router = APIRouter(prefix="/mcp/agent-keys", tags=["mcp-agent-keys"])
+
+
+def _validated_enforcement_mode(value: Any) -> str:
+    """'enforce' blocks and pauses calls per policy; 'monitor' only records
+    what would have happened. Raises 400 for anything else."""
+    if not isinstance(value, str) or value not in ENFORCEMENT_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="enforcement_mode must be one of: " + ", ".join(ENFORCEMENT_MODES),
+        )
+    return value
+
+
+_MODE_FIELDS = ("enforcement_mode", "enforcement_mode_changed_by")
+_MODE_LABELS = {ENFORCE: "enforce", MONITOR: "monitor only"}
+
+
+def _mode_change_event(key_id: int, name: str, new_mode: str) -> dict:
+    """Config-change event for an actual enforcement mode switch. Uses the
+    camelCase fields the backend's notifyConfigChange reads; the backend turns
+    action 'enforcement_mode_changed' + newMode into readable text
+    ("Agent key "x" switched to monitor only by <user>.")."""
+    # Only two modes exist (CHECK constraint), so a real change came from the other one.
+    old_mode = MONITOR if new_mode == ENFORCE else ENFORCE
+    return {
+        "action": "enforcement_mode_changed",
+        "entityType": "Agent key",
+        "entityName": name,
+        "entity_type": "mcp_agent_key",
+        "entity_id": str(key_id),
+        "oldMode": old_mode,
+        "newMode": new_mode,
+        "detail": f"Enforcement mode: {_MODE_LABELS[old_mode]} to {_MODE_LABELS[new_mode]}",
+        "actionUrl": "/ai-gateway/mcp/agent-keys",
+        "actionLabel": "View agent keys",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +149,10 @@ async def create_key(request: Request):
                 detail="allowed_server_ids must be an array of integers",
             )
 
+    enforcement_mode = ENFORCE
+    if "enforcement_mode" in body:
+        enforcement_mode = _validated_enforcement_mode(body["enforcement_mode"])
+
     org_id = get_org_id(request)
     user_id = get_user_id(request)
 
@@ -124,6 +165,9 @@ async def create_key(request: Request):
         "rate_limit_rpm": body.get("rate_limit_rpm"),
         "metadata": body.get("metadata"),
         "expires_at": expires_at,
+        "enforcement_mode": enforcement_mode,
+        # Recorded only when the key starts in a non-default mode.
+        "enforcement_mode_changed_by": user_id,
         "created_by": user_id,
     }
 
@@ -262,8 +306,16 @@ async def update_key(key_id: int, request: Request):
                     detail="expires_at must be a valid ISO 8601 datetime string",
                 )
 
+    # enforcement_mode
+    if "enforcement_mode" in body:
+        updates["enforcement_mode"] = _validated_enforcement_mode(body["enforcement_mode"])
+
     org_id = get_org_id(request)
     user_id = get_user_id(request)
+
+    if "enforcement_mode" in updates:
+        # Stamped only if the stored mode actually changes (see update_agent_key).
+        updates["enforcement_mode_changed_by"] = user_id
 
     record = await update_agent_key(org_id, key_id, updates)
     if record is None:
@@ -272,16 +324,30 @@ async def update_key(key_id: int, request: Request):
             detail="MCP agent key not found or no fields to update",
         )
 
-    await notify_config_change(
-        organization_id=org_id,
-        changed_by_user_id=user_id,
-        event={
-            "action": "updated",
-            "entity_type": "mcp_agent_key",
-            "entity_id": str(key_id),
-            "entity_name": record.get("name", ""),
-        },
-    )
+    # Internal flag from update_agent_key, not part of the API response.
+    mode_changed = bool(record.pop("enforcement_mode_changed", False))
+    other_fields = any(k not in _MODE_FIELDS for k in updates)
+
+    if other_fields or not mode_changed:
+        await notify_config_change(
+            organization_id=org_id,
+            changed_by_user_id=user_id,
+            event={
+                "action": "updated",
+                "entity_type": "mcp_agent_key",
+                "entity_id": str(key_id),
+                "entity_name": record.get("name", ""),
+            },
+        )
+
+    if mode_changed:
+        # A mode switch changes whether policies are enforced for this key, so
+        # admins get a distinct notification for it.
+        await notify_config_change(
+            organization_id=org_id,
+            changed_by_user_id=user_id,
+            event=_mode_change_event(key_id, record.get("name", ""), updates["enforcement_mode"]),
+        )
 
     return {"status": "success", "data": record}
 

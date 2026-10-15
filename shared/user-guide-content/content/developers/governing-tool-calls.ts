@@ -24,6 +24,17 @@ export const governingToolCallsContent: ArticleContent = {
       { text: 'When the status is expired, the window passed with no decision; treat it as a block.' },
     ]},
     { type: 'paragraph', text: 'On the MCP proxy path the same information comes back as a JSON-RPC error with code -32001, carrying the approval id, poll endpoint and expiry in error.data.' },
+    { type: 'heading', id: 'monitor-only', level: 2, text: 'Monitor only mode' },
+    { type: 'paragraph', text: 'An Admin can set an agent key to monitor only, in the Mode setting of the Agent keys page. Use it to see what your rules would do to an agent before you enforce them. Every rule is still checked, but the call is never blocked or paused: the decision is always allow and the agent runs the tool.' },
+    { type: 'bullet-list', items: [
+      { bold: 'What is checked', text: 'Guardrails (a block or mask match), require approval rules, and on the MCP proxy the key\'s allowed and blocked tool lists and tools marked as requiring approval.' },
+      { bold: 'No approvals', text: 'No approval request is created and nobody is notified, so there is nothing to poll.' },
+      { bold: 'Still enforced', text: 'The key\'s rate limit, and on the MCP proxy the circuit breaker. They protect the gateway and your MCP servers rather than express policy, so a monitor only key can still get rate_limited.' },
+      { bold: 'Tool list on the proxy', text: 'tools/list is not filtered by the key\'s tool lists, so the agent sees every tool.' },
+    ]},
+    { type: 'paragraph', text: 'When something matched, the allow response carries a monitored object saying what would have happened. On the MCP proxy the same object is in the tool result under _meta["verifywise.ai/monitored"]. See the API reference for its fields.' },
+    { type: 'code', language: 'json', code: '{\n  "decision": "allow",\n  "monitored": {\n    "would": "deny",\n    "reason": "PII detected",\n    "source": "guardrail",\n    "rule": { "id": 11, "name": "No emails" },\n    "outcomes": [\n      { "would": "deny", "reason": "PII detected", "source": "guardrail", "rule": { "id": 11, "name": "No emails" } }\n    ]\n  }\n}' },
+    { type: 'paragraph', text: 'In Activity these calls appear with the status Would block or Would need approval instead of blocked or approval required. When a call matched several things, the status is the most severe one and each match is listed in the call\'s events. The result summary is the tool\'s own result, as for any allowed call.' },
     { type: 'heading', id: 'runs', level: 2, text: 'Grouping calls into a run' },
     { type: 'paragraph', text: 'A run groups one turn of work: the model calls and the tool calls that belong together. They are tied by a shared run id.' },
     { type: 'bullet-list', items: [

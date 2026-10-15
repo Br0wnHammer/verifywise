@@ -34,7 +34,7 @@ export const mcpAgentKeysContent: ArticleContent = {
       type: 'bullet-list',
       items: [
         { bold: 'Name', text: 'The display name you gave the key.' },
-        { bold: 'Status chip', text: '"Active", "Revoked", "Expired" or "Inactive".' },
+        { bold: 'Status chip', text: '"Active", "Revoked", "Expired" or "Inactive". Keys in monitor only mode also show a "Monitor only" chip, and a line under the name saying since when and who set it.' },
         { bold: 'Key prefix', text: 'The first characters of the key in monospace font. The full key is never shown again after creation.' },
         { bold: 'Rate limit', text: 'Shown as RPM (requests per minute) if configured.' },
         { bold: 'Allowed/blocked tools', text: 'Chip showing the count of allowed or blocked tools, if any are configured.' },
@@ -66,7 +66,28 @@ export const mcpAgentKeysContent: ArticleContent = {
         { field: 'Blocked tools', required: 'No', description: 'Comma-separated list of tool names the agent can\'t call (e.g., "delete_record, drop_table").' },
         { field: 'Rate limit (RPM)', required: 'No', description: 'Maximum requests per minute. Leave empty for no limit.' },
         { field: 'Expiry date', required: 'No', description: 'Date when the key stops working. Uses a date picker. Leave empty for no expiry.' },
+        { field: 'Mode', required: 'No', description: 'Enforce (the default) or Monitor only. Choosing Monitor only asks you to confirm before the key is created.' },
       ],
+    },
+    {
+      type: 'heading',
+      id: 'monitor-only',
+      level: 3,
+      text: 'Monitor only mode',
+    },
+    {
+      type: 'paragraph',
+      text: 'In monitor only mode, rules are checked and logged but never block or pause calls. Guardrails and approval rules are still evaluated, and so are the key\'s tool lists for calls through the MCP proxy. Each match shows in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply, as does the circuit breaker on the MCP proxy.',
+    },
+    {
+      type: 'paragraph',
+      text: 'To change the mode of an existing key, click the sliders icon on its row, pick a mode and click **Save**. Switching to Monitor only asks you to confirm; switching back to Enforce does not. Other admins get a notification whenever a key\'s mode changes.',
+    },
+    {
+      type: 'callout',
+      variant: 'tip',
+      title: 'Try new rules before you enforce them',
+      text: 'Run a new agent on a monitor only key for a while, check the Would block and Would need approval entries in Activity, then switch the key to Enforce once the rules match what you expect.',
     },
     {
       type: 'heading',
@@ -229,7 +250,7 @@ curl -X POST https://your-verifywise-host/v1/mcp \\
     },
     {
       type: 'paragraph',
-      text: 'Creating, revoking and deleting agent keys requires the Admin role. All authenticated users can view the key list (but not the key values, which are only shown once at creation).',
+      text: 'Creating, revoking and deleting agent keys, and changing their mode, requires the Admin role. All authenticated users can view the key list (but not the key values, which are only shown once at creation).',
     },
     {
       type: 'article-links',

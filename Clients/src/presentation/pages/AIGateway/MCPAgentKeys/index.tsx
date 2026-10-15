@@ -12,11 +12,13 @@ import {
   AlertTriangle,
   RotateCcw,
   Activity,
+  SlidersHorizontal,
 } from "lucide-react";
 import { EmptyState } from "../../../components/EmptyState";
 import EmptyStateTip from "../../../components/EmptyState/EmptyStateTip";
 import { CustomizableButton } from "../../../components/button/customizable-button";
 import Field from "../../../components/Inputs/Field";
+import Select from "../../../components/Inputs/Select";
 import DatePicker from "../../../components/Inputs/Datepicker";
 import Chip from "../../../components/Chip";
 import StandardModal from "../../../components/Modals/StandardModal";
@@ -30,11 +32,17 @@ import {
   WARNING_BORDER,
   WARNING_TEXT,
   KEY_DISPLAY_BG,
+  ENFORCEMENT_MODE_ITEMS,
+  MCP_STATUS_COLORS,
+  MONITOR_MODE_HELPER,
+  type EnforcementMode,
 } from "../shared";
 import MCPTable from "../MCPTable";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import AgentActivityDrawer from "../AgentActivityDrawer";
 import CustomizableSkeleton from "../../../components/Skeletons";
+import { useTranslation } from "../../../../application/hooks/useTranslation";
+import { fill } from "../../../../i18n/fill";
 import dayjs from "dayjs";
 
 interface CreateAgentKeyPayload {
@@ -44,6 +52,7 @@ interface CreateAgentKeyPayload {
   blocked_tools?: string[];
   rate_limit_rpm?: number;
   expires_at?: string;
+  enforcement_mode?: EnforcementMode;
 }
 
 interface AgentKey {
@@ -59,10 +68,66 @@ interface AgentKey {
   revoked_at: string | null;
   created_by_name: string;
   created_at: string;
+  /** Missing on gateways older than monitor mode; treated as "enforce". */
+  enforcement_mode?: EnforcementMode;
+  enforcement_mode_changed_at?: string | null;
+  enforcement_mode_changed_by?: number | null;
+  /** Name of the user who last changed the mode; null when unknown or since deleted. */
+  enforcement_mode_changed_by_name?: string | null;
+}
+
+const EMPTY_CREATE_FORM = {
+  name: "",
+  description: "",
+  allowed_tools: "",
+  blocked_tools: "",
+  rate_limit_rpm: "",
+  expires_at: "",
+  enforcement_mode: "enforce" as EnforcementMode,
+};
+
+const MONITOR_CONFIRM_BODY =
+  'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.';
+
+const keyMode = (key: AgentKey): EnforcementMode => key.enforcement_mode ?? "enforce";
+
+/** Pulls the gateway's error text out of a failed request, if it sent one. */
+const apiErrorText = (err: unknown): string | undefined => {
+  const data = (err as { response?: { data?: { detail?: string; message?: string } } })?.response
+    ?.data;
+  return data?.detail || data?.message;
+};
+
+/** Mode select with its explanation, shared by the create and change-mode modals. */
+function EnforcementModeSelect({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: EnforcementMode;
+  onChange: (mode: EnforcementMode) => void;
+}) {
+  return (
+    <Box>
+      <Select
+        id={id}
+        dataTestId={`select-${id}`}
+        label="Mode"
+        items={ENFORCEMENT_MODE_ITEMS}
+        value={value}
+        onChange={(e) => onChange(e.target.value as EnforcementMode)}
+      />
+      <Typography sx={{ fontSize: 12, color: palette.text.tertiary, mt: "6px" }}>
+        {MONITOR_MODE_HELPER}
+      </Typography>
+    </Box>
+  );
 }
 
 export default function MCPAgentKeysPage() {
   const formatDate = useFormattedDate();
+  const { t: tr } = useTranslation();
   const [keys, setKeys] = useState<AgentKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -72,14 +137,7 @@ export default function MCPAgentKeysPage() {
 
   // Create modal
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    name: "",
-    description: "",
-    allowed_tools: "",
-    blocked_tools: "",
-    rate_limit_rpm: "",
-    expires_at: "",
-  });
+  const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
   const [createError, setCreateError] = useState("");
   const [createSubmitting, setCreateSubmitting] = useState(false);
 
@@ -91,7 +149,19 @@ export default function MCPAgentKeysPage() {
   // Revoke confirmation modal
   const [revokeTarget, setRevokeTarget] = useState<AgentKey | null>(null);
 
+  // Change-mode modal for an existing key
+  const [modeTarget, setModeTarget] = useState<AgentKey | null>(null);
+  const [modeValue, setModeValue] = useState<EnforcementMode>("enforce");
+  const [modeError, setModeError] = useState("");
+  const [modeSubmitting, setModeSubmitting] = useState(false);
+
+  // Confirmation shown before a key is created in, or switched to, monitor only
+  const [monitorConfirm, setMonitorConfirm] = useState<"create" | "change" | null>(null);
+
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set synchronously on the first submit so a second click in the same tick
+  // (before the isSubmitting state re-renders) cannot send a second request.
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -116,15 +186,28 @@ export default function MCPAgentKeysPage() {
     loadData();
   }, [loadData]);
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     if (!createForm.name.trim()) {
       setCreateError("Name is required");
       return;
     }
+    if (createForm.enforcement_mode === "monitor") {
+      setMonitorConfirm("create");
+      return;
+    }
+    void submitCreate();
+  };
+
+  const submitCreate = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setCreateSubmitting(true);
     setCreateError("");
     try {
-      const payload: CreateAgentKeyPayload = { name: createForm.name.trim() };
+      const payload: CreateAgentKeyPayload = {
+        name: createForm.name.trim(),
+        enforcement_mode: createForm.enforcement_mode,
+      };
       if (createForm.description.trim()) payload.description = createForm.description.trim();
       if (createForm.rate_limit_rpm) payload.rate_limit_rpm = Number(createForm.rate_limit_rpm);
       if (createForm.expires_at) payload.expires_at = new Date(createForm.expires_at).toISOString();
@@ -145,14 +228,7 @@ export default function MCPAgentKeysPage() {
       );
       const created = res?.data?.data;
       setIsCreateOpen(false);
-      setCreateForm({
-        name: "",
-        description: "",
-        allowed_tools: "",
-        blocked_tools: "",
-        rate_limit_rpm: "",
-        expires_at: "",
-      });
+      setCreateForm(EMPTY_CREATE_FORM);
 
       if (created?.plain_key) {
         setNewKey(created.plain_key);
@@ -161,12 +237,61 @@ export default function MCPAgentKeysPage() {
 
       await loadData();
     } catch (err: unknown) {
-      const errData = (err as { response?: { data?: { detail?: string; message?: string } } })
-        ?.response?.data;
-      setCreateError(errData?.detail || errData?.message || "Failed to create agent key");
+      setCreateError(apiErrorText(err) || "Failed to create agent key");
     } finally {
+      submittingRef.current = false;
       setCreateSubmitting(false);
+      setMonitorConfirm(null);
     }
+  };
+
+  const openModeModal = (key: AgentKey) => {
+    setModeTarget(key);
+    setModeValue(keyMode(key));
+    setModeError("");
+  };
+
+  const handleModeSave = () => {
+    if (!modeTarget) return;
+    if (modeValue === keyMode(modeTarget)) {
+      setModeTarget(null);
+      return;
+    }
+    if (modeValue === "monitor") {
+      setMonitorConfirm("change");
+      return;
+    }
+    void submitModeChange();
+  };
+
+  const submitModeChange = async () => {
+    if (!modeTarget || submittingRef.current) return;
+    submittingRef.current = true;
+    setModeSubmitting(true);
+    setModeError("");
+    try {
+      await apiServices.patch(`/ai-gateway/mcp/agent-keys/${modeTarget.id}`, {
+        enforcement_mode: modeValue,
+      });
+      setModeTarget(null);
+      await loadData();
+    } catch (err: unknown) {
+      setModeError(apiErrorText(err) || "Failed to change the mode");
+    } finally {
+      submittingRef.current = false;
+      setModeSubmitting(false);
+      setMonitorConfirm(null);
+    }
+  };
+
+  /** "Monitor only since <date> · by <user>", or the date alone when the user is unknown. */
+  const monitorSinceText = (key: AgentKey): string | null => {
+    if (!key.enforcement_mode_changed_at) return null;
+    const date = formatDate(key.enforcement_mode_changed_at);
+    const userName = key.enforcement_mode_changed_by_name?.trim() ?? "";
+    return userName
+      ? fill(tr("Monitor only since {date} · by {name}"), { date, name: userName })
+      : fill(tr("Monitor only since {date}"), { date });
   };
 
   const handleRevoke = async () => {
@@ -208,14 +333,7 @@ export default function MCPAgentKeysPage() {
       text="Create agent key"
       icon={<CirclePlus size={14} strokeWidth={1.5} />}
       onClick={() => {
-        setCreateForm({
-          name: "",
-          description: "",
-          allowed_tools: "",
-          blocked_tools: "",
-          rate_limit_rpm: "",
-          expires_at: "",
-        });
+        setCreateForm(EMPTY_CREATE_FORM);
         setCreateError("");
         setIsCreateOpen(true);
       }}
@@ -262,17 +380,19 @@ export default function MCPAgentKeysPage() {
             id="mcp-agent-keys-table"
             columns={[
               { label: "Name", width: 200 },
-              { label: "Status", width: 110 },
+              { label: "Status", width: 160 },
               { label: "Prefix", width: 140 },
               { label: "Rate limit", width: 100 },
               { label: "Tools", width: 160 },
               { label: "Created", width: 200 },
-              { label: "", width: 60, align: "right" },
+              { label: "", width: 90, align: "right" },
             ]}
             rows={keys}
             rowKey={(key) => key.id}
             renderRow={(key) => {
               const status = getStatusLabel(key);
+              const monitored = keyMode(key) === "monitor";
+              const since = monitored ? monitorSinceText(key) : null;
               return [
                 <Box>
                   <Stack direction="row" alignItems="center" gap="8px">
@@ -284,8 +404,24 @@ export default function MCPAgentKeysPage() {
                       {key.description}
                     </Typography>
                   )}
+                  {since && (
+                    <Typography sx={{ fontSize: 12, color: palette.text.tertiary, mt: "2px" }}>
+                      {since}
+                    </Typography>
+                  )}
                 </Box>,
-                <Chip label={status} size="small" uppercase={false} />,
+                <Stack direction="row" gap="6px" flexWrap="wrap">
+                  <Chip label={status} size="small" uppercase={false} />
+                  {monitored && (
+                    <Chip
+                      label="Monitor only"
+                      size="small"
+                      uppercase={false}
+                      backgroundColor={MCP_STATUS_COLORS.would_block.bg}
+                      textColor={MCP_STATUS_COLORS.would_block.text}
+                    />
+                  )}
+                </Stack>,
                 <Typography
                   sx={{ fontSize: 12, color: palette.text.tertiary, fontFamily: "monospace" }}
                 >
@@ -328,6 +464,20 @@ export default function MCPAgentKeysPage() {
                   >
                     <Activity size={14} strokeWidth={1.5} color={palette.text.tertiary} />
                   </IconButton>
+                  {key.is_active && !key.revoked_at && (
+                    <IconButton
+                      size="small"
+                      onClick={() => openModeModal(key)}
+                      sx={{ p: 0.5 }}
+                      aria-label="Change mode"
+                    >
+                      <SlidersHorizontal
+                        size={14}
+                        strokeWidth={1.5}
+                        color={palette.text.tertiary}
+                      />
+                    </IconButton>
+                  )}
                   {key.is_active && !key.revoked_at && (
                     <IconButton
                       size="small"
@@ -406,6 +556,11 @@ export default function MCPAgentKeysPage() {
             handleDateChange={(value) =>
               setCreateForm((p) => ({ ...p, expires_at: value ? value.format("YYYY-MM-DD") : "" }))
             }
+          />
+          <EnforcementModeSelect
+            id="mcp-agent-key-mode"
+            value={createForm.enforcement_mode}
+            onChange={(mode) => setCreateForm((p) => ({ ...p, enforcement_mode: mode }))}
           />
           {createError && (
             <Typography sx={{ fontSize: 12, color: palette.status.error.text }}>
@@ -511,6 +666,49 @@ curl -H "Authorization: Bearer ${newKey}" \\
         <Typography sx={{ fontSize: 13, color: palette.text.secondary }}>
           Guardrail rules for selected agents stop listing this key. A rule that listed only this
           agent then applies to no agent until you choose another one in Guardrails.
+        </Typography>
+      </StandardModal>
+
+      {/* Change mode of an existing key */}
+      <StandardModal
+        isOpen={!!modeTarget}
+        onClose={() => setModeTarget(null)}
+        title="Change mode"
+        description={fill(tr('Choose how policies apply to calls made with "{name}".'), {
+          name: modeTarget?.name ?? "",
+        })}
+        onSubmit={handleModeSave}
+        submitButtonText="Save"
+        isSubmitting={modeSubmitting}
+        maxWidth="440px"
+      >
+        <Stack gap="16px">
+          <EnforcementModeSelect
+            id="mcp-agent-key-mode-edit"
+            value={modeValue}
+            onChange={setModeValue}
+          />
+          {modeError && (
+            <Typography sx={{ fontSize: 12, color: palette.status.error.text }}>
+              {modeError}
+            </Typography>
+          )}
+        </Stack>
+      </StandardModal>
+
+      {/* Confirmation before a key is created in, or switched to, monitor only */}
+      <StandardModal
+        isOpen={monitorConfirm !== null}
+        onClose={() => setMonitorConfirm(null)}
+        title="Use monitor only mode?"
+        description="Calls made with this key will no longer be blocked or paused for approval."
+        onSubmit={monitorConfirm === "create" ? submitCreate : submitModeChange}
+        submitButtonText="Use monitor only"
+        isSubmitting={createSubmitting || modeSubmitting}
+        maxWidth="440px"
+      >
+        <Typography sx={{ fontSize: 13, color: palette.text.secondary }}>
+          {MONITOR_CONFIRM_BODY}
         </Typography>
       </StandardModal>
 

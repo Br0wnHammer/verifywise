@@ -210,6 +210,49 @@ describe("aiGatewayNotifications", () => {
       expect(call[3].variables.change_description).toContain("changed");
     });
 
+    it("describes an agent key enforcement mode switch", async () => {
+      mockQuery
+        .mockResolvedValueOnce([{ id: 1, name: "Admin One" }] as any)
+        .mockResolvedValueOnce([{ name: "Jane", surname: "Doe" }] as any);
+
+      await notifyConfigChange(1, 99, {
+        entityType: "Agent key",
+        entityName: "build-bot",
+        action: "enforcement_mode_changed",
+        oldMode: "enforce",
+        newMode: "monitor",
+        detail: "Enforcement mode: enforce to monitor only",
+        actionUrl: "/ai-gateway/mcp/agent-keys",
+        actionLabel: "View agent keys",
+      });
+
+      const call = mockSendInApp.mock.calls[0];
+      expect(call[1].title).toBe("Agent key mode changed");
+      expect(call[1].message).toBe('Agent key "build-bot" switched to monitor only by Jane Doe.');
+      expect(call[1].action_url).toMatch(/^https?:\/\/.+\/ai-gateway\/mcp\/agent-keys$/);
+      expect(call[3].subject).toBe("AI Gateway: agent key mode changed");
+    });
+
+    it("describes a switch back to enforce", async () => {
+      mockQuery
+        .mockResolvedValueOnce([{ id: 1, name: "Admin One" }] as any)
+        .mockResolvedValueOnce([{ name: "Jane", surname: "Doe" }] as any);
+
+      await notifyConfigChange(1, 99, {
+        entityType: "Agent key",
+        entityName: "build-bot",
+        action: "enforcement_mode_changed",
+        oldMode: "monitor",
+        newMode: "enforce",
+        actionUrl: "/ai-gateway/mcp/agent-keys",
+        actionLabel: "View agent keys",
+      });
+
+      expect(mockSendInApp.mock.calls[0][1].message).toBe(
+        'Agent key "build-bot" switched to enforce by Jane Doe.',
+      );
+    });
+
     it("should not notify anyone when changer is the only admin", async () => {
       mockQuery.mockResolvedValueOnce([{ id: 99, name: "Admin" }] as any);
 

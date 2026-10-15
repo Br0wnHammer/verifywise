@@ -17,6 +17,12 @@ import logger from "../../utils/logger/fileLogger";
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
+/** Agent Control agent key enforcement modes, as shown to people. */
+const ENFORCEMENT_MODE_LABELS: Record<string, string> = {
+  enforce: "enforce",
+  monitor: "monitor only",
+};
+
 /**
  * Get all admin users for an organization (ID + name).
  */
@@ -254,10 +260,12 @@ export async function notifyConfigChange(
   event: {
     entityType: string; // "Endpoint" | "API key" | "Guardrail rule"
     entityName: string; // e.g., "prod-gpt4o" or "Block credit cards"
-    action: string; // "created" | "deleted" | "disabled" | "enabled" | "modified"
+    action: string; // "created" | "deleted" | "disabled" | "enabled" | "modified" | "enforcement_mode_changed"
     detail?: string; // e.g., "Provider: openai, Model: gpt-4o"
-    actionUrl: string; // link to the relevant page
+    actionUrl: string; // link to the relevant page; a path ("/ai-gateway/...") is prefixed with FRONTEND_URL
     actionLabel: string; // button text e.g., "View endpoints"
+    oldMode?: string; // enforcement_mode_changed only: "enforce" | "monitor"
+    newMode?: string; // enforcement_mode_changed only: "enforce" | "monitor"
   },
 ): Promise<void> {
   const admins = await getOrgAdmins(organizationId);
@@ -281,11 +289,19 @@ export async function notifyConfigChange(
     disabled: `${changedByName} disabled the ${event.entityType.toLowerCase()} "${event.entityName}".`,
     enabled: `${changedByName} enabled the ${event.entityType.toLowerCase()} "${event.entityName}".`,
     modified: `${changedByName} modified the ${event.entityType.toLowerCase()} "${event.entityName}".`,
+    enforcement_mode_changed: `${event.entityType} "${event.entityName}" switched to ${
+      ENFORCEMENT_MODE_LABELS[event.newMode ?? ""] ?? event.newMode
+    } by ${changedByName}.`,
   };
 
   const changeDescription =
     descriptions[event.action] ||
     `${changedByName} changed ${event.entityType.toLowerCase()} "${event.entityName}".`;
+  // Wording for the title and email subject ("Agent key mode changed").
+  const actionText = event.action === "enforcement_mode_changed" ? "mode changed" : event.action;
+  const actionUrl = event.actionUrl.startsWith("/")
+    ? `${FRONTEND_URL}${event.actionUrl}`
+    : event.actionUrl;
 
   await Promise.allSettled(
     admins
@@ -296,15 +312,15 @@ export async function notifyConfigChange(
           {
             user_id: admin.id,
             type: NotificationType.AI_GATEWAY_CONFIG_CHANGE,
-            title: `${event.entityType} ${event.action}`,
+            title: `${event.entityType} ${actionText}`,
             message: changeDescription,
             entity_type: NotificationEntityType.AI_GATEWAY,
-            action_url: event.actionUrl,
+            action_url: actionUrl,
           },
           true,
           {
             template: EMAIL_TEMPLATES.AI_GATEWAY_CONFIG_CHANGE,
-            subject: `AI Gateway: ${event.entityType.toLowerCase()} ${event.action}`,
+            subject: `AI Gateway: ${event.entityType.toLowerCase()} ${actionText}`,
             variables: {
               recipient_name: admin.name,
               change_description: changeDescription,
@@ -313,7 +329,7 @@ export async function notifyConfigChange(
               change_detail: event.detail || "",
               changed_by: changedByName,
               changed_at: new Date().toLocaleString(),
-              action_url: event.actionUrl,
+              action_url: actionUrl,
               action_label: event.actionLabel,
             },
           },
