@@ -29,6 +29,7 @@ export const connectPythonAgentsContent: ArticleContent = {
     { type: 'heading', id: 'crewai', level: 3, text: 'CrewAI' },
     { type: 'paragraph', text: 'Call enable_crewai_governance once before kickoff. It registers CrewAI tool-call hooks, which run on every tool call of every crew and agent in the process.' },
     { type: 'code', language: 'python', code: 'from verifywise_agent_control.crewai import enable_crewai_governance\n\nenable_crewai_governance()\ncrew.kickoff()' },
+    { type: 'callout', variant: 'warning', title: 'akickoff() blocks the event loop', text: 'CrewAI tool-call hooks are synchronous, so each check is a blocking request made inside the hook. Under akickoff() that request, and any wait for a human approval, blocks the event loop: nothing else on that loop runs until the gateway answers, or until the approval is decided or VW_APPROVAL_WAIT runs out. If the crew shares a loop with other work, keep VW_APPROVAL_WAIT short or run the crew with kickoff() in a worker thread.' },
     { type: 'heading', id: 'agent-framework', level: 3, text: 'Microsoft Agent Framework' },
     { type: 'paragraph', text: 'Add the function middleware to the agent. It wraps every function the agent calls.' },
     { type: 'code', language: 'python', code: 'from agent_framework import Agent\nfrom verifywise_agent_control.agent_framework import VerifyWiseFunctionMiddleware\n\nagent = Agent(\n    client=chat_client,\n    tools=[search, send_email],\n    middleware=[VerifyWiseFunctionMiddleware()],\n)' },
