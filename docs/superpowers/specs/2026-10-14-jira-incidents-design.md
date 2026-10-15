@@ -37,7 +37,7 @@ A new built-in extension, `jira-incidents`, following `docs/technical/infrastruc
 
 - **Catalog:** seeded by a migration like the other built-ins (`20260811102307-extensions-migration.js` pattern), category `data_management`, `requires_configuration` true, icon at `Clients/public/assets/extensions/jira-incidents.svg`.
 - **Server:** `Servers/extensions/jira-incidents/` with its own router mounted at `/api/extensions/jira-incidents` (after the catalog and sync-engine routers in `Servers/app.ts`). `router.use(authenticateJWT)`, `router.use(requireExtensionEnabled("jira-incidents"))`, and **every** route, reads included, requires `authorize("extension.admin")`. (Jira Assets allows any member to read; this extension's settings hold connection details and mappings, so they are admin-only.)
-- **Sync engine provider:** `jiraIncidentsSyncProvider`, added to `SYNC_PROVIDERS` in `Servers/extensions/sync-engine/providers.ts:6`. Kinds `manual` and `scheduled`, `scheduledKind: "scheduled"`. Scheduling, claim and lock, heartbeat, abandoned-run detection, failure backoff, "Sync now", and status all come from the engine (`types.ts:60-76`). The default schedule for a new organization is enabled, every 1 hour.
+- **Sync engine provider:** `jiraIncidentsSyncProvider`, added to `SYNC_PROVIDERS` in `Servers/extensions/sync-engine/providers.ts:6`. Kinds `manual` and `scheduled`, `scheduledKind: "scheduled"`. Scheduling, claim and lock, heartbeat, abandoned-run detection, failure backoff, "Sync now", and status all come from the engine (`types.ts:60-76`). When the configuration first becomes complete (the moment `import_from` is set, §5.6), the extension creates its `extension_sync_settings` row as enabled, every 1 hour, unless a row already exists. After that the admin changes it in the shared panel.
 - **Jira client:** a new `JiraIncidentsClient` in the extension folder. It reuses the shared pieces only: the Basic `email:token` header, `safeFetch` / `assertSafeOutboundUrl` (`Servers/utils/safeOutboundUrl.ts`), `requestSignal` / `describeFetchError` (`Servers/utils/outboundFetch.utils.ts`). It does not reuse `JiraAssetsClient`, which targets the Assets API (`api.atlassian.com/jsm/assets/...`).
 - **Frontend:** `Clients/src/presentation/pages/Extensions/jira-incidents/`, added to `KEYS_WITH_POST_ENABLE_UI` (`Extensions/index.tsx:48`) and rendered from `Extensions/Settings/index.tsx`. Uses the shared `ExtensionSyncPanel` and `useExtensionSync`.
 
@@ -53,6 +53,7 @@ Three new tables. All carry `organization_id`, use unqualified names with `WHERE
 | `email` | service account email |
 | `api_token_encrypted` | encrypted with `encrypt()` from `Servers/utils/encryption.utils.ts` (AES-256-GCM). Never returned by the API; the client sees `has_api_token` |
 | `service_account_id` | the account's Jira `accountId`, from `GET /rest/api/3/myself` at connection test |
+| `service_account_time_zone` | the account's `timeZone` from the same call; JQL date literals are read in this zone (§6.1) |
 | `project_id`, `project_key` | chosen Jira project (`project_id` is the stable id; key kept for display and JQL) |
 | `issue_type_id` | chosen issue type |
 | `label` | optional label filter, nullable |
@@ -91,7 +92,7 @@ Archived incidents are skipped by the status sync; unarchiving one resumes it at
 
 `id`, `organization_id`, `link_id` (nullable), `run_id` (FK `extension_sync_runs`, nullable), `kind` (`imported` · `status_from_jira` · `status_to_jira` · `conflict` · `error` · `deleted_in_jira`), `detail` JSONB (old and new values, losing value for conflicts, error reason), `created_at`.
 
-Pruned by the data retention job as its own record kind, "Jira incident sync activity", default 90 days (follow `docs/technical/domains/data-retention.md`).
+It records system changes to incidents, so it is treated as an audit record: the table is added to `AUDIT_RECORD_TABLES` (`Servers/utils/dataRetention.utils.ts`) and follows the organization's audit records period on Settings → Data retention (default keep indefinitely). No new retention setting is added. Volume is small: one row per import, status change, conflict or new error.
 
 ### 4.4 Changes to existing tables and code
 
@@ -104,6 +105,7 @@ Pruned by the data retention job as its own record kind, "Jira incident sync act
 ### 5.1 Connection
 
 - The admin enters site URL, service account email and API token, then **Test connection**.
+- Token type: a classic Atlassian API token, sent as Basic `email:token` to the site URL. Scoped API tokens, which Atlassian routes through `api.atlassian.com/ex/jira/<cloudId>`, are not supported in v1; the help text says which kind to create. (Confirm against the Atlassian authentication reference during planning.) Atlassian API tokens can expire, so a 401 is reported as "Jira rejected the API token. It may have expired or been revoked."
 - The test calls `GET /rest/api/3/myself` (stores `accountId`) and checks the account can browse the project and transition and link its issues (`GET /rest/api/3/mypermissions` with `BROWSE_PROJECTS`, `TRANSITION_ISSUES`, `LINK_ISSUES`; exact permission keys confirmed against the Atlassian REST reference during planning). Each missing permission is named in the result.
 - Site URL rule: `https` and a host ending in `.atlassian.net`. Anything else is rejected with a plain message. See §10 for the development-only override.
 
@@ -139,7 +141,10 @@ Each run: readiness check → import → status sync → result. A run keeps a h
 ### 6.1 Import
 
 1. Search `POST /rest/api/3/search/jql`, paged by `nextPageToken`:
-   `project = <project_id> AND issuetype = <issue_type_id> [AND labels = "<label>"] AND created >= "<max(import_from, last_checked_at − 10 minutes)>" ORDER BY created ASC`, requesting only the fields used (summary, description, priority, status, created).
+   `project = <project_id> AND issuetype = <issue_type_id> [AND labels = "<label>"] AND created >= "<cut-off>" ORDER BY created ASC`, requesting only the fields used (summary, description, priority, status, created).
+   - The cut-off is `max(import_from, last_checked_at − 10 minutes)`, formatted as `yyyy-MM-dd HH:mm` **in `service_account_time_zone`** and rounded down to the minute, because Jira reads JQL dates in the searching user's time zone at minute precision. The 10-minute overlap covers rounding and Jira's indexing delay; step 2 makes the overlap safe.
+   - The label is quoted and escaped for JQL; project and issue type are passed as ids, never as user text.
+   - Each result's `created` time is also compared with `import_from` in code, so an issue created before the cut-off is never imported even if the JQL window is wider.
 2. Skip any issue that already has a link row (any state).
 3. For each new issue, in its own transaction:
    - **description** = summary, a blank line, then the Jira description converted from ADF to plain text; cut to 32,767 characters. If the result is shorter than 5 characters, it is padded with the issue key (the incident minimum is 5).
@@ -148,14 +153,17 @@ Each run: readiness check → import → status sync → result. A run keeps a h
    - **occurred_date** and **date_detected** = the issue's created date; **categories_of_harm** = `[]`; **approval_status** = Pending.
    - Created through `createIncidentForImport` (§4.4): change history as system; `incident_added` automation after commit; the incident response workflow when severity is Very serious.
    - Insert the link row (`state = ok`, `last_jira_status_id`, `last_vw_status`), and an `imported` event.
-4. After commit, add a remote link to the Jira issue (`POST /rest/api/3/issue/{id}/remotelink`, `globalId = verifywise:incident:<org>:<incident id>`, title "VerifyWise INC-123", URL to the incident). Re-posting the same `globalId` updates rather than duplicates. A failure here is logged as an `error` event but does not undo the import.
+4. After commit, add a remote link to the Jira issue (`POST /rest/api/3/issue/{id}/remotelink`, `globalId = verifywise:incident:<org>:<incident id>`, title "VerifyWise INC-123", URL to the incident built from `FRONTEND_URL`; if `FRONTEND_URL` is not set, the remote link is skipped and a warning is logged once per run). Re-posting the same `globalId` updates rather than duplicates. A failure here is logged as an `error` event but does not undo the import.
 5. If the import window finished without stopping early, set `last_checked_at` to the run's start time. If it stopped early (deadline, rate limit), leave it, so the next run searches the same window again; step 2 makes that safe.
 
 ### 6.2 Status sync
 
-For every link in state `ok`, `error` or `conflict` whose incident still exists and is not archived:
+For every link in state `ok`, `error`, `conflict` or `deleted_in_jira` whose incident still exists and is not archived:
 
-1. Read the Jira side in batches: search `id in (...)` for current status and key; for issues whose status differs from `last_jira_status_id`, read the time of the latest status change from the issue's changelog (`GET /rest/api/3/issue/{id}/changelog`). An issue Jira no longer returns (404 or absent) → `deleted_in_jira`, `deleted_in_jira` event, no further syncing; the incident is untouched.
+0. **Access check first.** Before touching any link, confirm the service account can still read the configured project (`GET /rest/api/3/project/{id}`). If it can't (401, 403 or 404), the run fails with "VerifyWise can no longer read Jira project SEC" and **no link is changed**. Without this check, a lost permission would make every issue look deleted.
+1. Read the Jira side in batches: search `id in (...)` for current status and key; for issues whose status differs from `last_jira_status_id`, read the time of the latest status change from the issue's changelog (`GET /rest/api/3/issue/{id}/changelog`).
+   - An issue missing from the search is checked directly (`GET /rest/api/3/issue/{id}`). Only a 404 there, with the project still readable, marks the link `deleted_in_jira` (with a `deleted_in_jira` event the first time). The incident is untouched.
+   - `deleted_in_jira` is not final: if a later run finds the issue again (restored, or access to it regained), the link returns to `ok` and syncing resumes from the statuses both sides then hold, with no status written on that run.
 2. Read the VerifyWise side: current incident status, and the time of its latest status change from `incident_change_history`.
 3. Decide:
 
@@ -169,6 +177,8 @@ For every link in state `ok`, `error` or `conflict` whose incident still exists 
 "Changed" means different from `last_jira_status_id` / `last_vw_status`. After any action, both `last_*` values are set to what each side now holds, in the same transaction as the incident write. Because a status written by the sync updates `last_vw_status` at the same time, it is not seen as a VerifyWise change next run: no echo, and no extra flag needed.
 
 4. A `conflict` link returns to `ok` on its next clean run (either side changes again without the other).
+   - Change times compare Jira's changelog timestamp with the VerifyWise server's time. Both are server clocks; a skew of a few seconds only matters when both sides change within seconds of each other, and either result is then acceptable. This is accepted, not corrected.
+   - An `error` link is retried every run, but an `error` event is written only when the link first enters `error` or its reason changes, so a lasting problem does not add a log row every hour.
 5. Reopen: a Jira status that maps to a non-Closed status on a Closed incident is applied through `updateIncident`, so the existing reopen rule applies (an Approved closure goes back to Pending, `incidentManagementValidation.utils.ts:479-504`).
 6. A Jira status with no entry in `status_map_in` → link `error` ("Jira status 'Awaiting vendor' isn't mapped"); the incident is left as it is.
 
@@ -231,7 +241,7 @@ A small standalone mock of the Jira Cloud REST endpoints this extension calls, k
 
 - **Endpoints:** `myself`, `mypermissions`, `project/search`, project issue types, `project/{id}/statuses`, `priority`, `search/jql` (with `nextPageToken` paging), `issue/{id}`, `issue/{id}/changelog`, `issue/{id}/transitions` (GET and POST, including transitions that require fields), `issue/{id}/remotelink`. Response shapes follow Atlassian's published REST v3 reference; ADF descriptions included.
 - **State and control:** an in-memory store of projects, workflows and issues, plus a control API (`/__mock/issues`, `/__mock/reset`, `/__mock/fail-next` for 401, 403, 429 with `Retry-After`, 500) so tests and a person can create issues, change status in "Jira", and inject failures.
-- **Automated use:** the extension's integration tests run complete syncs against it: import, Jira-side change, VerifyWise-side change, conflict, transition refused, transition needing a field, unmapped status, deleted issue, rate limit mid-run, paging across pages, no echo, tenant isolation, never re-importing a deleted incident.
+- **Automated use:** the extension's integration tests run complete syncs against it: import, Jira-side change, VerifyWise-side change, conflict, transition refused, transition needing a field, unmapped status, deleted issue, deleted issue restored, project access lost (no link may change), service account in a time zone far from UTC, issue created just before the cut-off, rate limit mid-run, paging across pages, no echo, tenant isolation, never re-importing a deleted incident, a lasting error writing only one event.
 - **Manual use:** a script starts it on a local port, so an engineer can point a local VerifyWise at it and click through connect, mapping, "Sync now" and status changes.
 - **Development-only URL override:** the `.atlassian.net` rule (§5.1) blocks a local mock. An environment variable `JIRA_INCIDENTS_ALLOW_LOCAL_SITE_URL=true` allows `http://localhost` / `127.0.0.1` site URLs **only when `NODE_ENV` is `development` or `test`**; in any other environment the variable is ignored and a warning is logged at startup. This override is security-sensitive and must be covered by tests in both directions.
 - **Limit:** the mock proves our behaviour against our reading of Jira's API, not against Jira itself. The customer's test run on their Jira Cloud site is the real-site check before release.
@@ -247,7 +257,7 @@ A small standalone mock of the Jira Cloud REST endpoints this extension calls, k
 
 - `docs/technical/infrastructure/extensions.md`: the new extension, and the second sync-engine provider.
 - `docs/technical/domains/incidents.md`: imported incidents, the link table, status sync rules.
-- `docs/technical/domains/data-retention.md`: the new record kind.
+- `docs/technical/domains/data-retention.md`: the sync activity table listed under audit records.
 - User guide in `shared/user-guide-content/` (extensions and incidents), mirrored to `~/website/verifywise/content/user-guide/content/` (not committed there).
 
 ## 13. Decisions log
@@ -262,3 +272,7 @@ A small standalone mock of the Jira Cloud REST endpoints this extension calls, k
 | 2026-10-14 | Own extension and connection, not shared with Jira Assets |
 | 2026-10-14 | Jira summary becomes the first line of the incident description |
 | 2026-10-14 | Simulated Jira Cloud for tests and local manual runs; customer test run is the real-site check |
+| 2026-10-14 (self-review) | Project access is checked before any link changes, so lost access never marks issues deleted; `deleted_in_jira` is reversible |
+| 2026-10-14 (self-review) | JQL cut-off formatted in the service account's time zone, plus an in-code `import_from` check |
+| 2026-10-14 (self-review) | Sync activity is an audit record and follows the audit period (replaces a separate 90-day setting) |
+| 2026-10-14 (self-review) | Classic API tokens only in v1; scoped tokens out of scope |
