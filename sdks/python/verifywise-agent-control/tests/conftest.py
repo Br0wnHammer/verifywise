@@ -25,6 +25,7 @@ def clean_env(monkeypatch):
     # The shared env-built clients must not leak between tests.
     monkeypatch.setattr(_core, "_default_sync", None)
     monkeypatch.setattr(_core, "_default_async", None)
+    monkeypatch.setattr(_core, "_default_session_id", None)
 
 
 @pytest.fixture

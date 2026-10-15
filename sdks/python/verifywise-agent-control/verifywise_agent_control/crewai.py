@@ -24,6 +24,8 @@ Behaviour verified against crewai 1.15.28:
   exception raised inside a CrewAI hook is swallowed by CrewAI.
 - CrewAI catches tool exceptions itself and hands the error text to the model.
   The adapter does not change that; it records the error on the audit row.
+- When the adapter allowed a call but another pre-tool hook blocked it, the
+  call is recorded as not run ("blocked by another CrewAI hook").
 
 Run id: the active ``vw_session`` id, else a new id per crew kickoff, else the
 client's own id (e.g. ``Agent.kickoff`` outside a crew).
@@ -42,7 +44,7 @@ from crewai.hooks import HookAborted, InterceptionPoint, register_hook, unregist
 
 from ._core import default_client
 from ._logsafe import log_safe
-from .client import AgentControlClient, arguments_changed
+from .client import AgentControlClient, arguments_changed, has_audit_row
 from .decision import Decision, VerifyWiseDenied
 from .session import current_session_id, new_session_id
 
@@ -51,6 +53,10 @@ logger = logging.getLogger("verifywise_agent_control")
 ARGUMENTS_CHANGED_AFTER_RUN = (
     "arguments changed after VerifyWise checked them; the tool ran with arguments that were not checked"
 )
+
+# CrewAI's result text when a pre-tool hook returned False (crewai 1.15).
+_BLOCKED_BY_HOOK = "Tool execution blocked by hook."
+BLOCKED_BY_OTHER_HOOK = "blocked by another CrewAI hook"
 
 # How CrewAI hands a tool exception to the model: native function calling and
 # the ReAct loop use different texts (crewai 1.15).
@@ -84,6 +90,10 @@ class _Pending:
 _pending: ContextVar[tuple[_Pending, ...]] = ContextVar("verifywise_crewai_pending", default=())
 # Run ids of the crew kickoffs in progress in this context (innermost last).
 _kickoffs: ContextVar[tuple[str, ...]] = ContextVar("verifywise_crewai_kickoffs", default=())
+
+
+def _blocked_by_hook(result: Any) -> bool:
+    return isinstance(result, str) and result.lstrip().startswith(_BLOCKED_BY_HOOK)
 
 
 def _error_text(result: Any) -> str | None:
@@ -166,7 +176,21 @@ class CrewAIGovernance:
             if self.client.settings.on_deny == "raise":
                 raise VerifyWiseCrewAIDenied(entry.tool_name, entry.decision)
             return entry.decision.refusal_message
+        if not has_audit_row(entry.decision):
+            # Allowed by the fail mode during a gateway outage: there is no
+            # audit row to attach the result to.
+            return None
         try:
+            if _blocked_by_hook(ctx.raw_tool_result) or _blocked_by_hook(ctx.tool_result):
+                # We allowed it, but a pre-tool hook registered after ours
+                # blocked it, so the tool never ran.
+                self.client.report(
+                    session_id=entry.session_id,
+                    call_id=entry.call_id,
+                    tool_name=entry.tool_name,
+                    error=BLOCKED_BY_OTHER_HOOK,
+                )
+                return None
             error = _error_text(ctx.raw_tool_result) or _error_text(ctx.tool_result)
             output = None if error else ctx.raw_tool_result
         except Exception:  # noqa: BLE001 - never let result capture break the agent

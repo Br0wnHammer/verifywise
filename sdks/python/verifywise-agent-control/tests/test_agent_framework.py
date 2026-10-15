@@ -1,5 +1,7 @@
 """Microsoft Agent Framework adapter tests: real agent-framework, a scripted chat client, no network."""
 
+import json
+
 import httpx
 import pytest
 from conftest import GATEWAY, HOOK, RESULT, body_of
@@ -17,7 +19,7 @@ from agent_framework import (  # noqa: E402
     MiddlewareFailure,
 )
 
-from verifywise_agent_control import VerifyWiseDenied, vw_session  # noqa: E402
+from verifywise_agent_control import VerifyWiseDenied, governed, vw_session  # noqa: E402
 from verifywise_agent_control.agent_framework import VerifyWiseFunctionMiddleware  # noqa: E402
 
 RAN = []
@@ -224,3 +226,44 @@ def test_a_sync_client_is_turned_into_an_async_one(make_client):
     sync_client = make_client(fail_mode="closed")
     middleware = VerifyWiseFunctionMiddleware(sync_client)
     assert middleware.client.settings == sync_client.settings
+
+
+async def test_a_denial_raised_inside_a_tool_is_a_normal_tool_error(gateway, make_client, make_async_client):
+    """A tool that itself calls a governed function (on_deny="raise") which is
+    denied raises VerifyWiseDenied from its body. That is the tool failing, not
+    our pre-check refusing it, so the framework turns it into a tool error and
+    the run goes on."""
+
+    def decide(request):
+        name = json.loads(request.content)["tool_name"]
+        if name == "drop_table":
+            return httpx.Response(200, json={"decision": "deny", "reason": "destructive"})
+        return httpx.Response(200, json={"decision": "allow"})
+
+    gateway.post(HOOK).mock(side_effect=decide)
+    result = gateway.post(RESULT).respond(200, json={})
+
+    @governed(client=make_client(on_deny="raise"))
+    def drop_table(name: str) -> str:
+        raise AssertionError("must not run")
+
+    def maintenance(table: str) -> str:
+        """Run maintenance on a table."""
+        return drop_table(table)
+
+    first = Message(
+        role="assistant",
+        contents=[Content.from_function_call("call-1", "maintenance", arguments={"table": "users"})],
+    )
+    final = Message(role="assistant", contents=["final"])
+    client = ScriptedClient([ChatResponse(messages=[first]), ChatResponse(messages=[final])])
+    middleware = VerifyWiseFunctionMiddleware(make_async_client(on_deny="raise"))
+    agent = Agent(client=client, tools=[maintenance], middleware=[middleware])
+
+    out = await agent.run("go")
+
+    assert out.text == "final"
+    assert "destructive" in _tool_results(client)[0].exception
+    reported = body_of(result.calls.last)
+    assert reported["tool_name"] == "maintenance"
+    assert reported["tool_response"]["error"].startswith("VerifyWiseDenied: ")

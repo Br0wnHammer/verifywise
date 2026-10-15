@@ -281,3 +281,38 @@ def test_disabled_governance_does_not_check(gateway, make_client):
     assert _crew()[0].kickoff().raw == "final"
     assert RAN == [("add", 1, 2)]
     assert hook.call_count == 0
+
+
+@pytest.mark.parametrize("native", [True, False], ids=["native-tools", "react"])
+def test_a_call_blocked_by_another_hook_is_reported_as_not_run(gateway, make_client, native):
+    from crewai.hooks import InterceptionPoint, register_hook, unregister_hook
+
+    gateway.post(HOOK).respond(200, json={"decision": "allow"})
+    result = gateway.post(RESULT).respond(200, json={})
+    enable_crewai_governance(make_client())
+
+    def other_hook(ctx):
+        return False  # another hook, registered after ours, blocks the call
+
+    register_hook(InterceptionPoint.PRE_TOOL_CALL, other_hook)
+    try:
+        crew, _ = _crew(native=native)
+        assert crew.kickoff().raw == "final"
+    finally:
+        unregister_hook(InterceptionPoint.PRE_TOOL_CALL, other_hook)
+
+    assert RAN == []
+    assert result.call_count == 1
+    assert body_of(result.calls.last)["tool_response"] == {"error": "blocked by another CrewAI hook"}
+
+
+def test_an_outage_that_fails_open_is_not_reported(gateway, make_client):
+    hook = gateway.post(HOOK).mock(side_effect=httpx.ConnectError("down"))
+    result = gateway.post(RESULT).respond(200, json={})
+    enable_crewai_governance(make_client(fail_mode="open"))
+    crew, _ = _crew()
+
+    assert crew.kickoff().raw == "final"
+    assert RAN == [("add", 1, 2)]
+    assert hook.call_count == 1
+    assert result.call_count == 0

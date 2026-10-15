@@ -51,8 +51,8 @@ If the gateway URL or key is missing, the SDK logs a warning and applies `VW_FAI
 | `allow` in monitor mode | Runs the tool, records its output, and logs one `WARNING` describing what would have happened. The Activity log shows the call as monitored (would have been blocked, or would have needed approval) |
 | `deny` | Doesn't run the tool. The model gets `Blocked by VerifyWise policy: <reason>` and the agent continues |
 | `approval_required` | Polls every 2 s for up to `VW_APPROVAL_WAIT`. Approved → runs. Denied → refusal. Expired or timed out → `VW_APPROVAL_FAIL_MODE` |
-| `rate_limited` | Applies `VW_FAIL_MODE` |
-| Unreachable, timeout, HTTP 5xx or other non-200, unreadable reply | Applies `VW_FAIL_MODE` (default: run the tool) |
+| `rate_limited` | Applies `VW_FAIL_MODE`. A tool that runs has its result recorded on the gateway's `rate_limited` row |
+| Unreachable, timeout, HTTP 5xx or other non-200, unreadable reply | Applies `VW_FAIL_MODE` (default: run the tool). No result is recorded afterwards: the gateway has no record of the call to attach it to |
 | HTTP 401 or 403 (agent key revoked, expired or invalid) | Always refuses, whatever `VW_FAIL_MODE` says, and logs an `ERROR`. The refusal reads `VerifyWise rejected the agent key (revoked, expired or invalid)` |
 | Arguments JSON can't represent exactly | Always refuses, without contacting the gateway, and logs an `ERROR` (see below) |
 | An error inside the SDK itself | Always refuses (as if `VW_FAIL_MODE=closed`) and logs an `ERROR` with the traceback. A bug in the SDK is not a gateway outage, so it never opens the gate |
@@ -128,15 +128,16 @@ crew.kickoff()
 governance.disable()   # optional: stop checking tool calls
 ```
 
-The hooks are process-wide: they govern every crew and agent in the process, on every tool-execution path CrewAI has (native function calling, the text ReAct loop, parallel tool calls, `Agent.kickoff`). Calling `enable_crewai_governance()` again replaces the earlier registration. CrewAI runs pre-tool hooks in registration order and lets them edit the tool input, so call `enable_crewai_governance()` after registering any hook of your own that does: a hook registered later could change the input after VerifyWise checked it. If that happens the tool has already run, so the adapter records the call as an error (`arguments changed after VerifyWise checked them...`) and logs an `ERROR`. `kickoff_async()` and `akickoff()` work too; the check runs synchronously inside CrewAI's hook, as CrewAI requires.
+The hooks are process-wide: they govern every crew and agent in the process, on every tool-execution path CrewAI has (native function calling, the text ReAct loop, parallel tool calls, `Agent.kickoff`). Calling `enable_crewai_governance()` again replaces the earlier registration. CrewAI runs pre-tool hooks in registration order and lets them edit the tool input, so call `enable_crewai_governance()` after registering any hook of your own that does: a hook registered later could change the input after VerifyWise checked it. If that happens the tool has already run, so the adapter records the call as an error (`arguments changed after VerifyWise checked them...`) and logs an `ERROR`. `kickoff_async()` and `akickoff()` are governed too.
 
-CrewAI's tool-call hooks are synchronous. Under `akickoff()` the check, and any wait for a human approval, therefore blocks the event loop: other coroutines on that loop don't run until the approval is decided or `VW_APPROVAL_WAIT` runs out. Keep `VW_APPROVAL_WAIT` short for crews that share a loop with other work, or run them with `kickoff()` in a thread.
+**Limitation: under `akickoff()` the check blocks the event loop.** CrewAI's tool-call hooks are synchronous, so the adapter has to check each call synchronously inside the hook, with a blocking HTTP request. Under `akickoff()` that request, and any wait for a human approval, blocks the event loop: no other coroutine on that loop runs until the gateway answers, or, for a call that needs approval, until the approval is decided or `VW_APPROVAL_WAIT` (default 120 s) runs out. If the crew shares a loop with other work (a web server, other crews), keep `VW_APPROVAL_WAIT` short, or run the crew with `kickoff()` in a worker thread (`await asyncio.to_thread(crew.kickoff)`).
 
 How it behaves, verified against crewai 1.15.28 with a scripted LLM:
 
 - **Refused call.** The pre-tool hook blocks the call, so the tool does not run. CrewAI still runs the post-tool hooks on a blocked call, and the adapter's post-tool hook replaces CrewAI's fixed "Tool execution blocked by hook" text with `Blocked by VerifyWise policy: <reason>`. The model gets that text as the tool result and the agent continues. If you register your own post-tool hook after this one and it returns a string, it can overwrite the refusal text.
 - **`on_deny="raise"`.** CrewAI swallows ordinary exceptions raised inside hooks, so the adapter raises `VerifyWiseCrewAIDenied` instead: a `VerifyWiseDenied` that is also CrewAI's `HookAborted`. CrewAI passes it through without retrying the task, and `kickoff()` raises it.
 - **Tool errors.** CrewAI catches tool exceptions itself and gives the model an error message. The adapter leaves that alone and records the error on the call in Activity.
+- **Blocked by another hook.** When VerifyWise allows a call but another pre-tool hook blocks it, the tool does not run, and the call is recorded as an error (`blocked by another CrewAI hook`), not as completed.
 
 ## Microsoft Agent Framework
 
@@ -160,7 +161,7 @@ How it behaves, verified against agent-framework-core 1.21.0 with a scripted cha
 
 - **Refused call.** The middleware sets `context.result` to the refusal text and does not call `call_next`, so the tool does not run. The model gets the refusal as the function result and the agent continues.
 - **`on_deny="raise"`.** The loop turns ordinary middleware exceptions into tool-error results, so the adapter raises `VerifyWiseAgentFrameworkDenied`: a `VerifyWiseDenied` that is also the framework's `MiddlewareFailure`. `agent.run()` raises it.
-- **Tool errors.** The tool's exception reaches the middleware through `call_next`. The adapter records it and re-raises it unchanged, and the framework turns it into an error result for the model, as it normally does.
+- **Tool errors.** The tool's exception reaches the middleware through `call_next`. The adapter records it and re-raises it unchanged, and the framework turns it into an error result for the model, as it normally does. That includes a `VerifyWiseDenied` raised inside the tool (for example by a `@governed` function the tool calls with `on_deny="raise"`): only the middleware's own refusal stops the run.
 
 The middleware is async, like the framework. Pass an `AsyncAgentControlClient` as `client=` for explicit settings; an `AgentControlClient` is accepted too and its settings reused.
 
@@ -181,6 +182,8 @@ async def lookup(email: str) -> dict:
 
 safe_tool = govern_tool(existing_function, name="existing_tool")
 ```
+
+The gateway gets every argument the function runs with, by parameter name, including parameters left at their default (`run_sql("select 1")` on `def run_sql(query, database="prod")` sends `{"query": "select 1", "database": "prod"}`). `@governed` works on methods too: instance methods, class methods and static methods, placed above or below `@classmethod` / `@staticmethod`. The `self` or `cls` argument is not sent, since it is the object the method belongs to, not tool input.
 
 A refused call returns the refusal text instead of running the function. Async functions are supported, and so are objects whose `__call__` is `async def`; pass an `AsyncAgentControlClient` as `client=` for them, or let the SDK build one from the environment. A regular function that returns a coroutine (or other awaitable) instead of a result raises `TypeError`, because the call would otherwise never run; make it `async def`.
 

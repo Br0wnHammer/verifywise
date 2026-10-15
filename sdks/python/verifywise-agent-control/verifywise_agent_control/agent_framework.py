@@ -16,7 +16,10 @@ agent-framework-core 1.21.0:
 - With ``on_deny="raise"`` the middleware raises
   :class:`VerifyWiseAgentFrameworkDenied`, a ``VerifyWiseDenied`` that is also
   the framework's ``MiddlewareFailure``, the one exception the loop does not
-  turn into a tool-error result, so ``agent.run()`` raises it.
+  turn into a tool-error result, so ``agent.run()`` raises it. Only the
+  middleware's own check raises it: a ``VerifyWiseDenied`` raised inside the
+  tool (say, by a governed function the tool calls) is the tool failing and
+  becomes a normal tool-error result.
 - A tool exception reaches the middleware through ``call_next``; it is recorded
   and re-raised unchanged, and the framework turns it into an error result.
 
@@ -109,20 +112,18 @@ class VerifyWiseFunctionMiddleware(FunctionMiddleware):
             await call_next()
             return context.result
 
-        try:
-            outcome = await arun_governed(
-                self.client,
-                tool_name=tool_name,
-                arguments=_arguments(context),
-                execute=execute,
-                session_id=self._session_id(context),
-                call_id=str(call_id) if call_id else None,
-                describe=_describe,
-                # call_next runs context.arguments; dump them again right before.
-                current_arguments=lambda: _arguments(context),
-            )
-        except VerifyWiseDenied as denied:
-            # Raised only before the tool runs (on_deny="raise"). A plain
-            # exception would become a tool-error result and the loop would go on.
-            raise VerifyWiseAgentFrameworkDenied(denied.tool_name, denied.decision) from None
-        context.result = outcome
+        context.result = await arun_governed(
+            self.client,
+            tool_name=tool_name,
+            arguments=_arguments(context),
+            execute=execute,
+            session_id=self._session_id(context),
+            call_id=str(call_id) if call_id else None,
+            describe=_describe,
+            # call_next runs context.arguments; dump them again right before.
+            current_arguments=lambda: _arguments(context),
+            # Our own refusal (on_deny="raise") must stop the run; a plain
+            # exception would become a tool-error result and the loop would go
+            # on. Raised by the check only, never for an exception the tool raises.
+            denied_error=VerifyWiseAgentFrameworkDenied,
+        )

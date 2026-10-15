@@ -41,6 +41,8 @@ USER_AGENT = f"verifywise-agent-control/{__version__}"
 UNSENDABLE_REASON = "arguments could not be sent to VerifyWise for checking"
 KEY_REJECTED_REASON = "VerifyWise rejected the agent key (revoked, expired or invalid)"
 AUTH_FAILURES = (401, 403)
+# The gateway's 403 detail when a result is reported under another agent key.
+RESULT_NOT_OWNED = "result does not belong to this agent key"
 _MAX_DEPTH = 64
 # The only poll endpoint the gateway hands out; anything else is not followed.
 _POLL_ENDPOINT = re.compile(r"/v1/mcp/approvals/([A-Za-z0-9_-]{1,64})/status")
@@ -50,6 +52,7 @@ __all__ = [
     "UnsendableArguments",
     "arguments_changed",
     "arguments_json",
+    "has_audit_row",
     "MAX_RESULT_BYTES",
     "AgentControlClient",
     "AsyncAgentControlClient",
@@ -181,6 +184,16 @@ def _log_monitored(tool_name: str, monitored: Any) -> None:
     )
 
 
+def _reply_detail(response: httpx.Response) -> str | None:
+    """The ``detail`` of a FastAPI error reply, if it has a string one."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return detail if isinstance(detail, str) else None
+
+
 def _with_checked(decision: Decision, checked: str) -> Decision:
     """Record on an allowed decision the exact arguments the gateway checked."""
     if not decision.allowed:
@@ -198,6 +211,14 @@ def arguments_changed(decision: Decision, arguments: Any) -> bool:
         return arguments_json(arguments) != decision.checked_arguments
     except UnsendableArguments:
         return True
+
+
+def has_audit_row(decision: Decision) -> bool:
+    """False when the decision is a fail mode applied because the gateway was
+    unreachable or answered with an error: no audit row exists for the call,
+    so there is nothing to attach a result to. A rate_limited reply does write
+    a row, and an approval fallback follows an approval_required row."""
+    return not (decision.fail_mode_applied and decision.status == d.GATEWAY_ERROR)
 
 
 class _ClientBase:
@@ -434,18 +455,36 @@ class _ClientBase:
         )
 
     @staticmethod
-    def _log_report_status(tool_name: str, status_code: int) -> None:
-        if status_code in AUTH_FAILURES:
+    def _log_report_status(tool_name: str, response: httpx.Response) -> None:
+        """Log a result report the gateway did not accept, saying what it said.
+
+        The gateway answers 401 when it rejects the agent key, and 403 with
+        ``RESULT_NOT_OWNED`` when the call was recorded under another agent
+        key. Every value from the reply goes through log_safe.
+        """
+        status_code = response.status_code
+        if status_code == 200:
+            return
+        detail = _reply_detail(response)
+        suffix = f": {log_safe(detail)}" if detail else ""
+        if status_code == 401:
             logger.error(
-                "VerifyWise rejected the agent key (HTTP %s) when recording the result of tool '%s'",
-                status_code,
+                "VerifyWise rejected the agent key (HTTP 401) when recording the result of tool '%s'%s",
+                log_safe(tool_name),
+                suffix,
+            )
+        elif status_code == 403 and detail == RESULT_NOT_OWNED:
+            logger.error(
+                "VerifyWise did not record the result of tool '%s' (HTTP 403): the call was "
+                "recorded under a different agent key. Use the same agent key to check and report a call.",
                 log_safe(tool_name),
             )
-        elif status_code != 200:
+        else:
             logger.warning(
-                "VerifyWise did not record the result of tool '%s' (HTTP %s)",
+                "VerifyWise did not record the result of tool '%s' (HTTP %s)%s",
                 log_safe(tool_name),
                 status_code,
+                suffix,
             )
 
 
@@ -536,7 +575,7 @@ class AgentControlClient(_ClientBase):
                 timeout=self.settings.timeout,
                 follow_redirects=False,
             )
-            self._log_report_status(tool_name, response.status_code)
+            self._log_report_status(tool_name, response)
         except Exception as exc:  # noqa: BLE001 - result capture is best-effort
             logger.warning(
                 "VerifyWise could not record the result of tool '%s': %s",
@@ -685,7 +724,7 @@ class AsyncAgentControlClient(_ClientBase):
                 timeout=self.settings.timeout,
                 follow_redirects=False,
             )
-            self._log_report_status(tool_name, response.status_code)
+            self._log_report_status(tool_name, response)
         except Exception as exc:  # noqa: BLE001 - result capture is best-effort
             logger.warning(
                 "VerifyWise could not record the result of tool '%s': %s",
