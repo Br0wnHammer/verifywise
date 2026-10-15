@@ -26,6 +26,9 @@ from crud.mcp_audit import CIRCUIT_BREAKER_SUMMARY
 from crud.mcp_tools import get_all_tools
 from services.mcp_audit_service import log_tool_call
 from services.mcp_monitor import (
+    SOURCE_GUARDRAIL,
+    SOURCE_TOOL_ACL,
+    SOURCE_TOOL_REQUIRES_APPROVAL,
     WOULD_BLOCK,
     WOULD_NEED_APPROVAL,
     is_monitor,
@@ -148,7 +151,9 @@ async def mcp_jsonrpc(request: Request):
         gateway_session_id = request.headers.get("mcp-session-id")
 
         # Monitor-only key: policies that would have stopped the call are
-        # collected here instead of enforced, and land in the audit row's events.
+        # collected here instead of enforced, and land in the audit row's events
+        # (each stamped when its policy was evaluated). Proxy rows carry only
+        # these would_* entries; they have no received / decided events.
         monitor = is_monitor(agent_key)
         outcomes: list[dict] = []
 
@@ -180,7 +185,7 @@ async def mcp_jsonrpc(request: Request):
             if monitor:
                 violation = tool_acl_violation(agent_key, tool_name)
                 if violation:
-                    outcomes.append(outcome(WOULD_BLOCK, violation))
+                    outcomes.append(outcome(WOULD_BLOCK, violation, SOURCE_TOOL_ACL))
             else:
                 enforce_tool_acls(agent_key, tool_name)
             # Rate limit and circuit breaker stay enforced for a monitor key.
@@ -188,7 +193,11 @@ async def mcp_jsonrpc(request: Request):
 
             if tool.get("requires_approval") and monitor:
                 # No approval request is looked up, created or notified.
-                outcomes.append(outcome(WOULD_NEED_APPROVAL, f"Tool '{tool_name}' requires approval"))
+                outcomes.append(outcome(
+                    WOULD_NEED_APPROVAL,
+                    f"Tool '{tool_name}' requires approval",
+                    SOURCE_TOOL_REQUIRES_APPROVAL,
+                ))
             elif tool.get("requires_approval"):
                 # Approvals are scoped to the exact arguments of this call, so an
                 # approval for one set of arguments cannot be reused for another.
@@ -229,25 +238,26 @@ async def mcp_jsonrpc(request: Request):
             scan_result = await scan_tool_input(
                 org_id, tool_name, arguments, agent_key_id=agent_key["id"]
             )
-            if scan_result and scan_result.blocked and monitor:
-                matched_rule_id, matched_rule_name = blocking_rule(scan_result)
-                outcomes.append(outcome(
-                    WOULD_BLOCK,
-                    f"Guardrail: {scan_result.block_reason or 'policy violation'}",
-                    matched_rule_id,
-                    matched_rule_name,
-                ))
-            elif scan_result and scan_result.blocked:
+            if scan_result and scan_result.blocked:
                 reason = scan_result.block_reason or "policy violation"
                 matched_rule_id, matched_rule_name = blocking_rule(scan_result)
-                await _audit(
-                    "blocked",
-                    f"Guardrail: {reason}",
-                    False,
-                    matched_rule_id=matched_rule_id,
-                    matched_rule_name=matched_rule_name,
-                )
-                return JSONResponse(content=_jsonrpc_error(msg_id, -32003, f"Blocked by guardrail: {reason}"), status_code=200)
+                if monitor:
+                    outcomes.append(outcome(
+                        WOULD_BLOCK,
+                        f"Guardrail: {reason}",
+                        SOURCE_GUARDRAIL,
+                        matched_rule_id,
+                        matched_rule_name,
+                    ))
+                else:
+                    await _audit(
+                        "blocked",
+                        f"Guardrail: {reason}",
+                        False,
+                        matched_rule_id=matched_rule_id,
+                        matched_rule_name=matched_rule_name,
+                    )
+                    return JSONResponse(content=_jsonrpc_error(msg_id, -32003, f"Blocked by guardrail: {reason}"), status_code=200)
 
             server_id = tool["server_id"]
 

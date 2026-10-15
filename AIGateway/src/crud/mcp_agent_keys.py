@@ -56,9 +56,11 @@ async def get_all_agent_keys(org_id: int) -> list[dict]:
                     ak.created_by,
                     ak.created_at,
                     ak.updated_at,
-                    u.name AS created_by_name
+                    u.name AS created_by_name,
+                    mu.name AS enforcement_mode_changed_by_name
                 FROM ai_gateway_mcp_agent_keys ak
                 LEFT JOIN users u ON u.id = ak.created_by
+                LEFT JOIN users mu ON mu.id = ak.enforcement_mode_changed_by
                 WHERE ak.organization_id = :org_id
                 ORDER BY ak.created_at DESC
             """),
@@ -249,6 +251,9 @@ async def update_agent_key(org_id: int, key_id: int, data: dict) -> Optional[dic
             enforcement_mode,
             enforcement_mode_changed_at,
             enforcement_mode_changed_by,
+            -- NOW() is the transaction start time, so this is true only when
+            -- this UPDATE stamped enforcement_mode_changed_at (the mode changed).
+            enforcement_mode_changed_at IS NOT DISTINCT FROM NOW() AS enforcement_mode_changed,
             created_by,
             created_at,
             updated_at

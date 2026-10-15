@@ -731,3 +731,178 @@ async def test_result_capture_keeps_would_statuses(monkeypatch):
 
         assert out == "ok"
         assert executed[1][1]["new_status"] == status
+
+
+# ─── Review follow-ups ───────────────────────────────────────────────────────
+
+
+async def test_mode_changed_by_never_blocks_a_user_delete():
+    """Deleting a VerifyWise user must not fail because they once changed a
+    key's mode: the reference is cleared instead."""
+    migration = (
+        Path(__file__).parent.parent
+        / "src/database/migrations/versions/a0014_agent_key_enforcement_mode.py"
+    ).read_text()
+    assert "enforcement_mode_changed_by INTEGER NULL" in migration
+    assert "REFERENCES users(id) ON DELETE SET NULL" in migration
+
+
+def _would_events(audit):
+    return [e for e in audit["events"] if e["type"].startswith("would_")]
+
+
+class TestOutcomeSource:
+    async def test_hook_guardrail_and_approval_rule_sources(self, hook_fakes):
+        hook_fakes.key = _key("monitor")
+        hook_fakes.scan = _blocked_scan()
+        hook_fakes.approval_rule = APPROVAL_RULE
+
+        body = _body(await hook.mcp_hook(_hook_request()))
+
+        sources = {e["type"]: e["source"] for e in _would_events(hook_fakes.audits[0])}
+        assert sources == {"would_block": "guardrail", "would_need_approval": "approval_rule"}
+        assert [o["source"] for o in body["monitored"]["outcomes"]] == ["guardrail", "approval_rule"]
+        assert body["monitored"]["source"] == "guardrail"
+
+    async def test_proxy_sources(self, proxy_fakes):
+        proxy_fakes.key = _key("monitor", allowed_tools=["read_*"])
+        proxy_fakes.tool["requires_approval"] = True
+        proxy_fakes.scan = _blocked_scan()
+
+        await proxy.mcp_jsonrpc(_call())
+
+        pairs = [(e["type"], e["source"]) for e in _would_events(proxy_fakes.audits[0])]
+        assert pairs == [
+            ("would_block", "tool_acl"),
+            ("would_need_approval", "tool_requires_approval"),
+            ("would_block", "guardrail"),
+        ]
+
+
+class TestHookPolicyHelper:
+    async def test_first_only_stops_at_the_guardrail_hit(self, hook_fakes, monkeypatch):
+        hook_fakes.scan = _blocked_scan()
+        calls = []
+
+        async def approval(org_id, tool_name, arguments, *, agent_key_id):
+            calls.append(tool_name)
+            return APPROVAL_RULE
+
+        monkeypatch.setattr(hook, "check_require_approval", approval)
+        hits = await hook.evaluate_hook_policies(1, "Bash", {}, 5, first_only=True)
+
+        assert [h.kind for h in hits] == ["deny"]
+        assert calls == []
+
+    async def test_all_outcomes_when_not_first_only(self, hook_fakes):
+        hook_fakes.scan = _blocked_scan()
+        hook_fakes.approval_rule = APPROVAL_RULE
+
+        hits = await hook.evaluate_hook_policies(1, "Bash", {}, 5, first_only=False)
+
+        assert [h.kind for h in hits] == ["deny", "approval"]
+        assert hits[0].rule_id == 11 and hits[1].rule_id == 21
+        assert hits[0].reason == "PII detected: EMAIL_ADDRESS"
+        assert hits[1].approval_rule == APPROVAL_RULE
+
+
+async def test_proxy_would_events_are_timestamped_at_evaluation(proxy_fakes, monkeypatch):
+    """The would_* entries record when the policy was evaluated, before the
+    upstream call, not when the audit row is written afterwards."""
+    import asyncio
+    from datetime import datetime, timezone
+
+    proxy_fakes.key = _key("monitor", blocked_tools=["delete_*"])
+    forwarded_at = []
+
+    async def slow_forward(**kwargs):
+        await asyncio.sleep(0.01)
+        forwarded_at.append(datetime.now(timezone.utc).isoformat())
+        return {"content": [{"type": "text", "text": "deleted"}]}, None
+
+    monkeypatch.setattr(proxy, "forward_tool_call", slow_forward)
+
+    await proxy.mcp_jsonrpc(_call())
+
+    (event,) = _would_events(proxy_fakes.audits[0])
+    assert event["at"] < forwarded_at[0]
+
+
+async def test_list_returns_who_changed_the_mode(monkeypatch):
+    get_db, executed = _recording_db()
+    monkeypatch.setattr(keys_crud, "get_db", get_db)
+
+    await keys_crud.get_all_agent_keys(1)
+
+    sql = executed[0][0]
+    assert "AS enforcement_mode_changed_by_name" in sql
+    assert "LEFT JOIN users mu ON mu.id = ak.enforcement_mode_changed_by" in sql
+
+
+async def test_update_reports_whether_the_mode_changed(monkeypatch):
+    get_db, executed = _recording_db({"id": 5})
+    monkeypatch.setattr(keys_crud, "get_db", get_db)
+
+    await keys_crud.update_agent_key(1, 5, {"enforcement_mode": "monitor", "enforcement_mode_changed_by": 7})
+
+    returning = executed[0][0].split("RETURNING")[1]
+    # NOW() is the transaction start, so this is true only when this UPDATE stamped it.
+    assert "enforcement_mode_changed_at IS NOT DISTINCT FROM NOW() AS enforcement_mode_changed" in returning
+
+
+async def test_agent_activity_by_tool_counts_would_need_approval(monkeypatch):
+    get_db, executed = _recording_db(None)
+    monkeypatch.setattr(audit_crud, "get_db", get_db)
+
+    await audit_crud.get_agent_activity(org_id=1, agent_key_id=5)
+
+    by_tool_sql = executed[1][0]
+    assert "result_status = 'would_need_approval') AS would_need_approval_count" in by_tool_sql
+
+
+class TestModeChangeNotification:
+    @pytest.fixture
+    def notify(self, monkeypatch):
+        sent = AsyncMock()
+        state = SimpleNamespace(changed=True)
+
+        async def update(org_id, key_id, data):
+            return {"id": key_id, "name": "build-bot", **data,
+                    "enforcement_mode_changed": state.changed}
+
+        monkeypatch.setattr(keys_router, "update_agent_key", update)
+        monkeypatch.setattr(keys_router, "notify_config_change", sent)
+        return SimpleNamespace(sent=sent, state=state)
+
+    async def test_actual_change_sends_a_distinct_event(self, notify):
+        out = await keys_router.update_key(5, _admin_request({"enforcement_mode": "monitor"}))
+
+        (call,) = notify.sent.await_args_list
+        event = call.kwargs["event"]
+        assert event["action"] == "enforcement_mode_changed"
+        assert event["entityType"] == "Agent key"
+        assert event["entityName"] == "build-bot"
+        assert event["oldMode"] == "enforce" and event["newMode"] == "monitor"
+        assert event["actionUrl"] == "/ai-gateway/mcp/agent-keys"
+        assert call.kwargs["changed_by_user_id"] == 7
+        # Internal flag is not part of the API response.
+        assert "enforcement_mode_changed" not in out["data"]
+
+    async def test_switch_back_to_enforce(self, notify):
+        await keys_router.update_key(5, _admin_request({"enforcement_mode": "enforce"}))
+
+        event = notify.sent.await_args.kwargs["event"]
+        assert event["oldMode"] == "monitor" and event["newMode"] == "enforce"
+
+    async def test_same_mode_sends_the_generic_update(self, notify):
+        notify.state.changed = False
+
+        await keys_router.update_key(5, _admin_request({"enforcement_mode": "monitor"}))
+
+        assert notify.sent.await_args.kwargs["event"]["action"] == "updated"
+
+    async def test_mode_change_with_other_fields_sends_both(self, notify):
+        await keys_router.update_key(5, _admin_request({"enforcement_mode": "monitor", "name": "b"}))
+
+        actions = [c.kwargs["event"]["action"] for c in notify.sent.await_args_list]
+        assert actions == ["updated", "enforcement_mode_changed"]

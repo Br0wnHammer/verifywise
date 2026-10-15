@@ -229,7 +229,9 @@ async def get_agent_activity(org_id: int, agent_key_id: int, days: int = 30) -> 
                         WHERE result_status = 'blocked'
                           AND result_summary IS DISTINCT FROM :circuit_breaker
                     ) AS denied,
-                       COUNT(*) FILTER (WHERE result_status = 'would_block') AS would_block_count
+                       COUNT(*) FILTER (WHERE result_status = 'would_block') AS would_block_count,
+                       COUNT(*) FILTER (
+                        WHERE result_status = 'would_need_approval') AS would_need_approval_count
                 FROM ai_gateway_mcp_audit_logs
                 WHERE organization_id = :org_id AND agent_key_id = :akid
                   AND created_at >= NOW() - INTERVAL '1 day' * :days

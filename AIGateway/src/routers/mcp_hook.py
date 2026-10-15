@@ -18,6 +18,7 @@ recorded as a would_block / would_need_approval audit row.
 import json
 import logging
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Request, HTTPException
@@ -29,6 +30,8 @@ from services.mcp_audit_service import log_tool_call, update_tool_result
 from services.mcp_approval_match import check_require_approval
 from services.mcp_guardrail_service import blocking_rule, scan_tool_input, scan_result_blob
 from services.mcp_monitor import (
+    SOURCE_APPROVAL_RULE,
+    SOURCE_GUARDRAIL,
     WOULD_BLOCK,
     WOULD_NEED_APPROVAL,
     is_monitor,
@@ -44,6 +47,88 @@ from utils.notifications import notify_approval_pending
 logger = logging.getLogger("uvicorn")
 
 router = APIRouter()
+
+
+@dataclass
+class PolicyHit:
+    """One policy that stops (or would stop) a native tool call."""
+
+    kind: str  # "deny" (guardrail block / mask) | "approval" (require_approval rule)
+    reason: str
+    rule_id: int | None = None
+    rule_name: str | None = None
+    detections: list = field(default_factory=list)  # deny only
+    approval_rule: dict | None = None  # approval only
+
+    def as_outcome(self) -> dict:
+        """The monitor-mode record of this hit."""
+        if self.kind == "deny":
+            return outcome(WOULD_BLOCK, self.reason, SOURCE_GUARDRAIL, self.rule_id, self.rule_name)
+        return outcome(
+            WOULD_NEED_APPROVAL,
+            f"rule '{self.rule_name}' requires approval" if self.rule_name else "a rule requires approval",
+            SOURCE_APPROVAL_RULE,
+            self.rule_id,
+            self.rule_name,
+        )
+
+
+async def evaluate_hook_policies(
+    org_id: int, tool_name: str, arguments: dict, agent_key_id: int, *, first_only: bool
+) -> list[PolicyHit]:
+    """Evaluate the guardrails, then the require_approval rules, for one native
+    tool call. Read-only: creates no approval request and sends nothing.
+
+    first_only=True (enforce mode) returns as soon as a policy hits, so a
+    guardrail deny skips the approval check. first_only=False (monitor mode)
+    evaluates both and returns every hit, in that order.
+    """
+    hits: list[PolicyHit] = []
+
+    # field_aware: native file-write tools are scanned only on written content
+    # (Write.content, Edit.new_string, ...), not old_string/file_path. This applies
+    # to PII, content-filter AND prompt-injection on the hook path — injection in a
+    # removed line or a path is intentionally not scanned (we gate what is written).
+    scan_result = await scan_tool_input(
+        org_id, tool_name, arguments, field_aware=True, agent_key_id=agent_key_id
+    )
+    # A mask rule can't rewrite a command/file the agent itself executes, so on the
+    # hook path a mask detection is escalated to a hard deny. An org that configured
+    # a PII rule as action="mask" (fine on the LLM proxy) therefore BLOCKS matching
+    # native tool calls rather than masking them — intentional, surfaced in the reason.
+    mask_hit = any(getattr(d, "action", None) == "mask" for d in scan_result.detections)
+    if scan_result.blocked or mask_hit:
+        reason = scan_result.block_reason
+        if not reason and mask_hit:
+            reason = "mask rule matched (masking not supported for native tool calls)"
+        # Record the rule that caused the deny (a mask hit counts here, since the
+        # hook escalates it) so the Activity log can show why the call stopped.
+        rule_id, rule_name = blocking_rule(scan_result, include_mask=True)
+        hits.append(PolicyHit(
+            kind="deny",
+            reason=reason or "policy violation",
+            rule_id=rule_id,
+            rule_name=rule_name,
+            detections=[
+                {"rule": d.guardrail_type, "action": d.action, "snippet": d.entity_type}
+                for d in scan_result.detections
+            ],
+        ))
+        if first_only:
+            return hits
+
+    approval_rule = await check_require_approval(
+        org_id, tool_name, arguments, agent_key_id=agent_key_id
+    )
+    if approval_rule:
+        hits.append(PolicyHit(
+            kind="approval",
+            reason="",
+            rule_id=approval_rule.get("id"),
+            rule_name=approval_rule.get("name"),
+            approval_rule=approval_rule,
+        ))
+    return hits
 
 
 @router.post("/v1/mcp/hook")
@@ -102,47 +187,27 @@ async def mcp_hook(request: Request):
     if is_monitor(agent_key):
         return await _monitor_hook(agent_key, org_id, tool_name, arguments, _audit)
 
-    # ── Guardrail scan (UNCHANGED shared path): block / mask -> deny ─────────
+    # ── Policy: guardrail (block / mask -> deny), then require_approval ──────
     # Policy (block / mask / require_approval) is evaluated BEFORE the rate
     # limit so a rate-limited agent cannot burst past its cap to get a
     # policy-violating command allowed (rate_limited fails open by default).
-    # field_aware: native file-write tools are scanned only on written content
-    # (Write.content, Edit.new_string, ...), not old_string/file_path. This applies
-    # to PII, content-filter AND prompt-injection on the hook path — injection in a
-    # removed line or a path is intentionally not scanned (we gate what is written).
-    scan_result = await scan_tool_input(
-        org_id, tool_name, arguments, field_aware=True, agent_key_id=agent_key["id"]
+    # Enforce mode stops at the first hit, exactly as before.
+    hits = await evaluate_hook_policies(
+        org_id, tool_name, arguments, agent_key["id"], first_only=True
     )
-    # A mask rule can't rewrite a command/file the agent itself executes, so on the
-    # hook path a mask detection is escalated to a hard deny. An org that configured
-    # a PII rule as action="mask" (fine on the LLM proxy) therefore BLOCKS matching
-    # native tool calls rather than masking them — intentional, surfaced in the reason.
-    mask_hit = any(getattr(d, "action", None) == "mask" for d in scan_result.detections)
-    if scan_result.blocked or mask_hit:
-        reason = scan_result.block_reason
-        if not reason and mask_hit:
-            reason = "mask rule matched (masking not supported for native tool calls)"
-        reason = reason or "policy violation"
-        detections = [
-            {"rule": d.guardrail_type, "action": d.action, "snippet": d.entity_type}
-            for d in scan_result.detections
-        ]
-        # Record the rule that caused the deny (a mask hit counts here, since the
-        # hook escalates it) so the Activity log can show why the call stopped.
-        matched_rule_id, matched_rule_name = blocking_rule(scan_result, include_mask=True)
+    hit = hits[0] if hits else None
+    if hit and hit.kind == "deny":
         await _audit(
             "blocked",
-            f"Hook deny: {reason}",
+            f"Hook deny: {hit.reason}",
             "deny",
-            matched_rule_id=matched_rule_id,
-            matched_rule_name=matched_rule_name,
+            matched_rule_id=hit.rule_id,
+            matched_rule_name=hit.rule_name,
         )
-        return JSONResponse(content={"decision": "deny", "reason": reason, "detections": detections})
+        return JSONResponse(content={"decision": "deny", "reason": hit.reason, "detections": hit.detections})
 
     # ── require_approval (hook-only matcher): create/reuse approval request ──
-    approval_rule = await check_require_approval(
-        org_id, tool_name, arguments, agent_key_id=agent_key["id"]
-    )
+    approval_rule = hit.approval_rule if hit else None
     human_approved = False
     if approval_rule:
         args_hash = hash_arguments(arguments)
@@ -218,35 +283,15 @@ async def _monitor_hook(agent_key: dict, org_id: int, tool_name: str, arguments:
     """Monitor-only key: evaluate every policy, never deny or pause the call.
 
     The guardrail scan and the require_approval match both run (in enforce mode a
-    guardrail hit returns before the approval check). No approval request is
+    guardrail hit returns before the approval check). The key's tool lists are
+    not evaluated on this path. No approval request is
     created, reused or notified. The rate limit is still enforced: it protects
     the gateway rather than expressing policy.
     """
-    outcomes = []
-
-    scan_result = await scan_tool_input(
-        org_id, tool_name, arguments, field_aware=True, agent_key_id=agent_key["id"]
+    hits = await evaluate_hook_policies(
+        org_id, tool_name, arguments, agent_key["id"], first_only=False
     )
-    # Same deny condition as enforce mode: a mask hit counts as a deny here.
-    mask_hit = any(getattr(d, "action", None) == "mask" for d in scan_result.detections)
-    if scan_result.blocked or mask_hit:
-        reason = scan_result.block_reason
-        if not reason and mask_hit:
-            reason = "mask rule matched (masking not supported for native tool calls)"
-        rule_id, rule_name = blocking_rule(scan_result, include_mask=True)
-        outcomes.append(outcome(WOULD_BLOCK, reason or "policy violation", rule_id, rule_name))
-
-    approval_rule = await check_require_approval(
-        org_id, tool_name, arguments, agent_key_id=agent_key["id"]
-    )
-    if approval_rule:
-        name = approval_rule.get("name")
-        outcomes.append(outcome(
-            WOULD_NEED_APPROVAL,
-            f"rule '{name}' requires approval" if name else "a rule requires approval",
-            approval_rule.get("id"),
-            name,
-        ))
+    outcomes = [h.as_outcome() for h in hits]
 
     events = outcome_events(outcomes)
 

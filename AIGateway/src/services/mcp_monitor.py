@@ -1,15 +1,17 @@
 """
 Monitor-only enforcement mode for Agent Control agent keys.
 
-An agent key with enforcement_mode = 'monitor' is evaluated against every policy
-(guardrails, require_approval rules, per-key tool lists) but never blocked or
-paused: the call goes through and the audit row records what would have
+An agent key with enforcement_mode = 'monitor' is evaluated against the same
+policies as an enforce key (guardrails and approval rules on both paths; on the
+MCP proxy also the key's tool lists and a tool's requires_approval flag) but
+never blocked or paused: the call goes through and the audit row records what would have
 happened. Rate limits and the circuit breaker stay enforced, since they protect
 the gateway and upstream servers rather than express policy.
 
 Each would-be decision is an "outcome". A call can produce several; the audit
 row's result_status is the most severe one and every outcome is added to the
-row's events timeline.
+row's events timeline. Each outcome records its source (which kind of check
+produced it) and the time it was evaluated.
 """
 
 from datetime import datetime, timezone
@@ -21,6 +23,12 @@ ENFORCEMENT_MODES = (ENFORCE, MONITOR)
 
 WOULD_BLOCK = "would_block"
 WOULD_NEED_APPROVAL = "would_need_approval"
+
+# Which check produced an outcome.
+SOURCE_GUARDRAIL = "guardrail"  # a guardrail rule (block, or mask on the hook)
+SOURCE_APPROVAL_RULE = "approval_rule"  # a require_approval rule (native hook)
+SOURCE_TOOL_ACL = "tool_acl"  # the key's allowed / blocked tool lists (MCP proxy)
+SOURCE_TOOL_REQUIRES_APPROVAL = "tool_requires_approval"  # tool flagged requires_approval (MCP proxy)
 
 # Most severe first.
 _SEVERITY = (WOULD_BLOCK, WOULD_NEED_APPROVAL)
@@ -36,11 +44,20 @@ def is_monitor(agent_key: dict) -> bool:
 def outcome(
     status: str,
     reason: str,
+    source: str,
     rule_id: Optional[int] = None,
     rule_name: Optional[str] = None,
 ) -> dict:
-    """One would-be decision. status is WOULD_BLOCK or WOULD_NEED_APPROVAL."""
-    return {"status": status, "reason": reason, "rule_id": rule_id, "rule_name": rule_name}
+    """One would-be decision. status is WOULD_BLOCK or WOULD_NEED_APPROVAL;
+    source is one of the SOURCE_* values. Stamped with the evaluation time."""
+    return {
+        "status": status,
+        "reason": reason,
+        "source": source,
+        "rule_id": rule_id,
+        "rule_name": rule_name,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def most_severe(outcomes: list[dict]) -> dict:
@@ -53,13 +70,14 @@ def most_severe(outcomes: list[dict]) -> dict:
 
 
 def outcome_events(outcomes: list[dict]) -> list[dict]:
-    """Events-timeline entries, one per outcome, so every outcome stays visible."""
-    at = datetime.now(timezone.utc).isoformat()
+    """Events-timeline entries, one per outcome, so every outcome stays visible.
+    Each entry carries the time its policy was evaluated."""
     return [
         {
             "type": o["status"],
-            "at": at,
+            "at": o["at"],
             "detail": o["reason"],
+            "source": o["source"],
             "rule_id": o["rule_id"],
             "rule_name": o["rule_name"],
         }
@@ -69,7 +87,7 @@ def outcome_events(outcomes: list[dict]) -> list[dict]:
 
 def _public(o: dict) -> dict:
     rule = {"id": o["rule_id"], "name": o["rule_name"]} if o["rule_id"] is not None else None
-    return {"would": _WOULD[o["status"]], "reason": o["reason"], "rule": rule}
+    return {"would": _WOULD[o["status"]], "reason": o["reason"], "source": o["source"], "rule": rule}
 
 
 def monitored_payload(outcomes: list[dict]) -> dict:

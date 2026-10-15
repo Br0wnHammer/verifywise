@@ -10,7 +10,8 @@ Adds enforcement_mode to MCP agent keys:
 
 enforcement_mode_changed_at / enforcement_mode_changed_by record when and by
 which VerifyWise user the mode last changed (stamped on create only for a
-non-default mode). changed_by references users like created_by does.
+non-default mode). changed_by references users ON DELETE SET NULL, so deleting
+a user who once changed a key's mode clears the reference instead of failing.
 
 Revision ID: a0014
 Revises: a0013
@@ -42,7 +43,7 @@ def upgrade() -> None:
     op.execute(
         "ALTER TABLE ai_gateway_mcp_agent_keys "
         "ADD COLUMN IF NOT EXISTS enforcement_mode_changed_by INTEGER NULL "
-        "REFERENCES users(id)"
+        "REFERENCES users(id) ON DELETE SET NULL"
     )
 
 
