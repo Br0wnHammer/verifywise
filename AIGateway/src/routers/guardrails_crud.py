@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Query, Request
 from utils.auth import get_org_id, get_user_id, require_admin
 from utils.change_history import record_guardrail_change
-from utils.notifications import notify_config_change
+from utils.notifications import config_event, notify_config_change
 
 from crud.guardrails import (
     create_guardrail,
@@ -31,7 +31,6 @@ from crud.guardrails import (
 
 router = APIRouter(prefix="/guardrails", tags=["guardrails-crud"])
 
-FRONTEND_URL = "http://localhost:5173"
 
 VALID_GUARDRAIL_TYPES = {"pii", "content_filter"}
 VALID_ACTIONS = {"block", "mask"}
@@ -127,12 +126,9 @@ async def create_guardrail_rule(request: Request):
     )
 
     await notify_config_change(
-        org_id=org_id,
-        user_id=user_id,
-        entity="guardrail",
-        action="created",
-        detail={"rule_id": rule.get("id"), "name": rule.get("name")},
-        frontend_url=FRONTEND_URL,
+        org_id,
+        user_id,
+        config_event("guardrail", "created", rule.get("name"), rule.get("id")),
     )
 
     return {"rule": rule}
@@ -191,12 +187,9 @@ async def update_guardrail_rule(rule_id: int, request: Request):
     if "is_active" in body:
         toggle_label = "enabled" if body["is_active"] else "disabled"
         await notify_config_change(
-            org_id=org_id,
-            user_id=user_id,
-            entity="guardrail",
-            action=toggle_label,
-            detail={"rule_id": rule_id, "name": updated.get("name")},
-            frontend_url=FRONTEND_URL,
+            org_id,
+            user_id,
+            config_event("guardrail", toggle_label, updated.get("name"), rule_id),
         )
 
     return {"rule": updated}
@@ -221,12 +214,9 @@ async def delete_guardrail_rule(rule_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Guardrail rule not found")
 
     await notify_config_change(
-        org_id=org_id,
-        user_id=user_id,
-        entity="guardrail",
-        action="deleted",
-        detail={"rule_id": rule_id},
-        frontend_url=FRONTEND_URL,
+        org_id,
+        user_id,
+        config_event("guardrail", "deleted", deleted["name"], rule_id),
     )
 
     return {"deleted": True, "rule_id": rule_id}
@@ -261,12 +251,9 @@ async def write_guardrail_settings(request: Request):
     settings, previous = await upsert_guardrail_settings_with_previous(org_id, body)
 
     await notify_config_change(
-        org_id=org_id,
-        user_id=user_id,
-        entity="guardrail_settings",
-        action="updated",
-        detail={"settings": settings},
-        frontend_url=FRONTEND_URL,
+        org_id,
+        user_id,
+        config_event("guardrail_settings", "updated"),
     )
 
     # previous_retention: the retention values this save replaced, read under
@@ -354,12 +341,13 @@ async def purge_logs(request: Request):
     total_deleted = purged["deleted"]
 
     await notify_config_change(
-        org_id=org_id,
-        user_id=user_id,
-        entity="guardrail_logs",
-        action="purged",
-        detail={"total_deleted": total_deleted, "retention_days": retention_days},
-        frontend_url=FRONTEND_URL,
+        org_id,
+        user_id,
+        config_event(
+            "guardrail_logs",
+            "purged",
+            detail=f"{total_deleted} entries older than {retention_days} days",
+        ),
     )
 
     return {

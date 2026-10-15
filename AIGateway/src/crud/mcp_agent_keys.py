@@ -282,7 +282,7 @@ async def update_agent_key(org_id: int, key_id: int, data: dict) -> Optional[dic
     return None
 
 
-async def revoke_agent_key(org_id: int, key_id: int) -> bool:
+async def revoke_agent_key(org_id: int, key_id: int) -> Optional[dict]:
     async with get_db() as db:
         result = await db.execute(
             text("""
@@ -291,7 +291,7 @@ async def revoke_agent_key(org_id: int, key_id: int) -> bool:
                 WHERE organization_id = :org_id
                   AND id = :key_id
                   AND is_active = true
-                RETURNING id
+                RETURNING id, name
             """),
             {"org_id": org_id, "key_id": key_id},
         )
@@ -311,11 +311,11 @@ async def revoke_agent_key(org_id: int, key_id: int) -> bool:
                 {"org_id": org_id, "key_id": key_id},
             )
         await db.commit()
-        return row is not None
-    return False
+        return dict(row._mapping) if row is not None else None
+    return None
 
 
-async def delete_agent_key(org_id: int, key_id: int) -> bool:
+async def delete_agent_key(org_id: int, key_id: int) -> Optional[dict]:
     async with get_db() as db:
         result = await db.execute(
             text("""
@@ -323,11 +323,11 @@ async def delete_agent_key(org_id: int, key_id: int) -> bool:
                 WHERE organization_id = :org_id
                   AND id = :key_id
                   AND is_active = false
-                RETURNING id
+                RETURNING id, name
             """),
             {"org_id": org_id, "key_id": key_id},
         )
         await db.commit()
         row = result.first()
-        return row is not None
+        return dict(row._mapping) if row is not None else None
     return False
