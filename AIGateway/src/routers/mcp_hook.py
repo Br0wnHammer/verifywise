@@ -4,7 +4,8 @@ Native tool-call hook endpoint — adjudicates a coding agent's own tool calls
 
     POST /v1/mcp/hook  -> {"decision": "allow" | "deny" | "approval_required" | "rate_limited", ...}
 
-Authenticated via agent keys (sk-mcp-*). Reuses the existing MCP guardrail scan,
+Authenticated via agent keys (sk-mcp-*). The key's allowed_tools / blocked_tools
+lists are enforced first (violation -> deny). Reuses the existing MCP guardrail scan,
 audit log, rate limiter, and approval flow. MASK detections are treated as DENY.
 require_approval rules (matched in the hook-only mcp_approval_match module) create
 an approval request and tell the caller to poll. Rate-limit exceed is reported as
@@ -40,7 +41,7 @@ from services.mcp_monitor import (
     outcome,
     outcome_events,
 )
-from services.mcp_proxy_service import extract_agent_key, enforce_mcp_rate_limits
+from services.mcp_proxy_service import extract_agent_key, enforce_mcp_rate_limits, enforce_tool_acls
 from utils.mcp_arguments import hash_arguments
 from utils.notifications import notify_approval_pending
 
@@ -186,6 +187,25 @@ async def mcp_hook(request: Request):
 
     if is_monitor(agent_key):
         return await _monitor_hook(agent_key, org_id, tool_name, arguments, _audit)
+
+    # ── Agent key tool lists: checked FIRST, before any guardrail ───────────
+    # The key's allowed_tools / blocked_tools apply to every hook client (shell
+    # hook, SDKs), exactly as they do on the MCP proxy.
+    try:
+        enforce_tool_acls(agent_key, tool_name)
+    except ValueError:
+        allowed = agent_key.get("allowed_tools") or []
+        blocked = agent_key.get("blocked_tools") or []
+        lists = []
+        if allowed:
+            lists.append(f"allowed: {', '.join(map(str, allowed))}")
+        if blocked:
+            lists.append(f"blocked: {', '.join(map(str, blocked))}")
+        await _audit("blocked", f"Hook deny: tool not permitted by agent key ({'; '.join(lists)})", "deny")
+        return JSONResponse(content={
+            "decision": "deny",
+            "reason": f"Tool '{tool_name}' is not allowed for this agent key",
+        })
 
     # ── Policy: guardrail (block / mask -> deny), then require_approval ──────
     # Policy (block / mask / require_approval) is evaluated BEFORE the rate

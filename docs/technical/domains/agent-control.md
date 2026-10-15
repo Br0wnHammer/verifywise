@@ -5,7 +5,7 @@
 > wiring (Claude Code + Cursor) and the developer guide (PR #4112); per-agent rules, decision
 > provenance and the agent activity drawer (#4320, restored after the #4265 revert);
 > per-key monitor-only enforcement mode (migration `a0014`).
-> Last updated 2026-10-15.
+> Last updated 2026-10-15 (hook enforces agent key tool lists).
 
 Agent Control gates a coding agent's tool calls through the AI Gateway's guardrails,
 human-approval and audit machinery. It covers two entry paths that share one governance
@@ -27,6 +27,7 @@ what the AI *does* (tool calls).
 
 ```
 extract_agent_key (sk-mcp-*)                    -- shared with the proxy
+  → enforce_tool_acls                           -- key's allowed_tools / blocked_tools; violation → deny
   → scan_tool_input(field_aware=True)           -- guardrail scan; block/mask → deny
   → check_require_approval                      -- hook-only; match → create/reuse approval
   → enforce_mcp_rate_limits                     -- LAST, and skipped on an approved re-call
@@ -37,6 +38,13 @@ For a **monitor-only** key (see *Monitor-only mode* below) the flow is different
 guardrail scan and `check_require_approval` both run (no early return), no approval request is
 looked up, created or notified, the rate limit is still enforced, and the answer is always
 `allow` (or `rate_limited`).
+
+For an enforce key the tool-list check runs first, before any guardrail, and applies to every hook client
+(the shell hook and the Python SDK alike). A violation returns
+`{"decision": "deny", "reason": "Tool '<name>' is not allowed for this agent key"}` and
+audits `result_status='blocked'` with a summary naming the key's lists. A key with no lists
+is unaffected. Matching uses `utils/acl.py` (exact name or trailing `*` wildcard), the same
+as the MCP proxy.
 
 Every path writes an audit row (`log_tool_call`), seeded with a `received` + `decided` event
 and the call's `tool_use_id`. Audit and the approval argument-hash use the **full** arguments;
