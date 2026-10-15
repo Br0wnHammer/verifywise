@@ -4,7 +4,10 @@ Native tool-call hook endpoint — adjudicates a coding agent's own tool calls
 
     POST /v1/mcp/hook  -> {"decision": "allow" | "deny" | "approval_required" | "rate_limited", ...}
 
-Authenticated via agent keys (sk-mcp-*). Reuses the existing MCP guardrail scan,
+Authenticated via agent keys (sk-mcp-*). When the key opts in
+(apply_tool_lists_to_hook), its allowed_tools / blocked_tools lists are checked
+first (violation -> deny). The lists were written for MCP proxy tools, so a key
+that has not opted in skips them here. Reuses the existing MCP guardrail scan,
 audit log, rate limiter, and approval flow. MASK detections are treated as DENY.
 require_approval rules (matched in the hook-only mcp_approval_match module) create
 an approval request and tell the caller to poll. Rate-limit exceed is reported as
@@ -32,6 +35,7 @@ from services.mcp_guardrail_service import blocking_rule, scan_tool_input, scan_
 from services.mcp_monitor import (
     SOURCE_APPROVAL_RULE,
     SOURCE_GUARDRAIL,
+    SOURCE_TOOL_ACL,
     WOULD_BLOCK,
     WOULD_NEED_APPROVAL,
     is_monitor,
@@ -40,7 +44,7 @@ from services.mcp_monitor import (
     outcome,
     outcome_events,
 )
-from services.mcp_proxy_service import extract_agent_key, enforce_mcp_rate_limits
+from services.mcp_proxy_service import extract_agent_key, enforce_mcp_rate_limits, tool_acl_violation
 from utils.mcp_arguments import hash_arguments
 from utils.notifications import notify_approval_pending
 
@@ -53,15 +57,18 @@ router = APIRouter()
 class PolicyHit:
     """One policy that stops (or would stop) a native tool call."""
 
-    kind: str  # "deny" (guardrail block / mask) | "approval" (require_approval rule)
+    kind: str  # "tool_acl" (key tool lists) | "deny" (guardrail block / mask) | "approval" (require_approval rule)
     reason: str
     rule_id: int | None = None
     rule_name: str | None = None
     detections: list = field(default_factory=list)  # deny only
     approval_rule: dict | None = None  # approval only
+    audit_summary: str | None = None  # tool_acl only: names the key's lists
 
     def as_outcome(self) -> dict:
         """The monitor-mode record of this hit."""
+        if self.kind == "tool_acl":
+            return outcome(WOULD_BLOCK, self.reason, SOURCE_TOOL_ACL)
         if self.kind == "deny":
             return outcome(WOULD_BLOCK, self.reason, SOURCE_GUARDRAIL, self.rule_id, self.rule_name)
         return outcome(
@@ -73,17 +80,55 @@ class PolicyHit:
         )
 
 
+def applies_tool_lists_to_hook(agent_key: dict) -> bool:
+    """True when the key opted in to having its tool lists checked on native
+    tool calls. A missing value (row read before migration a0015) means no."""
+    return agent_key.get("apply_tool_lists_to_hook") is True
+
+
+def _tool_acl_hit(agent_key: dict, tool_name: str) -> PolicyHit | None:
+    """The key's allowed / blocked lists, when the key applies them to the hook."""
+    if not applies_tool_lists_to_hook(agent_key) or not tool_acl_violation(agent_key, tool_name):
+        return None
+    allowed = agent_key.get("allowed_tools") or []
+    blocked = agent_key.get("blocked_tools") or []
+    lists = []
+    if allowed:
+        lists.append(f"allowed: {', '.join(map(str, allowed))}")
+    if blocked:
+        lists.append(f"blocked: {', '.join(map(str, blocked))}")
+    return PolicyHit(
+        kind="tool_acl",
+        reason=f"Tool '{tool_name}' is not allowed for this agent key",
+        audit_summary=f"tool not permitted by agent key ({'; '.join(lists)})",
+    )
+
+
 async def evaluate_hook_policies(
-    org_id: int, tool_name: str, arguments: dict, agent_key_id: int, *, first_only: bool
+    org_id: int,
+    tool_name: str,
+    arguments: dict,
+    *,
+    agent_key: dict,
+    first_only: bool,
 ) -> list[PolicyHit]:
-    """Evaluate the guardrails, then the require_approval rules, for one native
-    tool call. Read-only: creates no approval request and sends nothing.
+    """Evaluate the key's tool lists (only when the key opted in), then the
+    guardrails, then the require_approval rules, for one native tool call.
+    Read-only: creates no approval request and sends nothing. The key's id
+    scopes the guardrails and approval rules.
 
     first_only=True (enforce mode) returns as soon as a policy hits, so a
-    guardrail deny skips the approval check. first_only=False (monitor mode)
-    evaluates both and returns every hit, in that order.
+    tool-list or guardrail deny skips the later checks. first_only=False
+    (monitor mode) evaluates all of them and returns every hit, in that order.
     """
     hits: list[PolicyHit] = []
+    agent_key_id = agent_key["id"]
+
+    acl_hit = _tool_acl_hit(agent_key, tool_name)
+    if acl_hit:
+        hits.append(acl_hit)
+        if first_only:
+            return hits
 
     # field_aware: native file-write tools are scanned only on written content
     # (Write.content, Edit.new_string, ...), not old_string/file_path. This applies
@@ -131,24 +176,42 @@ async def evaluate_hook_policies(
     return hits
 
 
+async def _json_object(request: Request) -> dict:
+    """The request body, which must be a JSON object (400 otherwise)."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="request body must be a JSON object")
+    return body
+
+
+def _require_optional_strings(**fields) -> None:
+    """400 unless each field is either absent (None) or a string."""
+    for name, value in fields.items():
+        if value is not None and not isinstance(value, str):
+            raise HTTPException(status_code=400, detail=f"{name} must be a string")
+
+
 @router.post("/v1/mcp/hook")
 async def mcp_hook(request: Request):
     """Adjudicate a native tool call. Never forwards or executes it."""
     agent_key = await extract_agent_key(request)
     org_id = agent_key["organization_id"]
 
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    body = await _json_object(request)
 
     tool_name = body.get("tool_name")
-    arguments = body.get("arguments") or {}
+    arguments = body.get("arguments")
+    if arguments is None:
+        arguments = {}
     session_id = body.get("session_id")
     tool_use_id = body.get("tool_use_id")
 
-    if not tool_name or not isinstance(arguments, dict):
+    if not isinstance(tool_name, str) or not tool_name or not isinstance(arguments, dict):
         raise HTTPException(status_code=400, detail="tool_name (str) and arguments (object) are required")
+    _require_optional_strings(session_id=session_id, tool_use_id=tool_use_id)
 
     start_time = time.time()
     received_at = datetime.now(timezone.utc).isoformat()
@@ -187,15 +250,17 @@ async def mcp_hook(request: Request):
     if is_monitor(agent_key):
         return await _monitor_hook(agent_key, org_id, tool_name, arguments, _audit)
 
-    # ── Policy: guardrail (block / mask -> deny), then require_approval ──────
+    # ── Policy: tool lists (opted-in keys only), guardrail (block / mask ->
+    #    deny), then require_approval ──────────────────────────────────────────
     # Policy (block / mask / require_approval) is evaluated BEFORE the rate
     # limit so a rate-limited agent cannot burst past its cap to get a
     # policy-violating command allowed (rate_limited fails open by default).
     # Enforce mode stops at the first hit, exactly as before.
-    hits = await evaluate_hook_policies(
-        org_id, tool_name, arguments, agent_key["id"], first_only=True
-    )
+    hits = await evaluate_hook_policies(org_id, tool_name, arguments, agent_key=agent_key, first_only=True)
     hit = hits[0] if hits else None
+    if hit and hit.kind == "tool_acl":
+        await _audit("blocked", f"Hook deny: {hit.audit_summary}", "deny")
+        return JSONResponse(content={"decision": "deny", "reason": hit.reason})
     if hit and hit.kind == "deny":
         await _audit(
             "blocked",
@@ -282,15 +347,13 @@ async def mcp_hook(request: Request):
 async def _monitor_hook(agent_key: dict, org_id: int, tool_name: str, arguments: dict, _audit):
     """Monitor-only key: evaluate every policy, never deny or pause the call.
 
-    The guardrail scan and the require_approval match both run (in enforce mode a
-    guardrail hit returns before the approval check). The key's tool lists are
-    not evaluated on this path. No approval request is
+    The key's tool lists (when it opted in with apply_tool_lists_to_hook), the
+    guardrail scan and the require_approval match all run (in enforce mode the
+    first hit returns before the later checks). No approval request is
     created, reused or notified. The rate limit is still enforced: it protects
     the gateway rather than expressing policy.
     """
-    hits = await evaluate_hook_policies(
-        org_id, tool_name, arguments, agent_key["id"], first_only=False
-    )
+    hits = await evaluate_hook_policies(org_id, tool_name, arguments, agent_key=agent_key, first_only=False)
     outcomes = [h.as_outcome() for h in hits]
 
     events = outcome_events(outcomes)
@@ -334,17 +397,18 @@ async def mcp_hook_result(request: Request):
     Never executes anything. Best-effort: returns 200 even when no row matches."""
     agent_key = await extract_agent_key(request)
     org_id = agent_key["organization_id"]
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    body = await _json_object(request)
 
     session_id = body.get("session_id")
     tool_use_id = body.get("tool_use_id")
-    tool_name = body.get("tool_name") or "unknown"
+    tool_name = body.get("tool_name")
     tool_response = body.get("tool_response")
-    if not session_id or not tool_use_id:
-        raise HTTPException(status_code=400, detail="session_id and tool_use_id are required")
+    if not isinstance(session_id, str) or not session_id or not isinstance(tool_use_id, str) or not tool_use_id:
+        raise HTTPException(status_code=400, detail="session_id and tool_use_id (str) are required")
+    if tool_name is None:
+        tool_name = "unknown"
+    elif not isinstance(tool_name, str) or not tool_name:
+        raise HTTPException(status_code=400, detail="tool_name must be a non-empty string")
 
     serialized = json.dumps(tool_response) if tool_response is not None else "{}"
     truncated = len(serialized.encode("utf-8")) > MCP_RESULT_CAP_BYTES
@@ -358,7 +422,12 @@ async def mcp_hook_result(request: Request):
         stored = {"_raw": masked}
 
     now = datetime.now(timezone.utc).isoformat()
-    if tool_name == "Bash" and isinstance(tool_response, dict) and tool_response.get("interrupted"):
+    # {"error": ...} is how the SDKs (and any other client) report a failed
+    # call, so it counts as failed whatever the tool. A null error is not one.
+    reported_error = isinstance(tool_response, dict) and tool_response.get("error") is not None
+    if reported_error:
+        outcome = {"type": "failed", "at": now}
+    elif tool_name == "Bash" and isinstance(tool_response, dict) and tool_response.get("interrupted"):
         outcome = {"type": "interrupted", "at": now}
     elif tool_name in ("Write", "Edit") and isinstance(tool_response, dict) and tool_response.get("success") is False:
         outcome = {"type": "failed", "at": now}

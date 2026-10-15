@@ -57,7 +57,8 @@ export const formatMcpEventType = (type: string) => MCP_STATUS_LABELS[type] ?? t
 /**
  * Which check produced a monitor only outcome, as recorded by the gateway on
  * each would_* event: a guardrail, a require_approval rule (native hook), the
- * key's tool lists or a tool's requires-approval flag (both MCP proxy only).
+ * key's tool lists (MCP proxy, and native calls when the key opts in) or a
+ * tool's requires-approval flag (MCP proxy only).
  */
 export type MonitorOutcomeSource =
   "guardrail" | "approval_rule" | "tool_acl" | "tool_requires_approval";

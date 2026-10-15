@@ -2,8 +2,9 @@
 Monitor-only enforcement mode for Agent Control agent keys.
 
 An agent key with enforcement_mode = 'monitor' is evaluated against the same
-policies as an enforce key (guardrails and approval rules on both paths; on the
-MCP proxy also the key's tool lists and a tool's requires_approval flag) but
+policies as an enforce key (guardrails and approval rules on both paths; the
+key's tool lists on the MCP proxy, and on the native hook when the key has
+apply_tool_lists_to_hook on; on the MCP proxy also a tool's requires_approval flag) but
 never blocked or paused: the call goes through and the audit row records what would have
 happened. Rate limits and the circuit breaker stay enforced, since they protect
 the gateway and upstream servers rather than express policy.
@@ -27,7 +28,9 @@ WOULD_NEED_APPROVAL = "would_need_approval"
 # Which check produced an outcome.
 SOURCE_GUARDRAIL = "guardrail"  # a guardrail rule (block, or mask on the hook)
 SOURCE_APPROVAL_RULE = "approval_rule"  # a require_approval rule (native hook)
-SOURCE_TOOL_ACL = "tool_acl"  # the key's allowed / blocked tool lists (MCP proxy)
+# The key's allowed / blocked tool lists: on the MCP proxy, and on the native
+# hook when the key has apply_tool_lists_to_hook on.
+SOURCE_TOOL_ACL = "tool_acl"
 SOURCE_TOOL_REQUIRES_APPROVAL = "tool_requires_approval"  # tool flagged requires_approval (MCP proxy)
 
 # Most severe first.

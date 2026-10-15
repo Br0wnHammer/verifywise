@@ -789,7 +789,7 @@ class TestHookPolicyHelper:
             return APPROVAL_RULE
 
         monkeypatch.setattr(hook, "check_require_approval", approval)
-        hits = await hook.evaluate_hook_policies(1, "Bash", {}, 5, first_only=True)
+        hits = await hook.evaluate_hook_policies(1, "Bash", {}, agent_key={"id": 5}, first_only=True)
 
         assert [h.kind for h in hits] == ["deny"]
         assert calls == []
@@ -798,7 +798,7 @@ class TestHookPolicyHelper:
         hook_fakes.scan = _blocked_scan()
         hook_fakes.approval_rule = APPROVAL_RULE
 
-        hits = await hook.evaluate_hook_policies(1, "Bash", {}, 5, first_only=False)
+        hits = await hook.evaluate_hook_policies(1, "Bash", {}, agent_key={"id": 5}, first_only=False)
 
         assert [h.kind for h in hits] == ["deny", "approval"]
         assert hits[0].rule_id == 11 and hits[1].rule_id == 21
