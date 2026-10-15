@@ -406,7 +406,12 @@ async def mcp_hook_result(request: Request):
         stored = {"_raw": masked}
 
     now = datetime.now(timezone.utc).isoformat()
-    if tool_name == "Bash" and isinstance(tool_response, dict) and tool_response.get("interrupted"):
+    # {"error": ...} is how the SDKs (and any other client) report a failed
+    # call, so it counts as failed whatever the tool. A null error is not one.
+    reported_error = isinstance(tool_response, dict) and tool_response.get("error") is not None
+    if reported_error:
+        outcome = {"type": "failed", "at": now}
+    elif tool_name == "Bash" and isinstance(tool_response, dict) and tool_response.get("interrupted"):
         outcome = {"type": "interrupted", "at": now}
     elif tool_name in ("Write", "Edit") and isinstance(tool_response, dict) and tool_response.get("success") is False:
         outcome = {"type": "failed", "at": now}

@@ -100,4 +100,5 @@ jobs:
             tests/test_21_safe_outbound_url.py \
             tests/test_22_monitor_mode.py \
             tests/test_mcp_hook_tool_acls.py \
+            tests/test_mcp_hook_result_outcome.py \
             -v
