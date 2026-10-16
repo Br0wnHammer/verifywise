@@ -465,7 +465,8 @@ async def run_guardrails(
                 status_code=400,
                 detail=f"Request blocked by guardrail: {result.block_reason or 'policy violation'}",
             )
-        return result.masked_text or text
+        # An empty masked result is still a mask; never fall back to the original.
+        return result.masked_text if result.masked_text is not None else text
 
     updated = list(messages)
     for i, msg in enumerate(updated):

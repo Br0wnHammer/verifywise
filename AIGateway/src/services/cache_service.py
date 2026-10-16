@@ -28,7 +28,7 @@ logger = logging.getLogger("uvicorn")
 # Message fields of a tool-calling conversation that change the response.
 # `name` counts only on tool results (the function it answers); a user
 # message's `name` stays out so plain requests keep their existing keys.
-_TOOL_MESSAGE_FIELDS = ("tool_calls", "tool_call_id")
+_TOOL_MESSAGE_FIELDS = ("tool_calls", "tool_call_id", "function_call")
 _TOOL_RESULT_ROLES = ("tool", "function")
 
 
@@ -47,10 +47,8 @@ def generate_cache_key(
     messages: list[dict],
     temperature: Optional[float],
     max_tokens: Optional[int],
-    tools: Optional[list[dict]] = None,
-    tool_choice: Optional[str | dict] = None,
-    parallel_tool_calls: Optional[bool] = None,
     top_p: Optional[float] = None,
+    tool_params: Optional[dict] = None,
 ) -> str:
     """
     Generate a deterministic SHA-256 hash from the request parameters
@@ -58,7 +56,8 @@ def generate_cache_key(
 
     Includes: model, all messages (role + content, plus tool_calls and
     tool_call_id when present, and a tool result's name), temperature,
-    max_tokens, and top_p and the tool parameters when sent. These additions
+    max_tokens, and top_p and the tool parameters (tools, tool_choice,
+    parallel_tool_calls, functions, function_call) when sent. These additions
     appear only when present, so a request without them hashes exactly as
     before and existing cache entries still match.
     Excludes: metadata, timestamps, api_key, user info.
@@ -69,12 +68,9 @@ def generate_cache_key(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    for key, value in (
-        ("tools", tools),
-        ("tool_choice", tool_choice),
-        ("parallel_tool_calls", parallel_tool_calls),
-        ("top_p", top_p),
-    ):
+    if top_p is not None:
+        payload["top_p"] = top_p
+    for key, value in (tool_params or {}).items():
         if value is not None:
             payload[key] = value
     canonical = json.dumps(payload, sort_keys=True, ensure_ascii=True)

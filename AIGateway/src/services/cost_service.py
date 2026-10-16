@@ -62,6 +62,7 @@ def calculate_stream_cost(
     model: str,
     prompt_messages: list[dict],
     accumulated_text: str,
+    tools: Optional[list[dict]] = None,
 ) -> tuple[float, dict]:
     """
     Calculate cost after streaming completes, for providers that don't
@@ -70,7 +71,7 @@ def calculate_stream_cost(
     Returns (cost_usd, usage_dict).
     """
     try:
-        prompt_tokens = litellm.token_counter(model=model, messages=prompt_messages)
+        prompt_tokens = _count_prompt_tokens(model, prompt_messages, tools)
         completion_tokens = litellm.token_counter(model=model, text=accumulated_text)
         prompt_cost, completion_cost = litellm.cost_per_token(
             model=model,

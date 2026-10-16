@@ -140,7 +140,10 @@ async def stream_chat_completion(
             pass
 
     if cost == 0.0 and accumulated_text:
-        cost, usage = calculate_stream_cost(model, messages, accumulated_text)
+        cost, usage = calculate_stream_cost(
+            model, messages, accumulated_text,
+            tools=kwargs.get("tools") or kwargs.get("functions"),
+        )
 
     yield f"data: {json.dumps({'cost_usd': cost, 'usage': usage})}\n\n"
     yield "data: [DONE]\n\n"

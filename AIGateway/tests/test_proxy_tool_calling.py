@@ -120,14 +120,14 @@ def test_plain_request_cache_key_is_unchanged():
 def test_tools_change_the_cache_key():
     msgs = [{"role": "user", "content": "hello"}]
     assert generate_cache_key("gpt-4o", msgs, 0.7, 1000) != generate_cache_key(
-        "gpt-4o", msgs, 0.7, 1000, tools=TOOLS
+        "gpt-4o", msgs, 0.7, 1000, tool_params={"tools": TOOLS}
     )
 
 
 def test_tool_choice_changes_the_cache_key():
     msgs = [{"role": "user", "content": "hello"}]
-    auto = generate_cache_key("gpt-4o", msgs, 0.7, 1000, tools=TOOLS, tool_choice="auto")
-    none = generate_cache_key("gpt-4o", msgs, 0.7, 1000, tools=TOOLS, tool_choice="none")
+    auto = generate_cache_key("gpt-4o", msgs, 0.7, 1000, tool_params={"tools": TOOLS, "tool_choice": "auto"})
+    none = generate_cache_key("gpt-4o", msgs, 0.7, 1000, tool_params={"tools": TOOLS, "tool_choice": "none"})
     assert auto != none
 
 
@@ -289,14 +289,16 @@ async def test_streamed_tool_call_counts_toward_cost_without_usage(monkeypatch):
 
     seen = {}
 
-    def fake_cost(model, messages, text):
+    def fake_cost(model, messages, text, tools=None):
         seen["text"] = text
+        seen["tools"] = tools
         return 0.001, {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
 
     monkeypatch.setattr(llm_service.litellm, "acompletion", fake_acompletion)
     monkeypatch.setattr(llm_service, "calculate_stream_cost", fake_cost)
     out = [c async for c in llm_service.stream_chat_completion("anthropic/x", [], "k", tools=TOOLS)]
     assert seen["text"] == 'lookup_account{"account_id": "4471"}'
+    assert seen["tools"] == TOOLS
     assert '"cost_usd": 0.001' in out[-2]
 
 
@@ -340,3 +342,65 @@ def test_budget_estimate_does_not_drop_to_zero_when_tools_break_the_counter(monk
     msgs = [{"role": "user", "content": "hello"}]
     with_tools = estimate_prompt_cost("gpt-4o-mini", msgs, 10, tools=TOOLS)
     assert with_tools > estimate_prompt_cost("gpt-4o-mini", msgs, 10) > 0
+
+
+
+# ─── Third review follow-ups ─────────────────────────────────────────────────
+
+def test_legacy_functions_api_is_forwarded_and_hashed():
+    functions = [{"name": "lookup_account", "parameters": {"type": "object"}}]
+    body = ProxyChatRequest(model="m", messages=[{"role": "user", "content": "hi"}],
+                            functions=functions, function_call="auto")
+    kwargs = _build_llm_kwargs(body, ENDPOINT)
+    assert kwargs["functions"] == functions and kwargs["function_call"] == "auto"
+    msgs = [{"role": "user", "content": "hi"}]
+    assert generate_cache_key("m", msgs, None, None) != generate_cache_key(
+        "m", msgs, None, None, tool_params={"functions": functions}
+    )
+
+
+def test_legacy_function_call_arguments_change_the_cache_key():
+    def convo(arg):
+        return [{"role": "assistant", "content": None,
+                 "function_call": {"name": "lookup", "arguments": arg}}]
+    assert generate_cache_key("m", convo('{"id": 1}'), None, None) != generate_cache_key(
+        "m", convo('{"id": 2}'), None, None
+    )
+
+
+def test_stream_deltas_with_null_index_do_not_crash_and_stay_separate():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": None, "id": "a", "function": {"name": "get_weather", "arguments": '{"city":"x"}'}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "id": "b", "function": {"name": "get_time", "arguments": '{"tz":"y"}'}}])
+    ordered = [calls[i] for i in sorted(calls)]
+    assert [c["function"]["name"] for c in ordered] == ["get_weather", "get_time"]
+    assert [c["function"]["arguments"] for c in ordered] == ['{"city":"x"}', '{"tz":"y"}']
+
+
+def test_stream_deltas_with_a_repeated_name_are_not_doubled():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "id": "a", "function": {"name": "lookup", "arguments": '{"id"'}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "lookup", "arguments": ": 1}"}}])
+    assert calls[0]["function"] == {"name": "lookup", "arguments": '{"id": 1}'}
+
+
+def test_response_text_keeps_text_and_tool_calls_together():
+    text = _response_text({"role": "assistant", "content": "Let me check.", "tool_calls": TOOL_CALLS})
+    assert json.loads(text) == {"content": "Let me check.", "tool_calls": TOOL_CALLS}
+
+
+async def test_empty_mask_result_is_not_replaced_by_the_original(no_detection_log, monkeypatch):
+    class R:
+        detections, blocked, block_reason, execution_time_ms, masked_text = [], False, None, 0, ""
+
+    monkeypatch.setattr(proxy_service, "scan_text", lambda **_kw: R())
+    out = await proxy_service.run_guardrails(1, [{"role": "tool", "content": "SECRET"}], 1, config=([_rule("mask")], {}))
+    assert out[0]["content"] == ""
+
+
+def test_stream_cost_fallback_counts_tool_definitions():
+    from services.cost_service import calculate_stream_cost
+    msgs = [{"role": "user", "content": "hello"}]
+    _, without = calculate_stream_cost("gpt-4o-mini", msgs, "ok")
+    _, with_tools = calculate_stream_cost("gpt-4o-mini", msgs, "ok", tools=TOOLS)
+    assert with_tools["prompt_tokens"] > without["prompt_tokens"]
