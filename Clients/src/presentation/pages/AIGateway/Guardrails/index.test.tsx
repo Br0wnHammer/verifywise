@@ -1,4 +1,4 @@
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { act, screen, waitFor, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 
 const mockNavigate = vi.fn();
@@ -324,9 +324,11 @@ describe("AIGateway - Guardrails", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run test" }));
 
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith("/ai-gateway/guardrails/test", {
-        text: "email me at j@example.com",
-      });
+      expect(mockPost).toHaveBeenCalledWith(
+        "/ai-gateway/guardrails/test",
+        { text: "email me at j@example.com" },
+        { signal: expect.any(AbortSignal) },
+      );
     });
     await waitFor(() => {
       expect(screen.getByText("Would be blocked")).toBeInTheDocument();
@@ -368,6 +370,31 @@ describe("AIGateway - Guardrails", () => {
     await waitFor(() => {
       expect(screen.getByText("Invalid internal key")).toBeInTheDocument();
     });
+  });
+
+  it("shows the friendly error, not the proxy's socket error, when the gateway is down", async () => {
+    mockPost.mockRejectedValue({
+      response: {
+        status: 502,
+        data: { error: "AI Gateway proxy error", message: "connect ECONNREFUSED 127.0.0.1:8100" },
+      },
+    });
+    renderWithProviders(<GuardrailsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Test guardrails" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test guardrails" }));
+    fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "hi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run test" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Test failed — is the AI Gateway service running?"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/ECONNREFUSED/)).not.toBeInTheDocument();
   });
 
   it("does not send sample text over the gateway's length limit", async () => {
@@ -420,9 +447,13 @@ describe("AIGateway - Guardrails", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run test" }));
     fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "hello" } });
 
-    answer({ data: { data: { would_block: true, detections: [], execution_time_ms: 9 } } });
-    await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(1));
-    await new Promise((r) => setTimeout(r, 0));
+    // Editing cancelled the request and re-enabled Run test at once.
+    expect(mockPost.mock.calls[0][2].signal.aborted).toBe(true);
+    expect(screen.getByRole("button", { name: "Run test" })).not.toBeDisabled();
+
+    await act(async () => {
+      answer({ data: { data: { would_block: true, detections: [], execution_time_ms: 9 } } });
+    });
     expect(screen.queryByText("Would be blocked")).not.toBeInTheDocument();
   });
 

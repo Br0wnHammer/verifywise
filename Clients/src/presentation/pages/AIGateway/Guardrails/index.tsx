@@ -737,27 +737,38 @@ export default function GuardrailsPage() {
 
   // Count code points, as the gateway's len() does (an emoji is one, not two).
   const testTextTooLong = exceedsCodePoints(testText, MAX_TEST_TEXT);
-  // Bumped whenever the text or the dialog changes; a response for an older
-  // run is dropped, since it describes text that is no longer in the field.
-  const testRunRef = useRef(0);
+  // The request in flight. Editing the text or closing/reopening the dialog
+  // cancels it: its result would describe text that is no longer there.
+  const testRequestRef = useRef<AbortController | null>(null);
+
+  const cancelTest = () => {
+    testRequestRef.current?.abort();
+    testRequestRef.current = null;
+    setTestLoading(false);
+  };
 
   const handleTest = async () => {
     if (!testText.trim()) return;
-    const run = ++testRunRef.current;
+    const request = new AbortController();
+    testRequestRef.current = request;
     setTestLoading(true);
     setTestResult(null);
     try {
-      const res = await apiServices.post<Record<string, any>>("/ai-gateway/guardrails/test", {
-        text: testText,
-      });
-      if (run === testRunRef.current) setTestResult(res?.data?.data);
+      const res = await apiServices.post<Record<string, any>>(
+        "/ai-gateway/guardrails/test",
+        { text: testText },
+        { signal: request.signal },
+      );
+      if (!request.signal.aborted) setTestResult(res?.data?.data);
     } catch (err: any) {
-      if (run !== testRunRef.current) return;
+      if (request.signal.aborted) return;
       // The gateway sends `detail` as a string for validation errors but as
-      // {message, code} for auth errors; never render an object.
+      // {message, code} for auth errors; never render an object. A 5xx
+      // `message` is the proxy's raw socket error, so only 4xx ones are shown.
+      const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
-      const message =
-        typeof detail === "string" ? detail : detail?.message || err?.response?.data?.message;
+      const proxyMessage = status >= 400 && status < 500 ? err?.response?.data?.message : undefined;
+      const message = typeof detail === "string" ? detail : detail?.message || proxyMessage;
       setTestResult({
         error:
           typeof message === "string" && message
@@ -765,9 +776,11 @@ export default function GuardrailsPage() {
             : "Test failed — is the AI Gateway service running?",
       });
     } finally {
-      // Keep Run test disabled until this request ends, even if its result is
-      // dropped, so edits cannot start overlapping scans.
-      setTestLoading(false);
+      // Only the live request may end the loading state.
+      if (testRequestRef.current === request) {
+        testRequestRef.current = null;
+        setTestLoading(false);
+      }
     }
   };
 
@@ -914,10 +927,9 @@ export default function GuardrailsPage() {
             text="Test guardrails"
             icon={<FlaskConical size={14} strokeWidth={1.5} />}
             onClick={() => {
-              testRunRef.current += 1;
+              cancelTest();
               setTestText("");
               setTestResult(null);
-              setTestLoading(false);
               setIsTestOpen(true);
             }}
           />
@@ -1183,7 +1195,10 @@ export default function GuardrailsPage() {
       {/* ─── Test Guardrails Modal ──────────────────────────────────────── */}
       <StandardModal
         isOpen={isTestOpen}
-        onClose={() => setIsTestOpen(false)}
+        onClose={() => {
+          cancelTest();
+          setIsTestOpen(false);
+        }}
         title="Test guardrails"
         description="Paste sample text to preview what your active guardrail rules would detect"
         onSubmit={handleTest}
@@ -1198,7 +1213,7 @@ export default function GuardrailsPage() {
             placeholder="e.g., My email is john@example.com and my credit card is 4111-1111-1111-1111"
             value={testText}
             onChange={(e) => {
-              testRunRef.current += 1; // a result only describes the text it scanned
+              cancelTest(); // a result only describes the text it scanned
               setTestText(e.target.value);
               setTestResult(null);
             }}
