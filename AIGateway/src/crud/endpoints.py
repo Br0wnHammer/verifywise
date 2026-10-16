@@ -246,8 +246,41 @@ async def update_endpoint(org_id: int, id: int, data: dict) -> Optional[dict]:
     return None
 
 
+class EndpointInUseError(Exception):
+    """Deleting the endpoint would leave keys with no endpoint limit at all."""
+
+    def __init__(self, key_names: list[str]):
+        super().__init__(", ".join(key_names))
+        self.key_names = key_names
+
+
 async def delete_endpoint(org_id: int, id: int) -> bool:
+    """Delete an endpoint and remove it from virtual keys' allowlists.
+
+    An empty allowed_endpoint_ids means "every endpoint" to the gateway, so
+    removing a key's last endpoint would silently widen it. If any key that
+    is not revoked allows only this endpoint, nothing is changed and
+    EndpointInUseError names those keys.
+    """
     async with get_db() as db:
+        sole_users = await db.execute(
+            # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            text("""
+                SELECT name
+                FROM ai_gateway_virtual_keys
+                WHERE organization_id = :org_id
+                  AND revoked_at IS NULL
+                  AND :id = ANY(allowed_endpoint_ids)
+                  AND cardinality(array_remove(allowed_endpoint_ids, :id)) = 0
+                ORDER BY name
+                FOR UPDATE
+            """),
+            {"org_id": org_id, "id": id},
+        )
+        key_names = [row["name"] for row in sole_users.mappings().all()]
+        if key_names:
+            raise EndpointInUseError(key_names)
+
         # Log any endpoints that reference this one as a fallback
         fallback_refs = await db.execute(
             text("""

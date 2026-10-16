@@ -428,6 +428,30 @@ describe("AIGateway - Endpoints", () => {
     });
   });
 
+  it("shows why a delete was refused and keeps the dialog open", async () => {
+    const reason =
+      "This is the only endpoint these virtual keys may use: Batch key. Deleting it would let them call every endpoint. Give them another endpoint or revoke them first.";
+    (apiServices.delete as any).mockRejectedValue({
+      response: { status: 409, data: { detail: reason } },
+    });
+    const { container } = renderWithProviders(<EndpointsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Production GPT-4o")).toBeInTheDocument();
+    });
+
+    fireEvent.click(container.querySelectorAll("svg.lucide-trash-2")[0].closest("button")!);
+    await waitFor(() => {
+      expect(screen.getByText("Delete endpoint")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(reason)).toBeInTheDocument();
+    });
+    expect(screen.getByText("Delete endpoint")).toBeInTheDocument();
+  });
+
   it("reveals the cache TTL field when response caching is enabled", async () => {
     renderWithProviders(<EndpointsPage />);
 

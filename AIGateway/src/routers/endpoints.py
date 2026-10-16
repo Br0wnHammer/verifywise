@@ -138,7 +138,17 @@ async def delete_endpoint(endpoint_id: int, request: Request) -> Any:
     if not existing:
         raise HTTPException(status_code=404, detail="Endpoint not found")
 
-    deleted = await endpoints_crud.delete_endpoint(org_id, endpoint_id)
+    try:
+        deleted = await endpoints_crud.delete_endpoint(org_id, endpoint_id)
+    except endpoints_crud.EndpointInUseError as e:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This is the only endpoint these virtual keys may use: "
+                f"{', '.join(e.key_names)}. Deleting it would let them call every endpoint. "
+                "Give them another endpoint or revoke them first."
+            ),
+        )
     if not deleted:
         raise HTTPException(status_code=500, detail="Failed to delete endpoint")
 

@@ -78,6 +78,7 @@ export default function EndpointsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   // Prompts is gated behind SHOW_AI_GATEWAY_PROMPTS. When the flag is off the
   // list stays empty, so the prompt-template picker and bound-prompt chip
@@ -215,8 +216,11 @@ export default function EndpointsPage() {
       await apiServices.delete(`/ai-gateway/endpoints/${deleteTarget.id}`);
       setDeleteTarget(null);
       await loadData();
-    } catch {
-      // Silently handle
+    } catch (err: unknown) {
+      // e.g. 409: the endpoint is the only one some virtual keys may use.
+      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data
+        ?.detail;
+      setDeleteError(typeof detail === "string" && detail ? detail : "Failed to delete endpoint");
     }
   };
 
@@ -410,7 +414,10 @@ export default function EndpointsPage() {
                     </IconButton>
                     <IconButton
                       size="small"
-                      onClick={() => setDeleteTarget({ id: ep.id, name: ep.display_name })}
+                      onClick={() => {
+                        setDeleteError("");
+                        setDeleteTarget({ id: ep.id, name: ep.display_name });
+                      }}
                       sx={{ p: 0.5 }}
                     >
                       <Trash2 size={14} strokeWidth={1.5} color={palette.text.tertiary} />
@@ -635,7 +642,10 @@ export default function EndpointsPage() {
       {/* Delete confirmation modal */}
       <StandardModal
         isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => {
+          setDeleteTarget(null);
+          setDeleteError("");
+        }}
         title="Delete endpoint"
         description=""
         onSubmit={handleDelete}
@@ -646,6 +656,11 @@ export default function EndpointsPage() {
           Are you sure you want to delete "{deleteTarget?.name}"? This will permanently remove the
           endpoint and any requests using its slug will fail.
         </Typography>
+        {deleteError && (
+          <Typography sx={{ fontSize: 13, color: palette.status.error.text, mt: "12px" }}>
+            {deleteError}
+          </Typography>
+        )}
       </StandardModal>
     </PageHeaderExtended>
   );
