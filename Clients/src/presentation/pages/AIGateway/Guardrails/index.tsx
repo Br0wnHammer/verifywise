@@ -32,6 +32,8 @@ import { PageHeaderExtended } from "../../../components/Layout/PageHeaderExtende
 import { EmptyState } from "../../../components/EmptyState";
 import EmptyStateTip from "../../../components/EmptyState/EmptyStateTip";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
+import { useTranslation } from "../../../../application/hooks/useTranslation";
+import { fill } from "../../../../i18n/fill";
 import palette from "../../../themes/palette";
 import { sectionTitleSx, useCardSx } from "../shared";
 import CustomizableSkeleton from "../../../components/Skeletons";
@@ -562,6 +564,7 @@ const FILTER_TYPE_ITEMS = [
 const MAX_TEST_TEXT = 20_000;
 
 export default function GuardrailsPage() {
+  const { t: tr } = useTranslation();
   const cardSx = useCardSx();
   const { tab: urlTab } = useParams<{ tab: string }>();
   const navigate = useNavigate();
@@ -722,10 +725,11 @@ export default function GuardrailsPage() {
     }
   };
 
-  const testTextTooLong = testText.length > MAX_TEST_TEXT;
+  // Count code points, as the gateway's len() does (an emoji is one, not two).
+  const testTextTooLong = [...testText].length > MAX_TEST_TEXT;
 
   const handleTest = async () => {
-    if (!testText.trim() || testTextTooLong) return;
+    if (!testText.trim()) return;
     setTestLoading(true);
     setTestResult(null);
     try {
@@ -1174,8 +1178,17 @@ export default function GuardrailsPage() {
             label="Sample text"
             placeholder="e.g., My email is john@example.com and my credit card is 4111-1111-1111-1111"
             value={testText}
-            onChange={(e) => setTestText(e.target.value)}
-            error={testTextTooLong ? "Sample text must be at most 20,000 characters" : undefined}
+            onChange={(e) => {
+              setTestText(e.target.value);
+              setTestResult(null); // a result only describes the text it scanned
+            }}
+            error={
+              testTextTooLong
+                ? fill(tr("Sample text must be at most {max} characters"), {
+                    max: MAX_TEST_TEXT.toLocaleString(),
+                  })
+                : undefined
+            }
             isRequired
           />
           {testResult && !testResult.error && (

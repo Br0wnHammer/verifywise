@@ -7,6 +7,7 @@ Includes custom recognizers for EU-specific patterns (IBAN, TCKN, EU phone).
 
 import logging
 import re
+import threading
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 _analyzer = None
 _anonymizer = None
 _initialized = False
+_init_lock = threading.Lock()
 
 
 def _get_custom_recognizers():
@@ -75,25 +77,37 @@ def _get_custom_recognizers():
 
 
 def _ensure_initialized():
-    """Lazy-load Presidio analyzer and anonymizer on first use."""
-    global _analyzer, _anonymizer, _initialized
+    """Lazy-load Presidio analyzer and anonymizer on first use.
 
+    Scans can run on worker threads (the guardrail test route), so loading is
+    locked: the model loads once, and the engines are published only after the
+    custom recognizers are registered, so no scan runs without them.
+    """
     if _initialized:
         return
 
+    with _init_lock:
+        if _initialized:
+            return
+        _load_engines()
+
+
+def _load_engines():
+    global _analyzer, _anonymizer, _initialized
     try:
         from presidio_analyzer import AnalyzerEngine
         from presidio_anonymizer import AnonymizerEngine
 
         logger.info("Loading Presidio engine with en_core_web_md...")
-        _analyzer = AnalyzerEngine()
+        analyzer = AnalyzerEngine()
 
         # Add custom EU recognizers
         for recognizer in _get_custom_recognizers():
-            _analyzer.registry.add_recognizer(recognizer)
+            analyzer.registry.add_recognizer(recognizer)
             logger.info(f"Registered custom recognizer: {recognizer.name}")
 
         _anonymizer = AnonymizerEngine()
+        _analyzer = analyzer
         _initialized = True
         logger.info("Presidio engine initialized successfully")
     except ImportError as e:

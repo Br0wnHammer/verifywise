@@ -383,8 +383,48 @@ describe("AIGateway - Guardrails", () => {
     });
 
     expect(screen.getByText("Sample text must be at most 20,000 characters")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Run test" })).toBeDisabled();
-    expect(mockPost).not.toHaveBeenCalledWith("/ai-gateway/guardrails/test", expect.anything());
+    const run = screen.getByRole("button", { name: "Run test" });
+    expect(run).toBeDisabled();
+    fireEvent.click(run);
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it("counts an emoji as one character, as the gateway does", async () => {
+    renderWithProviders(<GuardrailsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Test guardrails" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test guardrails" }));
+    // 12,000 emoji: 24,000 UTF-16 units but 12,000 characters.
+    fireEvent.change(screen.getByLabelText(/^Sample text/), {
+      target: { value: "\u{1F600}".repeat(12_000) },
+    });
+
+    expect(screen.queryByText(/must be at most/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run test" })).not.toBeDisabled();
+  });
+
+  it("clears a result when the sample text changes", async () => {
+    mockPost.mockResolvedValue({
+      data: { data: { would_block: false, detections: [], execution_time_ms: 3 } },
+    });
+    renderWithProviders(<GuardrailsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Test guardrails" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test guardrails" }));
+    fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run test" }));
+    await waitFor(() => {
+      expect(screen.getByText("3ms")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "hello again" } });
+    expect(screen.queryByText("3ms")).not.toBeInTheDocument();
   });
 
   it("opens the catalog modal, filters by search, and enables an item", async () => {
