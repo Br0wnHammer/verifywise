@@ -21,6 +21,7 @@ import services.proxy_service as proxy_service  # noqa: E402
 from routers.proxy import (  # noqa: E402
     ProxyChatRequest,
     _build_llm_kwargs,
+    _finished_tool_calls,
     _merge_tool_call_deltas,
     _response_text,
 )
@@ -257,8 +258,8 @@ def test_streamed_tool_call_deltas_are_rebuilt():
     _merge_tool_call_deltas(calls, [{"index": 0, "function": {"arguments": '{"account_id"'}}])
     _merge_tool_call_deltas(calls, [{"index": 0, "function": {"arguments": ': "4471"}'}}])
     _merge_tool_call_deltas(calls, None)
-    assert calls == {0: {"id": "call_1", "type": "function",
-                         "function": {"name": "lookup_account", "arguments": '{"account_id": "4471"}'}}}
+    assert _finished_tool_calls(calls) == [{"id": "call_1", "type": "function",
+                                            "function": {"name": "lookup_account", "arguments": '{"account_id": "4471"}'}}]
 
 
 def test_budget_estimate_counts_tool_definitions():
@@ -404,3 +405,104 @@ def test_stream_cost_fallback_counts_tool_definitions():
     _, without = calculate_stream_cost("gpt-4o-mini", msgs, "ok")
     _, with_tools = calculate_stream_cost("gpt-4o-mini", msgs, "ok", tools=TOOLS)
     assert with_tools["prompt_tokens"] > without["prompt_tokens"]
+
+
+
+# ─── Post-merge review follow-ups ────────────────────────────────────────────
+
+def _names_and_args(calls):
+    return [(c["function"]["name"], c["function"]["arguments"]) for c in _finished_tool_calls(calls)]
+
+
+def test_repeated_id_without_index_stays_one_call():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"id": "c1", "function": {"name": "f", "arguments": '{"a'}}])
+    _merge_tool_call_deltas(calls, [{"id": "c1", "function": {"arguments": '":1}'}}])
+    assert _names_and_args(calls) == [("f", '{"a":1}')]
+
+
+def test_reused_index_with_a_new_id_keeps_fragments_on_the_new_call():
+    calls: dict = {}
+    for d in ({"index": 0, "id": "a", "function": {"name": "f"}}, {"index": 0, "function": {"arguments": "{x}"}},
+              {"index": 0, "id": "b", "function": {"name": "g"}}, {"index": 0, "function": {"arguments": "{y}"}}):
+        _merge_tool_call_deltas(calls, [d])
+    assert _names_and_args(calls) == [("f", "{x}"), ("g", "{y}")]
+
+
+def test_name_streamed_in_fragments_is_joined():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "id": "a", "function": {"name": "get_"}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "weather", "arguments": "{}"}}])
+    assert _names_and_args(calls) == [("get_weather", "{}")]
+
+
+def test_legacy_function_call_is_logged_as_a_tool_call_list():
+    fc = {"name": "lookup", "arguments": '{"id": 1}'}
+    assert json.loads(_response_text({"content": None, "function_call": fc})) == [{"type": "function", "function": fc}]
+    assert json.loads(_response_text({"content": "Sure", "function_call": fc})) == {
+        "content": "Sure", "tool_calls": [{"type": "function", "function": fc}]}
+
+
+def test_tools_and_functions_are_both_counted():
+    from services.cost_service import tool_definitions
+    functions = [{"name": "f", "parameters": {"type": "object"}}]
+    assert tool_definitions({"tools": TOOLS, "functions": functions}) == TOOLS + functions
+    assert tool_definitions({}) is None
+
+
+def test_budget_estimate_stays_positive_when_the_message_counter_fails(monkeypatch):
+    import services.cost_service as cost_service
+
+    def broken(**_kw):
+        raise ValueError("unsupported message shape")
+
+    monkeypatch.setattr(cost_service.litellm, "token_counter", broken)
+    assert estimate_prompt_cost("gpt-4o-mini", [{"role": "user", "content": "hello " * 50}], 10) > 0
+
+
+async def test_streamed_legacy_function_call_counts_toward_cost(monkeypatch):
+    def chunk(name=None, args=None):
+        delta = _Obj(content=None, tool_calls=None, function_call=_Obj(name=name, arguments=args))
+        return _Obj(choices=[_Obj(delta=delta)], usage=None)
+
+    async def fake_stream():
+        for c in (chunk("lookup", ""), chunk(None, '{"id": 1}')):
+            yield c
+
+    async def fake_acompletion(**_kw):
+        return fake_stream()
+
+    seen = {}
+
+    def fake_cost(model, messages, text, tools=None):
+        seen["text"] = text
+        return 0.001, {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+
+    monkeypatch.setattr(llm_service.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(llm_service, "calculate_stream_cost", fake_cost)
+    [c async for c in llm_service.stream_chat_completion("anthropic/x", [], "k", functions=[{"name": "lookup"}])]
+    assert seen["text"] == 'lookup{"id": 1}'
+
+
+async def test_legacy_function_call_response_is_not_cached(monkeypatch):
+    stored = []
+
+    async def fake_completion(**_kw):
+        return {"choices": [{"message": {"role": "assistant", "content": None,
+                                         "function_call": {"name": "lookup", "arguments": "{}"}}}],
+                "usage": {}, "cost_usd": 0}
+
+    async def noop(*_a, **_kw):
+        return None
+
+    async def fake_store(**kw):
+        stored.append(kw)
+
+    monkeypatch.setattr(proxy_router, "chat_completion", fake_completion)
+    monkeypatch.setattr(proxy_router, "log_spend", noop)
+    monkeypatch.setattr(proxy_router, "reconcile_budget", noop)
+    monkeypatch.setattr(proxy_router, "store_in_cache", fake_store)
+    endpoint = {"id": 1, "model": "m", "provider": "p", "decrypted_key": "k"}
+    await proxy_router._handle_completion(1, {"id": 1}, endpoint, [{"role": "user", "content": "hi"}], {}, 0, 0.0,
+                                          _prompt_hash="abc")
+    assert stored == []

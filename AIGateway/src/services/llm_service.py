@@ -3,7 +3,7 @@ from typing import AsyncIterator
 
 import litellm
 
-from services.cost_service import _safe_cost, calculate_stream_cost
+from services.cost_service import _safe_cost, calculate_stream_cost, tool_definitions
 
 
 async def chat_completion(
@@ -116,8 +116,9 @@ async def stream_chat_completion(
             accumulated_text += delta.content
         # A tool-call answer has no content; its name and arguments are the
         # completion tokens, so they must count when the provider sends no usage.
-        for tc in (getattr(delta, "tool_calls", None) or []):
-            fn = getattr(tc, "function", None)
+        functions = [getattr(tc, "function", None) for tc in (getattr(delta, "tool_calls", None) or [])]
+        functions.append(getattr(delta, "function_call", None))  # deprecated functions API
+        for fn in functions:
             if fn is not None:
                 accumulated_text += (fn.name or "") + (fn.arguments or "")
         yield f"data: {json.dumps(chunk.model_dump())}\n\n"
@@ -142,7 +143,7 @@ async def stream_chat_completion(
     if cost == 0.0 and accumulated_text:
         cost, usage = calculate_stream_cost(
             model, messages, accumulated_text,
-            tools=kwargs.get("tools") or kwargs.get("functions"),
+            tools=tool_definitions(kwargs),
         )
 
     yield f"data: {json.dumps({'cost_usd': cost, 'usage': usage})}\n\n"

@@ -20,17 +20,32 @@ def _safe_cost(value: float) -> float:
     return value
 
 
+def tool_definitions(params: dict) -> Optional[list]:
+    """Tool and legacy function definitions in a request; both count as prompt tokens."""
+    defs = list(params.get("tools") or []) + list(params.get("functions") or [])
+    return defs or None
+
+
+def _approx_tokens(value) -> int:
+    """About one token per four characters of the JSON form."""
+    return len(json.dumps(value, default=str)) // 4
+
+
 def _count_prompt_tokens(model: str, messages: list[dict], tools: Optional[list[dict]]) -> int:
-    """Prompt tokens including tool definitions. `tools` comes from the caller,
-    so a value the counter cannot handle must not zero the estimate (that would
-    let the request through the budget check as free): count the messages
-    alone and add roughly one token per four characters of the tools' JSON."""
-    if not tools:
-        return litellm.token_counter(model=model, messages=messages)
+    """Prompt tokens including tool definitions. Messages and tools come from
+    the caller, so input the counter cannot handle must not zero the estimate
+    (that would let the request through the budget check as free): fall back
+    to a size-based count for whatever the counter rejects."""
+    if tools:
+        try:
+            return litellm.token_counter(model=model, messages=messages, tools=tools)
+        except Exception:
+            pass
     try:
-        return litellm.token_counter(model=model, messages=messages, tools=tools)
+        message_tokens = litellm.token_counter(model=model, messages=messages)
     except Exception:
-        return litellm.token_counter(model=model, messages=messages) + len(json.dumps(tools, default=str)) // 4
+        message_tokens = _approx_tokens(messages)
+    return message_tokens + (_approx_tokens(tools) if tools else 0)
 
 
 def estimate_prompt_cost(

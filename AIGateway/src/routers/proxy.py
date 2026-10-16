@@ -36,7 +36,7 @@ from services.proxy_service import (
     get_guardrail_config,
 )
 from services.cache_service import generate_cache_key, check_cache, store_in_cache, is_cache_globally_enabled
-from services.cost_service import estimate_prompt_cost
+from services.cost_service import estimate_prompt_cost, tool_definitions
 from services.llm_service import chat_completion, embedding, stream_chat_completion
 
 logger = logging.getLogger("uvicorn")
@@ -73,9 +73,6 @@ def _tool_params(body: ProxyChatRequest) -> dict:
     return {k: getattr(body, k) for k in TOOL_PARAMS if getattr(body, k) is not None}
 
 
-def _tool_definitions(body: ProxyChatRequest) -> Optional[list[dict]]:
-    """Tool or function definitions, which count as prompt tokens."""
-    return body.tools or body.functions
 
 
 def _build_llm_kwargs(body: ProxyChatRequest, endpoint: dict) -> dict:
@@ -99,7 +96,10 @@ def _response_text(message: Optional[dict]) -> Optional[str]:
     if not isinstance(message, dict):
         return None
     content = message.get("content")
-    calls = message.get("tool_calls") or message.get("function_call")
+    calls = message.get("tool_calls")
+    if not calls and message.get("function_call"):
+        # Deprecated functions API: log it in the same list shape as tool_calls.
+        calls = [{"type": "function", "function": message["function_call"]}]
     if calls:
         return json.dumps({"content": content, "tool_calls": calls} if content else calls)
     if content is None:
@@ -183,7 +183,7 @@ async def proxy_chat(request: Request, body: ProxyChatRequest):
         model=endpoint["model"],
         messages=body.messages,
         max_tokens=body.max_tokens or endpoint.get("max_tokens") or 4096,
-        tools=_tool_definitions(body),
+        tools=tool_definitions(_tool_params(body)),
     )
     if not await check_org_budget(org_id, estimated_cost):
         raise HTTPException(status_code=402, detail="Organization budget limit exceeded")
@@ -319,7 +319,7 @@ async def _handle_completion(
         # replaying it would hand another caller the same tool_call ids, merging
         # unrelated runs in run correlation and agent logs.
         first = _first_message(result)
-        if _prompt_hash and not (first and first.get("tool_calls")):
+        if _prompt_hash and not (first and (first.get("tool_calls") or first.get("function_call"))):
             await store_in_cache(
                 organization_id=org_id,
                 endpoint_id=endpoint["id"],
@@ -406,6 +406,8 @@ async def _handle_stream(
                             acc.append(delta)
                         if capture_response:
                             _merge_tool_call_deltas(streamed_tool_calls, delta_obj.get("tool_calls"))
+                            if delta_obj.get("function_call"):
+                                _merge_tool_call_deltas(streamed_tool_calls, [{"function": delta_obj["function_call"]}])
                         if "usage" in chunk:
                             total_prompt = chunk["usage"].get("prompt_tokens", total_prompt)
                             total_completion = chunk["usage"].get("completion_tokens", total_completion)
@@ -433,7 +435,7 @@ async def _handle_stream(
                 request_messages=stored_request,
                 response_text=_response_text({
                     "content": "".join(acc) or None,
-                    "tool_calls": [streamed_tool_calls[i] for i in sorted(streamed_tool_calls)],
+                    "tool_calls": _finished_tool_calls(streamed_tool_calls),
                 }) if capture_response else None,
             )
             await reconcile_budget(org_id, estimated_cost, total_cost)
@@ -442,29 +444,45 @@ async def _handle_stream(
 
 
 def _merge_tool_call_deltas(calls: dict[int, dict], deltas: Optional[list]) -> None:
-    """Rebuild streamed tool calls. A delta normally carries an int index; the
-    id and name arrive first and the arguments in fragments. Some adapters omit
-    the index or reuse it, so a delta with a new id always starts a new call,
-    and one with neither index nor id continues the latest call. The name is
-    assigned, not appended, since some providers repeat it on every chunk."""
+    """Rebuild streamed tool calls from their deltas.
+
+    The id and name normally arrive in a call's first delta and the arguments
+    in later fragments, all with the same int `index`. Adapters differ, so:
+    a delta with an id joins the call with that id, else starts a new call; a
+    delta without an id joins the latest call with its index, or the latest
+    call when it has no index. Name fragments are appended, but a chunk that
+    repeats the whole name is not appended again.
+    """
     for d in deltas or []:
         if not isinstance(d, dict):
             continue
-        idx = d.get("index")
-        if not isinstance(idx, int):
-            idx = (max(calls) + 1) if (calls and d.get("id")) else max(calls, default=0)
-        call = calls.get(idx)
-        if call is not None and d.get("id") and call["id"] and d["id"] != call["id"]:
-            idx, call = max(calls) + 1, None
-        if call is None:
-            call = calls[idx] = {"id": None, "type": "function", "function": {"name": "", "arguments": ""}}
-        if d.get("id"):
-            call["id"] = d["id"]
+        cid = d.get("id")
+        idx = d.get("index") if isinstance(d.get("index"), int) else None
+        key = None
+        if cid:
+            key = next((k for k, c in calls.items() if c["id"] == cid), None)
+        elif idx is not None:
+            key = max((k for k, c in calls.items() if c["_index"] == idx), default=None)
+        elif calls:
+            key = max(calls)
+        if key is None:
+            key = max(calls) + 1 if calls else 0
+            calls[key] = {"id": None, "type": "function",
+                          "function": {"name": "", "arguments": ""}, "_index": idx}
+        call = calls[key]
+        if cid:
+            call["id"] = cid
         fn = d.get("function") or {}
-        if fn.get("name"):
-            call["function"]["name"] = fn["name"]
+        name = fn.get("name")
+        if name and name != call["function"]["name"]:
+            call["function"]["name"] += name
         if fn.get("arguments"):
             call["function"]["arguments"] += fn["arguments"]
+
+
+def _finished_tool_calls(calls: dict[int, dict]) -> list[dict]:
+    """Tool calls in arrival order, without the merge bookkeeping."""
+    return [{k: v for k, v in calls[key].items() if k != "_index"} for key in sorted(calls)]
 
 
 # ─── Embeddings ──────────────────────────────────────────────────────────────
