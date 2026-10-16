@@ -60,8 +60,8 @@ async def _attach_endpoint_names(db, org_id: int, role_id: int, keys: list[dict]
     """Add `allowed_endpoints` (id, name, is_active) to each key: the endpoints
     it may call that the viewer's role may see (the endpoints list's rule), so
     a name hidden there stays hidden here; the page shows those by id.
-    is_active is false when the gateway would refuse the endpoint: it is off,
-    or its provider key is."""
+    is_active is false when the endpoint or its provider key is switched off.
+    It does not apply the key's own model/provider limits."""
     ids = sorted({eid for key in keys for eid in key.get("allowed_endpoint_ids") or []})
     endpoints: dict[int, dict] = {}
     if ids:
@@ -71,7 +71,7 @@ async def _attach_endpoint_names(db, org_id: int, role_id: int, keys: list[dict]
             text(
                 """
                 SELECT e.id,
-                       COALESCE(NULLIF(e.display_name, ''), e.slug) AS name,
+                       COALESCE(NULLIF(BTRIM(e.display_name), ''), e.slug) AS name,
                        (e.is_active AND COALESCE(k.is_active, FALSE)) AS is_active
                 FROM ai_gateway_endpoints e
                 LEFT JOIN ai_gateway_api_keys k ON k.id = e.api_key_id

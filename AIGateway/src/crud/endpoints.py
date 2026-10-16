@@ -10,10 +10,16 @@ from database.db import get_db
 
 def role_visibility(role_id: Optional[int]) -> tuple[str, dict[str, Any]]:
     """SQL predicate (on alias `e`) and params limiting endpoints to those the
-    role may see. The one rule for every place that lists or names endpoints."""
+    role may see. The one rule for every place that lists or names endpoints.
+    An empty or NULL allowed_role_ids is open to every role, as the gateway
+    enforces it (tenant_proxy.resolve_endpoint)."""
     if role_id is None:
         return "", {}
-    return "AND :role_id = ANY(e.allowed_role_ids)", {"role_id": role_id}
+    return (
+        "AND (e.allowed_role_ids IS NULL OR cardinality(e.allowed_role_ids) = 0"
+        " OR :role_id = ANY(e.allowed_role_ids))",
+        {"role_id": role_id},
+    )
 
 
 async def get_all_endpoints(org_id: int, role_id: Optional[int] = None) -> list[dict]:

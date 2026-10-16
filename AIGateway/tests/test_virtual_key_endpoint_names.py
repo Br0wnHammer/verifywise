@@ -13,6 +13,7 @@ ENDPOINTS = [
     {"id": 1, "name": "Collections assistant", "is_active": True, "roles": [1, 4]},
     {"id": 2, "name": "collections-assistant-claude", "is_active": False, "roles": [1, 4]},
     {"id": 3, "name": "M&A assistant", "is_active": True, "roles": [1]},
+    {"id": 4, "name": "Open to all", "is_active": True, "roles": []},
 ]
 
 
@@ -36,8 +37,8 @@ class FakeDb:
     async def execute(self, _stmt, params):
         self.queries.append(params)
         rows = [e for e in ENDPOINTS if e["id"] in params["ids"]]
-        if "role_id" in params:
-            rows = [e for e in rows if params["role_id"] in e["roles"]]
+        if "role_id" in params:  # empty roles = open to every role, as in the gateway
+            rows = [e for e in rows if not e["roles"] or params["role_id"] in e["roles"]]
         return FakeResult([{k: e[k] for k in ("id", "name", "is_active")} for e in rows])
 
 
@@ -55,9 +56,18 @@ async def test_names_follow_the_keys_order_and_skip_unknown_ids():
 
 
 async def test_endpoints_hidden_from_the_role_are_not_named():
-    keys = [{"allowed_endpoint_ids": [1, 3]}]
+    keys = [{"allowed_endpoint_ids": [1, 3, 4]}]
     await _attach(keys, role_id=4)  # Auditor
-    assert [e["id"] for e in keys[0]["allowed_endpoints"]] == [1]
+    assert [e["id"] for e in keys[0]["allowed_endpoints"]] == [1, 4]
+
+
+def test_the_role_rule_treats_an_empty_role_list_as_open():
+    from crud.endpoints import role_visibility
+
+    clause, params = role_visibility(4)
+    assert "cardinality(e.allowed_role_ids) = 0" in clause and "IS NULL" in clause
+    assert params == {"role_id": 4}
+    assert role_visibility(None) == ("", {})
 
 
 async def test_one_query_for_only_the_referenced_ids():
