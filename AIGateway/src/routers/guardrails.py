@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
 
-from services.guardrail_service import scan_text
+from services.guardrail_service import scan_text_async
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ class GuardrailTestRequest(BaseModel):
 async def test_guardrails(request: Request, body: GuardrailTestRequest):
     """Test guardrail rules against sample text without logging."""
 
-    result = scan_text(
+    result = await scan_text_async(
         text=body.text,
         guardrail_rules=body.guardrail_rules,
         settings=body.settings,
@@ -55,7 +55,7 @@ async def scan_for_guardrails(request: Request, body: GuardrailTestRequest):
     Same as test but intended for the live flow.
     """
 
-    result = scan_text(
+    result = await scan_text_async(
         text=body.text,
         guardrail_rules=body.guardrail_rules,
         settings=body.settings,

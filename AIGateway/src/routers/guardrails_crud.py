@@ -11,7 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from routers.guardrails import test_preview
-from services.guardrail_service import scan_text
+from services.guardrail_service import scan_text_async
 from services.proxy_service import get_guardrail_config
 from utils.auth import get_org_id, get_user_id, require_admin
 from utils.change_history import record_guardrail_change
@@ -247,7 +247,7 @@ async def test_org_guardrails(request: Request):
         raise HTTPException(status_code=400, detail=f"Sample text must be at most {MAX_TEST_TEXT} characters")
 
     rules, settings = await get_guardrail_config(org_id)
-    result = scan_text(text=text, guardrail_rules=rules, settings=settings)
+    result = await scan_text_async(text=text, guardrail_rules=rules, settings=settings)
     return {"data": test_preview(result)}
 
 

@@ -1,5 +1,7 @@
+import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 from importlib.metadata import version
 
 import litellm
@@ -33,6 +35,7 @@ from routers.mcp_proxy import router as mcp_proxy_router
 from routers.mcp_hook import router as mcp_hook_router
 from routers.tenant_chat import router as tenant_chat_router
 from middlewares.auth import include_internal_router
+from services.guardrail_service import preload_pii_engine, shutdown_scan_executor
 
 # Disable LiteLLM verbose logging to prevent key leakage
 litellm.suppress_debug_info = True
@@ -47,10 +50,27 @@ if settings.ai_gateway_internal_key.lower() in _PLACEHOLDER_VALUES:
     )
     sys.exit(1)
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if settings.guardrails_preload_pii:
+        # Fire and forget: serving starts at once, and the model loads on the
+        # guardrail scan thread, where PII scans wait for it anyway.
+        try:
+            preload_pii_engine()
+        except Exception as e:
+            logger.error(f"Could not start PII engine preload: {e}")
+    yield
+    shutdown_scan_executor()
+
+
 app = FastAPI(
     title="VerifyWise AI Gateway",
     version="1.0.0",
     redirect_slashes=False,
+    lifespan=lifespan,
 )
 
 # CORS: allow the Express backend plus any explicitly configured origins.

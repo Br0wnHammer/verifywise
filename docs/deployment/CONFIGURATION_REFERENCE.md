@@ -258,6 +258,7 @@ The backend calls the AI Gateway's internal API with a shared key. Set the same 
 | `AI_GATEWAY_INTERNAL_KEY` | Shared secret sent as `x-internal-key` from the backend to the AI Gateway. Set the same value in `Servers/.env` and the AI Gateway's environment | Yes, when the AI Gateway runs |
 | `MCP_AUDIT_RETENTION_DAYS` | Default number of days to keep Agent Control logs for organizations that have not set their own period in **Settings > Data retention**. Zero or less keeps logs indefinitely for those organizations | No (default `30`) |
 | `MCP_AUDIT_RETENTION_MIN_DAYS` | Shortest period an organization may set for Agent Control logs. Not applied to `MCP_AUDIT_RETENTION_DAYS` | No (default `7`) |
+| `GUARDRAILS_PRELOAD_PII` | Set on the AI Gateway. Loads the PII detection engine (Presidio and its spaCy model) in the background when the gateway starts, so the first PII guardrail scan does not wait for it. Set to `false` to load it on first use instead | No (default `true`) |
 
 The default is the IPv4 loopback address. If the AI Gateway listens only on the IPv6 loopback (`::1`), set `AI_GATEWAY_URL=http://[::1]:8100`.
 
