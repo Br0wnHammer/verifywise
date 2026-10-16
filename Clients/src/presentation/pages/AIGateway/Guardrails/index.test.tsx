@@ -246,6 +246,7 @@ describe("AIGateway - Guardrails", () => {
           name: "Block term",
           config: { type: "keyword", pattern: "confidential" },
         }),
+        { suppressGlobalErrorToast: true },
       );
     });
   });
@@ -325,9 +326,11 @@ describe("AIGateway - Guardrails", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run test" }));
 
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith("/ai-gateway/guardrails/test", {
-        text: "email me at j@example.com",
-      });
+      expect(mockPost).toHaveBeenCalledWith(
+        "/ai-gateway/guardrails/test",
+        { text: "email me at j@example.com" },
+        { suppressGlobalErrorToast: true },
+      );
     });
     await waitFor(() => {
       expect(screen.getByText("Would be blocked")).toBeInTheDocument();
@@ -354,7 +357,7 @@ describe("AIGateway - Guardrails", () => {
     });
   });
 
-  it("shows the message when the gateway sends the error detail as an object", async () => {
+  it("hides the gateway's internal-key rejection behind the friendly error", async () => {
     mockPost.mockRejectedValue(
       new CustomException("Request failed", 401, {
         detail: { message: "Invalid internal key", code: "INVALID_KEY" },
@@ -371,8 +374,11 @@ describe("AIGateway - Guardrails", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run test" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Invalid internal key")).toBeInTheDocument();
+      expect(
+        screen.getByText("Test failed — is the AI Gateway service running?"),
+      ).toBeInTheDocument();
     });
+    expect(screen.queryByText("Invalid internal key")).not.toBeInTheDocument();
   });
 
   it("shows the friendly error, not the proxy's socket error, when the gateway is down", async () => {

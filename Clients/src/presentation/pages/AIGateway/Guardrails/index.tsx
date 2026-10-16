@@ -565,8 +565,13 @@ const FILTER_TYPE_ITEMS = [
 ];
 
 // The gateway's 4xx reason, else a client reason, else the fallback (as on Settings).
-const apiErrorText = (err: unknown, fallback: string): string =>
-  getGatewayErrorDetail(err) || getClientErrorReason(err) || fallback;
+// An object detail ({message, code}) is the gateway rejecting the internal
+// key: a server misconfiguration the user cannot act on, so it gets the fallback.
+const apiErrorText = (err: unknown, fallback: string): string => {
+  const detail = (err as { response?: { detail?: unknown } } | null)?.response?.detail;
+  if (detail !== null && typeof detail === "object") return fallback;
+  return getGatewayErrorDetail(err) || getClientErrorReason(err) || fallback;
+};
 
 // Matches the gateway's limit on POST /guardrails/test.
 const MAX_TEST_TEXT = 20_000;
@@ -697,15 +702,19 @@ export default function GuardrailsPage() {
     setCfSubmitting(true);
     setCfError("");
     try {
-      await apiServices.post("/ai-gateway/guardrails", {
-        guardrail_type: "content_filter",
-        name: cfForm.name,
-        action: cfForm.action,
-        config: {
-          type: cfForm.type,
-          pattern: cfForm.pattern,
+      await apiServices.post(
+        "/ai-gateway/guardrails",
+        {
+          guardrail_type: "content_filter",
+          name: cfForm.name,
+          action: cfForm.action,
+          config: {
+            type: cfForm.type,
+            pattern: cfForm.pattern,
+          },
         },
-      });
+        { suppressGlobalErrorToast: true }, // the form shows the error
+      );
       setIsCfModalOpen(false);
       setCfForm({ name: "", type: "keyword", pattern: "", action: "block" });
       await loadRules();
@@ -756,9 +765,11 @@ export default function GuardrailsPage() {
     setTestLoading(true);
     setTestResult(null);
     try {
-      const res = await apiServices.post<Record<string, any>>("/ai-gateway/guardrails/test", {
-        text: testText,
-      });
+      const res = await apiServices.post<Record<string, any>>(
+        "/ai-gateway/guardrails/test",
+        { text: testText },
+        { suppressGlobalErrorToast: true }, // the dialog shows the error
+      );
       if (testRunRef.current === run) setTestResult(res?.data?.data);
     } catch (err) {
       if (testRunRef.current === run)
