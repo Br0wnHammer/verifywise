@@ -36,6 +36,7 @@ import {
   KEY_DISPLAY_BG,
 } from "../shared";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
+import { useTranslation } from "../../../../application/hooks/useTranslation";
 import dayjs from "dayjs";
 
 interface CreateVirtualKeyPayload {
@@ -47,6 +48,13 @@ interface CreateVirtualKeyPayload {
   blocked_models?: string[];
   allowed_providers?: string[];
   blocked_providers?: string[];
+}
+
+interface EndpointSummary {
+  id: number;
+  slug: string;
+  display_name?: string;
+  is_active: boolean;
 }
 
 interface VirtualKey {
@@ -72,8 +80,10 @@ interface VirtualKey {
 export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: boolean } = {}) {
   const formatDate = useFormattedDate();
   const cardSx = useCardSx();
+  const { t: tr } = useTranslation();
   const [keys, setKeys] = useState<VirtualKey[]>([]);
   const [endpointCount, setEndpointCount] = useState<number | null>(null);
+  const [endpointNames, setEndpointNames] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -117,8 +127,9 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
         apiServices.get<Record<string, any>>("/ai-gateway/endpoints").catch(() => null),
       ]);
       setKeys(keysRes?.data?.data || []);
-      const eps = endpointsRes?.data?.endpoints || [];
-      setEndpointCount(eps.filter((e: any) => e.is_active).length);
+      const eps: EndpointSummary[] = endpointsRes?.data?.endpoints || [];
+      setEndpointCount(eps.filter((e) => e.is_active).length);
+      setEndpointNames(Object.fromEntries(eps.map((e) => [e.id, e.display_name || e.slug])));
     } catch {
       setLoadError("Failed to load virtual keys. Please try again.");
     } finally {
@@ -129,6 +140,23 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // What a key is limited to. Empty lists mean "no limit" (the gateway skips
+  // the check), so a key with none of them can call any endpoint and model.
+  const restrictionLabels = (key: VirtualKey): string[] => {
+    const endpoints = (key.allowed_endpoint_ids ?? []).map((id) => endpointNames[id] ?? `#${id}`);
+    const lists: [string, string[] | undefined][] = [
+      ["Endpoints", endpoints],
+      ["Allowed models", key.allowed_models],
+      ["Blocked models", key.blocked_models],
+      ["Allowed providers", key.allowed_providers],
+      ["Blocked providers", key.blocked_providers],
+    ];
+    const labels = lists
+      .filter(([, values]) => values && values.length > 0)
+      .map(([name, values]) => `${tr(name)}: ${values!.join(", ")}`);
+    return labels.length > 0 ? labels : [tr("Any endpoint or model")];
+  };
 
   const handleCreate = async () => {
     if (!createForm.name.trim()) {
@@ -338,7 +366,14 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
                       <Typography sx={{ fontSize: 13, fontWeight: 500 }}>{key.name}</Typography>
                       <Chip label={status} size="small" uppercase={false} />
                     </Stack>
-                    <Stack direction="row" gap="12px" alignItems="center" mt="2px">
+                    <Stack
+                      direction="row"
+                      flexWrap="wrap"
+                      columnGap="12px"
+                      rowGap="4px"
+                      alignItems="center"
+                      mt="2px"
+                    >
                       <Typography
                         sx={{
                           fontSize: 12,
@@ -359,34 +394,9 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
                           {key.rate_limit_rpm} RPM
                         </Typography>
                       )}
-                      {key.allowed_models?.length > 0 && (
-                        <Chip
-                          label={`Only models: ${key.allowed_models.join(", ")}`}
-                          size="small"
-                          uppercase={false}
-                        />
-                      )}
-                      {key.blocked_models?.length > 0 && (
-                        <Chip
-                          label={`Blocked models: ${key.blocked_models.join(", ")}`}
-                          size="small"
-                          uppercase={false}
-                        />
-                      )}
-                      {key.allowed_providers?.length > 0 && (
-                        <Chip
-                          label={`Only providers: ${key.allowed_providers.join(", ")}`}
-                          size="small"
-                          uppercase={false}
-                        />
-                      )}
-                      {key.blocked_providers?.length > 0 && (
-                        <Chip
-                          label={`Blocked providers: ${key.blocked_providers.join(", ")}`}
-                          size="small"
-                          uppercase={false}
-                        />
-                      )}
+                      {restrictionLabels(key).map((label) => (
+                        <Chip key={label} label={label} size="small" uppercase={false} />
+                      ))}
                       <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>
                         by {key.created_by_name} &middot; {formatDate(key.created_at)}
                       </Typography>

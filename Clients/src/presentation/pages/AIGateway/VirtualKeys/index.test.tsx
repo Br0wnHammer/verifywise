@@ -138,10 +138,43 @@ describe("AIGateway - VirtualKeys", () => {
     expect(screen.getByText("vk_abc123")).toBeInTheDocument();
     expect(screen.getByText("$12.5000 / $50.00")).toBeInTheDocument();
     expect(screen.getByText("60 RPM")).toBeInTheDocument();
-    expect(screen.getByText("Only models: gpt-4o-mini")).toBeInTheDocument();
+    expect(screen.getByText("Allowed models: gpt-4o-mini")).toBeInTheDocument();
     expect(screen.getByText("Blocked models: gpt-4o")).toBeInTheDocument();
-    expect(screen.getByText("Only providers: openai")).toBeInTheDocument();
+    expect(screen.getByText("Allowed providers: openai")).toBeInTheDocument();
     expect(screen.getByText("Blocked providers: openrouter")).toBeInTheDocument();
+    expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
+  });
+
+  it("names the endpoints a key is limited to, and marks an unknown one by id", async () => {
+    mockLoad(
+      [makeKey({ allowed_endpoint_ids: [1, 2, 9] })],
+      [
+        {
+          id: 1,
+          is_active: true,
+          display_name: "Collections assistant",
+          slug: "collections-assistant",
+        },
+        { id: 2, is_active: true, display_name: "", slug: "collections-assistant-claude" },
+      ],
+    );
+    renderWithProviders(<VirtualKeysPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Endpoints: Collections assistant, collections-assistant-claude, #9"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
+  });
+
+  it("says when a key has no endpoint, model or provider limits", async () => {
+    mockLoad([makeKey()]);
+    renderWithProviders(<VirtualKeysPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Any endpoint or model")).toBeInTheDocument();
+    });
   });
 
   it("shows a Revoked status for revoked keys and a Delete action for inactive keys", async () => {
