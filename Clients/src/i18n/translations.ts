@@ -2189,8 +2189,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Annex III category": "Anhang-III-Kategorie",
     "Any additional context about this agent": "Zusätzlicher Kontext zu diesem Agenten",
     "Any language or framework": "Beliebige Sprache oder Rahmenwerk",
-    "Sample text must be at most {max} characters":
-      "Der Beispieltext darf höchstens {max} Zeichen lang sein",
     "API calls": "API-Aufrufe",
     "API key": "API-Schlüssel",
     "API Key": "API-Schlüssel",
@@ -9631,6 +9629,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Verwandte Anbieterrisiken beschreiben dieselbe Gefährdung, bei diesem oder einem anderen Anbieter. Keines erbt vom anderen.",
     "Similar wording": "Ähnliche Formulierung",
     "Same vendor": "Gleicher Anbieter",
+    "Sample text must be at most {max} characters":
+      "Der Beispieltext darf höchstens {max} Zeichen lang sein",
     "Shared framework": "Gemeinsames Rahmenwerk",
     "Shared use case": "Gemeinsamer Anwendungsfall",
     "Why are you dismissing {name}?": "Warum verwerfen Sie {name}?",
@@ -12783,8 +12783,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Annex III category": "Catégorie de l'annexe III",
     "Any additional context about this agent": "Tout contexte supplémentaire sur cet agent",
     "Any language or framework": "Toute langue ou référentiel",
-    "Sample text must be at most {max} characters":
-      "Le texte d'exemple ne doit pas dépasser {max} caractères",
     "API calls": "Appels API",
     "API key": "Clé API",
     "API Key": "Clé API",
@@ -20054,6 +20052,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Des risques fournisseurs connexes décrivent la même exposition, chez ce fournisseur ou un autre. Aucun n'hérite de l'autre.",
     "Similar wording": "Formulation similaire",
     "Same vendor": "Même fournisseur",
+    "Sample text must be at most {max} characters":
+      "Le texte d'exemple ne doit pas dépasser {max} caractères",
     "Shared framework": "Cadre commun",
     "Shared use case": "Cas d'usage commun",
     "Why are you dismissing {name}?": "Pourquoi rejetez-vous {name} ?",
@@ -22611,8 +22611,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Annex III category": "Categoría del Anexo III",
     "Any additional context about this agent": "Cualquier contexto adicional sobre este agente",
     "Any language or framework": "Cualquier lenguaje o marco",
-    "Sample text must be at most {max} characters":
-      "El texto de ejemplo no puede superar los {max} caracteres",
     "API calls": "Llamadas a la API",
     "API key": "Clave de API",
     "API Key": "Clave de API",
@@ -30391,6 +30389,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Los riesgos de proveedor relacionados describen la misma exposición, en este proveedor o en otro. Ninguno hereda del otro.",
     "Similar wording": "Redacción similar",
     "Same vendor": "Mismo proveedor",
+    "Sample text must be at most {max} characters":
+      "El texto de ejemplo no puede superar los {max} caracteres",
     "Shared framework": "Marco compartido",
     "Shared use case": "Caso de uso compartido",
     "Why are you dismissing {name}?": "¿Por qué descartas {name}?",

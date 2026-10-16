@@ -56,4 +56,5 @@ def test_concurrent_first_scans_load_the_engine_once(monkeypatch):
         t.join()
 
     assert len(built) == 1
-    assert seen == [3] * 8  # every caller saw all three custom recognizers
+    expected = len(engine._get_custom_recognizers())
+    assert seen == [expected] * 8  # every caller saw every custom recognizer

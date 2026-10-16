@@ -79,9 +79,9 @@ def _get_custom_recognizers():
 def _ensure_initialized():
     """Lazy-load Presidio analyzer and anonymizer on first use.
 
-    Scans can run on worker threads (the guardrail test route), so loading is
-    locked: the model loads once, and the engines are published only after the
-    custom recognizers are registered, so no scan runs without them.
+    Loading is locked so it happens once even if a scan ever starts on another
+    thread, and the engines are published only after the custom recognizers
+    are registered, so no scan can run without them.
     """
     if _initialized:
         return

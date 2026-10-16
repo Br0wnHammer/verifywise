@@ -563,6 +563,16 @@ const FILTER_TYPE_ITEMS = [
 // Matches the gateway's limit on POST /guardrails/test.
 const MAX_TEST_TEXT = 20_000;
 
+/** Whether text has more than `max` code points; stops counting past `max`. */
+function exceedsCodePoints(text: string, max: number): boolean {
+  if (text.length <= max) return false; // UTF-16 length is never below the code-point count
+  let count = 0;
+  for (const _ of text) {
+    if (++count > max) return true;
+  }
+  return false;
+}
+
 export default function GuardrailsPage() {
   const { t: tr, lang } = useTranslation();
   const cardSx = useCardSx();
@@ -726,8 +736,7 @@ export default function GuardrailsPage() {
   };
 
   // Count code points, as the gateway's len() does (an emoji is one, not two).
-  // UTF-16 length is never below the code-point count, so check it first.
-  const testTextTooLong = testText.length > MAX_TEST_TEXT && [...testText].length > MAX_TEST_TEXT;
+  const testTextTooLong = exceedsCodePoints(testText, MAX_TEST_TEXT);
   // Bumped whenever the text or the dialog changes; a response for an older
   // run is dropped, since it describes text that is no longer in the field.
   const testRunRef = useRef(0);
@@ -756,7 +765,9 @@ export default function GuardrailsPage() {
             : "Test failed — is the AI Gateway service running?",
       });
     } finally {
-      if (run === testRunRef.current) setTestLoading(false);
+      // Keep Run test disabled until this request ends, even if its result is
+      // dropped, so edits cannot start overlapping scans.
+      setTestLoading(false);
     }
   };
 
@@ -1190,7 +1201,6 @@ export default function GuardrailsPage() {
               testRunRef.current += 1; // a result only describes the text it scanned
               setTestText(e.target.value);
               setTestResult(null);
-              setTestLoading(false);
             }}
             error={
               testTextTooLong
