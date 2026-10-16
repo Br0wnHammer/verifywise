@@ -1379,6 +1379,10 @@ export const translations: Record<string, Record<string, string>> = {
     // Use cases
     "Use case": "Anwendungsfall",
     "Use case report": "Anwendungsfall-Bericht",
+    "This use case has no framework assigned":
+      "Diesem Anwendungsfall ist kein Rahmenwerk zugeordnet",
+    "Requirements, assessment tracker, clauses and annexes, and NIST subcategories need a framework, so they are left out. The report still covers risks, models, vendors, training, policies and incidents. Assign a framework to the use case to include compliance sections.":
+      "Anforderungen, Bewertungs-Tracker, Klauseln und Anhänge sowie NIST-Unterkategorien benötigen ein Rahmenwerk und entfallen daher. Der Bericht umfasst weiterhin Risiken, Modelle, Anbieter, Schulungen, Richtlinien und Vorfälle. Ordnen Sie dem Anwendungsfall ein Rahmenwerk zu, um Compliance-Abschnitte aufzunehmen.",
     "AI project": "KI-Projekt",
     "AI Project": "KI-Projekt",
     "AI PROJECT": "KI-PROJEKT",
@@ -11593,6 +11597,9 @@ export const translations: Record<string, Record<string, string>> = {
     // Use cases
     "Use case": "Cas d'usage",
     "Use case report": "Rapport de cas d'usage",
+    "This use case has no framework assigned": "Aucun référentiel n'est associé à ce cas d'usage",
+    "Requirements, assessment tracker, clauses and annexes, and NIST subcategories need a framework, so they are left out. The report still covers risks, models, vendors, training, policies and incidents. Assign a framework to the use case to include compliance sections.":
+      "Les exigences, le suivi des évaluations, les clauses et annexes ainsi que les sous-catégories NIST nécessitent un référentiel et sont donc exclus. Le rapport couvre toujours les risques, les modèles, les fournisseurs, les formations, les politiques et les incidents. Associez un référentiel au cas d'usage pour inclure les sections de conformité.",
     "AI project": "Projet IA",
     "AI Project": "Projet IA",
     "Project": "Projet",
@@ -21991,6 +21998,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Analytics": "Analíticas",
     "Use case": "Caso de uso",
     "Use case report": "Informe de caso de uso",
+    "This use case has no framework assigned": "Este caso de uso no tiene ningún marco asignado",
+    "Requirements, assessment tracker, clauses and annexes, and NIST subcategories need a framework, so they are left out. The report still covers risks, models, vendors, training, policies and incidents. Assign a framework to the use case to include compliance sections.":
+      "Los requisitos, el seguimiento de evaluaciones, las cláusulas y anexos y las subcategorías de NIST necesitan un marco, por lo que se omiten. El informe sigue cubriendo riesgos, modelos, proveedores, formación, políticas e incidentes. Asigne un marco al caso de uso para incluir las secciones de cumplimiento.",
     "AI project": "Proyecto de IA",
     "AI Project": "Proyecto de IA",
     "AI PROJECT": "PROYECTO DE IA",
