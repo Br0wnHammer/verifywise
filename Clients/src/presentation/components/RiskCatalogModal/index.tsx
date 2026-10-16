@@ -1,13 +1,14 @@
 import { useLayoutEffect, useState } from "react";
 import RiskDatabaseModal from "../RiskDatabaseModal";
-import { RiskData, SelectedRiskData } from "../RiskDatabaseModal/types";
+import { RiskData } from "../RiskDatabaseModal/types";
+import { RiskFormValues } from "../../../domain/types/riskForm.types";
 import { riskCatalogs, RiskCatalogSource } from "./riskCatalogs";
 
 interface RiskCatalogModalProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   source: RiskCatalogSource;
-  onRiskSelected?: (riskData: SelectedRiskData) => void;
+  onRiskSelected?: (riskData: RiskFormValues) => void;
 }
 
 /**
