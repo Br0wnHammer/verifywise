@@ -323,6 +323,7 @@ describe("AIGateway - Endpoints", () => {
           api_key_id: 1,
           slug: "new-endpoint",
         }),
+        { suppressGlobalErrorToast: true },
       );
     });
 
@@ -357,6 +358,7 @@ describe("AIGateway - Endpoints", () => {
       expect(apiServices.patch).toHaveBeenCalledWith(
         "/ai-gateway/endpoints/1",
         expect.objectContaining({ display_name: "Production GPT-4o (renamed)" }),
+        { suppressGlobalErrorToast: true },
       );
     });
   });

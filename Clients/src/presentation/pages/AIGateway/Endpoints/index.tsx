@@ -34,6 +34,9 @@ import {
   getGatewayErrorDetail,
 } from "../../../../application/utils/apiErrorReason";
 
+// The form and dialogs show their own errors; skip the global toast.
+const quietErrors = { suppressGlobalErrorToast: true };
+
 // The gateway's 4xx reason, else a client reason, else the fallback (as on Settings).
 const apiErrorText = (err: unknown, fallback: string): string =>
   getGatewayErrorDetail(err) || getClientErrorReason(err) || fallback;
@@ -200,9 +203,9 @@ export default function EndpointsPage() {
     try {
       if (editingId === null) {
         payload.slug = form.slug;
-        await apiServices.post("/ai-gateway/endpoints", payload);
+        await apiServices.post("/ai-gateway/endpoints", payload, quietErrors);
       } else {
-        await apiServices.patch(`/ai-gateway/endpoints/${editingId}`, payload);
+        await apiServices.patch(`/ai-gateway/endpoints/${editingId}`, payload, quietErrors);
       }
       setIsModalOpen(false);
       setForm({ ...EMPTY_FORM });
@@ -218,22 +221,23 @@ export default function EndpointsPage() {
     if (!deleteTarget) return;
     setDeleteError("");
     setDeleteSubmitting(true);
+    let done = true;
     try {
       await apiServices.delete(`/ai-gateway/endpoints/${deleteTarget.id}`, {
         suppressGlobalErrorToast: true, // the dialog shows the error
       });
-      setDeleteTarget(null);
-      await loadData();
     } catch (err) {
-      if ((err as { status?: number } | null)?.status === 404) {
-        // Already deleted elsewhere: nothing left to do but refresh the list.
-        setDeleteTarget(null);
-        await loadData();
-      } else {
+      // A 404 means it was already deleted elsewhere: same outcome.
+      if ((err as { status?: number } | null)?.status !== 404) {
+        done = false;
         setDeleteError(apiErrorText(err, "Failed to delete endpoint"));
       }
     } finally {
       setDeleteSubmitting(false);
+    }
+    if (done) {
+      setDeleteTarget(null);
+      await loadData();
     }
   };
 
@@ -427,10 +431,7 @@ export default function EndpointsPage() {
                     </IconButton>
                     <IconButton
                       size="small"
-                      onClick={() => {
-                        setDeleteError("");
-                        setDeleteTarget({ id: ep.id, name: ep.display_name });
-                      }}
+                      onClick={() => setDeleteTarget({ id: ep.id, name: ep.display_name })}
                       sx={{ p: 0.5 }}
                     >
                       <Trash2 size={14} strokeWidth={1.5} color={palette.text.tertiary} />
@@ -656,6 +657,7 @@ export default function EndpointsPage() {
       <StandardModal
         isOpen={!!deleteTarget}
         onClose={() => {
+          if (deleteSubmitting) return; // the result belongs to this dialog
           setDeleteTarget(null);
           setDeleteError("");
         }}

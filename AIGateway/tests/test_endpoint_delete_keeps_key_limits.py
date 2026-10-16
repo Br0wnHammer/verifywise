@@ -53,5 +53,6 @@ async def test_the_strip_never_empties_a_keys_endpoint_list(monkeypatch):
 
     strip = next(s for s in db.statements if s.startswith("UPDATE ai_gateway_virtual_keys"))
     assert "array_remove(allowed_endpoint_ids, :id)" in strip
-    assert "cardinality(allowed_endpoint_ids) > 1" in strip
+    # what is left after removing every copy must be non-empty, so [9, 9] is kept too
+    assert "cardinality(array_remove(allowed_endpoint_ids, :id)) > 0" in strip
     assert db.committed is True

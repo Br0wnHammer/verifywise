@@ -270,7 +270,8 @@ async def delete_endpoint(org_id: int, id: int) -> bool:
             )
 
         # Remove this endpoint from virtual key allowed_endpoint_ids arrays,
-        # except where it is a key's last one: an empty list means "every
+        # except where it is a key's last one (counting what is left after
+        # removing every copy, so [9, 9] counts as one): an empty list means "every
         # endpoint" to the gateway, so emptying it would widen the key. The
         # left-over id names an endpoint that no longer exists (ids are never
         # reused), so that key can no longer call anything. UPDATE re-checks
@@ -283,7 +284,7 @@ async def delete_endpoint(org_id: int, id: int) -> bool:
                 SET allowed_endpoint_ids = array_remove(allowed_endpoint_ids, :id)
                 WHERE organization_id = :org_id
                   AND :id = ANY(allowed_endpoint_ids)
-                  AND cardinality(allowed_endpoint_ids) > 1
+                  AND cardinality(array_remove(allowed_endpoint_ids, :id)) > 0
             """),
             {"org_id": org_id, "id": id},
         )
