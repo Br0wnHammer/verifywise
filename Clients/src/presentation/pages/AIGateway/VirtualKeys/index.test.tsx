@@ -184,6 +184,19 @@ describe("AIGateway - VirtualKeys", () => {
     expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
   });
 
+  it("does not call a revoked key unlimited, and hides a zero rate limit", async () => {
+    mockLoad([
+      makeKey({ is_active: false, revoked_at: "2025-02-01T00:00:00Z", rate_limit_rpm: 0 }),
+    ]);
+    renderWithProviders(<VirtualKeysPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Revoked")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
   it("renders a key whose lists are null instead of crashing", async () => {
     mockLoad([
       makeKey({

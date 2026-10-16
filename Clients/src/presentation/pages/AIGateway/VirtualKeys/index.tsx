@@ -147,7 +147,7 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
 
   // What a key is limited to. Empty lists mean "no limit" (the gateway skips
   // the check), so a key with none of them can call any endpoint and model.
-  const restrictionLabels = (key: VirtualKey): string[] => {
+  const restrictionLabels = (key: VirtualKey, isUsable: boolean): string[] => {
     // Endpoint ids decide whether a key is limited; names only describe it.
     // An id with no name is an endpoint the viewer may not see (or one the
     // gateway does not know), shown by id.
@@ -167,7 +167,9 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
     const labels = lists.flatMap(([label, values]) =>
       values?.length ? [`${label}: ${values.join("; ")}`] : [],
     );
-    return labels.length > 0 ? labels : [tr("Any endpoint or model")];
+    // A revoked or expired key calls nothing, so it is not "unlimited".
+    if (labels.length === 0 && isUsable) return [tr("Any endpoint or model")];
+    return labels;
   };
 
   const handleCreate = async () => {
@@ -371,11 +373,13 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
                   borderRadius: "4px",
                 }}
               >
-                <Stack direction="row" alignItems="center" gap="12px" flex={1}>
+                <Stack direction="row" alignItems="center" gap="12px" flex={1} minWidth={0}>
                   <KeyRound size={16} strokeWidth={1.5} color={palette.text.tertiary} />
                   <Box flex={1} minWidth={0}>
                     <Stack direction="row" alignItems="center" gap="8px">
-                      <Typography sx={{ fontSize: 13, fontWeight: 500 }}>{key.name}</Typography>
+                      <Typography sx={{ fontSize: 13, fontWeight: 500, overflowWrap: "anywhere" }}>
+                        {key.name}
+                      </Typography>
                       <Chip label={tr(status)} size="small" uppercase={false} />
                     </Stack>
                     <Stack
@@ -401,12 +405,12 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
                           {Number(key.max_budget_usd).toFixed(2)}
                         </Typography>
                       )}
-                      {key.rate_limit_rpm && (
+                      {key.rate_limit_rpm != null && key.rate_limit_rpm > 0 && (
                         <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>
                           {key.rate_limit_rpm} RPM
                         </Typography>
                       )}
-                      {restrictionLabels(key).map((label) => (
+                      {restrictionLabels(key, status === "Active").map((label) => (
                         <Typography
                           key={label}
                           sx={{

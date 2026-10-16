@@ -3,6 +3,7 @@ import secrets
 import hashlib
 from typing import Any, Optional
 from sqlalchemy import text
+from crud.endpoints import role_visibility
 from database.db import get_db
 
 
@@ -17,7 +18,7 @@ def generate_virtual_key() -> dict:
     }
 
 
-async def get_all_virtual_keys(org_id: int, role_id: Optional[int] = None) -> list[dict]:
+async def get_all_virtual_keys(org_id: int, role_id: int) -> list[dict]:
     async with get_db() as db:
         result = await db.execute(
             # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
@@ -55,25 +56,30 @@ async def get_all_virtual_keys(org_id: int, role_id: Optional[int] = None) -> li
     return []
 
 
-async def _attach_endpoint_names(db, org_id: int, role_id: Optional[int], keys: list[dict]) -> None:
+async def _attach_endpoint_names(db, org_id: int, role_id: int, keys: list[dict]) -> None:
     """Add `allowed_endpoints` (id, name, is_active) to each key: the endpoints
-    it may call that the viewer may see. Same role filter as the endpoints
-    list, so a name hidden there stays hidden here; the page shows those by id."""
+    it may call that the viewer's role may see (the endpoints list's rule), so
+    a name hidden there stays hidden here; the page shows those by id.
+    is_active is false when the gateway would refuse the endpoint: it is off,
+    or its provider key is."""
     ids = sorted({eid for key in keys for eid in key.get("allowed_endpoint_ids") or []})
     endpoints: dict[int, dict] = {}
     if ids:
-        role_filter = "AND :role_id = ANY(allowed_role_ids)" if role_id is not None else ""
-        params: dict[str, Any] = {"org_id": org_id, "ids": ids}
-        if role_id is not None:
-            params["role_id"] = role_id
+        role_filter, role_params = role_visibility(role_id)
         result = await db.execute(
             # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
-            text(f"""
-                SELECT id, COALESCE(NULLIF(display_name, ''), slug) AS name, is_active
-                FROM ai_gateway_endpoints
-                WHERE organization_id = :org_id AND id = ANY(:ids) {role_filter}
-            """),
-            params,
+            text(
+                """
+                SELECT e.id,
+                       COALESCE(NULLIF(e.display_name, ''), e.slug) AS name,
+                       (e.is_active AND COALESCE(k.is_active, FALSE)) AS is_active
+                FROM ai_gateway_endpoints e
+                LEFT JOIN ai_gateway_api_keys k ON k.id = e.api_key_id
+                WHERE e.organization_id = :org_id AND e.id = ANY(:ids)
+                """
+                + role_filter
+            ),
+            {"org_id": org_id, "ids": ids, **role_params},
         )
         endpoints = {row["id"]: dict(row) for row in result.mappings().all()}
     for key in keys:
