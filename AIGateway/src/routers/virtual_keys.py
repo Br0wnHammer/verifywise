@@ -10,7 +10,7 @@ from crud.virtual_keys import (
     revoke_virtual_key,
     update_virtual_key,
 )
-from utils.auth import get_org_id, get_user_id, require_admin
+from utils.auth import get_org_id, get_role_id, get_user_id, require_admin
 from utils.notifications import config_event, notify_config_change
 
 router = APIRouter(prefix="/virtual-keys", tags=["virtual-keys"])
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/virtual-keys", tags=["virtual-keys"])
 async def list_virtual_keys(request: Request):
     org_id = get_org_id(request)
 
-    keys = await get_all_virtual_keys(org_id)
+    keys = await get_all_virtual_keys(org_id, role_id=get_role_id(request))
     return {"status": "success", "data": keys}
 
 

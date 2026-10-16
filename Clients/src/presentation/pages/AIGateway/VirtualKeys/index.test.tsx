@@ -145,13 +145,13 @@ describe("AIGateway - VirtualKeys", () => {
     expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
   });
 
-  it("names a key's endpoints from the key itself, marking inactive ones", async () => {
+  it("names a key's endpoints from the key itself, marking inactive and unnamed ones", async () => {
     // The endpoints list is role-filtered and may be empty or fail; names
-    // must come with the key.
+    // come with the key. Id 4 has no name (hidden from this role): shown by id.
     mockLoad(
       [
         makeKey({
-          allowed_endpoint_ids: [1, 2, 3],
+          allowed_endpoint_ids: [1, 2, 3, 4],
           allowed_endpoints: [
             { id: 1, name: "Collections assistant", is_active: true },
             { id: 2, name: "collections-assistant-claude", is_active: false },
@@ -166,11 +166,41 @@ describe("AIGateway - VirtualKeys", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          'Endpoints: Collections assistant, collections-assistant-claude (inactive), "Claims, EU"',
+          "Endpoints: Collections assistant; collections-assistant-claude (inactive); Claims, EU; #4",
         ),
       ).toBeInTheDocument();
     });
     expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
+  });
+
+  it("never calls an endpoint-limited key unlimited, even with no names", async () => {
+    // e.g. an older gateway without allowed_endpoints, or ids it cannot name
+    mockLoad([makeKey({ allowed_endpoint_ids: [999] })]);
+    renderWithProviders(<VirtualKeysPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Endpoints: #999")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
+  });
+
+  it("renders a key whose lists are null instead of crashing", async () => {
+    mockLoad([
+      makeKey({
+        allowed_endpoint_ids: null,
+        allowed_models: null,
+        blocked_models: null,
+        allowed_providers: null,
+        blocked_providers: null,
+        created_by_name: null,
+      }),
+    ]);
+    renderWithProviders(<VirtualKeysPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Any endpoint or model")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/null/)).not.toBeInTheDocument();
   });
 
   it("shows who created a key and when", async () => {

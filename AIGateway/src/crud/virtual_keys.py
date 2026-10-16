@@ -17,7 +17,7 @@ def generate_virtual_key() -> dict:
     }
 
 
-async def get_all_virtual_keys(org_id: int) -> list[dict]:
+async def get_all_virtual_keys(org_id: int, role_id: Optional[int] = None) -> list[dict]:
     async with get_db() as db:
         result = await db.execute(
             # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
@@ -50,25 +50,36 @@ async def get_all_virtual_keys(org_id: int) -> list[dict]:
             {"org_id": org_id},
         )
         keys = [dict(row) for row in result.mappings().all()]
-
-        # Name the endpoints each key may call. Not role-filtered like the
-        # endpoints list: the key list already shows these ids to the viewer.
-        endpoints_result = await db.execute(
-            # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
-            text("""
-                SELECT id, COALESCE(NULLIF(display_name, ''), slug) AS name, is_active
-                FROM ai_gateway_endpoints
-                WHERE organization_id = :org_id
-            """),
-            {"org_id": org_id},
-        )
-        endpoints = {row["id"]: dict(row) for row in endpoints_result.mappings().all()}
-        for key in keys:
-            key["allowed_endpoints"] = [
-                endpoints[eid] for eid in key.get("allowed_endpoint_ids") or [] if eid in endpoints
-            ]
+        await _attach_endpoint_names(db, org_id, role_id, keys)
         return keys
     return []
+
+
+async def _attach_endpoint_names(db, org_id: int, role_id: Optional[int], keys: list[dict]) -> None:
+    """Add `allowed_endpoints` (id, name, is_active) to each key: the endpoints
+    it may call that the viewer may see. Same role filter as the endpoints
+    list, so a name hidden there stays hidden here; the page shows those by id."""
+    ids = sorted({eid for key in keys for eid in key.get("allowed_endpoint_ids") or []})
+    endpoints: dict[int, dict] = {}
+    if ids:
+        role_filter = "AND :role_id = ANY(allowed_role_ids)" if role_id is not None else ""
+        params: dict[str, Any] = {"org_id": org_id, "ids": ids}
+        if role_id is not None:
+            params["role_id"] = role_id
+        result = await db.execute(
+            # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            text(f"""
+                SELECT id, COALESCE(NULLIF(display_name, ''), slug) AS name, is_active
+                FROM ai_gateway_endpoints
+                WHERE organization_id = :org_id AND id = ANY(:ids) {role_filter}
+            """),
+            params,
+        )
+        endpoints = {row["id"]: dict(row) for row in result.mappings().all()}
+    for key in keys:
+        key["allowed_endpoints"] = [
+            endpoints[eid] for eid in key.get("allowed_endpoint_ids") or [] if eid in endpoints
+        ]
 
 
 async def create_virtual_key(org_id: int, data: dict) -> Optional[dict]:

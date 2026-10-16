@@ -66,12 +66,12 @@ interface VirtualKey {
   id: number;
   key_prefix: string;
   name: string;
-  allowed_endpoint_ids: number[];
+  allowed_endpoint_ids: number[] | null;
   allowed_endpoints?: AllowedEndpoint[];
-  allowed_models: string[];
-  blocked_models: string[];
-  allowed_providers: string[];
-  blocked_providers: string[];
+  allowed_models: string[] | null;
+  blocked_models: string[] | null;
+  allowed_providers: string[] | null;
+  blocked_providers: string[] | null;
   max_budget_usd: number | null;
   current_spend_usd: number;
   rate_limit_rpm: number | null;
@@ -79,7 +79,7 @@ interface VirtualKey {
   expires_at: string | null;
   is_active: boolean;
   revoked_at: string | null;
-  created_by_name: string;
+  created_by_name: string | null;
   created_at: string;
 }
 
@@ -148,22 +148,25 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
   // What a key is limited to. Empty lists mean "no limit" (the gateway skips
   // the check), so a key with none of them can call any endpoint and model.
   const restrictionLabels = (key: VirtualKey): string[] => {
-    // Names are free text; quote one that contains the separator.
-    const join = (values: string[]) =>
-      values.map((v) => (v.includes(",") ? `"${v}"` : v)).join(", ");
-    const endpoints = (key.allowed_endpoints ?? []).map((e) =>
-      e.is_active ? e.name : fill(tr("{name} (inactive)"), { name: e.name }),
+    // Endpoint ids decide whether a key is limited; names only describe it.
+    // An id with no name is an endpoint the viewer may not see (or one the
+    // gateway does not know), shown by id.
+    const named = new Map((key.allowed_endpoints ?? []).map((e) => [e.id, e]));
+    const endpoints = (key.allowed_endpoint_ids ?? []).map((id) => {
+      const e = named.get(id);
+      if (!e) return `#${id}`;
+      return e.is_active ? e.name : fill(tr("{name} (inactive)"), { name: e.name });
+    });
+    const lists: [string, string[] | null | undefined][] = [
+      [tr("Endpoints"), endpoints],
+      [tr("Allowed models"), key.allowed_models],
+      [tr("Blocked models"), key.blocked_models],
+      [tr("Allowed providers"), key.allowed_providers],
+      [tr("Blocked providers"), key.blocked_providers],
+    ];
+    const labels = lists.flatMap(([label, values]) =>
+      values?.length ? [`${label}: ${values.join("; ")}`] : [],
     );
-    const labels: string[] = [];
-    if (endpoints.length > 0) labels.push(`${tr("Endpoints")}: ${join(endpoints)}`);
-    if (key.allowed_models.length > 0)
-      labels.push(`${tr("Allowed models")}: ${join(key.allowed_models)}`);
-    if (key.blocked_models.length > 0)
-      labels.push(`${tr("Blocked models")}: ${join(key.blocked_models)}`);
-    if (key.allowed_providers.length > 0)
-      labels.push(`${tr("Allowed providers")}: ${join(key.allowed_providers)}`);
-    if (key.blocked_providers.length > 0)
-      labels.push(`${tr("Blocked providers")}: ${join(key.blocked_providers)}`);
     return labels.length > 0 ? labels : [tr("Any endpoint or model")];
   };
 
@@ -416,10 +419,12 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
                         </Typography>
                       ))}
                       <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>
-                        {fill(tr("By {name} · {date}"), {
-                          name: key.created_by_name,
-                          date: formatDate(key.created_at),
-                        })}
+                        {key.created_by_name
+                          ? fill(tr("By {name} · {date}"), {
+                              name: key.created_by_name,
+                              date: formatDate(key.created_at),
+                            })
+                          : formatDate(key.created_at)}
                       </Typography>
                     </Stack>
                     {budgetPct !== null && (
