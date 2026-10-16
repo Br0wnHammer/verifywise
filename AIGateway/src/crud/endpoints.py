@@ -58,10 +58,27 @@ async def get_all_endpoints(org_id: int, role_id: Optional[int] = None) -> list[
     return []
 
 
-async def get_endpoint_by_id(org_id: int, id: int) -> Optional[dict]:
+async def get_endpoint_by_id(
+    org_id: int, id: int, role_id: Optional[int] = None
+) -> Optional[dict]:
+    """Fetch one endpoint in the organization.
+
+    With ``role_id`` the endpoint is returned only when that role may see it,
+    the same rule the gateway enforces (tenant_proxy.resolve_endpoint): an
+    empty or NULL allowed_role_ids is open to every role. Without it the read
+    is unfiltered, for internal callers (update/delete routes, fallbacks).
+    """
+    role_filter = ""
+    params: dict[str, Any] = {"org_id": org_id, "id": id}
+    if role_id is not None:
+        role_filter = (
+            "AND (e.allowed_role_ids IS NULL OR cardinality(e.allowed_role_ids) = 0"
+            " OR :role_id = ANY(e.allowed_role_ids))"
+        )
+        params["role_id"] = role_id
     async with get_db() as db:
         result = await db.execute(
-            text("""
+            _text("""
                 SELECT
                     e.id,
                     e.slug,
@@ -87,8 +104,9 @@ async def get_endpoint_by_id(org_id: int, id: int) -> Optional[dict]:
                 LEFT JOIN ai_gateway_api_keys ak ON e.api_key_id = ak.id
                 WHERE e.organization_id = :org_id
                   AND e.id = :id
+                """ + role_filter + """
             """),
-            {"org_id": org_id, "id": id},
+            params,
         )
         row = result.mappings().first()
         if not row:
