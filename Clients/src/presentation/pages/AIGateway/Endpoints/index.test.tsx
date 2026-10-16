@@ -426,15 +426,15 @@ describe("AIGateway - Endpoints", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
-      expect(apiServices.delete).toHaveBeenCalledWith("/ai-gateway/endpoints/1");
+      expect(apiServices.delete).toHaveBeenCalledWith("/ai-gateway/endpoints/1", {
+        suppressGlobalErrorToast: true,
+      });
     });
   });
 
-  it("shows why a delete was refused and keeps the dialog open", async () => {
-    const reason =
-      "This is the only endpoint these virtual keys may use: Batch key. Deleting it would let them call every endpoint. Give them another endpoint or revoke them first.";
+  it("shows why a delete failed and keeps the dialog open", async () => {
     (apiServices.delete as any).mockRejectedValue(
-      new CustomException("Request failed", 409, { detail: reason }),
+      new CustomException("Request failed", 400, { detail: "Endpoint is busy" }),
     );
     const { container } = renderWithProviders(<EndpointsPage />);
 
@@ -449,9 +449,33 @@ describe("AIGateway - Endpoints", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
-      expect(screen.getByText(reason)).toBeInTheDocument();
+      expect(screen.getByText("Endpoint is busy")).toBeInTheDocument();
     });
     expect(screen.getByText("Delete endpoint")).toBeInTheDocument();
+  });
+
+  it("closes the dialog and reloads when the endpoint was already deleted", async () => {
+    (apiServices.delete as any).mockRejectedValue(
+      new CustomException("Request failed", 404, { detail: "Endpoint not found" }),
+    );
+    const { container } = renderWithProviders(<EndpointsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Production GPT-4o")).toBeInTheDocument();
+    });
+    const loadsBefore = (apiServices.get as any).mock.calls.length;
+
+    fireEvent.click(container.querySelectorAll("svg.lucide-trash-2")[0].closest("button")!);
+    await waitFor(() => {
+      expect(screen.getByText("Delete endpoint")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Delete endpoint")).not.toBeInTheDocument();
+    });
+    expect((apiServices.get as any).mock.calls.length).toBeGreaterThan(loadsBefore);
+    expect(screen.queryByText("Endpoint not found")).not.toBeInTheDocument();
   });
 
   it("reveals the cache TTL field when response caching is enabled", async () => {

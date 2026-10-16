@@ -59,7 +59,7 @@ export const endpointsContent: ArticleContent = {
     {
       type: 'bullet-list',
       items: [
-        { bold: 'Delete', text: 'Removes the endpoint. Requests using this slug will fail. If the endpoint is the only one a virtual key may use, the delete is refused, because a key with no endpoints left could call every endpoint. Give the key another endpoint or revoke it first.' },
+        { bold: 'Delete', text: 'Removes the endpoint. Requests using this slug will fail, and a virtual key that may only use this endpoint can no longer make calls.' },
         { bold: 'View guardrail status', text: 'Shows how many guardrail rules are currently active across all endpoints.' },
         { bold: 'RPM badge', text: 'Shows the rate limit in requests per minute, if configured.' },
         { bold: 'Fallback badge', text: 'Shows "has fallback" when a fallback endpoint is configured.' },

@@ -246,43 +246,8 @@ async def update_endpoint(org_id: int, id: int, data: dict) -> Optional[dict]:
     return None
 
 
-class EndpointInUseError(Exception):
-    """Deleting the endpoint would leave keys with no endpoint limit at all."""
-
-    def __init__(self, key_names: list[str]):
-        super().__init__(", ".join(key_names))
-        self.key_names = key_names
-
-
 async def delete_endpoint(org_id: int, id: int) -> bool:
-    """Delete an endpoint and remove it from virtual keys' allowlists.
-
-    An empty allowed_endpoint_ids means "every endpoint" to the gateway, so
-    removing a key's last endpoint would silently widen it. The check runs on
-    the strip's own result, under its row locks, so two deletes at once
-    cannot both pass it: if any key that is not revoked is left with no
-    endpoint, the transaction is rolled back and EndpointInUseError names
-    those keys. Revoked keys keep their (now dangling) ids: they can never
-    be used again, and a dangling id only narrows a key.
-    """
     async with get_db() as db:
-        stripped = await db.execute(
-            # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
-            text("""
-                UPDATE ai_gateway_virtual_keys
-                SET allowed_endpoint_ids = array_remove(allowed_endpoint_ids, :id)
-                WHERE organization_id = :org_id
-                  AND revoked_at IS NULL
-                  AND :id = ANY(allowed_endpoint_ids)
-                RETURNING name, cardinality(allowed_endpoint_ids) AS remaining
-            """),
-            {"org_id": org_id, "id": id},
-        )
-        emptied = sorted(row["name"] for row in stripped.mappings().all() if not row["remaining"])
-        if emptied:
-            await db.rollback()
-            raise EndpointInUseError(emptied)
-
         # Log any endpoints that reference this one as a fallback
         fallback_refs = await db.execute(
             text("""
@@ -303,6 +268,25 @@ async def delete_endpoint(org_id: int, id: int) -> bool:
                 id,
                 ", ".join(ref_slugs),
             )
+
+        # Remove this endpoint from virtual key allowed_endpoint_ids arrays,
+        # except where it is a key's last one: an empty list means "every
+        # endpoint" to the gateway, so emptying it would widen the key. The
+        # left-over id names an endpoint that no longer exists (ids are never
+        # reused), so that key can no longer call anything. UPDATE re-checks
+        # the condition on the locked row, so concurrent deletes cannot empty
+        # a key between them.
+        await db.execute(
+            # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            text("""
+                UPDATE ai_gateway_virtual_keys
+                SET allowed_endpoint_ids = array_remove(allowed_endpoint_ids, :id)
+                WHERE organization_id = :org_id
+                  AND :id = ANY(allowed_endpoint_ids)
+                  AND cardinality(allowed_endpoint_ids) > 1
+            """),
+            {"org_id": org_id, "id": id},
+        )
 
         # Delete the endpoint
         result = await db.execute(

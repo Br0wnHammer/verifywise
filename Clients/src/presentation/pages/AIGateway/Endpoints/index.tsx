@@ -219,12 +219,19 @@ export default function EndpointsPage() {
     setDeleteError("");
     setDeleteSubmitting(true);
     try {
-      await apiServices.delete(`/ai-gateway/endpoints/${deleteTarget.id}`);
+      await apiServices.delete(`/ai-gateway/endpoints/${deleteTarget.id}`, {
+        suppressGlobalErrorToast: true, // the dialog shows the error
+      });
       setDeleteTarget(null);
       await loadData();
     } catch (err) {
-      // e.g. 409: the endpoint is the only one some virtual keys may use.
-      setDeleteError(apiErrorText(err, "Failed to delete endpoint"));
+      if ((err as { status?: number } | null)?.status === 404) {
+        // Already deleted elsewhere: nothing left to do but refresh the list.
+        setDeleteTarget(null);
+        await loadData();
+      } else {
+        setDeleteError(apiErrorText(err, "Failed to delete endpoint"));
+      }
     } finally {
       setDeleteSubmitting(false);
     }
