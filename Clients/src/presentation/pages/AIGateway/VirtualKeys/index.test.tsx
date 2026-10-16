@@ -145,27 +145,41 @@ describe("AIGateway - VirtualKeys", () => {
     expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
   });
 
-  it("names the endpoints a key is limited to, and marks an unknown one by id", async () => {
+  it("names a key's endpoints from the key itself, marking inactive ones", async () => {
+    // The endpoints list is role-filtered and may be empty or fail; names
+    // must come with the key.
     mockLoad(
-      [makeKey({ allowed_endpoint_ids: [1, 2, 9] })],
       [
-        {
-          id: 1,
-          is_active: true,
-          display_name: "Collections assistant",
-          slug: "collections-assistant",
-        },
-        { id: 2, is_active: true, display_name: "", slug: "collections-assistant-claude" },
+        makeKey({
+          allowed_endpoint_ids: [1, 2, 3],
+          allowed_endpoints: [
+            { id: 1, name: "Collections assistant", is_active: true },
+            { id: 2, name: "collections-assistant-claude", is_active: false },
+            { id: 3, name: "Claims, EU", is_active: true },
+          ],
+        }),
       ],
+      [],
     );
     renderWithProviders(<VirtualKeysPage />);
 
     await waitFor(() => {
       expect(
-        screen.getByText("Endpoints: Collections assistant, collections-assistant-claude, #9"),
+        screen.getByText(
+          'Endpoints: Collections assistant, collections-assistant-claude (inactive), "Claims, EU"',
+        ),
       ).toBeInTheDocument();
     });
     expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
+  });
+
+  it("shows who created a key and when", async () => {
+    mockLoad([makeKey()]);
+    renderWithProviders(<VirtualKeysPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/^By Jane Doe · /)).toBeInTheDocument();
+    });
   });
 
   it("says when a key has no endpoint, model or provider limits", async () => {

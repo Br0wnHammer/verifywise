@@ -37,6 +37,7 @@ import {
 } from "../shared";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
+import { fill } from "../../../../i18n/fill";
 import dayjs from "dayjs";
 
 interface CreateVirtualKeyPayload {
@@ -51,9 +52,13 @@ interface CreateVirtualKeyPayload {
 }
 
 interface EndpointSummary {
+  is_active: boolean;
+}
+
+/** An endpoint a key may call, named by the gateway with the key. */
+interface AllowedEndpoint {
   id: number;
-  slug: string;
-  display_name?: string;
+  name: string;
   is_active: boolean;
 }
 
@@ -62,6 +67,7 @@ interface VirtualKey {
   key_prefix: string;
   name: string;
   allowed_endpoint_ids: number[];
+  allowed_endpoints?: AllowedEndpoint[];
   allowed_models: string[];
   blocked_models: string[];
   allowed_providers: string[];
@@ -83,7 +89,6 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
   const { t: tr } = useTranslation();
   const [keys, setKeys] = useState<VirtualKey[]>([]);
   const [endpointCount, setEndpointCount] = useState<number | null>(null);
-  const [endpointNames, setEndpointNames] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -129,7 +134,6 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
       setKeys(keysRes?.data?.data || []);
       const eps: EndpointSummary[] = endpointsRes?.data?.endpoints || [];
       setEndpointCount(eps.filter((e) => e.is_active).length);
-      setEndpointNames(Object.fromEntries(eps.map((e) => [e.id, e.display_name || e.slug])));
     } catch {
       setLoadError("Failed to load virtual keys. Please try again.");
     } finally {
@@ -144,17 +148,22 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
   // What a key is limited to. Empty lists mean "no limit" (the gateway skips
   // the check), so a key with none of them can call any endpoint and model.
   const restrictionLabels = (key: VirtualKey): string[] => {
-    const endpoints = (key.allowed_endpoint_ids ?? []).map((id) => endpointNames[id] ?? `#${id}`);
-    const lists: [string, string[] | undefined][] = [
-      ["Endpoints", endpoints],
-      ["Allowed models", key.allowed_models],
-      ["Blocked models", key.blocked_models],
-      ["Allowed providers", key.allowed_providers],
-      ["Blocked providers", key.blocked_providers],
-    ];
-    const labels = lists
-      .filter(([, values]) => values && values.length > 0)
-      .map(([name, values]) => `${tr(name)}: ${values!.join(", ")}`);
+    // Names are free text; quote one that contains the separator.
+    const join = (values: string[]) =>
+      values.map((v) => (v.includes(",") ? `"${v}"` : v)).join(", ");
+    const endpoints = (key.allowed_endpoints ?? []).map((e) =>
+      e.is_active ? e.name : fill(tr("{name} (inactive)"), { name: e.name }),
+    );
+    const labels: string[] = [];
+    if (endpoints.length > 0) labels.push(`${tr("Endpoints")}: ${join(endpoints)}`);
+    if (key.allowed_models.length > 0)
+      labels.push(`${tr("Allowed models")}: ${join(key.allowed_models)}`);
+    if (key.blocked_models.length > 0)
+      labels.push(`${tr("Blocked models")}: ${join(key.blocked_models)}`);
+    if (key.allowed_providers.length > 0)
+      labels.push(`${tr("Allowed providers")}: ${join(key.allowed_providers)}`);
+    if (key.blocked_providers.length > 0)
+      labels.push(`${tr("Blocked providers")}: ${join(key.blocked_providers)}`);
     return labels.length > 0 ? labels : [tr("Any endpoint or model")];
   };
 
@@ -361,10 +370,10 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
               >
                 <Stack direction="row" alignItems="center" gap="12px" flex={1}>
                   <KeyRound size={16} strokeWidth={1.5} color={palette.text.tertiary} />
-                  <Box flex={1}>
+                  <Box flex={1} minWidth={0}>
                     <Stack direction="row" alignItems="center" gap="8px">
                       <Typography sx={{ fontSize: 13, fontWeight: 500 }}>{key.name}</Typography>
-                      <Chip label={status} size="small" uppercase={false} />
+                      <Chip label={tr(status)} size="small" uppercase={false} />
                     </Stack>
                     <Stack
                       direction="row"
@@ -395,10 +404,22 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
                         </Typography>
                       )}
                       {restrictionLabels(key).map((label) => (
-                        <Chip key={label} label={label} size="small" uppercase={false} />
+                        <Typography
+                          key={label}
+                          sx={{
+                            fontSize: 12,
+                            color: palette.text.secondary,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {label}
+                        </Typography>
                       ))}
                       <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>
-                        by {key.created_by_name} &middot; {formatDate(key.created_at)}
+                        {fill(tr("By {name} · {date}"), {
+                          name: key.created_by_name,
+                          date: formatDate(key.created_at),
+                        })}
                       </Typography>
                     </Stack>
                     {budgetPct !== null && (

@@ -49,8 +49,25 @@ async def get_all_virtual_keys(org_id: int) -> list[dict]:
             """),
             {"org_id": org_id},
         )
-        rows = result.mappings().all()
-        return [dict(row) for row in rows]
+        keys = [dict(row) for row in result.mappings().all()]
+
+        # Name the endpoints each key may call. Not role-filtered like the
+        # endpoints list: the key list already shows these ids to the viewer.
+        endpoints_result = await db.execute(
+            # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            text("""
+                SELECT id, COALESCE(NULLIF(display_name, ''), slug) AS name, is_active
+                FROM ai_gateway_endpoints
+                WHERE organization_id = :org_id
+            """),
+            {"org_id": org_id},
+        )
+        endpoints = {row["id"]: dict(row) for row in endpoints_result.mappings().all()}
+        for key in keys:
+            key["allowed_endpoints"] = [
+                endpoints[eid] for eid in key.get("allowed_endpoint_ids") or [] if eid in endpoints
+            ]
+        return keys
     return []
 
 
