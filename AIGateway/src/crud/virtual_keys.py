@@ -62,7 +62,7 @@ async def _attach_endpoint_names(db, org_id: int, role_id: int, keys: list[dict]
     a name hidden there stays hidden here; the page shows those by id.
     is_active is false when the endpoint or its provider key is switched off.
     It does not apply the key's own model/provider limits."""
-    ids = sorted({eid for key in keys for eid in key.get("allowed_endpoint_ids") or []})
+    ids = sorted({eid for key in keys for eid in key.get("allowed_endpoint_ids") or [] if eid is not None})
     endpoints: dict[int, dict] = {}
     if ids:
         role_filter, role_params = role_visibility(role_id)

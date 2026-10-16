@@ -51,6 +51,11 @@ interface CreateVirtualKeyPayload {
   blocked_providers?: string[];
 }
 
+const isExpired = (key: VirtualKey) => !!key.expires_at && new Date(key.expires_at) < new Date();
+
+/** Whether the gateway would accept calls with this key at all. */
+const isKeyUsable = (key: VirtualKey) => key.is_active && !key.revoked_at && !isExpired(key);
+
 interface EndpointSummary {
   is_active: boolean;
 }
@@ -147,7 +152,7 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
 
   // What a key is limited to. Empty lists mean "no limit" (the gateway skips
   // the check), so a key with none of them can call any endpoint and model.
-  const restrictionLabels = (key: VirtualKey, isUsable: boolean): string[] => {
+  const restrictionLabels = (key: VirtualKey): string[] => {
     // Endpoint ids decide whether a key is limited; names only describe it.
     // An id with no name is an endpoint the viewer may not see (or one the
     // gateway does not know), shown by id.
@@ -167,8 +172,8 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
     const labels = lists.flatMap(([label, values]) =>
       values?.length ? [`${label}: ${values.join("; ")}`] : [],
     );
-    // A revoked or expired key calls nothing, so it is not "unlimited".
-    if (labels.length === 0 && isUsable) return [tr("Any endpoint or model")];
+    // A revoked, expired or inactive key calls nothing, so it is not "unlimited".
+    if (labels.length === 0 && isKeyUsable(key)) return [tr("Any endpoint or model")];
     return labels;
   };
 
@@ -257,7 +262,7 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
 
   const getStatusLabel = (key: VirtualKey): string => {
     if (key.revoked_at) return "Revoked";
-    if (key.expires_at && new Date(key.expires_at) < new Date()) return "Expired";
+    if (isExpired(key)) return "Expired";
     if (key.is_active) return "Active";
     return "Inactive";
   };
@@ -410,7 +415,7 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
                           {key.rate_limit_rpm} RPM
                         </Typography>
                       )}
-                      {restrictionLabels(key, status === "Active").map((label) => (
+                      {restrictionLabels(key).map((label) => (
                         <Typography
                           key={label}
                           sx={{

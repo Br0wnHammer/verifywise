@@ -10,7 +10,7 @@ from database.db import get_db
 
 def role_visibility(role_id: Optional[int]) -> tuple[str, dict[str, Any]]:
     """SQL predicate (on alias `e`) and params limiting endpoints to those the
-    role may see. The one rule for every place that lists or names endpoints.
+    role may see, shared by the endpoints list and the virtual-key rows.
     An empty or NULL allowed_role_ids is open to every role, as the gateway
     enforces it (tenant_proxy.resolve_endpoint)."""
     if role_id is None:

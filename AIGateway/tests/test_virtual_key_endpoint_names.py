@@ -78,6 +78,13 @@ async def test_one_query_for_only_the_referenced_ids():
     assert keys[2]["allowed_endpoints"] == []
 
 
+async def test_a_null_inside_an_id_list_is_ignored():
+    keys = [{"allowed_endpoint_ids": [1, None]}]
+    db = await _attach(keys, role_id=1)
+    assert db.queries[0]["ids"] == [1]
+    assert [e["id"] for e in keys[0]["allowed_endpoints"]] == [1]
+
+
 async def test_no_query_when_no_key_is_endpoint_restricted():
     keys = [{"allowed_endpoint_ids": []}]
     db = await _attach(keys, role_id=1)
