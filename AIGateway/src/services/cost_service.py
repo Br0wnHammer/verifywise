@@ -20,16 +20,20 @@ def _safe_cost(value: float) -> float:
 
 
 def estimate_prompt_cost(
-    model: str, messages: list[dict], max_tokens: int = 4096
+    model: str, messages: list[dict], max_tokens: int = 4096,
+    tools: Optional[list[dict]] = None,
 ) -> float:
     """
     Estimate the maximum cost of a request BEFORE sending it.
     Used by Express for budget pre-reservation.
 
+    Tool definitions count as prompt tokens; a request with many large tool
+    schemas costs far more than its messages alone.
+
     Returns estimated max cost in USD (prompt cost + max possible completion cost).
     """
     try:
-        prompt_tokens = litellm.token_counter(model=model, messages=messages)
+        prompt_tokens = litellm.token_counter(model=model, messages=messages, tools=tools)
         prompt_cost, completion_cost = litellm.cost_per_token(
             model=model,
             prompt_tokens=prompt_tokens,

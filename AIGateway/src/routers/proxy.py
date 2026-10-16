@@ -169,6 +169,7 @@ async def proxy_chat(request: Request, body: ProxyChatRequest):
         model=endpoint["model"],
         messages=body.messages,
         max_tokens=body.max_tokens or endpoint.get("max_tokens") or 4096,
+        tools=body.tools,
     )
     if not await check_org_budget(org_id, estimated_cost):
         raise HTTPException(status_code=402, detail="Organization budget limit exceeded")
@@ -194,6 +195,7 @@ async def proxy_chat(request: Request, body: ProxyChatRequest):
             messages=cache_messages,
             temperature=body.temperature if body.temperature is not None else endpoint.get("temperature"),
             max_tokens=body.max_tokens or endpoint.get("max_tokens"),
+            top_p=body.top_p,
             tools=body.tools,
             tool_choice=body.tool_choice,
             parallel_tool_calls=body.parallel_tool_calls,
@@ -301,8 +303,11 @@ async def _handle_completion(
         )
         await reconcile_budget(org_id, estimated_cost, cost)
 
-        # Store in cache if caching enabled
-        if _prompt_hash:
+        # Store in cache if caching enabled. A tool-call response is not cached:
+        # replaying it would hand another caller the same tool_call ids, merging
+        # unrelated runs in run correlation and agent logs.
+        first = _first_message(result)
+        if _prompt_hash and not (first and first.get("tool_calls")):
             await store_in_cache(
                 organization_id=org_id,
                 endpoint_id=endpoint["id"],
@@ -364,6 +369,7 @@ async def _handle_stream(
         total_cost = 0.0
         final_model = endpoint["model"]
         acc = []
+        streamed_tool_calls: dict[int, dict] = {}
 
         try:
             async for chunk_str in stream_chat_completion(
@@ -382,9 +388,12 @@ async def _handle_stream(
                         # empty) — guard against IndexError so usage/cost/model below
                         # still parse for that chunk.
                         choices = chunk.get("choices") or []
-                        delta = choices[0].get("delta", {}).get("content") if choices else None
+                        delta_obj = (choices[0].get("delta") or {}) if choices else {}
+                        delta = delta_obj.get("content")
                         if delta and capture_response:
                             acc.append(delta)
+                        if capture_response:
+                            _merge_tool_call_deltas(streamed_tool_calls, delta_obj.get("tool_calls"))
                         if "usage" in chunk:
                             total_prompt = chunk["usage"].get("prompt_tokens", total_prompt)
                             total_completion = chunk["usage"].get("completion_tokens", total_completion)
@@ -410,11 +419,33 @@ async def _handle_stream(
                 metadata={"virtual_key_id": str(vk["id"])},
                 agent_run_id=agent_run_id,
                 request_messages=stored_request,
-                response_text="".join(acc) if (acc and capture_response) else None,
+                response_text=_response_text({
+                    "content": "".join(acc) or None,
+                    "tool_calls": [streamed_tool_calls[i] for i in sorted(streamed_tool_calls)],
+                }) if capture_response else None,
             )
             await reconcile_budget(org_id, estimated_cost, total_cost)
 
     return StreamingResponse(_stream_generator(), media_type="text/event-stream")
+
+
+def _merge_tool_call_deltas(calls: dict[int, dict], deltas: Optional[list]) -> None:
+    """Rebuild streamed tool calls: each delta carries an index, the id and
+    name arrive first and the arguments arrive in fragments."""
+    for d in deltas or []:
+        if not isinstance(d, dict):
+            continue
+        call = calls.setdefault(
+            d.get("index", 0),
+            {"id": None, "type": "function", "function": {"name": "", "arguments": ""}},
+        )
+        if d.get("id"):
+            call["id"] = d["id"]
+        fn = d.get("function") or {}
+        if fn.get("name"):
+            call["function"]["name"] += fn["name"]
+        if fn.get("arguments"):
+            call["function"]["arguments"] += fn["arguments"]
 
 
 # ─── Embeddings ──────────────────────────────────────────────────────────────

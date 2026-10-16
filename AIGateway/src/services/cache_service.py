@@ -26,7 +26,10 @@ logger = logging.getLogger("uvicorn")
 
 
 # Message fields of a tool-calling conversation that change the response.
-_TOOL_MESSAGE_FIELDS = ("tool_calls", "tool_call_id", "name")
+# `name` counts only on tool results (the function it answers); a user
+# message's `name` stays out so plain requests keep their existing keys.
+_TOOL_MESSAGE_FIELDS = ("tool_calls", "tool_call_id")
+_TOOL_RESULT_ROLES = ("tool", "function")
 
 
 def _canonical_message(m: dict) -> dict:
@@ -34,6 +37,8 @@ def _canonical_message(m: dict) -> dict:
     for field in _TOOL_MESSAGE_FIELDS:
         if m.get(field) is not None:
             out[field] = m[field]
+    if m.get("role") in _TOOL_RESULT_ROLES and m.get("name") is not None:
+        out["name"] = m["name"]
     return out
 
 
@@ -45,15 +50,17 @@ def generate_cache_key(
     tools: Optional[list[dict]] = None,
     tool_choice: Optional[str | dict] = None,
     parallel_tool_calls: Optional[bool] = None,
+    top_p: Optional[float] = None,
 ) -> str:
     """
     Generate a deterministic SHA-256 hash from the request parameters
     that affect the LLM response.
 
-    Includes: model, all messages (role + content, plus tool_calls,
-    tool_call_id and name when present), temperature, max_tokens, and the tool
-    parameters when sent. Tool fields are added only when present, so a plain
-    request hashes exactly as before and existing cache entries still match.
+    Includes: model, all messages (role + content, plus tool_calls and
+    tool_call_id when present, and a tool result's name), temperature,
+    max_tokens, and top_p and the tool parameters when sent. These additions
+    appear only when present, so a request without them hashes exactly as
+    before and existing cache entries still match.
     Excludes: metadata, timestamps, api_key, user info.
     """
     payload: dict = {
@@ -66,6 +73,7 @@ def generate_cache_key(
         ("tools", tools),
         ("tool_choice", tool_choice),
         ("parallel_tool_calls", parallel_tool_calls),
+        ("top_p", top_p),
     ):
         if value is not None:
             payload[key] = value
