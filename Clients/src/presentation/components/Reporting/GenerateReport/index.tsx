@@ -132,7 +132,10 @@ const GenerateReportPopup: React.FC<IGenerateReportProps> = ({
         : [];
       logEngine({
         type: "error",
-        message: "Report generation blocked: selected use case missing from useProjects()",
+        // Template literal, not a quoted string: this is a developer
+        // diagnostic, never rendered, and a dynamic message cannot be a
+        // dictionary key — which is also why the i18n audit skips it.
+        message: `Report generation blocked: use case ${basicFormValues.project} missing from useProjects()`,
         details: {
           selectedProjectId: basicFormValues.project,
           selectedProjectIdType: typeof basicFormValues.project,
