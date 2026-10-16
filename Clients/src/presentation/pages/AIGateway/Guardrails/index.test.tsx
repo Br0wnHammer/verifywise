@@ -406,6 +406,26 @@ describe("AIGateway - Guardrails", () => {
     expect(screen.getByRole("button", { name: "Run test" })).not.toBeDisabled();
   });
 
+  it("drops a response that arrives after the sample text changed", async () => {
+    let answer: (v: unknown) => void = () => {};
+    mockPost.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    renderWithProviders(<GuardrailsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Test guardrails" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test guardrails" }));
+    fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "card 4111" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run test" }));
+    fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "hello" } });
+
+    answer({ data: { data: { would_block: true, detections: [], execution_time_ms: 9 } } });
+    await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText("Would be blocked")).not.toBeInTheDocument();
+  });
+
   it("clears a result when the sample text changes", async () => {
     mockPost.mockResolvedValue({
       data: { data: { would_block: false, detections: [], execution_time_ms: 3 } },

@@ -3,6 +3,8 @@
 Rule, settings, log and stats management lives in routers/guardrails_crud.py.
 """
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
@@ -13,6 +15,9 @@ from utils.auth import get_org_id
 router = APIRouter()
 
 MAX_TEST_TEXT = 20_000
+# Previews share the app's worker threads; cap how many scan at once so a
+# burst of tests cannot take the pool from the rest of the gateway.
+_preview_slots = asyncio.Semaphore(2)
 
 
 @router.post("/guardrails/test")
@@ -32,7 +37,8 @@ async def test_org_guardrails(request: Request):
     rules, settings = await get_guardrail_config(org_id)
     # PII detection is CPU-bound (and loads its NLP model on first use); run it
     # off the event loop so a test cannot stall the gateway's other requests.
-    result = await run_in_threadpool(scan_text, text=text, guardrail_rules=rules, settings=settings)
+    async with _preview_slots:
+        result = await run_in_threadpool(scan_text, text=text, guardrail_rules=rules, settings=settings)
     return {"data": guardrail_preview(result)}
 
 

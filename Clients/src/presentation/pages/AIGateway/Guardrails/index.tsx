@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import { Box, Typography, Stack, IconButton, Collapse } from "@mui/material";
 import TabContext from "@mui/lab/TabContext";
@@ -564,7 +564,7 @@ const FILTER_TYPE_ITEMS = [
 const MAX_TEST_TEXT = 20_000;
 
 export default function GuardrailsPage() {
-  const { t: tr } = useTranslation();
+  const { t: tr, lang } = useTranslation();
   const cardSx = useCardSx();
   const { tab: urlTab } = useParams<{ tab: string }>();
   const navigate = useNavigate();
@@ -726,18 +726,24 @@ export default function GuardrailsPage() {
   };
 
   // Count code points, as the gateway's len() does (an emoji is one, not two).
-  const testTextTooLong = [...testText].length > MAX_TEST_TEXT;
+  // UTF-16 length is never below the code-point count, so check it first.
+  const testTextTooLong = testText.length > MAX_TEST_TEXT && [...testText].length > MAX_TEST_TEXT;
+  // Bumped whenever the text or the dialog changes; a response for an older
+  // run is dropped, since it describes text that is no longer in the field.
+  const testRunRef = useRef(0);
 
   const handleTest = async () => {
     if (!testText.trim()) return;
+    const run = ++testRunRef.current;
     setTestLoading(true);
     setTestResult(null);
     try {
       const res = await apiServices.post<Record<string, any>>("/ai-gateway/guardrails/test", {
         text: testText,
       });
-      setTestResult(res?.data?.data);
+      if (run === testRunRef.current) setTestResult(res?.data?.data);
     } catch (err: any) {
+      if (run !== testRunRef.current) return;
       // The gateway sends `detail` as a string for validation errors but as
       // {message, code} for auth errors; never render an object.
       const detail = err?.response?.data?.detail;
@@ -750,7 +756,7 @@ export default function GuardrailsPage() {
             : "Test failed — is the AI Gateway service running?",
       });
     } finally {
-      setTestLoading(false);
+      if (run === testRunRef.current) setTestLoading(false);
     }
   };
 
@@ -897,8 +903,10 @@ export default function GuardrailsPage() {
             text="Test guardrails"
             icon={<FlaskConical size={14} strokeWidth={1.5} />}
             onClick={() => {
+              testRunRef.current += 1;
               setTestText("");
               setTestResult(null);
+              setTestLoading(false);
               setIsTestOpen(true);
             }}
           />
@@ -1179,13 +1187,15 @@ export default function GuardrailsPage() {
             placeholder="e.g., My email is john@example.com and my credit card is 4111-1111-1111-1111"
             value={testText}
             onChange={(e) => {
+              testRunRef.current += 1; // a result only describes the text it scanned
               setTestText(e.target.value);
-              setTestResult(null); // a result only describes the text it scanned
+              setTestResult(null);
+              setTestLoading(false);
             }}
             error={
               testTextTooLong
                 ? fill(tr("Sample text must be at most {max} characters"), {
-                    max: MAX_TEST_TEXT.toLocaleString(),
+                    max: MAX_TEST_TEXT.toLocaleString(lang),
                   })
                 : undefined
             }
