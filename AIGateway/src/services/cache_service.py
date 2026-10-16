@@ -2,7 +2,7 @@
 Response cache service for the AI Gateway.
 
 Provides exact-match caching using SHA-256 hash of
-(model + messages + temperature + max_tokens) as the cache key.
+(model + messages + temperature + max_tokens + tool parameters) as the cache key.
 Cache entries are stored in PostgreSQL with per-endpoint TTL.
 """
 
@@ -25,32 +25,51 @@ from services.cost_service import _safe_cost
 logger = logging.getLogger("uvicorn")
 
 
+# Message fields of a tool-calling conversation that change the response.
+_TOOL_MESSAGE_FIELDS = ("tool_calls", "tool_call_id", "name")
+
+
+def _canonical_message(m: dict) -> dict:
+    out = {"role": m.get("role", ""), "content": m.get("content", "")}
+    for field in _TOOL_MESSAGE_FIELDS:
+        if m.get(field) is not None:
+            out[field] = m[field]
+    return out
+
+
 def generate_cache_key(
     model: str,
     messages: list[dict],
     temperature: Optional[float],
     max_tokens: Optional[int],
+    tools: Optional[list[dict]] = None,
+    tool_choice: Optional[str | dict] = None,
+    parallel_tool_calls: Optional[bool] = None,
 ) -> str:
     """
     Generate a deterministic SHA-256 hash from the request parameters
     that affect the LLM response.
 
-    Includes: model, all messages (role + content), temperature, max_tokens.
+    Includes: model, all messages (role + content, plus tool_calls,
+    tool_call_id and name when present), temperature, max_tokens, and the tool
+    parameters when sent. Tool fields are added only when present, so a plain
+    request hashes exactly as before and existing cache entries still match.
     Excludes: metadata, timestamps, api_key, user info.
     """
-    canonical = json.dumps(
-        {
-            "model": model,
-            "messages": [
-                {"role": m.get("role", ""), "content": m.get("content", "")}
-                for m in messages
-            ],
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        },
-        sort_keys=True,
-        ensure_ascii=True,
-    )
+    payload: dict = {
+        "model": model,
+        "messages": [_canonical_message(m) for m in messages],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    for key, value in (
+        ("tools", tools),
+        ("tool_choice", tool_choice),
+        ("parallel_tool_calls", parallel_tool_calls),
+    ):
+        if value is not None:
+            payload[key] = value
+    canonical = json.dumps(payload, sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

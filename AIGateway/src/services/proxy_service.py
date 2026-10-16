@@ -411,6 +411,9 @@ async def _log_guardrail_detection(
         logger.error(f"Failed to log guardrail detection: {e}")
 
 
+_SCANNED_ROLES = ("user", "tool")
+
+
 async def run_guardrails(
     organization_id: int,
     messages: list[dict],
@@ -418,8 +421,12 @@ async def run_guardrails(
     config: Optional[tuple] = None,
 ) -> list[dict]:
     """
-    Scan all user messages through guardrails. Returns possibly-masked messages.
-    Raises HTTPException(400) if any message is blocked.
+    Scan user messages and tool results through guardrails. Returns
+    possibly-masked messages. Raises HTTPException(400) if any message is blocked.
+
+    Tool results (role "tool") are scanned because that is where an agent's
+    tools bring customer data into the conversation. Assistant turns, including
+    their tool_calls, are the model's own output and pass through.
 
     `config` is an optional pre-fetched (rules, settings) tuple so the caller can
     avoid a redundant get_guardrail_config fetch.
@@ -430,7 +437,7 @@ async def run_guardrails(
 
     updated = list(messages)
     for i, msg in enumerate(updated):
-        if msg.get("role") != "user" or not isinstance(msg.get("content"), str):
+        if msg.get("role") not in _SCANNED_ROLES or not isinstance(msg.get("content"), str):
             continue
 
         result = scan_text(

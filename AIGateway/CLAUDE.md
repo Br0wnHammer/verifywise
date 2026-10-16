@@ -1,6 +1,6 @@
 # AIGateway — LLM Gateway Service
 
-> **Last Updated:** 2026-10-15
+> **Last Updated:** 2026-10-16
 
 ---
 
@@ -17,7 +17,7 @@ Port: **8100**
 ```
 Express Backend (proxy)  →  FastAPI (AIGateway)
                               ├─ Auth (virtual key validation)
-                              ├─ Pre-request guardrails (PII, content filter; user messages only)
+                              ├─ Pre-request guardrails (PII, content filter; user messages and tool results)
                               ├─ LiteLLM → LLM Provider (fallback chain, max depth 3, non-streaming /v1 only)
                               │   Model responses are NOT scanned by guardrails.
                               ├─ Cost calculation + spend logging

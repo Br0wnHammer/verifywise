@@ -55,6 +55,49 @@ class ProxyChatRequest(BaseModel):
     temperature: Optional[float] = Field(None, ge=0, le=2)
     max_tokens: Optional[int] = Field(None, ge=1, le=128000)
     top_p: Optional[float] = Field(None, ge=0, le=1)
+    # OpenAI tool calling. Without these fields Pydantic drops them silently and
+    # the model answers in plain text instead of choosing a tool.
+    tools: Optional[list[dict]] = None
+    tool_choice: Optional[str | dict] = None
+    parallel_tool_calls: Optional[bool] = None
+
+
+def _build_llm_kwargs(body: ProxyChatRequest, endpoint: dict) -> dict:
+    """Provider-call parameters: the request's, else the endpoint's defaults."""
+    kwargs: dict = {}
+    if body.temperature is not None or endpoint.get("temperature") is not None:
+        kwargs["temperature"] = body.temperature if body.temperature is not None else float(endpoint["temperature"])
+    if body.max_tokens is not None or endpoint.get("max_tokens") is not None:
+        kwargs["max_tokens"] = body.max_tokens or endpoint["max_tokens"]
+    if body.top_p is not None:
+        kwargs["top_p"] = body.top_p
+    if body.tools is not None:
+        kwargs["tools"] = body.tools
+    if body.tool_choice is not None:
+        kwargs["tool_choice"] = body.tool_choice
+    if body.parallel_tool_calls is not None:
+        kwargs["parallel_tool_calls"] = body.parallel_tool_calls
+    return kwargs
+
+
+def _response_text(message: Optional[dict]) -> Optional[str]:
+    """Text to log for a response message. A tool call has no content, so its
+    tool_calls are logged instead; content parts are stored as JSON so the
+    TEXT column INSERT doesn't break."""
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    if content is None:
+        tool_calls = message.get("tool_calls")
+        return json.dumps(tool_calls) if tool_calls else None
+    return content if isinstance(content, str) else json.dumps(content)
+
+
+def _first_message(response: dict) -> Optional[dict]:
+    try:
+        return response["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError):
+        return None
 
 
 class ProxyEmbeddingRequest(BaseModel):
@@ -151,6 +194,9 @@ async def proxy_chat(request: Request, body: ProxyChatRequest):
             messages=cache_messages,
             temperature=body.temperature if body.temperature is not None else endpoint.get("temperature"),
             max_tokens=body.max_tokens or endpoint.get("max_tokens"),
+            tools=body.tools,
+            tool_choice=body.tool_choice,
+            parallel_tool_calls=body.parallel_tool_calls,
         )
         cache_hit = await check_cache(org_id, endpoint["id"], prompt_hash)
 
@@ -159,14 +205,7 @@ async def proxy_chat(request: Request, body: ProxyChatRequest):
 
         # Capture request/response for the run drawer when the org opts in, so a
         # served-from-cache call doesn't wrongly show "(body logging disabled)".
-        cache_resp_text = None
-        if capture_response:
-            try:
-                cache_resp_text = cached_response["choices"][0]["message"]["content"]
-            except (KeyError, IndexError, TypeError):
-                cache_resp_text = None
-            if cache_resp_text is not None and not isinstance(cache_resp_text, str):
-                cache_resp_text = json.dumps(cache_resp_text)
+        cache_resp_text = _response_text(_first_message(cached_response)) if capture_response else None
 
         await log_cache_hit(
             organization_id=org_id,
@@ -195,14 +234,7 @@ async def proxy_chat(request: Request, body: ProxyChatRequest):
     if endpoint.get("system_prompt"):
         final_messages = [{"role": "system", "content": endpoint["system_prompt"]}] + scanned_messages
 
-    # Build kwargs
-    kwargs = {}
-    if body.temperature is not None or endpoint.get("temperature") is not None:
-        kwargs["temperature"] = body.temperature if body.temperature is not None else float(endpoint["temperature"])
-    if body.max_tokens is not None or endpoint.get("max_tokens") is not None:
-        kwargs["max_tokens"] = body.max_tokens or endpoint["max_tokens"]
-    if body.top_p is not None:
-        kwargs["top_p"] = body.top_p
+    kwargs = _build_llm_kwargs(body, endpoint)
 
     start_time = time.time()
 
@@ -249,16 +281,7 @@ async def _handle_completion(
         usage = result.get("usage", {})
         cost = result.get("cost_usd", 0)
 
-        resp_text = None
-        if capture_response:
-            try:
-                resp_text = result["choices"][0]["message"]["content"]
-            except (KeyError, IndexError, TypeError):
-                resp_text = None
-            # Some providers return content as a list of parts — coerce to a
-            # string so the TEXT column INSERT doesn't break.
-            if resp_text is not None and not isinstance(resp_text, str):
-                resp_text = json.dumps(resp_text)
+        resp_text = _response_text(_first_message(result)) if capture_response else None
 
         await log_spend(
             organization_id=org_id,
