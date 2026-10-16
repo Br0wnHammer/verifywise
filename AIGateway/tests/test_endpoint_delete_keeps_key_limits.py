@@ -32,22 +32,30 @@ class FakeResult:
 
 
 class FakeDb:
-    def __init__(self, sole_users):
-        self.sole_users = sole_users
+    """Answers the strip UPDATE with each key's name and how many endpoints it
+    has left, as Postgres' RETURNING would."""
+
+    def __init__(self, remaining_by_key):
+        self.remaining_by_key = remaining_by_key
         self.statements = []
         self.committed = False
+        self.rolled_back = False
 
     async def execute(self, stmt, params):
         sql = str(stmt)
         self.statements.append(sql)
-        if "cardinality(array_remove" in sql:
-            return FakeResult([{"name": n} for n in self.sole_users])
+        if "UPDATE ai_gateway_virtual_keys" in sql:
+            assert "revoked_at IS NULL" in sql and "RETURNING" in sql
+            return FakeResult([{"name": n, "remaining": r} for n, r in self.remaining_by_key.items()])
         if "DELETE FROM ai_gateway_endpoints" in sql:
             return FakeResult([(params["id"],)])
         return FakeResult([])
 
     async def commit(self):
         self.committed = True
+
+    async def rollback(self):
+        self.rolled_back = True
 
 
 def _use(monkeypatch, db):
@@ -58,22 +66,22 @@ def _use(monkeypatch, db):
     monkeypatch.setattr(endpoints_crud, "get_db", fake_get_db)
 
 
-async def test_refuses_when_a_key_would_lose_its_last_endpoint(monkeypatch):
-    db = FakeDb(["Recruitment screening (pilot)"])
+async def test_refuses_and_rolls_back_when_a_key_would_lose_its_last_endpoint(monkeypatch):
+    db = FakeDb({"Support bot": 1, "Recruitment screening (pilot)": 0})
     _use(monkeypatch, db)
     with pytest.raises(endpoints_crud.EndpointInUseError) as e:
         await endpoints_crud.delete_endpoint(2, 9)
     assert e.value.key_names == ["Recruitment screening (pilot)"]
-    assert not any("UPDATE ai_gateway_virtual_keys" in s or "DELETE FROM" in s for s in db.statements)
-    assert db.committed is False
+    assert db.rolled_back is True and db.committed is False
+    assert not any("DELETE FROM" in s for s in db.statements)
 
 
 async def test_deletes_when_every_key_keeps_another_endpoint(monkeypatch):
-    db = FakeDb([])
+    db = FakeDb({"Collections assistant (pilot)": 1})
     _use(monkeypatch, db)
     assert await endpoints_crud.delete_endpoint(2, 21) is True
-    assert any("array_remove(allowed_endpoint_ids, :id)" in s and "UPDATE" in s for s in db.statements)
-    assert db.committed is True
+    assert any("DELETE FROM ai_gateway_endpoints" in s for s in db.statements)
+    assert db.committed is True and db.rolled_back is False
 
 
 def test_the_route_answers_409_naming_the_keys(monkeypatch):
@@ -81,7 +89,7 @@ def test_the_route_answers_409_naming_the_keys(monkeypatch):
         return {"id": endpoint_id, "display_name": "Recruitment CV summarizer"}
 
     async def refuse(org_id, endpoint_id):
-        raise endpoints_crud.EndpointInUseError(["Demand forecasting batch", "Recruitment screening (pilot)"])
+        raise endpoints_crud.EndpointInUseError([f"Key {i}" for i in range(1, 8)])
 
     monkeypatch.setattr(endpoints_crud, "get_endpoint_by_id", existing)
     monkeypatch.setattr(endpoints_crud, "delete_endpoint", refuse)
@@ -97,4 +105,6 @@ def test_the_route_answers_409_naming_the_keys(monkeypatch):
     app.include_router(endpoints_router.router)
     r = TestClient(app).delete("/endpoints/9")
     assert r.status_code == 409
-    assert "Demand forecasting batch, Recruitment screening (pilot)" in r.json()["detail"]
+    detail = r.json()["detail"]
+    assert "Key 1, Key 2, Key 3, Key 4, Key 5 and 2 more." in detail
+    assert "Key 6" not in detail

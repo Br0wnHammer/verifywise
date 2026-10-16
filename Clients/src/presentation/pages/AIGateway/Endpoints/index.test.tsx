@@ -362,9 +362,10 @@ describe("AIGateway - Endpoints", () => {
   });
 
   it("shows the API error message when create submission fails", async () => {
-    (apiServices.post as any).mockRejectedValue({
-      response: { data: { detail: "Slug already exists" } },
-    });
+    // apiServices throws CustomException(message, status, body).
+    (apiServices.post as any).mockRejectedValue(
+      new CustomException("Request failed", 400, { detail: "Slug already exists" }),
+    );
     renderWithProviders(<EndpointsPage />);
 
     await waitFor(() => {

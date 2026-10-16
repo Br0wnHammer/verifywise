@@ -141,11 +141,15 @@ async def delete_endpoint(endpoint_id: int, request: Request) -> Any:
     try:
         deleted = await endpoints_crud.delete_endpoint(org_id, endpoint_id)
     except endpoints_crud.EndpointInUseError as e:
+        shown = ", ".join(e.key_names[:5])
+        more = len(e.key_names) - 5
+        if more > 0:
+            shown += f" and {more} more"
         raise HTTPException(
             status_code=409,
             detail=(
-                "This is the only endpoint these virtual keys may use: "
-                f"{', '.join(e.key_names)}. Deleting it would let them call every endpoint. "
+                f"This is the only endpoint these virtual keys may use: {shown}. "
+                "Deleting it would let them call every endpoint. "
                 "Give them another endpoint or revoke them first."
             ),
         )

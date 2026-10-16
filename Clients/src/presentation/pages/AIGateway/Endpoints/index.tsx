@@ -29,7 +29,14 @@ import { useCardSx, ProviderIcon, useGatewayModels, slugify } from "../shared";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import CustomizableSkeleton from "../../../components/Skeletons";
 import { SHOW_AI_GATEWAY_PROMPTS } from "../../../../application/config/featureFlags";
+import {
+  getClientErrorReason,
+  getGatewayErrorDetail,
+} from "../../../../application/utils/apiErrorReason";
 
+// The gateway's 4xx reason, else a client reason, else the fallback (as on Settings).
+const apiErrorText = (err: unknown, fallback: string): string =>
+  getGatewayErrorDetail(err) || getClientErrorReason(err) || fallback;
 interface EndpointForm {
   display_name: string;
   slug: string;
@@ -79,6 +86,7 @@ export default function EndpointsPage() {
   const [formError, setFormError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteError, setDeleteError] = useState("");
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   // Prompts is gated behind SHOW_AI_GATEWAY_PROMPTS. When the flag is off the
   // list stays empty, so the prompt-template picker and bound-prompt chip
@@ -199,12 +207,8 @@ export default function EndpointsPage() {
       setIsModalOpen(false);
       setForm({ ...EMPTY_FORM });
       await loadData();
-    } catch (err: any) {
-      setFormError(
-        err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          `Failed to ${editingId ? "update" : "create"} endpoint`,
-      );
+    } catch (err) {
+      setFormError(apiErrorText(err, `Failed to ${editingId ? "update" : "create"} endpoint`));
     } finally {
       setIsSubmitting(false);
     }
@@ -212,15 +216,17 @@ export default function EndpointsPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    setDeleteError("");
+    setDeleteSubmitting(true);
     try {
       await apiServices.delete(`/ai-gateway/endpoints/${deleteTarget.id}`);
       setDeleteTarget(null);
       await loadData();
-    } catch (err: unknown) {
+    } catch (err) {
       // e.g. 409: the endpoint is the only one some virtual keys may use.
-      // apiServices throws a CustomException whose `response` is the body.
-      const detail = (err as { response?: { detail?: unknown } } | null)?.response?.detail;
-      setDeleteError(typeof detail === "string" && detail ? detail : "Failed to delete endpoint");
+      setDeleteError(apiErrorText(err, "Failed to delete endpoint"));
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -650,6 +656,7 @@ export default function EndpointsPage() {
         description=""
         onSubmit={handleDelete}
         submitButtonText="Delete"
+        isSubmitting={deleteSubmitting}
         maxWidth="400px"
       >
         <Typography sx={{ fontSize: 13, color: palette.text.secondary }}>
