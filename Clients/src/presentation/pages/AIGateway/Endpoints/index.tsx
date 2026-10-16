@@ -221,24 +221,21 @@ export default function EndpointsPage() {
     if (!deleteTarget) return;
     setDeleteError("");
     setDeleteSubmitting(true);
-    let done = true;
     try {
-      await apiServices.delete(`/ai-gateway/endpoints/${deleteTarget.id}`, {
-        suppressGlobalErrorToast: true, // the dialog shows the error
-      });
+      await apiServices.delete(`/ai-gateway/endpoints/${deleteTarget.id}`, quietErrors);
     } catch (err) {
-      // A 404 means it was already deleted elsewhere: same outcome.
-      if ((err as { status?: number } | null)?.status !== 404) {
-        done = false;
+      // The gateway's own 404 means another admin already deleted it: same
+      // outcome. Any other error (a generic 404 included) is shown.
+      const e = err as { status?: number; response?: { detail?: unknown } } | null;
+      if (!(e?.status === 404 && e.response?.detail === "Endpoint not found")) {
         setDeleteError(apiErrorText(err, "Failed to delete endpoint"));
+        return;
       }
     } finally {
       setDeleteSubmitting(false);
     }
-    if (done) {
-      setDeleteTarget(null);
-      await loadData();
-    }
+    setDeleteTarget(null);
+    await loadData();
   };
 
   const handleToggleActive = async (id: number, isActive: boolean) => {
@@ -673,7 +670,7 @@ export default function EndpointsPage() {
           endpoint and any requests using its slug will fail.
         </Typography>
         {deleteError && (
-          <Typography sx={{ fontSize: 13, color: palette.status.error.text, mt: "12px" }}>
+          <Typography sx={{ fontSize: 12, color: palette.status.error.text, mt: "12px" }}>
             {deleteError}
           </Typography>
         )}

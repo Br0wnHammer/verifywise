@@ -480,6 +480,27 @@ describe("AIGateway - Endpoints", () => {
     expect(screen.queryByText("Endpoint not found")).not.toBeInTheDocument();
   });
 
+  it("treats a generic 404 as a failure, not as already deleted", async () => {
+    (apiServices.delete as any).mockRejectedValue(
+      new CustomException("Request failed", 404, { detail: "Not Found" }),
+    );
+    const { container } = renderWithProviders(<EndpointsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Production GPT-4o")).toBeInTheDocument();
+    });
+    fireEvent.click(container.querySelectorAll("svg.lucide-trash-2")[0].closest("button")!);
+    await waitFor(() => {
+      expect(screen.getByText("Delete endpoint")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Not Found")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Delete endpoint")).toBeInTheDocument();
+  });
+
   it("reveals the cache TTL field when response caching is enabled", async () => {
     renderWithProviders(<EndpointsPage />);
 
