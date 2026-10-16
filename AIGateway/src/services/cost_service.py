@@ -85,25 +85,27 @@ def calculate_stream_cost(
 
     Returns (cost_usd, usage_dict).
     """
+    prompt_tokens = _count_prompt_tokens(model, prompt_messages, tools)
     try:
-        prompt_tokens = _count_prompt_tokens(model, prompt_messages, tools)
         completion_tokens = litellm.token_counter(model=model, text=accumulated_text)
+    except Exception:
+        completion_tokens = len(accumulated_text or "") // 4
+    usage = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+    # A model without a known price still used these tokens: keep the counts
+    # for the spend log and record the cost as 0.0.
+    try:
         prompt_cost, completion_cost = litellm.cost_per_token(
             model=model,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
         )
-        return _safe_cost(prompt_cost + completion_cost), {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        }
+        return _safe_cost(prompt_cost + completion_cost), usage
     except Exception:
-        return 0.0, {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
+        return 0.0, usage
 
 
 def validate_model(model: str) -> Optional[dict]:

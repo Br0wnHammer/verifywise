@@ -506,3 +506,104 @@ async def test_legacy_function_call_response_is_not_cached(monkeypatch):
     await proxy_router._handle_completion(1, {"id": 1}, endpoint, [{"role": "user", "content": "hi"}], {}, 0, 0.0,
                                           _prompt_hash="abc")
     assert stored == []
+
+
+# ─── Stream merge hardening ──────────────────────────────────────────────────
+
+def test_index_first_then_id_joins_one_call():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "lookup"}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "id": "call_1", "function": {"arguments": '{"id": 1}'}}])
+    assert _finished_tool_calls(calls) == [{"id": "call_1", "type": "function",
+                                            "function": {"name": "lookup", "arguments": '{"id": 1}'}}]
+
+
+def test_legacy_function_call_deltas_do_not_merge_into_a_tool_call():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "id": "a", "function": {"name": "f", "arguments": "{}"}}])
+    _merge_tool_call_deltas(calls, [{"function": {"name": "legacy", "arguments": '{"x"'}}], legacy=True)
+    _merge_tool_call_deltas(calls, [{"function": {"arguments": ": 1}"}}], legacy=True)
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"arguments": ""}}])
+    assert _names_and_args(calls) == [("f", "{}"), ("legacy", '{"x": 1}')]
+
+
+def test_repeated_name_fragments_before_arguments_are_joined():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "id": "a", "function": {"name": "go"}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "go"}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"arguments": "{}"}}])
+    assert _names_and_args(calls) == [("gogo", "{}")]
+
+
+def test_repeated_whole_name_after_arguments_start_is_not_doubled():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "id": "a", "function": {"name": "lookup"}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"arguments": '{"id"'}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "lookup", "arguments": ": 1}"}}])
+    assert _names_and_args(calls) == [("lookup", '{"id": 1}')]
+
+
+def test_non_string_delta_values_do_not_raise():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "id": "a", "function": {"name": 7, "arguments": {"id": 1}}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": "not-a-dict"}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": ["x"]}, "junk", None])
+    assert _names_and_args(calls) == [("7", '{"id": 1}')]
+
+
+async def test_stream_token_count_tolerates_non_string_fragments(monkeypatch):
+    async def fake_stream():
+        fn = _Obj(name=None, arguments={"id": 1})
+        yield _Obj(choices=[_Obj(delta=_Obj(content=None, tool_calls=[_Obj(function=fn)]))], usage=None)
+
+    async def fake_acompletion(**_kw):
+        return fake_stream()
+
+    seen = {}
+
+    def fake_cost(model, messages, text, tools=None):
+        seen["text"] = text
+        return 0.0, {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+
+    monkeypatch.setattr(llm_service.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(llm_service, "calculate_stream_cost", fake_cost)
+    [c async for c in llm_service.stream_chat_completion("anthropic/x", [], "k", tools=TOOLS)]
+    assert seen["text"] == "{'id': 1}"
+
+
+async def test_unreadable_stream_chunk_does_not_end_the_client_stream(monkeypatch):
+    good = 'data: {"choices": [{"delta": {"content": "hi"}}]}\n\n'
+
+    async def fake_stream(**_kw):
+        yield "data: [1, 2]\n\n"  # valid JSON, but not an object: .get raises AttributeError
+        yield good
+
+    logged = {}
+
+    async def fake_log_spend(**kw):
+        logged.update(kw)
+
+    async def noop(*_a, **_kw):
+        return None
+
+    monkeypatch.setattr(proxy_router, "stream_chat_completion", fake_stream)
+    monkeypatch.setattr(proxy_router, "log_spend", fake_log_spend)
+    monkeypatch.setattr(proxy_router, "reconcile_budget", noop)
+    endpoint = {"id": 1, "model": "m", "provider": "p", "decrypted_key": "k"}
+    response = await proxy_router._handle_stream(1, {"id": 1}, endpoint, [], {}, 0.0, 0.0, capture_response=True)
+    out = [c async for c in response.body_iterator]
+    assert out == ["data: [1, 2]\n\n", good]
+    assert logged["response_text"] == "hi"
+
+
+def test_stream_cost_keeps_token_counts_when_the_price_is_unknown(monkeypatch):
+    import services.cost_service as cost_service
+
+    def no_price(**_kw):
+        raise Exception("model not mapped")
+
+    monkeypatch.setattr(cost_service.litellm, "cost_per_token", no_price)
+    cost, usage = cost_service.calculate_stream_cost("unknown/model", [{"role": "user", "content": "hello"}], "ok")
+    assert cost == 0.0
+    assert usage["prompt_tokens"] > 0 and usage["completion_tokens"] > 0
+    assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"]

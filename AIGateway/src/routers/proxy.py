@@ -407,7 +407,9 @@ async def _handle_stream(
                         if capture_response:
                             _merge_tool_call_deltas(streamed_tool_calls, delta_obj.get("tool_calls"))
                             if delta_obj.get("function_call"):
-                                _merge_tool_call_deltas(streamed_tool_calls, [{"function": delta_obj["function_call"]}])
+                                _merge_tool_call_deltas(
+                                    streamed_tool_calls, [{"function": delta_obj["function_call"]}], legacy=True,
+                                )
                         if "usage" in chunk:
                             total_prompt = chunk["usage"].get("prompt_tokens", total_prompt)
                             total_completion = chunk["usage"].get("completion_tokens", total_completion)
@@ -415,8 +417,10 @@ async def _handle_stream(
                             total_cost = chunk["cost_usd"]
                         if "model" in chunk:
                             final_model = chunk["model"]
-                    except (json.JSONDecodeError, KeyError):
-                        pass
+                    except Exception as parse_err:
+                        # This side path only feeds the spend log and usage;
+                        # a chunk it cannot read must never end the client's stream.
+                        logger.debug(f"Could not parse stream chunk for logging: {parse_err}")
 
         except Exception as e:
             logger.error(f"Stream error: {e}")
@@ -443,46 +447,66 @@ async def _handle_stream(
     return StreamingResponse(_stream_generator(), media_type="text/event-stream")
 
 
-def _merge_tool_call_deltas(calls: dict[int, dict], deltas: Optional[list]) -> None:
+def _merge_tool_call_deltas(
+    calls: dict[int, dict], deltas: Optional[list], legacy: bool = False,
+) -> None:
     """Rebuild streamed tool calls from their deltas.
 
     The id and name normally arrive in a call's first delta and the arguments
     in later fragments, all with the same int `index`. Adapters differ, so:
-    a delta with an id joins the call with that id, else starts a new call; a
-    delta without an id joins the latest call with its index, or the latest
-    call when it has no index. Name fragments are appended, but a chunk that
-    repeats the whole name is not appended again.
+    a delta with an id joins the call with that id, else the latest id-less
+    call with its index, else starts a new call; a delta without an id joins
+    the latest call with its index, or the latest call when it has no index.
+    Legacy `function_call` deltas (`legacy=True`) only ever join each other.
+
+    Name fragments are appended. Some adapters repeat the whole name on every
+    delta, so once arguments have started a name equal to the current one is
+    a repeat and is not appended again.
+
+    This only feeds the response log, so malformed values are coerced to text
+    rather than raised: a bad delta must never abort the client's stream.
     """
     for d in deltas or []:
         if not isinstance(d, dict):
             continue
         cid = d.get("id")
         idx = d.get("index") if isinstance(d.get("index"), int) else None
+        group = {k: c for k, c in calls.items() if c["_legacy"] == legacy}
         key = None
         if cid:
-            key = next((k for k, c in calls.items() if c["id"] == cid), None)
+            key = next((k for k, c in group.items() if c["id"] == cid), None)
+            if key is None and idx is not None:
+                key = max((k for k, c in group.items() if c["_index"] == idx and c["id"] is None), default=None)
         elif idx is not None:
-            key = max((k for k, c in calls.items() if c["_index"] == idx), default=None)
-        elif calls:
-            key = max(calls)
+            key = max((k for k, c in group.items() if c["_index"] == idx), default=None)
+        elif group:
+            key = max(group)
         if key is None:
             key = max(calls) + 1 if calls else 0
-            calls[key] = {"id": None, "type": "function",
-                          "function": {"name": "", "arguments": ""}, "_index": idx}
+            calls[key] = {"id": None, "type": "function", "function": {"name": "", "arguments": ""},
+                          "_index": idx, "_legacy": legacy}
         call = calls[key]
         if cid:
             call["id"] = cid
-        fn = d.get("function") or {}
-        name = fn.get("name")
-        if name and name != call["function"]["name"]:
-            call["function"]["name"] += name
-        if fn.get("arguments"):
-            call["function"]["arguments"] += fn["arguments"]
+        fn = d.get("function") if isinstance(d.get("function"), dict) else {}
+        name = _delta_text(fn.get("name"))
+        arguments = _delta_text(fn.get("arguments"))
+        current = call["function"]
+        if name and not (name == current["name"] and (current["arguments"] or arguments)):
+            current["name"] += name
+        current["arguments"] += arguments
+
+
+def _delta_text(value) -> str:
+    """A streamed name or arguments fragment as text ("" when absent)."""
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else json.dumps(value, default=str)
 
 
 def _finished_tool_calls(calls: dict[int, dict]) -> list[dict]:
     """Tool calls in arrival order, without the merge bookkeeping."""
-    return [{k: v for k, v in calls[key].items() if k != "_index"} for key in sorted(calls)]
+    return [{k: v for k, v in calls[key].items() if not k.startswith("_")} for key in sorted(calls)]
 
 
 # ─── Embeddings ──────────────────────────────────────────────────────────────

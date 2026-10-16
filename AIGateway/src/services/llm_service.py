@@ -83,6 +83,17 @@ async def embedding(
     }
 
 
+def _text(value) -> str:
+    """A streamed name or arguments fragment as text ("" when absent).
+
+    Only feeds the fallback token count, so an odd value from an adapter is
+    stringified rather than allowed to raise mid-stream.
+    """
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else str(value)
+
+
 async def stream_chat_completion(
     model: str,
     messages: list[dict],
@@ -120,7 +131,7 @@ async def stream_chat_completion(
         functions.append(getattr(delta, "function_call", None))  # deprecated functions API
         for fn in functions:
             if fn is not None:
-                accumulated_text += (fn.name or "") + (fn.arguments or "")
+                accumulated_text += _text(getattr(fn, "name", None)) + _text(getattr(fn, "arguments", None))
         yield f"data: {json.dumps(chunk.model_dump())}\n\n"
 
     # Calculate cost: try from usage first, fall back to token counting
