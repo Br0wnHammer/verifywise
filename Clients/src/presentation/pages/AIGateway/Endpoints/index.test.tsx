@@ -1,5 +1,6 @@
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
+import CustomException from "../../../../infrastructure/exceptions/customeException";
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -431,9 +432,9 @@ describe("AIGateway - Endpoints", () => {
   it("shows why a delete was refused and keeps the dialog open", async () => {
     const reason =
       "This is the only endpoint these virtual keys may use: Batch key. Deleting it would let them call every endpoint. Give them another endpoint or revoke them first.";
-    (apiServices.delete as any).mockRejectedValue({
-      response: { status: 409, data: { detail: reason } },
-    });
+    (apiServices.delete as any).mockRejectedValue(
+      new CustomException("Request failed", 409, { detail: reason }),
+    );
     const { container } = renderWithProviders(<EndpointsPage />);
 
     await waitFor(() => {

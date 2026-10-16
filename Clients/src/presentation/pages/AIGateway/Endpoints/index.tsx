@@ -218,8 +218,8 @@ export default function EndpointsPage() {
       await loadData();
     } catch (err: unknown) {
       // e.g. 409: the endpoint is the only one some virtual keys may use.
-      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data
-        ?.detail;
+      // apiServices throws a CustomException whose `response` is the body.
+      const detail = (err as { response?: { detail?: unknown } } | null)?.response?.detail;
       setDeleteError(typeof detail === "string" && detail ? detail : "Failed to delete endpoint");
     }
   };
