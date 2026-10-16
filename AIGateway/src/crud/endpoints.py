@@ -66,7 +66,8 @@ async def get_endpoint_by_id(
     With ``role_id`` the endpoint is returned only when that role may see it,
     the same rule the gateway enforces (tenant_proxy.resolve_endpoint): an
     empty or NULL allowed_role_ids is open to every role. Without it the read
-    is unfiltered, for internal callers (update/delete routes, fallbacks).
+    is unfiltered, for internal callers (the Admin-only update and delete
+    routes, and update_endpoint's re-read).
     """
     role_filter = ""
     params: dict[str, Any] = {"org_id": org_id, "id": id}

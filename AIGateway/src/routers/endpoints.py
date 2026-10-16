@@ -43,8 +43,9 @@ async def get_endpoint(endpoint_id: int, request: Request) -> Any:
     org_id = get_org_id(request)
     role_id = get_role_id(request)
 
-    # Same visibility as the list: an endpoint the caller's role cannot see
-    # is reported as missing rather than leaking its configuration.
+    # Role visibility as the gateway enforces it (empty or NULL
+    # allowed_role_ids = open to every role): an endpoint the caller's role
+    # cannot see is reported as missing rather than leaking its configuration.
     endpoint = await endpoints_crud.get_endpoint_by_id(
         org_id, endpoint_id, role_id=role_id
     )
