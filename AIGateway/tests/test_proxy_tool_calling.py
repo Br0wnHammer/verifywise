@@ -324,3 +324,19 @@ async def test_tool_call_response_is_not_cached(monkeypatch):
     )
     assert resp.status_code == 200
     assert stored == []
+
+
+def test_budget_estimate_does_not_drop_to_zero_when_tools_break_the_counter(monkeypatch):
+    import services.cost_service as cost_service
+
+    real = cost_service.litellm.token_counter
+
+    def counter(**kw):
+        if kw.get("tools") is not None:
+            raise ValueError("unsupported tool shape")
+        return real(**kw)
+
+    monkeypatch.setattr(cost_service.litellm, "token_counter", counter)
+    msgs = [{"role": "user", "content": "hello"}]
+    with_tools = estimate_prompt_cost("gpt-4o-mini", msgs, 10, tools=TOOLS)
+    assert with_tools > estimate_prompt_cost("gpt-4o-mini", msgs, 10) > 0
