@@ -9,7 +9,10 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
+from routers.guardrails import test_preview
+from services.guardrail_service import scan_text
+from services.proxy_service import get_guardrail_config
 from utils.auth import get_org_id, get_user_id, require_admin
 from utils.change_history import record_guardrail_change
 from utils.notifications import config_event, notify_config_change
@@ -220,6 +223,32 @@ async def delete_guardrail_rule(rule_id: int, request: Request):
     )
 
     return {"deleted": True, "rule_id": rule_id}
+
+
+# ---------------------------------------------------------------------------
+# POST /guardrails/test  — preview the org's active rules on sample text
+# ---------------------------------------------------------------------------
+
+MAX_TEST_TEXT = 20_000
+
+
+@router.post("/test")
+async def test_org_guardrails(request: Request):
+    """Run the org's active rules and settings on sample text. Nothing is logged."""
+    org_id = get_org_id(request)
+    try:
+        body = await request.json()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Request body must be JSON")
+    text = body.get("text") if isinstance(body, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        raise HTTPException(status_code=400, detail="Sample text is required")
+    if len(text) > MAX_TEST_TEXT:
+        raise HTTPException(status_code=400, detail=f"Sample text must be at most {MAX_TEST_TEXT} characters")
+
+    rules, settings = await get_guardrail_config(org_id)
+    result = scan_text(text=text, guardrail_rules=rules, settings=settings)
+    return {"data": test_preview(result)}
 
 
 # ---------------------------------------------------------------------------
