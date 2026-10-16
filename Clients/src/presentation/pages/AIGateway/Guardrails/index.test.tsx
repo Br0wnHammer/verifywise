@@ -1,5 +1,6 @@
 import { act, screen, waitFor, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
+import CustomException from "../../../../infrastructure/exceptions/customeException";
 
 const mockNavigate = vi.fn();
 let mockParams: { tab?: string } = {};
@@ -324,11 +325,9 @@ describe("AIGateway - Guardrails", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run test" }));
 
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith(
-        "/ai-gateway/guardrails/test",
-        { text: "email me at j@example.com" },
-        { signal: expect.any(AbortSignal) },
-      );
+      expect(mockPost).toHaveBeenCalledWith("/ai-gateway/guardrails/test", {
+        text: "email me at j@example.com",
+      });
     });
     await waitFor(() => {
       expect(screen.getByText("Would be blocked")).toBeInTheDocument();
@@ -337,7 +336,9 @@ describe("AIGateway - Guardrails", () => {
   });
 
   it("shows an error message when the guardrail test request fails", async () => {
-    mockPost.mockRejectedValue({ response: { data: { detail: "Service unavailable" } } });
+    mockPost.mockRejectedValue(
+      new CustomException("Request failed", 400, { detail: "Service unavailable" }),
+    );
     renderWithProviders(<GuardrailsPage />);
 
     await waitFor(() => {
@@ -354,9 +355,11 @@ describe("AIGateway - Guardrails", () => {
   });
 
   it("shows the message when the gateway sends the error detail as an object", async () => {
-    mockPost.mockRejectedValue({
-      response: { data: { detail: { message: "Invalid internal key", code: "INVALID_KEY" } } },
-    });
+    mockPost.mockRejectedValue(
+      new CustomException("Request failed", 401, {
+        detail: { message: "Invalid internal key", code: "INVALID_KEY" },
+      }),
+    );
     renderWithProviders(<GuardrailsPage />);
 
     await waitFor(() => {
@@ -373,12 +376,12 @@ describe("AIGateway - Guardrails", () => {
   });
 
   it("shows the friendly error, not the proxy's socket error, when the gateway is down", async () => {
-    mockPost.mockRejectedValue({
-      response: {
-        status: 502,
-        data: { error: "AI Gateway proxy error", message: "connect ECONNREFUSED 127.0.0.1:8100" },
-      },
-    });
+    mockPost.mockRejectedValue(
+      new CustomException("connect ECONNREFUSED 127.0.0.1:8100", 502, {
+        error: "AI Gateway proxy error",
+        message: "connect ECONNREFUSED 127.0.0.1:8100",
+      }),
+    );
     renderWithProviders(<GuardrailsPage />);
 
     await waitFor(() => {
@@ -447,14 +450,14 @@ describe("AIGateway - Guardrails", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run test" }));
     fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "hello" } });
 
-    // Editing cancelled the request and re-enabled Run test at once.
-    expect(mockPost.mock.calls[0][2].signal.aborted).toBe(true);
-    expect(screen.getByRole("button", { name: "Run test" })).not.toBeDisabled();
+    // The scan is still running on the gateway, so no second one can start.
+    expect(screen.getByRole("button", { name: "Scanning..." })).toBeDisabled();
 
     await act(async () => {
       answer({ data: { data: { would_block: true, detections: [], execution_time_ms: 9 } } });
     });
     expect(screen.queryByText("Would be blocked")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run test" })).not.toBeDisabled();
   });
 
   it("clears a result when the sample text changes", async () => {

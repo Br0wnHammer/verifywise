@@ -35,7 +35,7 @@ import { apiServices } from "../../../../infrastructure/api/networkServices";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
 import { fill } from "../../../../i18n/fill";
 import palette from "../../../themes/palette";
-import { sectionTitleSx, useCardSx } from "../shared";
+import { gatewayErrorMessage, sectionTitleSx, useCardSx } from "../shared";
 import CustomizableSkeleton from "../../../components/Skeletons";
 
 // ─── Guardrail Catalog ────────────────────────────────────────────────────────
@@ -701,10 +701,8 @@ export default function GuardrailsPage() {
       setIsCfModalOpen(false);
       setCfForm({ name: "", type: "keyword", pattern: "", action: "block" });
       await loadRules();
-    } catch (err: any) {
-      setCfError(
-        err?.response?.data?.detail || err?.response?.data?.message || "Failed to create rule",
-      );
+    } catch (err) {
+      setCfError(gatewayErrorMessage(err, "Failed to create rule"));
     } finally {
       setCfSubmitting(false);
     }
@@ -736,51 +734,31 @@ export default function GuardrailsPage() {
   };
 
   // Count code points, as the gateway's len() does (an emoji is one, not two).
-  const testTextTooLong = exceedsCodePoints(testText, MAX_TEST_TEXT);
-  // The request in flight. Editing the text or closing/reopening the dialog
-  // cancels it: its result would describe text that is no longer there.
-  const testRequestRef = useRef<AbortController | null>(null);
-
-  const cancelTest = () => {
-    testRequestRef.current?.abort();
-    testRequestRef.current = null;
-    setTestLoading(false);
-  };
+  const testTextTooLong = useMemo(() => exceedsCodePoints(testText, MAX_TEST_TEXT), [testText]);
+  // The current test run. Editing the text or closing the dialog makes it
+  // stale: its result would describe text that is no longer there, so it is
+  // dropped. Run test stays disabled until the request ends, so the gateway
+  // never has more than one scan from this dialog.
+  const testRunRef = useRef<object | null>(null);
 
   const handleTest = async () => {
     if (!testText.trim()) return;
-    const request = new AbortController();
-    testRequestRef.current = request;
+    const run = {};
+    testRunRef.current = run;
     setTestLoading(true);
     setTestResult(null);
     try {
-      const res = await apiServices.post<Record<string, any>>(
-        "/ai-gateway/guardrails/test",
-        { text: testText },
-        { signal: request.signal },
-      );
-      if (!request.signal.aborted) setTestResult(res?.data?.data);
-    } catch (err: any) {
-      if (request.signal.aborted) return;
-      // The gateway sends `detail` as a string for validation errors but as
-      // {message, code} for auth errors; never render an object. A 5xx
-      // `message` is the proxy's raw socket error, so only 4xx ones are shown.
-      const status = err?.response?.status;
-      const detail = err?.response?.data?.detail;
-      const proxyMessage = status >= 400 && status < 500 ? err?.response?.data?.message : undefined;
-      const message = typeof detail === "string" ? detail : detail?.message || proxyMessage;
-      setTestResult({
-        error:
-          typeof message === "string" && message
-            ? message
-            : "Test failed — is the AI Gateway service running?",
+      const res = await apiServices.post<Record<string, any>>("/ai-gateway/guardrails/test", {
+        text: testText,
       });
+      if (testRunRef.current === run) setTestResult(res?.data?.data);
+    } catch (err) {
+      if (testRunRef.current === run)
+        setTestResult({
+          error: gatewayErrorMessage(err, "Test failed — is the AI Gateway service running?"),
+        });
     } finally {
-      // Only the live request may end the loading state.
-      if (testRequestRef.current === request) {
-        testRequestRef.current = null;
-        setTestLoading(false);
-      }
+      setTestLoading(false);
     }
   };
 
@@ -927,7 +905,6 @@ export default function GuardrailsPage() {
             text="Test guardrails"
             icon={<FlaskConical size={14} strokeWidth={1.5} />}
             onClick={() => {
-              cancelTest();
               setTestText("");
               setTestResult(null);
               setIsTestOpen(true);
@@ -1196,7 +1173,7 @@ export default function GuardrailsPage() {
       <StandardModal
         isOpen={isTestOpen}
         onClose={() => {
-          cancelTest();
+          testRunRef.current = null;
           setIsTestOpen(false);
         }}
         title="Test guardrails"
@@ -1213,7 +1190,7 @@ export default function GuardrailsPage() {
             placeholder="e.g., My email is john@example.com and my credit card is 4111-1111-1111-1111"
             value={testText}
             onChange={(e) => {
-              cancelTest(); // a result only describes the text it scanned
+              testRunRef.current = null; // a result only describes the text it scanned
               setTestText(e.target.value);
               setTestResult(null);
             }}

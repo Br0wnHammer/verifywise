@@ -444,3 +444,29 @@ export async function streamPromptTest(
 
   return { content, tokens, cost, latency: Date.now() - startTime };
 }
+
+/**
+ * The gateway's error message from an apiServices error. apiServices throws a
+ * CustomException: the HTTP status is `status` and the response body is
+ * `response`. FastAPI sends `detail` as a string, or as {message, code} for
+ * internal-key errors. A 5xx `message` is the Express proxy's raw socket error
+ * (e.g. ECONNREFUSED), so only 4xx ones are shown; otherwise `fallback`.
+ */
+export function gatewayErrorMessage(err: unknown, fallback: string): string {
+  const e = err as { status?: number; response?: { detail?: unknown; message?: unknown } } | null;
+  const detail = e?.response?.detail;
+  if (typeof detail === "string" && detail) return detail;
+  const detailMessage = (detail as { message?: unknown } | null | undefined)?.message;
+  if (typeof detailMessage === "string" && detailMessage) return detailMessage;
+  const status = e?.status;
+  const message = e?.response?.message;
+  if (
+    typeof message === "string" &&
+    message &&
+    status !== undefined &&
+    status >= 400 &&
+    status < 500
+  )
+    return message;
+  return fallback;
+}
