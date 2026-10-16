@@ -153,7 +153,43 @@ const GATEWAY_PROVIDER_MAP: Record<string, string> = {
   ai21: "Ai21",
   voyage: "Voyage",
   jina_ai: "Jina",
+  // LiteLLM provider strings that belong to a provider above.
+  vercel_ai_gateway: "Vercel",
+  v0: "Vercel",
+  vertex_ai: "Google",
+  google_pse: "Google",
+  sagemaker: "Aws",
+  amazon_nova: "Aws",
+  aws_polly: "Aws",
+  agentcore: "Aws",
+  transcribe: "Aws",
+  chatgpt: "OpenAI",
+  azure_text: "Microsoft",
+  microsoft_365_copilot: "Microsoft",
+  bing_grounding: "Microsoft",
+  cohere_chat: "Cohere",
+  codestral: "Mistral",
+  meta: "Meta",
+  anyscale: "Anyscale",
+  baseten: "Baseten",
+  stability: "Stability",
+  elevenlabs: "ElevenLabs",
+  assemblyai: "AssemblyAI",
+  vllm: "Vllm",
+  hosted_vllm: "Vllm",
 };
+
+/**
+ * Reduce a LiteLLM provider string to a key of GATEWAY_PROVIDER_MAP:
+ * "vertex_ai-anthropic_models" → "vertex_ai", "text-completion-openai" →
+ * "openai", "fireworks_ai-embedding-models" → "fireworks_ai".
+ */
+function normalizeProvider(provider: string): string {
+  const p = provider.toLowerCase().replace(/^text-completion-/, "");
+  if (p.startsWith("vertex_ai")) return "vertex_ai";
+  if (p.startsWith("bedrock")) return "bedrock";
+  return p.replace(/-[a-z0-9_-]*models$/, "");
+}
 
 /**
  * Get the provider icon component for a gateway provider ID.
@@ -162,18 +198,46 @@ const GATEWAY_PROVIDER_MAP: Record<string, string> = {
 export function getProviderIcon(
   provider: string,
 ): React.ComponentType<React.SVGProps<SVGSVGElement>> | null {
-  const key = GATEWAY_PROVIDER_MAP[provider.toLowerCase()];
+  const key = GATEWAY_PROVIDER_MAP[normalizeProvider(provider)];
   return key ? PROVIDER_ICONS[key] || null : null;
 }
 
 /**
- * Render a provider icon with fallback.
- * Returns the SVG icon element or null if no match.
+ * Render a provider icon. A provider without a logo gets a neutral tile
+ * with its initial, the same size as the logos, so rows line up.
  */
 export function ProviderIcon({ provider, size = 16 }: { provider: string; size?: number }) {
   const IconComponent = getProviderIcon(provider);
-  if (!IconComponent) return null;
-  return React.createElement(IconComponent, { width: size, height: size });
+  if (IconComponent) return React.createElement(IconComponent, { width: size, height: size });
+  const initial = provider
+    .replace(/[^a-z0-9]/gi, "")
+    .charAt(0)
+    .toUpperCase();
+  if (!initial) return null;
+  return React.createElement(
+    "span",
+    {
+      "aria-hidden": true,
+      "data-testid": "provider-icon-fallback",
+      "style": {
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        width: size,
+        height: size,
+        boxSizing: "border-box",
+        border: `1px solid ${palette.border.dark}`,
+        borderRadius: 4,
+        background: palette.background.alt,
+        color: palette.text.tertiary,
+        fontSize: Math.max(8, Math.round(size * 0.55)),
+        fontWeight: 600,
+        lineHeight: 1,
+      },
+    },
+    initial,
+  );
 }
 
 // ─── Shared constants ─────────────────────────────────────────────────────────
