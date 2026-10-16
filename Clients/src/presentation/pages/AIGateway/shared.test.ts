@@ -3,10 +3,8 @@ import { render } from "@testing-library/react";
 import React from "react";
 import { ThemeProvider } from "@mui/material/styles";
 import { light } from "../../themes";
-import CustomException from "../../../infrastructure/exceptions/customeException";
 import {
   formatEntityType,
-  gatewayErrorMessage,
   formatMcpStatus,
   describeMcpDecision,
   formatMcpEventType,
@@ -577,37 +575,5 @@ describe("AIGateway shared utilities", () => {
       );
       expect(describeMcpDecision("success", null)).toBeNull();
     });
-  });
-});
-
-describe("gatewayErrorMessage", () => {
-  const fallback = "Fallback";
-  const fail = (status: number | undefined, body: unknown) =>
-    new CustomException("Request failed", status, body);
-
-  it("reads FastAPI's string detail", () => {
-    expect(gatewayErrorMessage(fail(400, { detail: "Sample text is required" }), fallback)).toBe(
-      "Sample text is required",
-    );
-  });
-
-  it("reads the message of an object detail", () => {
-    expect(
-      gatewayErrorMessage(fail(401, { detail: { message: "Invalid key", code: "X" } }), fallback),
-    ).toBe("Invalid key");
-  });
-
-  it("shows a 4xx message but not a 5xx proxy socket error", () => {
-    expect(gatewayErrorMessage(fail(403, { message: "Forbidden here" }), fallback)).toBe(
-      "Forbidden here",
-    );
-    expect(gatewayErrorMessage(fail(502, { message: "connect ECONNREFUSED" }), fallback)).toBe(
-      fallback,
-    );
-  });
-
-  it("falls back when there is no response", () => {
-    expect(gatewayErrorMessage(fail(undefined, undefined), fallback)).toBe(fallback);
-    expect(gatewayErrorMessage(null, fallback)).toBe(fallback);
   });
 });

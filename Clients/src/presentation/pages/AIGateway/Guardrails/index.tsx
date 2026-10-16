@@ -35,7 +35,11 @@ import { apiServices } from "../../../../infrastructure/api/networkServices";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
 import { fill } from "../../../../i18n/fill";
 import palette from "../../../themes/palette";
-import { gatewayErrorMessage, sectionTitleSx, useCardSx } from "../shared";
+import { sectionTitleSx, useCardSx } from "../shared";
+import {
+  getClientErrorReason,
+  getGatewayErrorDetail,
+} from "../../../../application/utils/apiErrorReason";
 import CustomizableSkeleton from "../../../components/Skeletons";
 
 // ─── Guardrail Catalog ────────────────────────────────────────────────────────
@@ -560,6 +564,10 @@ const FILTER_TYPE_ITEMS = [
   { _id: "regex", name: "Regex pattern" },
 ];
 
+// The gateway's 4xx reason, else a client reason, else the fallback (as on Settings).
+const apiErrorText = (err: unknown, fallback: string): string =>
+  getGatewayErrorDetail(err) || getClientErrorReason(err) || fallback;
+
 // Matches the gateway's limit on POST /guardrails/test.
 const MAX_TEST_TEXT = 20_000;
 
@@ -702,7 +710,7 @@ export default function GuardrailsPage() {
       setCfForm({ name: "", type: "keyword", pattern: "", action: "block" });
       await loadRules();
     } catch (err) {
-      setCfError(gatewayErrorMessage(err, "Failed to create rule"));
+      setCfError(apiErrorText(err, "Failed to create rule"));
     } finally {
       setCfSubmitting(false);
     }
@@ -755,7 +763,7 @@ export default function GuardrailsPage() {
     } catch (err) {
       if (testRunRef.current === run)
         setTestResult({
-          error: gatewayErrorMessage(err, "Test failed — is the AI Gateway service running?"),
+          error: apiErrorText(err, "Test failed — is the AI Gateway service running?"),
         });
     } finally {
       setTestLoading(false);
@@ -1181,7 +1189,7 @@ export default function GuardrailsPage() {
         onSubmit={handleTest}
         submitButtonText={testLoading ? "Scanning..." : "Run test"}
         isSubmitting={testLoading}
-        isSubmitDisabled={testTextTooLong}
+        isSubmitDisabled={testTextTooLong || !testText.trim()}
         maxWidth="560px"
       >
         <Stack gap="16px">

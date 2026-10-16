@@ -27,6 +27,10 @@ async def test_org_guardrails(request: Request):
         raise HTTPException(status_code=400, detail="Sample text is required")
     if len(text) > MAX_TEST_TEXT:
         raise HTTPException(status_code=400, detail=f"Sample text must be at most {MAX_TEST_TEXT} characters")
+    try:
+        text.encode("utf-8")  # a lone surrogate (half an emoji) cannot be echoed back
+    except UnicodeEncodeError:
+        raise HTTPException(status_code=400, detail="Sample text contains an invalid character")
 
     rules, settings = await get_guardrail_config(org_id)
     # Scans on the event loop, like the live proxy and MCP scans: the PII

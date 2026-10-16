@@ -419,6 +419,21 @@ describe("AIGateway - Guardrails", () => {
     expect(mockPost).not.toHaveBeenCalled();
   });
 
+  it("keeps Run test disabled until there is sample text", async () => {
+    renderWithProviders(<GuardrailsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Test guardrails" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test guardrails" }));
+    expect(screen.getByRole("button", { name: "Run test" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "   " } });
+    expect(screen.getByRole("button", { name: "Run test" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "hi" } });
+    expect(screen.getByRole("button", { name: "Run test" })).not.toBeDisabled();
+  });
+
   it("counts an emoji as one character, as the gateway does", async () => {
     renderWithProviders(<GuardrailsPage />);
 

@@ -85,3 +85,10 @@ def test_sample_text_has_a_length_limit(client):
 def test_non_json_body_is_rejected(client):
     r = client.post("/guardrails/test", content=b"not json", headers={"Content-Type": "application/json"})
     assert r.status_code == 400
+
+
+def test_text_the_response_cannot_encode_is_rejected(client):
+    # JSON can carry a lone UTF-16 surrogate; echoing it back as UTF-8 would 500.
+    r = client.post("/guardrails/test", content=b'{"text": "half an emoji \\ud83d"}',
+                    headers={"Content-Type": "application/json"})
+    assert r.status_code == 400
