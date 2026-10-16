@@ -76,8 +76,13 @@ def _sql_text(sql) -> str:
     return " ".join(str(sql).split())
 
 
+async def test_crud_role_is_required(fake_db):
+    with pytest.raises(TypeError):
+        await endpoints_crud.get_endpoint_by_id(1, 5)
+
+
 async def test_crud_without_role_is_unfiltered(fake_db):
-    row = await endpoints_crud.get_endpoint_by_id(1, 5)
+    row = await endpoints_crud.get_endpoint_by_id(1, 5, role_id=None)
 
     assert row["id"] == 5
     sql, params = fake_db[0]
@@ -114,7 +119,7 @@ async def test_crud_role_zero_still_filters(fake_db):
 def crud_calls(monkeypatch):
     state = {"calls": [], "row": _row()}
 
-    async def get_endpoint_by_id(org_id, endpoint_id, role_id=None):
+    async def get_endpoint_by_id(org_id, endpoint_id, *, role_id):
         state["calls"].append({"org_id": org_id, "id": endpoint_id, "role_id": role_id})
         return dict(state["row"]) if state["row"] else None
 

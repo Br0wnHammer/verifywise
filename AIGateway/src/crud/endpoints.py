@@ -59,14 +59,15 @@ async def get_all_endpoints(org_id: int, role_id: Optional[int] = None) -> list[
 
 
 async def get_endpoint_by_id(
-    org_id: int, id: int, role_id: Optional[int] = None
+    org_id: int, id: int, *, role_id: Optional[int]
 ) -> Optional[dict]:
     """Fetch one endpoint in the organization.
 
-    With ``role_id`` the endpoint is returned only when that role may see it,
+    ``role_id`` is required so every caller chooses its visibility on purpose.
+    With a role the endpoint is returned only when that role may see it,
     the same rule the gateway enforces (tenant_proxy.resolve_endpoint): an
-    empty or NULL allowed_role_ids is open to every role. Without it the read
-    is unfiltered, for internal callers (the Admin-only update and delete
+    empty or NULL allowed_role_ids is open to every role. ``role_id=None``
+    reads unfiltered, for internal callers (the Admin-only update and delete
     routes, and update_endpoint's re-read).
     """
     role_filter = ""
@@ -230,7 +231,7 @@ async def update_endpoint(org_id: int, id: int, data: dict) -> Optional[dict]:
 
     if not set_clauses:
         # Nothing to update — return existing row
-        return await get_endpoint_by_id(org_id, id)
+        return await get_endpoint_by_id(org_id, id, role_id=None)
 
     set_clauses.append("updated_at = NOW()")
     set_sql = ", ".join(set_clauses)
