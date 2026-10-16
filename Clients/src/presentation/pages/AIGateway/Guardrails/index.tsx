@@ -558,6 +558,9 @@ const FILTER_TYPE_ITEMS = [
   { _id: "regex", name: "Regex pattern" },
 ];
 
+// Matches the gateway's limit on POST /guardrails/test.
+const MAX_TEST_TEXT = 20_000;
+
 export default function GuardrailsPage() {
   const cardSx = useCardSx();
   const { tab: urlTab } = useParams<{ tab: string }>();
@@ -719,8 +722,10 @@ export default function GuardrailsPage() {
     }
   };
 
+  const testTextTooLong = testText.length > MAX_TEST_TEXT;
+
   const handleTest = async () => {
-    if (!testText.trim()) return;
+    if (!testText.trim() || testTextTooLong) return;
     setTestLoading(true);
     setTestResult(null);
     try {
@@ -729,11 +734,16 @@ export default function GuardrailsPage() {
       });
       setTestResult(res?.data?.data);
     } catch (err: any) {
+      // The gateway sends `detail` as a string for validation errors but as
+      // {message, code} for auth errors; never render an object.
+      const detail = err?.response?.data?.detail;
+      const message =
+        typeof detail === "string" ? detail : detail?.message || err?.response?.data?.message;
       setTestResult({
         error:
-          err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          "Test failed — is the AI Gateway service running?",
+          typeof message === "string" && message
+            ? message
+            : "Test failed — is the AI Gateway service running?",
       });
     } finally {
       setTestLoading(false);
@@ -1156,6 +1166,7 @@ export default function GuardrailsPage() {
         onSubmit={handleTest}
         submitButtonText={testLoading ? "Scanning..." : "Run test"}
         isSubmitting={testLoading}
+        isSubmitDisabled={testTextTooLong}
         maxWidth="560px"
       >
         <Stack gap="16px">
@@ -1164,6 +1175,7 @@ export default function GuardrailsPage() {
             placeholder="e.g., My email is john@example.com and my credit card is 4111-1111-1111-1111"
             value={testText}
             onChange={(e) => setTestText(e.target.value)}
+            error={testTextTooLong ? "Sample text must be at most 20,000 characters" : undefined}
             isRequired
           />
           {testResult && !testResult.error && (

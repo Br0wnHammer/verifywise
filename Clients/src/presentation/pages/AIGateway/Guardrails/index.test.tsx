@@ -351,6 +351,42 @@ describe("AIGateway - Guardrails", () => {
     });
   });
 
+  it("shows the message when the gateway sends the error detail as an object", async () => {
+    mockPost.mockRejectedValue({
+      response: { data: { detail: { message: "Invalid internal key", code: "INVALID_KEY" } } },
+    });
+    renderWithProviders(<GuardrailsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Test guardrails" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test guardrails" }));
+    fireEvent.change(screen.getByLabelText(/^Sample text/), { target: { value: "hi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run test" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Invalid internal key")).toBeInTheDocument();
+    });
+  });
+
+  it("does not send sample text over the gateway's length limit", async () => {
+    renderWithProviders(<GuardrailsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Test guardrails" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test guardrails" }));
+    fireEvent.change(screen.getByLabelText(/^Sample text/), {
+      target: { value: "a".repeat(20_001) },
+    });
+
+    expect(screen.getByText("Sample text must be at most 20,000 characters")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run test" })).toBeDisabled();
+    expect(mockPost).not.toHaveBeenCalledWith("/ai-gateway/guardrails/test", expect.anything());
+  });
+
   it("opens the catalog modal, filters by search, and enables an item", async () => {
     renderWithProviders(<GuardrailsPage />);
 
