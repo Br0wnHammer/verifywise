@@ -127,12 +127,14 @@ async def test_the_role_rule_is_a_column_not_a_filter():
     await vk_crud._attach_endpoint_names(db, 7, 4, [{"allowed_endpoint_ids": [1]}])
     # Hidden rows must come back (as not visible) to be told apart from
     # missing ones, so the role rule may not filter the rows.
+    from crud.endpoints import role_visibility
+
     select_part, where_part = db.sql.rsplit("WHERE", 1)
-    assert "AS visible" in select_part
+    assert role_visibility(4)[0] in select_part and "AS visible" in select_part
     assert "allowed_role_ids" not in where_part and ":role_id" not in where_part
 
 
-async def test_unrestricted_keys_have_no_deleted_ids():
+async def test_ids_naming_existing_endpoints_are_not_missing():
     keys = [{"allowed_endpoint_ids": None}, {"allowed_endpoint_ids": [1, None]}]
     await _attach(keys, role_id=1)
     assert keys[0]["missing_endpoint_ids"] == []

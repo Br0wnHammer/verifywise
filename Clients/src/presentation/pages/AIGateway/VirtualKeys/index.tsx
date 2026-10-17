@@ -53,15 +53,20 @@ interface CreateVirtualKeyPayload {
 
 const isExpired = (key: VirtualKey) => !!key.expires_at && new Date(key.expires_at) < new Date();
 
-/** Whether the gateway would accept calls with this key at all. */
+/** A key's endpoint ids, once each and without nulls, in the key's order. */
+const endpointIds = (key: VirtualKey): number[] => [
+  ...new Set((key.allowed_endpoint_ids ?? []).filter((id): id is number => id != null)),
+];
+
 /** Deleting a key's last endpoint leaves its id so the key does not widen to
  * every endpoint; when none of its ids names an endpoint, it can call nothing. */
 const hasNoEndpoints = (key: VirtualKey) => {
-  const ids = key.allowed_endpoint_ids ?? [];
+  const ids = endpointIds(key);
   const missing = new Set(key.missing_endpoint_ids ?? []);
   return ids.length > 0 && ids.every((id) => missing.has(id));
 };
 
+/** Whether the gateway would accept calls with this key at all. */
 const isKeyUsable = (key: VirtualKey) =>
   key.is_active && !key.revoked_at && !isExpired(key) && !hasNoEndpoints(key);
 
@@ -80,7 +85,8 @@ interface VirtualKey {
   id: number;
   key_prefix: string;
   name: string;
-  allowed_endpoint_ids: number[] | null;
+  /** May hold nulls from older writes; endpointIds() drops them. */
+  allowed_endpoint_ids: (number | null)[] | null;
   allowed_endpoints?: AllowedEndpoint[];
   /** Ids that name no endpoint (usually deleted): the key cannot call them. */
   missing_endpoint_ids?: number[];
@@ -170,7 +176,7 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
     // gateway is too old to say), shown by id.
     const named = new Map((key.allowed_endpoints ?? []).map((e) => [e.id, e]));
     const missing = new Set(key.missing_endpoint_ids ?? []);
-    const endpoints = [...new Set(key.allowed_endpoint_ids ?? [])].map((id) => {
+    const endpoints = endpointIds(key).map((id) => {
       if (missing.has(id)) return fill(tr("#{id} (not found)"), { id });
       const e = named.get(id);
       if (!e) return `#${id}`;
@@ -400,7 +406,13 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
                       <Typography sx={{ fontSize: 13, fontWeight: 500, overflowWrap: "anywhere" }}>
                         {key.name}
                       </Typography>
-                      <Chip label={tr(status)} size="small" uppercase={false} />
+                      <Chip
+                        label={tr(status)}
+                        size="small"
+                        uppercase={false}
+                        // A key that can call nothing needs attention, unlike one switched off.
+                        variant={status === "No endpoints" ? "warning" : undefined}
+                      />
                     </Stack>
                     <Stack
                       direction="row"
