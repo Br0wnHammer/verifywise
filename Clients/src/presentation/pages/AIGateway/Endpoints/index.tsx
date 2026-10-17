@@ -389,7 +389,7 @@ export default function EndpointsPage() {
                         )}
                       </Stack>
                       <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>
-                        {ep.provider} / {ep.model} &middot; {ep.api_key_name || "No key"}
+                        {ep.provider} / {ep.model} &middot; {ep.key_name || "No key"}
                         {ep.rate_limit_rpm > 0 && <span> &middot; {ep.rate_limit_rpm} RPM</span>}
                         {ep.fallback_endpoint_id && <span> &middot; has fallback</span>}
                         {activeGuardrailCount > 0 && (
