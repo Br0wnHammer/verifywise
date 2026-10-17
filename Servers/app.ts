@@ -44,6 +44,7 @@ import slackExtensionRoutes from "./extensions/slack/slack.route";
 import mlflowExtensionRoutes from "./extensions/mlflow/mlflow.route";
 import azureAiFoundryExtensionRoutes from "./extensions/azure-ai-foundry/azureAiFoundry.route";
 import jiraAssetsExtensionRoutes from "./extensions/jira-assets/jiraAssets.route";
+import jiraIncidentsExtensionRoutes from "./extensions/jira-incidents/jiraIncidents.route";
 import modelLifecycleExtensionRoutes from "./extensions/model-lifecycle/modelLifecycle.route";
 import datasetRoutes from "./routes/dataset.route";
 import riskHistoryRoutes from "./routes/riskHistory.route";
@@ -336,6 +337,7 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
   app.use("/api/extensions/mlflow", mlflowExtensionRoutes);
   app.use("/api/extensions/azure-ai-foundry", azureAiFoundryExtensionRoutes);
   app.use("/api/extensions/jira-assets", jiraAssetsExtensionRoutes);
+  app.use("/api/extensions/jira-incidents", jiraIncidentsExtensionRoutes);
   app.use("/api/extensions/model-lifecycle", modelLifecycleExtensionRoutes);
   app.use("/api/model-inventory-change-history", modelInventoryChangeHistoryRoutes);
   app.use("/api/mrm", mrmRoutes);
