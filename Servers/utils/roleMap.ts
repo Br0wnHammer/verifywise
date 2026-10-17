@@ -95,8 +95,7 @@ export async function getRoleById(id: number): Promise<RoleInfo | undefined> {
  * Resolve a role id to its name. Returns undefined if the id doesn't exist.
  */
 export async function getRoleNameById(id: number): Promise<string | undefined> {
-  const map = await getRoleMap();
-  return map.byId.get(id)?.name;
+  return (await getRoleById(id))?.name;
 }
 
 /**
