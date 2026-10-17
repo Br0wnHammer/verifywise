@@ -41,11 +41,12 @@ const JSON_SINGLE = new RegExp(String.raw`(${KEY})'\s*:\s*${SINGLE_QUOTED}`, "gi
 // signature may be empty (unsigned tokens).
 const JWT = /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
 
-// A "/", "?", "#" or "@" before the first ":" after "://" means that ":"
-// is in a path, query or host, not in userinfo. A quote there means the ":"
-// belongs to the surrounding JSON (e.g. {"a":"https://ok","b":...}), which
-// keeps plain URLs inside JSON lines unchanged.
-const NOT_IN_USER = /[/?#@"']/;
+// A "/", "?" or "#" before the first ":" after "://" means that ":" is in
+// a path or query, not in userinfo. A quote there means the ":" belongs to
+// the surrounding JSON (e.g. {"a":"https://ok","b":"me@mail"}), which keeps
+// plain URLs inside JSON lines unchanged. "@" is allowed: an ambiguous user
+// part such as admin@srv over-redacts rather than leaking.
+const NOT_IN_USER = /[/?#"']/;
 const SCHEME_CHAR = /[A-Za-z0-9+.-]/;
 // host:port, then "/" or the end of the token.
 const PORT = /\d+(?:\/|$)/y;

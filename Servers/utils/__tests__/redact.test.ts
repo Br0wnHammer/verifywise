@@ -118,6 +118,12 @@ describe("redactSensitiveInfo", () => {
     ['password with "', 'postgres://u:ab"cd@h/db', "postgres://u:[REDACTED]@h/db"],
     ["password with ]", "postgres://u:ab]cd@h/db", "postgres://u:[REDACTED]@h/db"],
     ["password with ://", "postgres://u:pa://ss@h/db", "postgres://u:[REDACTED]@h/db"],
+    // "@" in the user part
+    [
+      "user part containing @",
+      "postgres://admin@srv:secret@host/db",
+      "postgres://admin@srv:[REDACTED]@host/db",
+    ],
     // no "@" after the userinfo ":" (fail closed)
     ["password with no @", "postgres://u:secretpw", "postgres://u:[REDACTED]"],
     [
@@ -158,6 +164,8 @@ describe("redactSensitiveInfo", () => {
     "Secret santa planning task created",
     "Fetched http://host:8080/path ok",
     "Listening on http://localhost:3000",
+    "Cloning git@github.com:org/repo.git",
+    "ssh://git@github.com:22/org/repo.git",
     '{"url":"http://host:8080/x"}',
     "Profile https://example.com/@user linked",
     '{"u":"https://example.com/users/@me","n":1}',
