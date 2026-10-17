@@ -6,6 +6,7 @@ import WatchTowerLogs from "./Loggings";
 import { useLocation, useNavigate } from "react-router";
 import TabBar from "../../components/TabBar";
 import { PageHeaderExtended } from "../../components/Layout/PageHeaderExtended";
+import { useHasPermission } from "../../../application/hooks/useMyPermissions";
 
 const tabPanelStyle = {
   padding: 0,
@@ -15,9 +16,14 @@ const WatchTower = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Server logs are Admin-only (logs.admin). Without it the Logs tab is hidden
+  // and /event-tracker/logs falls back to the Events tab, so the logs request
+  // is never made.
+  const canViewLogs = useHasPermission("logs.admin", { fallbackToAdmin: true });
+
   //tab from URL - derive directly from URL state
   const isLogsPage = location.pathname.includes("/logs");
-  const tabValue = isLogsPage ? "2" : "1";
+  const tabValue = isLogsPage && canViewLogs ? "2" : "1";
 
   // Keep local state only for controlled component behavior during navigation
   const [, setValue] = useState(tabValue);
@@ -47,12 +53,16 @@ const WatchTower = () => {
               icon: "Calendar",
               tooltip: "Tracked events across your organization",
             },
-            {
-              label: "Logs",
-              value: "2",
-              icon: "FileText",
-              tooltip: "Detailed system and audit logs",
-            },
+            ...(canViewLogs
+              ? [
+                  {
+                    label: "Logs",
+                    value: "2",
+                    icon: "FileText" as const,
+                    tooltip: "Detailed system and audit logs",
+                  },
+                ]
+              : []),
           ]}
           activeTab={tabValue}
           onChange={handleChange}
@@ -62,9 +72,11 @@ const WatchTower = () => {
           <WatchTowerEvents />
         </TabPanel>
 
-        <TabPanel value="2" sx={tabPanelStyle}>
-          <WatchTowerLogs />
-        </TabPanel>
+        {canViewLogs && (
+          <TabPanel value="2" sx={tabPanelStyle}>
+            <WatchTowerLogs />
+          </TabPanel>
+        )}
       </TabContext>
     </PageHeaderExtended>
   );
