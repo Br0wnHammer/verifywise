@@ -297,98 +297,105 @@ def test_an_unexpected_default_config_shape_raises(monkeypatch, default):
         presidio_engine.nlp_configuration()
 
 
-GUARDRAIL_MODULE = "services.guardrail_service"
+def _blocking_scan_uses(tree: ast.Module, in_guardrail_module: bool) -> list[int]:
+    """Lines that use the blocking scan_text where only scan_text_async may.
 
-
-def _scan_text_refs(tree: ast.Module, in_guardrail_module: bool):
-    """Names bound to the guardrail scan_text (`from ... import scan_text [as x]`,
-    or the module's own def) and names bound to the module (`import ... as gs`)."""
-    funcs = {"scan_text"} if in_guardrail_module else set()
-    modules = set()
+    Outside services/guardrail_service.py every use counts: any import of it
+    (aliased, relative or `*`) and any `<module>.scan_text`, wherever it sits
+    (a coroutine, a sync route on the threadpool, a helper, a lambda handed
+    to asyncio.to_thread), since each runs the engine off the scan thread or
+    on the event loop. Inside that module, only scan_text_async may use it
+    from a coroutine."""
+    lines = []
+    if in_guardrail_module:
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.AsyncFunctionDef) or fn.name == "scan_text_async":
+                continue
+            names = [n for n in ast.walk(fn) if isinstance(n, ast.Name) and n.id == "scan_text"]
+            if any(isinstance(n.ctx, ast.Store) for n in names):
+                continue  # a local of that name shadows the function
+            lines += [n.lineno for n in names]
+        return lines
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == GUARDRAIL_MODULE:
-            funcs |= {a.asname or a.name for a in node.names if a.name == "scan_text"}
-        elif isinstance(node, ast.ImportFrom) and node.module == "services":
-            modules |= {a.asname or a.name for a in node.names if a.name == "guardrail_service"}
-        elif isinstance(node, ast.Import):
-            modules |= {a.asname for a in node.names if a.name == GUARDRAIL_MODULE and a.asname}
-    return funcs, modules
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[-1] == "guardrail_service":
+            lines += [node.lineno for a in node.names if a.name in ("scan_text", "*")]
+        elif isinstance(node, ast.Attribute) and node.attr == "scan_text":
+            base = node.value
+            while isinstance(base, ast.Attribute):  # services.guardrail_service.scan_text
+                base = base.value
+            module_names = {"gs", "guardrail_service", "services"}
+            if isinstance(base, ast.Name) and (base.id in module_names or base.id in _module_aliases(tree)):
+                lines.append(node.lineno)
+    return sorted(set(lines))
 
 
-def _body_without_nested_defs(fn):
-    """The coroutine's own nodes; a nested def or lambda is code it may hand
-    to the scan executor, so it is not counted as running on the loop."""
-    nested = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
-    stack = [node for node in fn.body if not isinstance(node, nested)]
-    while stack:
-        node = stack.pop()
-        yield node
-        stack += [child for child in ast.iter_child_nodes(node) if not isinstance(child, nested)]
+def _module_aliases(tree: ast.Module) -> set[str]:
+    """Names bound to the guardrail_service module in this file."""
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names |= {a.asname or a.name.split(".")[0] for a in node.names if a.name.endswith("guardrail_service")}
+        elif isinstance(node, ast.ImportFrom):
+            names |= {a.asname or a.name for a in node.names if a.name == "guardrail_service"}
+    return names
 
 
-def _scan_text_uses(fn, funcs, modules):
-    """Line numbers where coroutine `fn` itself refers to the guardrail scan_text."""
-    for node in _body_without_nested_defs(fn):
-        if (isinstance(node, ast.Name) and node.id in funcs) or (
-            isinstance(node, ast.Attribute)
-            and node.attr == "scan_text"
-            and isinstance(node.value, ast.Name)
-            and node.value.id in modules
-        ):
-            yield node.lineno
-
-
-def test_no_coroutine_uses_the_blocking_scan_text():
-    # Async code must use scan_text_async. Calling scan_text in an `async def`
-    # runs Presidio on the event loop, and handing it to another executor
-    # (asyncio.to_thread, run_in_executor(None, ...)) runs the shared engine
-    # off the single scan thread. A merge brought in such a call once, so this
-    # flags any reference to it (aliases included) in a coroutine. It cannot
-    # see a sync helper that a coroutine calls; review still covers that.
+def test_only_scan_text_async_uses_the_blocking_scan_text():
+    # Every caller must use scan_text_async: calling scan_text runs Presidio on
+    # the event loop, or (from a sync route, helper or another executor) on a
+    # second thread next to the scan thread. A merge brought in such a call
+    # once, so scan_text is treated as private to its module.
     src = os.path.join(os.path.dirname(__file__), "..", "src")
+    own = os.path.join("services", "guardrail_service.py")
     offenders = []
     for root, _dirs, files in os.walk(src):
         for name in files:
-            if not name.endswith(".py"):
-                continue
-            path = os.path.join(root, name)
-            rel = os.path.relpath(path, src)
-            with open(path, encoding="utf-8") as f:
-                tree = ast.parse(f.read(), path)
-            funcs, modules = _scan_text_refs(tree, rel == os.path.join("services", "guardrail_service.py"))
-            if not funcs and not modules:
-                continue
-            for fn in ast.walk(tree):
-                if not isinstance(fn, ast.AsyncFunctionDef) or fn.name == "scan_text_async":
-                    continue
-                offenders += [f"{rel}:{line} in {fn.name}" for line in _scan_text_uses(fn, funcs, modules)]
+            if name.endswith(".py"):
+                path = os.path.join(root, name)
+                rel = os.path.relpath(path, src)
+                with open(path, encoding="utf-8") as f:
+                    tree = ast.parse(f.read(), path)
+                offenders += [f"{rel}:{line}" for line in _blocking_scan_uses(tree, rel == own)]
     assert offenders == []
 
 
-def test_the_scan_text_guard_sees_aliases_and_references_but_not_nested_defs():
+@pytest.mark.parametrize(
+    "code",
+    [
+        "from services.guardrail_service import scan_text",
+        "from services.guardrail_service import scan_text as run_guardrails",
+        "from .guardrail_service import scan_text",
+        "from services.guardrail_service import *",
+        "import services.guardrail_service as g\ndef route(t):\n    return g.scan_text(t, [], {})",
+        "import services.guardrail_service\nasync def f(t):\n    return services.guardrail_service.scan_text(t, [], {})",
+        "from services import guardrail_service as g\nasync def f(t):\n    return await asyncio.to_thread(lambda: g.scan_text(t, [], {}))",
+    ],
+)
+def test_the_guard_flags_uses_outside_the_module(code):
+    assert _blocking_scan_uses(ast.parse(code), in_guardrail_module=False)
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "from services.guardrail_service import scan_text_async",
+        "async def f(c):\n    return await c.scan_text('x')",  # another client's method
+    ],
+)
+def test_the_guard_ignores_other_names_outside_the_module(code):
+    assert _blocking_scan_uses(ast.parse(code), in_guardrail_module=False) == []
+
+
+def test_inside_the_module_only_scan_text_async_may_use_it_from_a_coroutine():
     code = """
-from services.guardrail_service import scan_text as run_guardrails
-import services.guardrail_service as gs
-
-async def direct(t):
-    return run_guardrails(text=t, guardrail_rules=[], settings={})
-
-async def by_reference(t):
-    return await asyncio.to_thread(gs.scan_text, t, [], {})
-
-async def handed_to_the_scan_thread(t):
-    def work():
-        return run_guardrails(text=t, guardrail_rules=[], settings={})
-    return await loop.run_in_executor(get_scan_executor(), work)
-
-async def other_client(c):
-    return await c.scan_text("x")
+def scan_text(text, guardrail_rules, settings): ...
+async def scan_text_async(text, guardrail_rules, settings):
+    return get_scan_executor().submit(scan_text, text, guardrail_rules, settings)
+async def preview(text):
+    return scan_text(text, [], {})
+async def trims(text):
+    scan_text = text[:10]
+    return scan_text
 """
     tree = ast.parse(code)
-    funcs, modules = _scan_text_refs(tree, in_guardrail_module=False)
-    flagged = {
-        fn.name
-        for fn in tree.body
-        if isinstance(fn, ast.AsyncFunctionDef) and any(_scan_text_uses(fn, funcs, modules))
-    }
-    assert flagged == {"direct", "by_reference"}
+    assert _blocking_scan_uses(tree, in_guardrail_module=True) == [6]
