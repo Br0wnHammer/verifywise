@@ -268,11 +268,14 @@ def test_surrogate_escape_scan(raw, invalid):
     assert has_invalid_unicode(raw) is invalid
 
 
-def test_escaped_pairs_do_not_need_a_json_parse(monkeypatch):
-    import middlewares.invalid_unicode as mod
+@pytest.mark.parametrize("content_type", ["image/png", "application/gzip", "application/x-protobuf"])
+def test_binary_content_types_are_not_inspected(content_type):
+    app = FastAPI()
+    app.add_middleware(InvalidUnicodeMiddleware)
 
-    def must_not_parse(*_a, **_kw):
-        raise AssertionError("json.loads should not run for valid pairs")
+    @app.post("/raw")
+    async def raw(request: Request):
+        return {"size": len(await request.body())}
 
-    monkeypatch.setattr(mod.json, "loads", must_not_parse)
-    assert has_invalid_unicode(b'{"a": "' + b"\\ud83d\\ude00" * 1000 + b'"}') is False
+    res = TestClient(app).post("/raw", content=b"\xff\xfe\x00 binary", headers={"content-type": content_type})
+    assert res.status_code == 200

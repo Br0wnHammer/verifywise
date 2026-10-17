@@ -20,14 +20,11 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 INVALID_CHARACTER_DETAIL = "Request contains an invalid character"
 
-# A backslash escape: \uXXXX (group 1 holds the hex) or any other escaped
-# character, so an escaped backslash ("\\ud83d" in JSON) is consumed whole
-# and the "u" after it is not read as an escape.
-_ESCAPE = re.compile(r"\\(?:u([0-9a-fA-F]{4})|.)", re.S)
-
-# Bodies of these types are not JSON; every other body is checked, because
-# the gateway's routes call request.json() whatever the content type says.
-_NON_JSON_MEDIA_PREFIXES = (b"multipart/", b"application/octet-stream")
+# A \uXXXX escape in the surrogate range (D800–DFFF). Cheap C-level
+# prefilter: only bodies that contain one are parsed here. A valid pair
+# (an escaped emoji) also matches, and passes once parsed because it decodes
+# to one character; parsing it is cheaper than any Python-level scan.
+_SURROGATE_ESCAPE = re.compile(r"\\u[dD][89abcdefABCDEF][0-9a-fA-F]{2}")
 
 # The MCP JSON-RPC endpoint reports malformed input as a JSON-RPC parse error
 # with HTTP 200 (routers/mcp_proxy.py); keep that contract for its clients.
@@ -37,32 +34,19 @@ _BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
 def _is_json_request(scope: Scope) -> bool:
+    """Bodies routes may parse with request.json(): JSON types, text, form
+    posts (curl -d) and a missing content type. Binary types pass untouched."""
     if scope.get("method") not in _BODY_METHODS:
         return False
     for name, value in scope.get("headers", []):
         if name == b"content-type":
             media_type = value.split(b";", 1)[0].strip().lower()
-            return not media_type.startswith(_NON_JSON_MEDIA_PREFIXES)
+            return (
+                b"json" in media_type
+                or media_type.startswith(b"text/")
+                or media_type == b"application/x-www-form-urlencoded"
+            )
     return True
-
-
-def _has_lone_surrogate_escape(text: str) -> bool:
-    """Whether the text has a \\uD800-\\uDFFF escape that is not half of a
-    high+low pair. One linear pass over the escapes, so the common case, an
-    emoji sent as an escaped pair, never needs a full JSON parse."""
-    pending_high_end = None
-    for m in _ESCAPE.finditer(text):
-        code = int(m.group(1), 16) if m.group(1) else None
-        if pending_high_end is not None:
-            if m.start() == pending_high_end and code is not None and 0xDC00 <= code <= 0xDFFF:
-                pending_high_end = None
-                continue
-            return True
-        if code is not None and 0xD800 <= code <= 0xDBFF:
-            pending_high_end = m.end()
-        elif code is not None and 0xDC00 <= code <= 0xDFFF:
-            return True
-    return pending_high_end is not None
 
 
 def has_invalid_unicode(body: bytes) -> bool:
@@ -76,9 +60,8 @@ def has_invalid_unicode(body: bytes) -> bool:
         text = body.decode(json.detect_encoding(body))
     except UnicodeDecodeError:
         return True
-    if not _has_lone_surrogate_escape(text):
+    if not _SURROGATE_ESCAPE.search(text):
         return False
-    # Rare: confirm the escape sits in a JSON string the route would accept.
     try:
         parsed = json.loads(text)
     except (ValueError, RecursionError):
@@ -131,13 +114,10 @@ class InvalidUnicodeMiddleware:
         replayed = False
 
         async def replay() -> Message:
-            nonlocal replayed, body
+            nonlocal replayed
             if not replayed:
                 replayed = True
-                message = {"type": "http.request", "body": body, "more_body": False}
-                # Release this copy; a long streamed response must not hold it.
-                body = b""
-                return message
+                return {"type": "http.request", "body": body, "more_body": False}
             return await receive()
 
         await self.app(scope, replay, send)
