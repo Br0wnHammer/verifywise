@@ -99,7 +99,7 @@ export const endpointsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Each endpoint has an allowed roles list (defaults to all 4 roles: Admin, Reviewer, Editor, Auditor). Users only see endpoints their role has access to. This applies to the Endpoints page, the Playground dropdown and any API call that lists endpoints or reads a single endpoint; an endpoint outside the caller's role is reported as not found.',
+      text: 'Each endpoint has an allowed roles list (defaults to all 4 roles: Admin, Reviewer, Editor, Auditor). Users only see endpoints their role has access to. This applies to the Endpoints page, the Playground dropdown and any API call that lists endpoints or reads a single endpoint; an endpoint outside your role is reported as not found.',
     },
     {
       type: 'heading',
