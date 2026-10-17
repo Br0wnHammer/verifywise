@@ -7,7 +7,7 @@
 import type { RunContext, RunResult } from "../sync-engine/types";
 import { clientFor, loadConfig, readinessOf } from "./jiraIncidents.config";
 import { JiraAuthError, JiraNotFoundError } from "./jiraIncidents.errors";
-import { runImport } from "./jiraIncidents.import";
+import { retryRemoteLinks, runImport } from "./jiraIncidents.import";
 import { newCounts, STOP_DEADLINE, type CountKey, type RunState } from "./jiraIncidents.run";
 import { runStatusSync } from "./jiraIncidents.statusSync";
 
@@ -60,6 +60,7 @@ export async function runJiraIncidentsSync(ctx: RunContext): Promise<RunResult> 
   }
 
   await runImport(state);
+  if (!state.stopReason) await retryRemoteLinks(state);
   if (!state.stopReason) await runStatusSync(state);
   return { counts: state.counts, message: summarizeRun(state.counts, state.stopReason) };
 }

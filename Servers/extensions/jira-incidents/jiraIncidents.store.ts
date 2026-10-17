@@ -53,17 +53,19 @@ export async function insertLink(
     jiraUrl: string;
     jiraStatusId: string;
     vwStatus: string;
+    remoteLinkPending?: boolean;
   },
   t: Transaction,
 ): Promise<number | null> {
   const inserted = await select<{ id: number }>(
     `INSERT INTO jira_incident_links
        (organization_id, incident_id, jira_issue_id, jira_issue_key, jira_url,
-        last_jira_status_id, last_vw_status, last_synced_at)
-     VALUES (:orgId, :incidentId, :jiraIssueId, :jiraIssueKey, :jiraUrl, :jiraStatusId, :vwStatus, now())
+        last_jira_status_id, last_vw_status, remote_link_pending, last_synced_at)
+     VALUES (:orgId, :incidentId, :jiraIssueId, :jiraIssueKey, :jiraUrl, :jiraStatusId, :vwStatus,
+             :remoteLinkPending, now())
      ON CONFLICT DO NOTHING
      RETURNING id`,
-    { orgId, ...link },
+    { orgId, ...link, remoteLinkPending: link.remoteLinkPending ?? false },
     t,
   );
   return inserted[0]?.id ?? null;
@@ -123,6 +125,41 @@ export async function listSyncableLinks(
       ORDER BY l.id
       LIMIT :limit`,
     { orgId, afterId, limit },
+  );
+}
+
+export interface PendingRemoteLink {
+  linkId: number;
+  jiraIssueId: string;
+  jiraIssueKey: string;
+  incidentId: number;
+  incidentCode: string;
+}
+
+/** Links made before `before` whose Jira issue still lacks the link back to VerifyWise. */
+export async function listPendingRemoteLinks(
+  orgId: number,
+  before: Date,
+  limit: number,
+): Promise<PendingRemoteLink[]> {
+  return select(
+    `SELECT l.id AS "linkId", l.jira_issue_id AS "jiraIssueId", l.jira_issue_key AS "jiraIssueKey",
+            l.incident_id AS "incidentId", i.incident_id AS "incidentCode"
+       FROM jira_incident_links l
+       JOIN ai_incident_managements i ON i.id = l.incident_id AND i.organization_id = l.organization_id
+      WHERE l.organization_id = :orgId AND l.remote_link_pending
+        AND l.state IN ('ok', 'error', 'conflict') AND l.created_at < :before
+      ORDER BY l.id
+      LIMIT :limit`,
+    { orgId, before, limit },
+  );
+}
+
+export async function clearRemoteLinkPending(orgId: number, linkId: number): Promise<void> {
+  await sequelize.query(
+    `UPDATE jira_incident_links SET remote_link_pending = false, updated_at = now()
+      WHERE organization_id = :orgId AND id = :linkId`,
+    { replacements: { orgId, linkId } },
   );
 }
 
