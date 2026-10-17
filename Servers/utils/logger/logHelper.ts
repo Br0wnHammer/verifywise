@@ -2,7 +2,6 @@ import { Request } from "express";
 import { logStructured } from "./fileLogger";
 import { logEvent } from "./dbLogger";
 import logger from "./fileLogger";
-import { redactSensitiveInfo } from "./redact";
 
 type LogState = "processing" | "successful" | "error";
 type EventType = "Create" | "Read" | "Update" | "Delete" | "Error";
@@ -46,8 +45,7 @@ export async function logSuccess({
   logger.debug(`✅ ${description}`);
   if (eventType != "Read") {
     try {
-      // event_logs is readable by every org member (GET /api/logger/events).
-      await logEvent(eventType, redactSensitiveInfo(description), userId, organizationId ?? 0);
+      await logEvent(eventType, description, userId, organizationId ?? 0);
     } catch (error) {
       console.error("Failed to log success event to database:", error);
     }
@@ -68,13 +66,7 @@ export async function logFailure({
   logger.error(`❌ ${description}:`, error);
   if (eventType != "Read") {
     try {
-      // event_logs is readable by every org member (GET /api/logger/events).
-      await logEvent(
-        "Error",
-        redactSensitiveInfo(`${description}: ${error.message}`),
-        userId,
-        organizationId ?? 0,
-      );
+      await logEvent("Error", `${description}: ${error.message}`, userId, organizationId ?? 0);
     } catch (dbError) {
       console.error("Failed to log failure event to database:", dbError);
     }

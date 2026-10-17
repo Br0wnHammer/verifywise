@@ -3,15 +3,20 @@ import { sequelize } from "../../database/db";
 import { QueryTypes } from "sequelize";
 import { asyncLocalStorage } from "../context/context";
 import { appendToAuditLedger } from "../auditLedger.utils";
+import { redactSensitiveInfo } from "./redact";
 
 type EventType = "Create" | "Read" | "Update" | "Delete" | "Error";
 
 export async function logEvent(
   eventType: EventType,
-  description: string,
+  rawDescription: string,
   userId: number,
   organizationId: number,
 ): Promise<void> {
+  // event_logs is readable by every org member (GET /api/logger/events), and
+  // callers often append `${error.message}`, so redact once here at the sink
+  // before both the event_logs insert and the audit ledger append.
+  const description = redactSensitiveInfo(rawDescription);
   const store = asyncLocalStorage.getStore();
   const effectiveUserId = store?.userId || userId;
   if (!effectiveUserId) {
