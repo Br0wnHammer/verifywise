@@ -20,14 +20,16 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 INVALID_CHARACTER_DETAIL = "Request contains an invalid character"
 
-# A lone surrogate escape: a high (D800–DBFF) escape not followed by a low
-# one, or a low (DC00–DFFF) escape not preceded by a high one. C-level
-# prefilter, so a valid pair (an escaped emoji) never costs a parse. A hit
-# can still be a false positive after an escaped backslash ("\\\\ud83d" is
-# text, not an escape), so hits are confirmed with json.loads.
-_LONE_SURROGATE_ESCAPE = re.compile(
-    r"\\u[dD][89abAB][0-9a-fA-F]{2}(?!\\u[dD][c-fC-F][0-9a-fA-F]{2})"
-    r"|(?<!\\u[dD][89abAB][0-9a-fA-F]{2})\\u[dD][c-fC-F][0-9a-fA-F]{2}"
+# Any \uXXXX escape in the surrogate range (D800–DFFF): the cheap first gate.
+_SURROGATE_ESCAPE = re.compile(r"\\u[dD][89a-fA-F][0-9a-fA-F]{2}")
+
+# Escaped backslashes and valid high+low escape pairs. Stripped left to right
+# in one C-level pass, so a backslash pair is consumed before the "u" after
+# it can be read as an escape ("\\\\ud83d\\udc00" is text plus a lone low
+# surrogate, not a pair). A surrogate escape left after this is lone, or a
+# false positive outside a string, and is confirmed with json.loads.
+_ESCAPED_BACKSLASH_OR_PAIR = re.compile(
+    r"\\\\|\\u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}"
 )
 
 # Binary types no route parses as JSON. Every other body is checked, because
@@ -74,7 +76,9 @@ def has_invalid_unicode(body: bytes) -> bool:
         text = body.decode(json.detect_encoding(body))
     except UnicodeDecodeError:
         return True
-    if not _LONE_SURROGATE_ESCAPE.search(text):
+    if not _SURROGATE_ESCAPE.search(text):
+        return False
+    if not _SURROGATE_ESCAPE.search(_ESCAPED_BACKSLASH_OR_PAIR.sub("", text)):
         return False
     try:
         parsed = json.loads(text)

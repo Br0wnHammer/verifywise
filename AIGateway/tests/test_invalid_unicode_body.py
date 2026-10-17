@@ -265,6 +265,7 @@ def test_other_content_types_are_checked(client, content_type):
         (b'{"a": "\\ud83dx\\ude00"}', True),  # pair split by a character
         (b'{"a": "\\ud83d\\ude00\\ud83d\\ude01"}', False),  # two pairs
         (b'{"a": "\\\\\\ud83d\\ude00"}', False),  # escaped backslash, then a pair
+        (b'{"a": "\\\\ud83d\\udc00"}', True),  # escaped backslash, text "ud83d", then a lone low
     ],
 )
 def test_surrogate_escape_scan(raw, invalid):
