@@ -79,6 +79,18 @@ describe("AIGateway shared utilities", () => {
     it("returns null for an unknown provider", () => {
       expect(getProviderIcon("totally-unknown-provider")).toBeNull();
     });
+
+    it("maps LiteLLM provider variants to their provider's icon", () => {
+      expect(getProviderIcon("vercel_ai_gateway")).toBe(getProviderIcon("v0"));
+      expect(getProviderIcon("vercel_ai_gateway")).not.toBeNull();
+      expect(getProviderIcon("vertex_ai-anthropic_models")).toBe(getProviderIcon("gemini"));
+      expect(getProviderIcon("bedrock_converse")).toBe(getProviderIcon("bedrock"));
+      expect(getProviderIcon("text-completion-openai")).toBe(getProviderIcon("openai"));
+      expect(getProviderIcon("fireworks_ai-embedding-models")).toBe(
+        getProviderIcon("fireworks_ai"),
+      );
+      expect(getProviderIcon("fireworks_ai")).not.toBeNull();
+    });
   });
 
   describe("ProviderIcon", () => {
@@ -87,10 +99,17 @@ describe("AIGateway shared utilities", () => {
       expect(container.querySelector("svg")).toBeInTheDocument();
     });
 
-    it("renders nothing for an unknown provider", () => {
-      const { container } = render(
-        React.createElement(ProviderIcon, { provider: "not-a-real-provider" }),
+    it("renders a same-size initial tile for a provider without a logo", () => {
+      const { getByTestId } = render(
+        React.createElement(ProviderIcon, { provider: "deepinfra", size: 20 }),
       );
+      const tile = getByTestId("provider-icon-fallback");
+      expect(tile).toHaveTextContent("D");
+      expect(tile).toHaveStyle({ width: "20px", height: "20px" });
+    });
+
+    it("renders nothing when the provider has no letters or digits", () => {
+      const { container } = render(React.createElement(ProviderIcon, { provider: "" }));
       expect(container).toBeEmptyDOMElement();
     });
 

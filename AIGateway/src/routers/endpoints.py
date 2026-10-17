@@ -150,7 +150,8 @@ async def delete_endpoint(endpoint_id: int, request: Request) -> Any:
 
     deleted = await endpoints_crud.delete_endpoint(org_id, endpoint_id)
     if not deleted:
-        raise HTTPException(status_code=500, detail="Failed to delete endpoint")
+        # Another request deleted it after the lookup above.
+        raise HTTPException(status_code=404, detail="Endpoint not found")
 
     await notify_config_change(
         org_id,
