@@ -365,13 +365,14 @@ def get_scan_executor() -> ThreadPoolExecutor:
 
 
 def shutdown_scan_executor() -> None:
-    """Stop the scan thread at app shutdown. Queued scans are cancelled; a scan
-    already running finishes on its own without holding up shutdown."""
+    """Stop taking new work on the scan thread at app shutdown, without waiting.
+    Scans already queued still run, so no awaiting caller sees a cancellation;
+    Python joins the thread at interpreter exit, as it does for any executor."""
     global _scan_executor
     with _scan_executor_lock:
         executor, _scan_executor = _scan_executor, None
     if executor is not None:
-        executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(wait=False)
 
 
 async def scan_text_async(
@@ -381,6 +382,9 @@ async def scan_text_async(
 ) -> ScanResult:
     """scan_text, run on the dedicated scan thread so the event loop is not blocked.
     Same arguments and result as scan_text."""
+    if not text or not guardrail_rules:
+        # Nothing to scan: answer at once instead of queueing behind other scans.
+        return ScanResult()
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(
         get_scan_executor(),
@@ -392,11 +396,8 @@ def _preload_pii_engine() -> None:
     """Load Presidio and the spaCy model. Runs on the scan thread."""
     from services import presidio_engine
 
-    if not presidio_engine.is_available():
-        logger.info("Presidio is not installed; skipping PII engine preload")
-        return
     try:
-        presidio_engine._ensure_initialized()
+        presidio_engine.warm_up()
     except Exception as e:
         # The lazy path loads it again on the first PII scan and reports the error there.
         logger.error(f"PII engine preload failed: {e}")

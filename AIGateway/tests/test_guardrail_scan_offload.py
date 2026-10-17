@@ -115,33 +115,62 @@ async def test_concurrent_scans_never_overlap(monkeypatch):
     assert len(state["threads"]) == 1
 
 
-def test_preload_loads_the_engine_on_the_scan_thread(monkeypatch):
-    seen = {}
-    monkeypatch.setattr(presidio_engine, "is_available", lambda: True)
+@pytest.fixture
+def engine(monkeypatch):
+    """A mocked Presidio: installed, model present, not loaded yet."""
+    state = {"loads": [], "available": True, "missing": []}
+    monkeypatch.setattr(presidio_engine, "_initialized", False)
+    monkeypatch.setattr(presidio_engine, "is_available", lambda: state["available"])
+    monkeypatch.setattr(presidio_engine, "_missing_spacy_models", lambda: state["missing"])
     monkeypatch.setattr(
-        presidio_engine, "_ensure_initialized",
-        lambda: seen.setdefault("thread", threading.current_thread().name),
+        presidio_engine, "_ensure_initialized", lambda: state["loads"].append(threading.current_thread().name)
     )
+    return state
+
+
+def test_preload_loads_the_engine_on_the_scan_thread(engine):
     gs.preload_pii_engine().result(timeout=5)
-    assert seen["thread"].startswith(gs.SCAN_THREAD_PREFIX)
+    assert len(engine["loads"]) == 1
+    assert engine["loads"][0].startswith(gs.SCAN_THREAD_PREFIX)
 
 
-def test_preload_failure_is_logged_not_raised(monkeypatch, caplog):
+def test_preload_failure_is_logged_not_raised(monkeypatch, engine, caplog):
     def broken():
-        raise RuntimeError("model missing")
+        raise RuntimeError("model broken")
 
-    monkeypatch.setattr(presidio_engine, "is_available", lambda: True)
     monkeypatch.setattr(presidio_engine, "_ensure_initialized", broken)
     gs.preload_pii_engine().result(timeout=5)
-    assert "PII engine preload failed: model missing" in caplog.text
+    assert "PII engine preload failed: model broken" in caplog.text
 
 
-def test_preload_skips_when_presidio_is_missing(monkeypatch):
-    called = []
-    monkeypatch.setattr(presidio_engine, "is_available", lambda: False)
-    monkeypatch.setattr(presidio_engine, "_ensure_initialized", lambda: called.append(1))
-    gs.preload_pii_engine().result(timeout=5)
-    assert called == []
+def test_preload_skips_when_presidio_is_missing(engine):
+    engine["available"] = False
+    assert presidio_engine.warm_up() is False
+    assert engine["loads"] == []
+
+
+def test_preload_never_downloads_a_missing_spacy_model(engine):
+    engine["missing"] = ["en_core_web_lg"]
+    assert presidio_engine.warm_up() is False
+    assert engine["loads"] == []
+
+
+def test_preload_is_a_no_op_once_loaded(monkeypatch, engine):
+    monkeypatch.setattr(presidio_engine, "_initialized", True)
+    assert presidio_engine.warm_up() is True
+    assert engine["loads"] == []
+
+
+async def test_nothing_to_scan_does_not_queue_behind_other_scans(monkeypatch):
+    def must_not_run(**_kw):
+        raise AssertionError("scan_text should not be called")
+
+    monkeypatch.setattr(gs, "scan_text", must_not_run)
+    gs.get_scan_executor().submit(time.sleep, 1)
+    t = time.monotonic()
+    assert (await gs.scan_text_async(text="hi", guardrail_rules=[], settings={})).detections == []
+    assert (await gs.scan_text_async(text="", guardrail_rules=[KEYWORD_BLOCK], settings={})).detections == []
+    assert time.monotonic() - t < 0.5
 
 
 def test_shutdown_stops_the_thread_and_a_later_scan_starts_a_new_one():

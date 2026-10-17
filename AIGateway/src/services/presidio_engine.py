@@ -159,3 +159,34 @@ def is_available() -> bool:
         return True
     except ImportError:
         return False
+
+
+def _missing_spacy_models() -> list[str]:
+    """spaCy models the default Presidio NLP engine needs that are not installed."""
+    import spacy.util
+    from presidio_analyzer.nlp_engine import NlpEngineProvider
+
+    models = NlpEngineProvider().nlp_configuration.get("models") or []
+    return [m["model_name"] for m in models if not spacy.util.is_package(m["model_name"])]
+
+
+def warm_up() -> bool:
+    """Load the engine now so the first PII scan does not wait for it.
+
+    Skips (returns False) when Presidio or its spaCy model is not installed:
+    Presidio would download a missing model, and a startup preload must not
+    pull hundreds of MB on every start. The lazy path in analyze_text still
+    loads (or downloads) it, or raises its clear error, on the first PII scan.
+    Other load errors are raised to the caller.
+    """
+    if _initialized:
+        return True
+    if not is_available():
+        logger.info("Presidio is not installed; skipping PII engine preload")
+        return False
+    missing = _missing_spacy_models()
+    if missing:
+        logger.info(f"spaCy model {', '.join(missing)} not installed; PII engine will load on first PII scan")
+        return False
+    _ensure_initialized()
+    return True
