@@ -1,4 +1,5 @@
-"""Non-binary request bodies with a lone UTF-16 surrogate or invalid UTF-8 get a 400, not a 500.
+"""Non-binary request bodies that are not valid UTF-8 (or UTF-16/32), or are JSON with a lone
+surrogate, get a 400 (a JSON-RPC parse error on /v1/mcp), not a 500.
 
 Self-contained: a small FastAPI app with the middleware, no live services."""
 
@@ -264,7 +265,15 @@ def test_surrogate_escape_scan(raw, invalid):
 
 @pytest.mark.parametrize(
     "content_type",
-    ["application/octet-stream", "image/png", "application/x-gzip", "application/msgpack", "font/woff2"],
+    [
+        "application/octet-stream",
+        "Image/PNG",
+        "multipart/form-data; boundary=x",
+        "audio/wav",
+        "application/x-gzip",
+        "application/msgpack",
+        "font/woff2",
+    ],
 )
 def test_binary_content_types_are_not_inspected(content_type):
     app = FastAPI()
@@ -289,3 +298,8 @@ def test_escaped_pairs_do_not_need_a_json_parse(monkeypatch):
     monkeypatch.setattr(mod, "_loads", lambda *a, **kw: calls.append(1) or real_loads(*a, **kw))
     assert has_invalid_unicode(b'{"a": "' + b"\\ud83d\\ude00" * 1000 + b'"}') is False
     assert calls == []
+
+
+def test_plus_json_under_a_binary_prefix_is_checked(client):
+    res = client.post("/echo", content=LONE_SURROGATE, headers={"content-type": "application/grpc+json"})
+    assert res.status_code == 400

@@ -73,15 +73,18 @@ def _should_check_body(scope: Scope) -> bool:
     for name, value in scope.get("headers", []):
         if name == b"content-type":
             media_type = value.split(b";", 1)[0].strip().lower()
-            return not media_type.startswith(_BINARY_MEDIA_PREFIXES)
+            # A +json suffix is JSON text even under a binary prefix
+            # (application/grpc+json, application/grpc-web+json).
+            return media_type.endswith(b"+json") or not media_type.startswith(_BINARY_MEDIA_PREFIXES)
     return True
 
 
 def has_invalid_unicode(body: bytes) -> bool:
     """True when a body cannot be decoded in the encoding json.loads
     detects for it (UTF-8, or UTF-16/32 by its byte pattern), or decodes to a
-    string that cannot be encoded as UTF-8 (a lone surrogate). Bodies that
-    are not valid JSON are left for the route to reject in its own format."""
+    string that cannot be encoded as UTF-8 (a lone surrogate). A body that
+    decodes but is not valid JSON is left for the route to reject in its own
+    format, so a lone surrogate escape in it is not caught here."""
     if not body:
         return False
     try:
