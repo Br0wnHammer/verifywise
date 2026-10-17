@@ -7,8 +7,8 @@
  * Two rules hold for every pattern here:
  * - Linear time. This runs on every log line, so nothing may backtrack
  *   across a long run: token patterns only start at the beginning of a run
- *   (a lookbehind for the run's own characters), and URL credentials are
- *   found per whitespace-separated token with string scans, not a regex.
+ *   (a lookbehind for the run's own characters), and JWTs and URL
+ *   credentials are found per run or token with string scans, not a regex.
  * - Never fail open on length. No repetition that guards a secret is
  *   capped, so an over-long secret is still redacted in full.
  * redact.test.ts times pathological inputs and covers over-long secrets.
@@ -18,28 +18,92 @@
 // it (client_secret, AWS_SECRET_ACCESS_KEY, a_b_c_d_e_f_password,
 // dbPassword), so a long or unusual prefix cannot hide it; the prefix stays
 // in the output. The word must end at a word boundary, which keeps
-// "tokens", "max_tokens" and "token_count" out.
+// "tokens", "max_tokens" and "token_count" out. Password keys also take a
+// short list of suffixes (password_confirmation, password2); a list rather
+// than any \w*, which would make every failed attempt rescan the word.
 const KEY =
-  "(?:password|passwd|passphrase|secret[_-]?key|private[_-]?key|access[_-]?key|api[_-]?key|apikey|secret|token)";
+  "(?:(?:password|passwd|passphrase)(?:[_-]?(?:confirmation|confirm|repeat|current|old|new|\\d+))?|secret[_-]?key|private[_-]?key|access[_-]?key|api[_-]?key|apikey|secret|token)";
 
 // A double- or single-quoted value, escape-aware, to the closing quote or
 // the end of the input (an unterminated value is still redacted). Written
 // as an unrolled loop (plain runs between escapes) rather than (a|b)*,
-// which overflows V8's regex stack on multi-megabyte values.
-const DOUBLE_QUOTED = String.raw`"[^"\\]*(?:\\.[^"\\]*)*"?`;
-const SINGLE_QUOTED = String.raw`'[^'\\]*(?:\\.[^'\\]*)*'?`;
+// which overflows V8's regex stack on multi-megabyte values. An escape is a
+// backslash and any next character, newlines included.
+const DOUBLE_QUOTED = String.raw`"[^"\\]*(?:\\[\s\S][^"\\]*)*"?`;
+const SINGLE_QUOTED = String.raw`'[^'\\]*(?:\\[\s\S][^'\\]*)*'?`;
+// An array value, to its first "]" or the end of the input.
+const ARRAY = String.raw`\[[^\]]*\]?`;
+// key: value, key=value and Perl/Ruby-style key => value.
+const SEP = String.raw`\s*(?:=>|[:=])\s*`;
 
 const KEY_VALUE = new RegExp(
   // The quoted forms are tried first; an unquoted value may contain "'".
-  String.raw`(${KEY})\b\s*[:=]\s*(?:${DOUBLE_QUOTED}|${SINGLE_QUOTED}|[^\s&,"{}]+)`,
+  String.raw`(${KEY})\b${SEP}(?:${DOUBLE_QUOTED}|${SINGLE_QUOTED}|${ARRAY}|[^\s&,"{}]+)`,
   "gi",
 );
-const JSON_DOUBLE = new RegExp(String.raw`(${KEY})"\s*:\s*${DOUBLE_QUOTED}`, "gi");
-const JSON_SINGLE = new RegExp(String.raw`(${KEY})'\s*:\s*${SINGLE_QUOTED}`, "gi");
+// A quoted key's value may also be an array, a number, true/false or null.
+const JSON_DOUBLE = new RegExp(
+  String.raw`(${KEY})"${SEP}(?:${DOUBLE_QUOTED}|${ARRAY}|[^\s,}\]]+)`,
+  "gi",
+);
+const JSON_SINGLE = new RegExp(
+  String.raw`(${KEY})'${SEP}(?:${SINGLE_QUOTED}|${ARRAY}|[^\s,}\]]+)`,
+  "gi",
+);
+// JSON nested as an escaped string: {"msg":"{\"password\":\"x\"}"}, at
+// any escape depth. The value runs to the end of the enclosing string (an
+// unescaped quote), so a value with deeper escaped quotes is still covered.
+const JSON_ESCAPED = new RegExp(
+  String.raw`(${KEY})(\\+)"\s*:\s*\\+"[^"\\]*(?:\\[\s\S][^"\\]*)*`,
+  "gi",
+);
 
-// header.payload.signature, both JSON parts base64url ("eyJ"). The
-// signature may be empty (unsigned tokens).
-const JWT = /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
+// Authorization header values in header, JSON, util.inspect and escaped
+// JSON forms. The scheme (Bearer, Basic) is kept; with no known scheme the
+// whole value is redacted.
+const AUTHORIZATION =
+  /(\bAuthorization(?:\\*["'])?\s*[:=]\s*(?:\\*["'])?(?:(?:Bearer|Basic)\s+)?)[^\s"'\\]+/gi;
+
+/**
+ * Bare JWTs: header.payload.signature, both JSON parts base64url ("eyJ"),
+ * the signature possibly empty (unsigned tokens). `run` is a maximal run of
+ * [A-Za-z0-9_.-]. A JWT starts at the start of a "."-separated segment or
+ * right after a "-" (x-token-eyJ...), never after a letter, digit or "_".
+ *
+ * Linear: each segment is scanned once for a start, and a match resumes
+ * after the signature segment.
+ */
+function redactJwts(run: string): string {
+  const segments = run.split(".");
+  let out = "";
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const start = jwtStart(seg);
+    const payload = segments[i + 1];
+    if (
+      start !== -1 &&
+      i + 2 < segments.length &&
+      payload.length > 3 &&
+      payload.startsWith("eyJ")
+    ) {
+      out += `${seg.slice(0, start)}[REDACTED]`;
+      i += 2; // header, payload and signature consumed
+    } else {
+      out += seg;
+    }
+    if (i < segments.length - 1) out += ".";
+  }
+  return out;
+}
+
+/** Index of the first JWT header start in `seg`, or -1. */
+function jwtStart(seg: string): number {
+  for (let p = seg.indexOf("eyJ"); p !== -1; p = seg.indexOf("eyJ", p + 1)) {
+    if (p + 3 >= seg.length) return -1; // the header needs a character after "eyJ"
+    if (p === 0 || seg[p - 1] === "-") return p;
+  }
+  return -1;
+}
 
 // A "/", "?" or "#" before the first ":" after "://" means that ":" is in
 // a path or query, not in userinfo. A quote there means the ":" belongs to
@@ -92,9 +156,15 @@ function redactUrlCredentials(token: string): string {
 /** Returned when the input could not be scanned: fail closed, never raw. */
 export const UNSCANNABLE_PLACEHOLDER = "[REDACTED: message could not be scanned for secrets]";
 
-export function redactSensitiveInfo(input: string): string {
+/**
+ * Redacts secrets from anything a log sink was given. Coercion to text
+ * happens here, once, so every sink (file printf, logStructured, logEvent)
+ * treats a non-string the same way; a value that cannot be coerced (a
+ * null-prototype object) fails closed like an engine limit.
+ */
+export function redactSensitiveInfo(input: unknown): string {
   try {
-    return redactPatterns(input);
+    return redactPatterns(typeof input === "string" ? input : String(input));
   } catch {
     // A regex engine limit (e.g. stack size on a pathological multi-MB
     // input) must neither crash the logger nor let the raw text through.
@@ -105,19 +175,20 @@ export function redactSensitiveInfo(input: string): string {
 function redactPatterns(input: string): string {
   return (
     input
-      // OpenAI-style API keys and similar long key prefixes
-      .replace(/(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
+      // OpenAI-style API keys and similar long key prefixes. A "-" may come
+      // before them (x-sk-...): a failed attempt is bounded by the {10,}.
+      .replace(/(?<![A-Za-z0-9_])sk-[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
       // GitHub tokens (classic ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained)
       .replace(
         /(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g,
         "[REDACTED]",
       )
       // Vercel AI Gateway keys
-      .replace(/(?<![A-Za-z0-9_-])vck_[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
-      // Authorization: Bearer <token>
-      .replace(/(\bAuthorization\s*:\s*Bearer\s+)\S+/gi, "$1[REDACTED]")
-      // Bare JWTs
-      .replace(JWT, "[REDACTED]")
+      .replace(/(?<![A-Za-z0-9_])vck_[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
+      // Authorization header values
+      .replace(AUTHORIZATION, "$1[REDACTED]")
+      // Bare JWTs (only runs containing "eyJ" are examined)
+      .replace(/[A-Za-z0-9_.-]+/g, (run) => (run.includes("eyJ") ? redactJwts(run) : run))
       // Credentials in URLs (only tokens containing "://" are examined)
       .replace(/\S+/g, (token) => (token.includes("://") ? redactUrlCredentials(token) : token))
       // key=value or key: value style sensitive fields
@@ -126,5 +197,7 @@ function redactPatterns(input: string): string {
       .replace(JSON_DOUBLE, '$1":"[REDACTED]"')
       // JSON single-quoted sensitive fields
       .replace(JSON_SINGLE, "$1':'[REDACTED]'")
+      // JSON nested as an escaped string, keeping its escape depth
+      .replace(JSON_ESCAPED, (_m, key: string, bs: string) => `${key}${bs}":${bs}"[REDACTED]${bs}"`)
   );
 }

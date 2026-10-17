@@ -11,6 +11,7 @@ jest.mock("../auditLedger.utils", () => ({
 }));
 
 import { logEvent } from "../logger/dbLogger";
+import { UNSCANNABLE_PLACEHOLDER } from "../logger/redact";
 
 // event_logs is served to every org member by GET /api/logger/events, and
 // controllers call logEvent directly with `${error.message}`, so the sink
@@ -67,5 +68,18 @@ describe("logEvent redaction", () => {
       { replacements: Record<string, unknown> },
     ];
     expect(options.replacements.description).toBe("42");
+  });
+
+  // String() throws on a null-prototype object; the coercion must sit
+  // inside the fail-closed guard, not before it.
+  it("stores the placeholder for a description that cannot be coerced", async () => {
+    await expect(
+      logEvent("Error", Object.create(null) as unknown as string, 5, 7),
+    ).resolves.toBeUndefined();
+    const [, options] = mockQuery.mock.calls[0] as [
+      string,
+      { replacements: Record<string, unknown> },
+    ];
+    expect(options.replacements.description).toBe(UNSCANNABLE_PLACEHOLDER);
   });
 });

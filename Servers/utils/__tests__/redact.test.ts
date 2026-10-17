@@ -149,6 +149,72 @@ describe("redactSensitiveInfo", () => {
       '{"password":"a\\"b","ok":1}',
       '{"password":"[REDACTED]","ok":1}',
     ],
+    // key prefixes and JWTs right after "-" (header names, env-style keys)
+    ["sk- key after -", "x-sk-abcdefghijklmnop1234 sent", "x-[REDACTED] sent"],
+    ["vck_ key after -", "api-vck_abcdefghij1234567890 sent", "api-[REDACTED] sent"],
+    ["JWT after -", "key-eyJhbGciOiJIUzI1NiJ9.eyJpZCI6MX0.c2ln sent", "key-[REDACTED] sent"],
+    ["JWT after .", "a.eyJhbGc.eyJzdWI.sig b", "a.[REDACTED] b"],
+    // Authorization headers in JSON, util.inspect and escaped forms, and Basic
+    [
+      "JSON authorization header",
+      '{"authorization":"Bearer abc.def"}',
+      '{"authorization":"Bearer [REDACTED]"}',
+    ],
+    [
+      "util.inspect Authorization header",
+      "{ Authorization: 'Bearer abc.def' }",
+      "{ Authorization: 'Bearer [REDACTED]' }",
+    ],
+    [
+      "Basic credentials",
+      "Authorization: Basic dXNlcjpwYXNz= failed",
+      "Authorization: Basic [REDACTED] failed",
+    ],
+    [
+      "JSON Basic credentials",
+      '{"Authorization":"Basic dXNlcjpwYXNz"}',
+      '{"Authorization":"Basic [REDACTED]"}',
+    ],
+    [
+      "escaped JSON authorization header",
+      '{"h":"{\\"authorization\\":\\"Bearer abc\\"}"}',
+      '{"h":"{\\"authorization\\":\\"Bearer [REDACTED]\\"}"}',
+    ],
+    // JSON nested as an escaped string: the value runs to the end of the
+    // enclosing string (fail closed)
+    [
+      "escaped nested JSON",
+      '{"msg":"{\\"password\\":\\"hunter2\\"}"}',
+      '{"msg":"{\\"password\\":\\"[REDACTED]\\""}',
+    ],
+    [
+      "double-escaped nested JSON",
+      '{"a":"{\\\\\\"token\\\\\\":\\\\\\"t0k\\\\\\"}"}',
+      '{"a":"{\\\\\\"token\\\\\\":\\\\\\"[REDACTED]\\\\\\""}',
+    ],
+    // a backslash before a real newline does not end the quoted value
+    ['quoted value with "\\" + newline', 'password="ab\\\ncd" set', "password=[REDACTED] set"],
+    ['JSON value with "\\" + newline', '{"password":"ab\\\ncd"}', '{"password":"[REDACTED]"}'],
+    // "=>" separators
+    ["=> separator", "password => abc set", "password=[REDACTED] set"],
+    ['quoted "=>" separator', '{"password"=>"x", "a"=>1}', '{"password":"[REDACTED]", "a"=>1}'],
+    // suffixed password keys
+    [
+      "password_confirmation",
+      "password_confirmation=hunter2 set",
+      "password_confirmation=[REDACTED] set",
+    ],
+    ["password2", "password2=hunter2 set", "password2=[REDACTED] set"],
+    [
+      'JSON "password_confirmation"',
+      '{"password_confirmation":"x","ok":1}',
+      '{"password_confirmation":"[REDACTED]","ok":1}',
+    ],
+    // array and non-string values
+    ["JSON array value", '{"password": ["x", "y"],"ok":1}', '{"password":"[REDACTED]","ok":1}'],
+    ["inspect array value", "{ password: [ 'x' ] }", "{ password=[REDACTED] }"],
+    ["JSON numeric value", '{"token":123456,"ok":1}', '{"token":"[REDACTED]","ok":1}'],
+    ["single-quoted numeric value", "{'token': 123456}", "{'token':'[REDACTED]'}"],
   ])("redacts %s", (_label, input, expected) => {
     expect(redactSensitiveInfo(input)).toBe(expected);
   });
@@ -171,6 +237,9 @@ describe("redactSensitiveInfo", () => {
     '{"u":"https://example.com/users/@me","n":1}',
     '{"a":"https://ok.example","b":"me@mail.example"}',
     "Request 3f2b9c1e-1234-4abc-8def-0123456789ab completed",
+    "Authorization failed for user 7",
+    "passwordless login enabled",
+    "risk-sk-low updated",
   ])("leaves %j unchanged", (input) => {
     expect(redactSensitiveInfo(input)).toBe(input);
   });
@@ -198,13 +267,32 @@ describe("redactSensitiveInfo", () => {
     expect(redactSensitiveInfo(input)).toBe(expected);
   });
 
-  it("fails closed when the input cannot be scanned", () => {
-    const unscannable = {
-      replace() {
-        throw new RangeError("Maximum call stack size exceeded");
+  // Every sink passes whatever it was given, so coercion to text happens
+  // here, once, and a value that cannot be coerced fails closed too.
+  it.each([
+    ["a number", 42, "42"],
+    ["null", null, "null"],
+    [
+      "an object with a secret in toString",
+      { toString: () => "password=x set" },
+      "password=[REDACTED] set",
+    ],
+  ])("coerces %s to redacted text", (_label, input, expected) => {
+    expect(redactSensitiveInfo(input)).toBe(expected);
+  });
+
+  it.each([
+    ["a null-prototype object", Object.create(null)],
+    [
+      "an engine limit while scanning",
+      {
+        toString() {
+          throw new RangeError("Maximum call stack size exceeded");
+        },
       },
-    } as unknown as string;
-    expect(redactSensitiveInfo(unscannable)).toBe(UNSCANNABLE_PLACEHOLDER);
+    ],
+  ])("fails closed on %s", (_label, input) => {
+    expect(redactSensitiveInfo(input)).toBe(UNSCANNABLE_PLACEHOLDER);
   });
 });
 
@@ -260,6 +348,17 @@ describe("redactSensitiveInfo performance", () => {
     ['\'"https://x.y","\' x8000 then @', `${'"https://x.y","'.repeat(8000)}@`],
     ['"x://@" x20000', "x://@".repeat(20000)],
     ['"x://u:p@" x15000', "x://u:p@".repeat(15000)],
+    ['"-eyJa.eyJ" x20000', "-eyJa.eyJ".repeat(20000)],
+    ['"a-eyJ" x25000', "a-eyJ".repeat(25000)],
+    ['"x-sk-" x25000', "x-sk-".repeat(25000)],
+    ['"password" x12000', "password".repeat(12000)],
+    ['"password2" x12000', "password2".repeat(12000)],
+    ['"password_confirm" x6000', "password_confirm".repeat(6000)],
+    ['"\\"password\\": [" x8000', '"password": ['.repeat(8000)],
+    ['"password\\\\\\"" x10000', 'password\\"'.repeat(10000)],
+    ['"authorization\\":\\"" x8000', 'authorization":"'.repeat(8000)],
+    ['"Authorization: Basic " x6000', "Authorization: Basic ".repeat(6000)],
+    ["a 100KB backslash run after a key", `password${"\\".repeat(100_000)}`],
   ])("redacts %s in under 50ms", (_label, input) => {
     expect(bestOfThree(input)).toBeLessThan(50);
   });

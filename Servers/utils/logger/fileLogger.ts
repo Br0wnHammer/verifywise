@@ -10,8 +10,7 @@ const { combine, timestamp, printf, colorize } = format;
 const isDev = process.env.NODE_ENV !== "production";
 
 const logFormat = printf(({ level, message, timestamp }) => {
-  const safeMessage = typeof message === "string" ? redactSensitiveInfo(message) : String(message);
-  return `${timestamp} [${level}]: ${safeMessage}`;
+  return `${timestamp} [${level}]: ${redactSensitiveInfo(message)}`;
 });
 
 /**
