@@ -23,6 +23,7 @@ vi.mock("../../../components/Layout/PageHeaderExtended", () => ({
 
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import VirtualKeysPage from "./index";
+import CustomException from "../../../../infrastructure/exceptions/customeException";
 
 const mockGet = apiServices.get as unknown as ReturnType<typeof vi.fn>;
 const mockPost = apiServices.post as unknown as ReturnType<typeof vi.fn>;
@@ -253,7 +254,9 @@ describe("AIGateway - VirtualKeys", () => {
 
   it("shows the API error message when create submission fails", async () => {
     mockLoad([]);
-    mockPost.mockRejectedValue({ response: { data: { detail: "Budget must be positive" } } });
+    mockPost.mockRejectedValue(
+      new CustomException("Bad Request", 400, { detail: "Budget must be positive" }),
+    );
     renderWithProviders(<VirtualKeysPage />);
 
     await waitFor(() => {
