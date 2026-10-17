@@ -1,5 +1,7 @@
 """GET /endpoints/{id} applies role visibility as the gateway enforces it:
-an empty or NULL allowed_role_ids is open to every role (tenant_proxy).
+an empty or NULL allowed_role_ids is open to every role (tenant_proxy). The
+endpoints list (get_all_endpoints) still hides such endpoints until it uses
+the same predicate.
 
 No live services: the database session and the CRUD layer are replaced with
 fakes, so these run in CI without Postgres."""
