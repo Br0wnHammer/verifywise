@@ -133,7 +133,7 @@ describe("getGatewayErrorDetail", () => {
   });
 
   it("returns null when there is no string detail", () => {
-    expect(getGatewayErrorDetail(gatewayError(422, [{ msg: "x" }]))).toBeNull();
+    expect(getGatewayErrorDetail(gatewayError(422, [{ loc: [] }]))).toBeNull();
     expect(getGatewayErrorDetail(gatewayError(400, ""))).toBeNull();
     expect(getGatewayErrorDetail(new Error("network"))).toBeNull();
     expect(getGatewayErrorDetail(null)).toBeNull();
@@ -253,5 +253,28 @@ describe("getGatewayErrorText", () => {
     expect(getGatewayErrorText({ response: { data: { detail: "x" } } }, "fallback")).toBe(
       "fallback",
     );
+  });
+});
+
+describe("getGatewayErrorDetail for validation responses", () => {
+  it("joins the messages of a 422 validation list, without Pydantic's prefix", () => {
+    const err = new CustomException("Request failed with status code 422", 422, {
+      detail: [
+        {
+          loc: ["body", "slug"],
+          msg: "Value error, slug must be at least 2 characters",
+          type: "value_error",
+        },
+        { loc: ["body", "name"], msg: "Field required", type: "missing" },
+      ],
+    });
+    expect(getGatewayErrorDetail(err)).toBe("slug must be at least 2 characters Field required");
+  });
+
+  it("ignores a 422 list without usable messages", () => {
+    const err = new CustomException("Request failed with status code 422", 422, {
+      detail: [{ loc: [] }],
+    });
+    expect(getGatewayErrorText(err, "fallback")).toBe("fallback");
   });
 });

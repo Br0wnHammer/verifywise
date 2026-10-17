@@ -21,7 +21,11 @@ import Select from "../../../components/Inputs/Select";
 import StandardModal from "../../../components/Modals/StandardModal";
 import { PageHeaderExtended } from "../../../components/Layout/PageHeaderExtended";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
-import { getGatewayErrorText } from "../../../../application/utils/apiErrorReason";
+import {
+  getClientErrorReason,
+  getGatewayErrorDetail,
+  getGatewayErrorText,
+} from "../../../../application/utils/apiErrorReason";
 import palette from "../../../themes/palette";
 import { slugify } from "../shared";
 import MCPTable from "../MCPTable";
@@ -253,7 +257,11 @@ export default function MCPServersPage() {
       );
       showAlert("success", toolsFound(res?.data?.tools_discovered ?? 0));
     } catch (err: any) {
-      showAlert("error", "Discovery failed", getGatewayErrorText(err, "") || undefined);
+      showAlert(
+        "error",
+        "Discovery failed",
+        getGatewayErrorDetail(err) ?? getClientErrorReason(err) ?? undefined,
+      );
     } finally {
       setDiscoveringId(null);
       await loadData();

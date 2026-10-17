@@ -272,4 +272,21 @@ describe("MCPToolCatalogPage", () => {
 
     expect(await screen.findByText("Update rejected")).toBeInTheDocument();
   });
+
+  it("shows a 4xx reason the network layer lifted into the error message", async () => {
+    mockLoad([makeTool()]);
+    mockPatch.mockRejectedValue(
+      new CustomException("Tool name is taken", 409, { message: "Tool name is taken" }),
+    );
+    renderWithProviders(<MCPToolCatalogPage />, { route: "/ai-gateway/mcp/tools" });
+
+    await waitFor(() => {
+      expect(screen.getByText("search_docs")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByText("Tool name is taken")).toBeInTheDocument();
+  });
 });

@@ -451,4 +451,35 @@ describe("OnboardingOverlay", () => {
       expect(screen.getByText("Gateway timeout")).toBeInTheDocument();
     });
   });
+
+  it("hides a 5xx provider error behind the generic message", async () => {
+    mockPost.mockRejectedValue(
+      new CustomException("Bad Gateway", 502, {
+        detail: "litellm.AuthenticationError: sk-live-secret rejected",
+      }),
+    );
+    renderWithProviders(
+      <OnboardingOverlay
+        setupStatus={noneComplete}
+        onGetStarted={onGetStarted}
+        onStepCompleted={onStepCompleted}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Make your first request"));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Make your first request" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Run/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Request failed. Check that your endpoint and API key are configured correctly.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/sk-live-secret/)).not.toBeInTheDocument();
+    });
+  });
 });

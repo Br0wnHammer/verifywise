@@ -17,15 +17,24 @@ export function getApiErrorReason(error: unknown): string | null {
 
 /**
  * The AI Gateway's reason for a failed request. The gateway (FastAPI) reports
- * errors as { detail }, a string or { message, code }, which the envelope
- * readers above do not look at; `apiServices` passes that body through as the
- * error's `response`. Only for a rejected request (4xx): a 5xx detail can carry
+ * errors as { detail }: a string, { message, code }, or for a request that
+ * fails validation (422) a list of { msg }. The envelope readers above do not
+ * look at it; `apiServices` passes that body through as the error's
+ * `response`. Only for a rejected request (4xx): a 5xx detail can carry
  * internal details (or is a gateway misconfiguration), so it is never surfaced.
  */
 export function getGatewayErrorDetail(error: unknown): string | null {
   if (!isClientError(error)) return null;
   const detail = (error as { response?: { detail?: unknown } } | null)?.response?.detail;
   if (typeof detail === "string") return detail || null;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((entry) => (entry as { msg?: unknown } | null)?.msg)
+      .filter((msg): msg is string => typeof msg === "string" && msg.trim() !== "")
+      // Pydantic prefixes a validator's own message with "Value error, ".
+      .map((msg) => msg.replace(/^Value error, /, "").trim());
+    return messages.length > 0 ? [...new Set(messages)].join(" ") : null;
+  }
   const message = (detail as { message?: unknown } | null)?.message;
   return typeof message === "string" && message ? message : null;
 }
