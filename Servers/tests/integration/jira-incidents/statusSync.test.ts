@@ -310,3 +310,74 @@ describe("jira incidents status sync after an unmapped import", () => {
     expect(incident.status).toBe("Investigating");
   });
 });
+
+describe("jira incidents status sync with several links", () => {
+  let mock: JiraCloudMock;
+  let orgA: number;
+  let userA: number;
+  let first: { issueId: string; incidentId: number };
+  let second: { issueId: string; incidentId: number };
+
+  const linkOf = async (incidentId: number) =>
+    (
+      await rows<any>(`SELECT * FROM jira_incident_links WHERE incident_id = :incidentId`, {
+        incidentId,
+      })
+    )[0];
+  const statusOf = async (incidentId: number) =>
+    (
+      await rows<{ status: string }>(`SELECT status FROM ai_incident_managements WHERE id = :id`, {
+        id: incidentId,
+      })
+    )[0].status;
+
+  beforeEach(async () => {
+    mock = await withMock();
+    process.env.FRONTEND_URL = "https://app.verifywise.test";
+    ({ orgA, userA } = await seedTwoOrgsAndUsers());
+    await seedReadyConfig(orgA, await insertProject(orgA, userA), mock);
+    const a = mock.addIssue({ summary: "First imported issue" }).id;
+    const b = mock.addIssue({ summary: "Second imported issue" }).id;
+    await runImport(await stateFor(orgA));
+    const links = await rows<{ jira_issue_id: string; incident_id: number }>(
+      `SELECT jira_issue_id, incident_id FROM jira_incident_links WHERE organization_id = :orgA`,
+      { orgA },
+    );
+    const incidentFor = (issueId: string) =>
+      links.find((l) => l.jira_issue_id === issueId)!.incident_id;
+    first = { issueId: a, incidentId: incidentFor(a) };
+    second = { issueId: b, incidentId: incidentFor(b) };
+  });
+  afterEach(async () => {
+    await mock.close();
+    await cleanupDatabase();
+  });
+
+  it("keeps syncing the rest of a batch when one issue was deleted in Jira", async () => {
+    // Jira rejects an `id in (...)` search naming the deleted issue.
+    mock.state.issues.find((i) => i.id === first.issueId)!.deleted = true;
+    mock.setStatus(second.issueId, "3");
+    const s = await sync(orgA);
+    expect(s.stopReason).toBeNull();
+    expect((await linkOf(first.incidentId)).state).toBe("deleted_in_jira");
+    expect(await statusOf(second.incidentId)).toBe("Investigating");
+
+    // Later runs leave the deleted link out of the batch search.
+    mock.setStatus(second.issueId, "4");
+    await sync(orgA);
+    expect(await statusOf(second.incidentId)).toBe("Closed");
+  });
+
+  it("marks only the link when Jira refuses one issue with 403", async () => {
+    await updateIncident(orgA, first.incidentId, { status: "Closed" }, userA);
+    mock.state.failNext.push({
+      status: 403,
+      path: `/rest/api/3/issue/${first.issueId}/transitions`,
+    });
+    mock.setStatus(second.issueId, "3");
+    const s = await sync(orgA);
+    expect((await linkOf(first.incidentId)).state).toBe("error");
+    expect(await statusOf(second.incidentId)).toBe("Investigating");
+    expect(s.counts.errors).toBe(1);
+  });
+});

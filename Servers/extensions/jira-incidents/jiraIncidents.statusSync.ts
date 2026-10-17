@@ -80,7 +80,12 @@ export async function runStatusSync(state: RunState): Promise<void> {
       const links = await listSyncableLinks(state.orgId, afterId, STATUS_BATCH_SIZE);
       if (links.length === 0) return;
       afterId = links[links.length - 1].id;
-      const found = await readJiraStatuses(state, links);
+      // A deleted issue fails the whole search, so links already known to be
+      // deleted are left to syncLink's direct check.
+      const found = await readJiraStatuses(
+        state,
+        links.filter((l) => l.state !== "deleted_in_jira"),
+      );
       for (const link of links) {
         if (state.deadline.aborted) throw new StopRun(STOP_DEADLINE);
         await syncLink(state, link, found.get(link.jira_issue_id) ?? null);
@@ -109,19 +114,27 @@ async function readJiraStatuses(
   links: SyncLink[],
 ): Promise<Map<string, JiraSide>> {
   const found = new Map<string, JiraSide>();
+  if (links.length === 0) return found;
   const jql = buildIdsJql(links.map((l) => l.jira_issue_id));
   let token: string | null = null;
-  do {
-    const page = await state.client.searchPage(jql, ["status"], token);
-    for (const issue of page.issues) {
-      found.set(issue.id, {
-        statusId: issue.statusId,
-        statusName: issue.statusName,
-        key: issue.key,
-      });
-    }
-    token = page.nextPageToken;
-  } while (token);
+  try {
+    do {
+      const page = await state.client.searchPage(jql, ["status"], token);
+      for (const issue of page.issues) {
+        found.set(issue.id, {
+          statusId: issue.statusId,
+          statusName: issue.statusName,
+          key: issue.key,
+        });
+      }
+      token = page.nextPageToken;
+    } while (token);
+  } catch (err) {
+    // Jira rejects an `id in (...)` search that names a deleted issue. Read
+    // this batch one issue at a time instead; that finds the deleted one.
+    if (err instanceof JiraHttpError && err.status === 400) return new Map();
+    throw err;
+  }
   return found;
 }
 
@@ -157,10 +170,13 @@ async function syncLink(state: RunState, link: SyncLink, searched: JiraSide | nu
     const decision = await decide(state, link, jira);
     await apply(state, link, jira, decision);
   } catch (err) {
+    // A rejected token (401) fails the run. A 403 here concerns this one issue
+    // (issue security, a transition the account may not use): the project was
+    // readable at the start of the run, so only this link is marked.
     if (
       err instanceof StopRun ||
       err instanceof JiraRateLimitError ||
-      err instanceof JiraAuthError
+      (err instanceof JiraAuthError && err.status !== 403)
     ) {
       throw err;
     }

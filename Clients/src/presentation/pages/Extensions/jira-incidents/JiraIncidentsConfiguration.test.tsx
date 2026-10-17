@@ -180,6 +180,28 @@ describe("JiraIncidentsConfiguration", () => {
     await waitFor(() => expect(repo.getJiraProjects).toHaveBeenCalled());
   });
 
+  it("does not ask for the token again after the server normalises the site URL", async () => {
+    repo.saveJiraIncidentsConfig.mockResolvedValue(SAVED);
+    const { container } = renderPage();
+    await screen.findByText("High");
+    await waitFor(() => expect(screen.getAllByText("To Do").length).toBeGreaterThan(0));
+    const field = (id: string) => container.querySelector(`#${id}`) as HTMLInputElement;
+    fireEvent.change(field("jira-incidents-site-url"), {
+      target: { value: "https://acme.atlassian.net/jira/your-work" },
+    });
+    fireEvent.change(field("jira-incidents-api-token"), { target: { value: "token-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(repo.saveJiraIncidentsConfig).toHaveBeenCalledTimes(1));
+    await screen.findByText("Settings saved.");
+    expect(field("jira-incidents-site-url").value).toBe("https://acme.atlassian.net");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(repo.saveJiraIncidentsConfig).toHaveBeenCalledTimes(2));
+    expect(
+      screen.queryByText("Enter the API token again after changing the site URL or email"),
+    ).toBeNull();
+  });
+
   it("shows the server's reason when save is refused", async () => {
     repo.saveJiraIncidentsConfig.mockRejectedValue({
       response: { message: "Bad Request", data: "Map every Jira status: 'Triage' aren't mapped" },

@@ -5,7 +5,13 @@ import { JiraCloudMock } from "../../mocks/jiraCloud/server";
 import { insertProject, rows, seedReadyConfig, withMock } from "./fixtures";
 import { loadConfig, clientFor } from "../../../extensions/jira-incidents/jiraIncidents.config";
 import { runImport } from "../../../extensions/jira-incidents/jiraIncidents.import";
-import { newCounts, RunState } from "../../../extensions/jira-incidents/jiraIncidents.run";
+import {
+  newCounts,
+  RunState,
+  STOP_DEADLINE,
+} from "../../../extensions/jira-incidents/jiraIncidents.run";
+import { JiraUnreachableError } from "../../../extensions/jira-incidents/jiraIncidents.errors";
+import * as incidentImport from "../../../services/incidentImport.service";
 import { sequelize } from "../../../database/db";
 
 async function stateFor(orgId: number): Promise<RunState> {
@@ -162,6 +168,49 @@ describe("jira incidents import", () => {
     expect(
       await rows(`SELECT id FROM ai_incident_managements WHERE organization_id = :orgA`, { orgA }),
     ).toHaveLength(60);
+  });
+
+  it("keeps the window open at an issue that failed to import, and imports it next run", async () => {
+    await seedReadyConfig(orgA, projectId, mock);
+    mock.addIssue({ summary: "Fails the first time" });
+    mock.addIssue({ summary: "Imports fine" });
+    const real = incidentImport.createIncidentForImport;
+    const spy = jest
+      .spyOn(incidentImport, "createIncidentForImport")
+      .mockImplementationOnce(async () => {
+        throw new Error("deadlock detected");
+      });
+    try {
+      const state = await stateFor(orgA);
+      await runImport(state);
+      expect(state.counts).toMatchObject({ imported: 1, errors: 1 });
+      const failedCreated = new Date(mock.state.issues[0].created);
+      expect((await loadConfig(orgA))!.lastCheckedAt!.getTime()).toBeLessThanOrEqual(
+        failedCreated.getTime(),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(incidentImport.createIncidentForImport).toBe(real);
+    const retry = await stateFor(orgA);
+    await runImport(retry);
+    expect(retry.counts.imported).toBe(1);
+    expect(
+      await rows(`SELECT id FROM ai_incident_managements WHERE organization_id = :orgA`, { orgA }),
+    ).toHaveLength(2);
+  });
+
+  it("stops cleanly when the deadline aborts a search in flight", async () => {
+    await seedReadyConfig(orgA, projectId, mock);
+    const controller = new AbortController();
+    const state = { ...(await stateFor(orgA)), deadline: controller.signal };
+    state.client.searchPage = async () => {
+      controller.abort();
+      throw new JiraUnreachableError("The request to Jira was aborted");
+    };
+    await runImport(state);
+    expect(state.stopReason).toBe(STOP_DEADLINE);
+    expect((await loadConfig(orgA))!.lastCheckedAt).toBeNull();
   });
 
   it("skips the remote link and warns once without FRONTEND_URL", async () => {

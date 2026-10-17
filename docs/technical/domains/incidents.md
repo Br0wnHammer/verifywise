@@ -642,6 +642,11 @@ different from `last_jira_status_id` / `last_vw_status`:
 - An unmapped Jira status, or a transition that needs a field (such as
   Resolution) or does not exist from the current status, marks the link
   `error` with the reason; the incident is left as it is.
+- Jira refusing one issue (403: issue security, a transition the account may
+  not use) marks only that link `error`; a rejected token (401) fails the run.
+- Links already `deleted_in_jira` are read one by one, and a batch search that
+  Jira rejects (it does when it names a deleted issue) falls back to per-issue
+  reads, so one deleted issue never stops the rest of the batch.
 - A Jira status that reopens a Closed incident goes through `updateIncident`,
   so the reopen rule applies.
 - An issue that Jira answers 404 for, while the project is still readable, is

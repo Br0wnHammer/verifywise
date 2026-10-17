@@ -2,25 +2,15 @@ import type {
   JiraIncidentsConfigInput,
   JiraIncidentsConfigView,
 } from "../../../../application/repository/jiraIncidents.repository";
+import {
+  IncidentManagementStatus,
+  IncidentType,
+  Severity,
+} from "../../../../domain/enums/aiIncidentManagement.enum";
 
-export const VW_STATUSES = [
-  "Open",
-  "Investigating",
-  "Mitigated",
-  "Closed",
-  "Suspended",
-  "Emergency action",
-] as const;
-export const SEVERITIES = ["Minor", "Serious", "Very serious"] as const;
-export const INCIDENT_TYPES = [
-  "Malfunction",
-  "Unexpected behavior",
-  "Model drift",
-  "Misuse",
-  "Data corruption",
-  "Security breach",
-  "Performance degradation",
-] as const;
+export const VW_STATUSES: readonly string[] = Object.values(IncidentManagementStatus);
+export const SEVERITIES: readonly string[] = Object.values(Severity);
+export const INCIDENT_TYPES: readonly string[] = Object.values(IncidentType);
 /** Select value for a VerifyWise status that leaves the Jira issue as it is (null on the server). */
 export const DONT_CHANGE_JIRA = "__dont_change__";
 

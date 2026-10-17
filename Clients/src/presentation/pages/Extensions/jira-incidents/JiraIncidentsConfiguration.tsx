@@ -263,7 +263,18 @@ export function JiraIncidentsConfiguration() {
       const saved = await saveJiraIncidentsConfig(toInput(form));
       const connectionWasMissing = !view.has_api_token;
       setView(saved);
-      setForm((f) => (f ? { ...f, api_token: "" } : f));
+      // Take the site URL and email as the server stored them (it normalises the
+      // URL), so the next save doesn't see them as changed and ask for the token.
+      setForm((f) =>
+        f
+          ? {
+              ...f,
+              api_token: "",
+              site_url: saved.site_url ?? f.site_url,
+              email: saved.email ?? f.email,
+            }
+          : f,
+      );
       setSaveMessage({ ok: true, text: "Settings saved." });
       if (connectionWasMissing) void loadPickers(saved);
     } catch (err) {

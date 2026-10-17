@@ -4,7 +4,7 @@ import logger from "../../utils/logger/fileLogger";
 import { buildIncidentDescription } from "./adf";
 import type { JiraIssueSummary, SearchPage } from "./jiraIncidents.client";
 import { markChecked } from "./jiraIncidents.config";
-import { JiraRateLimitError } from "./jiraIncidents.errors";
+import { JiraRateLimitError, JiraUnreachableError } from "./jiraIncidents.errors";
 import { RunState, STOP_DEADLINE, STOP_RATE_LIMIT } from "./jiraIncidents.run";
 import { insertEvent, insertLink, linkExists, setLinkState } from "./jiraIncidents.store";
 import { buildImportJql, formatJqlDate, importCutoff } from "./jql";
@@ -27,6 +27,7 @@ export async function runImport(state: RunState): Promise<void> {
   });
 
   let token: string | null = null;
+  let earliestFailed: Date | null = null;
   do {
     if (state.deadline.aborted) {
       state.stopReason = STOP_DEADLINE;
@@ -40,6 +41,11 @@ export async function runImport(state: RunState): Promise<void> {
         state.stopReason = STOP_RATE_LIMIT;
         return;
       }
+      // The deadline aborts the request in flight: stop cleanly, as status sync does.
+      if (state.deadline.aborted && err instanceof JiraUnreachableError) {
+        state.stopReason = STOP_DEADLINE;
+        return;
+      }
       throw err;
     }
     for (const issue of page.issues) {
@@ -49,18 +55,32 @@ export async function runImport(state: RunState): Promise<void> {
       }
       if (issue.created < config.importFrom!) continue;
       if (await linkExists(state.orgId, issue.id)) continue;
-      const stopped = await importOne(state, issue);
-      if (stopped) return;
+      const outcome = await importOne(state, issue);
+      if (outcome === "stop") return;
+      if (outcome === "failed" && (!earliestFailed || issue.created < earliestFailed)) {
+        earliestFailed = issue.created;
+      }
       await state.heartbeat();
     }
     token = page.nextPageToken;
   } while (token);
 
-  await markChecked(state.orgId, state.startedAt);
+  // An issue that failed to import has no link, so keep the window open at it:
+  // the next cut-off (last check minus the overlap) still reaches it.
+  await markChecked(
+    state.orgId,
+    earliestFailed && earliestFailed < state.startedAt ? earliestFailed : state.startedAt,
+  );
 }
 
-/** Returns true when the run must stop (rate limited while adding the remote link). */
-async function importOne(state: RunState, issue: JiraIssueSummary): Promise<boolean> {
+/**
+ * "stop" when the run must stop (rate limited while adding the remote link),
+ * "failed" when the incident could not be created; it is retried next run.
+ */
+async function importOne(
+  state: RunState,
+  issue: JiraIssueSummary,
+): Promise<"ok" | "failed" | "stop"> {
   const { orgId, config, client } = state;
   let created: { id: number; incident_id: string; linkId: number };
   try {
@@ -129,14 +149,14 @@ async function importOne(state: RunState, issue: JiraIssueSummary): Promise<bool
       return { id: incident.id!, incident_id: incident.incident_id as string, linkId };
     });
   } catch (err) {
-    if (err instanceof AlreadyLinked) return false;
+    if (err instanceof AlreadyLinked) return "ok";
     logger.error(`jira-incidents: import of ${issue.key} failed: ${messageOf(err)}`);
     await recordError(state, issue.key, messageOf(err), null);
-    return false;
+    return "failed";
   }
 
   state.counts.imported++;
-  return addRemoteLink(state, issue, created);
+  return (await addRemoteLink(state, issue, created)) ? "stop" : "ok";
 }
 
 async function addRemoteLink(

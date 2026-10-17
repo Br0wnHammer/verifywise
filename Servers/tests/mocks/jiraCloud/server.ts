@@ -138,7 +138,12 @@ export async function startJiraCloudMock(options: { port?: number } = {}): Promi
     if (mock.state.projectReadable) {
       const live = mock.state.issues.filter((i) => !i.deleted);
       if (parsed.kind === "ids") {
-        matches = live.filter((i) => (parsed as { ids: string[] }).ids.includes(i.id));
+        // Like Jira Cloud: naming an issue that doesn't exist fails the whole query.
+        const ids = (parsed as { ids: string[] }).ids;
+        const missing = ids.find((id) => !live.some((i) => i.id === id));
+        if (missing)
+          return badRequest(`An issue with key '${missing}' does not exist for field 'id'.`);
+        matches = live.filter((i) => ids.includes(i.id));
       } else {
         const from = zonedMinuteToInstant(
           parsed.createdFrom,
