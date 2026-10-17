@@ -8,7 +8,7 @@ describe("redactSensitiveInfo", () => {
     [
       "Authorization Bearer",
       "Authorization: Bearer abc.def.ghi failed",
-      "Authorization: Bearer [REDACTED] failed",
+      "Authorization: Bearer [REDACTED]",
     ],
     ["password=", "login password=hunter2 refused", "login password=[REDACTED] refused"],
     ["quoted password=", "login password='hunter2' refused", "login password=[REDACTED] refused"],
@@ -168,7 +168,7 @@ describe("redactSensitiveInfo", () => {
     [
       "Basic credentials",
       "Authorization: Basic dXNlcjpwYXNz= failed",
-      "Authorization: Basic [REDACTED] failed",
+      "Authorization: Basic [REDACTED]",
     ],
     [
       "JSON Basic credentials",
@@ -258,6 +258,40 @@ describe("redactSensitiveInfo", () => {
       '{"authorization":"Basic YWJj\\/ZGVm"}',
       '{"authorization":"Basic [REDACTED]',
     ],
+    // Authorization runs to the end of the line, quoted or not
+    [
+      "unquoted Basic with a quote",
+      "Authorization: Basic dXNl'cjpw",
+      "Authorization: Basic [REDACTED]",
+    ],
+    [
+      "unquoted Bearer with a backslash",
+      "Authorization: Bearer abc\\def",
+      "Authorization: Bearer [REDACTED]",
+    ],
+    [
+      "quoted value starting with a newline",
+      '{"authorization":"\nBearer abc"}',
+      '{"authorization":"\nBearer [REDACTED]',
+    ],
+    [
+      "only the line is redacted",
+      "Authorization: Token x\nnext line",
+      "Authorization: [REDACTED]\nnext line",
+    ],
+    // Bearer/Basic credentials under other keys or none
+    ["auth key", "headers: { auth: 'Bearer opaque123' }", "headers: { auth: 'Bearer [REDACTED]' }"],
+    ["authHeader key", '{"authHeader":"Bearer opaque123"}', '{"authHeader":"Bearer [REDACTED]"}'],
+    [
+      "bare Bearer token",
+      "retrying with Bearer abc123def now",
+      "retrying with Bearer [REDACTED] now",
+    ],
+    [
+      "bare Basic token with an escaped /",
+      '{"msg":"sent Basic YWJj1\\/ZGVm"}',
+      '{"msg":"sent Basic [REDACTED]"}',
+    ],
     ["password_hash", "password_hash=abc set", "password_hash=[REDACTED] set"],
     ["passwordHash", "passwordHash: abc set", "passwordHash=[REDACTED] set"],
     ["password_digest", "password_digest=abc set", "password_digest=[REDACTED] set"],
@@ -287,6 +321,8 @@ describe("redactSensitiveInfo", () => {
     "Authorization failed for user 7",
     "passwordless login enabled",
     "risk-sk-low updated",
+    "Basic authentication failed",
+    "Bearer token expired for user 7",
   ])("leaves %j unchanged", (input) => {
     expect(redactSensitiveInfo(input)).toBe(input);
   });
@@ -439,6 +475,11 @@ describe("redactSensitiveInfo performance", () => {
     ['"password\\\\\\"" x10000', 'password\\"'.repeat(10000)],
     ['"authorization\\":\\"" x8000', 'authorization":"'.repeat(8000)],
     ['"Authorization: Basic " x6000', "Authorization: Basic ".repeat(6000)],
+    ['"Authorization:" + 100K newlines', `Authorization:${"\n".repeat(100_000)}`],
+    ['"Authorization: \\"" + 100K spaces', `Authorization: \\"${" ".repeat(100_000)}`],
+    ['"Bearer " x15000', "Bearer ".repeat(15000)],
+    ['"Bearer a" x15000', "Bearer a".repeat(15000)],
+    ["Bearer + a 100KB letter run", `Bearer ${"a".repeat(100_000)}`],
     ["a 100KB backslash run after a key", `password${"\\".repeat(100_000)}`],
   ])("redacts %s in under 50ms", (_label, input) => {
     expect(bestOfThree(input)).toBeLessThan(50);

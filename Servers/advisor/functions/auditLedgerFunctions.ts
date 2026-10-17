@@ -67,18 +67,8 @@ const fetchEventLogs = async (
     )) as any[];
 
     return {
-      event_logs: rows.map(redactRowText).map((r: any) => ({
-        id: r.id,
-        entry_type: r.entry_type,
-        user_id: r.user_id,
-        occurred_at: r.occurred_at,
-        event_type: r.event_type,
-        entity_type: r.entity_type,
-        entity_id: r.entity_id,
-        action: r.action,
-        field_name: r.field_name,
-        description: r.description,
-      })),
+      // The SELECT lists exactly the returned columns.
+      event_logs: rows.map(redactRowText),
       count: rows.length,
       filters_applied: {
         entity_type: params.entity_type || null,

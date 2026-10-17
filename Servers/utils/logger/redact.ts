@@ -61,16 +61,21 @@ const JSON_ESCAPED = new RegExp(
 );
 
 // Authorization header values in header, JSON, util.inspect and escaped
-// JSON forms. An unquoted Bearer or Basic value is one token, so only that
-// token is redacted and the scheme kept. Anything else is redacted to the
-// end of the line: a quoted value can hold inner quotes, escapes and spaces
-// (Token token="x", Digest a=\"b\"), so stopping at a quote would leak.
-const SCHEME = String.raw`((?:Bearer|Basic)\s+)`;
-const AUTHORIZATION = new RegExp(
-  String.raw`(\bAuthorization(?:\\*["'])?\s*[:=]\s*)` +
-    String.raw`(?:(\\*["'])${SCHEME}?[^\r\n]+|${SCHEME}[^\s"'\\]+|[^\r\n]+)`,
-  "gi",
-);
+// JSON forms: everything after the key, a leading quote and a Bearer/Basic
+// scheme word is redacted to the end of the line. One rule, fail closed: a
+// value can hold quotes, escapes and spaces (Token token="x", Digest
+// a=\"b\", Basic YWJj\/ZGVm), so no stop character inside the line is safe.
+// Whitespace is allowed after the quote only (one \s* before it), so the
+// pattern cannot backtrack between two whitespace runs.
+const AUTHORIZATION =
+  /(\bAuthorization(?:\\*["'])?\s*[:=]\s*(?:\\*["']\s*)?(?:(?:Bearer|Basic)\s+)?)[^\r\n]+/gi;
+
+// A Bearer or Basic credential under any other key or none ({ auth:
+// 'Bearer x1' }). It ends where the RFC 6750/7617 token alphabet ends, so
+// stopping there cannot leak part of it (a backslash is included for
+// JSON-escaped "\/"); it must contain a digit, which
+// keeps prose such as "Basic authentication failed" readable.
+const BEARER_TOKEN = /\b((?:Bearer|Basic)\s+)(?=[A-Za-z._~+/=\\-]*\d)[A-Za-z0-9._~+/=\\-]+/gi;
 
 /**
  * Bare JWTs: header.payload.signature, both JSON parts base64url ("eyJ"),
@@ -193,11 +198,9 @@ function redactPatterns(input: string): string {
     // Vercel AI Gateway keys
     .replace(/(?<![A-Za-z0-9_])vck_[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
     // Authorization header values
-    .replace(
-      AUTHORIZATION,
-      (_m, prefix: string, quote?: string, quotedScheme?: string, scheme?: string) =>
-        `${prefix}${quote ?? ""}${quotedScheme ?? scheme ?? ""}[REDACTED]`,
-    );
+    .replace(AUTHORIZATION, "$1[REDACTED]")
+    // Bearer/Basic credentials outside an Authorization header
+    .replace(BEARER_TOKEN, "$1[REDACTED]");
   // Bare JWTs and URL credentials are scanned per run or token, and only on
   // lines that can contain them.
   if (text.includes("eyJ")) {
