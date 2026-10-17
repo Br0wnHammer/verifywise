@@ -2,7 +2,6 @@ import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../../database/db";
 import { decrypt, encrypt } from "../../utils/encryption.utils";
 import logger from "../../utils/logger/fileLogger";
-import { getSchedule, saveSchedule } from "../sync-engine/schedule";
 import type { Readiness } from "../sync-engine/types";
 import { INCIDENT_TYPES, JIRA_INCIDENTS_KEY, VW_STATUSES } from "./jiraIncidents.constants";
 import { JiraAuthError, JiraHttpError, JiraUnreachableError } from "./jiraIncidents.errors";
@@ -278,7 +277,9 @@ export async function saveConfig(
   // 1. Merge and check the connection fields.
   const siteUrl =
     input.site_url !== undefined ? normalizeSiteUrl(input.site_url) : (stored?.siteUrl ?? null);
-  const email = optionalString(input.email, "Email", 255) ?? stored?.email ?? null;
+  const submittedEmail = optionalString(input.email, "Email", 255);
+  if (submittedEmail === "") throw bad("Enter the service account email");
+  const email = submittedEmail ?? stored?.email ?? null;
   const newToken = optionalString(input.api_token, "API token", 4096) || undefined;
   const siteChanged = siteUrl !== (stored?.siteUrl ?? null);
   const emailChanged = email !== (stored?.email ?? null);
@@ -431,14 +432,13 @@ export async function saveConfig(
           WHERE organization_id = :orgId AND import_from IS NULL`,
         { replacements: { orgId }, transaction },
       );
-      if (!(await getSchedule(JIRA_INCIDENTS_KEY, orgId))) {
-        await saveSchedule(
-          JIRA_INCIDENTS_KEY,
-          orgId,
-          { enabled: true, intervalHours: 1 },
-          { userId, transaction },
-        );
-      }
+      await sequelize.query(
+        `INSERT INTO extension_sync_settings
+           (organization_id, extension_key, enabled, interval_hours, updated_by)
+         VALUES (:orgId, :key, TRUE, 1, :userId)
+         ON CONFLICT (organization_id, extension_key) DO NOTHING`,
+        { replacements: { orgId, key: JIRA_INCIDENTS_KEY, userId }, transaction },
+      );
     }
   });
 

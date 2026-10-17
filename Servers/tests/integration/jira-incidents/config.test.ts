@@ -138,6 +138,15 @@ describe("jira incidents config", () => {
     expect(schedule).toEqual({ enabled: false, interval_hours: 12 });
   });
 
+  it("rejects a blank site or email and ignores a blank token", async () => {
+    const { orgA, userA } = await seedTwoOrgsAndUsers();
+    await saveConfig(orgA, userA, connection());
+    await expect(saveConfig(orgA, userA, { email: "  " })).rejects.toThrow(/service account email/);
+    await expect(saveConfig(orgA, userA, { site_url: "" })).rejects.toThrow(/Jira Cloud site URL/);
+    const view = await saveConfig(orgA, userA, { api_token: "   ", default_reporter: "Team" });
+    expect(view).toMatchObject({ has_api_token: true, default_reporter: "Team" });
+  });
+
   it("tests the connection and names missing permissions", async () => {
     const { orgA } = await seedTwoOrgsAndUsers();
     expect(await testConnection(orgA, { ...connection(), project_id: "10000" })).toMatchObject({

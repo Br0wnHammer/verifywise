@@ -145,11 +145,11 @@ export async function latestVwStatusChangeAt(
   incidentId: number,
 ): Promise<Date | null> {
   const found = await select<{ at: Date | string | null }>(
-    `SELECT MAX(changed_at) AT TIME ZONE current_setting('TimeZone') AS at FROM incident_change_history
+    `SELECT MAX(changed_at) AT TIME ZONE 'UTC' AS at FROM incident_change_history
       WHERE organization_id = :orgId AND incident_id = :incidentId AND field_name = 'Status'`,
     { orgId, incidentId },
   );
-  // changed_at is a timestamp without time zone written in the session's zone;
+  // changed_at is a timestamp without time zone written in UTC (Sequelize sets every session to +00:00);
   // AT TIME ZONE turns it into an instant so the driver does not guess.
   const at = found[0]?.at;
   return at ? new Date(at) : null;
