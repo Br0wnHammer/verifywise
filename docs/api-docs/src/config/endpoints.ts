@@ -11121,10 +11121,12 @@ export const systemEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/logger/logs',
     summary: "Get Logs",
+    description: "Returns the last 500 lines of the caller's organization server log for today. Admin only (requires the logs.admin permission; built-in roles: Admin).",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden: caller does not hold the logs.admin permission" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "System",

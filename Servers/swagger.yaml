@@ -13249,6 +13249,7 @@ paths:
       tags:
         - System
       summary: 'Get Logs'
+      description: 'Returns the last 500 lines of the caller''s organization server log for today. Admin only (requires the logs.admin permission; built-in roles: Admin).'
       operationId: getLogs
       security:
         -
@@ -13258,6 +13259,8 @@ paths:
           description: Success
         '401':
           description: Unauthorized
+        '403':
+          description: 'Forbidden: caller does not hold the logs.admin permission'
         '500':
           description: 'Internal server error'
   /modelInventory:
