@@ -1,6 +1,6 @@
 # AIGateway — LLM Gateway Service
 
-> **Last Updated:** 2026-10-16
+> **Last Updated:** 2026-10-17
 
 ---
 
@@ -16,6 +16,7 @@ Port: **8100**
 
 ```
 Express Backend (proxy)  →  FastAPI (AIGateway)
+                              ├─ Invalid unicode check (middleware, before auth)
                               ├─ Auth (virtual key validation)
                               ├─ Pre-request guardrails (PII, content filter; user messages and tool results)
                               ├─ LiteLLM → LLM Provider (fallback chain, max depth 3, non-streaming /v1 only)
@@ -31,6 +32,7 @@ Express Backend (proxy)  →  FastAPI (AIGateway)
 | Purpose | Path |
 |---------|------|
 | Entry point | `src/app.py` |
+| Invalid unicode check | `src/middlewares/invalid_unicode.py`: any request body (except multipart and octet-stream) with invalid encoding or a lone `\uD800`–`\uDFFF` escape gets 400 `{"detail": "Request contains an invalid character"}` (on `/v1/mcp`: a JSON-RPC -32700 error with HTTP 200), instead of a 500 later |
 | Routers | `src/routers/` (completions, endpoints, guardrails, models, prompts, virtual_keys, spend, cache, budget, risk) |
 | Services | `src/services/` (proxy, guardrail, cache, cost, llm, risk_conditions) |
 | CRUD | `src/crud/` |

@@ -245,3 +245,34 @@ def test_utf16_lone_surrogate_is_400(client):
 def test_deeply_nested_body_does_not_raise_in_the_check():
     body = b'{"a": "\\ud83d", "b": ' + b"[" * 100000 + b"]" * 100000 + b"}"
     assert has_invalid_unicode(body) is False
+
+
+@pytest.mark.parametrize("content_type", ["text/plain", "application/x-www-form-urlencoded", "application/x-json"])
+def test_other_content_types_are_checked(client, content_type):
+    # Routes call request.json() whatever the content type says.
+    res = client.post("/echo", content=LONE_SURROGATE, headers={"content-type": content_type})
+    assert res.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "raw,invalid",
+    [
+        (b'{"a": "\\ude00"}', True),  # lone low
+        (b'{"a": "\\ud83d\\u0041"}', True),  # high followed by a non-low escape
+        (b'{"a": "\\ud83dx\\ude00"}', True),  # pair split by a character
+        (b'{"a": "\\ud83d\\ude00\\ud83d\\ude01"}', False),  # two pairs
+        (b'{"a": "\\\\\\ud83d\\ude00"}', False),  # escaped backslash, then a pair
+    ],
+)
+def test_surrogate_escape_scan(raw, invalid):
+    assert has_invalid_unicode(raw) is invalid
+
+
+def test_escaped_pairs_do_not_need_a_json_parse(monkeypatch):
+    import middlewares.invalid_unicode as mod
+
+    def must_not_parse(*_a, **_kw):
+        raise AssertionError("json.loads should not run for valid pairs")
+
+    monkeypatch.setattr(mod.json, "loads", must_not_parse)
+    assert has_invalid_unicode(b'{"a": "' + b"\\ud83d\\ude00" * 1000 + b'"}') is False
