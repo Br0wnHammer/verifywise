@@ -8,12 +8,24 @@ def _text(sql: str):
 from database.db import get_db
 
 
+def role_visibility(role_id: Optional[int]) -> tuple[str, dict[str, Any]]:
+    """SQL predicate (on alias `e`) and params limiting endpoints to those the
+    role may see, shared by the endpoints list and the virtual-key rows.
+    An empty or NULL allowed_role_ids is open to every role, as the gateway
+    enforces it (tenant_proxy.resolve_endpoint)."""
+    if role_id is None:
+        return "", {}
+    return (
+        "AND (e.allowed_role_ids IS NULL OR cardinality(e.allowed_role_ids) = 0"
+        " OR :role_id = ANY(e.allowed_role_ids))",
+        {"role_id": role_id},
+    )
+
+
 async def get_all_endpoints(org_id: int, role_id: Optional[int] = None) -> list[dict]:
     async with get_db() as db:
-        role_filter = "AND :role_id = ANY(e.allowed_role_ids)" if role_id is not None else ""
-        params: dict[str, Any] = {"org_id": org_id}
-        if role_id is not None:
-            params["role_id"] = role_id
+        role_filter, role_params = role_visibility(role_id)
+        params: dict[str, Any] = {"org_id": org_id, **role_params}
 
         result = await db.execute(
             _text("""
