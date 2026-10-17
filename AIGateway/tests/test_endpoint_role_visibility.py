@@ -1,7 +1,6 @@
 """GET /endpoints/{id} applies role visibility as the gateway enforces it:
-an empty or NULL allowed_role_ids is open to every role (tenant_proxy). The
-endpoints list (get_all_endpoints) still hides such endpoints until it uses
-the same predicate.
+an empty or NULL allowed_role_ids is open to every role (tenant_proxy). It
+shares role_visibility with the endpoints list, so the two agree.
 
 No live services: the database session and the CRUD layer are replaced with
 fakes, so these run in CI without Postgres."""
@@ -23,10 +22,19 @@ import routers.endpoints as router
 
 pytestmark = pytest.mark.asyncio
 
-ROLE_PREDICATE = (
-    "AND (e.allowed_role_ids IS NULL OR cardinality(e.allowed_role_ids) = 0"
-    " OR :role_id = ANY(e.allowed_role_ids))"
-)
+ROLE_PREDICATE = endpoints_crud.role_visibility(3)[0]
+
+
+def test_the_shared_rule_is_the_gateways():
+    # Pinned here because ROLE_PREDICATE comes from the code under test:
+    # NULL or empty allowed_role_ids is open to every role, else the role
+    # must be listed (tenant_proxy.resolve_endpoint).
+    for clause in (
+        "e.allowed_role_ids IS NULL",
+        "cardinality(e.allowed_role_ids) = 0",
+        ":role_id = ANY(e.allowed_role_ids)",
+    ):
+        assert clause in ROLE_PREDICATE
 
 
 def _request(role="Editor", body=None):

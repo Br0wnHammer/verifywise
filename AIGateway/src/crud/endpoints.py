@@ -76,20 +76,14 @@ async def get_endpoint_by_id(
     """Fetch one endpoint in the organization.
 
     ``role_id`` is required so every caller chooses its visibility on purpose.
-    With a role the endpoint is returned only when that role may see it,
-    the same rule the gateway enforces (tenant_proxy.resolve_endpoint): an
-    empty or NULL allowed_role_ids is open to every role. ``role_id=None``
+    With a role the endpoint is returned only when that role may see it
+    (role_visibility, the endpoints list's rule and the gateway's: an empty
+    or NULL allowed_role_ids is open to every role). ``role_id=None``
     reads unfiltered, for internal callers (the Admin-only update and delete
     routes, and update_endpoint's re-read).
     """
-    role_filter = ""
-    params: dict[str, Any] = {"org_id": org_id, "id": id}
-    if role_id is not None:
-        role_filter = (
-            "AND (e.allowed_role_ids IS NULL OR cardinality(e.allowed_role_ids) = 0"
-            " OR :role_id = ANY(e.allowed_role_ids))"
-        )
-        params["role_id"] = role_id
+    role_filter, role_params = role_visibility(role_id)
+    params: dict[str, Any] = {"org_id": org_id, "id": id, **role_params}
     async with get_db() as db:
         result = await db.execute(
             _text("""
