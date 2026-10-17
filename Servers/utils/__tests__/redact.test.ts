@@ -99,6 +99,21 @@ describe("redactSensitiveInfo", () => {
       "DATABASE_URL=postgres://u:p@h/db",
       "DATABASE_URL=postgres://u:[REDACTED]@h/db",
     ],
+    // several URLs in one token
+    [
+      "credentialed URL after a plain one in one JSON token",
+      '{"a":"https://ok.example","b":"postgres://u:pw@db/x"}',
+      '{"a":"https://ok.example","b":"postgres://u:[REDACTED]@db/x"}',
+    ],
+    [
+      "two credentialed URLs in one token",
+      "postgres://u:p1@a,redis://:p2@b",
+      "postgres://u:[REDACTED]@a,redis://:[REDACTED]@b",
+    ],
+    // host:port then "@" in the path is indistinguishable too (safe side).
+    ["port then @ in the path (safe side)", "http://host:8080/a@b", "http://host:[REDACTED]@b"],
+    // apostrophe inside an unquoted value
+    ["unquoted value with an apostrophe", "password=abc'def set", "password=[REDACTED] set"],
     // key names are found whatever precedes them
     [
       "six prefix segments",
@@ -130,6 +145,8 @@ describe("redactSensitiveInfo", () => {
     "Secret santa planning task created",
     "Fetched http://host:8080/path ok",
     "Profile https://example.com/@user linked",
+    '{"u":"https://example.com/users/@me","n":1}',
+    '{"a":"https://ok.example","b":"me@mail.example"}',
     "Request 3f2b9c1e-1234-4abc-8def-0123456789ab completed",
   ])("leaves %j unchanged", (input) => {
     expect(redactSensitiveInfo(input)).toBe(input);
@@ -217,6 +234,9 @@ describe("redactSensitiveInfo performance", () => {
     ['"eyJa.eyJ-" x20000', "eyJa.eyJ-".repeat(20000)],
     ['"a://b:c@" x15000 in one token', "a://b:c@".repeat(15000)],
     ["a 100KB token with :// and @", `x://${"y".repeat(100_000)}@`],
+    ['\'"https://x.y","\' x8000 then @', `${'"https://x.y","'.repeat(8000)}@`],
+    ['"x://@" x20000', "x://@".repeat(20000)],
+    ['"x://u:p@" x15000', "x://u:p@".repeat(15000)],
   ])("redacts %s in under 50ms", (_label, input) => {
     expect(bestOfThree(input)).toBeLessThan(50);
   });

@@ -30,7 +30,8 @@ const DOUBLE_QUOTED = String.raw`"[^"\\]*(?:\\.[^"\\]*)*"?`;
 const SINGLE_QUOTED = String.raw`'[^'\\]*(?:\\.[^'\\]*)*'?`;
 
 const KEY_VALUE = new RegExp(
-  String.raw`(${KEY})\b\s*[:=]\s*(?:${DOUBLE_QUOTED}|${SINGLE_QUOTED}|[^\s&,"'{}]+)`,
+  // The quoted forms are tried first; an unquoted value may contain "'".
+  String.raw`(${KEY})\b\s*[:=]\s*(?:${DOUBLE_QUOTED}|${SINGLE_QUOTED}|[^\s&,"{}]+)`,
   "gi",
 );
 const JSON_DOUBLE = new RegExp(String.raw`(${KEY})"\s*:\s*${DOUBLE_QUOTED}`, "gi");
@@ -40,26 +41,51 @@ const JSON_SINGLE = new RegExp(String.raw`(${KEY})'\s*:\s*${SINGLE_QUOTED}`, "gi
 // signature may be empty (unsigned tokens).
 const JWT = /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
 
+// Characters RFC 3986 never allows unencoded anywhere in a URL. They end a
+// URL inside a longer token (JSON, HTML, a quoted value), so a password
+// containing one of them raw is not recognised; in a valid URL they are
+// percent-encoded.
+const URL_TERMINATORS = new Set(['"', "<", ">", "{", "}", "[", "]", "`"]);
+// A "/", "?" or "#" before the ":" means the ":" is in a path or query, not
+// in userinfo; "'", "(", ")", "," and ";" there mean the ":" belongs to the
+// surrounding text (e.g. single-quoted JSON), not to this URL.
+const NOT_IN_USER = /[/?#'(),;]/;
+const SCHEME_CHAR = /[A-Za-z0-9+.-]/;
+
 /**
- * scheme://[user]:password@host in one whitespace-separated token. The
- * password runs from the userinfo ":" to the last "@" in the token, so
- * passwords containing "/" or "@" are covered, and any scheme chain works
- * (jdbc:postgresql://, URL:postgres://). Keeps scheme, user and host.
- * host:port@... cannot be told apart from user:password@..., so it is
- * redacted too (safe side); a "@" later in the path also counts as the end
- * of the password (safe side).
+ * scheme://[user]:password@host, for every "://" in one whitespace-separated
+ * token (a JSON line can hold several URLs). Each URL runs from its "://"
+ * to the next "://" or URL terminator; its password runs from the first ":"
+ * to the last "@" in that span, so passwords containing "/" or "@" are
+ * covered and any scheme chain works (jdbc:postgresql://, URL:postgres://).
+ * Keeps scheme, user and host. host:port@... cannot be told apart from
+ * user:password@..., and a later "@" in the path also ends the password,
+ * so both are redacted (safe side). One pass over the token: the spans are
+ * disjoint and each is scanned once.
  */
 function redactUrlCredentials(token: string): string {
-  const sep = token.indexOf("://");
-  if (sep <= 0 || !/[A-Za-z0-9+.-]/.test(token[sep - 1])) return token;
-  const at = token.lastIndexOf("@");
-  if (at < sep + 3) return token;
-  const userinfo = token.slice(sep + 3, at);
-  const colon = userinfo.indexOf(":");
-  // No ":" means user@host with no password. A "/", "?" or "#" before the
-  // ":" means the ":" is in a path or query, not in userinfo.
-  if (colon < 0 || /[/?#]/.test(userinfo.slice(0, colon))) return token;
-  return `${token.slice(0, sep + 3 + colon + 1)}[REDACTED]${token.slice(at)}`;
+  const seps: number[] = [];
+  for (let i = token.indexOf("://"); i !== -1; i = token.indexOf("://", i + 3)) seps.push(i);
+
+  let out = "";
+  let copied = 0;
+  for (let j = 0; j < seps.length; j++) {
+    const sep = seps[j];
+    const start = sep + 3;
+    const limit = j + 1 < seps.length ? seps[j + 1] : token.length;
+    let colon = -1;
+    let at = -1;
+    for (let k = start; k < limit && !URL_TERMINATORS.has(token[k]); k++) {
+      if (token[k] === ":" && colon === -1) colon = k;
+      else if (token[k] === "@") at = k;
+    }
+    if (sep === 0 || !SCHEME_CHAR.test(token[sep - 1])) continue;
+    // No ":" before the last "@" means user@host with no password.
+    if (colon === -1 || at < colon || NOT_IN_USER.test(token.slice(start, colon))) continue;
+    out += `${token.slice(copied, colon + 1)}[REDACTED]`;
+    copied = at;
+  }
+  return copied === 0 ? token : out + token.slice(copied);
 }
 
 /** Returned when the input could not be scanned: fail closed, never raw. */
