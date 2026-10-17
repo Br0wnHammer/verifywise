@@ -1,4 +1,4 @@
-"""JSON bodies with a lone UTF-16 surrogate or invalid UTF-8 get a 400, not a 500.
+"""Non-binary request bodies with a lone UTF-16 surrogate or invalid UTF-8 get a 400, not a 500.
 
 Self-contained: a small FastAPI app with the middleware, no live services."""
 
@@ -278,6 +278,7 @@ def test_binary_content_types_are_not_inspected(content_type):
     assert has_invalid_unicode(body)
     res = TestClient(app).post("/raw", content=body, headers={"content-type": content_type})
     assert res.status_code == 200
+    assert res.json() == {"size": len(body)}
 
 
 def test_escaped_pairs_do_not_need_a_json_parse(monkeypatch):

@@ -8,9 +8,10 @@ is not valid UTF-8 at all fails the same way inside ``request.json()``.
 
 Gateway routes call ``request.json()`` whatever the content type says, so
 this middleware checks every request body except known binary types, once,
-before any route runs, and answers 400 instead. It is plain ASGI (not BaseHTTPMiddleware) so responses, streamed
-ones included, pass through untouched; only the request body is buffered and
-replayed, which every JSON route does anyway when it parses the body.
+before any route runs, and answers 400 instead. It is plain ASGI (not
+BaseHTTPMiddleware) so responses, streamed ones included, pass through
+untouched; only the request body is buffered and replayed, which every JSON
+route does anyway when it parses the body.
 """
 
 import json
