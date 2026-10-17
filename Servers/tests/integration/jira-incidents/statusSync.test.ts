@@ -255,13 +255,13 @@ describe("jira incidents status sync", () => {
 describe("jira incidents status sync after an unmapped import", () => {
   let mock: JiraCloudMock;
   let orgA: number;
+  let userA: number;
 
   beforeEach(async () => {
     mock = await withMock();
     process.env.FRONTEND_URL = "https://app.verifywise.test";
-    const seed = await seedTwoOrgsAndUsers();
-    orgA = seed.orgA;
-    await seedReadyConfig(orgA, await insertProject(orgA, seed.userA), mock);
+    ({ orgA, userA } = await seedTwoOrgsAndUsers());
+    await seedReadyConfig(orgA, await insertProject(orgA, userA), mock);
   });
   afterEach(async () => {
     await mock.close();
@@ -308,6 +308,34 @@ describe("jira incidents status sync after an unmapped import", () => {
       { id: after.incident_id },
     );
     expect(incident.status).toBe("Investigating");
+  });
+
+  it("sends a VerifyWise change to Jira without a conflict while Jira hasn't moved", async () => {
+    await sequelize.query(
+      `UPDATE jira_incidents_config SET status_map_in = status_map_in - '3' WHERE organization_id = :orgA`,
+      { replacements: { orgA } },
+    );
+    mock.addIssue({ summary: "Unmapped status here", statusId: "3" });
+    await runImport(await stateFor(orgA));
+    const linkRow = async () =>
+      (
+        await rows<any>(`SELECT * FROM jira_incident_links WHERE organization_id = :orgA`, { orgA })
+      )[0];
+
+    await updateIncident(orgA, (await linkRow()).incident_id, { status: "Closed" }, userA);
+    const s = await sync(orgA);
+
+    expect(mock.state.issues[0].statusId).toBe("4");
+    expect(await linkRow()).toMatchObject({ state: "ok", last_vw_status: "Closed" });
+    expect(s.counts.conflicts).toBe(0);
+    const kinds = (
+      await rows<{ kind: string }>(
+        `SELECT kind FROM jira_incident_sync_events WHERE organization_id = :orgA`,
+        { orgA },
+      )
+    ).map((e) => e.kind);
+    expect(kinds).toContain("status_to_jira");
+    expect(kinds).not.toContain("conflict");
   });
 });
 

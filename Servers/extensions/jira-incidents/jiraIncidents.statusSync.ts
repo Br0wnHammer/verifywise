@@ -36,7 +36,7 @@ import {
 } from "./jiraIncidents.store";
 import { buildIdsJql } from "./jql";
 
-type SyncLink = LinkRow & { vw_status: string };
+type SyncLink = LinkRow & { vw_status: string; linked_at: Date };
 interface JiraSide {
   statusId: string;
   statusName: string;
@@ -210,6 +210,7 @@ async function decide(state: RunState, link: SyncLink, jira: JiraSide): Promise<
     vwStatus: link.vw_status,
     jiraChangedAt,
     vwChangedAt,
+    linkedAt: link.linked_at,
     statusMapIn,
     statusMapOut,
   });

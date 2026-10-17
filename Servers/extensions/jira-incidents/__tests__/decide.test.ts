@@ -18,6 +18,7 @@ const base = {
   vwStatus: "Open",
   jiraChangedAt: null,
   vwChangedAt: null,
+  linkedAt: null,
   ...maps,
 };
 const t = (iso: string) => new Date(iso);
@@ -162,6 +163,17 @@ describe("decideStatusAction", () => {
         conflict: false,
       });
     });
+    it("ignores a Jira status change made before the import", () => {
+      expect(
+        decideStatusAction({
+          ...unmapped,
+          vwStatus: "Investigating",
+          jiraChangedAt: t("2026-10-14T09:00:00Z"),
+          vwChangedAt: t("2026-10-14T11:00:00Z"),
+          linkedAt: t("2026-10-14T10:00:00Z"),
+        }),
+      ).toEqual({ action: "to_jira", jiraStatusId: "3", conflict: false });
+    });
     it("is a conflict when Jira moved too", () => {
       expect(
         decideStatusAction({
@@ -170,6 +182,7 @@ describe("decideStatusAction", () => {
           vwStatus: "Investigating",
           jiraChangedAt: t("2026-10-14T10:00:00Z"),
           vwChangedAt: t("2026-10-14T11:00:00Z"),
+          linkedAt: t("2026-10-14T09:00:00Z"),
         }),
       ).toEqual({ action: "to_jira", jiraStatusId: "3", conflict: true });
     });

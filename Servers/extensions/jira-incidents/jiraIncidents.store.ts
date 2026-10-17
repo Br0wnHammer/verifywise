@@ -111,10 +111,10 @@ export async function listSyncableLinks(
   orgId: number,
   afterId: number,
   limit: number,
-): Promise<Array<LinkRow & { vw_status: string }>> {
+): Promise<Array<LinkRow & { vw_status: string; linked_at: Date }>> {
   return select(
     `SELECT l.id, l.incident_id, l.jira_issue_id, l.jira_issue_key, l.jira_url, l.last_jira_status_id,
-            l.last_vw_status, l.state, l.state_reason, i.status AS vw_status
+            l.last_vw_status, l.state, l.state_reason, l.created_at AS linked_at, i.status AS vw_status
        FROM jira_incident_links l
        JOIN ai_incident_managements i ON i.id = l.incident_id AND i.organization_id = l.organization_id
       WHERE l.organization_id = :orgId AND l.id > :afterId
