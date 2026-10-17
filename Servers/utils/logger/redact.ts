@@ -176,8 +176,16 @@ function jwtStart(seg: string): number {
 // part such as admin@srv over-redacts rather than leaking.
 const NOT_IN_USER = /[/?#"']/;
 const SCHEME_CHAR = /[A-Za-z0-9+.-]/;
-// host:port, then "/" or the end of the token.
-const PORT = /\d+(?:\/|$)/y;
+/**
+ * True when `token` has a port at `from`: one or more digits, then "/" or
+ * the end of the token. A plain scan rather than a sticky regex, so it is
+ * visibly linear.
+ */
+function isPortAt(token: string, from: number): boolean {
+  let i = from;
+  while (i < token.length && token[i] >= "0" && token[i] <= "9") i++;
+  return i > from && (i === token.length || token[i] === "/");
+}
 
 /**
  * scheme://<user>:<password>@host inside one whitespace-separated token
@@ -207,8 +215,7 @@ function addUrlCredentialSpans(spans: Span[], token: string, offset: number): vo
       covered = lastAt;
       continue;
     }
-    PORT.lastIndex = colon + 1;
-    if (PORT.test(token)) continue; // host:port with no "@" after it
+    if (isPortAt(token, colon + 1)) continue; // host:port with no "@" after it
     // An empty password ("scheme://u:" at the end of the token) has nothing
     // to redact.
     if (colon + 1 < token.length) {
