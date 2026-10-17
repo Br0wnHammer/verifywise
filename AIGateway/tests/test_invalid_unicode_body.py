@@ -148,20 +148,8 @@ def test_invalid_json_is_left_to_the_route(client):
     assert res.status_code == 422
 
 
-def test_non_json_content_type_is_not_inspected():
+def test_empty_body_is_not_invalid():
     assert not has_invalid_unicode(b"")
-    app = FastAPI()
-    app.add_middleware(InvalidUnicodeMiddleware)
-
-    @app.post("/raw")
-    async def raw(request: Request):
-        return {"size": len(await request.body())}
-
-    res = TestClient(app).post(
-        "/raw", content=b"\xff\xfe binary", headers={"content-type": "application/octet-stream"}
-    )
-    assert res.status_code == 200
-    assert res.json() == {"size": 9}
 
 
 def test_streaming_responses_pass_through(client):
@@ -266,13 +254,18 @@ def test_other_content_types_are_checked(client, content_type):
         (b'{"a": "\\ud83d\\ude00\\ud83d\\ude01"}', False),  # two pairs
         (b'{"a": "\\\\\\ud83d\\ude00"}', False),  # escaped backslash, then a pair
         (b'{"a": "\\\\ud83d\\udc00"}', True),  # escaped backslash, text "ud83d", then a lone low
+        (b'{"a": "\\\\\\\\ud83d\\udc00"}', True),  # two escaped backslashes, same
+        (b'{"a": "x\\\\ud800\\udfff y"}', True),  # escaped backslash, text, lone low
     ],
 )
 def test_surrogate_escape_scan(raw, invalid):
     assert has_invalid_unicode(raw) is invalid
 
 
-@pytest.mark.parametrize("content_type", ["image/png", "application/gzip", "application/x-protobuf"])
+@pytest.mark.parametrize(
+    "content_type",
+    ["application/octet-stream", "image/png", "application/x-gzip", "application/msgpack", "font/woff2"],
+)
 def test_binary_content_types_are_not_inspected(content_type):
     app = FastAPI()
     app.add_middleware(InvalidUnicodeMiddleware)
@@ -291,7 +284,7 @@ def test_escaped_pairs_do_not_need_a_json_parse(monkeypatch):
     import middlewares.invalid_unicode as mod
 
     calls = []
-    real_loads = json.loads
-    monkeypatch.setattr(mod.json, "loads", lambda *a, **kw: calls.append(1) or real_loads(*a, **kw))
+    real_loads = mod._loads
+    monkeypatch.setattr(mod, "_loads", lambda *a, **kw: calls.append(1) or real_loads(*a, **kw))
     assert has_invalid_unicode(b'{"a": "' + b"\\ud83d\\ude00" * 1000 + b'"}') is False
     assert calls == []

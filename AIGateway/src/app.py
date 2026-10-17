@@ -54,7 +54,7 @@ app = FastAPI(
     redirect_slashes=False,
 )
 
-# Reject JSON bodies carrying a lone UTF-16 surrogate or invalid UTF-8 with a
+# Reject request bodies carrying a lone UTF-16 surrogate or invalid UTF-8 with a
 # 400 before any route runs; otherwise they fail as 500s when echoed, stored
 # or logged. Added first so it sits inside CORS (its 400s carry CORS headers).
 app.add_middleware(InvalidUnicodeMiddleware)
