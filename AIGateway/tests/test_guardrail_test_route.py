@@ -102,11 +102,13 @@ def test_scans_on_the_scan_thread_not_the_event_loop(monkeypatch):
     seen = {}
     real_scan = gs.scan_text
 
-    def recording_scan(**kwargs):
+    def recording_scan(*args, **kwargs):
         seen["thread"] = threading.current_thread().name
-        return real_scan(**kwargs)
+        return real_scan(*args, **kwargs)
 
     monkeypatch.setattr(gs, "scan_text", recording_scan)
     r = _client(monkeypatch, [BLOCK_CODENAME]).post("/guardrails/test", json={"text": "Ship bluebird"})
     assert r.status_code == 200
+    assert r.json()["data"]["would_block"] is True
+    assert "thread" in seen, "the route did not scan through scan_text_async (sync scan on the event loop?)"
     assert seen["thread"].startswith(gs.SCAN_THREAD_PREFIX)

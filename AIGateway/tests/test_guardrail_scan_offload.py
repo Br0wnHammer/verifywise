@@ -297,10 +297,54 @@ def test_an_unexpected_default_config_shape_raises(monkeypatch, default):
         presidio_engine.nlp_configuration()
 
 
-def test_no_coroutine_calls_the_blocking_scan_text():
-    # Async code must use scan_text_async; a direct scan_text call inside an
-    # `async def` runs Presidio on the event loop (and on a second thread's
-    # engine). A merge brought one in once, so this checks the whole tree.
+GUARDRAIL_MODULE = "services.guardrail_service"
+
+
+def _scan_text_refs(tree: ast.Module, in_guardrail_module: bool):
+    """Names bound to the guardrail scan_text (`from ... import scan_text [as x]`,
+    or the module's own def) and names bound to the module (`import ... as gs`)."""
+    funcs = {"scan_text"} if in_guardrail_module else set()
+    modules = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == GUARDRAIL_MODULE:
+            funcs |= {a.asname or a.name for a in node.names if a.name == "scan_text"}
+        elif isinstance(node, ast.ImportFrom) and node.module == "services":
+            modules |= {a.asname or a.name for a in node.names if a.name == "guardrail_service"}
+        elif isinstance(node, ast.Import):
+            modules |= {a.asname for a in node.names if a.name == GUARDRAIL_MODULE and a.asname}
+    return funcs, modules
+
+
+def _body_without_nested_defs(fn):
+    """The coroutine's own nodes; a nested def or lambda is code it may hand
+    to the scan executor, so it is not counted as running on the loop."""
+    nested = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+    stack = [node for node in fn.body if not isinstance(node, nested)]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack += [child for child in ast.iter_child_nodes(node) if not isinstance(child, nested)]
+
+
+def _scan_text_uses(fn, funcs, modules):
+    """Line numbers where coroutine `fn` itself refers to the guardrail scan_text."""
+    for node in _body_without_nested_defs(fn):
+        if (isinstance(node, ast.Name) and node.id in funcs) or (
+            isinstance(node, ast.Attribute)
+            and node.attr == "scan_text"
+            and isinstance(node.value, ast.Name)
+            and node.value.id in modules
+        ):
+            yield node.lineno
+
+
+def test_no_coroutine_uses_the_blocking_scan_text():
+    # Async code must use scan_text_async. Calling scan_text in an `async def`
+    # runs Presidio on the event loop, and handing it to another executor
+    # (asyncio.to_thread, run_in_executor(None, ...)) runs the shared engine
+    # off the single scan thread. A merge brought in such a call once, so this
+    # flags any reference to it (aliases included) in a coroutine. It cannot
+    # see a sync helper that a coroutine calls; review still covers that.
     src = os.path.join(os.path.dirname(__file__), "..", "src")
     offenders = []
     for root, _dirs, files in os.walk(src):
@@ -308,15 +352,43 @@ def test_no_coroutine_calls_the_blocking_scan_text():
             if not name.endswith(".py"):
                 continue
             path = os.path.join(root, name)
+            rel = os.path.relpath(path, src)
             with open(path, encoding="utf-8") as f:
                 tree = ast.parse(f.read(), path)
+            funcs, modules = _scan_text_refs(tree, rel == os.path.join("services", "guardrail_service.py"))
+            if not funcs and not modules:
+                continue
             for fn in ast.walk(tree):
-                if not isinstance(fn, ast.AsyncFunctionDef):
+                if not isinstance(fn, ast.AsyncFunctionDef) or fn.name == "scan_text_async":
                     continue
-                for node in ast.walk(fn):
-                    if isinstance(node, ast.Call):
-                        callee = node.func
-                        called = callee.attr if isinstance(callee, ast.Attribute) else getattr(callee, "id", None)
-                        if called == "scan_text":
-                            offenders.append(f"{os.path.relpath(path, src)}:{node.lineno} in {fn.name}")
+                offenders += [f"{rel}:{line} in {fn.name}" for line in _scan_text_uses(fn, funcs, modules)]
     assert offenders == []
+
+
+def test_the_scan_text_guard_sees_aliases_and_references_but_not_nested_defs():
+    code = """
+from services.guardrail_service import scan_text as run_guardrails
+import services.guardrail_service as gs
+
+async def direct(t):
+    return run_guardrails(text=t, guardrail_rules=[], settings={})
+
+async def by_reference(t):
+    return await asyncio.to_thread(gs.scan_text, t, [], {})
+
+async def handed_to_the_scan_thread(t):
+    def work():
+        return run_guardrails(text=t, guardrail_rules=[], settings={})
+    return await loop.run_in_executor(get_scan_executor(), work)
+
+async def other_client(c):
+    return await c.scan_text("x")
+"""
+    tree = ast.parse(code)
+    funcs, modules = _scan_text_refs(tree, in_guardrail_module=False)
+    flagged = {
+        fn.name
+        for fn in tree.body
+        if isinstance(fn, ast.AsyncFunctionDef) and any(_scan_text_uses(fn, funcs, modules))
+    }
+    assert flagged == {"direct", "by_reference"}
