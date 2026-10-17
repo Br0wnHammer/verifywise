@@ -763,6 +763,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Approval workflows": "Genehmigungsabläufe",
     "Settings": "Einstellungen",
     "Event Tracker": "Ereignisverfolgung",
+    "Event Tracker gives you a live window into VerifyWise. It records every user action and system event. Use it to see who did what, spot patterns, and keep your application healthy.":
+      "Die Ereignisverfolgung bietet Ihnen einen Live-Einblick in VerifyWise. Sie zeichnet jede Benutzeraktion und jedes Systemereignis auf. Nutzen Sie sie, um zu sehen, wer was getan hat, Muster zu erkennen und Ihre Anwendung funktionsfähig zu halten.",
+    "Event Tracker gives you a live window into VerifyWise. It records every user action and system event, then lets you dive into the raw logs for deeper troubleshooting. Use it to see who did what, spot patterns, and keep your application healthy.":
+      "Die Ereignisverfolgung bietet Ihnen einen Live-Einblick in VerifyWise. Sie zeichnet jede Benutzeraktion und jedes Systemereignis auf und ermöglicht Ihnen, für eine tiefere Fehlersuche die Rohprotokolle einzusehen. Nutzen Sie sie, um zu sehen, wer was getan hat, Muster zu erkennen und Ihre Anwendung funktionsfähig zu halten.",
     "AI governance": "KI-Governance",
     "AI governance directory": "KI-Governance-Verzeichnis",
     "AI detection": "KI-Erkennung",
@@ -11315,6 +11319,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Approval workflows": "Flux d'approbation",
     "Settings": "Paramètres",
     "Event Tracker": "Suivi des événements",
+    "Event Tracker gives you a live window into VerifyWise. It records every user action and system event. Use it to see who did what, spot patterns, and keep your application healthy.":
+      "Le suivi des événements vous offre une vue en direct sur VerifyWise. Il enregistre chaque action utilisateur et chaque événement système. Utilisez-le pour savoir qui a fait quoi, repérer des tendances et garder votre application en bonne santé.",
+    "Event Tracker gives you a live window into VerifyWise. It records every user action and system event, then lets you dive into the raw logs for deeper troubleshooting. Use it to see who did what, spot patterns, and keep your application healthy.":
+      "Le suivi des événements vous offre une vue en direct sur VerifyWise. Il enregistre chaque action utilisateur et chaque événement système, puis vous permet d'explorer les journaux bruts pour un dépannage approfondi. Utilisez-le pour savoir qui a fait quoi, repérer des tendances et garder votre application en bonne santé.",
     "AI governance": "Gouvernance de l'IA",
     "AI governance directory": "Annuaire de gouvernance IA",
     "AI detection": "Détection d'IA",
@@ -21596,6 +21604,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Approval workflows": "Flujos de aprobación",
     "Settings": "Configuración",
     "Event Tracker": "Registro de eventos",
+    "Event Tracker gives you a live window into VerifyWise. It records every user action and system event. Use it to see who did what, spot patterns, and keep your application healthy.":
+      "El registro de eventos le ofrece una vista en directo de VerifyWise. Registra cada acción de usuario y cada evento del sistema. Úselo para ver quién hizo qué, detectar patrones y mantener su aplicación en buen estado.",
+    "Event Tracker gives you a live window into VerifyWise. It records every user action and system event, then lets you dive into the raw logs for deeper troubleshooting. Use it to see who did what, spot patterns, and keep your application healthy.":
+      "El registro de eventos le ofrece una vista en directo de VerifyWise. Registra cada acción de usuario y cada evento del sistema, y le permite consultar los registros sin procesar para una resolución de problemas más profunda. Úselo para ver quién hizo qué, detectar patrones y mantener su aplicación en buen estado.",
     "AI governance": "Gobernanza de IA",
     "AI governance directory": "Directorio de gobernanza de IA",
     "AI detection": "Detección de IA",
