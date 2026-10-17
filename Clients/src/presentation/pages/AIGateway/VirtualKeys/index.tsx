@@ -73,6 +73,8 @@ interface VirtualKey {
   name: string;
   allowed_endpoint_ids: number[] | null;
   allowed_endpoints?: AllowedEndpoint[];
+  /** Ids that name no endpoint any more: the key can no longer call them. */
+  deleted_endpoint_ids?: number[];
   allowed_models: string[] | null;
   blocked_models: string[] | null;
   allowed_providers: string[] | null;
@@ -155,10 +157,13 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
   const restrictionLabels = (key: VirtualKey): string[] => {
     // Endpoint ids decide whether a key is limited; names only describe it.
     // An id with no name is an endpoint the viewer may not see (or one the
-    // gateway does not know), shown by id.
+    // gateway does not know), shown by id. A deleted endpoint's id stays on
+    // the key so it does not widen to every endpoint; it is marked as such.
     const named = new Map((key.allowed_endpoints ?? []).map((e) => [e.id, e]));
+    const deleted = new Set(key.deleted_endpoint_ids ?? []);
     const endpoints = (key.allowed_endpoint_ids ?? []).map((id) => {
       const e = named.get(id);
+      if (deleted.has(id)) return fill(tr("#{id} (deleted)"), { id });
       if (!e) return `#${id}`;
       return e.is_active ? e.name : fill(tr("{name} (inactive)"), { name: e.name });
     });

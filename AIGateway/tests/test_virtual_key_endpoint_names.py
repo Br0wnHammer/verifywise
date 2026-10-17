@@ -1,6 +1,7 @@
 """Self-contained tests for the endpoint names attached to each virtual key in
 GET /virtual-keys: in the key's order, role-filtered like the endpoints list,
-unknown or hidden ids left out (the page shows those by id). No live services."""
+unknown or hidden ids left out (the page shows those by id), ids of deleted
+endpoints listed separately. No live services."""
 
 import os
 import sys
@@ -29,7 +30,8 @@ class FakeResult:
 
 
 class FakeDb:
-    """Applies the query's id and role filters to ENDPOINTS."""
+    """Applies the query's id filter to ENDPOINTS and its role rule as the
+    `visible` column."""
 
     def __init__(self):
         self.queries = []
@@ -37,9 +39,16 @@ class FakeDb:
     async def execute(self, _stmt, params):
         self.queries.append(params)
         rows = [e for e in ENDPOINTS if e["id"] in params["ids"]]
-        if "role_id" in params:  # empty roles = open to every role, as in the gateway
-            rows = [e for e in rows if not e["roles"] or params["role_id"] in e["roles"]]
-        return FakeResult([{k: e[k] for k in ("id", "name", "is_active")} for e in rows])
+        role_id = params.get("role_id")  # empty roles = open to every role, as in the gateway
+        return FakeResult(
+            [
+                {
+                    **{k: e[k] for k in ("id", "name", "is_active")},
+                    "visible": role_id is None or not e["roles"] or role_id in e["roles"],
+                }
+                for e in rows
+            ]
+        )
 
 
 async def _attach(keys, role_id):
@@ -91,3 +100,32 @@ async def test_no_query_when_no_key_is_endpoint_restricted():
     assert db.queries == []
     assert keys[0]["allowed_endpoints"] == []
 
+
+
+async def test_deleted_endpoints_are_told_apart_from_hidden_ones():
+    keys = [{"allowed_endpoint_ids": [3, 999, 1]}]
+    await _attach(keys, role_id=4)  # Auditor: 3 exists but is hidden, 999 was deleted
+    assert [e["id"] for e in keys[0]["allowed_endpoints"]] == [1]
+    assert keys[0]["deleted_endpoint_ids"] == [999]
+
+
+async def test_the_role_rule_is_a_column_not_a_filter():
+    from sqlalchemy.sql.elements import TextClause
+
+    class CapturingDb(FakeDb):
+        async def execute(self, stmt, params):
+            self.sql = stmt.text if isinstance(stmt, TextClause) else str(stmt)
+            return await super().execute(stmt, params)
+
+    db = CapturingDb()
+    await vk_crud._attach_endpoint_names(db, 7, 4, [{"allowed_endpoint_ids": [1]}])
+    select_part, where_part = db.sql.split("WHERE", 1)
+    assert ":role_id = ANY(e.allowed_role_ids)" in select_part and "AS visible" in select_part
+    assert "allowed_role_ids" not in where_part
+
+
+async def test_unrestricted_keys_have_no_deleted_ids():
+    keys = [{"allowed_endpoint_ids": None}, {"allowed_endpoint_ids": [1, None]}]
+    await _attach(keys, role_id=1)
+    assert keys[0]["deleted_endpoint_ids"] == []
+    assert keys[1]["deleted_endpoint_ids"] == []

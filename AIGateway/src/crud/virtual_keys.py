@@ -3,8 +3,8 @@ import secrets
 import hashlib
 from typing import Any, Optional
 from sqlalchemy import text
-# _text: the shared sqlalchemy.text wrapper the crud modules use for SQL built
-# from fixed fragments (here the role_visibility predicate).
+# _text: crud.endpoints' sqlalchemy.text wrapper for SQL built from fixed
+# fragments (here the role_visibility predicate), reused rather than redefined.
 from crud.endpoints import _text, role_visibility
 from database.db import get_db
 
@@ -63,30 +63,42 @@ async def _attach_endpoint_names(db, org_id: int, role_id: int, keys: list[dict]
     it may call that the viewer's role may see (the endpoints list's rule), so
     a name hidden there stays hidden here; the page shows those by id.
     is_active is false when the endpoint or its provider key is switched off.
+    Also add `deleted_endpoint_ids`: ids that name no endpoint in the org.
+    Deleting an endpoint leaves a key's last id in place so the key does not
+    widen (crud.endpoints.delete_endpoint), and such a key can call nothing,
+    which the page must not show like a role-hidden endpoint.
     It does not apply the key's own model/provider limits."""
     ids = sorted({eid for key in keys for eid in key.get("allowed_endpoint_ids") or [] if eid is not None})
     endpoints: dict[int, dict] = {}
+    existing: set[int] = set()
     if ids:
+        # The role rule is a column, not a filter, so one query also tells a
+        # hidden endpoint (exists, not visible) from a deleted one (no row).
         role_filter, role_params = role_visibility(role_id)
         result = await db.execute(
             _text(
                 """
                 SELECT e.id,
                        COALESCE(NULLIF(BTRIM(e.display_name), ''), e.slug) AS name,
-                       (e.is_active AND COALESCE(k.is_active, FALSE)) AS is_active
+                       (e.is_active AND COALESCE(k.is_active, FALSE)) AS is_active,
+                       (TRUE """
+                + role_filter
+                + """) AS visible
                 FROM ai_gateway_endpoints e
                 LEFT JOIN ai_gateway_api_keys k ON k.id = e.api_key_id
                 WHERE e.organization_id = :org_id AND e.id = ANY(:ids)
                 """
-                + role_filter
             ),
             {"org_id": org_id, "ids": ids, **role_params},
         )
-        endpoints = {row["id"]: dict(row) for row in result.mappings().all()}
+        for row in result.mappings().all():
+            existing.add(row["id"])
+            if row["visible"]:
+                endpoints[row["id"]] = {"id": row["id"], "name": row["name"], "is_active": row["is_active"]}
     for key in keys:
-        key["allowed_endpoints"] = [
-            endpoints[eid] for eid in key.get("allowed_endpoint_ids") or [] if eid in endpoints
-        ]
+        key_ids = [eid for eid in key.get("allowed_endpoint_ids") or [] if eid is not None]
+        key["allowed_endpoints"] = [endpoints[eid] for eid in key_ids if eid in endpoints]
+        key["deleted_endpoint_ids"] = [eid for eid in key_ids if eid not in existing]
 
 
 async def create_virtual_key(org_id: int, data: dict) -> Optional[dict]:
