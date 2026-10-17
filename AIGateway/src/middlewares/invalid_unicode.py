@@ -23,7 +23,7 @@ INVALID_CHARACTER_DETAIL = "Request contains an invalid character"
 # A \uXXXX escape in the surrogate range (D800–DFFF). Cheap prefilter: only
 # bodies that contain one are parsed here. A valid pair ("😀")
 # also matches, and passes once parsed because it decodes to one character.
-_SURROGATE_ESCAPE = re.compile(rb"\\u[dD][89abcdefABCDEF][0-9a-fA-F]{2}")
+_SURROGATE_ESCAPE = re.compile(r"\\u[dD][89abcdefABCDEF][0-9a-fA-F]{2}")
 
 # The MCP JSON-RPC endpoint reports malformed input as a JSON-RPC parse error
 # with HTTP 200 (routers/mcp_proxy.py); keep that contract for its clients.
@@ -44,20 +44,22 @@ def _is_json_request(scope: Scope) -> bool:
 
 
 def has_invalid_unicode(body: bytes) -> bool:
-    """True when a JSON body is not valid UTF-8 or decodes to a string that
-    cannot be encoded as UTF-8 (a lone surrogate). Bodies that are not valid
-    JSON are left for the route to reject in its own format."""
+    """True when a JSON body cannot be decoded in the encoding json.loads
+    detects for it (UTF-8, or UTF-16/32 by its byte pattern), or decodes to a
+    string that cannot be encoded as UTF-8 (a lone surrogate). Bodies that
+    are not valid JSON are left for the route to reject in its own format."""
     if not body:
         return False
     try:
-        text = body.decode("utf-8")
+        text = body.decode(json.detect_encoding(body))
     except UnicodeDecodeError:
         return True
-    if not _SURROGATE_ESCAPE.search(body):
+    if not _SURROGATE_ESCAPE.search(text):
         return False
     try:
         parsed = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):
+        # Not JSON this module can read: the route rejects it in its own format.
         return False
     try:
         json.dumps(parsed, ensure_ascii=False).encode("utf-8")

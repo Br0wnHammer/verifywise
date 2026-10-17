@@ -3,6 +3,7 @@
 Self-contained: a small FastAPI app with the middleware, no live services."""
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -225,3 +226,22 @@ def test_gateway_app_registers_the_middleware():
 
     classes = [m.cls for m in gateway_app.app.user_middleware]
     assert InvalidUnicodeMiddleware in classes
+
+
+@pytest.mark.parametrize("encoding", ["utf-16", "utf-16-le", "utf-32"])
+def test_utf16_and_utf32_json_pass_through(client, encoding):
+    # json.loads(bytes) detects these, so the route accepted them before.
+    raw = json.dumps({"a": "é \U0001f600"}, ensure_ascii=False).encode(encoding)
+    res = client.post("/echo", content=raw, headers=JSON)
+    assert res.status_code == 200
+    assert res.json() == {"a": "é \U0001f600"}
+
+
+def test_utf16_lone_surrogate_is_400(client):
+    res = client.post("/echo", content='{"a": "\\ud83d"}'.encode("utf-16"), headers=JSON)
+    assert res.status_code == 400
+
+
+def test_deeply_nested_body_does_not_raise_in_the_check():
+    body = b'{"a": "\\ud83d", "b": ' + b"[" * 100000 + b"]" * 100000 + b"}"
+    assert has_invalid_unicode(body) is False
