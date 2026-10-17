@@ -4,7 +4,10 @@
  * logEvent / getEventsQuery to event descriptions (event_logs and the audit
  * ledger).
  *
- * Two rules hold for every pattern here:
+ * Three rules hold for every pattern here:
+ * - Independent. Every pattern matches the original input and the union
+ *   of their matches is redacted (redactPatterns), so no pattern can undo
+ *   or narrow another by rewriting the text it reads.
  * - Linear time. This runs on every log line, so nothing may backtrack
  *   across a long run: token patterns only start at the beginning of a run
  *   (a lookbehind for the run's own characters), and JWTs and URL
@@ -72,29 +75,65 @@ const AUTHORIZATION =
 
 // A Bearer or Basic credential under any other key or none ({ auth:
 // 'Bearer x1' }). It ends where the RFC 6750/7617 token alphabet ends, so
-// stopping there cannot leak part of it. A backslash counts only as part of
-// a JSON-escaped "\/": eating the backslash of \" or \' would turn an
-// escaped quote into a real one. The scheme and token stay on one line,
-// and the token must contain a digit, which keeps prose such as "Basic
-// authentication failed" readable.
+// stopping there cannot leak part of it. Backslashes count only before "/"
+// (a JSON-escaped "\/" at any depth), never before a quote. The scheme and
+// token are separated by non-newline whitespace (NBSP included). A token
+// must contain a digit, "=" or a lower-to-upper case change, as base64 and
+// opaque tokens do, which keeps prose such as "Basic authentication
+// failed" readable.
 const TOKEN_CHARS = "A-Za-z0-9._~+/=-";
 const BEARER_TOKEN = new RegExp(
-  String.raw`\b((?:Bearer|Basic)[ \t]+)(?=[A-Za-z._~+/=\\-]*\d)[${TOKEN_CHARS}]+(?:\\\/[${TOKEN_CHARS}]*)*`,
-  "gi",
+  // Case-sensitive, so [a-z][A-Z] means a real case change; the scheme
+  // casings are listed instead.
+  String.raw`\b((?:Bearer|bearer|BEARER|Basic|basic|BASIC)[^\S\r\n]+)` +
+    String.raw`(?=[A-Za-z._~+/=\\-]*(?:\d|[a-z][A-Z]|=))` +
+    String.raw`[${TOKEN_CHARS}]+(?:\\+\/[${TOKEN_CHARS}]*)*`,
+  "g",
 );
+
+// Fixed-prefix tokens. The empty group marks where the redacted span starts.
+const SK_KEY = /(?<![A-Za-z0-9_])()sk-[A-Za-z0-9_-]{10,}/g; // a "-" may precede (x-sk-...)
+const GITHUB_TOKEN =
+  /(?<![A-Za-z0-9_])()(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g;
+const VERCEL_KEY = /(?<![A-Za-z0-9_])()vck_[A-Za-z0-9_-]{10,}/g;
+
+/** A region of the input to replace with `text`. */
+interface Span {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/**
+ * Adds a span per match of `re` on the input. Group 1 is the prefix that
+ * stays (a key, a scheme word); the rest of the match is replaced.
+ */
+function addMatches(
+  spans: Span[],
+  input: string,
+  re: RegExp,
+  text: string | ((m: RegExpMatchArray) => string),
+): void {
+  for (const m of input.matchAll(re)) {
+    const start = m.index! + m[1].length;
+    const end = m.index! + m[0].length;
+    if (end > start) spans.push({ start, end, text: typeof text === "string" ? text : text(m) });
+  }
+}
 
 /**
  * Bare JWTs: header.payload.signature, both JSON parts base64url ("eyJ"),
  * the signature possibly empty (unsigned tokens). `run` is a maximal run of
- * [A-Za-z0-9_.-]. A JWT starts at the start of a "."-separated segment or
- * right after a "-" (x-token-eyJ...), never after a letter, digit or "_".
+ * [A-Za-z0-9_.-] starting at `offset`. A JWT starts at the start of a
+ * "."-separated segment or right after a "-" (x-token-eyJ...), never after
+ * a letter, digit or "_".
  *
  * Linear: each segment is scanned once for a start, and a match resumes
  * after the signature segment.
  */
-function redactJwts(run: string): string {
+function addJwtSpans(spans: Span[], run: string, offset: number): void {
   const segments = run.split(".");
-  let out = "";
+  let pos = offset;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     const start = jwtStart(seg);
@@ -105,14 +144,14 @@ function redactJwts(run: string): string {
       payload.length > 3 &&
       payload.startsWith("eyJ")
     ) {
-      out += `${seg.slice(0, start)}[REDACTED]`;
+      const end = pos + seg.length + 1 + payload.length + 1 + segments[i + 2].length;
+      spans.push({ start: pos + start, end, text: "[REDACTED]" });
+      pos = end + 1;
       i += 2; // header, payload and signature consumed
     } else {
-      out += seg;
+      pos += seg.length + 1;
     }
-    if (i < segments.length - 1) out += ".";
   }
-  return out;
 }
 
 /** Index of the first JWT header start in `seg`, or -1. */
@@ -135,41 +174,38 @@ const SCHEME_CHAR = /[A-Za-z0-9+.-]/;
 const PORT = /\d+(?:\/|$)/y;
 
 /**
- * scheme://<user>:<password>@host inside one whitespace-separated token.
- * One fail-closed rule: once a URL's userinfo ":" is seen, the password
- * runs to the LAST "@" in the token, whatever lies between (quotes,
- * brackets, "://", more URLs). With no "@" after it, the password runs to
- * the end of the token, unless what follows the ":" is a port (digits,
- * then "/" or the end). Over-redaction (host:port@path, a second URL in
- * the same token) is accepted; under-redaction is not. Keeps scheme, user
- * and whatever follows the last "@".
+ * scheme://<user>:<password>@host inside one whitespace-separated token
+ * starting at `offset`. One fail-closed rule: once a URL's userinfo ":" is
+ * seen, the password runs to the LAST "@" in the token, whatever lies
+ * between (quotes, brackets, "://", more URLs). With no "@" after it, the
+ * password runs to the end of the token, unless what follows the ":" is a
+ * port (digits, then "/" or the end). Over-redaction (host:port@path, a
+ * second URL in the same token) is accepted; under-redaction is not. Keeps
+ * scheme, user and whatever follows the last "@".
  *
  * Linear: "://" positions are visited in order, and each user part is
  * scanned only up to the next ":" (which is at or before the next "://").
  */
-function redactUrlCredentials(token: string): string {
+function addUrlCredentialSpans(spans: Span[], token: string, offset: number): void {
   const lastAt = token.lastIndexOf("@");
-  let out = "";
-  let copied = 0;
+  let covered = 0;
   for (let sep = token.indexOf("://"); sep !== -1; sep = token.indexOf("://", sep + 3)) {
-    if (sep < copied) continue; // inside a region already redacted
+    if (sep < covered) continue; // inside a region already redacted
     if (sep === 0 || !SCHEME_CHAR.test(token[sep - 1])) continue;
     const start = sep + 3;
     const colon = token.indexOf(":", start);
     if (colon === -1) break; // no ":" left, so no userinfo and no later "://"
     if (NOT_IN_USER.test(token.slice(start, colon))) continue;
     if (lastAt > colon) {
-      out += `${token.slice(copied, colon + 1)}[REDACTED]`;
-      copied = lastAt;
+      spans.push({ start: offset + colon + 1, end: offset + lastAt, text: "[REDACTED]" });
+      covered = lastAt;
       continue;
     }
     PORT.lastIndex = colon + 1;
     if (PORT.test(token)) continue; // host:port with no "@" after it
-    out += `${token.slice(copied, colon + 1)}[REDACTED]`;
-    copied = token.length;
+    spans.push({ start: offset + colon + 1, end: offset + token.length, text: "[REDACTED]" });
     break;
   }
-  return copied === 0 ? token : out + token.slice(copied);
 }
 
 /** Returned when the input could not be scanned: fail closed, never raw. */
@@ -191,47 +227,59 @@ export function redactSensitiveInfo(input: unknown): string {
   }
 }
 
+/**
+ * Every rule matches the ORIGINAL input and contributes spans; the union of
+ * the spans is redacted. No rule sees another's output, so no rule can move
+ * the quote or line boundaries another relies on, and a secret covered by
+ * any rule is redacted whatever the others do. Overlapping spans merge, and
+ * the earliest one's replacement text is kept.
+ */
 function redactPatterns(input: string): string {
-  let text = input
-    // OpenAI-style API keys and similar long key prefixes. A "-" may come
-    // before them (x-sk-...): a failed attempt is bounded by the {10,}.
-    .replace(/(?<![A-Za-z0-9_])sk-[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
-    // GitHub tokens (classic ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained)
-    .replace(
-      /(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g,
-      "[REDACTED]",
-    )
-    // Vercel AI Gateway keys
-    .replace(/(?<![A-Za-z0-9_])vck_[A-Za-z0-9_-]{10,}/g, "[REDACTED]");
+  const spans: Span[] = [];
+  addMatches(spans, input, SK_KEY, "[REDACTED]");
+  addMatches(spans, input, GITHUB_TOKEN, "[REDACTED]");
+  addMatches(spans, input, VERCEL_KEY, "[REDACTED]");
+  addMatches(spans, input, AUTHORIZATION, "[REDACTED]");
+  addMatches(spans, input, BEARER_TOKEN, "[REDACTED]");
   // Bare JWTs and URL credentials are scanned per run or token, and only on
   // lines that can contain them.
-  if (text.includes("eyJ")) {
-    text = text.replace(/[A-Za-z0-9_.-]+/g, (run) => (run.includes("eyJ") ? redactJwts(run) : run));
+  if (input.includes("eyJ")) {
+    for (const m of input.matchAll(/[A-Za-z0-9_.-]+/g)) {
+      if (m[0].includes("eyJ")) addJwtSpans(spans, m[0], m.index!);
+    }
   }
-  if (text.includes("://")) {
-    text = text.replace(/\S+/g, (token) =>
-      token.includes("://") ? redactUrlCredentials(token) : token,
-    );
+  if (input.includes("://")) {
+    for (const m of input.matchAll(/\S+/g)) {
+      if (m[0].includes("://")) addUrlCredentialSpans(spans, m[0], m.index!);
+    }
   }
-  return (
-    text
-      // key=value or key: value style sensitive fields
-      .replace(KEY_VALUE, "$1=[REDACTED]")
-      // JSON double-quoted sensitive fields
-      .replace(JSON_DOUBLE, '$1":"[REDACTED]"')
-      // JSON single-quoted sensitive fields
-      .replace(JSON_SINGLE, "$1':'[REDACTED]'")
-      // JSON nested as an escaped string, keeping its escape depth
-      .replace(JSON_ESCAPED, (_m, key: string, bs: string) => `${key}${bs}":${bs}"[REDACTED]${bs}"`)
-      // The Authorization and Bearer passes run last: they can remove a
-      // quote or run to the end of the line, which would move the value
-      // boundaries the quote-aware passes above rely on. Secret values are
-      // already [REDACTED] by then, and neither pattern matches that.
-      // Authorization header values
-      .replace(AUTHORIZATION, "$1[REDACTED]")
-      // Bearer/Basic credentials outside an Authorization header
-      .replace(BEARER_TOKEN, "$1[REDACTED]")
-  );
+  // key=value or key: value style sensitive fields
+  addMatches(spans, input, KEY_VALUE, "=[REDACTED]");
+  // JSON double- and single-quoted sensitive fields
+  addMatches(spans, input, JSON_DOUBLE, '":"[REDACTED]"');
+  addMatches(spans, input, JSON_SINGLE, "':'[REDACTED]'");
+  // JSON nested as an escaped string, keeping its escape depth
+  addMatches(spans, input, JSON_ESCAPED, (m) => `${m[2]}":${m[2]}"[REDACTED]${m[2]}"`);
+  return applySpans(input, spans);
+}
+
+function applySpans(input: string, spans: Span[]): string {
+  if (spans.length === 0) return input;
+  spans.sort((a, b) => a.start - b.start || b.end - a.end);
+  let out = "";
+  let copied = 0;
+  let current = spans[0];
+  for (let i = 1; i <= spans.length; i++) {
+    const next = spans[i];
+    if (next && next.start < current.end) {
+      current = { ...current, end: Math.max(current.end, next.end) };
+      continue;
+    }
+    out += input.slice(copied, current.start) + current.text;
+    copied = current.end;
+    if (next) current = next;
+  }
+  return out + input.slice(copied);
 }
 
 /** Row columns that can carry logged text (error messages, field values). */

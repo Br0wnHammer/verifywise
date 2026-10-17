@@ -319,6 +319,27 @@ describe("redactSensitiveInfo", () => {
       '{"msg":"header \\"Bearer abc1\\" sent"}',
       '{"msg":"header \\"Bearer [REDACTED]\\" sent"}',
     ],
+    // review: every rule sees the original input (span union)
+    ["unquoted Bearer under a key", "token=Bearer abc1", "token=[REDACTED] [REDACTED]"],
+    ["X-Auth-Token header", "X-Auth-Token: Bearer abc123", "X-Auth-Token=[REDACTED] [REDACTED]"],
+    [
+      "Authorization after ;",
+      "token=x;Authorization: Basic dXNlcjpwYXNz",
+      "token=[REDACTED] Basic [REDACTED]",
+    ],
+    [
+      "Authorization inside a quoted secret with inner quotes",
+      'secret="Authorization: Token token="abc123", realm=x"',
+      "secret=[REDACTED]",
+    ],
+    [
+      "Authorization inside a bracketed secret",
+      "password: [Authorization: Digest a=[x] RESTCRED]",
+      "password=[REDACTED]",
+    ],
+    ["depth-2 escaped / in a Basic token", "auth: Basic YWJj1\\\\/ZGVm", "auth: Basic [REDACTED]"],
+    ["NBSP before a Bearer token", "auth: Bearer abc1", "auth: Bearer [REDACTED]"],
+    ["bare Basic without digits", "sent Basic dXNlcjpwYXNz", "sent Basic [REDACTED]"],
     ["password_hash", "password_hash=abc set", "password_hash=[REDACTED] set"],
     ["passwordHash", "passwordHash: abc set", "passwordHash=[REDACTED] set"],
     ["password_digest", "password_digest=abc set", "password_digest=[REDACTED] set"],
@@ -407,16 +428,16 @@ describe("redactSensitiveInfo", () => {
   });
 
   it("fails closed when a pattern throws while scanning", () => {
-    const replace = jest.spyOn(String.prototype, "replace").mockImplementation(() => {
+    const matchAll = jest.spyOn(String.prototype, "matchAll").mockImplementation(() => {
       throw new RangeError("Maximum call stack size exceeded");
     });
     let result: string;
     try {
       result = redactSensitiveInfo("password=hunter2");
     } finally {
-      replace.mockRestore();
+      matchAll.mockRestore();
     }
-    // Asserted after the restore: Jest's failure message uses replace().
+    // Asserted after the restore, so Jest's failure message runs unpatched.
     expect(result).toBe(UNSCANNABLE_PLACEHOLDER);
   });
 });
