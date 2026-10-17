@@ -173,14 +173,26 @@ describe("AIGateway - VirtualKeys", () => {
     expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
   });
 
-  it("marks a deleted endpoint's id apart from a hidden one", async () => {
+  it("marks a missing endpoint's id apart from a hidden one", async () => {
     // Deleting a key's last endpoint leaves its id so the key does not widen.
-    mockLoad([makeKey({ allowed_endpoint_ids: [9, 4], deleted_endpoint_ids: [9] })]);
+    mockLoad([makeKey({ allowed_endpoint_ids: [9, 4, 9], missing_endpoint_ids: [9] })]);
     renderWithProviders(<VirtualKeysPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Endpoints: #9 (deleted); #4")).toBeInTheDocument();
+      expect(screen.getByText("Endpoints: #9 (not found); #4")).toBeInTheDocument();
     });
+    expect(screen.getByText("Active")).toBeInTheDocument();
+  });
+
+  it("does not call a key active when none of its endpoints exists", async () => {
+    mockLoad([makeKey({ allowed_endpoint_ids: [9], missing_endpoint_ids: [9] })]);
+    renderWithProviders(<VirtualKeysPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No endpoints")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
+    expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
   });
 
   it("never calls an endpoint-limited key unlimited, even with no names", async () => {

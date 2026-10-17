@@ -54,7 +54,16 @@ interface CreateVirtualKeyPayload {
 const isExpired = (key: VirtualKey) => !!key.expires_at && new Date(key.expires_at) < new Date();
 
 /** Whether the gateway would accept calls with this key at all. */
-const isKeyUsable = (key: VirtualKey) => key.is_active && !key.revoked_at && !isExpired(key);
+/** Deleting a key's last endpoint leaves its id so the key does not widen to
+ * every endpoint; when none of its ids names an endpoint, it can call nothing. */
+const hasNoEndpoints = (key: VirtualKey) => {
+  const ids = key.allowed_endpoint_ids ?? [];
+  const missing = new Set(key.missing_endpoint_ids ?? []);
+  return ids.length > 0 && ids.every((id) => missing.has(id));
+};
+
+const isKeyUsable = (key: VirtualKey) =>
+  key.is_active && !key.revoked_at && !isExpired(key) && !hasNoEndpoints(key);
 
 interface EndpointSummary {
   is_active: boolean;
@@ -73,8 +82,8 @@ interface VirtualKey {
   name: string;
   allowed_endpoint_ids: number[] | null;
   allowed_endpoints?: AllowedEndpoint[];
-  /** Ids that name no endpoint any more: the key can no longer call them. */
-  deleted_endpoint_ids?: number[];
+  /** Ids that name no endpoint (usually deleted): the key cannot call them. */
+  missing_endpoint_ids?: number[];
   allowed_models: string[] | null;
   blocked_models: string[] | null;
   allowed_providers: string[] | null;
@@ -156,14 +165,14 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
   // the check), so a key with none of them can call any endpoint and model.
   const restrictionLabels = (key: VirtualKey): string[] => {
     // Endpoint ids decide whether a key is limited; names only describe it.
-    // An id with no name is an endpoint the viewer may not see (or one the
-    // gateway does not know), shown by id. A deleted endpoint's id stays on
-    // the key so it does not widen to every endpoint; it is marked as such.
+    // An id naming no endpoint (usually a deleted one) is marked "not found".
+    // Any other id with no name is an endpoint the viewer may not see (or the
+    // gateway is too old to say), shown by id.
     const named = new Map((key.allowed_endpoints ?? []).map((e) => [e.id, e]));
-    const deleted = new Set(key.deleted_endpoint_ids ?? []);
-    const endpoints = (key.allowed_endpoint_ids ?? []).map((id) => {
+    const missing = new Set(key.missing_endpoint_ids ?? []);
+    const endpoints = [...new Set(key.allowed_endpoint_ids ?? [])].map((id) => {
+      if (missing.has(id)) return fill(tr("#{id} (not found)"), { id });
       const e = named.get(id);
-      if (deleted.has(id)) return fill(tr("#{id} (deleted)"), { id });
       if (!e) return `#${id}`;
       return e.is_active ? e.name : fill(tr("{name} (inactive)"), { name: e.name });
     });
@@ -268,8 +277,9 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
   const getStatusLabel = (key: VirtualKey): string => {
     if (key.revoked_at) return "Revoked";
     if (isExpired(key)) return "Expired";
-    if (key.is_active) return "Active";
-    return "Inactive";
+    if (!key.is_active) return "Inactive";
+    if (hasNoEndpoints(key)) return "No endpoints";
+    return "Active";
   };
 
   const createKeyButton = (

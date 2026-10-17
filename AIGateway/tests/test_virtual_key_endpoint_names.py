@@ -1,7 +1,7 @@
 """Self-contained tests for the endpoint names attached to each virtual key in
 GET /virtual-keys: in the key's order, role-filtered like the endpoints list,
-unknown or hidden ids left out (the page shows those by id), ids of deleted
-endpoints listed separately. No live services."""
+unknown or hidden ids left out (the page shows those by id), ids naming no
+endpoint (deleted ones) listed separately. No live services."""
 
 import os
 import sys
@@ -101,12 +101,18 @@ async def test_no_query_when_no_key_is_endpoint_restricted():
     assert keys[0]["allowed_endpoints"] == []
 
 
-
-async def test_deleted_endpoints_are_told_apart_from_hidden_ones():
+async def test_missing_endpoints_are_told_apart_from_hidden_ones():
     keys = [{"allowed_endpoint_ids": [3, 999, 1]}]
     await _attach(keys, role_id=4)  # Auditor: 3 exists but is hidden, 999 was deleted
     assert [e["id"] for e in keys[0]["allowed_endpoints"]] == [1]
-    assert keys[0]["deleted_endpoint_ids"] == [999]
+    assert keys[0]["missing_endpoint_ids"] == [999]
+
+
+async def test_a_repeated_id_is_listed_once():
+    keys = [{"allowed_endpoint_ids": [9, 1, 9, 1]}]
+    await _attach(keys, role_id=1)
+    assert keys[0]["missing_endpoint_ids"] == [9]
+    assert [e["id"] for e in keys[0]["allowed_endpoints"]] == [1]
 
 
 async def test_the_role_rule_is_a_column_not_a_filter():
@@ -119,13 +125,15 @@ async def test_the_role_rule_is_a_column_not_a_filter():
 
     db = CapturingDb()
     await vk_crud._attach_endpoint_names(db, 7, 4, [{"allowed_endpoint_ids": [1]}])
-    select_part, where_part = db.sql.split("WHERE", 1)
-    assert ":role_id = ANY(e.allowed_role_ids)" in select_part and "AS visible" in select_part
-    assert "allowed_role_ids" not in where_part
+    # Hidden rows must come back (as not visible) to be told apart from
+    # missing ones, so the role rule may not filter the rows.
+    select_part, where_part = db.sql.rsplit("WHERE", 1)
+    assert "AS visible" in select_part
+    assert "allowed_role_ids" not in where_part and ":role_id" not in where_part
 
 
 async def test_unrestricted_keys_have_no_deleted_ids():
     keys = [{"allowed_endpoint_ids": None}, {"allowed_endpoint_ids": [1, None]}]
     await _attach(keys, role_id=1)
-    assert keys[0]["deleted_endpoint_ids"] == []
-    assert keys[1]["deleted_endpoint_ids"] == []
+    assert keys[0]["missing_endpoint_ids"] == []
+    assert keys[1]["missing_endpoint_ids"] == []
