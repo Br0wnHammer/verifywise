@@ -1,5 +1,5 @@
-import { describe, it, expect } from "@jest/globals";
-import { redactSensitiveInfo, UNSCANNABLE_PLACEHOLDER } from "../logger/redact";
+import { describe, it, expect, jest } from "@jest/globals";
+import { redactRowText, redactSensitiveInfo, UNSCANNABLE_PLACEHOLDER } from "../logger/redact";
 
 describe("redactSensitiveInfo", () => {
   it.each([
@@ -214,6 +214,32 @@ describe("redactSensitiveInfo", () => {
     ["JSON array value", '{"password": ["x", "y"],"ok":1}', '{"password":"[REDACTED]","ok":1}'],
     ["inspect array value", "{ password: [ 'x' ] }", "{ password=[REDACTED] }"],
     ["JSON numeric value", '{"token":123456,"ok":1}', '{"token":"[REDACTED]","ok":1}'],
+    // review round 5: other Authorization schemes, object values, hash keys
+    [
+      "Authorization with another scheme",
+      "Authorization: Token abc123secret",
+      "Authorization: [REDACTED]",
+    ],
+    [
+      "JSON Authorization with another scheme",
+      '{"authorization":"Token abc123","ok":1}',
+      '{"authorization":"[REDACTED]","ok":1}',
+    ],
+    [
+      "Digest Authorization",
+      'Authorization: Digest username="u", response="deadbeef"',
+      "Authorization: [REDACTED]",
+    ],
+    ['"Bearer:" Authorization', "Authorization: Bearer: abc", "Authorization: [REDACTED]"],
+    [
+      "JSON object value",
+      '{"secret": { "value": "abc" },"ok":1}',
+      '{"secret":"[REDACTED]","ok":1}',
+    ],
+    ["inspect object value", "{ secret: { value: 'abc' } }", "{ secret=[REDACTED] }"],
+    ["password_hash", "password_hash=abc set", "password_hash=[REDACTED] set"],
+    ["passwordHash", "passwordHash: abc set", "passwordHash=[REDACTED] set"],
+    ["password_digest", "password_digest=abc set", "password_digest=[REDACTED] set"],
     ["single-quoted numeric value", "{'token': 123456}", "{'token':'[REDACTED]'}"],
   ])("redacts %s", (_label, input, expected) => {
     expect(redactSensitiveInfo(input)).toBe(expected);
@@ -293,6 +319,37 @@ describe("redactSensitiveInfo", () => {
     ],
   ])("fails closed on %s", (_label, input) => {
     expect(redactSensitiveInfo(input)).toBe(UNSCANNABLE_PLACEHOLDER);
+  });
+
+  it("fails closed when a pattern throws while scanning", () => {
+    const replace = jest.spyOn(String.prototype, "replace").mockImplementation(() => {
+      throw new RangeError("Maximum call stack size exceeded");
+    });
+    try {
+      expect(redactSensitiveInfo("password=hunter2")).toBe(UNSCANNABLE_PLACEHOLDER);
+    } finally {
+      replace.mockRestore();
+    }
+  });
+});
+
+describe("redactRowText", () => {
+  it("redacts description, old_value and new_value and keeps everything else", () => {
+    const row = {
+      id: 1,
+      description: "failed: password=x",
+      old_value: "token=y",
+      new_value: null,
+      entry_hash: "token=z",
+    };
+    expect(redactRowText(row)).toEqual({
+      id: 1,
+      description: "failed: password=[REDACTED]",
+      old_value: "token=[REDACTED]",
+      new_value: null,
+      entry_hash: "token=z",
+    });
+    expect(row.description).toBe("failed: password=x");
   });
 });
 

@@ -1,20 +1,7 @@
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../database/db";
-import { redactSensitiveInfo } from "./logger/redact";
 
 export const EXPORT_BATCH_SIZE = 1000;
-
-/**
- * Redacts a ledger row's description for every reader (list, export,
- * advisor tools). Rows written before logEvent redacted at write time may
- * hold raw error text, and the chain is hashed, so they are redacted on
- * the way out instead. verifyChain reads the stored text and must not use
- * this. New rows are already redacted, and redaction leaves them as is.
- */
-export const redactLedgerRow = <T extends { description?: unknown }>(row: T): T =>
-  typeof row.description === "string"
-    ? { ...row, description: redactSensitiveInfo(row.description) }
-    : row;
 
 export const AUDIT_LEDGER_EXPORT_COLUMNS = [
   "id",
@@ -89,7 +76,11 @@ export const fetchAuditLedgerBatch = async (
   );
 };
 
-/** A ledger row as CSV values, in AUDIT_LEDGER_EXPORT_COLUMNS order. */
+/**
+ * A ledger row as CSV values, in AUDIT_LEDGER_EXPORT_COLUMNS order. Text is
+ * exported as stored, not redacted: the export is the verifiable copy kept
+ * before retention cleanup, so every row must still match its entry_hash.
+ */
 export const ledgerRowValues = (row: any): unknown[] => [
   row.id,
   row.occurred_at instanceof Date ? row.occurred_at.toISOString() : row.occurred_at,
@@ -103,7 +94,7 @@ export const ledgerRowValues = (row: any): unknown[] => [
   row.field_name,
   row.old_value,
   row.new_value,
-  redactLedgerRow(row).description,
+  row.description,
   row.entry_hash,
   row.prev_hash,
 ];

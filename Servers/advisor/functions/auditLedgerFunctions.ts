@@ -2,7 +2,7 @@ import { sequelize } from "../../database/db";
 import { QueryTypes } from "sequelize";
 import logger from "../../utils/logger/fileLogger";
 import { userHasPermission } from "../../utils/userPermission.utils";
-import { redactLedgerRow } from "../../utils/auditLedgerExport.utils";
+import { redactRowText } from "../../utils/logger/redact";
 
 // Both tools read audit_ledger, which REST serves only with auditLedger.super
 // (GET /api/audit-ledger). The advisor runs as the signed-in user, so apply
@@ -67,7 +67,7 @@ const fetchEventLogs = async (
     )) as any[];
 
     return {
-      event_logs: rows.map(redactLedgerRow).map((r: any) => ({
+      event_logs: rows.map(redactRowText).map((r: any) => ({
         id: r.id,
         entry_type: r.entry_type,
         user_id: r.user_id,
@@ -136,7 +136,7 @@ const getAuditTrailForEntity = async (
     return {
       entity_type: params.entity_type,
       entity_id: params.entity_id,
-      audit_entries: rows.map(redactLedgerRow).map((r: any) => ({
+      audit_entries: rows.map(redactRowText).map((r: any) => ({
         id: r.id,
         entry_type: r.entry_type,
         user_id: r.user_id,

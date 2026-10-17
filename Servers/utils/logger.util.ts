@@ -2,7 +2,7 @@ import { sequelize } from "../database/db";
 import { QueryTypes } from "sequelize";
 import * as fs from "fs";
 import * as path from "path";
-import { redactSensitiveInfo } from "./logger/redact";
+import { redactRowText } from "./logger/redact";
 
 /**
  * Get event logs for an organization
@@ -24,11 +24,7 @@ export const getEventsQuery = async (organizationId: number) => {
       type: QueryTypes.SELECT,
     },
   )) as Array<Record<string, unknown>>;
-  return events.map((event) =>
-    typeof event.description === "string"
-      ? { ...event, description: redactSensitiveInfo(event.description) }
-      : event,
-  );
+  return events.map(redactRowText);
 };
 
 /**

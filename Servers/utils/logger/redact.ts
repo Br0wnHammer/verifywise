@@ -19,10 +19,11 @@
 // dbPassword), so a long or unusual prefix cannot hide it; the prefix stays
 // in the output. The word must end at a word boundary, which keeps
 // "tokens", "max_tokens" and "token_count" out. Password keys also take a
-// short list of suffixes (password_confirmation, password2); a list rather
-// than any \w*, which would make every failed attempt rescan the word.
+// short list of suffixes (password_confirmation, password2, passwordHash);
+// a list rather than any \w*, which would make every failed attempt rescan
+// the word.
 const KEY =
-  "(?:(?:password|passwd|passphrase)(?:[_-]?(?:confirmation|confirm|repeat|current|old|new|\\d+))?|secret[_-]?key|private[_-]?key|access[_-]?key|api[_-]?key|apikey|secret|token)";
+  "(?:(?:password|passwd|passphrase)(?:[_-]?(?:confirmation|confirm|repeat|current|old|new|hash|digest|\\d+))?|secret[_-]?key|private[_-]?key|access[_-]?key|api[_-]?key|apikey|secret|token)";
 
 // A double- or single-quoted value, escape-aware, to the closing quote or
 // the end of the input (an unterminated value is still redacted). Written
@@ -31,23 +32,24 @@ const KEY =
 // backslash and any next character, newlines included.
 const DOUBLE_QUOTED = String.raw`"[^"\\]*(?:\\[\s\S][^"\\]*)*"?`;
 const SINGLE_QUOTED = String.raw`'[^'\\]*(?:\\[\s\S][^'\\]*)*'?`;
-// An array value, to its first "]" or the end of the input.
-const ARRAY = String.raw`\[[^\]]*\]?`;
+// An array or object value, to its first "]" or "}" (the innermost close,
+// so every nested value before it is covered) or the end of the input.
+const NESTED = String.raw`\[[^\]]*\]?|\{[^}]*\}?`;
 // key: value, key=value and Perl/Ruby-style key => value.
 const SEP = String.raw`\s*(?:=>|[:=])\s*`;
 
 const KEY_VALUE = new RegExp(
   // The quoted forms are tried first; an unquoted value may contain "'".
-  String.raw`(${KEY})\b${SEP}(?:${DOUBLE_QUOTED}|${SINGLE_QUOTED}|${ARRAY}|[^\s&,"{}]+)`,
+  String.raw`(${KEY})\b${SEP}(?:${DOUBLE_QUOTED}|${SINGLE_QUOTED}|${NESTED}|[^\s&,"{}]+)`,
   "gi",
 );
-// A quoted key's value may also be an array, a number, true/false or null.
+// A quoted key's value may also be nested, a number, true/false or null.
 const JSON_DOUBLE = new RegExp(
-  String.raw`(${KEY})"${SEP}(?:${DOUBLE_QUOTED}|${ARRAY}|[^\s,}\]]+)`,
+  String.raw`(${KEY})"${SEP}(?:${DOUBLE_QUOTED}|${NESTED}|[^\s,}\]]+)`,
   "gi",
 );
 const JSON_SINGLE = new RegExp(
-  String.raw`(${KEY})'${SEP}(?:${SINGLE_QUOTED}|${ARRAY}|[^\s,}\]]+)`,
+  String.raw`(${KEY})'${SEP}(?:${SINGLE_QUOTED}|${NESTED}|[^\s,}\]]+)`,
   "gi",
 );
 // JSON nested as an escaped string: {"msg":"{\"password\":\"x\"}"}, at
@@ -59,10 +61,16 @@ const JSON_ESCAPED = new RegExp(
 );
 
 // Authorization header values in header, JSON, util.inspect and escaped
-// JSON forms. The scheme (Bearer, Basic) is kept; with no known scheme the
-// whole value is redacted.
-const AUTHORIZATION =
-  /(\bAuthorization(?:\\*["'])?\s*[:=]\s*(?:\\*["'])?(?:(?:Bearer|Basic)\s+)?)[^\s"'\\]+/gi;
+// JSON forms. Bearer and Basic carry one token, so only that token is
+// redacted and the scheme kept. Any other value (Token x, Digest a="b",
+// "Bearer: x") is redacted to its closing quote when quoted, else to the
+// end of the line.
+const BEARER_OR_BASIC = String.raw`((?:Bearer|Basic)\s+)[^\s"'\\]+`;
+const AUTHORIZATION = new RegExp(
+  String.raw`(\bAuthorization(?:\\*["'])?\s*[:=]\s*)` +
+    String.raw`(?:(\\*["'])(?:${BEARER_OR_BASIC}|[^"'\\\r\n]+)|${BEARER_OR_BASIC}|[^\r\n]+)`,
+  "gi",
+);
 
 /**
  * Bare JWTs: header.payload.signature, both JSON parts base64url ("eyJ"),
@@ -173,24 +181,35 @@ export function redactSensitiveInfo(input: unknown): string {
 }
 
 function redactPatterns(input: string): string {
+  let text = input
+    // OpenAI-style API keys and similar long key prefixes. A "-" may come
+    // before them (x-sk-...): a failed attempt is bounded by the {10,}.
+    .replace(/(?<![A-Za-z0-9_])sk-[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
+    // GitHub tokens (classic ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained)
+    .replace(
+      /(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g,
+      "[REDACTED]",
+    )
+    // Vercel AI Gateway keys
+    .replace(/(?<![A-Za-z0-9_])vck_[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
+    // Authorization header values
+    .replace(
+      AUTHORIZATION,
+      (_m, prefix: string, quote?: string, quotedScheme?: string, scheme?: string) =>
+        `${prefix}${quote ?? ""}${quotedScheme ?? scheme ?? ""}[REDACTED]`,
+    );
+  // Bare JWTs and URL credentials are scanned per run or token, and only on
+  // lines that can contain them.
+  if (text.includes("eyJ")) {
+    text = text.replace(/[A-Za-z0-9_.-]+/g, (run) => (run.includes("eyJ") ? redactJwts(run) : run));
+  }
+  if (text.includes("://")) {
+    text = text.replace(/\S+/g, (token) =>
+      token.includes("://") ? redactUrlCredentials(token) : token,
+    );
+  }
   return (
-    input
-      // OpenAI-style API keys and similar long key prefixes. A "-" may come
-      // before them (x-sk-...): a failed attempt is bounded by the {10,}.
-      .replace(/(?<![A-Za-z0-9_])sk-[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
-      // GitHub tokens (classic ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained)
-      .replace(
-        /(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g,
-        "[REDACTED]",
-      )
-      // Vercel AI Gateway keys
-      .replace(/(?<![A-Za-z0-9_])vck_[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
-      // Authorization header values
-      .replace(AUTHORIZATION, "$1[REDACTED]")
-      // Bare JWTs (only runs containing "eyJ" are examined)
-      .replace(/[A-Za-z0-9_.-]+/g, (run) => (run.includes("eyJ") ? redactJwts(run) : run))
-      // Credentials in URLs (only tokens containing "://" are examined)
-      .replace(/\S+/g, (token) => (token.includes("://") ? redactUrlCredentials(token) : token))
+    text
       // key=value or key: value style sensitive fields
       .replace(KEY_VALUE, "$1=[REDACTED]")
       // JSON double-quoted sensitive fields
@@ -200,4 +219,22 @@ function redactPatterns(input: string): string {
       // JSON nested as an escaped string, keeping its escape depth
       .replace(JSON_ESCAPED, (_m, key: string, bs: string) => `${key}${bs}":${bs}"[REDACTED]${bs}"`)
   );
+}
+
+/** Row columns that can carry logged text (error messages, field values). */
+const ROW_TEXT_FIELDS = ["description", "old_value", "new_value"] as const;
+
+/**
+ * Redacts the text columns of an event_logs or audit_ledger row on read.
+ * Rows written before write-time redaction may hold raw secrets, and the
+ * ledger is hash-chained, so they cannot be rewritten. Non-string and
+ * missing columns are left as they are. The ledger's verifyChain and its
+ * CSV export read the stored text, so their hashes still verify.
+ */
+export function redactRowText<T extends object>(row: T): T {
+  const out = { ...row } as Record<string, unknown>;
+  for (const field of ROW_TEXT_FIELDS) {
+    if (typeof out[field] === "string") out[field] = redactSensitiveInfo(out[field]);
+  }
+  return out as T;
 }

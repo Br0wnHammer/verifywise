@@ -13,8 +13,8 @@ import {
   LEDGER_FILTER_SQL,
   ledgerFilterReplacements,
   ledgerRowValues,
-  redactLedgerRow,
 } from "../utils/auditLedgerExport.utils";
+import { redactRowText } from "../utils/logger/redact";
 import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper";
 
 import { translateError } from "../utils/i18n.utils";
@@ -66,7 +66,7 @@ export async function getAuditLedger(req: Request, res: Response): Promise<any> 
         type: QueryTypes.SELECT,
       },
     );
-    const entries = rows.map(redactLedgerRow);
+    const entries = rows.map(redactRowText);
 
     await logSuccess({
       eventType: "Read",
