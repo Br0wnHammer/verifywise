@@ -292,6 +292,33 @@ describe("redactSensitiveInfo", () => {
       '{"msg":"sent Basic YWJj1\\/ZGVm"}',
       '{"msg":"sent Basic [REDACTED]"}',
     ],
+    // the Bearer/Authorization passes must not move the boundaries of an
+    // enclosing secret value
+    [
+      "Bearer inside an escaped-quoted secret",
+      '{"client_secret":"pre \\"Bearer ab1\\" REALSECRET"}',
+      '{"client_secret":"[REDACTED]"}',
+    ],
+    [
+      "Basic inside escaped JSON in a secret",
+      '{"secret":"{\\"auth\\":\\"Basic dXNlcjE6cGFzcw==\\",\\"pw\\":\\"hunter2\\"}"}',
+      '{"secret":"[REDACTED]"}',
+    ],
+    [
+      "Bearer before an escaped apostrophe in a secret",
+      "secret: 'see Bearer a1\\' still secret'",
+      "secret=[REDACTED]",
+    ],
+    [
+      "Authorization inside a quoted secret, then a token on the next line",
+      'password="pw Authorization: Bearer x1"\nnote token: "abc"',
+      "password=[REDACTED]\nnote token=[REDACTED]",
+    ],
+    [
+      "escaped quote after a bare Bearer token stays escaped",
+      '{"msg":"header \\"Bearer abc1\\" sent"}',
+      '{"msg":"header \\"Bearer [REDACTED]\\" sent"}',
+    ],
     ["password_hash", "password_hash=abc set", "password_hash=[REDACTED] set"],
     ["passwordHash", "passwordHash: abc set", "passwordHash=[REDACTED] set"],
     ["password_digest", "password_digest=abc set", "password_digest=[REDACTED] set"],
@@ -323,6 +350,7 @@ describe("redactSensitiveInfo", () => {
     "risk-sk-low updated",
     "Basic authentication failed",
     "Bearer token expired for user 7",
+    "Bearer\n2 users",
   ])("leaves %j unchanged", (input) => {
     expect(redactSensitiveInfo(input)).toBe(input);
   });

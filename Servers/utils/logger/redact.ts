@@ -72,10 +72,16 @@ const AUTHORIZATION =
 
 // A Bearer or Basic credential under any other key or none ({ auth:
 // 'Bearer x1' }). It ends where the RFC 6750/7617 token alphabet ends, so
-// stopping there cannot leak part of it (a backslash is included for
-// JSON-escaped "\/"); it must contain a digit, which
-// keeps prose such as "Basic authentication failed" readable.
-const BEARER_TOKEN = /\b((?:Bearer|Basic)\s+)(?=[A-Za-z._~+/=\\-]*\d)[A-Za-z0-9._~+/=\\-]+/gi;
+// stopping there cannot leak part of it. A backslash counts only as part of
+// a JSON-escaped "\/": eating the backslash of \" or \' would turn an
+// escaped quote into a real one. The scheme and token stay on one line,
+// and the token must contain a digit, which keeps prose such as "Basic
+// authentication failed" readable.
+const TOKEN_CHARS = "A-Za-z0-9._~+/=-";
+const BEARER_TOKEN = new RegExp(
+  String.raw`\b((?:Bearer|Basic)[ \t]+)(?=[A-Za-z._~+/=\\-]*\d)[${TOKEN_CHARS}]+(?:\\\/[${TOKEN_CHARS}]*)*`,
+  "gi",
+);
 
 /**
  * Bare JWTs: header.payload.signature, both JSON parts base64url ("eyJ"),
@@ -196,11 +202,7 @@ function redactPatterns(input: string): string {
       "[REDACTED]",
     )
     // Vercel AI Gateway keys
-    .replace(/(?<![A-Za-z0-9_])vck_[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
-    // Authorization header values
-    .replace(AUTHORIZATION, "$1[REDACTED]")
-    // Bearer/Basic credentials outside an Authorization header
-    .replace(BEARER_TOKEN, "$1[REDACTED]");
+    .replace(/(?<![A-Za-z0-9_])vck_[A-Za-z0-9_-]{10,}/g, "[REDACTED]");
   // Bare JWTs and URL credentials are scanned per run or token, and only on
   // lines that can contain them.
   if (text.includes("eyJ")) {
@@ -221,6 +223,14 @@ function redactPatterns(input: string): string {
       .replace(JSON_SINGLE, "$1':'[REDACTED]'")
       // JSON nested as an escaped string, keeping its escape depth
       .replace(JSON_ESCAPED, (_m, key: string, bs: string) => `${key}${bs}":${bs}"[REDACTED]${bs}"`)
+      // The Authorization and Bearer passes run last: they can remove a
+      // quote or run to the end of the line, which would move the value
+      // boundaries the quote-aware passes above rely on. Secret values are
+      // already [REDACTED] by then, and neither pattern matches that.
+      // Authorization header values
+      .replace(AUTHORIZATION, "$1[REDACTED]")
+      // Bearer/Basic credentials outside an Authorization header
+      .replace(BEARER_TOKEN, "$1[REDACTED]")
   );
 }
 
