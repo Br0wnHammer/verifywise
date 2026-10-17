@@ -48,4 +48,24 @@ describe("logEvent redaction", () => {
     ];
     expect(options.replacements.description).toBe("Created vendor Acme");
   });
+
+  // logEvent swallows and logs its own failures; a caller passing a
+  // non-string (untyped JS, `any`) must not make it throw.
+  it("does not throw for an undefined description and stores it as before", async () => {
+    await expect(logEvent("Create", undefined as unknown as string, 5, 7)).resolves.toBeUndefined();
+    const [, options] = mockQuery.mock.calls[0] as [
+      string,
+      { replacements: Record<string, unknown> },
+    ];
+    expect(options.replacements.description).toBeUndefined();
+  });
+
+  it("coerces a non-string description to text before redacting", async () => {
+    await expect(logEvent("Error", 42 as unknown as string, 5, 7)).resolves.toBeUndefined();
+    const [, options] = mockQuery.mock.calls[0] as [
+      string,
+      { replacements: Record<string, unknown> },
+    ];
+    expect(options.replacements.description).toBe("42");
+  });
 });

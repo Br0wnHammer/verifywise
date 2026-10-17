@@ -15,8 +15,11 @@ export async function logEvent(
 ): Promise<void> {
   // event_logs is readable by every org member (GET /api/logger/events), and
   // callers often append `${error.message}`, so redact once here at the sink
-  // before both the event_logs insert and the audit ledger append.
-  const description = redactSensitiveInfo(rawDescription);
+  // before both the event_logs insert and the audit ledger append. A missing
+  // description is stored as before; anything else is coerced to text, so a
+  // non-string from an untyped caller cannot make this throw.
+  const description =
+    rawDescription == null ? rawDescription : redactSensitiveInfo(String(rawDescription));
   const store = asyncLocalStorage.getStore();
   const effectiveUserId = store?.userId || userId;
   if (!effectiveUserId) {
