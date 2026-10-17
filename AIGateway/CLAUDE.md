@@ -72,8 +72,9 @@ must call `scan_text_async`, not `scan_text`. Known exceptions still on the
 loop: MCP prompt-injection regex (`mcp_guardrail_service._check_prompt_injection`)
 and require_approval matching (`mcp_approval_match`). Presidio uses its default
 NLP config with the model swapped to `en_core_web_md`
-(`presidio_engine.SPACY_MODEL`); the Docker image does not install it yet, so
-there the preload skips and the first PII scan downloads it.
+(`presidio_engine.SPACY_MODEL`), installed from a pinned wheel in
+`requirements.txt`. `presidio-analyzer` and `presidio-anonymizer` are pinned
+exactly; bump them deliberately and re-check `nlp_configuration()`.
 
 ---
 

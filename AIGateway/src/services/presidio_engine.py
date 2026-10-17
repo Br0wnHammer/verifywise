@@ -16,10 +16,9 @@ _analyzer = None
 _anonymizer = None
 _initialized = False
 
-# The spaCy model requirements.txt documents and CI installs. Presidio's own
+# The spaCy model requirements.txt installs (pinned wheel). Presidio's own
 # default is en_core_web_lg (~560 MB), which nothing installs, so without this
-# the engine downloaded lg on its first PII scan. The Docker image installs no
-# model yet, so there the first PII scan downloads md (~40 MB).
+# the engine downloaded lg on its first PII scan.
 SPACY_MODEL = "en_core_web_md"
 
 
