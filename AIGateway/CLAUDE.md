@@ -1,6 +1,6 @@
 # AIGateway — LLM Gateway Service
 
-> **Last Updated:** 2026-10-16
+> **Last Updated:** 2026-10-17
 
 ---
 
@@ -63,7 +63,13 @@ DB_PASSWORD=...
 DB_NAME=verifywise
 AI_GATEWAY_INTERNAL_KEY=...    # Must match Express backend
 AI_GATEWAY_PORT=8100
+GUARDRAILS_PRELOAD_PII=true    # Load Presidio + spaCy en_core_web_md in the background at startup (skipped if the model is not installed)
 ```
+
+Guardrail scans (regex, keyword, Presidio PII) run on one dedicated thread
+(`guardrail_service.get_scan_executor()`), never on the event loop. Async code
+must call `scan_text_async`, not `scan_text`. Presidio is pinned to
+`en_core_web_md` (`presidio_engine.SPACY_MODEL`).
 
 ---
 

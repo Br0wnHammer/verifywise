@@ -213,3 +213,28 @@ def test_app_startup_survives_a_preload_that_cannot_start(monkeypatch):
 
     with TestClient(gateway_app.app) as client:
         assert client.get("/health").status_code == 200
+
+
+def test_preload_checks_the_pinned_spacy_model(monkeypatch):
+    import spacy.util
+
+    asked = []
+    monkeypatch.setattr(spacy.util, "is_package", lambda name: asked.append(name) or False)
+    assert presidio_engine._missing_spacy_models() == [presidio_engine.SPACY_MODEL]
+    assert asked == ["en_core_web_md"]
+
+
+async def test_scan_thread_sees_the_request_context(monkeypatch):
+    import contextvars
+
+    request_id = contextvars.ContextVar("request_id_test", default=None)
+    seen = {}
+
+    def fake_scan(**_kw):
+        seen["request_id"] = request_id.get()
+        return gs.ScanResult()
+
+    monkeypatch.setattr(gs, "scan_text", fake_scan)
+    request_id.set("req-42")
+    await gs.scan_text_async(text="hi", guardrail_rules=[KEYWORD_BLOCK], settings={})
+    assert seen["request_id"] == "req-42"

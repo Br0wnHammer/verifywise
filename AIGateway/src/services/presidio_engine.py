@@ -16,6 +16,15 @@ _analyzer = None
 _anonymizer = None
 _initialized = False
 
+# The spaCy model requirements.txt documents and CI installs. Presidio's own
+# default is en_core_web_lg (~560 MB), which nothing installs, so without this
+# the engine downloaded lg on its first PII scan.
+SPACY_MODEL = "en_core_web_md"
+NLP_CONFIGURATION = {
+    "nlp_engine_name": "spacy",
+    "models": [{"lang_code": "en", "model_name": SPACY_MODEL}],
+}
+
 
 def _get_custom_recognizers():
     """Build custom pattern recognizers for EU-specific PII."""
@@ -83,10 +92,12 @@ def _ensure_initialized():
 
     try:
         from presidio_analyzer import AnalyzerEngine
+        from presidio_analyzer.nlp_engine import NlpEngineProvider
         from presidio_anonymizer import AnonymizerEngine
 
-        logger.info("Loading Presidio engine with en_core_web_md...")
-        _analyzer = AnalyzerEngine()
+        logger.info(f"Loading Presidio engine with {SPACY_MODEL}...")
+        nlp_engine = NlpEngineProvider(nlp_configuration=NLP_CONFIGURATION).create_engine()
+        _analyzer = AnalyzerEngine(nlp_engine=nlp_engine, supported_languages=["en"])
 
         # Add custom EU recognizers
         for recognizer in _get_custom_recognizers():
@@ -162,12 +173,10 @@ def is_available() -> bool:
 
 
 def _missing_spacy_models() -> list[str]:
-    """spaCy models the default Presidio NLP engine needs that are not installed."""
+    """spaCy models the engine's NLP configuration needs that are not installed."""
     import spacy.util
-    from presidio_analyzer.nlp_engine import NlpEngineProvider
 
-    models = NlpEngineProvider().nlp_configuration.get("models") or []
-    return [m["model_name"] for m in models if not spacy.util.is_package(m["model_name"])]
+    return [m["model_name"] for m in NLP_CONFIGURATION["models"] if not spacy.util.is_package(m["model_name"])]
 
 
 def warm_up() -> bool:

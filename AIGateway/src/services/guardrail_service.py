@@ -6,6 +6,7 @@ Returns structured detection results with block/mask actions.
 """
 
 import asyncio
+import contextvars
 import functools
 import logging
 import re
@@ -277,6 +278,10 @@ def _apply_mask(
     return result
 
 
+def _nothing_to_scan(text: str, guardrail_rules: list[dict]) -> bool:
+    return not text or not guardrail_rules
+
+
 def scan_text(
     text: str,
     guardrail_rules: list[dict],
@@ -295,7 +300,7 @@ def scan_text(
     """
     start_time = time.time()
 
-    if not text or not guardrail_rules:
+    if _nothing_to_scan(text, guardrail_rules):
         return ScanResult()
 
     all_detections: list[Detection] = []
@@ -382,13 +387,16 @@ async def scan_text_async(
 ) -> ScanResult:
     """scan_text, run on the dedicated scan thread so the event loop is not blocked.
     Same arguments and result as scan_text."""
-    if not text or not guardrail_rules:
-        # Nothing to scan: answer at once instead of queueing behind other scans.
+    if _nothing_to_scan(text, guardrail_rules):
+        # Answer at once instead of queueing behind other scans.
         return ScanResult()
     loop = asyncio.get_running_loop()
+    # run_in_executor does not carry contextvars; copy them so log lines from
+    # the scan thread keep the request id.
+    ctx = contextvars.copy_context()
     return await loop.run_in_executor(
         get_scan_executor(),
-        functools.partial(scan_text, text=text, guardrail_rules=guardrail_rules, settings=settings),
+        functools.partial(ctx.run, scan_text, text=text, guardrail_rules=guardrail_rules, settings=settings),
     )
 
 
