@@ -134,7 +134,8 @@ def _ensure_initialized():
     except ImportError as e:
         logger.error(f"Presidio not installed: {e}")
         raise RuntimeError(
-            "Presidio is not installed. Run: pip install presidio-analyzer presidio-anonymizer && python -m spacy download en_core_web_md"
+            "Presidio is not installed. Install AIGateway/requirements.txt as the Dockerfile does "
+            "(presidio-anonymizer with --no-deps, to keep cryptography>=50)"
         ) from e
     except Exception as e:
         logger.error(f"Failed to initialize Presidio: {e}")
