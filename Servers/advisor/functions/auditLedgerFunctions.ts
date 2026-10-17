@@ -55,7 +55,7 @@ const fetchEventLogs = async (
 
     const rows = (await sequelize.query(
       `SELECT id, entry_type, user_id, occurred_at, event_type, entity_type,
-              entity_id, action, field_name, old_value, new_value, description
+              entity_id, action, field_name, description
        FROM audit_ledger
        WHERE ${conditions.join(" AND ")}
        ORDER BY occurred_at DESC

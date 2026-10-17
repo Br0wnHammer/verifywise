@@ -61,14 +61,14 @@ const JSON_ESCAPED = new RegExp(
 );
 
 // Authorization header values in header, JSON, util.inspect and escaped
-// JSON forms. Bearer and Basic carry one token, so only that token is
-// redacted and the scheme kept. Any other value (Token x, Digest a="b",
-// "Bearer: x") is redacted to its closing quote when quoted, else to the
-// end of the line.
-const BEARER_OR_BASIC = String.raw`((?:Bearer|Basic)\s+)[^\s"'\\]+`;
+// JSON forms. An unquoted Bearer or Basic value is one token, so only that
+// token is redacted and the scheme kept. Anything else is redacted to the
+// end of the line: a quoted value can hold inner quotes, escapes and spaces
+// (Token token="x", Digest a=\"b\"), so stopping at a quote would leak.
+const SCHEME = String.raw`((?:Bearer|Basic)\s+)`;
 const AUTHORIZATION = new RegExp(
   String.raw`(\bAuthorization(?:\\*["'])?\s*[:=]\s*)` +
-    String.raw`(?:(\\*["'])(?:${BEARER_OR_BASIC}|[^"'\\\r\n]+)|${BEARER_OR_BASIC}|[^\r\n]+)`,
+    String.raw`(?:(\\*["'])${SCHEME}?[^\r\n]+|${SCHEME}[^\s"'\\]+|[^\r\n]+)`,
   "gi",
 );
 

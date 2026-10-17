@@ -105,10 +105,11 @@ export async function appendToAuditLedger(entry: AuditLedgerEntry): Promise<void
   // Skip if audit ledger is disabled for this organization
   if (!(await isAuditLedgerEnabled(organizationId))) return;
 
-  // Redact before hashing, so the chain covers the stored text. logEvent
-  // already redacts; other callers (custom field and retention audits)
-  // append descriptions directly. Field values are history and are kept as
-  // given; readers redact them on the way out (redactRowText).
+  // Redact before hashing, so the chain covers the stored text. Custom
+  // field and retention audits append descriptions directly, not through
+  // logEvent; for logEvent's already-redacted text this pass is a no-op.
+  // Field values are the entity's own history and are kept as given; the
+  // ledger readers (list, advisor tools) redact them on the way out.
   const description = entry.description ? redactSensitiveInfo(entry.description) : null;
 
   const txn: Transaction = await sequelize.transaction();

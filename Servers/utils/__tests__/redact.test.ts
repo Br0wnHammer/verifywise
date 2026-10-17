@@ -157,13 +157,13 @@ describe("redactSensitiveInfo", () => {
     // Authorization headers in JSON, util.inspect and escaped forms, and Basic
     [
       "JSON authorization header",
-      '{"authorization":"Bearer abc.def"}',
-      '{"authorization":"Bearer [REDACTED]"}',
+      '{"authorization":"Bearer abc.def","ok":1}',
+      '{"authorization":"Bearer [REDACTED]',
     ],
     [
       "util.inspect Authorization header",
       "{ Authorization: 'Bearer abc.def' }",
-      "{ Authorization: 'Bearer [REDACTED]' }",
+      "{ Authorization: 'Bearer [REDACTED]",
     ],
     [
       "Basic credentials",
@@ -173,12 +173,12 @@ describe("redactSensitiveInfo", () => {
     [
       "JSON Basic credentials",
       '{"Authorization":"Basic dXNlcjpwYXNz"}',
-      '{"Authorization":"Basic [REDACTED]"}',
+      '{"Authorization":"Basic [REDACTED]',
     ],
     [
       "escaped JSON authorization header",
       '{"h":"{\\"authorization\\":\\"Bearer abc\\"}"}',
-      '{"h":"{\\"authorization\\":\\"Bearer [REDACTED]\\"}"}',
+      '{"h":"{\\"authorization\\":\\"Bearer [REDACTED]',
     ],
     // JSON nested as an escaped string: the value runs to the end of the
     // enclosing string (fail closed)
@@ -223,7 +223,7 @@ describe("redactSensitiveInfo", () => {
     [
       "JSON Authorization with another scheme",
       '{"authorization":"Token abc123","ok":1}',
-      '{"authorization":"[REDACTED]","ok":1}',
+      '{"authorization":"[REDACTED]',
     ],
     [
       "Digest Authorization",
@@ -237,6 +237,27 @@ describe("redactSensitiveInfo", () => {
       '{"secret":"[REDACTED]","ok":1}',
     ],
     ["inspect object value", "{ secret: { value: 'abc' } }", "{ secret=[REDACTED] }"],
+    // quoted values run to the end of the line: inner quotes, escapes, spaces
+    [
+      "inspect Token with an inner quoted token",
+      `{ authorization: 'Token token="abc123"' }`,
+      "{ authorization: '[REDACTED]",
+    ],
+    [
+      "JSON Digest with escaped quotes",
+      '{"Authorization":"Digest username=\\"u\\", response=\\"deadbeef\\""}',
+      '{"Authorization":"[REDACTED]',
+    ],
+    [
+      "quoted Bearer with a space",
+      '{"authorization":"Bearer abc def"}',
+      '{"authorization":"Bearer [REDACTED]',
+    ],
+    [
+      "quoted Basic with an escaped /",
+      '{"authorization":"Basic YWJj\\/ZGVm"}',
+      '{"authorization":"Basic [REDACTED]',
+    ],
     ["password_hash", "password_hash=abc set", "password_hash=[REDACTED] set"],
     ["passwordHash", "passwordHash: abc set", "passwordHash=[REDACTED] set"],
     ["password_digest", "password_digest=abc set", "password_digest=[REDACTED] set"],
@@ -325,11 +346,14 @@ describe("redactSensitiveInfo", () => {
     const replace = jest.spyOn(String.prototype, "replace").mockImplementation(() => {
       throw new RangeError("Maximum call stack size exceeded");
     });
+    let result: string;
     try {
-      expect(redactSensitiveInfo("password=hunter2")).toBe(UNSCANNABLE_PLACEHOLDER);
+      result = redactSensitiveInfo("password=hunter2");
     } finally {
       replace.mockRestore();
     }
+    // Asserted after the restore: Jest's failure message uses replace().
+    expect(result).toBe(UNSCANNABLE_PLACEHOLDER);
   });
 });
 
