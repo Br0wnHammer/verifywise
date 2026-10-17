@@ -11,6 +11,7 @@ import threading
 import time
 
 import pytest
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -267,6 +268,8 @@ def test_engine_is_built_from_the_default_config_with_only_english_md(monkeypatc
     monkeypatch.setattr(nlp_engine_module, "NlpEngineProvider", _FakeProvider)
     monkeypatch.setattr(presidio_analyzer, "AnalyzerEngine", lambda **_kw: type("A", (), {"registry": type("R", (), {"add_recognizer": lambda *_: None})()})())
     monkeypatch.setattr(presidio_engine, "_initialized", False)
+    monkeypatch.setattr(presidio_engine, "_analyzer", None)
+    monkeypatch.setattr(presidio_engine, "_anonymizer", None)
     presidio_engine._ensure_initialized()
     assert _FakeProvider.built_with == [{
         "nlp_engine_name": "spacy",
@@ -275,14 +278,19 @@ def test_engine_is_built_from_the_default_config_with_only_english_md(monkeypatc
     }]
 
 
-def test_an_unexpected_default_config_shape_raises(monkeypatch):
+@pytest.mark.parametrize(
+    "default",
+    [
+        {"nlp_engine_name": "transformers", "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}]},
+        {"nlp_engine_name": "spacy", "models": [{"lang_code": "es", "model_name": "es_core_news_md"}]},
+        {"nlp_engine_name": "spacy", "models": [{"lang_code": "en", "model_name": "a"}, {"lang_code": "en", "model_name": "b"}]},
+        {"nlp_engine_name": "spacy", "models": [{"lang_code": "en", "model_name": {"spacy": "x", "transformers": "y"}}]},
+        {"nlp_engine_name": "spacy", "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}, None]},
+    ],
+)
+def test_an_unexpected_default_config_shape_raises(monkeypatch, default):
     import presidio_analyzer.nlp_engine as nlp_engine_module
 
-    class Transformers(_FakeProvider):
-        def __init__(self, nlp_configuration=None):
-            super().__init__(nlp_configuration)
-            self.nlp_configuration["nlp_engine_name"] = "transformers"
-
-    monkeypatch.setattr(nlp_engine_module, "NlpEngineProvider", Transformers)
+    monkeypatch.setattr(nlp_engine_module, "NlpEngineProvider", lambda: SimpleNamespace(nlp_configuration=default))
     with pytest.raises(RuntimeError, match="changed shape"):
         presidio_engine.nlp_configuration()

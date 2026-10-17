@@ -29,12 +29,17 @@ def nlp_configuration() -> dict:
     swapped for SPACY_MODEL. A hand-written config would drop the NER
     settings and change what PII rules detect. Raises when a Presidio upgrade
     changes the default's shape, rather than silently loading another model."""
+    import copy
+
     from presidio_analyzer.nlp_engine import NlpEngineProvider
 
-    config = NlpEngineProvider().nlp_configuration  # a fresh dict per provider
-    english = [m for m in config.get("models") or [] if m.get("lang_code") == "en"]
+    # Copied so a Presidio that caches its default is never edited in place.
+    config = copy.deepcopy(NlpEngineProvider().nlp_configuration)
+    models = config.get("models") or []
+    english = [m for m in models if isinstance(m, dict) and m.get("lang_code") == "en"]
     if (
         config.get("nlp_engine_name") != "spacy"
+        or not all(isinstance(m, dict) for m in models)
         or len(english) != 1
         or not isinstance(english[0].get("model_name"), str)
     ):
