@@ -122,6 +122,36 @@ describe("decideStatusAction", () => {
       }),
     ).toEqual({ action: "none" });
   });
+  it("does nothing when VerifyWise wins a conflict but Jira already holds its target", () => {
+    expect(
+      decideStatusAction({
+        ...base,
+        jiraStatusId: "3",
+        vwStatus: "Closed",
+        statusMapOut: { ...maps.statusMapOut, Closed: "3" },
+        jiraChangedAt: t("2026-10-14T10:00Z"),
+        vwChangedAt: t("2026-10-14T11:00Z"),
+      }),
+    ).toEqual({ action: "none" });
+  });
+  it("sends a null target to Jira when VerifyWise wins a conflict", () => {
+    expect(
+      decideStatusAction({
+        ...base,
+        jiraStatusId: "3",
+        vwStatus: "Mitigated",
+        jiraChangedAt: t("2026-10-14T10:00Z"),
+        vwChangedAt: t("2026-10-14T11:00Z"),
+      }),
+    ).toEqual({ action: "to_jira", jiraStatusId: null, conflict: true });
+  });
+  it("gives a conflict with both change times null to VerifyWise", () => {
+    expect(decideStatusAction({ ...base, jiraStatusId: "3", vwStatus: "Closed" })).toEqual({
+      action: "to_vw",
+      vwStatus: "Investigating",
+      conflict: true,
+    });
+  });
 });
 
 describe("pickTransition", () => {
@@ -152,5 +182,17 @@ describe("pickTransition", () => {
       ok: false,
       reason: "Moving to 'In Progress' needs a value for Resolution. Change the status in Jira.",
     });
+  });
+  it("prefers a clean transition to the same status over one that needs fields", () => {
+    expect(
+      pickTransition(
+        [
+          { id: "11", name: "Resolve", toStatusId: "3", requiredFields: ["Resolution"] },
+          { id: "12", name: "Start", toStatusId: "3", requiredFields: [] },
+        ],
+        "3",
+        names,
+      ),
+    ).toEqual({ ok: true, transitionId: "12" });
   });
 });

@@ -43,7 +43,13 @@ export function decideStatusAction(input: DecideInput): Decision {
   if (input.statusMapIn[input.jiraStatusId] === input.vwStatus) return { action: "none" };
   const jiraTime = input.jiraChangedAt?.getTime() ?? 0;
   const vwTime = input.vwChangedAt?.getTime() ?? 0;
-  return vwTime > jiraTime ? toJira(input, true) : toVw(input, true);
+  if (vwTime > jiraTime) {
+    // VerifyWise wins, but Jira already holds its target: nothing to apply.
+    if ((input.statusMapOut[input.vwStatus] ?? null) === input.jiraStatusId)
+      return { action: "none" };
+    return toJira(input, true);
+  }
+  return toVw(input, true);
 }
 
 export interface JiraTransition {
@@ -58,14 +64,14 @@ export function pickTransition(
   targetStatusId: string,
   names: { from: string; to: string },
 ): { ok: true; transitionId: string } | { ok: false; reason: string } {
-  const match = transitions.find((tr) => tr.toStatusId === targetStatusId);
-  if (!match)
+  const matches = transitions.filter((tr) => tr.toStatusId === targetStatusId);
+  if (matches.length === 0)
     return { ok: false, reason: `No move from '${names.from}' to '${names.to}' in this workflow` };
-  if (match.requiredFields.length > 0) {
-    return {
-      ok: false,
-      reason: `Moving to '${names.to}' needs a value for ${match.requiredFields.join(", ")}. Change the status in Jira.`,
-    };
-  }
-  return { ok: true, transitionId: match.id };
+  // Prefer a transition that needs no fields; only report missing fields when every match needs some.
+  const clean = matches.find((tr) => tr.requiredFields.length === 0);
+  if (clean) return { ok: true, transitionId: clean.id };
+  return {
+    ok: false,
+    reason: `Moving to '${names.to}' needs a value for ${matches[0].requiredFields.join(", ")}. Change the status in Jira.`,
+  };
 }

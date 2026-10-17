@@ -82,4 +82,35 @@ describe("default mappings", () => {
     ).toMatch(/severity/i);
     expect(validateMaps({ statusMapIn: [], statusMapOut: {}, severityMap: {} })).not.toBeNull();
   });
+  it("rejects non-numeric Jira ids as map keys", () => {
+    const proto = JSON.parse('{"__proto__":"Open"}');
+    expect(validateMaps({ statusMapIn: proto, statusMapOut: {}, severityMap: {} })).toBe(
+      "Invalid Jira status id '__proto__'",
+    );
+    expect(
+      validateMaps({ statusMapIn: { constructor: "Open" }, statusMapOut: {}, severityMap: {} }),
+    ).toBe("Invalid Jira status id 'constructor'");
+    expect(
+      validateMaps({ statusMapIn: {}, statusMapOut: {}, severityMap: { constructor: "Minor" } }),
+    ).toBe("Invalid Jira priority id 'constructor'");
+  });
+  it("rejects a non-string severity value", () => {
+    expect(validateMaps({ statusMapIn: {}, statusMapOut: {}, severityMap: { "9": 5 } })).toMatch(
+      /severity/i,
+    );
+  });
+  it("rejects null or array for statusMapOut and severityMap", () => {
+    expect(validateMaps({ statusMapIn: {}, statusMapOut: null, severityMap: {} })).toBe(
+      "Mappings must be objects",
+    );
+    expect(validateMaps({ statusMapIn: {}, statusMapOut: [], severityMap: {} })).toBe(
+      "Mappings must be objects",
+    );
+    expect(validateMaps({ statusMapIn: {}, statusMapOut: {}, severityMap: null })).toBe(
+      "Mappings must be objects",
+    );
+    expect(validateMaps({ statusMapIn: {}, statusMapOut: {}, severityMap: [] })).toBe(
+      "Mappings must be objects",
+    );
+  });
 });

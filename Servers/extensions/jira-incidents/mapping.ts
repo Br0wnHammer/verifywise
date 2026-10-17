@@ -65,6 +65,8 @@ export function unmappedStatuses(statuses: JiraStatus[], map: StatusMapIn): Jira
   return statuses.filter((s) => !map[s.id]);
 }
 
+const JIRA_ID = /^\d{1,18}$/;
+
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -78,16 +80,18 @@ export function validateMaps(maps: {
   if (!isPlainObject(statusMapIn) || !isPlainObject(statusMapOut) || !isPlainObject(severityMap)) {
     return "Mappings must be objects";
   }
-  for (const value of Object.values(statusMapIn)) {
+  for (const [jiraId, value] of Object.entries(statusMapIn)) {
+    if (!JIRA_ID.test(jiraId)) return `Invalid Jira status id '${jiraId}'`;
     if (typeof value !== "string" || !VW_STATUSES.includes(value))
       return `Unknown VerifyWise status '${String(value)}'`;
   }
   for (const [vw, jiraId] of Object.entries(statusMapOut)) {
     if (!VW_STATUSES.includes(vw)) return `Unknown VerifyWise status '${vw}'`;
-    if (jiraId !== null && (typeof jiraId !== "string" || !/^\d{1,18}$/.test(jiraId)))
+    if (jiraId !== null && (typeof jiraId !== "string" || !JIRA_ID.test(jiraId)))
       return `Invalid Jira status for '${vw}'`;
   }
-  for (const value of Object.values(severityMap)) {
+  for (const [jiraId, value] of Object.entries(severityMap)) {
+    if (!JIRA_ID.test(jiraId)) return `Invalid Jira priority id '${jiraId}'`;
     if (typeof value !== "string" || !VW_SEVERITIES.includes(value))
       return `Unknown severity '${String(value)}'`;
   }
