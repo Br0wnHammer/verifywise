@@ -1,6 +1,6 @@
 # AIGateway — LLM Gateway Service
 
-> **Last Updated:** 2026-10-08
+> **Last Updated:** 2026-10-17
 
 ---
 
@@ -16,8 +16,9 @@ Port: **8100**
 
 ```
 Express Backend (proxy)  →  FastAPI (AIGateway)
+                              ├─ Invalid unicode check (middleware, before auth)
                               ├─ Auth (virtual key validation)
-                              ├─ Pre-request guardrails (PII, content filter; user messages only)
+                              ├─ Pre-request guardrails (PII, content filter; user messages and tool results)
                               ├─ LiteLLM → LLM Provider (fallback chain, max depth 3, non-streaming /v1 only)
                               │   Model responses are NOT scanned by guardrails.
                               ├─ Cost calculation + spend logging
@@ -31,6 +32,7 @@ Express Backend (proxy)  →  FastAPI (AIGateway)
 | Purpose | Path |
 |---------|------|
 | Entry point | `src/app.py` |
+| Invalid unicode check | `src/middlewares/invalid_unicode.py`: any POST/PUT/PATCH/DELETE body except known binary types (`_BINARY_MEDIA_PREFIXES`: multipart, octet-stream, archives, pdf, protobuf, grpc (incl. grpc-web+json, which is framed), msgpack, cbor, image/audio/video/font) that does not decode, or is JSON with a lone `\uD800`–`\uDFFF` escape gets 400 `{"detail": "Request contains an invalid character"}` (on `/v1/mcp`: a JSON-RPC -32700 error with HTTP 200), instead of a 500 later |
 | Routers | `src/routers/` (completions, endpoints, guardrails, models, prompts, virtual_keys, spend, cache, budget, risk) |
 | Services | `src/services/` (proxy, guardrail, cache, cost, llm, risk_conditions) |
 | CRUD | `src/crud/` |
@@ -48,6 +50,8 @@ alembic downgrade -1          # Rollback last
 ```
 
 Tables use `verifywise` schema with `search_path`. Main `ai_gateway_*` tables: endpoints, api_keys, virtual_keys, guardrails, guardrail_logs, guardrail_settings, spend_logs, cache, budgets, risk_settings, risk_suggestions, plus change-history, prompt and `mcp_*` (Agent Control) tables. See `src/database/migrations/versions/` for the full list.
+
+A new column that references `users(id)` needs `ON DELETE SET NULL`: the backend's user deletion does not clear gateway tables, so a bare reference blocks deleting that user (`a0016` fixed the existing ones; `tests/test_config_change_notifications.py` fails on a new bare one).
 
 ---
 
@@ -77,6 +81,12 @@ cd src && uvicorn app:app --host 0.0.0.0 --port 8100 --reload   # Development
 ## Express Proxy
 
 Express backend at `Servers/routes/aiGateway.route.ts` proxies `/api/ai-gateway/*` to `/internal/*` on the gateway (`http://ai_gateway:8100`) with JWT auth forwarding (`x-organization-id`, `x-user-id`, `x-role` headers). `Servers/routes/virtualKeyProxy.route.ts` passes `/v1/*` through unchanged; virtual-key auth happens in the gateway.
+
+---
+
+## Admin notifications
+
+Config changes reach the Express backend through `utils/notifications.py`. Build the event with `config_event(entity, action, name, entity_id, detail)` and pass it to `notify_config_change(org_id, user_id, event)`, which sends it in the background so the admin request does not wait for the backend's emails; add a new entity to `_CONFIG_ENTITIES` (label, frontend path, button label). Every change is an in-app notice; only the (entity, action) pairs in `_EMAIL_EVENTS` (keys revoked or deleted, monitor only switched, API keys and MCP servers added or removed, guardrails deleted or disabled) also email admins. The backend reads only these camelCase fields, and a test fails on any router call that builds the event another way.
 
 ---
 

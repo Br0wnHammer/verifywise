@@ -96,6 +96,46 @@ export const translations: Record<string, Record<string, string>> = {
       "Neue Jira-Vorgänge importieren und Status nach Zeitplan synchronisieren",
     "Each sync imports issues created since the last one, then syncs status both ways.":
       "Jede Synchronisierung importiert die seit der letzten erstellten Vorgänge und synchronisiert dann den Status in beide Richtungen.",
+    // Agent Control monitor only mode
+    "Enforce": "Durchsetzen",
+    "Monitor only": "Nur überwachen",
+    "Rules are checked and logged but never block or pause calls. Rate limits still apply.":
+      "Regeln werden geprüft und protokolliert, blockieren oder pausieren Aufrufe aber nie. Ratenlimits gelten weiterhin.",
+    'Choose how policies apply to calls made with "{name}".':
+      "Legen Sie fest, wie Richtlinien auf Aufrufe mit „{name}“ angewendet werden.",
+    "Use monitor only mode?": "Modus „Nur überwachen“ verwenden?",
+    "Use monitor only": "Nur überwachen verwenden",
+    "Calls made with this key will no longer be blocked or paused for approval.":
+      "Aufrufe mit diesem Schlüssel werden nicht mehr blockiert oder zur Genehmigung pausiert.",
+    'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy, and for native tool calls when the key\'s "Also apply tool lists to native tool calls" setting is on. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
+      "Guardrails und Genehmigungsregeln werden weiterhin geprüft, bei Aufrufen über den MCP-Proxy auch die Tool-Listen des Schlüssels, und bei nativen Tool-Aufrufen ebenfalls, wenn die Einstellung „Tool-Listen auch auf native Tool-Aufrufe anwenden“ des Schlüssels aktiviert ist. Jeder Treffer wird unter „Aktivität“ als „Würde blockieren“ oder „Würde Genehmigung erfordern“ protokolliert. Es werden keine Genehmigungsanfragen erstellt. Ratenlimits gelten weiterhin.",
+    "Monitor only since {date} · by {name}": "Nur überwachen seit {date} · von {name}",
+    "Monitor only since {date}": "Nur überwachen seit {date}",
+    "Would block": "Würde blockieren",
+    "Would need approval": "Würde Genehmigung erfordern",
+    "{count} would block": "{count} würden blockiert",
+    "{count} would need approval": "{count} würden Genehmigung erfordern",
+    "Would have been blocked by {rule}": "Wäre blockiert worden durch {rule}",
+    "Would have been blocked by this key's tool list":
+      "Wäre durch die Tool-Liste dieses Schlüssels blockiert worden",
+    "Would have needed approval: {rule}": "Hätte eine Genehmigung erfordert: {rule}",
+    "Would have needed approval (tool requires approval)":
+      "Hätte eine Genehmigung erfordert (Tool erfordert Genehmigung)",
+    "Would have been blocked by a guardrail": "Wäre durch einen Guardrail blockiert worden",
+    "Would have needed approval": "Hätte eine Genehmigung erfordert",
+    "Enforcement settings": "Durchsetzungseinstellungen",
+    "Failed to save the key settings":
+      "Die Schlüsseleinstellungen konnten nicht gespeichert werden",
+    "Also apply tool lists to native tool calls (hooks and SDK)":
+      "Tool-Listen auch auf native Tool-Aufrufe anwenden (Hooks und SDK)",
+    "Off: the allowed and blocked tool lists apply only to MCP server tools called through the proxy. On: they also apply to the agent's own tool calls checked by the hook script or the Python SDK, such as Bash, Edit or your Python functions. Leave it off for keys used by Claude Code or Cursor unless the lists name those tools.":
+      "Aus: Die Listen erlaubter und blockierter Tools gelten nur für MCP-Server-Tools, die über den Proxy aufgerufen werden. An: Sie gelten auch für die eigenen Tool-Aufrufe des Agenten, die vom Hook-Skript oder vom Python SDK geprüft werden, etwa Bash, Edit oder Ihre Python-Funktionen. Lassen Sie die Einstellung für Schlüssel, die Claude Code oder Cursor verwenden, aus, sofern die Listen diese Tools nicht nennen.",
+    "MCP proxy only": "Nur MCP-Proxy",
+    "MCP proxy and native calls": "MCP-Proxy und native Aufrufe",
+    "Allowlist for MCP server tools called through the proxy: if set, this key may call only these tools. Comma-separated; leave empty to allow all. Applies to native tool calls (Bash, Edit, SDK functions) only when the setting below is on.":
+      "Zulassungsliste für MCP-Server-Tools, die über den Proxy aufgerufen werden: Wenn gesetzt, darf dieser Schlüssel nur diese Tools aufrufen. Kommagetrennt; leer lassen, um alle zuzulassen. Gilt für native Tool-Aufrufe (Bash, Edit, SDK-Funktionen) nur, wenn die Einstellung unten aktiviert ist.",
+    "Denylist for MCP server tools called through the proxy: these are always denied, even if also in the allowlist. Comma-separated; leave empty to block none. Applies to native tool calls only when the setting below is on.":
+      "Sperrliste für MCP-Server-Tools, die über den Proxy aufgerufen werden: Diese werden immer abgelehnt, auch wenn sie in der Zulassungsliste stehen. Kommagetrennt; leer lassen, um keine zu blockieren. Gilt für native Tool-Aufrufe nur, wenn die Einstellung unten aktiviert ist.",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Hochrisiko-Rollen",
     "High-risk roles *": "Hochrisiko-Rollen *",
@@ -1410,6 +1450,10 @@ export const translations: Record<string, Record<string, string>> = {
     // Use cases
     "Use case": "Anwendungsfall",
     "Use case report": "Anwendungsfall-Bericht",
+    "This use case has no framework assigned":
+      "Diesem Anwendungsfall ist kein Rahmenwerk zugeordnet",
+    "Requirements, assessment tracker, clauses and annexes, and NIST subcategories need a framework, so they are left out. The report still covers risks, models, vendors, training, policies and incidents. Assign a framework to the use case to include compliance sections.":
+      "Anforderungen, Bewertungs-Tracker, Klauseln und Anhänge sowie NIST-Unterkategorien benötigen ein Rahmenwerk und entfallen daher. Der Bericht umfasst weiterhin Risiken, Modelle, Anbieter, Schulungen, Richtlinien und Vorfälle. Ordnen Sie dem Anwendungsfall ein Rahmenwerk zu, um Compliance-Abschnitte aufzunehmen.",
     "AI project": "KI-Projekt",
     "AI Project": "KI-Projekt",
     "AI PROJECT": "KI-PROJEKT",
@@ -1790,8 +1834,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Team & Compliance": "Team und Compliance",
     "Templates are grouped by framework (EU AI Act, ISO 42001, etc.). Use the search bar to find templates relevant to your compliance needs.":
       "Vorlagen sind nach Rahmenwerk gruppiert (EU-KI-Verordnung, ISO 42001 usw.). Nutzen Sie die Suchleiste, um Vorlagen passend zu Ihren Compliance-Anforderungen zu finden.",
-    "The gateway periodically checks server health and can discover available tools automatically. Unhealthy servers are temporarily bypassed to keep agents running.":
-      "Die Passerelle prüft regelmäßig den Zustand der Server und kann verfügbare Tools automatisch erkennen. Nicht erreichbare Server werden vorübergehend umgangen, damit die Agenten weiterlaufen.",
     "The marketplace tab above lists available plugins for frameworks (SOC 2, GDPR, HIPAA), integrations (Slack, Jira), and more.":
       "Der Marktplatz-Tab oben listet verfügbare Plugins für Rahmenwerke (SOC 2, DSGVO, HIPAA), Integrationen (Slack, Jira) und mehr auf.",
     "This registry manages all AI/LLM models and their associated risks within your organization. You can view, add, and manage model details and track model-specific risks and mitigation plans.":
@@ -3583,8 +3625,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Das KI-System, seinen Zweck, die verarbeiteten Daten und die betroffenen Personen definieren. Dies bildet die Grundlage für Risiko- und Compliance-Verfolgung.",
     "Document risks related to bias, data quality, security, transparency, and model drift. Cover both technical and organizational risks.":
       "Risiken in Bezug auf Verzerrungen, Datenqualität, Sicherheit, Transparenz und Modellabweichungen dokumentieren. Sowohl technische als auch organisatorische Risiken abdecken.",
-    "Each agent key can restrict which MCP tools the agent is allowed or blocked from calling. Combine with rate limits for fine-grained governance.":
-      "Jeder Agentenschlüssel kann einschränken, welche MCP-Tools der Agent aufrufen darf oder nicht. Mit Ratenlimits kombinieren für feingranulare Governance.",
+    "Each agent key can list the MCP server tools it may or may not call through the proxy, and can apply the same lists to native tool calls from the hook script or the Python SDK. Combine with rate limits for fine-grained governance.":
+      "Jeder Agentenschlüssel kann die MCP-Server-Tools auflisten, die er über den Proxy aufrufen darf oder nicht, und dieselben Listen auf native Tool-Aufrufe aus dem Hook-Skript oder dem Python SDK anwenden. Mit Ratenlimits kombinieren für feingranulare Governance.",
     "Each dataset should have a clear prompt column and an expected output column. Add metadata columns for filtering results later.":
       "Jeder Datensatz sollte eine klare Prompt-Spalte und eine Spalte für die erwartete Ausgabe haben. Fügen Sie Metadaten-Spalten hinzu, um Ergebnisse später zu filtern.",
     "Each experiment run is saved here with scores and metadata. Run the same dataset across different models or configs to track progress.":
@@ -9658,6 +9700,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Verwandte Anbieterrisiken beschreiben dieselbe Gefährdung, bei diesem oder einem anderen Anbieter. Keines erbt vom anderen.",
     "Similar wording": "Ähnliche Formulierung",
     "Same vendor": "Gleicher Anbieter",
+    "Sample text must be at most {max} characters":
+      "Der Beispieltext darf höchstens {max} Zeichen lang sein",
     "Shared framework": "Gemeinsames Rahmenwerk",
     "Shared use case": "Gemeinsamer Anwendungsfall",
     "Why are you dismissing {name}?": "Warum verwerfen Sie {name}?",
@@ -10600,6 +10644,46 @@ export const translations: Record<string, Record<string, string>> = {
       "Importer les nouveaux tickets Jira et synchroniser les statuts selon un planning",
     "Each sync imports issues created since the last one, then syncs status both ways.":
       "Chaque synchronisation importe les tickets créés depuis la précédente, puis synchronise les statuts dans les deux sens.",
+    // Agent Control monitor only mode
+    "Enforce": "Appliquer",
+    "Monitor only": "Surveillance uniquement",
+    "Rules are checked and logged but never block or pause calls. Rate limits still apply.":
+      "Les règles sont vérifiées et journalisées, mais ne bloquent ni ne suspendent jamais les appels. Les limites de débit s'appliquent toujours.",
+    'Choose how policies apply to calls made with "{name}".':
+      "Choisissez comment les politiques s'appliquent aux appels effectués avec « {name} ».",
+    "Use monitor only mode?": "Utiliser le mode surveillance uniquement ?",
+    "Use monitor only": "Utiliser la surveillance uniquement",
+    "Calls made with this key will no longer be blocked or paused for approval.":
+      "Les appels effectués avec cette clé ne seront plus bloqués ni suspendus pour approbation.",
+    'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy, and for native tool calls when the key\'s "Also apply tool lists to native tool calls" setting is on. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
+      "Les garde-fous et les règles d'approbation sont toujours vérifiés, ainsi que les listes d'outils de la clé pour les appels passant par le proxy MCP, et pour les appels d'outils natifs lorsque le paramètre « Appliquer aussi les listes d'outils aux appels d'outils natifs » de la clé est activé. Chaque correspondance est journalisée dans Activité comme « Bloquerait » ou « Nécessiterait une approbation ». Aucune demande d'approbation n'est créée. Les limites de débit s'appliquent toujours.",
+    "Monitor only since {date} · by {name}":
+      "Surveillance uniquement depuis le {date} · par {name}",
+    "Monitor only since {date}": "Surveillance uniquement depuis le {date}",
+    "Would block": "Bloquerait",
+    "Would need approval": "Nécessiterait une approbation",
+    "{count} would block": "{count} bloqueraient",
+    "{count} would need approval": "{count} nécessiteraient une approbation",
+    "Would have been blocked by {rule}": "Aurait été bloqué par {rule}",
+    "Would have been blocked by this key's tool list":
+      "Aurait été bloqué par la liste d'outils de cette clé",
+    "Would have needed approval: {rule}": "Aurait nécessité une approbation : {rule}",
+    "Would have needed approval (tool requires approval)":
+      "Aurait nécessité une approbation (l'outil exige une approbation)",
+    "Would have been blocked by a guardrail": "Aurait été bloqué par un garde-fou",
+    "Would have needed approval": "Aurait nécessité une approbation",
+    "Enforcement settings": "Paramètres d'application",
+    "Failed to save the key settings": "Impossible d'enregistrer les paramètres de la clé",
+    "Also apply tool lists to native tool calls (hooks and SDK)":
+      "Appliquer aussi les listes d'outils aux appels d'outils natifs (hooks et SDK)",
+    "Off: the allowed and blocked tool lists apply only to MCP server tools called through the proxy. On: they also apply to the agent's own tool calls checked by the hook script or the Python SDK, such as Bash, Edit or your Python functions. Leave it off for keys used by Claude Code or Cursor unless the lists name those tools.":
+      "Désactivé : les listes d'outils autorisés et bloqués ne s'appliquent qu'aux outils de serveur MCP appelés via le proxy. Activé : elles s'appliquent aussi aux appels d'outils propres de l'agent vérifiés par le script de hook ou le SDK Python, comme Bash, Edit ou vos fonctions Python. Laissez-le désactivé pour les clés utilisées par Claude Code ou Cursor, sauf si les listes nomment ces outils.",
+    "MCP proxy only": "Proxy MCP uniquement",
+    "MCP proxy and native calls": "Proxy MCP et appels natifs",
+    "Allowlist for MCP server tools called through the proxy: if set, this key may call only these tools. Comma-separated; leave empty to allow all. Applies to native tool calls (Bash, Edit, SDK functions) only when the setting below is on.":
+      "Liste d'autorisation des outils de serveur MCP appelés via le proxy : si elle est définie, cette clé ne peut appeler que ces outils. Séparés par des virgules ; laissez vide pour tout autoriser. S'applique aux appels d'outils natifs (Bash, Edit, fonctions du SDK) uniquement lorsque le paramètre ci-dessous est activé.",
+    "Denylist for MCP server tools called through the proxy: these are always denied, even if also in the allowlist. Comma-separated; leave empty to block none. Applies to native tool calls only when the setting below is on.":
+      "Liste de blocage des outils de serveur MCP appelés via le proxy : ils sont toujours refusés, même s'ils figurent aussi dans la liste d'autorisation. Séparés par des virgules ; laissez vide pour n'en bloquer aucun. S'applique aux appels d'outils natifs uniquement lorsque le paramètre ci-dessous est activé.",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Rôles à haut risque",
     "High-risk roles *": "Rôles à haut risque *",
@@ -11655,6 +11739,9 @@ export const translations: Record<string, Record<string, string>> = {
     // Use cases
     "Use case": "Cas d'usage",
     "Use case report": "Rapport de cas d'usage",
+    "This use case has no framework assigned": "Aucun référentiel n'est associé à ce cas d'usage",
+    "Requirements, assessment tracker, clauses and annexes, and NIST subcategories need a framework, so they are left out. The report still covers risks, models, vendors, training, policies and incidents. Assign a framework to the use case to include compliance sections.":
+      "Les exigences, le suivi des évaluations, les clauses et annexes ainsi que les sous-catégories NIST nécessitent un référentiel et sont donc exclus. Le rapport couvre toujours les risques, les modèles, les fournisseurs, les formations, les politiques et les incidents. Associez un référentiel au cas d'usage pour inclure les sections de conformité.",
     "AI project": "Projet IA",
     "AI Project": "Projet IA",
     "Project": "Projet",
@@ -12438,8 +12525,6 @@ export const translations: Record<string, Record<string, string>> = {
     "Team & Compliance": "Équipe et conformité",
     "Templates are grouped by framework (EU AI Act, ISO 42001, etc.). Use the search bar to find templates relevant to your compliance needs.":
       "Les modèles sont groupés par référentiel (règlement IA de l'UE, ISO 42001, etc.). Utilisez la barre de recherche pour trouver des modèles correspondant à vos besoins de conformité.",
-    "The gateway periodically checks server health and can discover available tools automatically. Unhealthy servers are temporarily bypassed to keep agents running.":
-      "La passerelle vérifie périodiquement l'état des serveurs et peut découvrir automatiquement les outils disponibles. Les serveurs en mauvais état sont temporairement contournés pour que les agents continuent de fonctionner.",
     "The marketplace tab above lists available plugins for frameworks (SOC 2, GDPR, HIPAA), integrations (Slack, Jira), and more.":
       "L'onglet Place de marché ci-dessus liste les plugins disponibles pour les référentiels (SOC 2, RGPD, HIPAA), les intégrations (Slack, Jira) et plus encore.",
     "This registry manages all AI/LLM models and their associated risks within your organization. You can view, add, and manage model details and track model-specific risks and mitigation plans.":
@@ -14203,8 +14288,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Définissez le système IA, son objet, les données qu'il traite et les personnes qu'il affecte. Cela constitue la base du suivi des risques et de la conformité.",
     "Document risks related to bias, data quality, security, transparency, and model drift. Cover both technical and organizational risks.":
       "Documentez les risques liés aux biais, à la qualité des données, à la sécurité, à la transparence et à la dérive des modèles. Couvrez à la fois les risques techniques et organisationnels.",
-    "Each agent key can restrict which MCP tools the agent is allowed or blocked from calling. Combine with rate limits for fine-grained governance.":
-      "Chaque clé d'agent peut restreindre les outils MCP que l'agent est autorisé ou non à appeler. Associez-la à des limites de débit pour une gouvernance fine.",
+    "Each agent key can list the MCP server tools it may or may not call through the proxy, and can apply the same lists to native tool calls from the hook script or the Python SDK. Combine with rate limits for fine-grained governance.":
+      "Chaque clé d'agent peut lister les outils de serveur MCP qu'elle peut ou non appeler via le proxy, et appliquer les mêmes listes aux appels d'outils natifs du script de hook ou du SDK Python. Associez-la à des limites de débit pour une gouvernance fine.",
     "Each dataset should have a clear prompt column and an expected output column. Add metadata columns for filtering results later.":
       "Chaque jeu de données doit avoir une colonne de prompt claire et une colonne de sortie attendue. Ajoutez des colonnes de métadonnées pour filtrer les résultats ultérieurement.",
     "Each experiment run is saved here with scores and metadata. Run the same dataset across different models or configs to track progress.":
@@ -20107,6 +20192,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Des risques fournisseurs connexes décrivent la même exposition, chez ce fournisseur ou un autre. Aucun n'hérite de l'autre.",
     "Similar wording": "Formulation similaire",
     "Same vendor": "Même fournisseur",
+    "Sample text must be at most {max} characters":
+      "Le texte d'exemple ne doit pas dépasser {max} caractères",
     "Shared framework": "Cadre commun",
     "Shared use case": "Cas d'usage commun",
     "Why are you dismissing {name}?": "Pourquoi rejetez-vous {name} ?",
@@ -21044,6 +21131,45 @@ export const translations: Record<string, Record<string, string>> = {
       "Importar nuevas incidencias de Jira y sincronizar estados según una programación",
     "Each sync imports issues created since the last one, then syncs status both ways.":
       "Cada sincronización importa las incidencias creadas desde la anterior y luego sincroniza los estados en ambos sentidos.",
+    // Agent Control monitor only mode
+    "Enforce": "Aplicar",
+    "Monitor only": "Solo supervisión",
+    "Rules are checked and logged but never block or pause calls. Rate limits still apply.":
+      "Las reglas se comprueban y registran, pero nunca bloquean ni pausan las llamadas. Los límites de frecuencia siguen aplicándose.",
+    'Choose how policies apply to calls made with "{name}".':
+      "Elija cómo se aplican las políticas a las llamadas realizadas con «{name}».",
+    "Use monitor only mode?": "¿Usar el modo solo supervisión?",
+    "Use monitor only": "Usar solo supervisión",
+    "Calls made with this key will no longer be blocked or paused for approval.":
+      "Las llamadas realizadas con esta clave ya no se bloquearán ni se pausarán para aprobación.",
+    'Guardrails and approval rules are still checked, and so are the key\'s tool lists for calls through the MCP proxy, and for native tool calls when the key\'s "Also apply tool lists to native tool calls" setting is on. Every match is logged in Activity as "Would block" or "Would need approval". No approval requests are created. Rate limits still apply.':
+      "Las barreras de protección y las reglas de aprobación se siguen comprobando, y también las listas de herramientas de la clave en las llamadas a través del proxy MCP, y en las llamadas a herramientas nativas cuando la opción «Aplicar también las listas de herramientas a las llamadas nativas» de la clave está activada. Cada coincidencia se registra en Actividad como «Bloquearía» o «Requeriría aprobación». No se crean solicitudes de aprobación. Los límites de frecuencia siguen aplicándose.",
+    "Monitor only since {date} · by {name}": "Solo supervisión desde {date} · por {name}",
+    "Monitor only since {date}": "Solo supervisión desde {date}",
+    "Would block": "Bloquearía",
+    "Would need approval": "Requeriría aprobación",
+    "{count} would block": "{count} se bloquearían",
+    "{count} would need approval": "{count} requerirían aprobación",
+    "Would have been blocked by {rule}": "Habría sido bloqueado por {rule}",
+    "Would have been blocked by this key's tool list":
+      "Habría sido bloqueado por la lista de herramientas de esta clave",
+    "Would have needed approval: {rule}": "Habría requerido aprobación: {rule}",
+    "Would have needed approval (tool requires approval)":
+      "Habría requerido aprobación (la herramienta requiere aprobación)",
+    "Would have been blocked by a guardrail": "Habría sido bloqueado por una barrera de protección",
+    "Would have needed approval": "Habría requerido aprobación",
+    "Enforcement settings": "Configuración de aplicación",
+    "Failed to save the key settings": "No se pudo guardar la configuración de la clave",
+    "Also apply tool lists to native tool calls (hooks and SDK)":
+      "Aplicar también las listas de herramientas a las llamadas nativas (hooks y SDK)",
+    "Off: the allowed and blocked tool lists apply only to MCP server tools called through the proxy. On: they also apply to the agent's own tool calls checked by the hook script or the Python SDK, such as Bash, Edit or your Python functions. Leave it off for keys used by Claude Code or Cursor unless the lists name those tools.":
+      "Desactivado: las listas de herramientas permitidas y bloqueadas solo se aplican a las herramientas de servidor MCP invocadas a través del proxy. Activado: también se aplican a las llamadas a herramientas propias del agente que comprueban el script de hook o el SDK de Python, como Bash, Edit o sus funciones de Python. Déjelo desactivado en las claves que usan Claude Code o Cursor, salvo que las listas nombren esas herramientas.",
+    "MCP proxy only": "Solo proxy MCP",
+    "MCP proxy and native calls": "Proxy MCP y llamadas nativas",
+    "Allowlist for MCP server tools called through the proxy: if set, this key may call only these tools. Comma-separated; leave empty to allow all. Applies to native tool calls (Bash, Edit, SDK functions) only when the setting below is on.":
+      "Lista de permitidas para las herramientas de servidor MCP invocadas a través del proxy: si se define, esta clave solo puede invocar estas herramientas. Separadas por comas; déjela vacía para permitir todas. Se aplica a las llamadas a herramientas nativas (Bash, Edit, funciones del SDK) solo cuando la opción de abajo está activada.",
+    "Denylist for MCP server tools called through the proxy: these are always denied, even if also in the allowlist. Comma-separated; leave empty to block none. Applies to native tool calls only when the setting below is on.":
+      "Lista de bloqueadas para las herramientas de servidor MCP invocadas a través del proxy: siempre se deniegan, aunque también estén en la lista de permitidas. Separadas por comas; déjela vacía para no bloquear ninguna. Se aplica a las llamadas a herramientas nativas solo cuando la opción de abajo está activada.",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Roles de alto riesgo",
     "High-risk roles *": "Roles de alto riesgo *",
@@ -22085,6 +22211,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Analytics": "Analíticas",
     "Use case": "Caso de uso",
     "Use case report": "Informe de caso de uso",
+    "This use case has no framework assigned": "Este caso de uso no tiene ningún marco asignado",
+    "Requirements, assessment tracker, clauses and annexes, and NIST subcategories need a framework, so they are left out. The report still covers risks, models, vendors, training, policies and incidents. Assign a framework to the use case to include compliance sections.":
+      "Los requisitos, el seguimiento de evaluaciones, las cláusulas y anexos y las subcategorías de NIST necesitan un marco, por lo que se omiten. El informe sigue cubriendo riesgos, modelos, proveedores, formación, políticas e incidentes. Asigne un marco al caso de uso para incluir las secciones de cumplimiento.",
     "AI project": "Proyecto de IA",
     "AI Project": "Proyecto de IA",
     "AI PROJECT": "PROYECTO DE IA",
@@ -26578,8 +26707,6 @@ export const translations: Record<string, Record<string, string>> = {
       "Los eventos del sistema, las llamadas a la API y los resultados de los trabajos en segundo plano se registran automáticamente. Los registros aparecen a medida que su espacio de trabajo genera actividad.",
     "Templates are grouped by framework (EU AI Act, ISO 42001, etc.). Use the search bar to find templates relevant to your compliance needs.":
       "Las plantillas se agrupan por marco (EU AI Act, ISO 42001, etc.). Utilice la barra de búsqueda para encontrar plantillas relevantes para sus necesidades de cumplimiento.",
-    "The gateway periodically checks server health and can discover available tools automatically. Unhealthy servers are temporarily bypassed to keep agents running.":
-      "El gateway comprueba periódicamente el estado de los servidores y puede descubrir automáticamente las herramientas disponibles. Los servidores en mal estado se omiten temporalmente para mantener los agentes en funcionamiento.",
     "The marketplace tab above lists available plugins for frameworks (SOC 2, GDPR, HIPAA), integrations (Slack, Jira), and more.":
       "La pestaña de marketplace de arriba muestra los plugins disponibles para marcos (SOC 2, GDPR, HIPAA), integraciones (Slack, Jira) y más.",
     "This registry manages all AI/LLM models and their associated risks within your organization. You can view, add, and manage model details and track model-specific risks and mitigation plans.":
@@ -27026,8 +27153,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Defina el sistema de IA, su finalidad, los datos que procesa y las personas a las que afecta. Esto constituye la base para el seguimiento del riesgo y el cumplimiento.",
     "Document risks related to bias, data quality, security, transparency, and model drift. Cover both technical and organizational risks.":
       "Documente los riesgos relacionados con el sesgo, la calidad de los datos, la seguridad, la transparencia y la deriva del modelo. Cubra tanto los riesgos técnicos como los organizativos.",
-    "Each agent key can restrict which MCP tools the agent is allowed or blocked from calling. Combine with rate limits for fine-grained governance.":
-      "Cada clave de agente puede restringir qué herramientas MCP puede o no puede invocar el agente. Combínela con límites de frecuencia para una gobernanza más detallada.",
+    "Each agent key can list the MCP server tools it may or may not call through the proxy, and can apply the same lists to native tool calls from the hook script or the Python SDK. Combine with rate limits for fine-grained governance.":
+      "Cada clave de agente puede enumerar las herramientas de servidor MCP que puede o no invocar a través del proxy, y aplicar las mismas listas a las llamadas a herramientas nativas del script de hook o del SDK de Python. Combínela con límites de frecuencia para una gobernanza más detallada.",
     "Each dataset should have a clear prompt column and an expected output column. Add metadata columns for filtering results later.":
       "Cada conjunto de datos debe tener una columna de prompt clara y una columna de salida esperada. Añada columnas de metadatos para filtrar los resultados posteriormente.",
     "Each experiment run is saved here with scores and metadata. Run the same dataset across different models or configs to track progress.":
@@ -30471,6 +30598,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Los riesgos de proveedor relacionados describen la misma exposición, en este proveedor o en otro. Ninguno hereda del otro.",
     "Similar wording": "Redacción similar",
     "Same vendor": "Mismo proveedor",
+    "Sample text must be at most {max} characters":
+      "El texto de ejemplo no puede superar los {max} caracteres",
     "Shared framework": "Marco compartido",
     "Shared use case": "Caso de uso compartido",
     "Why are you dismissing {name}?": "¿Por qué descartas {name}?",

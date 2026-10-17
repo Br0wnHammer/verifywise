@@ -23,6 +23,7 @@ vi.mock("../../../components/Layout/PageHeaderExtended", () => ({
 
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import VirtualKeysPage from "./index";
+import CustomException from "../../../../infrastructure/exceptions/customeException";
 
 const mockGet = apiServices.get as unknown as ReturnType<typeof vi.fn>;
 const mockPost = apiServices.post as unknown as ReturnType<typeof vi.fn>;
@@ -138,10 +139,10 @@ describe("AIGateway - VirtualKeys", () => {
     expect(screen.getByText("vk_abc123")).toBeInTheDocument();
     expect(screen.getByText("$12.5000 / $50.00")).toBeInTheDocument();
     expect(screen.getByText("60 RPM")).toBeInTheDocument();
-    expect(screen.getByText("models: gpt-4o-mini")).toBeInTheDocument();
-    expect(screen.getByText("blocked: gpt-4o")).toBeInTheDocument();
-    expect(screen.getByText("providers: openai")).toBeInTheDocument();
-    expect(screen.getByText("blocked providers: openrouter")).toBeInTheDocument();
+    expect(screen.getByText("Only models: gpt-4o-mini")).toBeInTheDocument();
+    expect(screen.getByText("Blocked models: gpt-4o")).toBeInTheDocument();
+    expect(screen.getByText("Only providers: openai")).toBeInTheDocument();
+    expect(screen.getByText("Blocked providers: openrouter")).toBeInTheDocument();
   });
 
   it("shows a Revoked status for revoked keys and a Delete action for inactive keys", async () => {
@@ -253,7 +254,9 @@ describe("AIGateway - VirtualKeys", () => {
 
   it("shows the API error message when create submission fails", async () => {
     mockLoad([]);
-    mockPost.mockRejectedValue({ response: { data: { detail: "Budget must be positive" } } });
+    mockPost.mockRejectedValue(
+      new CustomException("Bad Request", 400, { detail: "Budget must be positive" }),
+    );
     renderWithProviders(<VirtualKeysPage />);
 
     await waitFor(() => {

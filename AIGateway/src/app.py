@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
+from middlewares.invalid_unicode import InvalidUnicodeMiddleware
 from middlewares.tenant import TenantMiddleware
 from routers.completions import router as completions_router
 from routers.models import router as models_router
@@ -53,6 +54,11 @@ app = FastAPI(
     redirect_slashes=False,
 )
 
+# Reject request bodies carrying a lone UTF-16 surrogate or invalid UTF-8 with a
+# 400 before any route runs; otherwise they fail as 500s when echoed, stored
+# or logged. Added first so it sits inside CORS (its 400s carry CORS headers).
+app.add_middleware(InvalidUnicodeMiddleware)
+
 # CORS: allow the Express backend plus any explicitly configured origins.
 # Never use "*": key-authenticated endpoints must not be callable from
 # arbitrary websites via browser JS (a leaked virtual key would be usable
@@ -81,13 +87,13 @@ setup_observability(app, "verifywise-ai-gateway")
 # Mounted under /internal prefix to avoid conflict with public /v1 routes
 include_internal_router(app, completions_router, tags=["Internal"])
 include_internal_router(app, models_router, tags=["Internal"])
-include_internal_router(app, guardrails_router, tags=["Internal"])
 
 # CRUD routes (Express backend → Gateway, authenticated via internal key + tenant headers)
 include_internal_router(app, api_keys_router, tags=["CRUD"])
 include_internal_router(app, budget_router, tags=["CRUD"])
 include_internal_router(app, endpoints_router, tags=["CRUD"])
 include_internal_router(app, spend_router, tags=["CRUD"])
+include_internal_router(app, guardrails_router, tags=["CRUD"])
 include_internal_router(app, guardrails_crud_router, tags=["CRUD"])
 include_internal_router(app, virtual_keys_router, tags=["CRUD"])
 include_internal_router(app, prompts_router, tags=["CRUD"])

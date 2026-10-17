@@ -22,6 +22,7 @@ import Chip from "../../../components/Chip";
 import StandardModal from "../../../components/Modals/StandardModal";
 import { PageHeaderExtended } from "../../../components/Layout/PageHeaderExtended";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
+import { getGatewayErrorText } from "../../../../application/utils/apiErrorReason";
 import palette from "../../../themes/palette";
 import CustomizableSkeleton from "../../../components/Skeletons";
 import {
@@ -178,9 +179,7 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
 
       await loadData();
     } catch (err: unknown) {
-      const errData = (err as { response?: { data?: { detail?: string; message?: string } } })
-        ?.response?.data;
-      setCreateError(errData?.detail || errData?.message || "Failed to create virtual key");
+      setCreateError(getGatewayErrorText(err, "Failed to create virtual key"));
     } finally {
       setCreateSubmitting(false);
     }
@@ -361,28 +360,28 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
                       )}
                       {key.allowed_models?.length > 0 && (
                         <Chip
-                          label={`models: ${key.allowed_models.join(", ")}`}
+                          label={`Only models: ${key.allowed_models.join(", ")}`}
                           size="small"
                           uppercase={false}
                         />
                       )}
                       {key.blocked_models?.length > 0 && (
                         <Chip
-                          label={`blocked: ${key.blocked_models.join(", ")}`}
+                          label={`Blocked models: ${key.blocked_models.join(", ")}`}
                           size="small"
                           uppercase={false}
                         />
                       )}
                       {key.allowed_providers?.length > 0 && (
                         <Chip
-                          label={`providers: ${key.allowed_providers.join(", ")}`}
+                          label={`Only providers: ${key.allowed_providers.join(", ")}`}
                           size="small"
                           uppercase={false}
                         />
                       )}
                       {key.blocked_providers?.length > 0 && (
                         <Chip
-                          label={`blocked providers: ${key.blocked_providers.join(", ")}`}
+                          label={`Blocked providers: ${key.blocked_providers.join(", ")}`}
                           size="small"
                           uppercase={false}
                         />
