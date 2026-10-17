@@ -98,6 +98,34 @@ describe("jira incidents status sync", () => {
     expect(again.counts).toMatchObject({ status_to_jira: 0, status_from_jira: 0 });
   });
 
+  it("re-reads a settled closed link from Jira at most once a day", async () => {
+    await vwSet("Closed");
+    await sync(orgA);
+    expect(await link()).toMatchObject({ state: "ok", last_vw_status: "Closed" });
+
+    // Reopened in Jira: the settled link is not due yet.
+    mock.setStatus(issueId, "3");
+    mock.state.calls = [];
+    await sync(orgA);
+    expect((await incident()).status).toBe("Closed");
+    expect(mock.state.calls.some((c) => c.path.endsWith("/search/jql"))).toBe(false);
+
+    await sequelize.query(
+      `UPDATE jira_incident_links SET last_synced_at = now() - interval '25 hours' WHERE organization_id = :orgA`,
+      { replacements: { orgA } },
+    );
+    await sync(orgA);
+    expect((await incident()).status).toBe("Investigating");
+  });
+
+  it("checks a settled link at once after a VerifyWise change", async () => {
+    await vwSet("Closed");
+    await sync(orgA);
+    await vwSet("Investigating");
+    await sync(orgA);
+    expect(mock.state.issues[0].statusId).toBe("3");
+  });
+
   it("records Don't change Jira without calling Jira", async () => {
     await vwSet("Mitigated");
     await sync(orgA);
@@ -190,7 +218,9 @@ describe("jira incidents status sync", () => {
       { replacements: { incidentId } },
     );
     await sequelize.query(
-      `UPDATE jira_incident_links SET last_vw_status = 'Closed', last_jira_status_id = '4' WHERE organization_id = :orgA`,
+      // A settled link is only re-read once a day: make this one due.
+      `UPDATE jira_incident_links SET last_vw_status = 'Closed', last_jira_status_id = '4',
+              last_synced_at = now() - interval '25 hours' WHERE organization_id = :orgA`,
       { replacements: { orgA } },
     );
     mock.setStatus(issueId, "4");

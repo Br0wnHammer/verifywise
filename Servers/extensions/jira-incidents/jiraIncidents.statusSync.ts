@@ -89,8 +89,8 @@ export async function runStatusSync(state: RunState): Promise<void> {
       for (const link of links) {
         if (state.deadline.aborted) throw new StopRun(STOP_DEADLINE);
         await syncLink(state, link, found.get(link.jira_issue_id) ?? null);
-        await state.heartbeat();
       }
+      await state.heartbeat();
     }
   } catch (err) {
     if (err instanceof StopRun) {

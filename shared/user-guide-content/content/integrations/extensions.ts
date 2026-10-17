@@ -366,7 +366,7 @@ export const extensionsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: '**What an imported incident contains:** the issue\'s summary and description as the description, the severity from your mapping (Serious when the issue has no priority), the status from your mapping, the issue\'s created date as the date it occurred and was detected, and your default use case, type and reporter. Its approval status starts as Pending. A new imported incident runs the same automations as any new incident, and a Very serious one starts the incident response workflow. If your VerifyWise server has its web address configured, the Jira issue also gets a link back to the incident.',
+      text: '**What an imported incident contains:** the issue\'s summary and description as the description, the severity from your mapping (Serious when the issue has no priority), the status from your mapping, the issue\'s created date as the date it occurred and was detected, and your default use case, type and reporter. Its approval status starts as Pending. A new imported incident runs the same automations as any new incident, and a Very serious one starts the incident response workflow. If your VerifyWise server has its web address configured, the Jira issue also gets a link back to the incident. If adding that link fails, the next syncs try again.',
     },
     {
       type: 'paragraph',
@@ -376,7 +376,7 @@ export const extensionsContent: ArticleContent = {
       type: 'callout',
       variant: 'info',
       title: 'How syncing works',
-      text: 'Each sync first imports issues created since the last sync, then compares status on both sides. A status changed in Jira is copied to the incident, and a status changed in VerifyWise moves the Jira issue, unless you chose **Don\'t change Jira** for it. If both changed since the last sync, the more recent change wins, and the other side is updated to match. The **Sync** section lets you click **Sync now** or change how often it runs, from every hour to every 48 hours. **Sync activity** lists the latest 50 events with links to the incident and the Jira issue. Changing the project, issue type or label affects new imports only. Only Admins can open these settings.',
+      text: 'Each sync first imports issues created since the last sync, then compares status on both sides. A status changed in Jira is copied to the incident, and a status changed in VerifyWise moves the Jira issue, unless you chose **Don\'t change Jira** for it. If both changed since the last sync, the more recent change wins, and the other side is updated to match. Once an incident is closed on both sides, VerifyWise checks its Jira issue once a day, so reopening it in Jira can take up to a day to show in VerifyWise. The **Sync** section lets you click **Sync now** or change how often it runs, from every hour to every 48 hours. **Sync activity** lists the latest 50 events with links to the incident and the Jira issue. Changing the project, issue type or label affects new imports only. Only Admins can open these settings.',
     },
     {
       type: 'table',

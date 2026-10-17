@@ -601,7 +601,7 @@ status syncs; VerifyWise never creates Jira issues.
 | Table | Holds |
 |---|---|
 | `jira_incidents_config` | One row per organization: site URL, email, encrypted API token, service account id and time zone, project, issue type, optional label, the three mappings (`status_map_in`, `status_map_out`, `severity_map`), defaults (use case, type, reporter), `import_from`, `last_checked_at` |
-| `jira_incident_links` | One row per imported issue: `jira_issue_id`, key, URL, `incident_id`, `state` (`ok`, `error`, `conflict`, `deleted_in_jira`, `deleted_in_verifywise`), `state_reason`, `last_jira_status_id`, `last_vw_status`. UNIQUE (organization_id, jira_issue_id); a composite FK (incident_id, organization_id) keeps the link in its incident's organization |
+| `jira_incident_links` | One row per imported issue: `jira_issue_id`, key, URL, `incident_id`, `state` (`ok`, `error`, `conflict`, `deleted_in_jira`, `deleted_in_verifywise`), `state_reason`, `last_jira_status_id`, `last_vw_status`, `last_synced_at` (last check), `remote_link_pending`. UNIQUE (organization_id, jira_issue_id); a composite FK (incident_id, organization_id) keeps the link in its incident's organization |
 | `jira_incident_sync_events` | Sync activity: `imported`, `status_from_jira`, `status_to_jira`, `conflict`, `error`, `deleted_in_jira`, with a JSON `detail`; an audit record under data retention |
 
 ### Creating an imported incident
@@ -619,13 +619,21 @@ from `severity_map` (Serious when the issue has no priority), status from
 `status_map_in`, the issue's created date as `occurred_date` and
 `date_detected`, and the configured use case, type and reporter. Approval
 status starts at Pending. After commit, a remote link back to the incident is
-added to the Jira issue when `FRONTEND_URL` is set.
+added to the Jira issue when `FRONTEND_URL` is set. The link row is written
+with `remote_link_pending = true` and cleared once Jira accepts the link; a
+failure records one `error` event, and each later run retries up to 20
+pending links made before it (`retryRemoteLinks`), logging repeat failures
+without new events. A rate limit stops the run and leaves the link pending.
 
 ### Status rules
 
 Each run reads both sides for every link in `ok`, `error`, `conflict` or
-`deleted_in_jira` whose incident exists and is not archived. "Changed" means
-different from `last_jira_status_id` / `last_vw_status`:
+`deleted_in_jira` whose incident exists and is not archived, except settled
+links: `ok`, the incident Closed and `last_vw_status` Closed are re-read from
+Jira at most once every 24 hours (`SETTLED_RECHECK_HOURS`, measured from
+`last_synced_at`). A reopen in Jira can therefore take up to a day to reach a
+closed incident; a VerifyWise change unsettles the link at once. "Changed"
+means different from `last_jira_status_id` / `last_vw_status`:
 
 | Jira changed? | VerifyWise changed? | Action |
 |---|---|---|
@@ -639,6 +647,10 @@ different from `last_jira_status_id` / `last_vw_status`:
 - The link and incident are locked and re-checked before each write (lock
   order link → incident, as on the delete path); if either changed in the
   meantime, the link waits for the next run.
+- An issue imported in an unmapped status has an empty `last_jira_status_id`,
+  so a later mapping is applied. A VerifyWise change on it is VerifyWise's
+  alone (no conflict) unless Jira's changelog shows a status move after the
+  link was created.
 - An unmapped Jira status, or a transition that needs a field (such as
   Resolution) or does not exist from the current status, marks the link
   `error` with the reason; the incident is left as it is.

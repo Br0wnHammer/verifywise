@@ -1,6 +1,7 @@
 import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../../database/db";
-import type { EventKind, LinkState } from "./jiraIncidents.constants";
+import { AIIncidentManagementStatus } from "../../domain.layer/enums/ai-incident-management.enum";
+import { SETTLED_RECHECK_HOURS, type EventKind, type LinkState } from "./jiraIncidents.constants";
 
 export interface LinkRow {
   id: number;
@@ -108,7 +109,13 @@ export async function setLinkState(
   );
 }
 
-/** Linked, non-archived incidents whose link still needs syncing, in id order after `afterId`. */
+/**
+ * Linked, non-archived incidents whose link still needs syncing, in id order
+ * after `afterId`. A settled link (ok, Closed in VerifyWise and in the
+ * snapshot) is only due once SETTLED_RECHECK_HOURS have passed since its last
+ * check, so a reopen in Jira can take that long to arrive; a VerifyWise
+ * change unsettles it at once.
+ */
 export async function listSyncableLinks(
   orgId: number,
   afterId: number,
@@ -122,9 +129,19 @@ export async function listSyncableLinks(
       WHERE l.organization_id = :orgId AND l.id > :afterId
         AND l.state IN ('ok', 'error', 'conflict', 'deleted_in_jira')
         AND COALESCE(i.archived, false) = false
+        AND NOT (
+          l.state = 'ok' AND i.status = :closed AND l.last_vw_status = :closed
+          AND l.last_synced_at >= now() - make_interval(hours => :settledHours)
+        )
       ORDER BY l.id
       LIMIT :limit`,
-    { orgId, afterId, limit },
+    {
+      orgId,
+      afterId,
+      limit,
+      closed: AIIncidentManagementStatus.CLOSED,
+      settledHours: SETTLED_RECHECK_HOURS,
+    },
   );
 }
 
