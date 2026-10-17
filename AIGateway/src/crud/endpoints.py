@@ -269,13 +269,22 @@ async def delete_endpoint(org_id: int, id: int) -> bool:
                 ", ".join(ref_slugs),
             )
 
-        # Remove this endpoint from virtual key allowed_endpoint_ids arrays
+        # Remove this endpoint from virtual key allowed_endpoint_ids arrays,
+        # except where it is a key's last one (counting what is left after
+        # removing every copy, so [9, 9] counts as one): an empty list means "every
+        # endpoint" to the gateway, so emptying it would widen the key. The
+        # left-over id names an endpoint that no longer exists (ids are never
+        # reused), so that key can no longer call anything. UPDATE re-checks
+        # the condition on the locked row, so concurrent deletes cannot empty
+        # a key between them.
         await db.execute(
+            # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
             text("""
                 UPDATE ai_gateway_virtual_keys
                 SET allowed_endpoint_ids = array_remove(allowed_endpoint_ids, :id)
                 WHERE organization_id = :org_id
                   AND :id = ANY(allowed_endpoint_ids)
+                  AND cardinality(array_remove(allowed_endpoint_ids, :id)) > 0
             """),
             {"org_id": org_id, "id": id},
         )
