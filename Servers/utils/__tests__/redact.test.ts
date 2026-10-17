@@ -1,5 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
-import { redactSensitiveInfo } from "../logger/redact";
+import { redactSensitiveInfo, UNSCANNABLE_PLACEHOLDER } from "../logger/redact";
 
 describe("redactSensitiveInfo", () => {
   it.each([
@@ -87,6 +87,34 @@ describe("redactSensitiveInfo", () => {
     ["host:port@ (safe side)", "http://host:8080@foo", "http://host:[REDACTED]@foo"],
     // unsigned JWT
     ["JWT with empty signature", "got eyJhbGc.eyJzdWI. back", "got [REDACTED] back"],
+    // scheme chains: the scheme may follow ":" or "/"
+    [
+      "jdbc:postgresql URL",
+      "connect jdbc:postgresql://u:p@h:5432/db failed",
+      "connect jdbc:postgresql://u:[REDACTED]@h:5432/db failed",
+    ],
+    ["URL: prefix", "URL:postgres://u:p@h", "URL:postgres://u:[REDACTED]@h"],
+    [
+      "env-style URL",
+      "DATABASE_URL=postgres://u:p@h/db",
+      "DATABASE_URL=postgres://u:[REDACTED]@h/db",
+    ],
+    // key names are found whatever precedes them
+    [
+      "six prefix segments",
+      "a_b_c_d_e_f_password=hunter2 set",
+      "a_b_c_d_e_f_password=[REDACTED] set",
+    ],
+    ["camelCase prefix", "dbPassword=hunter2 set", "dbPassword=[REDACTED] set"],
+    // quoted, spaced and unterminated values
+    ["quoted value with spaces", 'password="two words" set', "password=[REDACTED] set"],
+    ["wide whitespace", `password=${" ".repeat(20)}hunter2 set`, "password=[REDACTED] set"],
+    ["unterminated JSON value", '{"password":"hunter2', '{"password":"[REDACTED]"'],
+    [
+      "JSON value with escaped quote",
+      '{"password":"a\\"b","ok":1}',
+      '{"password":"[REDACTED]","ok":1}',
+    ],
   ])("redacts %s", (_label, input, expected) => {
     expect(redactSensitiveInfo(input)).toBe(expected);
   });
@@ -106,14 +134,46 @@ describe("redactSensitiveInfo", () => {
   ])("leaves %j unchanged", (input) => {
     expect(redactSensitiveInfo(input)).toBe(input);
   });
+
+  // Never fail open on length: over-long secrets are redacted in full.
+  it.each([
+    [
+      "a 10KB JWT",
+      `eyJ${"a".repeat(3400)}.eyJ${"b".repeat(3400)}.${"c".repeat(3400)}`,
+      "[REDACTED]",
+    ],
+    [
+      "a JWT whose segments exceed 8KB",
+      `eyJ${"a".repeat(9000)}.eyJ${"b".repeat(9000)}.${"c".repeat(9000)}`,
+      "[REDACTED]",
+    ],
+    [
+      "a 10KB JSON secret value",
+      `{"password":"${"s".repeat(10_000)}"}`,
+      '{"password":"[REDACTED]"}',
+    ],
+    ["a 1KB URL password", `postgres://u:${"p".repeat(1024)}@db/x`, "postgres://u:[REDACTED]@db/x"],
+    ["a 10KB key=value secret", `token=${"t".repeat(10_000)} end`, "token=[REDACTED] end"],
+  ])("redacts %s in full", (_label, input, expected) => {
+    expect(redactSensitiveInfo(input)).toBe(expected);
+  });
+
+  it("fails closed when the input cannot be scanned", () => {
+    const unscannable = {
+      replace() {
+        throw new RangeError("Maximum call stack size exceeded");
+      },
+    } as unknown as string;
+    expect(redactSensitiveInfo(unscannable)).toBe(UNSCANNABLE_PLACEHOLDER);
+  });
 });
 
 // Redaction runs on every log line and event, so it must stay linear.
 // Each input is 50-120KB; a quadratic pattern takes seconds on them (the
-// UUID chain took ~1.8s and "a-" x32000 ~8.7s before the bounds). Measured
-// locally after the fix (Node 22, best of 3): 0.5-14.3ms each, worst
-// "x://a:;" x15000. The bound is the best of three runs,
-// so a busy CI machine does not flake it.
+// UUID chain took ~1.8s and "a-" x32000 ~8.7s with the earlier unbounded
+// key prefix). Measured locally (Node 22, best of 3): 0.2-3.3ms each, worst
+// the 100KB random text. The bound is the best of three runs, so a busy CI
+// machine does not flake it.
 describe("redactSensitiveInfo performance", () => {
   const prng = (seed: number) => () => {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
@@ -152,6 +212,11 @@ describe("redactSensitiveInfo performance", () => {
     ['"x://a:;" x15000', "x://a:;".repeat(15000)],
     ['"\\"password\\":\\"" x8000', '"password":"'.repeat(8000)],
     ['"Authorization: " x8000', "Authorization: ".repeat(8000)],
+    ["'password=\"x ' x8000 (unterminated quotes)", 'password="x '.repeat(8000)],
+    ["'password\"' x10000", 'password"'.repeat(10000)],
+    ['"eyJa.eyJ-" x20000', "eyJa.eyJ-".repeat(20000)],
+    ['"a://b:c@" x15000 in one token', "a://b:c@".repeat(15000)],
+    ["a 100KB token with :// and @", `x://${"y".repeat(100_000)}@`],
   ])("redacts %s in under 50ms", (_label, input) => {
     expect(bestOfThree(input)).toBeLessThan(50);
   });
