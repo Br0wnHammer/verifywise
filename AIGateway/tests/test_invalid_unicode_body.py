@@ -247,7 +247,10 @@ def test_deeply_nested_body_does_not_raise_in_the_check():
     assert has_invalid_unicode(body) is False
 
 
-@pytest.mark.parametrize("content_type", ["text/plain", "application/x-www-form-urlencoded", "application/x-json"])
+@pytest.mark.parametrize(
+    "content_type",
+    ["text/plain", "application/x-www-form-urlencoded", "application/x-json", "application/xml", "*/*", ""],
+)
 def test_other_content_types_are_checked(client, content_type):
     # Routes call request.json() whatever the content type says.
     res = client.post("/echo", content=LONE_SURROGATE, headers={"content-type": content_type})
@@ -277,5 +280,17 @@ def test_binary_content_types_are_not_inspected(content_type):
     async def raw(request: Request):
         return {"size": len(await request.body())}
 
-    res = TestClient(app).post("/raw", content=b"\xff\xfe\x00 binary", headers={"content-type": content_type})
+    body = b"\xff\xfe binary"  # odd length: fails every text decode, so a check would 400 it
+    assert has_invalid_unicode(body)
+    res = TestClient(app).post("/raw", content=body, headers={"content-type": content_type})
     assert res.status_code == 200
+
+
+def test_escaped_pairs_do_not_need_a_json_parse(monkeypatch):
+    import middlewares.invalid_unicode as mod
+
+    calls = []
+    real_loads = json.loads
+    monkeypatch.setattr(mod.json, "loads", lambda *a, **kw: calls.append(1) or real_loads(*a, **kw))
+    assert has_invalid_unicode(b'{"a": "' + b"\\ud83d\\ude00" * 1000 + b'"}') is False
+    assert calls == []

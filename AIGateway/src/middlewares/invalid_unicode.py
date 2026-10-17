@@ -20,11 +20,29 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 INVALID_CHARACTER_DETAIL = "Request contains an invalid character"
 
-# A \uXXXX escape in the surrogate range (D800–DFFF). Cheap C-level
-# prefilter: only bodies that contain one are parsed here. A valid pair
-# (an escaped emoji) also matches, and passes once parsed because it decodes
-# to one character; parsing it is cheaper than any Python-level scan.
-_SURROGATE_ESCAPE = re.compile(r"\\u[dD][89abcdefABCDEF][0-9a-fA-F]{2}")
+# A lone surrogate escape: a high (D800–DBFF) escape not followed by a low
+# one, or a low (DC00–DFFF) escape not preceded by a high one. C-level
+# prefilter, so a valid pair (an escaped emoji) never costs a parse. A hit
+# can still be a false positive after an escaped backslash ("\\\\ud83d" is
+# text, not an escape), so hits are confirmed with json.loads.
+_LONE_SURROGATE_ESCAPE = re.compile(
+    r"\\u[dD][89abAB][0-9a-fA-F]{2}(?!\\u[dD][c-fC-F][0-9a-fA-F]{2})"
+    r"|(?<!\\u[dD][89abAB][0-9a-fA-F]{2})\\u[dD][c-fC-F][0-9a-fA-F]{2}"
+)
+
+# Binary types no route parses as JSON. Every other body is checked, because
+# the gateway's routes call request.json() whatever the content type says.
+_BINARY_MEDIA_PREFIXES = (
+    b"multipart/",
+    b"application/octet-stream",
+    b"application/gzip",
+    b"application/zip",
+    b"application/pdf",
+    b"application/x-protobuf",
+    b"image/",
+    b"audio/",
+    b"video/",
+)
 
 # The MCP JSON-RPC endpoint reports malformed input as a JSON-RPC parse error
 # with HTTP 200 (routers/mcp_proxy.py); keep that contract for its clients.
@@ -34,18 +52,14 @@ _BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
 def _is_json_request(scope: Scope) -> bool:
-    """Bodies routes may parse with request.json(): JSON types, text, form
-    posts (curl -d) and a missing content type. Binary types pass untouched."""
+    """Every body a route may parse with request.json(): all but known binary
+    types, which pass through untouched."""
     if scope.get("method") not in _BODY_METHODS:
         return False
     for name, value in scope.get("headers", []):
         if name == b"content-type":
             media_type = value.split(b";", 1)[0].strip().lower()
-            return (
-                b"json" in media_type
-                or media_type.startswith(b"text/")
-                or media_type == b"application/x-www-form-urlencoded"
-            )
+            return not media_type.startswith(_BINARY_MEDIA_PREFIXES)
     return True
 
 
@@ -60,7 +74,7 @@ def has_invalid_unicode(body: bytes) -> bool:
         text = body.decode(json.detect_encoding(body))
     except UnicodeDecodeError:
         return True
-    if not _SURROGATE_ESCAPE.search(text):
+    if not _LONE_SURROGATE_ESCAPE.search(text):
         return False
     try:
         parsed = json.loads(text)
