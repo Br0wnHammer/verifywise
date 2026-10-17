@@ -3,6 +3,7 @@ the org's active rules and settings run on sample text. No live services."""
 
 import os
 import sys
+import threading
 
 import pytest
 from fastapi import FastAPI, Request
@@ -11,6 +12,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import routers.guardrails as guardrails_router  # noqa: E402
+import services.guardrail_service as gs  # noqa: E402
 
 BLOCK_CODENAME = {
     "id": 1, "guardrail_type": "content_filter", "name": "Project codename",
@@ -92,3 +94,19 @@ def test_text_the_response_cannot_encode_is_rejected(client):
     r = client.post("/guardrails/test", content=b'{"text": "half an emoji \\ud83d"}',
                     headers={"Content-Type": "application/json"})
     assert r.status_code == 400
+
+
+def test_scans_on_the_scan_thread_not_the_event_loop(monkeypatch):
+    # The preview can scan 20k characters with Presidio; on the event loop it
+    # would stall every other request, as the live proxy and MCP scans would.
+    seen = {}
+    real_scan = gs.scan_text
+
+    def recording_scan(**kwargs):
+        seen["thread"] = threading.current_thread().name
+        return real_scan(**kwargs)
+
+    monkeypatch.setattr(gs, "scan_text", recording_scan)
+    r = _client(monkeypatch, [BLOCK_CODENAME]).post("/guardrails/test", json={"text": "Ship bluebird"})
+    assert r.status_code == 200
+    assert seen["thread"].startswith(gs.SCAN_THREAD_PREFIX)

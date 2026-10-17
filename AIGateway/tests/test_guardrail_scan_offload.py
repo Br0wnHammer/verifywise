@@ -4,6 +4,7 @@ scan_text_async runs scan_text on one dedicated thread, so a slow scan never
 blocks the event loop and two scans never use the shared engine at once.
 Presidio is mocked; no spaCy model is loaded. No live services."""
 
+import ast
 import asyncio
 import os
 import sys
@@ -294,3 +295,28 @@ def test_an_unexpected_default_config_shape_raises(monkeypatch, default):
     monkeypatch.setattr(nlp_engine_module, "NlpEngineProvider", lambda: SimpleNamespace(nlp_configuration=default))
     with pytest.raises(RuntimeError, match="changed shape"):
         presidio_engine.nlp_configuration()
+
+
+def test_no_coroutine_calls_the_blocking_scan_text():
+    # Async code must use scan_text_async; a direct scan_text call inside an
+    # `async def` runs Presidio on the event loop (and on a second thread's
+    # engine). A merge brought one in once, so this checks the whole tree.
+    src = os.path.join(os.path.dirname(__file__), "..", "src")
+    offenders = []
+    for root, _dirs, files in os.walk(src):
+        for name in files:
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(root, name)
+            with open(path, encoding="utf-8") as f:
+                tree = ast.parse(f.read(), path)
+            for fn in ast.walk(tree):
+                if not isinstance(fn, ast.AsyncFunctionDef):
+                    continue
+                for node in ast.walk(fn):
+                    if isinstance(node, ast.Call):
+                        callee = node.func
+                        called = callee.attr if isinstance(callee, ast.Attribute) else getattr(callee, "id", None)
+                        if called == "scan_text":
+                            offenders.append(f"{os.path.relpath(path, src)}:{node.lineno} in {fn.name}")
+    assert offenders == []
