@@ -23,6 +23,7 @@ vi.mock("../../../components/Layout/PageHeaderExtended", () => ({
 
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import MCPToolCatalogPage from "./index";
+import CustomException from "../../../../infrastructure/exceptions/customeException";
 
 const mockGet = apiServices.get as unknown as ReturnType<typeof vi.fn>;
 const mockPatch = apiServices.patch as unknown as ReturnType<typeof vi.fn>;
@@ -255,7 +256,11 @@ describe("MCPToolCatalogPage", () => {
 
   it("shows the server-provided error message when the update fails", async () => {
     mockLoad([makeTool()]);
-    mockPatch.mockRejectedValue({ response: { data: { message: "Update rejected" } } });
+    mockPatch.mockRejectedValue(
+      new CustomException("Bad Request", 400, {
+        detail: { message: "Update rejected", code: "tool_invalid" },
+      }),
+    );
     renderWithProviders(<MCPToolCatalogPage />, { route: "/ai-gateway/mcp/tools" });
 
     await waitFor(() => {

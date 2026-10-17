@@ -30,6 +30,16 @@ export function getGatewayErrorDetail(error: unknown): string | null {
   return typeof message === "string" && message ? message : null;
 }
 
+/**
+ * The text to show for a failed AI Gateway request: the gateway's own
+ * { detail } reason, else the server's reason for a rejected request (4xx;
+ * generic status text is filtered out), else `fallback`. 5xx reasons are never
+ * shown.
+ */
+export function getGatewayErrorText(error: unknown, fallback: string): string {
+  return getGatewayErrorDetail(error) || getClientErrorReason(error) || fallback;
+}
+
 /** The standard 4xx status phrases: a message that is only one of these says nothing. */
 const CLIENT_ERROR_PHRASES = new Set([
   "Bad Request",

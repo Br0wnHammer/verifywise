@@ -4,6 +4,7 @@ import {
   getApiValidationMessage,
   getClientErrorReason,
   getGatewayErrorDetail,
+  getGatewayErrorText,
   isClientError,
 } from "../apiErrorReason";
 import CustomException from "../../../infrastructure/exceptions/customeException";
@@ -216,5 +217,41 @@ describe("getApiValidationMessage", () => {
     ).toBeNull();
     expect(getApiValidationMessage(new Error("network down"), fields)).toBeNull();
     expect(getApiValidationMessage(null, fields)).toBeNull();
+  });
+});
+
+describe("getGatewayErrorText", () => {
+  it("prefers a string detail", () => {
+    const err = new CustomException("Bad Request", 400, { detail: "Slug already taken" });
+    expect(getGatewayErrorText(err, "fallback")).toBe("Slug already taken");
+  });
+
+  it("reads detail.message", () => {
+    const err = new CustomException("Bad Request", 400, {
+      detail: { message: "Budget exceeded", code: "budget" },
+    });
+    expect(getGatewayErrorText(err, "fallback")).toBe("Budget exceeded");
+  });
+
+  it("falls back to the 4xx envelope reason", () => {
+    const err = new CustomException("Name is required", 400, {});
+    expect(getGatewayErrorText(err, "fallback")).toBe("Name is required");
+  });
+
+  it("returns the fallback for generic 4xx status text", () => {
+    const err = new CustomException("Bad Request", 400, {});
+    expect(getGatewayErrorText(err, "fallback")).toBe("fallback");
+  });
+
+  it("never shows a 5xx detail or reason", () => {
+    const err = new CustomException("database exploded", 500, { detail: "internal trace" });
+    expect(getGatewayErrorText(err, "fallback")).toBe("fallback");
+  });
+
+  it("returns the fallback for non-API errors", () => {
+    expect(getGatewayErrorText(new Error("boom"), "fallback")).toBe("fallback");
+    expect(getGatewayErrorText({ response: { data: { detail: "x" } } }, "fallback")).toBe(
+      "fallback",
+    );
   });
 });

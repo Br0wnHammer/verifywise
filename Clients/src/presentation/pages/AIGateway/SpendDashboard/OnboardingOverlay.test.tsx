@@ -13,6 +13,7 @@ vi.mock("../../../../infrastructure/api/networkServices", () => ({
 
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import OnboardingOverlay from "./OnboardingOverlay";
+import CustomException from "../../../../infrastructure/exceptions/customeException";
 
 const mockGet = apiServices.get as unknown as ReturnType<typeof vi.fn>;
 const mockPost = apiServices.post as unknown as ReturnType<typeof vi.fn>;
@@ -428,7 +429,9 @@ describe("OnboardingOverlay", () => {
   });
 
   it("shows the provider error message when the first request fails", async () => {
-    mockPost.mockRejectedValue({ response: { data: { detail: "Gateway timeout" } } });
+    mockPost.mockRejectedValue(
+      new CustomException("Bad Request", 400, { detail: "Gateway timeout" }),
+    );
     renderWithProviders(
       <OnboardingOverlay
         setupStatus={noneComplete}
