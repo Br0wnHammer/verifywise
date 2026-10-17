@@ -90,6 +90,7 @@ jobs:
             tests/test_cache_service.py \
             tests/test_proxy_tool_calling.py \
             tests/test_virtual_key_endpoint_names.py \
+            tests/test_endpoint_delete_keeps_key_limits.py \
             tests/test_guardrail_test_route.py \
             tests/test_spend_by_day_sql.py \
             tests/test_model_catalog_contract.py \
