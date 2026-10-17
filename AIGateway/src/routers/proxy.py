@@ -36,7 +36,7 @@ from services.proxy_service import (
     get_guardrail_config,
 )
 from services.cache_service import generate_cache_key, check_cache, store_in_cache, is_cache_globally_enabled
-from services.cost_service import estimate_prompt_cost, tool_definitions
+from services.cost_service import _safe_cost, estimate_prompt_cost, tool_definitions, whole_tokens
 from services.llm_service import chat_completion, embedding, stream_chat_completion
 
 logger = logging.getLogger("uvicorn")
@@ -417,8 +417,9 @@ async def _handle_stream(
                             total_prompt = _token_count(usage.get("prompt_tokens"), total_prompt)
                             total_completion = _token_count(usage.get("completion_tokens"), total_completion)
                         cost_usd = chunk.get("cost_usd")
+                        # json.loads accepts NaN and Infinity; _safe_cost drops them.
                         if isinstance(cost_usd, (int, float)) and not isinstance(cost_usd, bool):
-                            total_cost = cost_usd
+                            total_cost = _safe_cost(cost_usd)
                         if isinstance(chunk.get("model"), str):
                             final_model = chunk["model"]
                     except Exception as parse_err:
@@ -467,8 +468,9 @@ def _merge_tool_call_deltas(
 
     Name fragments are appended. Some adapters repeat the whole name on every
     delta, so once arguments have started a name equal to the current one is
-    a repeat and is not appended again; a different name at that point is a
-    new call that reuses the slot.
+    a repeat and is not appended again. A different name at that point, or
+    the same name with new arguments after the current ones already form
+    complete JSON, is a new call that reuses the slot.
 
     This only feeds the response log, so malformed values are coerced to text
     rather than raised: a bad delta must never abort the client's stream.
@@ -494,7 +496,9 @@ def _merge_tool_call_deltas(
             key = max(group)
         if key is not None:
             current = calls[key]["function"]
-            if name and current["arguments"] and name != current["name"]:
+            if name and current["arguments"] and (
+                name != current["name"] or (arguments and _is_complete_json(current["arguments"]))
+            ):
                 key = None
         if key is None:
             key = max(calls) + 1 if calls else 0
@@ -503,6 +507,8 @@ def _merge_tool_call_deltas(
         call = calls[key]
         if cid:
             call["id"] = cid
+        if call["_index"] is None and idx is not None:
+            call["_index"] = idx
         current = call["function"]
         if name and not (name == current["name"] and (current["arguments"] or arguments)):
             current["name"] += name
@@ -516,11 +522,18 @@ def _delta_text(value) -> str:
     return value if isinstance(value, str) else json.dumps(value, default=str)
 
 
+def _is_complete_json(text: str) -> bool:
+    try:
+        json.loads(text)
+        return True
+    except ValueError:
+        return False
+
+
 def _token_count(value, fallback: int) -> int:
     """A usage token count, or `fallback` when it is missing or not a whole number."""
-    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-        return value
-    return fallback
+    count = whole_tokens(value)
+    return fallback if count is None else count
 
 
 def _finished_tool_calls(calls: dict[int, dict]) -> list[dict]:

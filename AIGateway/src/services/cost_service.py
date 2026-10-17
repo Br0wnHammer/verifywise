@@ -73,6 +73,16 @@ def estimate_prompt_cost(
         return 0.0
 
 
+def whole_tokens(value) -> Optional[int]:
+    """A token count as a non-negative int (12.0 counts as 12), or None when
+    it is missing or not a whole number."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return value if isinstance(value, int) and value >= 0 else None
+
+
 def calculate_stream_cost(
     model: str,
     prompt_messages: list[dict],

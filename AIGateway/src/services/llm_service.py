@@ -3,7 +3,7 @@ from typing import AsyncIterator
 
 import litellm
 
-from services.cost_service import _safe_cost, calculate_stream_cost, tool_definitions
+from services.cost_service import _safe_cost, calculate_stream_cost, tool_definitions, whole_tokens
 
 
 async def chat_completion(
@@ -139,27 +139,34 @@ async def stream_chat_completion(
     usage = None
 
     provider_usage = getattr(last_chunk, "usage", None) if last_chunk else None
-    if provider_usage:
+    prompt_tokens = whole_tokens(getattr(provider_usage, "prompt_tokens", None)) or 0
+    completion_tokens = whole_tokens(getattr(provider_usage, "completion_tokens", None)) or 0
+    if prompt_tokens or completion_tokens:
         # The provider's counts are exact; keep them even when pricing fails.
         usage = {
-            "prompt_tokens": getattr(provider_usage, "prompt_tokens", None),
-            "completion_tokens": getattr(provider_usage, "completion_tokens", None),
-            "total_tokens": getattr(provider_usage, "total_tokens", None),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
         }
         try:
-            # completion_cost can return NaN (not raise); coerce so the
-            # `cost == 0.0` fallback below still fires and no NaN is emitted.
+            # completion_cost can return NaN (not raise); _safe_cost coerces it.
             cost = _safe_cost(litellm.completion_cost(completion_response=last_chunk))
         except Exception:
             pass
-
-    if cost == 0.0 and accumulated_text:
-        cost, estimated_usage = calculate_stream_cost(
+        if cost == 0.0:
+            try:
+                prompt_cost, completion_cost = litellm.cost_per_token(
+                    model=model, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+                )
+                cost = _safe_cost(prompt_cost + completion_cost)
+            except Exception:
+                pass
+    elif accumulated_text:
+        # No usable provider counts (missing, null or all zero): estimate them.
+        cost, usage = calculate_stream_cost(
             model, messages, accumulated_text,
             tools=tool_definitions(kwargs),
         )
-        # Estimated counts only fill in when the provider sent none.
-        usage = usage or estimated_usage
 
     yield f"data: {json.dumps({'cost_usd': cost, 'usage': usage})}\n\n"
     yield "data: [DONE]\n\n"

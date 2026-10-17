@@ -682,3 +682,89 @@ def test_streamed_legacy_function_call_is_logged_without_an_id():
     calls: dict = {}
     _merge_tool_call_deltas(calls, [{"function": {"name": "lookup", "arguments": "{}"}}], legacy=True)
     assert _finished_tool_calls(calls) == [{"type": "function", "function": {"name": "lookup", "arguments": "{}"}}]
+
+
+async def _final_stream_chunk(monkeypatch, usage, price=None):
+    async def fake_stream():
+        yield _Obj(choices=[_Obj(delta=_Obj(content="hi", tool_calls=None))], usage=usage)
+
+    async def fake_acompletion(**_kw):
+        return fake_stream()
+
+    def no_price(**_kw):
+        raise Exception("model not mapped")
+
+    def estimate(*_a, **_kw):
+        return 0.5, {"prompt_tokens": 40, "completion_tokens": 9, "total_tokens": 49}
+
+    monkeypatch.setattr(llm_service.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(llm_service.litellm, "completion_cost", no_price)
+    monkeypatch.setattr(llm_service.litellm, "cost_per_token", price or no_price)
+    monkeypatch.setattr(llm_service, "calculate_stream_cost", estimate)
+    out = [c async for c in llm_service.stream_chat_completion("x/model", [], "k")]
+    return json.loads(out[-2][len("data: "):])
+
+
+@pytest.mark.parametrize("counts", [(None, None, None), (0, 0, 0)])
+async def test_empty_provider_usage_falls_back_to_the_estimate(monkeypatch, counts):
+    p, c, t = counts
+    final = await _final_stream_chunk(monkeypatch, _Obj(prompt_tokens=p, completion_tokens=c, total_tokens=t))
+    assert final == {"cost_usd": 0.5, "usage": {"prompt_tokens": 40, "completion_tokens": 9, "total_tokens": 49}}
+
+
+async def test_provider_counts_are_priced_directly_when_completion_cost_fails(monkeypatch):
+    seen = {}
+
+    def price(model, prompt_tokens, completion_tokens):
+        seen.update(model=model, prompt=prompt_tokens, completion=completion_tokens)
+        return 0.011, 0.003
+
+    final = await _final_stream_chunk(
+        monkeypatch, _Obj(prompt_tokens=11.0, completion_tokens=3, total_tokens=None), price=price,
+    )
+    assert seen == {"model": "x/model", "prompt": 11, "completion": 3}
+    assert final["usage"] == {"prompt_tokens": 11, "completion_tokens": 3, "total_tokens": 14}
+    assert final["cost_usd"] == pytest.approx(0.014)
+
+
+async def test_stream_spend_log_drops_non_finite_cost_and_keeps_float_counts(monkeypatch):
+    chunks = [
+        'data: {"usage": {"prompt_tokens": 120.0, "completion_tokens": 30.0}}\n\n',
+        'data: {"cost_usd": NaN}\n\n',
+    ]
+
+    async def fake_stream(**_kw):
+        for c in chunks:
+            yield c
+
+    logged = {}
+
+    async def fake_log_spend(**kw):
+        logged.update(kw)
+
+    async def noop(*_a, **_kw):
+        return None
+
+    monkeypatch.setattr(proxy_router, "stream_chat_completion", fake_stream)
+    monkeypatch.setattr(proxy_router, "log_spend", fake_log_spend)
+    monkeypatch.setattr(proxy_router, "reconcile_budget", noop)
+    endpoint = {"id": 1, "model": "m", "provider": "p", "decrypted_key": "k"}
+    response = await proxy_router._handle_stream(1, {"id": 1}, endpoint, [], {}, 0.0, 0.0)
+    [c async for c in response.body_iterator]
+    assert (logged["prompt_tokens"], logged["completion_tokens"]) == (120, 30)
+    assert logged["cost_usd"] == 0.0
+
+
+def test_same_name_with_new_arguments_after_complete_json_is_a_new_call():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "get_weather", "arguments": '{"city":"A"}'}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "get_weather", "arguments": '{"city":"B"}'}}])
+    assert _names_and_args(calls) == [("get_weather", '{"city":"A"}'), ("get_weather", '{"city":"B"}')]
+
+
+def test_call_joined_by_id_takes_the_index_for_later_deltas():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"id": "c1", "function": {"name": "f"}}])
+    _merge_tool_call_deltas(calls, [{"id": "c1", "index": 0, "function": {"arguments": '{"a"'}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"arguments": ":1}"}}])
+    assert _names_and_args(calls) == [("f", '{"a":1}')]
