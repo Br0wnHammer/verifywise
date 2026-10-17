@@ -70,10 +70,23 @@ async def get_all_endpoints(org_id: int, role_id: Optional[int] = None) -> list[
     return []
 
 
-async def get_endpoint_by_id(org_id: int, id: int) -> Optional[dict]:
+async def get_endpoint_by_id(
+    org_id: int, id: int, *, role_id: Optional[int]
+) -> Optional[dict]:
+    """Fetch one endpoint in the organization.
+
+    ``role_id`` is required so every caller chooses its visibility on purpose.
+    With a role the endpoint is returned only when that role may see it
+    (role_visibility, the endpoints list's rule and the gateway's: an empty
+    or NULL allowed_role_ids is open to every role). ``role_id=None``
+    reads unfiltered, for internal callers (the Admin-only update and delete
+    routes, and update_endpoint's re-read).
+    """
+    role_filter, role_params = role_visibility(role_id)
+    params: dict[str, Any] = {"org_id": org_id, "id": id, **role_params}
     async with get_db() as db:
         result = await db.execute(
-            text("""
+            _text("""
                 SELECT
                     e.id,
                     e.slug,
@@ -99,8 +112,9 @@ async def get_endpoint_by_id(org_id: int, id: int) -> Optional[dict]:
                 LEFT JOIN ai_gateway_api_keys ak ON e.api_key_id = ak.id
                 WHERE e.organization_id = :org_id
                   AND e.id = :id
+                """ + role_filter + """
             """),
-            {"org_id": org_id, "id": id},
+            params,
         )
         row = result.mappings().first()
         if not row:
@@ -223,7 +237,7 @@ async def update_endpoint(org_id: int, id: int, data: dict) -> Optional[dict]:
 
     if not set_clauses:
         # Nothing to update — return existing row
-        return await get_endpoint_by_id(org_id, id)
+        return await get_endpoint_by_id(org_id, id, role_id=None)
 
     set_clauses.append("updated_at = NOW()")
     set_sql = ", ".join(set_clauses)
