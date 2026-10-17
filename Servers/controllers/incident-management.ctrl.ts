@@ -23,6 +23,7 @@ import {
 } from "../utils/validations/incidentManagementValidation.utils";
 import { recordIncidentCreation } from "../utils/incidentChangeHistory.utils";
 import { triggerIncidentResponse } from "../services/workflows/triggers";
+import { isCriticalIncidentSeverity } from "../domain.layer/enums/ai-incident-management.enum";
 import {
   updateIncident,
   IncidentUpdateValidationError,
@@ -32,9 +33,6 @@ import {
   ConflictException,
   ValidationException,
 } from "../domain.layer/exceptions/custom.exception";
-
-/** Severity values that launch the critical incident_response workflow. */
-const CRITICAL_INCIDENT_SEVERITIES = new Set(["very serious", "critical"]);
 
 /** Parse and validate optional list filters (issue #4583). Returns an error message or the filters. */
 const parseIncidentListFilters = (
@@ -308,7 +306,7 @@ export async function createNewIncident(req: Request, res: Response) {
     if (
       savedIncident.id &&
       typeof savedIncident.severity === "string" &&
-      CRITICAL_INCIDENT_SEVERITIES.has(savedIncident.severity.toLowerCase())
+      isCriticalIncidentSeverity(savedIncident.severity)
     ) {
       triggerIncidentResponse(req.organizationId!, savedIncident.id, savedIncident.severity).catch(
         (err) => console.error("Failed to trigger incident_response workflow:", err),
