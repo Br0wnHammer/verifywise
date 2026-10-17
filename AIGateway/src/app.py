@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
+from middlewares.invalid_unicode import InvalidUnicodeMiddleware
 from middlewares.tenant import TenantMiddleware
 from routers.completions import router as completions_router
 from routers.models import router as models_router
@@ -52,6 +53,11 @@ app = FastAPI(
     version="1.0.0",
     redirect_slashes=False,
 )
+
+# Reject request bodies carrying a lone UTF-16 surrogate or invalid UTF-8 with a
+# 400 before any route runs; otherwise they fail as 500s when echoed, stored
+# or logged. Added first so it sits inside CORS (its 400s carry CORS headers).
+app.add_middleware(InvalidUnicodeMiddleware)
 
 # CORS: allow the Express backend plus any explicitly configured origins.
 # Never use "*": key-authenticated endpoints must not be callable from

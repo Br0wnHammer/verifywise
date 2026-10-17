@@ -22,6 +22,7 @@ import Chip from "../../../components/Chip";
 import StandardModal from "../../../components/Modals/StandardModal";
 import { PageHeaderExtended } from "../../../components/Layout/PageHeaderExtended";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
+import { getGatewayErrorText } from "../../../../application/utils/apiErrorReason";
 import palette from "../../../themes/palette";
 import CustomizableSkeleton from "../../../components/Skeletons";
 import {
@@ -248,9 +249,7 @@ export default function AIGatewayVirtualKeysPage({ embedded }: { embedded?: bool
 
       await loadData();
     } catch (err: unknown) {
-      const errData = (err as { response?: { data?: { detail?: string; message?: string } } })
-        ?.response?.data;
-      setCreateError(errData?.detail || errData?.message || "Failed to create virtual key");
+      setCreateError(getGatewayErrorText(err, "Failed to create virtual key"));
     } finally {
       setCreateSubmitting(false);
     }
