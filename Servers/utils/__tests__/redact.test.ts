@@ -340,6 +340,22 @@ describe("redactSensitiveInfo", () => {
     ["depth-2 escaped / in a Basic token", "auth: Basic YWJj1\\\\/ZGVm", "auth: Basic [REDACTED]"],
     ["NBSP before a Bearer token", "auth: Bearer abc1", "auth: Bearer [REDACTED]"],
     ["bare Basic without digits", "sent Basic dXNlcjpwYXNz", "sent Basic [REDACTED]"],
+    // a Bearer/Basic token running into a later scheme word
+    ["token then another scheme", "Basic abcDef/Bearer xyz9secret", "Basic [REDACTED] [REDACTED]"],
+    [
+      "token with = then another scheme",
+      "auth: Basic dXNlcg==.Bearer abc123secret",
+      "auth: Basic [REDACTED] [REDACTED]",
+    ],
+    [
+      "NBSP token then another scheme",
+      "Bearer\u00a0x1/Bearer realSecret9",
+      "Bearer\u00a0[REDACTED] [REDACTED]",
+    ],
+    // scheme words in any casing
+    ["mixed-case Bearer", "auth BeArEr abc123", "auth BeArEr [REDACTED]"],
+    ["mixed-case Basic", "auth bASIC abc123", "auth bASIC [REDACTED]"],
+    ["empty URL password next to a key", "token=http://u:", "token=[REDACTED]"],
     ["password_hash", "password_hash=abc set", "password_hash=[REDACTED] set"],
     ["passwordHash", "passwordHash: abc set", "passwordHash=[REDACTED] set"],
     ["password_digest", "password_digest=abc set", "password_digest=[REDACTED] set"],
@@ -529,6 +545,8 @@ describe("redactSensitiveInfo performance", () => {
     ['"Bearer " x15000', "Bearer ".repeat(15000)],
     ['"Bearer a" x15000', "Bearer a".repeat(15000)],
     ["Bearer + a 100KB letter run", `Bearer ${"a".repeat(100_000)}`],
+    ['"Bearer " + 100K NBSP then a token', `Bearer${"\u00a0".repeat(100_000)}x1`],
+    ['"Bearer x1/" x10000', "Bearer x1/".repeat(10000)],
     ["a 100KB backslash run after a key", `password${"\\".repeat(100_000)}`],
   ])("redacts %s in under 50ms", (_label, input) => {
     expect(bestOfThree(input)).toBeLessThan(50);

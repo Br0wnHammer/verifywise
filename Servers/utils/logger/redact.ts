@@ -81,11 +81,17 @@ const AUTHORIZATION =
 // must contain a digit, "=" or a lower-to-upper case change, as base64 and
 // opaque tokens do, which keeps prose such as "Basic authentication
 // failed" readable.
+//
+// The scheme is found by a lookbehind, not consumed, so a token that runs
+// into a later scheme word ("abcDef/Bearer x9") does not hide the
+// credential after it: the next match still sees "Bearer " behind it. The
+// leading (?=[...]) keeps the lookbehind to token starts, which is linear.
+// The regex is case-sensitive so that [a-z][A-Z] is a real case change;
+// the scheme words take any casing (RFC 7235) through per-letter classes.
 const TOKEN_CHARS = "A-Za-z0-9._~+/=-";
+const SCHEME_WORD = "(?:[Bb][Ee][Aa][Rr][Ee][Rr]|[Bb][Aa][Ss][Ii][Cc])";
 const BEARER_TOKEN = new RegExp(
-  // Case-sensitive, so [a-z][A-Z] means a real case change; the scheme
-  // casings are listed instead.
-  String.raw`\b((?:Bearer|bearer|BEARER|Basic|basic|BASIC)[^\S\r\n]+)` +
+  String.raw`(?=[${TOKEN_CHARS}])(?<=\b${SCHEME_WORD}[^\S\r\n]+)()` +
     String.raw`(?=[A-Za-z._~+/=\\-]*(?:\d|[a-z][A-Z]|=))` +
     String.raw`[${TOKEN_CHARS}]+(?:\\+\/[${TOKEN_CHARS}]*)*`,
   "g",
@@ -203,7 +209,11 @@ function addUrlCredentialSpans(spans: Span[], token: string, offset: number): vo
     }
     PORT.lastIndex = colon + 1;
     if (PORT.test(token)) continue; // host:port with no "@" after it
-    spans.push({ start: offset + colon + 1, end: offset + token.length, text: "[REDACTED]" });
+    // An empty password ("scheme://u:" at the end of the token) has nothing
+    // to redact.
+    if (colon + 1 < token.length) {
+      spans.push({ start: offset + colon + 1, end: offset + token.length, text: "[REDACTED]" });
+    }
     break;
   }
 }
