@@ -6,7 +6,12 @@ import { insertProject, rows, seedReadyConfig, withMock } from "./fixtures";
 import { clientFor, loadConfig } from "../../../extensions/jira-incidents/jiraIncidents.config";
 import { runImport } from "../../../extensions/jira-incidents/jiraIncidents.import";
 import { runStatusSync } from "../../../extensions/jira-incidents/jiraIncidents.statusSync";
-import { newCounts, RunState } from "../../../extensions/jira-incidents/jiraIncidents.run";
+import {
+  newCounts,
+  RunState,
+  STOP_RATE_LIMIT,
+} from "../../../extensions/jira-incidents/jiraIncidents.run";
+import { JiraAuthError } from "../../../extensions/jira-incidents/jiraIncidents.errors";
 import { updateIncident } from "../../../services/incidentManagement.service";
 import { sequelize } from "../../../database/db";
 
@@ -192,6 +197,48 @@ describe("jira incidents status sync", () => {
     mock.setStatus(issueId, "3");
     await sync(orgA);
     expect(await incident()).toMatchObject({ status: "Investigating", approval_status: "Pending" });
+  });
+
+  it("does not overwrite a user edit made after the batch read", async () => {
+    mock.setStatus(issueId, "3");
+    const s = await stateFor(orgA);
+    const search = s.client.searchPage.bind(s.client);
+    s.client.searchPage = async (...args) => {
+      const page = await search(...args);
+      // A user changes the incident between the batch read and the write.
+      await sequelize.query(
+        `UPDATE ai_incident_managements SET status = 'Closed' WHERE id = :incidentId`,
+        { replacements: { incidentId } },
+      );
+      return page;
+    };
+    await runStatusSync(s);
+    expect((await incident()).status).toBe("Closed");
+    expect(s.counts.status_from_jira).toBe(0);
+    expect((await link()).last_vw_status).toBe("Open"); // snapshot untouched; next run decides
+  });
+
+  it("fails the run when Jira rejects the token", async () => {
+    mock.state.token = "rotated";
+    await expect(sync(orgA)).rejects.toBeInstanceOf(JiraAuthError);
+  });
+
+  it("stops cleanly on a rate limit", async () => {
+    mock.setStatus(issueId, "3");
+    mock.state.failNext.push({ status: 429, retryAfter: 120, path: "/rest/api/3/search/jql" });
+    const s = await sync(orgA);
+    expect(s.stopReason).toBe(STOP_RATE_LIMIT);
+    expect((await incident()).status).toBe("Open");
+  });
+
+  it("reports a conflict won by VerifyWise whose status doesn't change Jira", async () => {
+    mock.setStatus(issueId, "3", new Date(Date.now() - 60_000));
+    await vwSet("Mitigated");
+    const s = await sync(orgA);
+    expect(mock.state.issues[0].statusId).toBe("3");
+    expect(await link()).toMatchObject({ state: "conflict", last_vw_status: "Mitigated" });
+    expect(s.counts.conflicts).toBe(1);
+    expect(await events()).toEqual(expect.arrayContaining(["status_to_jira", "conflict"]));
   });
 
   it("skips archived incidents", async () => {

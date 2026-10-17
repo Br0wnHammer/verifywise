@@ -140,6 +140,21 @@ export async function lockLink(
   return found[0] ?? null;
 }
 
+/** The incident's current status and archived flag, row-locked for the transaction; null if gone. */
+export async function lockIncidentStatus(
+  orgId: number,
+  incidentId: number,
+  t: Transaction,
+): Promise<{ status: string; archived: boolean } | null> {
+  const found = await select<{ status: string; archived: boolean | null }>(
+    `SELECT status, archived FROM ai_incident_managements
+      WHERE organization_id = :orgId AND id = :incidentId FOR UPDATE`,
+    { orgId, incidentId },
+    t,
+  );
+  return found[0] ? { status: found[0].status, archived: !!found[0].archived } : null;
+}
+
 export async function latestVwStatusChangeAt(
   orgId: number,
   incidentId: number,

@@ -7,6 +7,7 @@
  * conflict. Per-link problems mark only that link and keep its snapshot, so
  * the change is retried next run.
  */
+import type { Transaction } from "sequelize";
 import { sequelize } from "../../database/db";
 import {
   IncidentUpdateValidationError,
@@ -27,6 +28,7 @@ import {
   insertEvent,
   latestVwStatusChangeAt,
   listSyncableLinks,
+  lockIncidentStatus,
   lockLink,
   setLinkState,
   updateLinkSnapshot,
@@ -46,6 +48,29 @@ class StopRun extends Error {
   constructor(public readonly reason: string) {
     super(reason);
   }
+}
+
+/** The link or its incident changed after the batch read; roll back and leave it to the next run. */
+class LinkChanged extends Error {}
+
+/**
+ * Re-checks, under row locks, that the link snapshot and the incident still
+ * hold what the decision was made on. A user edit between the batch read and
+ * this write would otherwise be overwritten instead of seen as a change.
+ */
+async function stillAsRead(state: RunState, link: SyncLink, t: Transaction): Promise<boolean> {
+  const locked = await lockLink(state.orgId, link.id, t);
+  if (
+    !locked ||
+    locked.incident_id !== link.incident_id ||
+    locked.state !== link.state ||
+    locked.last_jira_status_id !== link.last_jira_status_id ||
+    locked.last_vw_status !== link.last_vw_status
+  ) {
+    return false;
+  }
+  const incident = await lockIncidentStatus(state.orgId, link.incident_id!, t);
+  return !!incident && !incident.archived && incident.status === link.vw_status;
 }
 
 export async function runStatusSync(state: RunState): Promise<void> {
@@ -135,11 +160,12 @@ async function syncLink(state: RunState, link: SyncLink, searched: JiraSide | nu
     if (
       err instanceof StopRun ||
       err instanceof JiraRateLimitError ||
-      err instanceof JiraAuthError ||
-      state.deadline.aborted
+      err instanceof JiraAuthError
     ) {
       throw err;
     }
+    // Past the deadline any failure is the deadline's doing: stop cleanly.
+    if (state.deadline.aborted) throw new StopRun(STOP_DEADLINE);
     if (err instanceof JiraHttpError || err instanceof JiraUnreachableError) {
       await failLink(state, link, err.message, jira?.key);
       return;
@@ -214,7 +240,7 @@ async function applyToVerifyWise(
   const reason = conflict ? conflictReason(jira.statusName, link.vw_status, "Jira") : null;
   try {
     await sequelize.transaction(async (t) => {
-      await lockLink(state.orgId, link.id, t);
+      if (!(await stillAsRead(state, link, t))) throw new LinkChanged();
       await updateIncident(state.orgId, link.incident_id!, { status: vwStatus }, null, {
         transaction: t,
         changedBySystem: true,
@@ -266,6 +292,7 @@ async function applyToVerifyWise(
       }
     });
   } catch (err) {
+    if (err instanceof LinkChanged) return; // the next run decides with fresh values
     if (err instanceof IncidentUpdateValidationError) {
       await failLink(state, link, err.errors[0]?.message ?? err.message, jira.key);
       return;
@@ -288,7 +315,8 @@ async function applyToJira(
 
   if (targetStatusId === null) {
     // "Don't change Jira": record the VerifyWise status and leave Jira as is.
-    await sequelize.transaction(async (t) => {
+    const recorded = await sequelize.transaction(async (t) => {
+      if (!(await stillAsRead(state, link, t))) return false;
       await updateLinkSnapshot(
         state.orgId,
         link.id,
@@ -316,10 +344,14 @@ async function applyToJira(
         t,
       );
       if (conflict) await insertConflictEvent(state, link, jira, link.vw_status, t);
+      return true;
     });
-    if (conflict) state.counts.conflicts++;
+    if (recorded && conflict) state.counts.conflicts++;
     return;
   }
+
+  // Don't move Jira to a status the incident no longer holds.
+  if (!(await sequelize.transaction((t) => stillAsRead(state, link, t)))) return;
 
   const targetName = (await statusNames(state)).get(targetStatusId) ?? targetStatusId;
   const transitions = await state.client.listTransitions(link.jira_issue_id);
@@ -333,38 +365,69 @@ async function applyToJira(
   }
   await state.client.transition(link.jira_issue_id, choice.transitionId);
 
-  await sequelize.transaction(async (t) => {
-    await updateLinkSnapshot(
-      state.orgId,
-      link.id,
-      {
-        jiraStatusId: targetStatusId,
-        vwStatus: link.vw_status,
-        jiraIssueKey: jira.key,
-        state: linkState,
-        stateReason: reason,
-      },
-      t,
-    );
-    await insertEvent(
-      state.orgId,
-      {
-        linkId: link.id,
-        runId: state.runId,
-        kind: "status_to_jira",
-        detail: {
-          jira_issue_key: jira.key,
-          from: jira.statusName,
-          to: targetName,
-          vw_status: link.vw_status,
-        },
-      },
-      t,
-    );
-    if (conflict) await insertConflictEvent(state, link, jira, link.vw_status, t);
-  });
+  // Jira has moved. If recording it fails, the next run sees both sides
+  // changed and resolves it as a conflict; say so in the log.
+  await recordTransition(
+    state,
+    link,
+    jira,
+    targetStatusId,
+    targetName,
+    linkState,
+    reason,
+    conflict,
+  );
   state.counts.status_to_jira++;
   if (conflict) state.counts.conflicts++;
+}
+
+async function recordTransition(
+  state: RunState,
+  link: SyncLink,
+  jira: JiraSide,
+  targetStatusId: string,
+  targetName: string,
+  linkState: LinkState,
+  reason: string | null,
+  conflict: boolean,
+): Promise<void> {
+  try {
+    await sequelize.transaction(async (t) => {
+      await updateLinkSnapshot(
+        state.orgId,
+        link.id,
+        {
+          jiraStatusId: targetStatusId,
+          vwStatus: link.vw_status,
+          jiraIssueKey: jira.key,
+          state: linkState,
+          stateReason: reason,
+        },
+        t,
+      );
+      await insertEvent(
+        state.orgId,
+        {
+          linkId: link.id,
+          runId: state.runId,
+          kind: "status_to_jira",
+          detail: {
+            jira_issue_key: jira.key,
+            from: jira.statusName,
+            to: targetName,
+            vw_status: link.vw_status,
+          },
+        },
+        t,
+      );
+      if (conflict) await insertConflictEvent(state, link, jira, link.vw_status, t);
+    });
+  } catch (err) {
+    logger.error(
+      `jira-incidents: ${jira.key} was moved to '${targetName}' in Jira but recording it failed; the next run will treat it as a change on both sides: ${(err as Error).message}`,
+    );
+    throw err;
+  }
 }
 
 async function insertConflictEvent(
