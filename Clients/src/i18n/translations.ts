@@ -25,6 +25,77 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    // Jira incidents extension
+    "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
+      "Importiert werden nur Vorgänge, die nach dieser Einrichtung in Jira erstellt werden. VerifyWise erstellt keine Jira-Vorgänge.",
+    "After import, only status stays in sync, in both directions. Later changes to other Jira fields aren't copied.":
+      "Nach dem Import bleibt nur der Status synchron, in beide Richtungen. Spätere Änderungen an anderen Jira-Feldern werden nicht übernommen.",
+    "If a Jira status move needs a field such as Resolution, VerifyWise can't make it. Those incidents show an error, and you can change the status in Jira.":
+      "Wenn ein Statuswechsel in Jira ein Feld wie Lösung erfordert, kann VerifyWise ihn nicht ausführen. Diese Vorfälle zeigen einen Fehler, und Sie können den Status in Jira ändern.",
+    "Create a classic API token for the service account at id.atlassian.com. Scoped tokens aren't supported.":
+      "Erstellen Sie unter id.atlassian.com ein klassisches API-Token für das Dienstkonto. Tokens mit Bereichen werden nicht unterstützt.",
+    "Stored. Enter a new token to replace it":
+      "Gespeichert. Geben Sie ein neues Token ein, um es zu ersetzen",
+    "API token": "API-Token",
+    "Choose": "Auswählen",
+    "Choose a project and issue type to map statuses.":
+      "Wählen Sie ein Projekt und einen Vorgangstyp, um Status zuzuordnen.",
+    "Choose a use case": "Anwendungsfall auswählen",
+    "Choose an incident type": "Vorfallstyp auswählen",
+    "Choose an issue type": "Vorgangstyp auswählen",
+    "Connection": "Verbindung",
+    "Could not load the Jira incidents settings. Reload the page to try again.":
+      "Die Einstellungen für Jira-Vorfälle konnten nicht geladen werden. Laden Sie die Seite neu, um es erneut zu versuchen.",
+    "Could not load the sync activity.":
+      "Die Synchronisierungsaktivität konnte nicht geladen werden.",
+    "Defaults for imported incidents": "Standardwerte für importierte Vorfälle",
+    "Import only issues with this label. Leave empty to import every issue.":
+      "Nur Vorgänge mit diesem Label importieren. Leer lassen, um alle Vorgänge zu importieren.",
+    "Issue type": "Vorgangstyp",
+    "Jira project": "Jira-Projekt",
+    "Jira site URL": "Jira-Website-URL",
+    "Jira to VerifyWise": "Jira nach VerifyWise",
+    "VerifyWise to Jira": "VerifyWise nach Jira",
+    "No sync activity yet": "Noch keine Synchronisierungsaktivität",
+    "Save the connection to choose a Jira project.":
+      "Speichern Sie die Verbindung, um ein Jira-Projekt auszuwählen.",
+    "Save the connection to map Jira priorities.":
+      "Speichern Sie die Verbindung, um Jira-Prioritäten zuzuordnen.",
+    "Service account email": "E-Mail des Dienstkontos",
+    "Settings saved.": "Einstellungen gespeichert.",
+    "Severity mapping": "Zuordnung des Schweregrads",
+    "Status mapping": "Statuszuordnung",
+    "Sync activity": "Synchronisierungsaktivität",
+    "Which issues to import": "Welche Vorgänge importiert werden",
+    "Label": "Label",
+    "Jira status": "Jira-Status",
+    "VerifyWise status": "VerifyWise-Status",
+    "Jira priority": "Jira-Priorität",
+    "Don't change Jira": "Jira nicht ändern",
+    "Event": "Ereignis",
+    "Jira issue": "Jira-Vorgang",
+    "Imported": "Importiert",
+    "Status from Jira": "Status aus Jira",
+    "Status to Jira": "Status nach Jira",
+    "Conflict": "Konflikt",
+    "Deleted in Jira": "In Jira gelöscht",
+    "Sync error": "Synchronisierungsfehler",
+    "Jira left unchanged": "Jira unverändert gelassen",
+    "Enter your Jira site URL": "Geben Sie die URL Ihrer Jira-Website ein",
+    "Enter the service account email": "Geben Sie die E-Mail des Dienstkontos ein",
+    "Enter the API token": "Geben Sie das API-Token ein",
+    "Enter the API token again after changing the site URL or email":
+      "Geben Sie das API-Token nach einer Änderung der Website-URL oder E-Mail erneut ein",
+    "Map every Jira status": "Ordnen Sie jeden Jira-Status zu",
+    "Enter the reporter": "Geben Sie den Meldenden ein",
+    "Could not save the settings.": "Die Einstellungen konnten nicht gespeichert werden.",
+    "Could not test the connection to Jira.":
+      "Die Verbindung zu Jira konnte nicht getestet werden.",
+    "Could not load the options from Jira.": "Die Optionen aus Jira konnten nicht geladen werden.",
+    "Import new Jira issues and sync status on a schedule":
+      "Neue Jira-Vorgänge importieren und Status nach Zeitplan synchronisieren",
+    "Each sync imports issues created since the last one, then syncs status both ways.":
+      "Jede Synchronisierung importiert die seit der letzten erstellten Vorgänge und synchronisiert dann den Status in beide Richtungen.",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Hochrisiko-Rollen",
     "High-risk roles *": "Hochrisiko-Rollen *",
@@ -10460,6 +10531,75 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    // Jira incidents extension
+    "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
+      "Seuls les tickets créés dans Jira après cette configuration sont importés. VerifyWise ne crée pas de tickets Jira.",
+    "After import, only status stays in sync, in both directions. Later changes to other Jira fields aren't copied.":
+      "Après l'import, seul le statut reste synchronisé, dans les deux sens. Les modifications ultérieures des autres champs Jira ne sont pas copiées.",
+    "If a Jira status move needs a field such as Resolution, VerifyWise can't make it. Those incidents show an error, and you can change the status in Jira.":
+      "Si un changement de statut dans Jira exige un champ comme Résolution, VerifyWise ne peut pas l'effectuer. Ces incidents affichent une erreur, et vous pouvez changer le statut dans Jira.",
+    "Create a classic API token for the service account at id.atlassian.com. Scoped tokens aren't supported.":
+      "Créez un jeton d'API classique pour le compte de service sur id.atlassian.com. Les jetons à portée limitée ne sont pas pris en charge.",
+    "Stored. Enter a new token to replace it":
+      "Enregistré. Saisissez un nouveau jeton pour le remplacer",
+    "API token": "Jeton d'API",
+    "Choose": "Choisir",
+    "Choose a project and issue type to map statuses.":
+      "Choisissez un projet et un type de ticket pour mapper les statuts.",
+    "Choose a use case": "Choisir un cas d'usage",
+    "Choose an incident type": "Choisir un type d'incident",
+    "Choose an issue type": "Choisir un type de ticket",
+    "Connection": "Connexion",
+    "Could not load the Jira incidents settings. Reload the page to try again.":
+      "Impossible de charger les paramètres des incidents Jira. Rechargez la page pour réessayer.",
+    "Could not load the sync activity.": "Impossible de charger l'activité de synchronisation.",
+    "Defaults for imported incidents": "Valeurs par défaut des incidents importés",
+    "Import only issues with this label. Leave empty to import every issue.":
+      "Importer uniquement les tickets portant cette étiquette. Laissez vide pour importer tous les tickets.",
+    "Issue type": "Type de ticket",
+    "Jira project": "Projet Jira",
+    "Jira site URL": "URL du site Jira",
+    "Jira to VerifyWise": "De Jira vers VerifyWise",
+    "VerifyWise to Jira": "De VerifyWise vers Jira",
+    "No sync activity yet": "Aucune activité de synchronisation pour l'instant",
+    "Save the connection to choose a Jira project.":
+      "Enregistrez la connexion pour choisir un projet Jira.",
+    "Save the connection to map Jira priorities.":
+      "Enregistrez la connexion pour mapper les priorités Jira.",
+    "Service account email": "E-mail du compte de service",
+    "Settings saved.": "Paramètres enregistrés.",
+    "Severity mapping": "Mappage de la gravité",
+    "Status mapping": "Mappage des statuts",
+    "Sync activity": "Activité de synchronisation",
+    "Which issues to import": "Tickets à importer",
+    "Label": "Étiquette",
+    "Jira status": "Statut Jira",
+    "VerifyWise status": "Statut VerifyWise",
+    "Jira priority": "Priorité Jira",
+    "Don't change Jira": "Ne pas modifier Jira",
+    "Event": "Événement",
+    "Jira issue": "Ticket Jira",
+    "Imported": "Importé",
+    "Status from Jira": "Statut depuis Jira",
+    "Status to Jira": "Statut vers Jira",
+    "Conflict": "Conflit",
+    "Deleted in Jira": "Supprimé dans Jira",
+    "Sync error": "Erreur de synchronisation",
+    "Jira left unchanged": "Jira laissé inchangé",
+    "Enter your Jira site URL": "Saisissez l'URL de votre site Jira",
+    "Enter the service account email": "Saisissez l'e-mail du compte de service",
+    "Enter the API token": "Saisissez le jeton d'API",
+    "Enter the API token again after changing the site URL or email":
+      "Saisissez de nouveau le jeton d'API après avoir modifié l'URL du site ou l'e-mail",
+    "Map every Jira status": "Mappez chaque statut Jira",
+    "Enter the reporter": "Saisissez le rapporteur",
+    "Could not save the settings.": "Impossible d'enregistrer les paramètres.",
+    "Could not test the connection to Jira.": "Impossible de tester la connexion à Jira.",
+    "Could not load the options from Jira.": "Impossible de charger les options depuis Jira.",
+    "Import new Jira issues and sync status on a schedule":
+      "Importer les nouveaux tickets Jira et synchroniser les statuts selon un planning",
+    "Each sync imports issues created since the last one, then syncs status both ways.":
+      "Chaque synchronisation importe les tickets créés depuis la précédente, puis synchronise les statuts dans les deux sens.",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Rôles à haut risque",
     "High-risk roles *": "Rôles à haut risque *",
@@ -20835,6 +20975,75 @@ export const translations: Record<string, Record<string, string>> = {
       "sont considérées comme de faible qualité. Les fichiers sans analyse IA ne comptent pas comme suffisants.",
   },
   es: {
+    // Jira incidents extension
+    "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
+      "Solo se importan las incidencias creadas en Jira después de esta configuración. VerifyWise no crea incidencias en Jira.",
+    "After import, only status stays in sync, in both directions. Later changes to other Jira fields aren't copied.":
+      "Tras la importación, solo el estado se mantiene sincronizado, en ambos sentidos. Los cambios posteriores en otros campos de Jira no se copian.",
+    "If a Jira status move needs a field such as Resolution, VerifyWise can't make it. Those incidents show an error, and you can change the status in Jira.":
+      "Si un cambio de estado en Jira requiere un campo como Resolución, VerifyWise no puede hacerlo. Esos incidentes muestran un error y puede cambiar el estado en Jira.",
+    "Create a classic API token for the service account at id.atlassian.com. Scoped tokens aren't supported.":
+      "Cree un token de API clásico para la cuenta de servicio en id.atlassian.com. Los tokens con ámbito no son compatibles.",
+    "Stored. Enter a new token to replace it":
+      "Guardado. Introduzca un token nuevo para reemplazarlo",
+    "API token": "Token de API",
+    "Choose": "Elegir",
+    "Choose a project and issue type to map statuses.":
+      "Elija un proyecto y un tipo de incidencia para asignar los estados.",
+    "Choose a use case": "Elegir un caso de uso",
+    "Choose an incident type": "Elegir un tipo de incidente",
+    "Choose an issue type": "Elegir un tipo de incidencia",
+    "Connection": "Conexión",
+    "Could not load the Jira incidents settings. Reload the page to try again.":
+      "No se pudo cargar la configuración de incidentes de Jira. Recargue la página para intentarlo de nuevo.",
+    "Could not load the sync activity.": "No se pudo cargar la actividad de sincronización.",
+    "Defaults for imported incidents": "Valores predeterminados de los incidentes importados",
+    "Import only issues with this label. Leave empty to import every issue.":
+      "Importar solo las incidencias con esta etiqueta. Déjelo vacío para importar todas.",
+    "Issue type": "Tipo de incidencia",
+    "Jira project": "Proyecto de Jira",
+    "Jira site URL": "URL del sitio de Jira",
+    "Jira to VerifyWise": "De Jira a VerifyWise",
+    "VerifyWise to Jira": "De VerifyWise a Jira",
+    "No sync activity yet": "Aún no hay actividad de sincronización",
+    "Save the connection to choose a Jira project.":
+      "Guarde la conexión para elegir un proyecto de Jira.",
+    "Save the connection to map Jira priorities.":
+      "Guarde la conexión para asignar las prioridades de Jira.",
+    "Service account email": "Correo de la cuenta de servicio",
+    "Settings saved.": "Configuración guardada.",
+    "Severity mapping": "Asignación de gravedad",
+    "Status mapping": "Asignación de estados",
+    "Sync activity": "Actividad de sincronización",
+    "Which issues to import": "Qué incidencias importar",
+    "Label": "Etiqueta",
+    "Jira status": "Estado de Jira",
+    "VerifyWise status": "Estado de VerifyWise",
+    "Jira priority": "Prioridad de Jira",
+    "Don't change Jira": "No cambiar Jira",
+    "Event": "Evento",
+    "Jira issue": "Incidencia de Jira",
+    "Imported": "Importado",
+    "Status from Jira": "Estado desde Jira",
+    "Status to Jira": "Estado hacia Jira",
+    "Conflict": "Conflicto",
+    "Deleted in Jira": "Eliminado en Jira",
+    "Sync error": "Error de sincronización",
+    "Jira left unchanged": "Jira sin cambios",
+    "Enter your Jira site URL": "Introduzca la URL de su sitio de Jira",
+    "Enter the service account email": "Introduzca el correo de la cuenta de servicio",
+    "Enter the API token": "Introduzca el token de API",
+    "Enter the API token again after changing the site URL or email":
+      "Vuelva a introducir el token de API después de cambiar la URL del sitio o el correo",
+    "Map every Jira status": "Asigne cada estado de Jira",
+    "Enter the reporter": "Introduzca el notificador",
+    "Could not save the settings.": "No se pudo guardar la configuración.",
+    "Could not test the connection to Jira.": "No se pudo probar la conexión con Jira.",
+    "Could not load the options from Jira.": "No se pudieron cargar las opciones de Jira.",
+    "Import new Jira issues and sync status on a schedule":
+      "Importar nuevas incidencias de Jira y sincronizar estados según una programación",
+    "Each sync imports issues created since the last one, then syncs status both ways.":
+      "Cada sincronización importa las incidencias creadas desde la anterior y luego sincroniza los estados en ambos sentidos.",
     // High-risk roles (several EU AI Act roles per use case)
     "High-risk roles": "Roles de alto riesgo",
     "High-risk roles *": "Roles de alto riesgo *",
