@@ -31,6 +31,29 @@ type Reply = { status: number; body?: unknown; headers?: Record<string, string> 
 type Handler = (url: URL, body: any, m: RegExpExecArray) => Reply;
 
 const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
+/** Missing, non-numeric or < 1 falls back to 50; capped at 100 so paging always advances. */
+const pageSize = (raw: unknown): number => {
+  const n = Math.floor(Number(raw));
+  if (raw === undefined || raw === null || !Number.isFinite(n) || n < 1) return DEFAULT_PAGE_SIZE;
+  return Math.min(n, MAX_PAGE_SIZE);
+};
+
+/**
+ * Every matching entry counts the call down; the first matching entry whose
+ * countdown was already spent (or absent) before this call fires and is removed.
+ */
+const consumeFailure = (queue: MockState["failNext"], pathname: string) => {
+  let fire: MockState["failNext"][number] | undefined;
+  for (const entry of [...queue]) {
+    if (entry.path && !pathname.startsWith(entry.path)) continue;
+    if (entry.afterCalls && entry.afterCalls > 0) entry.afterCalls -= 1;
+    else if (!fire) fire = entry;
+  }
+  if (fire) queue.splice(queue.indexOf(fire), 1);
+  return fire;
+};
 const ok = (body?: unknown): Reply => ({ status: 200, body });
 const notFound = (): Reply => ({ status: 404, body: { errorMessages: ["Not found"] } });
 const badRequest = (message: string): Reply => ({
@@ -78,7 +101,7 @@ export async function startJiraCloudMock(options: { port?: number } = {}): Promi
   const liveIssue = (id: string) => mock.state.issues.find((i) => i.id === id && !i.deleted);
   const pageParams = (url: URL) => ({
     startAt: Number(url.searchParams.get("startAt") ?? 0),
-    maxResults: Number(url.searchParams.get("maxResults") ?? DEFAULT_PAGE_SIZE),
+    maxResults: pageSize(url.searchParams.get("maxResults")),
   });
   const toFields = (issue: MockIssue, wanted: string[] | undefined) => {
     const s = mock.state;
@@ -109,7 +132,7 @@ export async function startJiraCloudMock(options: { port?: number } = {}): Promi
     } catch (e) {
       return badRequest((e as Error).message);
     }
-    const maxResults = Number(body?.maxResults ?? DEFAULT_PAGE_SIZE);
+    const maxResults = pageSize(body?.maxResults);
     const start = decodePageToken(body?.nextPageToken);
     let matches: MockIssue[] = [];
     if (mock.state.projectReadable) {
@@ -353,18 +376,12 @@ export async function startJiraCloudMock(options: { port?: number } = {}): Promi
         "Basic " + Buffer.from(`${mock.state.email}:${mock.state.token}`).toString("base64");
       if (req.headers.authorization !== expected)
         return send(401, { errorMessages: ["Unauthorized"] });
-      const failIndex = mock.state.failNext.findIndex(
-        (f) => !f.path || url.pathname.startsWith(f.path),
-      );
-      const pending = failIndex >= 0 ? mock.state.failNext[failIndex] : null;
-      if (pending?.afterCalls) {
-        pending.afterCalls -= 1;
-      } else if (failIndex >= 0) {
-        const [fail] = mock.state.failNext.splice(failIndex, 1);
+      const fired = consumeFailure(mock.state.failNext, url.pathname);
+      if (fired) {
         return send(
-          fail.status,
-          { errorMessages: [`Injected ${fail.status}`] },
-          fail.retryAfter !== undefined ? { "Retry-After": String(fail.retryAfter) } : {},
+          fired.status,
+          { errorMessages: [`Injected ${fired.status}`] },
+          fired.retryAfter !== undefined ? { "Retry-After": String(fired.retryAfter) } : {},
         );
       }
     }

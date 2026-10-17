@@ -1,3 +1,4 @@
+import { zonedMinuteToInstant } from "../store";
 import { startJiraCloudMock, JiraCloudMock } from "../server";
 
 const auth = "Basic " + Buffer.from("svc@acme.test:token-1").toString("base64");
@@ -177,5 +178,49 @@ describe("simulated Jira Cloud", () => {
     await post(mock, `/rest/api/3/issue/${issue.id}/remotelink`, body);
     await post(mock, `/rest/api/3/issue/${issue.id}/remotelink`, body);
     expect(mock.state.issues[0].remoteLinks).toHaveLength(1);
+  });
+
+  it("counts down every matching failure and fires a later one immediately", async () => {
+    await post(mock, "/__mock/fail-next", {
+      status: 500,
+      path: "/rest/api/3/myself",
+      afterCalls: 2,
+    });
+    await post(mock, "/__mock/fail-next", { status: 503, path: "/rest/api/3/project" });
+    expect((await get(mock, "/rest/api/3/project/10000")).status).toBe(503);
+    expect((await get(mock, "/rest/api/3/myself")).status).toBe(200);
+    expect((await get(mock, "/rest/api/3/myself")).status).toBe(200);
+    expect((await get(mock, "/rest/api/3/myself")).status).toBe(500);
+    expect((await get(mock, "/rest/api/3/myself")).status).toBe(200);
+  });
+
+  it("falls back to 50 and caps at 100 for unusable maxResults", async () => {
+    for (let i = 0; i < 101; i++) mock.addIssue({ summary: `I${i}` });
+    const jql =
+      'project = 10000 AND issuetype = 10001 AND created >= "2000-01-01 00:00" ORDER BY created ASC';
+    const size = async (maxResults: unknown) =>
+      (await (await post(mock, "/rest/api/3/search/jql", { jql, maxResults, fields: [] })).json())
+        .issues.length;
+    expect(await size(0)).toBe(50);
+    expect(await size(-3)).toBe(50);
+    expect(await size("abc")).toBe(50);
+    expect(await size(500)).toBe(100);
+  });
+});
+
+describe("zonedMinuteToInstant", () => {
+  const iso = (local: string, zone: string) => zonedMinuteToInstant(local, zone).toISOString();
+  it("handles DST changes in zones behind UTC", () => {
+    expect(iso("2026-03-08 03:30", "America/New_York")).toBe("2026-03-08T07:30:00.000Z");
+    expect(iso("2026-11-01 00:30", "America/New_York")).toBe("2026-11-01T04:30:00.000Z");
+    expect(iso("2026-11-01 03:30", "America/New_York")).toBe("2026-11-01T08:30:00.000Z");
+  });
+  it("does not throw for a nonexistent local time", () => {
+    expect(["2026-03-29T01:30:00.000Z", "2026-03-29T02:30:00.000Z"]).toContain(
+      iso("2026-03-29 02:30", "Europe/London"),
+    );
+  });
+  it("keeps fixed-offset zones unchanged", () => {
+    expect(iso("2026-10-15 00:00", "Pacific/Kiritimati")).toBe("2026-10-14T10:00:00.000Z");
   });
 });

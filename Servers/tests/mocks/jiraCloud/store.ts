@@ -109,8 +109,8 @@ export function parseJql(jql: string): ParsedJql {
 /** Inverse of formatJqlDate: a wall-clock "yyyy-MM-dd HH:mm" in `timeZone` to an instant. */
 export function zonedMinuteToInstant(local: string, timeZone: string): Date {
   const [d, t] = local.split(" ");
-  const asUtc = new Date(`${d}T${t}:00Z`);
-  const parts = new Intl.DateTimeFormat("en-CA", {
+  const asUtc = new Date(`${d}T${t}:00Z`).getTime();
+  const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
     month: "2-digit",
@@ -118,10 +118,19 @@ export function zonedMinuteToInstant(local: string, timeZone: string): Date {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-  }).formatToParts(asUtc);
-  const g = (k: string) => parts.find((p) => p.type === k)!.value;
-  const zoned = new Date(`${g("year")}-${g("month")}-${g("day")}T${g("hour")}:${g("minute")}:00Z`);
-  return new Date(asUtc.getTime() - (zoned.getTime() - asUtc.getTime()));
+  });
+  // Zone offset (ms) in force at an instant.
+  const offsetAt = (instant: number): number => {
+    const parts = fmt.formatToParts(new Date(instant));
+    const g = (k: string) => parts.find((p) => p.type === k)!.value;
+    return (
+      Date.parse(`${g("year")}-${g("month")}-${g("day")}T${g("hour")}:${g("minute")}:00Z`) - instant
+    );
+  };
+  // Two passes: the offset at the wall-clock-as-UTC instant can differ from the
+  // offset at the real instant when a DST change falls in between.
+  const guess = asUtc - offsetAt(asUtc);
+  return new Date(asUtc - offsetAt(guess));
 }
 
 /** "2026-10-14T10:00:00.000+0000" to a Date ("+0000" is not parseable everywhere). */
