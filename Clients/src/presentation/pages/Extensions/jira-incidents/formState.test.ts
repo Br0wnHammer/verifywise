@@ -134,4 +134,57 @@ describe("formState", () => {
     expect(input.api_token).toBe("new");
     expect(input).not.toHaveProperty("default_project_id");
   });
+
+  describe("first save, before a connection is stored", () => {
+    const empty = fromView({
+      ...view,
+      configured: false,
+      site_url: null,
+      email: null,
+      has_api_token: false,
+      project_id: null,
+      project_key: null,
+      issue_type_id: null,
+      status_map_in: {},
+      status_map_out: {},
+      default_project_id: null,
+      default_type: null,
+      default_reporter: null,
+    });
+    const connection = {
+      ...empty,
+      site_url: "https://acme.atlassian.net",
+      email: "svc@acme.co",
+      api_token: "token-1",
+    };
+    const none = { hasStoredToken: false, storedSiteUrl: null, storedEmail: null, statusIds: [] };
+
+    it("checks only the connection fields", () => {
+      expect(validateForm(connection, none)).toEqual({});
+      expect(Object.keys(validateForm(empty, none)).sort()).toEqual([
+        "api_token",
+        "email",
+        "site_url",
+      ]);
+    });
+
+    it("sends the connection without empty selection or default fields", () => {
+      const input = toInput(connection);
+      expect(input).toMatchObject({
+        site_url: "https://acme.atlassian.net",
+        email: "svc@acme.co",
+        api_token: "token-1",
+      });
+      for (const key of [
+        "project_id",
+        "project_key",
+        "issue_type_id",
+        "default_type",
+        "default_reporter",
+        "default_project_id",
+      ]) {
+        expect(input).not.toHaveProperty(key);
+      }
+    });
+  });
 });

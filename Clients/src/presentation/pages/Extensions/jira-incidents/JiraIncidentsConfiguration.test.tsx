@@ -135,6 +135,51 @@ describe("JiraIncidentsConfiguration", () => {
     expect(repo.saveJiraIncidentsConfig).not.toHaveBeenCalled();
   });
 
+  it("saves the connection alone on first setup, then loads the Jira pickers", async () => {
+    const fresh = {
+      ...SAVED,
+      configured: false,
+      site_url: null,
+      email: null,
+      has_api_token: false,
+      service_account_id: null,
+      project_id: null,
+      project_key: null,
+      issue_type_id: null,
+      default_project_id: null,
+      default_type: null,
+      default_reporter: null,
+      readiness: { ready: false, reason: "Jira incidents isn't set up yet" },
+    };
+    repo.getJiraIncidentsConfig.mockResolvedValue(fresh);
+    repo.saveJiraIncidentsConfig.mockResolvedValue({
+      ...fresh,
+      configured: true,
+      site_url: "https://acme.atlassian.net",
+      email: "svc@acme.co",
+      has_api_token: true,
+      readiness: { ready: false, reason: "Choose a Jira project" },
+    });
+    const { container } = renderPage();
+    await screen.findByText("Save the connection to choose a Jira project.");
+    expect(repo.getJiraProjects).not.toHaveBeenCalled();
+    const field = (id: string) => container.querySelector(`#${id}`) as HTMLInputElement;
+    fireEvent.change(field("jira-incidents-site-url"), {
+      target: { value: "https://acme.atlassian.net" },
+    });
+    fireEvent.change(field("jira-incidents-email"), { target: { value: "svc@acme.co" } });
+    fireEvent.change(field("jira-incidents-api-token"), { target: { value: "token-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(repo.saveJiraIncidentsConfig).toHaveBeenCalled());
+    expect(repo.saveJiraIncidentsConfig.mock.calls[0][0]).toMatchObject({
+      site_url: "https://acme.atlassian.net",
+      email: "svc@acme.co",
+      api_token: "token-1",
+    });
+    expect(repo.saveJiraIncidentsConfig.mock.calls[0][0]).not.toHaveProperty("project_id");
+    await waitFor(() => expect(repo.getJiraProjects).toHaveBeenCalled());
+  });
+
   it("shows the server's reason when save is refused", async () => {
     repo.saveJiraIncidentsConfig.mockRejectedValue({
       response: { message: "Bad Request", data: "Map every Jira status: 'Triage' aren't mapped" },

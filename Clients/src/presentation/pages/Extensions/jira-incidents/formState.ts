@@ -115,6 +115,9 @@ export function validateForm(
     statusIds: string[];
   },
 ): Record<string, string> {
+  // Projects, statuses and priorities load only after a saved connection, so
+  // the first save checks the connection fields alone.
+  const connectionOnly = !opts.hasStoredToken;
   const errors: Record<string, string> = {};
   const site = form.site_url.trim();
   const email = form.email.trim();
@@ -126,6 +129,7 @@ export function validateForm(
     else if (changed)
       errors.api_token = "Enter the API token again after changing the site URL or email";
   }
+  if (connectionOnly) return errors;
   if (!form.project_id) errors.project_id = "Choose a project";
   if (!form.issue_type_id) errors.issue_type_id = "Choose an issue type";
   if (opts.statusIds.some((id) => !form.status_map_in[id])) {
@@ -138,25 +142,33 @@ export function validateForm(
   return errors;
 }
 
-/** The PUT body: no token unless one was typed, "Don't change Jira" as null, blank label as null. */
+/**
+ * The PUT body: "Don't change Jira" as null, blank label as null. Fields not
+ * filled in yet (token, project, issue type, defaults) are left out, so the
+ * server keeps what it has instead of rejecting an empty value.
+ */
 export function toInput(form: FormState): JiraIncidentsConfigInput {
   const input: JiraIncidentsConfigInput = {
     site_url: form.site_url.trim(),
     email: form.email.trim(),
-    project_id: form.project_id,
-    project_key: form.project_key,
-    issue_type_id: form.issue_type_id,
     label: form.label.trim() || null,
     status_map_in: form.status_map_in,
     status_map_out: Object.fromEntries(
       Object.entries(form.status_map_out).map(([k, v]) => [k, v === DONT_CHANGE_JIRA ? null : v]),
     ),
     severity_map: form.severity_map,
+  };
+  const optional = {
+    api_token: form.api_token.trim(),
+    project_id: form.project_id,
+    project_key: form.project_key,
+    issue_type_id: form.issue_type_id,
     default_type: form.default_type,
     default_reporter: form.default_reporter.trim(),
   };
-  const token = form.api_token.trim();
-  if (token) input.api_token = token;
+  for (const [key, value] of Object.entries(optional) as Array<[keyof typeof optional, string]>) {
+    if (value) input[key] = value;
+  }
   if (form.default_project_id !== "") input.default_project_id = form.default_project_id;
   return input;
 }
