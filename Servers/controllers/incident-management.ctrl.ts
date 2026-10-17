@@ -303,11 +303,7 @@ export async function createNewIncident(req: Request, res: Response) {
     // Phase 6 / issue 3813 — launch the critical incident_response autopilot
     // workflow when the new incident is critical-tier. Fire-and-forget; never
     // blocks or fails the response.
-    if (
-      savedIncident.id &&
-      typeof savedIncident.severity === "string" &&
-      isCriticalIncidentSeverity(savedIncident.severity)
-    ) {
+    if (savedIncident.id && isCriticalIncidentSeverity(savedIncident.severity)) {
       triggerIncidentResponse(req.organizationId!, savedIncident.id, savedIncident.severity).catch(
         (err) => console.error("Failed to trigger incident_response workflow:", err),
       );

@@ -118,6 +118,16 @@ describe("jira incidents status sync", () => {
     expect((await incident()).status).toBe("Investigating");
   });
 
+  it("re-reads a settled link on a manual run", async () => {
+    await vwSet("Closed");
+    await sync(orgA);
+    mock.setStatus(issueId, "3");
+    const manual = await stateFor(orgA);
+    manual.recheckSettled = true;
+    await runStatusSync(manual);
+    expect((await incident()).status).toBe("Investigating");
+  });
+
   it("checks a settled link at once after a VerifyWise change", async () => {
     await vwSet("Closed");
     await sync(orgA);
@@ -345,7 +355,9 @@ describe("jira incidents status sync after an unmapped import", () => {
       `UPDATE jira_incidents_config SET status_map_in = status_map_in - '3' WHERE organization_id = :orgA`,
       { replacements: { orgA } },
     );
-    mock.addIssue({ summary: "Unmapped status here", statusId: "3" });
+    const issue = mock.addIssue({ summary: "Unmapped status here", statusId: "3" });
+    // Moved to the unmapped status in Jira well before the import.
+    mock.setStatus(issue.id, "3", new Date(Date.now() - 10 * 60_000));
     await runImport(await stateFor(orgA));
     const linkRow = async () =>
       (

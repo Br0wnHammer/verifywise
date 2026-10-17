@@ -174,6 +174,18 @@ describe("decideStatusAction", () => {
         }),
       ).toEqual({ action: "to_jira", jiraStatusId: "3", conflict: false });
     });
+    it("counts a Jira move just before the link was written as a move", () => {
+      expect(
+        decideStatusAction({
+          ...unmapped,
+          jiraStatusId: "4",
+          vwStatus: "Investigating",
+          jiraChangedAt: t("2026-10-14T09:59:30Z"),
+          vwChangedAt: t("2026-10-14T11:00:00Z"),
+          linkedAt: t("2026-10-14T10:00:00Z"),
+        }),
+      ).toEqual({ action: "to_jira", jiraStatusId: "3", conflict: true });
+    });
     it("is a conflict when Jira moved too", () => {
       expect(
         decideStatusAction({

@@ -77,7 +77,12 @@ export async function runStatusSync(state: RunState): Promise<void> {
   try {
     let afterId = 0;
     for (;;) {
-      const links = await listSyncableLinks(state.orgId, afterId, STATUS_BATCH_SIZE);
+      const links = await listSyncableLinks(
+        state.orgId,
+        afterId,
+        STATUS_BATCH_SIZE,
+        state.recheckSettled ?? false,
+      );
       if (links.length === 0) return;
       afterId = links[links.length - 1].id;
       // A deleted issue fails the whole search, so links already known to be

@@ -46,6 +46,7 @@ export async function runJiraIncidentsSync(ctx: RunContext): Promise<RunResult> 
     heartbeat: () => ctx.heartbeat(),
     deadline: ctx.signal,
     warnedNoFrontendUrl: false,
+    recheckSettled: ctx.kind === "manual",
   };
 
   // Before touching any link: if the project is unreadable, every issue would
@@ -60,7 +61,7 @@ export async function runJiraIncidentsSync(ctx: RunContext): Promise<RunResult> 
   }
 
   await runImport(state);
-  if (!state.stopReason) await retryRemoteLinks(state);
   if (!state.stopReason) await runStatusSync(state);
+  if (!state.stopReason) await retryRemoteLinks(state);
   return { counts: state.counts, message: summarizeRun(state.counts, state.stopReason) };
 }

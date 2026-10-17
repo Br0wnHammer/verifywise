@@ -8,12 +8,12 @@ import { JiraRateLimitError, JiraUnreachableError } from "./jiraIncidents.errors
 import { RunState, STOP_DEADLINE, STOP_RATE_LIMIT } from "./jiraIncidents.run";
 import { REMOTE_LINK_RETRY_LIMIT } from "./jiraIncidents.constants";
 import {
-  clearRemoteLinkPending,
   insertEvent,
   insertLink,
   linkExists,
   listPendingRemoteLinks,
   setLinkState,
+  setRemoteLinkOutcome,
   type PendingRemoteLink,
 } from "./jiraIncidents.store";
 import { buildImportJql, formatJqlDate, importCutoff } from "./jql";
@@ -120,8 +120,9 @@ async function importOne(
           // An empty snapshot makes the next status sync re-check an unmapped status.
           jiraStatusId: mapped ? issue.statusId : "",
           vwStatus: status,
-          // Cleared once Jira accepts the link back; until then each run retries it.
-          remoteLinkPending: !!process.env.FRONTEND_URL,
+          // Cleared once Jira accepts the link back; until then later runs retry it
+          // (also once FRONTEND_URL is set, if it is missing now).
+          remoteLinkPending: true,
         },
         t,
       );
@@ -163,6 +164,7 @@ async function importOne(
         jiraIssueKey: issue.key,
         incidentId: incident.id!,
         incidentCode: incident.incident_id as string,
+        triedBefore: false,
       };
     });
   } catch (err) {
@@ -173,6 +175,7 @@ async function importOne(
   }
 
   state.counts.imported++;
+  (state.importedLinkIds ??= []).push(created.linkId);
   const outcome = await addRemoteLink(state, created);
   if (typeof outcome === "object") {
     await recordError(
@@ -187,14 +190,15 @@ async function importOne(
 
 /**
  * Retries the link back to VerifyWise on issues imported by earlier runs
- * whose link failed or was cut off by a rate limit. A retry that fails again
- * is logged only: the import already recorded the error event.
+ * whose link failed, was cut off by a rate limit, or waited for FRONTEND_URL.
+ * A link's first failed attempt records an error event; later ones are
+ * logged only, so a broken link does not add an event every run.
  */
 export async function retryRemoteLinks(state: RunState): Promise<void> {
   if (!process.env.FRONTEND_URL) return;
   const pending = await listPendingRemoteLinks(
     state.orgId,
-    state.startedAt,
+    state.importedLinkIds ?? [],
     REMOTE_LINK_RETRY_LIMIT,
   );
   for (const target of pending) {
@@ -202,7 +206,17 @@ export async function retryRemoteLinks(state: RunState): Promise<void> {
       state.stopReason = STOP_DEADLINE;
       return;
     }
-    if ((await addRemoteLink(state, target)) === "stop") return;
+    const outcome = await addRemoteLink(state, target);
+    if (outcome === "stop") return;
+    if (typeof outcome === "object" && !target.triedBefore) {
+      await recordError(
+        state,
+        target.jiraIssueKey,
+        `Could not add the VerifyWise link to the Jira issue: ${outcome.error}`,
+        target.linkId,
+      );
+    }
+    await state.heartbeat();
   }
 }
 
@@ -239,10 +253,26 @@ async function addRemoteLink(
     logger.warn(
       `jira-incidents: could not add the VerifyWise link to ${target.jiraIssueKey}: ${messageOf(err)}`,
     );
+    await recordRemoteLinkOutcome(state, target, false);
     return { error: messageOf(err) };
   }
-  await clearRemoteLinkPending(state.orgId, target.linkId);
+  await recordRemoteLinkOutcome(state, target, true);
   return "ok";
+}
+
+/** Bookkeeping only: a failed write leaves the link pending and must not fail the run. */
+async function recordRemoteLinkOutcome(
+  state: RunState,
+  target: PendingRemoteLink,
+  added: boolean,
+): Promise<void> {
+  try {
+    await setRemoteLinkOutcome(state.orgId, target.linkId, added);
+  } catch (err) {
+    logger.error(
+      `jira-incidents: could not record the remote link outcome for ${target.jiraIssueKey}: ${messageOf(err)}`,
+    );
+  }
 }
 
 async function recordError(

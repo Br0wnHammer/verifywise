@@ -19,6 +19,14 @@ export type Decision =
   | { action: "to_jira"; jiraStatusId: string | null; conflict: boolean }
   | { action: "unmapped"; jiraStatusId: string };
 
+/**
+ * Jira's changelog time and the link's created_at come from different clocks,
+ * and the issue is searched a moment before its link is written. A Jira move
+ * this close to the import counts as after it: a conflict is shown rather than
+ * Jira's move silently overwritten.
+ */
+const IMPORT_CLOCK_MARGIN_MS = 60_000;
+
 function toVw(input: DecideInput, conflict: boolean): Decision {
   const mapped = input.statusMapIn[input.jiraStatusId];
   if (!mapped) return { action: "unmapped", jiraStatusId: input.jiraStatusId };
@@ -45,7 +53,8 @@ export function decideStatusAction(input: DecideInput): Decision {
   const unmappedAtImport = input.lastJiraStatusId === "";
   const jiraMovedSinceImport =
     input.jiraChangedAt !== null &&
-    (input.linkedAt === null || input.jiraChangedAt > input.linkedAt);
+    (input.linkedAt === null ||
+      input.jiraChangedAt.getTime() > input.linkedAt.getTime() - IMPORT_CLOCK_MARGIN_MS);
   const jiraChanged =
     input.jiraStatusId !== input.lastJiraStatusId &&
     !(unmappedAtImport && vwChanged && !jiraMovedSinceImport);
