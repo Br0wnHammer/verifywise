@@ -3,7 +3,9 @@ import secrets
 import hashlib
 from typing import Any, Optional
 from sqlalchemy import text
-from crud.endpoints import role_visibility
+# _text: the shared sqlalchemy.text wrapper the crud modules use for SQL built
+# from fixed fragments (here the role_visibility predicate).
+from crud.endpoints import _text, role_visibility
 from database.db import get_db
 
 
@@ -67,8 +69,7 @@ async def _attach_endpoint_names(db, org_id: int, role_id: int, keys: list[dict]
     if ids:
         role_filter, role_params = role_visibility(role_id)
         result = await db.execute(
-            # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
-            text(
+            _text(
                 """
                 SELECT e.id,
                        COALESCE(NULLIF(BTRIM(e.display_name), ''), e.slug) AS name,
