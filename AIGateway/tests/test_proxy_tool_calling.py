@@ -705,7 +705,7 @@ async def _final_stream_chunk(monkeypatch, usage, price=None):
     return json.loads(out[-2][len("data: "):])
 
 
-@pytest.mark.parametrize("counts", [(None, None, None), (0, 0, 0)])
+@pytest.mark.parametrize("counts", [(None, None, None), (0, 0, 0), (50, None, None)])
 async def test_empty_provider_usage_falls_back_to_the_estimate(monkeypatch, counts):
     p, c, t = counts
     final = await _final_stream_chunk(monkeypatch, _Obj(prompt_tokens=p, completion_tokens=c, total_tokens=t))
@@ -727,10 +727,9 @@ async def test_provider_counts_are_priced_directly_when_completion_cost_fails(mo
     assert final["cost_usd"] == pytest.approx(0.014)
 
 
-async def test_stream_spend_log_drops_non_finite_cost_and_keeps_float_counts(monkeypatch):
+async def test_stream_spend_log_keeps_whole_number_float_counts(monkeypatch):
     chunks = [
         'data: {"usage": {"prompt_tokens": 120.0, "completion_tokens": 30.0}}\n\n',
-        'data: {"cost_usd": NaN}\n\n',
     ]
 
     async def fake_stream(**_kw):
@@ -752,7 +751,6 @@ async def test_stream_spend_log_drops_non_finite_cost_and_keeps_float_counts(mon
     response = await proxy_router._handle_stream(1, {"id": 1}, endpoint, [], {}, 0.0, 0.0)
     [c async for c in response.body_iterator]
     assert (logged["prompt_tokens"], logged["completion_tokens"]) == (120, 30)
-    assert logged["cost_usd"] == 0.0
 
 
 def test_same_name_with_new_arguments_after_complete_json_is_a_new_call():
@@ -768,3 +766,18 @@ def test_call_joined_by_id_takes_the_index_for_later_deltas():
     _merge_tool_call_deltas(calls, [{"id": "c1", "index": 0, "function": {"arguments": '{"a"'}}])
     _merge_tool_call_deltas(calls, [{"index": 0, "function": {"arguments": ":1}"}}])
     assert _names_and_args(calls) == [("f", '{"a":1}')]
+
+
+def test_whitespace_after_complete_arguments_is_not_a_new_call():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "get_weather", "arguments": '{"city":"A"}'}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "get_weather", "arguments": "\n"}}])
+    assert _names_and_args(calls) == [("get_weather", '{"city":"A"}\n')]
+
+
+def test_deeply_nested_arguments_do_not_raise():
+    calls: dict = {}
+    deep = "[" * 100000
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "f", "arguments": deep}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "f", "arguments": "["}}])
+    assert _names_and_args(calls) == [("f", deep + "[")]

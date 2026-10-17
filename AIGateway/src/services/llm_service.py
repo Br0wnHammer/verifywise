@@ -139,9 +139,9 @@ async def stream_chat_completion(
     usage = None
 
     provider_usage = getattr(last_chunk, "usage", None) if last_chunk else None
-    prompt_tokens = whole_tokens(getattr(provider_usage, "prompt_tokens", None)) or 0
-    completion_tokens = whole_tokens(getattr(provider_usage, "completion_tokens", None)) or 0
-    if prompt_tokens or completion_tokens:
+    prompt_tokens = whole_tokens(getattr(provider_usage, "prompt_tokens", None))
+    completion_tokens = whole_tokens(getattr(provider_usage, "completion_tokens", None))
+    if prompt_tokens is not None and completion_tokens is not None and (prompt_tokens or completion_tokens):
         # The provider's counts are exact; keep them even when pricing fails.
         usage = {
             "prompt_tokens": prompt_tokens,
@@ -162,7 +162,7 @@ async def stream_chat_completion(
             except Exception:
                 pass
     elif accumulated_text:
-        # No usable provider counts (missing, null or all zero): estimate them.
+        # No usable provider counts (missing, partial, null or all zero): estimate them.
         cost, usage = calculate_stream_cost(
             model, messages, accumulated_text,
             tools=tool_definitions(kwargs),

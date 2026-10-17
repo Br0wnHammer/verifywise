@@ -36,7 +36,7 @@ from services.proxy_service import (
     get_guardrail_config,
 )
 from services.cache_service import generate_cache_key, check_cache, store_in_cache, is_cache_globally_enabled
-from services.cost_service import _safe_cost, estimate_prompt_cost, tool_definitions, whole_tokens
+from services.cost_service import estimate_prompt_cost, tool_definitions, whole_tokens
 from services.llm_service import chat_completion, embedding, stream_chat_completion
 
 logger = logging.getLogger("uvicorn")
@@ -417,9 +417,10 @@ async def _handle_stream(
                             total_prompt = _token_count(usage.get("prompt_tokens"), total_prompt)
                             total_completion = _token_count(usage.get("completion_tokens"), total_completion)
                         cost_usd = chunk.get("cost_usd")
-                        # json.loads accepts NaN and Infinity; _safe_cost drops them.
+                        # NaN/Infinity from json.loads are dropped by log_spend and
+                        # reconcile_budget, which both apply _safe_cost.
                         if isinstance(cost_usd, (int, float)) and not isinstance(cost_usd, bool):
-                            total_cost = _safe_cost(cost_usd)
+                            total_cost = cost_usd
                         if isinstance(chunk.get("model"), str):
                             final_model = chunk["model"]
                     except Exception as parse_err:
@@ -469,8 +470,9 @@ def _merge_tool_call_deltas(
     Name fragments are appended. Some adapters repeat the whole name on every
     delta, so once arguments have started a name equal to the current one is
     a repeat and is not appended again. A different name at that point, or
-    the same name with new arguments after the current ones already form
-    complete JSON, is a new call that reuses the slot.
+    the same name with a fragment that opens a new JSON value after the
+    current arguments already form complete JSON, is a new call that reuses
+    the slot.
 
     This only feeds the response log, so malformed values are coerced to text
     rather than raised: a bad delta must never abort the client's stream.
@@ -497,7 +499,8 @@ def _merge_tool_call_deltas(
         if key is not None:
             current = calls[key]["function"]
             if name and current["arguments"] and (
-                name != current["name"] or (arguments and _is_complete_json(current["arguments"]))
+                name != current["name"]
+                or (arguments.lstrip()[:1] in ("{", "[") and _is_complete_json(current["arguments"]))
             ):
                 key = None
         if key is None:
@@ -526,7 +529,7 @@ def _is_complete_json(text: str) -> bool:
     try:
         json.loads(text)
         return True
-    except ValueError:
+    except (ValueError, RecursionError):
         return False
 
 
