@@ -152,6 +152,34 @@ describe("decideStatusAction", () => {
       conflict: true,
     });
   });
+
+  describe("an issue imported in an unmapped status (empty Jira snapshot)", () => {
+    const unmapped = { ...base, lastJiraStatusId: "", jiraStatusId: "8" };
+    it("applies a VerifyWise change to Jira without a conflict when Jira never moved", () => {
+      expect(decideStatusAction({ ...unmapped, vwStatus: "Investigating" })).toEqual({
+        action: "to_jira",
+        jiraStatusId: "3",
+        conflict: false,
+      });
+    });
+    it("is a conflict when Jira moved too", () => {
+      expect(
+        decideStatusAction({
+          ...unmapped,
+          jiraStatusId: "4",
+          vwStatus: "Investigating",
+          jiraChangedAt: t("2026-10-14T10:00:00Z"),
+          vwChangedAt: t("2026-10-14T11:00:00Z"),
+        }),
+      ).toEqual({ action: "to_jira", jiraStatusId: "3", conflict: true });
+    });
+    it("still re-checks the Jira status when VerifyWise did not change", () => {
+      expect(decideStatusAction(unmapped)).toEqual({ action: "unmapped", jiraStatusId: "8" });
+      expect(
+        decideStatusAction({ ...unmapped, statusMapIn: { ...maps.statusMapIn, "8": "Mitigated" } }),
+      ).toEqual({ action: "to_vw", vwStatus: "Mitigated", conflict: false });
+    });
+  });
 });
 
 describe("pickTransition", () => {

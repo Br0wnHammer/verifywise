@@ -30,11 +30,20 @@ function toJira(input: DecideInput, conflict: boolean): Decision {
   return { action: "to_jira", jiraStatusId: target, conflict };
 }
 
-/** The §6.2 table. A link with no snapshot (null last_*) counts as unchanged. */
+/**
+ * The §6.2 table. A link with no snapshot (null last_*) counts as unchanged.
+ * An empty Jira snapshot means the issue arrived in an unmapped status: Jira
+ * counts as changed so a later mapping applies, unless VerifyWise changed and
+ * Jira's changelog shows no status move at all, which is VerifyWise's change
+ * alone and not a conflict.
+ */
 export function decideStatusAction(input: DecideInput): Decision {
   if (input.lastJiraStatusId === null || input.lastVwStatus === null) return { action: "none" };
-  const jiraChanged = input.jiraStatusId !== input.lastJiraStatusId;
   const vwChanged = input.vwStatus !== input.lastVwStatus;
+  const unmappedAtImport = input.lastJiraStatusId === "";
+  const jiraChanged =
+    input.jiraStatusId !== input.lastJiraStatusId &&
+    !(unmappedAtImport && vwChanged && input.jiraChangedAt === null);
   if (!jiraChanged && !vwChanged) return { action: "none" };
   if (jiraChanged && !vwChanged) return toVw(input, false);
   if (!jiraChanged && vwChanged) return toJira(input, false);
