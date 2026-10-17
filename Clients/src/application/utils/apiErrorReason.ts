@@ -20,11 +20,13 @@ export function getApiErrorReason(error: unknown): string | null {
  * errors as { detail }: a string, { message, code }, or for a request that
  * fails validation (422) a list of { msg }. The envelope readers above do not
  * look at it; `apiServices` passes that body through as the error's
- * `response`. Only for a rejected request (4xx): a 5xx detail can carry
- * internal details (or is a gateway misconfiguration), so it is never surfaced.
+ * `response`. Only for a rejected request (4xx), and not a 401: the gateway
+ * answers 401 when the backend's internal key is wrong, a deployment
+ * misconfiguration the user cannot act on. A 5xx detail can carry internal
+ * details, so it is never surfaced either.
  */
 export function getGatewayErrorDetail(error: unknown): string | null {
-  if (!isClientError(error)) return null;
+  if (!isClientError(error) || error.status === 401) return null;
   const detail = (error as { response?: { detail?: unknown } } | null)?.response?.detail;
   if (typeof detail === "string") return detail || null;
   if (Array.isArray(detail)) {
@@ -46,6 +48,8 @@ export function getGatewayErrorDetail(error: unknown): string | null {
  * shown.
  */
 export function getGatewayErrorText(error: unknown, fallback: string): string {
+  // A 401 is the internal-key misconfiguration above, whatever its message.
+  if (isClientError(error) && error.status === 401) return fallback;
   return getGatewayErrorDetail(error) || getClientErrorReason(error) || fallback;
 }
 
