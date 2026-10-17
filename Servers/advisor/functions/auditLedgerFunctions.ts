@@ -1,6 +1,18 @@
 import { sequelize } from "../../database/db";
 import { QueryTypes } from "sequelize";
 import logger from "../../utils/logger/fileLogger";
+import { userHasPermission } from "../../utils/userPermission.utils";
+
+// Both tools read audit_ledger, which REST serves only with auditLedger.super
+// (GET /api/audit-ledger). The advisor runs as the signed-in user, so apply
+// the same permission to them; without it the tool returns this refusal and
+// never queries the ledger.
+const AUDIT_LEDGER_REFUSAL = {
+  error: "You do not have permission to read the audit ledger",
+} as const;
+
+const canReadAuditLedger = (organizationId: number, userId?: number) =>
+  userHasPermission(organizationId, userId, "auditLedger.super");
 
 // --- Read Tools ---
 
@@ -13,7 +25,9 @@ const fetchEventLogs = async (
     limit?: number;
   },
   organizationId: number,
+  userId?: number,
 ): Promise<any> => {
+  if (!(await canReadAuditLedger(organizationId, userId))) return AUDIT_LEDGER_REFUSAL;
   try {
     const conditions: string[] = ["organization_id = :organization_id"];
     const replacements: Record<string, any> = { organization_id: organizationId };
@@ -83,7 +97,9 @@ const fetchEventLogs = async (
 const getAuditTrailForEntity = async (
   params: { entity_type: string; entity_id: number; limit?: number },
   organizationId: number,
+  userId?: number,
 ): Promise<any> => {
+  if (!(await canReadAuditLedger(organizationId, userId))) return AUDIT_LEDGER_REFUSAL;
   try {
     const limit = params.limit || 100;
 
