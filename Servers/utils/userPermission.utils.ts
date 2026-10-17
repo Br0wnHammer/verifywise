@@ -1,24 +1,34 @@
 import { getUserByIdQuery } from "./user.utils";
-import { getRoleNameById } from "./roleMap";
-import { roleHasPermission } from "./rolePermissions.utils";
+import { getRoleById, type RoleInfo } from "./roleMap";
+import { roleInfoHasPermission } from "./rolePermissions.utils";
 import type { PermissionKey } from "../config/rolePermissions.config";
 
 /**
+ * The current role of user `userId` in `organizationId`, resolved from the
+ * users row (not from a token) by role_id. Undefined when there is no user
+ * id, the user is not a member of the organization (filtered in SQL), or the
+ * role id is unknown. For code paths such as advisor tools that know the
+ * caller's id but not their role.
+ */
+export async function getUserRoleInOrganization(
+  organizationId: number,
+  userId: number | undefined,
+): Promise<RoleInfo | undefined> {
+  if (!userId) return undefined;
+  const user = await getUserByIdQuery(userId, null, organizationId);
+  if (!user || user.role_id == null) return undefined;
+  return getRoleById(user.role_id);
+}
+
+/**
  * True when user `userId` is a member of `organizationId` and their current
- * role holds `permissionKey`. Resolves the role from the users row (not from a
- * token), the same way userInviteRefusal does, for code paths such as advisor
- * tools that know the caller's id but not their role. Fails closed: no user,
- * a user of another organization, or an unknown role all return false.
+ * role holds `permissionKey`. Fails closed (see getUserRoleInOrganization).
  */
 export async function userHasPermission(
   organizationId: number,
   userId: number | undefined,
   permissionKey: PermissionKey,
 ): Promise<boolean> {
-  if (!userId) return false;
-  const user = await getUserByIdQuery(userId);
-  if (!user || user.organization_id !== organizationId) return false;
-  const roleName = await getRoleNameById(user.role_id);
-  if (!roleName) return false;
-  return roleHasPermission(organizationId, roleName, permissionKey);
+  const role = await getUserRoleInOrganization(organizationId, userId);
+  return role ? roleInfoHasPermission(organizationId, role, permissionKey) : false;
 }
