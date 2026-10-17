@@ -14,19 +14,20 @@ const tabPanelStyle = {
   padding: 0,
 };
 
+// One wording for every member, so the header never changes once the
+// permissions arrive. The Logs tab (Admin only) carries its own tooltip.
 const DESCRIPTION =
   "Event Tracker gives you a live window into VerifyWise. It records every user action and system event. Use it to see who did what, spot patterns, and keep your application healthy.";
-const DESCRIPTION_WITH_LOGS =
-  "Event Tracker gives you a live window into VerifyWise. It records every user action and system event, then lets you dive into the raw logs for deeper troubleshooting. Use it to see who did what, spot patterns, and keep your application healthy.";
 
 const WatchTower = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Server logs are Admin-only (logs.admin). Until the permissions are known
-  // neither tab is mounted, so nothing is fetched and no tab flickers. Without
-  // the permission the Logs tab is hidden and /event-tracker/logs is replaced
-  // with /event-tracker, so the logs request is never made.
+  // Server logs are Admin-only (logs.admin). /event-tracker renders the
+  // Events tab straight away; the Logs tab joins it once the permissions say
+  // so. Only /event-tracker/logs waits for them: an allowed user then gets
+  // Logs, anyone else is replaced to /event-tracker, so the logs request is
+  // never made for them.
   const { isLoading: permissionsLoading } = useMyPermissions();
   const canViewLogs = useHasPermission("logs.admin", { fallbackToAdmin: true });
 
@@ -51,11 +52,11 @@ const WatchTower = () => {
   return (
     <PageHeaderExtended
       title="Event Tracker"
-      description={canViewLogs ? DESCRIPTION_WITH_LOGS : DESCRIPTION}
+      description={DESCRIPTION}
       helpArticlePath="ai-governance/watchtower"
       tipBoxEntity="event-tracker"
     >
-      {permissionsLoading || redirectToEvents ? (
+      {(isLogsPage && permissionsLoading) || redirectToEvents ? (
         <Stack data-testid="event-tracker-loading" sx={{ gap: "8px" }}>
           <CustomizableSkeleton variant="rectangular" width="100%" height={34} />
           <CustomizableSkeleton variant="rectangular" width="100%" height={400} />

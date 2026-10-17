@@ -68,6 +68,8 @@ const never = () => new Promise(() => {});
 const logsRequests = () => mockGet.mock.calls.filter(([url]) => url === "/logger/logs");
 const location = () => screen.getByTestId("location").textContent;
 const RAW_LOGS = /raw logs/i;
+const DESCRIPTION =
+  "Event Tracker gives you a live window into VerifyWise. It records every user action and system event. Use it to see who did what, spot patterns, and keep your application healthy.";
 
 describe("Event Tracker logs access", () => {
   beforeEach(() => {
@@ -79,18 +81,31 @@ describe("Event Tracker logs access", () => {
       permissionsResponse = never;
     });
 
-    it.each(["/event-tracker", "/event-tracker/logs"])(
-      "shows a loading state on %s and mounts neither tab",
-      async (route) => {
-        renderAs("Editor", route);
-        expect(screen.getByTestId("event-tracker-loading")).toBeInTheDocument();
-        expect(screen.queryByTestId("watchtower-events")).not.toBeInTheDocument();
-        expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    it.each(["Editor", "Admin"])(
+      "renders the Events tab on /event-tracker right away for an %s",
+      async (role) => {
+        renderAs(role, "/event-tracker");
+        expect(screen.getByTestId("watchtower-events")).toBeInTheDocument();
+        expect(screen.getByRole("tab", { name: /events/i })).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+        expect(screen.queryByTestId("event-tracker-loading")).not.toBeInTheDocument();
+        expect(screen.getByText(DESCRIPTION)).toBeInTheDocument();
         await new Promise((r) => setTimeout(r, 0));
         expect(logsRequests()).toHaveLength(0);
-        expect(location()).toBe(route);
       },
     );
+
+    it("holds /event-tracker/logs behind a loading state", async () => {
+      renderAs("Admin", "/event-tracker/logs");
+      expect(screen.getByTestId("event-tracker-loading")).toBeInTheDocument();
+      expect(screen.queryByTestId("watchtower-events")).not.toBeInTheDocument();
+      expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(logsRequests()).toHaveLength(0);
+      expect(location()).toBe("/event-tracker/logs");
+    });
   });
 
   describe("non-Admin", () => {
@@ -124,11 +139,13 @@ describe("Event Tracker logs access", () => {
   });
 
   describe("Admin", () => {
-    it("shows the Logs tab and the raw logs description on /event-tracker", async () => {
+    it("shows the Logs tab on /event-tracker without changing the description", async () => {
       permissionsResponse = grants(["logs.admin"]);
       renderAs("Admin", "/event-tracker");
+      expect(screen.getByText(DESCRIPTION)).toBeInTheDocument();
       expect(await screen.findByRole("tab", { name: /logs/i })).toBeInTheDocument();
-      expect(screen.getByText(RAW_LOGS)).toBeInTheDocument();
+      expect(screen.getByText(DESCRIPTION)).toBeInTheDocument();
+      expect(screen.queryByText(RAW_LOGS)).not.toBeInTheDocument();
     });
 
     it("stays on /event-tracker/logs and loads the logs", async () => {
