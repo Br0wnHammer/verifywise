@@ -394,7 +394,10 @@ async def test_empty_mask_result_is_not_replaced_by_the_original(no_detection_lo
     class R:
         detections, blocked, block_reason, execution_time_ms, masked_text = [], False, None, 0, ""
 
-    monkeypatch.setattr(proxy_service, "scan_text", lambda **_kw: R())
+    async def fake_scan(**_kw):
+        return R()
+
+    monkeypatch.setattr(proxy_service, "scan_text_async", fake_scan)
     out = await proxy_service.run_guardrails(1, [{"role": "tool", "content": "SECRET"}], 1, config=([_rule("mask")], {}))
     assert out[0]["content"] == ""
 

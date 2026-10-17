@@ -5,7 +5,7 @@ Rule, settings, log and stats management lives in routers/guardrails_crud.py.
 
 from fastapi import APIRouter, HTTPException, Request
 
-from services.guardrail_service import scan_text
+from services.guardrail_service import scan_text_async
 from services.proxy_service import get_guardrail_config
 from utils.auth import get_org_id
 
@@ -33,9 +33,9 @@ async def test_org_guardrails(request: Request):
         raise HTTPException(status_code=400, detail="Sample text contains an invalid character")
 
     rules, settings = await get_guardrail_config(org_id)
-    # Scans on the event loop, like the live proxy and MCP scans: the PII
-    # engine is shared and is not known to be safe to call from two threads.
-    result = scan_text(text=text, guardrail_rules=rules, settings=settings)
+    # Off the event loop on the single scan thread, like the live proxy and MCP
+    # scans: the PII engine is shared and is never called from two threads.
+    result = await scan_text_async(text=text, guardrail_rules=rules, settings=settings)
     return {"data": guardrail_preview(result)}
 
 

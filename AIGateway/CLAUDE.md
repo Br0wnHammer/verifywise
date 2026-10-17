@@ -65,7 +65,18 @@ DB_PASSWORD=...
 DB_NAME=verifywise
 AI_GATEWAY_INTERNAL_KEY=...    # Must match Express backend
 AI_GATEWAY_PORT=8100
+GUARDRAILS_PRELOAD_PII=true    # Load Presidio + spaCy en_core_web_md in the background at startup (skipped if the model is not installed)
 ```
+
+Guardrail scans (regex, keyword, Presidio PII) run on one dedicated thread
+(`guardrail_service.get_scan_executor()`), not on the event loop. Async code
+must call `scan_text_async`, not `scan_text`. Known exceptions still on the
+loop: MCP prompt-injection regex (`mcp_guardrail_service._check_prompt_injection`)
+and require_approval matching (`mcp_approval_match`). Presidio uses its default
+NLP config with the model swapped to `en_core_web_md`
+(`presidio_engine.SPACY_MODEL`), installed from a pinned wheel in
+`requirements.txt`. `presidio-analyzer` and `presidio-anonymizer` are pinned
+exactly; bump them deliberately and re-check `nlp_configuration()`.
 
 ---
 
