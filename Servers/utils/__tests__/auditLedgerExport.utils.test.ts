@@ -111,6 +111,12 @@ describe("ledgerRowValues", () => {
     expect(ledgerRowValues(row)).toHaveLength(AUDIT_LEDGER_EXPORT_COLUMNS.length);
   });
 
+  it("redacts secrets in the description and nothing else", () => {
+    const values = ledgerRowValues({ ...row, description: "failed: token=abc" });
+    expect(values[12]).toBe("failed: token=[REDACTED]");
+    expect(values[13]).toBe("h1");
+  });
+
   it("gives an empty user for a deleted user", () => {
     const values = ledgerRowValues({ ...row, user_id: null, user_name: null, user_surname: null });
     expect(values[3]).toBe("");

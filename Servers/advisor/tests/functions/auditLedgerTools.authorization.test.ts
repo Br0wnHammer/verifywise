@@ -70,5 +70,13 @@ describe("audit ledger advisor tools apply auditLedger.super", () => {
       expect(mockQuery).toHaveBeenCalledTimes(1);
       expect(result[rowsKey]).toHaveLength(1);
     });
+
+    // Old ledger rows can hold raw error text and cannot be rewritten (the
+    // chain is hashed), so the tools redact what they hand to the model.
+    it("redacts secrets in the descriptions it returns", async () => {
+      mockQuery.mockResolvedValue([{ ...ledgerRow, description: "failed: password=hunter2" }]);
+      const result = (await run(5)) as Record<string, Array<{ description: string }>>;
+      expect(result[rowsKey][0].description).toBe("failed: password=[REDACTED]");
+    });
   });
 });

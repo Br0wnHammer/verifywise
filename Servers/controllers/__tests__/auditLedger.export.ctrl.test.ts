@@ -282,6 +282,38 @@ describe("getAuditLedger", () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(sequelize.query).not.toHaveBeenCalled();
   });
+
+  // The ledger is hash-chained, so rows written before write-time redaction
+  // cannot be rewritten; they are redacted on the way out instead.
+  it("redacts secrets in descriptions it returns", async () => {
+    const query = sequelize.query as unknown as jest.MockedFunction<any>;
+    query
+      .mockResolvedValueOnce([{ count: "1" }])
+      .mockResolvedValueOnce([{ ...makeRows(1, 1)[0], description: "failed: password=hunter2" }]);
+    const res = createRes();
+    await getAuditLedger(createReq(), res);
+    const { entries } = res.json.mock.calls[0][0].data;
+    expect(entries[0].description).toBe("failed: password=[REDACTED]");
+  });
+});
+
+describe("exportAuditLedger redaction", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    appendLedger.mockResolvedValue(undefined);
+  });
+
+  it("redacts secrets in exported descriptions", async () => {
+    fetchBatch.mockResolvedValueOnce([
+      { ...makeRows(1, 1)[0], description: "failed: client_secret=abc123" },
+    ]);
+    const res = createRes();
+    await exportAuditLedger(createReq(), res);
+    await flush();
+    const csv = res.chunks.join("");
+    expect(csv).toContain("client_secret=[REDACTED]");
+    expect(csv).not.toContain("abc123");
+  });
 });
 
 describe("verifyAuditLedger", () => {
