@@ -73,9 +73,9 @@ def _should_check_body(scope: Scope) -> bool:
     for name, value in scope.get("headers", []):
         if name == b"content-type":
             media_type = value.split(b";", 1)[0].strip().lower()
-            # A +json suffix is JSON text even under a binary prefix
-            # (application/grpc+json, application/grpc-web+json).
-            return media_type.endswith(b"+json") or not media_type.startswith(_BINARY_MEDIA_PREFIXES)
+            # gRPC frames even +json messages with a binary prefix, so every
+            # application/grpc* type is skipped.
+            return not media_type.startswith(_BINARY_MEDIA_PREFIXES)
     return True
 
 

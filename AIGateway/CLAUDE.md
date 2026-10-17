@@ -32,7 +32,7 @@ Express Backend (proxy)  →  FastAPI (AIGateway)
 | Purpose | Path |
 |---------|------|
 | Entry point | `src/app.py` |
-| Invalid unicode check | `src/middlewares/invalid_unicode.py`: any POST/PUT/PATCH/DELETE body except known binary types (`_BINARY_MEDIA_PREFIXES`, unless `+json`: multipart, octet-stream, archives, pdf, protobuf/grpc/msgpack/cbor, image/audio/video/font) that does not decode, or is JSON with a lone `\uD800`–`\uDFFF` escape gets 400 `{"detail": "Request contains an invalid character"}` (on `/v1/mcp`: a JSON-RPC -32700 error with HTTP 200), instead of a 500 later |
+| Invalid unicode check | `src/middlewares/invalid_unicode.py`: any POST/PUT/PATCH/DELETE body except known binary types (`_BINARY_MEDIA_PREFIXES`: multipart, octet-stream, archives, pdf, protobuf, grpc (incl. grpc-web+json, which is framed), msgpack, cbor, image/audio/video/font) that does not decode, or is JSON with a lone `\uD800`–`\uDFFF` escape gets 400 `{"detail": "Request contains an invalid character"}` (on `/v1/mcp`: a JSON-RPC -32700 error with HTTP 200), instead of a 500 later |
 | Routers | `src/routers/` (completions, endpoints, guardrails, models, prompts, virtual_keys, spend, cache, budget, risk) |
 | Services | `src/services/` (proxy, guardrail, cache, cost, llm, risk_conditions) |
 | CRUD | `src/crud/` |

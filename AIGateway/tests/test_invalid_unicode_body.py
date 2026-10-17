@@ -273,6 +273,7 @@ def test_surrogate_escape_scan(raw, invalid):
         "application/x-gzip",
         "application/msgpack",
         "font/woff2",
+        "application/grpc-web+json",
     ],
 )
 def test_binary_content_types_are_not_inspected(content_type):
@@ -298,8 +299,3 @@ def test_escaped_pairs_do_not_need_a_json_parse(monkeypatch):
     monkeypatch.setattr(mod, "_loads", lambda *a, **kw: calls.append(1) or real_loads(*a, **kw))
     assert has_invalid_unicode(b'{"a": "' + b"\\ud83d\\ude00" * 1000 + b'"}') is False
     assert calls == []
-
-
-def test_plus_json_under_a_binary_prefix_is_checked(client):
-    res = client.post("/echo", content=LONE_SURROGATE, headers={"content-type": "application/grpc+json"})
-    assert res.status_code == 400
