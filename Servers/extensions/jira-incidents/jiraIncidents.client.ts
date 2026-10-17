@@ -61,7 +61,15 @@ function parseRetryAfter(raw: string | null): number | null {
   return Math.max(0, Math.floor((at - Date.now()) / 1000));
 }
 
+function requireBody<T>(raw: T | undefined | null): T {
+  if (raw === undefined || raw === null || typeof raw !== "object") {
+    throw new JiraUnreachableError("Could not read Jira's response");
+  }
+  return raw;
+}
+
 function parseIssue(raw: any): JiraIssueSummary {
+  requireBody(raw);
   const fields = raw?.fields ?? {};
   return {
     id: String(raw.id),
@@ -79,6 +87,7 @@ export class JiraIncidentsClient {
   private readonly siteUrl: string;
   private readonly authHeader: string;
   private readonly deadline: AbortSignal;
+  private waitedForRateLimit = false;
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(opts: {
@@ -91,7 +100,22 @@ export class JiraIncidentsClient {
     this.siteUrl = assertSafeOutboundUrl(opts.siteUrl);
     this.authHeader = "Basic " + Buffer.from(`${opts.email}:${opts.apiToken}`).toString("base64");
     this.deadline = opts.deadline ?? AbortSignal.timeout(EXTERNAL_SYNC_DEADLINE_MS);
-    this.sleep = opts.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const deadline = this.deadline;
+    this.sleep =
+      opts.sleep ??
+      ((ms) =>
+        new Promise<void>((resolve, reject) => {
+          if (deadline.aborted) return reject(deadline.reason);
+          const timer = setTimeout(() => {
+            deadline.removeEventListener("abort", onAbort);
+            resolve();
+          }, ms);
+          const onAbort = () => {
+            clearTimeout(timer);
+            reject(deadline.reason);
+          };
+          deadline.addEventListener("abort", onAbort, { once: true });
+        }));
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -118,8 +142,20 @@ export class JiraIncidentsClient {
         (response.status === 503 && response.headers.has("retry-after"))
       ) {
         const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
-        if (attempt === 0 && retryAfter !== null && retryAfter <= MAX_RETRY_AFTER_SECONDS) {
-          await this.sleep(retryAfter * 1000);
+        if (
+          attempt === 0 &&
+          !this.waitedForRateLimit &&
+          retryAfter !== null &&
+          retryAfter <= MAX_RETRY_AFTER_SECONDS
+        ) {
+          this.waitedForRateLimit = true;
+          try {
+            await this.sleep(retryAfter * 1000);
+          } catch (err) {
+            throw new JiraUnreachableError(
+              `Could not reach Jira: ${describeFetchError(err, REQUEST_TIMEOUT_SECONDS)}`,
+            );
+          }
           continue;
         }
         throw new JiraRateLimitError(retryAfter);
@@ -163,7 +199,7 @@ export class JiraIncidentsClient {
   }
 
   async myself(): Promise<{ accountId: string; timeZone: string }> {
-    const me = await this.request<any>("GET", "/rest/api/3/myself");
+    const me = requireBody(await this.request<any>("GET", "/rest/api/3/myself"));
     return { accountId: String(me.accountId), timeZone: String(me.timeZone) };
   }
 
@@ -178,9 +214,8 @@ export class JiraIncidentsClient {
   }
 
   async getProject(projectId: string): Promise<JiraProject> {
-    const p = await this.request<any>(
-      "GET",
-      `/rest/api/3/project/${encodeURIComponent(projectId)}`,
+    const p = requireBody(
+      await this.request<any>("GET", `/rest/api/3/project/${encodeURIComponent(projectId)}`),
     );
     return { id: String(p.id), key: String(p.key), name: String(p.name ?? p.key) };
   }

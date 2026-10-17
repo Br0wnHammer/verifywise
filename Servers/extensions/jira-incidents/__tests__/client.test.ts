@@ -1,6 +1,11 @@
 import { startJiraCloudMock, JiraCloudMock } from "../../../tests/mocks/jiraCloud/server";
 import { JiraIncidentsClient } from "../jiraIncidents.client";
-import { JiraAuthError, JiraNotFoundError, JiraRateLimitError } from "../jiraIncidents.errors";
+import {
+  JiraAuthError,
+  JiraNotFoundError,
+  JiraRateLimitError,
+  JiraUnreachableError,
+} from "../jiraIncidents.errors";
 
 describe("JiraIncidentsClient", () => {
   let mock: JiraCloudMock;
@@ -122,5 +127,38 @@ describe("JiraIncidentsClient", () => {
     await c.upsertRemoteLink(issue.id, link);
     await c.upsertRemoteLink(issue.id, { ...link, title: "VW 2" });
     expect(issue.remoteLinks).toEqual([{ ...link, title: "VW 2" }]);
+  });
+
+  it("waits for a rate limit only once per client", async () => {
+    const c = client();
+    mock.state.failNext.push({ status: 429, retryAfter: 1 });
+    await expect(c.myself()).resolves.toBeTruthy();
+    mock.state.failNext.push({ status: 429, retryAfter: 1 });
+    await expect(c.listPriorities()).rejects.toBeInstanceOf(JiraRateLimitError);
+    expect(sleeps).toEqual([1000]);
+  });
+
+  it("ends the rate-limit wait early when the deadline aborts", async () => {
+    const controller = new AbortController();
+    const c = new JiraIncidentsClient({
+      siteUrl: mock.url,
+      email: "svc@acme.test",
+      apiToken: "token-1",
+      deadline: controller.signal,
+    });
+    mock.state.failNext.push({ status: 429, retryAfter: 5 });
+    setTimeout(() => controller.abort(), 100);
+    const started = Date.now();
+    await expect(c.myself()).rejects.toBeInstanceOf(JiraUnreachableError);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it("reports an empty body as an unreadable response", async () => {
+    const c = client();
+    mock.state.projectReadable = true;
+    jest.spyOn(c as any, "request").mockResolvedValue(undefined);
+    await expect(c.myself()).rejects.toThrow("Could not read Jira's response");
+    await expect(c.getProject("10000")).rejects.toThrow("Could not read Jira's response");
+    await expect(c.getIssue("1")).rejects.toThrow("Could not read Jira's response");
   });
 });
