@@ -59,11 +59,14 @@ const endpointIds = (key: VirtualKey): number[] => [
 ];
 
 /** Deleting a key's last endpoint leaves its id so the key does not widen to
- * every endpoint; when none of its ids names an endpoint, it can call nothing. */
+ * every endpoint; when none of its ids names an endpoint, it can call nothing.
+ * Any non-empty list restricts the key at the gateway, nulls included, so a
+ * list of only nulls (e.g. {NULL} after deleting 9 from {9, NULL}) is one too. */
 const hasNoEndpoints = (key: VirtualKey) => {
-  const ids = endpointIds(key);
   const missing = new Set(key.missing_endpoint_ids ?? []);
-  return ids.length > 0 && ids.every((id) => missing.has(id));
+  return (
+    (key.allowed_endpoint_ids ?? []).length > 0 && endpointIds(key).every((id) => missing.has(id))
+  );
 };
 
 /** Whether the gateway would accept calls with this key at all. */

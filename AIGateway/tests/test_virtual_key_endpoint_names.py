@@ -134,7 +134,7 @@ async def test_the_role_rule_is_a_column_not_a_filter():
     assert "allowed_role_ids" not in where_part and ":role_id" not in where_part
 
 
-async def test_ids_naming_existing_endpoints_are_not_missing():
+async def test_unrestricted_keys_and_existing_ids_are_not_missing():
     keys = [{"allowed_endpoint_ids": None}, {"allowed_endpoint_ids": [1, None]}]
     await _attach(keys, role_id=1)
     assert keys[0]["missing_endpoint_ids"] == []

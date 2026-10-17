@@ -205,6 +205,17 @@ describe("AIGateway - VirtualKeys", () => {
     expect(screen.getByText("Endpoints: #9 (not found)")).toBeInTheDocument();
   });
 
+  it("never calls a key holding only nulls unlimited", async () => {
+    // The gateway treats any non-empty list as a restriction, so it refuses all.
+    mockLoad([makeKey({ allowed_endpoint_ids: [null], missing_endpoint_ids: [] })]);
+    renderWithProviders(<VirtualKeysPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No endpoints")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Any endpoint or model")).not.toBeInTheDocument();
+  });
+
   it("never calls an endpoint-limited key unlimited, even with no names", async () => {
     // e.g. an older gateway without allowed_endpoints, or ids it cannot name
     mockLoad([makeKey({ allowed_endpoint_ids: [999] })]);
