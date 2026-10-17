@@ -25,17 +25,24 @@ SPACY_MODEL = "en_core_web_md"
 
 def nlp_configuration() -> dict:
     """Presidio's default NLP configuration (its default.yaml: NER entity
-    mapping, ignored labels, confidence) with only the English model swapped
-    for SPACY_MODEL. A hand-written config would drop the NER settings and
-    change what PII rules detect."""
-    import copy
-
+    mapping, ignored labels, confidence) keeping only the English model,
+    swapped for SPACY_MODEL. A hand-written config would drop the NER
+    settings and change what PII rules detect. Raises when a Presidio upgrade
+    changes the default's shape, rather than silently loading another model."""
     from presidio_analyzer.nlp_engine import NlpEngineProvider
 
-    config = copy.deepcopy(NlpEngineProvider().nlp_configuration)
-    for model in config.get("models") or []:
-        if model.get("lang_code") == "en":
-            model["model_name"] = SPACY_MODEL
+    config = NlpEngineProvider().nlp_configuration  # a fresh dict per provider
+    english = [m for m in config.get("models") or [] if m.get("lang_code") == "en"]
+    if (
+        config.get("nlp_engine_name") != "spacy"
+        or len(english) != 1
+        or not isinstance(english[0].get("model_name"), str)
+    ):
+        raise RuntimeError(
+            "Presidio's default NLP configuration changed shape; update presidio_engine.nlp_configuration"
+        )
+    english[0]["model_name"] = SPACY_MODEL
+    config["models"] = english
     return config
 
 

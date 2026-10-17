@@ -240,11 +240,49 @@ async def test_scan_thread_sees_the_request_context(monkeypatch):
     assert seen["request_id"] == "req-42"
 
 
-def test_nlp_configuration_keeps_presidio_ner_settings():
-    from presidio_analyzer.nlp_engine import NlpEngineProvider
+class _FakeProvider:
+    """Stands in for presidio's NlpEngineProvider: the default config, or the one passed in."""
 
-    default = NlpEngineProvider().nlp_configuration
-    config = presidio_engine.nlp_configuration()
-    assert [m["model_name"] for m in config["models"] if m["lang_code"] == "en"] == ["en_core_web_md"]
-    assert config.get("ner_model_configuration") == default.get("ner_model_configuration")
-    assert default["models"] != config["models"]  # the default itself is not mutated
+    built_with: list = []
+
+    def __init__(self, nlp_configuration=None):
+        self.nlp_configuration = nlp_configuration or {
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "en", "model_name": "en_core_web_lg"},
+                       {"lang_code": "es", "model_name": "es_core_news_md"}],
+            "ner_model_configuration": {"labels_to_ignore": ["ORGANIZATION"]},
+        }
+        if nlp_configuration is not None:
+            _FakeProvider.built_with.append(nlp_configuration)
+
+    def create_engine(self):
+        return object()
+
+
+def test_engine_is_built_from_the_default_config_with_only_english_md(monkeypatch):
+    import presidio_analyzer
+    import presidio_analyzer.nlp_engine as nlp_engine_module
+
+    _FakeProvider.built_with = []
+    monkeypatch.setattr(nlp_engine_module, "NlpEngineProvider", _FakeProvider)
+    monkeypatch.setattr(presidio_analyzer, "AnalyzerEngine", lambda **_kw: type("A", (), {"registry": type("R", (), {"add_recognizer": lambda *_: None})()})())
+    monkeypatch.setattr(presidio_engine, "_initialized", False)
+    presidio_engine._ensure_initialized()
+    assert _FakeProvider.built_with == [{
+        "nlp_engine_name": "spacy",
+        "models": [{"lang_code": "en", "model_name": "en_core_web_md"}],
+        "ner_model_configuration": {"labels_to_ignore": ["ORGANIZATION"]},
+    }]
+
+
+def test_an_unexpected_default_config_shape_raises(monkeypatch):
+    import presidio_analyzer.nlp_engine as nlp_engine_module
+
+    class Transformers(_FakeProvider):
+        def __init__(self, nlp_configuration=None):
+            super().__init__(nlp_configuration)
+            self.nlp_configuration["nlp_engine_name"] = "transformers"
+
+    monkeypatch.setattr(nlp_engine_module, "NlpEngineProvider", Transformers)
+    with pytest.raises(RuntimeError, match="changed shape"):
+        presidio_engine.nlp_configuration()
