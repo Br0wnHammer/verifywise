@@ -238,3 +238,13 @@ async def test_scan_thread_sees_the_request_context(monkeypatch):
     request_id.set("req-42")
     await gs.scan_text_async(text="hi", guardrail_rules=[KEYWORD_BLOCK], settings={})
     assert seen["request_id"] == "req-42"
+
+
+def test_nlp_configuration_keeps_presidio_ner_settings():
+    from presidio_analyzer.nlp_engine import NlpEngineProvider
+
+    default = NlpEngineProvider().nlp_configuration
+    config = presidio_engine.nlp_configuration()
+    assert [m["model_name"] for m in config["models"] if m["lang_code"] == "en"] == ["en_core_web_md"]
+    assert config.get("ner_model_configuration") == default.get("ner_model_configuration")
+    assert default["models"] != config["models"]  # the default itself is not mutated

@@ -18,12 +18,25 @@ _initialized = False
 
 # The spaCy model requirements.txt documents and CI installs. Presidio's own
 # default is en_core_web_lg (~560 MB), which nothing installs, so without this
-# the engine downloaded lg on its first PII scan.
+# the engine downloaded lg on its first PII scan. The Docker image installs no
+# model yet, so there the first PII scan downloads md (~40 MB).
 SPACY_MODEL = "en_core_web_md"
-NLP_CONFIGURATION = {
-    "nlp_engine_name": "spacy",
-    "models": [{"lang_code": "en", "model_name": SPACY_MODEL}],
-}
+
+
+def nlp_configuration() -> dict:
+    """Presidio's default NLP configuration (its default.yaml: NER entity
+    mapping, ignored labels, confidence) with only the English model swapped
+    for SPACY_MODEL. A hand-written config would drop the NER settings and
+    change what PII rules detect."""
+    import copy
+
+    from presidio_analyzer.nlp_engine import NlpEngineProvider
+
+    config = copy.deepcopy(NlpEngineProvider().nlp_configuration)
+    for model in config.get("models") or []:
+        if model.get("lang_code") == "en":
+            model["model_name"] = SPACY_MODEL
+    return config
 
 
 def _get_custom_recognizers():
@@ -96,8 +109,8 @@ def _ensure_initialized():
         from presidio_anonymizer import AnonymizerEngine
 
         logger.info(f"Loading Presidio engine with {SPACY_MODEL}...")
-        nlp_engine = NlpEngineProvider(nlp_configuration=NLP_CONFIGURATION).create_engine()
-        _analyzer = AnalyzerEngine(nlp_engine=nlp_engine, supported_languages=["en"])
+        nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration()).create_engine()
+        _analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
 
         # Add custom EU recognizers
         for recognizer in _get_custom_recognizers():
@@ -176,7 +189,7 @@ def _missing_spacy_models() -> list[str]:
     """spaCy models the engine's NLP configuration needs that are not installed."""
     import spacy.util
 
-    return [m["model_name"] for m in NLP_CONFIGURATION["models"] if not spacy.util.is_package(m["model_name"])]
+    return [m["model_name"] for m in nlp_configuration()["models"] if not spacy.util.is_package(m["model_name"])]
 
 
 def warm_up() -> bool:

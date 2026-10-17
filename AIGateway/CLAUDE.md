@@ -67,9 +67,13 @@ GUARDRAILS_PRELOAD_PII=true    # Load Presidio + spaCy en_core_web_md in the bac
 ```
 
 Guardrail scans (regex, keyword, Presidio PII) run on one dedicated thread
-(`guardrail_service.get_scan_executor()`), never on the event loop. Async code
-must call `scan_text_async`, not `scan_text`. Presidio is pinned to
-`en_core_web_md` (`presidio_engine.SPACY_MODEL`).
+(`guardrail_service.get_scan_executor()`), not on the event loop. Async code
+must call `scan_text_async`, not `scan_text`. Known exceptions still on the
+loop: MCP prompt-injection regex (`mcp_guardrail_service._check_prompt_injection`)
+and require_approval matching (`mcp_approval_match`). Presidio uses its default
+NLP config with the model swapped to `en_core_web_md`
+(`presidio_engine.SPACY_MODEL`); the Docker image does not install it yet, so
+there the preload skips and the first PII scan downloads it.
 
 ---
 
