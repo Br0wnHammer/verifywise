@@ -41,49 +41,49 @@ const JSON_SINGLE = new RegExp(String.raw`(${KEY})'\s*:\s*${SINGLE_QUOTED}`, "gi
 // signature may be empty (unsigned tokens).
 const JWT = /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
 
-// Characters RFC 3986 never allows unencoded anywhere in a URL. They end a
-// URL inside a longer token (JSON, HTML, a quoted value), so a password
-// containing one of them raw is not recognised; in a valid URL they are
-// percent-encoded.
-const URL_TERMINATORS = new Set(['"', "<", ">", "{", "}", "[", "]", "`"]);
-// A "/", "?" or "#" before the ":" means the ":" is in a path or query, not
-// in userinfo; "'", "(", ")", "," and ";" there mean the ":" belongs to the
-// surrounding text (e.g. single-quoted JSON), not to this URL.
-const NOT_IN_USER = /[/?#'(),;]/;
+// A "/", "?", "#" or "@" before the first ":" after "://" means that ":"
+// is in a path, query or host, not in userinfo. A quote there means the ":"
+// belongs to the surrounding JSON (e.g. {"a":"https://ok","b":...}), which
+// keeps plain URLs inside JSON lines unchanged.
+const NOT_IN_USER = /[/?#@"']/;
 const SCHEME_CHAR = /[A-Za-z0-9+.-]/;
+// host:port, then "/" or the end of the token.
+const PORT = /\d+(?:\/|$)/y;
 
 /**
- * scheme://[user]:password@host, for every "://" in one whitespace-separated
- * token (a JSON line can hold several URLs). Each URL runs from its "://"
- * to the next "://" or URL terminator; its password runs from the first ":"
- * to the last "@" in that span, so passwords containing "/" or "@" are
- * covered and any scheme chain works (jdbc:postgresql://, URL:postgres://).
- * Keeps scheme, user and host. host:port@... cannot be told apart from
- * user:password@..., and a later "@" in the path also ends the password,
- * so both are redacted (safe side). One pass over the token: the spans are
- * disjoint and each is scanned once.
+ * scheme://<user>:<password>@host inside one whitespace-separated token.
+ * One fail-closed rule: once a URL's userinfo ":" is seen, the password
+ * runs to the LAST "@" in the token, whatever lies between (quotes,
+ * brackets, "://", more URLs). With no "@" after it, the password runs to
+ * the end of the token, unless what follows the ":" is a port (digits,
+ * then "/" or the end). Over-redaction (host:port@path, a second URL in
+ * the same token) is accepted; under-redaction is not. Keeps scheme, user
+ * and whatever follows the last "@".
+ *
+ * Linear: "://" positions are visited in order, and each user part is
+ * scanned only up to the next ":" (which is at or before the next "://").
  */
 function redactUrlCredentials(token: string): string {
-  const seps: number[] = [];
-  for (let i = token.indexOf("://"); i !== -1; i = token.indexOf("://", i + 3)) seps.push(i);
-
+  const lastAt = token.lastIndexOf("@");
   let out = "";
   let copied = 0;
-  for (let j = 0; j < seps.length; j++) {
-    const sep = seps[j];
-    const start = sep + 3;
-    const limit = j + 1 < seps.length ? seps[j + 1] : token.length;
-    let colon = -1;
-    let at = -1;
-    for (let k = start; k < limit && !URL_TERMINATORS.has(token[k]); k++) {
-      if (token[k] === ":" && colon === -1) colon = k;
-      else if (token[k] === "@") at = k;
-    }
+  for (let sep = token.indexOf("://"); sep !== -1; sep = token.indexOf("://", sep + 3)) {
+    if (sep < copied) continue; // inside a region already redacted
     if (sep === 0 || !SCHEME_CHAR.test(token[sep - 1])) continue;
-    // No ":" before the last "@" means user@host with no password.
-    if (colon === -1 || at < colon || NOT_IN_USER.test(token.slice(start, colon))) continue;
+    const start = sep + 3;
+    const colon = token.indexOf(":", start);
+    if (colon === -1) break; // no ":" left, so no userinfo and no later "://"
+    if (NOT_IN_USER.test(token.slice(start, colon))) continue;
+    if (lastAt > colon) {
+      out += `${token.slice(copied, colon + 1)}[REDACTED]`;
+      copied = lastAt;
+      continue;
+    }
+    PORT.lastIndex = colon + 1;
+    if (PORT.test(token)) continue; // host:port with no "@" after it
     out += `${token.slice(copied, colon + 1)}[REDACTED]`;
-    copied = at;
+    copied = token.length;
+    break;
   }
   return copied === 0 ? token : out + token.slice(copied);
 }
@@ -117,10 +117,8 @@ function redactPatterns(input: string): string {
       .replace(/(\bAuthorization\s*:\s*Bearer\s+)\S+/gi, "$1[REDACTED]")
       // Bare JWTs
       .replace(JWT, "[REDACTED]")
-      // Credentials in URLs (only tokens with both "://" and "@" are examined)
-      .replace(/\S+/g, (token) =>
-        token.includes("://") && token.includes("@") ? redactUrlCredentials(token) : token,
-      )
+      // Credentials in URLs (only tokens containing "://" are examined)
+      .replace(/\S+/g, (token) => (token.includes("://") ? redactUrlCredentials(token) : token))
       // key=value or key: value style sensitive fields
       .replace(KEY_VALUE, "$1=[REDACTED]")
       // JSON double-quoted sensitive fields

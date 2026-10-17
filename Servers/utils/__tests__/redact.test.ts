@@ -108,10 +108,23 @@ describe("redactSensitiveInfo", () => {
     [
       "two credentialed URLs in one token",
       "postgres://u:p1@a,redis://:p2@b",
-      "postgres://u:[REDACTED]@a,redis://:[REDACTED]@b",
+      // One rule: the password runs to the last "@" (over-redaction accepted).
+      "postgres://u:[REDACTED]@b",
     ],
     // host:port then "@" in the path is indistinguishable too (safe side).
     ["port then @ in the path (safe side)", "http://host:8080/a@b", "http://host:[REDACTED]@b"],
+    // passwords containing characters that used to end the URL early
+    ["password with {", "postgres://u:ab{cd@h/db", "postgres://u:[REDACTED]@h/db"],
+    ['password with "', 'postgres://u:ab"cd@h/db', "postgres://u:[REDACTED]@h/db"],
+    ["password with ]", "postgres://u:ab]cd@h/db", "postgres://u:[REDACTED]@h/db"],
+    ["password with ://", "postgres://u:pa://ss@h/db", "postgres://u:[REDACTED]@h/db"],
+    // no "@" after the userinfo ":" (fail closed)
+    ["password with no @", "postgres://u:secretpw", "postgres://u:[REDACTED]"],
+    [
+      "password with no @ in JSON",
+      '{"db":"postgres://u:secretpw"}',
+      '{"db":"postgres://u:[REDACTED]',
+    ],
     // apostrophe inside an unquoted value
     ["unquoted value with an apostrophe", "password=abc'def set", "password=[REDACTED] set"],
     // key names are found whatever precedes them
@@ -144,6 +157,8 @@ describe("redactSensitiveInfo", () => {
     "Visit https://verifywise.ai/docs for help",
     "Secret santa planning task created",
     "Fetched http://host:8080/path ok",
+    "Listening on http://localhost:3000",
+    '{"url":"http://host:8080/x"}',
     "Profile https://example.com/@user linked",
     '{"u":"https://example.com/users/@me","n":1}',
     '{"a":"https://ok.example","b":"me@mail.example"}',
