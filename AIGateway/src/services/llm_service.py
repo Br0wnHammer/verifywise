@@ -138,24 +138,28 @@ async def stream_chat_completion(
     cost = 0.0
     usage = None
 
-    if last_chunk and hasattr(last_chunk, "usage") and last_chunk.usage:
+    provider_usage = getattr(last_chunk, "usage", None) if last_chunk else None
+    if provider_usage:
+        # The provider's counts are exact; keep them even when pricing fails.
+        usage = {
+            "prompt_tokens": getattr(provider_usage, "prompt_tokens", None),
+            "completion_tokens": getattr(provider_usage, "completion_tokens", None),
+            "total_tokens": getattr(provider_usage, "total_tokens", None),
+        }
         try:
             # completion_cost can return NaN (not raise); coerce so the
             # `cost == 0.0` fallback below still fires and no NaN is emitted.
             cost = _safe_cost(litellm.completion_cost(completion_response=last_chunk))
-            usage = {
-                "prompt_tokens": last_chunk.usage.prompt_tokens,
-                "completion_tokens": last_chunk.usage.completion_tokens,
-                "total_tokens": last_chunk.usage.total_tokens,
-            }
         except Exception:
             pass
 
     if cost == 0.0 and accumulated_text:
-        cost, usage = calculate_stream_cost(
+        cost, estimated_usage = calculate_stream_cost(
             model, messages, accumulated_text,
             tools=tool_definitions(kwargs),
         )
+        # Estimated counts only fill in when the provider sent none.
+        usage = usage or estimated_usage
 
     yield f"data: {json.dumps({'cost_usd': cost, 'usage': usage})}\n\n"
     yield "data: [DONE]\n\n"

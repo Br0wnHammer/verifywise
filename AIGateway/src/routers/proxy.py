@@ -410,12 +410,16 @@ async def _handle_stream(
                                 _merge_tool_call_deltas(
                                     streamed_tool_calls, [{"function": delta_obj["function_call"]}], legacy=True,
                                 )
-                        if "usage" in chunk:
-                            total_prompt = chunk["usage"].get("prompt_tokens", total_prompt)
-                            total_completion = chunk["usage"].get("completion_tokens", total_completion)
-                        if "cost_usd" in chunk and chunk["cost_usd"] is not None:
-                            total_cost = chunk["cost_usd"]
-                        if "model" in chunk:
+                        # The final cost chunk can carry "usage": null or null
+                        # counts; only whole numbers may reach the spend log sums.
+                        usage = chunk.get("usage")
+                        if isinstance(usage, dict):
+                            total_prompt = _token_count(usage.get("prompt_tokens"), total_prompt)
+                            total_completion = _token_count(usage.get("completion_tokens"), total_completion)
+                        cost_usd = chunk.get("cost_usd")
+                        if isinstance(cost_usd, (int, float)) and not isinstance(cost_usd, bool):
+                            total_cost = cost_usd
+                        if isinstance(chunk.get("model"), str):
                             final_model = chunk["model"]
                     except Exception as parse_err:
                         # This side path only feeds the spend log and usage;
@@ -454,14 +458,17 @@ def _merge_tool_call_deltas(
 
     The id and name normally arrive in a call's first delta and the arguments
     in later fragments, all with the same int `index`. Adapters differ, so:
-    a delta with an id joins the call with that id, else the latest id-less
-    call with its index, else starts a new call; a delta without an id joins
-    the latest call with its index, or the latest call when it has no index.
-    Legacy `function_call` deltas (`legacy=True`) only ever join each other.
+    a delta with an id joins the call with that id (unless that call has a
+    different index, as with servers that reuse one id), else the latest
+    id-less call with its index, else starts a new call; a delta without an
+    id joins the latest call with its index, or the latest call when it has
+    no index. Legacy `function_call` deltas (`legacy=True`) only ever join
+    each other.
 
     Name fragments are appended. Some adapters repeat the whole name on every
     delta, so once arguments have started a name equal to the current one is
-    a repeat and is not appended again.
+    a repeat and is not appended again; a different name at that point is a
+    new call that reuses the slot.
 
     This only feeds the response log, so malformed values are coerced to text
     rather than raised: a bad delta must never abort the client's stream.
@@ -469,18 +476,26 @@ def _merge_tool_call_deltas(
     for d in deltas or []:
         if not isinstance(d, dict):
             continue
-        cid = d.get("id")
+        cid = d.get("id") or None
         idx = d.get("index") if isinstance(d.get("index"), int) else None
+        fn = d.get("function") if isinstance(d.get("function"), dict) else {}
+        name = _delta_text(fn.get("name"))
+        arguments = _delta_text(fn.get("arguments"))
         group = {k: c for k, c in calls.items() if c["_legacy"] == legacy}
         key = None
         if cid:
-            key = next((k for k, c in group.items() if c["id"] == cid), None)
+            key = max((k for k, c in group.items()
+                       if c["id"] == cid and (idx is None or c["_index"] in (idx, None))), default=None)
             if key is None and idx is not None:
-                key = max((k for k, c in group.items() if c["_index"] == idx and c["id"] is None), default=None)
+                key = max((k for k, c in group.items() if c["_index"] == idx and not c["id"]), default=None)
         elif idx is not None:
             key = max((k for k, c in group.items() if c["_index"] == idx), default=None)
         elif group:
             key = max(group)
+        if key is not None:
+            current = calls[key]["function"]
+            if name and current["arguments"] and name != current["name"]:
+                key = None
         if key is None:
             key = max(calls) + 1 if calls else 0
             calls[key] = {"id": None, "type": "function", "function": {"name": "", "arguments": ""},
@@ -488,9 +503,6 @@ def _merge_tool_call_deltas(
         call = calls[key]
         if cid:
             call["id"] = cid
-        fn = d.get("function") if isinstance(d.get("function"), dict) else {}
-        name = _delta_text(fn.get("name"))
-        arguments = _delta_text(fn.get("arguments"))
         current = call["function"]
         if name and not (name == current["name"] and (current["arguments"] or arguments)):
             current["name"] += name
@@ -504,9 +516,24 @@ def _delta_text(value) -> str:
     return value if isinstance(value, str) else json.dumps(value, default=str)
 
 
+def _token_count(value, fallback: int) -> int:
+    """A usage token count, or `fallback` when it is missing or not a whole number."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return fallback
+
+
 def _finished_tool_calls(calls: dict[int, dict]) -> list[dict]:
-    """Tool calls in arrival order, without the merge bookkeeping."""
-    return [{k: v for k, v in calls[key].items() if not k.startswith("_")} for key in sorted(calls)]
+    """Tool calls in arrival order, without the merge bookkeeping. Legacy
+    function calls have no id, as in the non-streamed log."""
+    finished = []
+    for key in sorted(calls):
+        call = calls[key]
+        entry = {k: v for k, v in call.items() if not k.startswith("_")}
+        if call["_legacy"] and entry["id"] is None:
+            del entry["id"]
+        finished.append(entry)
+    return finished
 
 
 # ─── Embeddings ──────────────────────────────────────────────────────────────

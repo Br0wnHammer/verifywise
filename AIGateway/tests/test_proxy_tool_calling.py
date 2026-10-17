@@ -607,3 +607,78 @@ def test_stream_cost_keeps_token_counts_when_the_price_is_unknown(monkeypatch):
     assert cost == 0.0
     assert usage["prompt_tokens"] > 0 and usage["completion_tokens"] > 0
     assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"]
+
+
+# ─── Stream usage and id hardening ───────────────────────────────────────────
+
+async def test_stream_spend_log_ignores_null_usage_and_bad_values(monkeypatch):
+    chunks = [
+        'data: {"model": "m-1", "usage": {"prompt_tokens": 5, "completion_tokens": 7}}\n\n',
+        'data: {"model": null, "usage": {"prompt_tokens": null, "completion_tokens": "x"}}\n\n',
+        'data: {"cost_usd": 0.25, "usage": null}\n\n',
+        'data: {"cost_usd": true}\n\n',
+    ]
+
+    async def fake_stream(**_kw):
+        for c in chunks:
+            yield c
+
+    logged = {}
+
+    async def fake_log_spend(**kw):
+        logged.update(kw)
+
+    async def noop(*_a, **_kw):
+        return None
+
+    monkeypatch.setattr(proxy_router, "stream_chat_completion", fake_stream)
+    monkeypatch.setattr(proxy_router, "log_spend", fake_log_spend)
+    monkeypatch.setattr(proxy_router, "reconcile_budget", noop)
+    endpoint = {"id": 1, "model": "m", "provider": "p", "decrypted_key": "k"}
+    response = await proxy_router._handle_stream(1, {"id": 1}, endpoint, [], {}, 0.0, 0.0)
+    [c async for c in response.body_iterator]
+    assert (logged["prompt_tokens"], logged["completion_tokens"], logged["total_tokens"]) == (5, 7, 12)
+    assert logged["cost_usd"] == 0.25
+    assert logged["model"] == "m-1"
+
+
+async def test_stream_keeps_provider_counts_when_pricing_fails(monkeypatch):
+    async def fake_stream():
+        yield _Obj(choices=[_Obj(delta=_Obj(content="hi", tool_calls=None))],
+                   usage=_Obj(prompt_tokens=11, completion_tokens=3, total_tokens=14))
+
+    async def fake_acompletion(**_kw):
+        return fake_stream()
+
+    def no_price(**_kw):
+        raise Exception("model not mapped")
+
+    def estimate(*_a, **_kw):
+        return 0.0, {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+
+    monkeypatch.setattr(llm_service.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(llm_service.litellm, "completion_cost", no_price)
+    monkeypatch.setattr(llm_service, "calculate_stream_cost", estimate)
+    out = [c async for c in llm_service.stream_chat_completion("unknown/x", [], "k")]
+    final = json.loads(out[-2][len("data: "):])
+    assert final["usage"] == {"prompt_tokens": 11, "completion_tokens": 3, "total_tokens": 14}
+
+
+def test_reused_id_on_a_new_index_starts_a_new_call():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "id": "same", "function": {"name": "f", "arguments": "{x}"}}])
+    _merge_tool_call_deltas(calls, [{"index": 1, "id": "same", "function": {"name": "g", "arguments": "{y}"}}])
+    assert _names_and_args(calls) == [("f", "{x}"), ("g", "{y}")]
+
+
+def test_new_name_after_arguments_in_the_same_slot_is_a_new_call():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "f", "arguments": "{x}"}}])
+    _merge_tool_call_deltas(calls, [{"index": 0, "function": {"name": "g", "arguments": "{y}"}}])
+    assert _names_and_args(calls) == [("f", "{x}"), ("g", "{y}")]
+
+
+def test_streamed_legacy_function_call_is_logged_without_an_id():
+    calls: dict = {}
+    _merge_tool_call_deltas(calls, [{"function": {"name": "lookup", "arguments": "{}"}}], legacy=True)
+    assert _finished_tool_calls(calls) == [{"type": "function", "function": {"name": "lookup", "arguments": "{}"}}]
