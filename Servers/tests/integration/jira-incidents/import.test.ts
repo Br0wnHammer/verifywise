@@ -4,14 +4,19 @@ import { cleanupDatabase, seedTwoOrgsAndUsers } from "../helpers";
 import { JiraCloudMock } from "../../mocks/jiraCloud/server";
 import { insertProject, rows, seedReadyConfig, withMock } from "./fixtures";
 import { loadConfig, clientFor } from "../../../extensions/jira-incidents/jiraIncidents.config";
-import { runImport } from "../../../extensions/jira-incidents/jiraIncidents.import";
+import {
+  retryRemoteLinks,
+  runImport,
+} from "../../../extensions/jira-incidents/jiraIncidents.import";
 import {
   newCounts,
   RunState,
   STOP_DEADLINE,
+  STOP_RATE_LIMIT,
 } from "../../../extensions/jira-incidents/jiraIncidents.run";
 import { JiraUnreachableError } from "../../../extensions/jira-incidents/jiraIncidents.errors";
 import * as incidentImport from "../../../services/incidentImport.service";
+import { listPendingRemoteLinks } from "../../../extensions/jira-incidents/jiraIncidents.store";
 import { sequelize } from "../../../database/db";
 
 async function stateFor(orgId: number): Promise<RunState> {
@@ -45,6 +50,13 @@ describe("jira incidents import", () => {
     await mock.close();
     await cleanupDatabase();
   });
+  const pendingFlags = async () =>
+    (
+      await rows<{ remote_link_pending: boolean }>(
+        `SELECT remote_link_pending FROM jira_incident_links WHERE organization_id = :orgA ORDER BY id`,
+        { orgA },
+      )
+    ).map((r) => r.remote_link_pending);
 
   it("imports a new issue with summary, description, severity and status", async () => {
     await seedReadyConfig(orgA, projectId, mock);
@@ -223,6 +235,12 @@ describe("jira incidents import", () => {
     expect(state.counts.imported).toBe(2);
     expect(mock.state.issues.every((i) => i.remoteLinks.length === 0)).toBe(true);
     expect(state.warnedNoFrontendUrl).toBe(true);
+    // Kept pending, so the links are added once FRONTEND_URL is set.
+    expect(await pendingFlags()).toEqual([true, true]);
+    process.env.FRONTEND_URL = "https://app.verifywise.test";
+    await retryRemoteLinks(await stateFor(orgA));
+    expect(mock.state.issues.every((i) => i.remoteLinks.length === 1)).toBe(true);
+    expect(await pendingFlags()).toEqual([false, false]);
   });
 
   it("logs a failed remote link as an error without undoing the import", async () => {
@@ -237,6 +255,110 @@ describe("jira incidents import", () => {
       { orgA },
     );
     expect(events.map((e) => e.kind)).toEqual(["imported", "error"]);
+  });
+
+  it("clears the pending remote link once Jira accepts it", async () => {
+    await seedReadyConfig(orgA, projectId, mock);
+    mock.addIssue({ summary: "Remote link works" });
+    await runImport(await stateFor(orgA));
+    expect(mock.state.issues[0].remoteLinks).toHaveLength(1);
+    expect(await pendingFlags()).toEqual([false]);
+  });
+
+  it("retries a failed remote link on the next run", async () => {
+    await seedReadyConfig(orgA, projectId, mock);
+    mock.addIssue({ summary: "Remote link fails" });
+    mock.state.failNext.push({ status: 500, path: "/rest/api/3/issue/" });
+    const first = await stateFor(orgA);
+    await runImport(first);
+    // Not retried inside the run that just failed.
+    await retryRemoteLinks(first);
+    expect(mock.state.issues[0].remoteLinks).toHaveLength(0);
+    expect(await pendingFlags()).toEqual([true]);
+
+    const next = await stateFor(orgA);
+    await retryRemoteLinks(next);
+    expect(mock.state.issues[0].remoteLinks).toHaveLength(1);
+    expect(await pendingFlags()).toEqual([false]);
+    expect(next.counts.errors).toBe(0);
+  });
+
+  it("keeps a link pending after a rate limit right after the import, and adds it next run", async () => {
+    await seedReadyConfig(orgA, projectId, mock);
+    mock.addIssue({ summary: "Rate limited link" });
+    mock.state.failNext.push({ status: 429, retryAfter: 120, path: "/rest/api/3/issue/" });
+    const first = await stateFor(orgA);
+    await runImport(first);
+    expect(first.stopReason).toBe(STOP_RATE_LIMIT);
+    expect(first.counts).toMatchObject({ imported: 1, errors: 0 });
+    expect(await pendingFlags()).toEqual([true]);
+
+    await retryRemoteLinks(await stateFor(orgA));
+    expect(mock.state.issues[0].remoteLinks).toHaveLength(1);
+    expect(await pendingFlags()).toEqual([false]);
+  });
+
+  it("records one error event when a link cut off by a rate limit then fails", async () => {
+    await seedReadyConfig(orgA, projectId, mock);
+    mock.addIssue({ summary: "Rate limited then fails" });
+    mock.state.failNext.push({ status: 429, retryAfter: 120, path: "/rest/api/3/issue/" });
+    await runImport(await stateFor(orgA));
+    const errorEvents = async () =>
+      (
+        await rows(
+          `SELECT id FROM jira_incident_sync_events WHERE organization_id = :orgA AND kind = 'error'`,
+          { orgA },
+        )
+      ).length;
+    expect(await errorEvents()).toBe(0);
+
+    for (let run = 0; run < 2; run++) {
+      mock.state.failNext.push({ status: 500, path: "/rest/api/3/issue/" });
+      await retryRemoteLinks(await stateFor(orgA));
+    }
+    expect(await errorEvents()).toBe(1);
+    expect(await pendingFlags()).toEqual([true]);
+  });
+
+  it("retries never-tried links before ones that keep failing", async () => {
+    await seedReadyConfig(orgA, projectId, mock);
+    mock.addIssue({ summary: "Keeps failing link" });
+    mock.addIssue({ summary: "Never tried link" });
+    mock.state.failNext.push({ status: 500, path: "/rest/api/3/issue/" });
+    mock.state.failNext.push({ status: 429, retryAfter: 120, path: "/rest/api/3/issue/" });
+    await runImport(await stateFor(orgA));
+    const [first, second] = await rows<{ id: number }>(
+      `SELECT id FROM jira_incident_links WHERE organization_id = :orgA ORDER BY id`,
+      { orgA },
+    );
+    const [next] = await listPendingRemoteLinks(orgA, [], 1);
+    expect(next).toMatchObject({ linkId: second.id, triedBefore: false });
+    expect(first.id).toBeLessThan(second.id);
+  });
+
+  it("logs a retry that fails again without a new event, and stops on a rate limit", async () => {
+    await seedReadyConfig(orgA, projectId, mock);
+    mock.addIssue({ summary: "First pending link" });
+    mock.addIssue({ summary: "Second pending link" });
+    mock.state.failNext.push({ status: 500, path: "/rest/api/3/issue/" });
+    mock.state.failNext.push({ status: 500, path: "/rest/api/3/issue/" });
+    await runImport(await stateFor(orgA));
+    expect(await pendingFlags()).toEqual([true, true]);
+    const eventCount = async () =>
+      (
+        await rows(`SELECT id FROM jira_incident_sync_events WHERE organization_id = :orgA`, {
+          orgA,
+        })
+      ).length;
+    const before = await eventCount();
+
+    mock.state.failNext.push({ status: 500, path: "/rest/api/3/issue/" });
+    mock.state.failNext.push({ status: 429, retryAfter: 120, path: "/rest/api/3/issue/" });
+    const retry = await stateFor(orgA);
+    await retryRemoteLinks(retry);
+    expect(retry.stopReason).toBe(STOP_RATE_LIMIT);
+    expect(await eventCount()).toBe(before);
+    expect(await pendingFlags()).toEqual([true, true]);
   });
 
   it("an unmapped Jira status imports as Open with the link in error and an empty snapshot", async () => {

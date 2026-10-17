@@ -36,7 +36,7 @@ import {
 } from "./jiraIncidents.store";
 import { buildIdsJql } from "./jql";
 
-type SyncLink = LinkRow & { vw_status: string };
+type SyncLink = LinkRow & { vw_status: string; linked_at: Date };
 interface JiraSide {
   statusId: string;
   statusName: string;
@@ -77,7 +77,12 @@ export async function runStatusSync(state: RunState): Promise<void> {
   try {
     let afterId = 0;
     for (;;) {
-      const links = await listSyncableLinks(state.orgId, afterId, STATUS_BATCH_SIZE);
+      const links = await listSyncableLinks(
+        state.orgId,
+        afterId,
+        STATUS_BATCH_SIZE,
+        state.recheckSettled ?? false,
+      );
       if (links.length === 0) return;
       afterId = links[links.length - 1].id;
       // A deleted issue fails the whole search, so links already known to be
@@ -89,8 +94,8 @@ export async function runStatusSync(state: RunState): Promise<void> {
       for (const link of links) {
         if (state.deadline.aborted) throw new StopRun(STOP_DEADLINE);
         await syncLink(state, link, found.get(link.jira_issue_id) ?? null);
-        await state.heartbeat();
       }
+      await state.heartbeat();
     }
   } catch (err) {
     if (err instanceof StopRun) {
@@ -210,6 +215,7 @@ async function decide(state: RunState, link: SyncLink, jira: JiraSide): Promise<
     vwStatus: link.vw_status,
     jiraChangedAt,
     vwChangedAt,
+    linkedAt: link.linked_at,
     statusMapIn,
     statusMapOut,
   });

@@ -17,6 +17,10 @@ export interface RunState {
   heartbeat: () => Promise<void>;
   deadline: AbortSignal;
   warnedNoFrontendUrl: boolean;
+  /** Links imported by this run; their remote link is not retried in the same run. */
+  importedLinkIds?: number[];
+  /** Re-read settled links too (a manual run); otherwise they wait SETTLED_RECHECK_HOURS. */
+  recheckSettled?: boolean;
   /** Jira status id -> name; filled by the status-sync step. */
   statusNames?: Map<string, string>;
 }

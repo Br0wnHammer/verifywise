@@ -6,7 +6,16 @@ import type { JiraIssueSummary, SearchPage } from "./jiraIncidents.client";
 import { markChecked } from "./jiraIncidents.config";
 import { JiraRateLimitError, JiraUnreachableError } from "./jiraIncidents.errors";
 import { RunState, STOP_DEADLINE, STOP_RATE_LIMIT } from "./jiraIncidents.run";
-import { insertEvent, insertLink, linkExists, setLinkState } from "./jiraIncidents.store";
+import { REMOTE_LINK_RETRY_LIMIT } from "./jiraIncidents.constants";
+import {
+  insertEvent,
+  insertLink,
+  linkExists,
+  listPendingRemoteLinks,
+  setLinkState,
+  setRemoteLinkOutcome,
+  type PendingRemoteLink,
+} from "./jiraIncidents.store";
 import { buildImportJql, formatJqlDate, importCutoff } from "./jql";
 import { severityForPriority } from "./mapping";
 
@@ -82,7 +91,7 @@ async function importOne(
   issue: JiraIssueSummary,
 ): Promise<"ok" | "failed" | "stop"> {
   const { orgId, config, client } = state;
-  let created: { id: number; incident_id: string; linkId: number };
+  let created: PendingRemoteLink;
   try {
     created = await sequelize.transaction(async (t) => {
       const mapped = config.statusMapIn[issue.statusId];
@@ -111,6 +120,9 @@ async function importOne(
           // An empty snapshot makes the next status sync re-check an unmapped status.
           jiraStatusId: mapped ? issue.statusId : "",
           vwStatus: status,
+          // Cleared once Jira accepts the link back; until then later runs retry it
+          // (also once FRONTEND_URL is set, if it is missing now).
+          remoteLinkPending: true,
         },
         t,
       );
@@ -146,7 +158,14 @@ async function importOne(
         );
         state.counts.errors++;
       }
-      return { id: incident.id!, incident_id: incident.incident_id as string, linkId };
+      return {
+        linkId,
+        jiraIssueId: issue.id,
+        jiraIssueKey: issue.key,
+        incidentId: incident.id!,
+        incidentCode: incident.incident_id as string,
+        triedBefore: false,
+      };
     });
   } catch (err) {
     if (err instanceof AlreadyLinked) return "ok";
@@ -156,14 +175,56 @@ async function importOne(
   }
 
   state.counts.imported++;
-  return (await addRemoteLink(state, issue, created)) ? "stop" : "ok";
+  (state.importedLinkIds ??= []).push(created.linkId);
+  const outcome = await addRemoteLink(state, created);
+  if (typeof outcome === "object") {
+    await recordError(
+      state,
+      created.jiraIssueKey,
+      `Could not add the VerifyWise link to the Jira issue: ${outcome.error}`,
+      created.linkId,
+    );
+  }
+  return outcome === "stop" ? "stop" : "ok";
 }
 
+/**
+ * Retries the link back to VerifyWise on issues imported by earlier runs
+ * whose link failed, was cut off by a rate limit, or waited for FRONTEND_URL.
+ * A link's first failed attempt records an error event; later ones are
+ * logged only, so a broken link does not add an event every run.
+ */
+export async function retryRemoteLinks(state: RunState): Promise<void> {
+  if (!process.env.FRONTEND_URL) return;
+  const pending = await listPendingRemoteLinks(
+    state.orgId,
+    state.importedLinkIds ?? [],
+    REMOTE_LINK_RETRY_LIMIT,
+  );
+  for (const target of pending) {
+    if (state.deadline.aborted) {
+      state.stopReason = STOP_DEADLINE;
+      return;
+    }
+    const outcome = await addRemoteLink(state, target);
+    if (outcome === "stop") return;
+    if (typeof outcome === "object" && !target.triedBefore) {
+      await recordError(
+        state,
+        target.jiraIssueKey,
+        `Could not add the VerifyWise link to the Jira issue: ${outcome.error}`,
+        target.linkId,
+      );
+    }
+    await state.heartbeat();
+  }
+}
+
+/** "stop" when rate limited or past the deadline (stopReason is set); the link stays pending unless "ok". */
 async function addRemoteLink(
   state: RunState,
-  issue: JiraIssueSummary,
-  incident: { id: number; incident_id: string; linkId: number },
-): Promise<boolean> {
+  target: PendingRemoteLink,
+): Promise<"ok" | "stop" | { error: string }> {
   const frontendUrl = process.env.FRONTEND_URL;
   if (!frontendUrl) {
     if (!state.warnedNoFrontendUrl) {
@@ -172,27 +233,46 @@ async function addRemoteLink(
         "jira-incidents: FRONTEND_URL is not set; skipping the VerifyWise link on Jira issues",
       );
     }
-    return false;
+    return "ok";
   }
   try {
-    await state.client.upsertRemoteLink(issue.id, {
-      globalId: `verifywise:incident:${state.orgId}:${incident.id}`,
-      url: `${frontendUrl.replace(/\/+$/, "")}/ai-incident-managements?incidentId=${incident.id}`,
-      title: `VerifyWise ${incident.incident_id}`,
+    await state.client.upsertRemoteLink(target.jiraIssueId, {
+      globalId: `verifywise:incident:${state.orgId}:${target.incidentId}`,
+      url: `${frontendUrl.replace(/\/+$/, "")}/ai-incident-managements?incidentId=${target.incidentId}`,
+      title: `VerifyWise ${target.incidentCode}`,
     });
   } catch (err) {
     if (err instanceof JiraRateLimitError) {
       state.stopReason = STOP_RATE_LIMIT;
-      return true;
+      return "stop";
     }
-    await recordError(
-      state,
-      issue.key,
-      `Could not add the VerifyWise link to the Jira issue: ${messageOf(err)}`,
-      incident.linkId,
+    if (state.deadline.aborted && err instanceof JiraUnreachableError) {
+      state.stopReason = STOP_DEADLINE;
+      return "stop";
+    }
+    logger.warn(
+      `jira-incidents: could not add the VerifyWise link to ${target.jiraIssueKey}: ${messageOf(err)}`,
+    );
+    await recordRemoteLinkOutcome(state, target, false);
+    return { error: messageOf(err) };
+  }
+  await recordRemoteLinkOutcome(state, target, true);
+  return "ok";
+}
+
+/** Bookkeeping only: a failed write leaves the link pending and must not fail the run. */
+async function recordRemoteLinkOutcome(
+  state: RunState,
+  target: PendingRemoteLink,
+  added: boolean,
+): Promise<void> {
+  try {
+    await setRemoteLinkOutcome(state.orgId, target.linkId, added);
+  } catch (err) {
+    logger.error(
+      `jira-incidents: could not record the remote link outcome for ${target.jiraIssueKey}: ${messageOf(err)}`,
     );
   }
-  return false;
 }
 
 async function recordError(

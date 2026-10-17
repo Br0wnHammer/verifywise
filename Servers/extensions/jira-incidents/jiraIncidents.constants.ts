@@ -12,6 +12,10 @@ export const IMPORT_OVERLAP_MINUTES = 10;
 export const MAX_RETRY_AFTER_SECONDS = 10;
 export const SEARCH_PAGE_SIZE = 50;
 export const STATUS_BATCH_SIZE = 50;
+/** A settled link (closed on both sides, no error) is re-read from Jira at most this often. */
+export const SETTLED_RECHECK_HOURS = 24;
+/** Remote links retried per run; a permanent failure (no LINK_ISSUES) must not eat the run. */
+export const REMOTE_LINK_RETRY_LIMIT = 20;
 export const EVENTS_DEFAULT_LIMIT = 50;
 export const EVENTS_MAX_LIMIT = 200;
 export const REQUIRED_PERMISSIONS = [

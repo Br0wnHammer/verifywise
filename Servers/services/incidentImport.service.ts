@@ -7,6 +7,7 @@
  */
 import { Transaction } from "sequelize";
 import { AIIncidentManagementModel } from "../domain.layer/models/incidentManagement/incidemtManagement.model";
+import { isCriticalIncidentSeverity } from "../domain.layer/enums/ai-incident-management.enum";
 import { createNewIncidentQuery } from "../utils/incidentManagement.utils";
 import { recordEntityCreation } from "../utils/changeHistory.base.utils";
 import * as workflowTriggers from "./workflows/triggers";
@@ -22,8 +23,6 @@ export interface ImportedIncidentInput {
   description: string;
   occurredAt: Date;
 }
-
-const CRITICAL_SEVERITIES = new Set(["very serious", "critical"]);
 
 export async function createIncidentForImport(
   organizationId: number,
@@ -64,7 +63,7 @@ export async function createIncidentForImport(
     true,
   );
 
-  if (CRITICAL_SEVERITIES.has(input.severity.toLowerCase())) {
+  if (isCriticalIncidentSeverity(input.severity)) {
     transaction.afterCommit(() => {
       workflowTriggers
         .triggerIncidentResponse(organizationId, created.id!, input.severity)

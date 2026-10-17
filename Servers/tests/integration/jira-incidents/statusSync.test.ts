@@ -98,6 +98,44 @@ describe("jira incidents status sync", () => {
     expect(again.counts).toMatchObject({ status_to_jira: 0, status_from_jira: 0 });
   });
 
+  it("re-reads a settled closed link from Jira at most once a day", async () => {
+    await vwSet("Closed");
+    await sync(orgA);
+    expect(await link()).toMatchObject({ state: "ok", last_vw_status: "Closed" });
+
+    // Reopened in Jira: the settled link is not due yet.
+    mock.setStatus(issueId, "3");
+    mock.state.calls = [];
+    await sync(orgA);
+    expect((await incident()).status).toBe("Closed");
+    expect(mock.state.calls.some((c) => c.path.endsWith("/search/jql"))).toBe(false);
+
+    await sequelize.query(
+      `UPDATE jira_incident_links SET last_synced_at = now() - interval '25 hours' WHERE organization_id = :orgA`,
+      { replacements: { orgA } },
+    );
+    await sync(orgA);
+    expect((await incident()).status).toBe("Investigating");
+  });
+
+  it("re-reads a settled link on a manual run", async () => {
+    await vwSet("Closed");
+    await sync(orgA);
+    mock.setStatus(issueId, "3");
+    const manual = await stateFor(orgA);
+    manual.recheckSettled = true;
+    await runStatusSync(manual);
+    expect((await incident()).status).toBe("Investigating");
+  });
+
+  it("checks a settled link at once after a VerifyWise change", async () => {
+    await vwSet("Closed");
+    await sync(orgA);
+    await vwSet("Investigating");
+    await sync(orgA);
+    expect(mock.state.issues[0].statusId).toBe("3");
+  });
+
   it("records Don't change Jira without calling Jira", async () => {
     await vwSet("Mitigated");
     await sync(orgA);
@@ -190,7 +228,9 @@ describe("jira incidents status sync", () => {
       { replacements: { incidentId } },
     );
     await sequelize.query(
-      `UPDATE jira_incident_links SET last_vw_status = 'Closed', last_jira_status_id = '4' WHERE organization_id = :orgA`,
+      // A settled link is only re-read once a day: make this one due.
+      `UPDATE jira_incident_links SET last_vw_status = 'Closed', last_jira_status_id = '4',
+              last_synced_at = now() - interval '25 hours' WHERE organization_id = :orgA`,
       { replacements: { orgA } },
     );
     mock.setStatus(issueId, "4");
@@ -255,13 +295,13 @@ describe("jira incidents status sync", () => {
 describe("jira incidents status sync after an unmapped import", () => {
   let mock: JiraCloudMock;
   let orgA: number;
+  let userA: number;
 
   beforeEach(async () => {
     mock = await withMock();
     process.env.FRONTEND_URL = "https://app.verifywise.test";
-    const seed = await seedTwoOrgsAndUsers();
-    orgA = seed.orgA;
-    await seedReadyConfig(orgA, await insertProject(orgA, seed.userA), mock);
+    ({ orgA, userA } = await seedTwoOrgsAndUsers());
+    await seedReadyConfig(orgA, await insertProject(orgA, userA), mock);
   });
   afterEach(async () => {
     await mock.close();
@@ -308,6 +348,36 @@ describe("jira incidents status sync after an unmapped import", () => {
       { id: after.incident_id },
     );
     expect(incident.status).toBe("Investigating");
+  });
+
+  it("sends a VerifyWise change to Jira without a conflict while Jira hasn't moved", async () => {
+    await sequelize.query(
+      `UPDATE jira_incidents_config SET status_map_in = status_map_in - '3' WHERE organization_id = :orgA`,
+      { replacements: { orgA } },
+    );
+    const issue = mock.addIssue({ summary: "Unmapped status here", statusId: "3" });
+    // Moved to the unmapped status in Jira well before the import.
+    mock.setStatus(issue.id, "3", new Date(Date.now() - 10 * 60_000));
+    await runImport(await stateFor(orgA));
+    const linkRow = async () =>
+      (
+        await rows<any>(`SELECT * FROM jira_incident_links WHERE organization_id = :orgA`, { orgA })
+      )[0];
+
+    await updateIncident(orgA, (await linkRow()).incident_id, { status: "Closed" }, userA);
+    const s = await sync(orgA);
+
+    expect(mock.state.issues[0].statusId).toBe("4");
+    expect(await linkRow()).toMatchObject({ state: "ok", last_vw_status: "Closed" });
+    expect(s.counts.conflicts).toBe(0);
+    const kinds = (
+      await rows<{ kind: string }>(
+        `SELECT kind FROM jira_incident_sync_events WHERE organization_id = :orgA`,
+        { orgA },
+      )
+    ).map((e) => e.kind);
+    expect(kinds).toContain("status_to_jira");
+    expect(kinds).not.toContain("conflict");
   });
 });
 

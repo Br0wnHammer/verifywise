@@ -1,6 +1,7 @@
 import { QueryTypes, Transaction } from "sequelize";
 import { sequelize } from "../../database/db";
-import type { EventKind, LinkState } from "./jiraIncidents.constants";
+import { AIIncidentManagementStatus } from "../../domain.layer/enums/ai-incident-management.enum";
+import { SETTLED_RECHECK_HOURS, type EventKind, type LinkState } from "./jiraIncidents.constants";
 
 export interface LinkRow {
   id: number;
@@ -53,17 +54,19 @@ export async function insertLink(
     jiraUrl: string;
     jiraStatusId: string;
     vwStatus: string;
+    remoteLinkPending?: boolean;
   },
   t: Transaction,
 ): Promise<number | null> {
   const inserted = await select<{ id: number }>(
     `INSERT INTO jira_incident_links
        (organization_id, incident_id, jira_issue_id, jira_issue_key, jira_url,
-        last_jira_status_id, last_vw_status, last_synced_at)
-     VALUES (:orgId, :incidentId, :jiraIssueId, :jiraIssueKey, :jiraUrl, :jiraStatusId, :vwStatus, now())
+        last_jira_status_id, last_vw_status, remote_link_pending, last_synced_at)
+     VALUES (:orgId, :incidentId, :jiraIssueId, :jiraIssueKey, :jiraUrl, :jiraStatusId, :vwStatus,
+             :remoteLinkPending, now())
      ON CONFLICT DO NOTHING
      RETURNING id`,
-    { orgId, ...link },
+    { orgId, ...link, remoteLinkPending: link.remoteLinkPending ?? false },
     t,
   );
   return inserted[0]?.id ?? null;
@@ -106,23 +109,92 @@ export async function setLinkState(
   );
 }
 
-/** Linked, non-archived incidents whose link still needs syncing, in id order after `afterId`. */
+/**
+ * Linked, non-archived incidents whose link still needs syncing, in id order
+ * after `afterId`. A settled link (ok, Closed in VerifyWise and in the
+ * snapshot) is only due once SETTLED_RECHECK_HOURS have passed since its last
+ * check, so a reopen in Jira can take that long to arrive; a VerifyWise
+ * change unsettles it at once, and a manual run (`recheckSettled`) reads it.
+ */
 export async function listSyncableLinks(
   orgId: number,
   afterId: number,
   limit: number,
-): Promise<Array<LinkRow & { vw_status: string }>> {
+  recheckSettled = false,
+): Promise<Array<LinkRow & { vw_status: string; linked_at: Date }>> {
   return select(
     `SELECT l.id, l.incident_id, l.jira_issue_id, l.jira_issue_key, l.jira_url, l.last_jira_status_id,
-            l.last_vw_status, l.state, l.state_reason, i.status AS vw_status
+            l.last_vw_status, l.state, l.state_reason, l.created_at AS linked_at, i.status AS vw_status
        FROM jira_incident_links l
        JOIN ai_incident_managements i ON i.id = l.incident_id AND i.organization_id = l.organization_id
       WHERE l.organization_id = :orgId AND l.id > :afterId
         AND l.state IN ('ok', 'error', 'conflict', 'deleted_in_jira')
         AND COALESCE(i.archived, false) = false
+        AND (:recheckSettled OR NOT (
+          l.state = 'ok' AND i.status = :closed AND l.last_vw_status = :closed
+          AND COALESCE(l.last_synced_at, '-infinity') >= now() - make_interval(hours => :settledHours)
+        ))
       ORDER BY l.id
       LIMIT :limit`,
-    { orgId, afterId, limit },
+    {
+      orgId,
+      afterId,
+      limit,
+      closed: AIIncidentManagementStatus.CLOSED,
+      settledHours: SETTLED_RECHECK_HOURS,
+      recheckSettled,
+    },
+  );
+}
+
+export interface PendingRemoteLink {
+  linkId: number;
+  jiraIssueId: string;
+  jiraIssueKey: string;
+  incidentId: number;
+  incidentCode: string;
+  /** A previous attempt failed (and recorded its error event). */
+  triedBefore: boolean;
+}
+
+/**
+ * Live links whose Jira issue may still lack the link back to VerifyWise:
+ * never-tried first, then the longest since their last failed attempt.
+ */
+export async function listPendingRemoteLinks(
+  orgId: number,
+  excludeIds: number[],
+  limit: number,
+): Promise<PendingRemoteLink[]> {
+  return select(
+    `SELECT l.id AS "linkId", l.jira_issue_id AS "jiraIssueId", l.jira_issue_key AS "jiraIssueKey",
+            l.incident_id AS "incidentId", i.incident_id AS "incidentCode",
+            l.remote_link_tried_at IS NOT NULL AS "triedBefore"
+       FROM jira_incident_links l
+       JOIN ai_incident_managements i ON i.id = l.incident_id AND i.organization_id = l.organization_id
+      WHERE l.organization_id = :orgId AND l.remote_link_pending
+        AND l.state IN ('ok', 'error', 'conflict') AND l.id NOT IN (:excludeIds)
+      ORDER BY l.remote_link_tried_at NULLS FIRST, l.id
+      LIMIT :limit`,
+    // Ids are positive; 0 keeps the IN list non-empty.
+    { orgId, excludeIds: excludeIds.length > 0 ? excludeIds : [0], limit },
+  );
+}
+
+/** Clears the flag once Jira has the link, or records a failed attempt. */
+export async function setRemoteLinkOutcome(
+  orgId: number,
+  linkId: number,
+  added: boolean,
+): Promise<void> {
+  await sequelize.query(
+    added
+      ? `UPDATE jira_incident_links SET remote_link_pending = false, remote_link_tried_at = NULL,
+                updated_at = now()
+          WHERE organization_id = :orgId AND id = :linkId`
+      : `UPDATE jira_incident_links SET remote_link_tried_at = now(), updated_at = now()
+          WHERE organization_id = :orgId AND id = :linkId`,
+    { replacements: { orgId, linkId } },
   );
 }
 

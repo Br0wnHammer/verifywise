@@ -864,7 +864,9 @@ CONFLICT DO NOTHING`, so an admin's own schedule is never overwritten.
 readable, or the run fails with "VerifyWise can no longer read Jira project
 <key>" before any link is touched (otherwise every issue would look deleted);
 then import (JQL from `max(import_from, last_checked_at − 10 min)`, issues with
-a link are skipped), then status sync. A rejected token fails the run so the
+a link are skipped), then status sync (settled closed links are re-read at
+most once a day on scheduled runs, every time on manual ones; one heartbeat
+per batch of 50), then a retry of up to 20 pending remote links. A rejected token fails the run so the
 engine's backoff applies. A rate limit allows one `Retry-After` wait of at most
 10 seconds per run, then ends the run early but successfully; so does the
 10-minute deadline. `last_checked_at` only moves when the import window
