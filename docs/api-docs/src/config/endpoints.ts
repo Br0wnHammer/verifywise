@@ -4334,6 +4334,7 @@ export const extensionEndpoints: Endpoint[] = [
     ],
     responses: [
       { status: 200, description: "Link removed. The file itself is kept and stays in the File Manager." },
+      { status: 400, description: "id, itemId or fileId is not a positive integer up to 2147483647" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
       { status: 404, description: "The lifecycle item has no link to this file" },
       { status: 500, description: "Internal server error" },

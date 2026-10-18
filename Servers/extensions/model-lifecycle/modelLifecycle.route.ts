@@ -1,6 +1,7 @@
 import express from "express";
 import authenticateJWT from "../../middleware/auth.middleware";
 import { requireExtensionEnabled } from "../../middleware/requireExtensionEnabled.middleware";
+import { validateId } from "../../domain.layer/validations/id.valid";
 import {
   addApproverCtrl,
   addPersonCtrl,
@@ -47,7 +48,13 @@ router.put("/models/:id/lifecycle/items/:itemId", upsertValueCtrl);
 
 // ---- Files ------------------------------------------------------------
 router.post("/models/:id/lifecycle/items/:itemId/files", attachFileCtrl);
-router.delete("/models/:id/lifecycle/items/:itemId/files/:fileId", detachFileCtrl);
+router.delete(
+  "/models/:id/lifecycle/items/:itemId/files/:fileId",
+  validateId("id"),
+  validateId("itemId"),
+  validateId("fileId"),
+  detachFileCtrl,
+);
 
 // ---- People -----------------------------------------------------------
 router.post("/models/:id/lifecycle/items/:itemId/people", addPersonCtrl);
