@@ -499,25 +499,35 @@ describe("redactSensitiveInfo", () => {
 });
 
 // Known gap: URL credentials are scanned per whitespace-separated token, so
-// a password containing whitespace leaks after the space, and entirely when
-// its first part is digits (read as a port). it.failing keeps the gap
-// visible; these start passing, and must be turned into it.each cases, once
-// it is fixed.
+// the part of a password after whitespace leaks, and all of it when the first
+// part reads as a port. These pin today's output, so both a regression and a
+// fix break them; a fix should move them to the redaction table above with
+// fully redacted expectations.
 describe("redactSensitiveInfo: password containing whitespace (known gap)", () => {
-  it.failing("redacts the part after the space", () => {
-    expect(redactSensitiveInfo("x postgres://u:abc def@db/x")).toBe(
-      "x postgres://u:[REDACTED]@db/x",
-    );
-  });
-  it.failing("redacts a password whose first part is digits", () => {
-    expect(redactSensitiveInfo("x postgres://u:2024 5678@db/x")).toBe(
-      "x postgres://u:[REDACTED]@db/x",
-    );
-  });
-  it.failing("redacts a digits-then-word password", () => {
-    expect(redactSensitiveInfo("connect postgres://app:1234 hunter2@db failed")).toBe(
-      "connect postgres://app:[REDACTED]@db failed",
-    );
+  it.each([
+    [
+      "the part after the space leaks",
+      "x postgres://u:abc def@db/x",
+      "x postgres://u:[REDACTED] def@db/x",
+    ],
+    [
+      "a digits first part leaks it all",
+      "x postgres://u:2024 5678@db/x",
+      "x postgres://u:2024 5678@db/x",
+    ],
+    [
+      "a digits-then-word password leaks",
+      "connect postgres://app:1234 hunter2@db failed",
+      "connect postgres://app:1234 hunter2@db failed",
+    ],
+    ["digits then / leaks", "x postgres://u:12/34 x@db/x", "x postgres://u:12/34 x@db/x"],
+    [
+      "redacted only to the token's last @",
+      "x postgres://u:a@b c@db/x",
+      "x postgres://u:[REDACTED]@b c@db/x",
+    ],
+  ])("%s", (_name, input, current) => {
+    expect(redactSensitiveInfo(input)).toBe(current);
   });
 });
 
