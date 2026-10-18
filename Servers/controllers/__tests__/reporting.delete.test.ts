@@ -4,8 +4,11 @@ import { Request, Response } from "express";
 /**
  * DELETE /reporting/:id used to delete any file in the organization by id.
  * These tests run the real controller and reporting utils against a small
- * in-memory stand-in for the `files` and `file_folder_mappings` tables, so
- * they check which rows survive rather than the SQL text.
+ * in-memory stand-in for the `files` and `file_folder_mappings` tables and
+ * check which rows survive. The stand-in is not a SQL engine: it applies
+ * the organization, id and source predicates, ANDed, when their text is in
+ * the statement, so it catches a dropped predicate but not a rewritten one
+ * (an OR, a subquery, a renamed replacement).
  */
 
 type FileRow = { id: number; organization_id: number; source: string };
@@ -16,10 +19,13 @@ const db: { files: FileRow[]; mappings: MappingRow[] } = { files: [], mappings: 
 function fakeQuery(sql: string, options: any = {}): any {
   const r = options.replacements ?? {};
   if (/^\s*DELETE FROM files/.test(sql)) {
+    // Each predicate applies only if the SQL has it, so a query that loses
+    // one deletes too much here.
     const hit = db.files.filter(
       (f) =>
-        f.organization_id === r.organizationId &&
-        f.id === r.id &&
+        (!/organization_id = :organizationId/.test(sql) ||
+          f.organization_id === r.organizationId) &&
+        (!/\bid = :id\b/.test(sql) || f.id === r.id) &&
         (!/source IN \(:sources\)/.test(sql) || r.sources.includes(f.source)),
     );
     db.files = db.files.filter((f) => !hit.includes(f));

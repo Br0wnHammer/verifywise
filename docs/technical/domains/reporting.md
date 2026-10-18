@@ -75,7 +75,7 @@ Manual generation is **asynchronous**: `POST` queues the job and returns a `runI
 | GET | `/reporting/generate-report` | List generated reports. **Not read by the Reporting page** — see [the note below](#the-legacy-files-based-list-is-dead-code-for-the-ui) |
 | GET | `/reporting/runs/:id` | Poll a run's status (see [Template-First Reporting Layer](#template-first-reporting-layer)) |
 | GET | `/reporting/runs/:id/download` | Download the finished file once the run reaches a terminal status |
-| DELETE | `/reporting/:id` | Delete a generated report file. **Admin only** (`reporting.admin`). Report files only; any other id answers 404 — see [Report File Sources](#report-file-sources) |
+| DELETE | `/reporting/:id` | Delete a generated report file. Requires `reporting.admin` (Admin by default). Report files only; any other id answers 404 — see [Report File Sources](#report-file-sources) |
 
 ### Generate Report Request
 
@@ -1238,7 +1238,7 @@ Any new report source goes into `REPORT_FILE_SOURCES` and nowhere else; a source
 
 `DELETE /reporting/:id` (`deleteGeneratedReportById`):
 
-- **Admin only**, through `authorize("reporting.admin")`, the same permission as generating a report. Other roles get 403.
+- Requires the `reporting.admin` permission (`authorize("reporting.admin")`), the same permission as generating a report. By default only Admin has it; a role without it gets 403.
 - `validateId("id")`: a non-numeric id, 0, or an id above 2147483647 (the Postgres `INTEGER` maximum) answers **400**.
 - One statement: `DELETE FROM files WHERE organization_id = :org AND id = :id AND source IN (REPORT_FILE_SOURCES) RETURNING id`. Folder mappings go with the row through `file_folder_mappings.file_id ... ON DELETE CASCADE`.
 - When nothing was deleted (missing id, another organization's file, or any non-report file such as evidence or a File Manager upload) it answers **404** and touches nothing.
