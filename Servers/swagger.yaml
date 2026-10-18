@@ -15128,9 +15128,11 @@ paths:
       summary: 'Detach File Ctrl'
       responses:
         '200':
-          description: Success
+          description: 'Link removed. The file itself is kept and stays in the File Manager.'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'The lifecycle item has no link to this file'
         '500':
           description: 'Internal server error'
       tags:

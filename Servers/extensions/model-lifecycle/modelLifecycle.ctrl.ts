@@ -202,12 +202,15 @@ export async function attachFileCtrl(req: Request, res: Response): Promise<any> 
 
 export async function detachFileCtrl(req: Request, res: Response): Promise<any> {
   try {
-    await svc.detachFile(
+    const detached = await svc.detachFile(
       orgId(req),
       intParam(req, "id"),
       intParam(req, "itemId"),
       intParam(req, "fileId"),
     );
+    if (!detached) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("File link not found")));
+    }
     return res.status(200).json(STATUS_CODE[200]({ success: true }));
   } catch (err) {
     return fail(res, err, req, "detachFile");

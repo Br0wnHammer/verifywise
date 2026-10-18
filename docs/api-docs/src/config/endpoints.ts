@@ -4333,8 +4333,9 @@ export const extensionEndpoints: Endpoint[] = [
       { name: 'fileId', in: 'path', type: 'integer', required: true, description: "The fileId" },
     ],
     responses: [
-      { status: 200, description: "Success" },
+      { status: 200, description: "Link removed. The file itself is kept and stays in the File Manager." },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 404, description: "The lifecycle item has no link to this file" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Extensions",

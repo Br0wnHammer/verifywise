@@ -16,7 +16,7 @@ jest.mock("../../../utils/auditLedger.utils", () => ({
 
 import { sequelize } from "../../../database/db";
 import { appendToAuditLedger } from "../../../utils/auditLedger.utils";
-import { updateItem } from "../modelLifecycle.service";
+import { detachFile, updateItem } from "../modelLifecycle.service";
 
 const mockQuery = sequelize.query as jest.Mock;
 
@@ -131,5 +131,47 @@ describe("updateItem change history", () => {
     const result = await updateItem(1, 5, {}, 7);
     expect(result).toBeNull();
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+// DELETE on a lifecycle item's file used to hard-delete `files` by id whether
+// or not the item linked to it, so any file in the organization could be
+// removed through this route.
+describe("detachFile", () => {
+  beforeEach(() => {
+    mockQuery.mockReset();
+  });
+
+  const fileDeletes = () =>
+    mockQuery.mock.calls.filter((call) => /DELETE\s+FROM\s+files\b/i.test(String(call[0])));
+
+  it("leaves the file alone and reports false when the item has no link to it", async () => {
+    mockQuery.mockResolvedValueOnce([]); // DELETE ... RETURNING matched nothing
+
+    const detached = await detachFile(1, 10, 20, 99);
+
+    expect(detached).toBe(false);
+    expect(fileDeletes()).toHaveLength(0);
+  });
+
+  it("removes the link, scoped to the organization, model and item, and reports true", async () => {
+    mockQuery.mockResolvedValueOnce([{ id: 7 }]);
+
+    const detached = await detachFile(1, 10, 20, 99);
+
+    expect(detached).toBe(true);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, options] = mockQuery.mock.calls[0];
+    expect(String(sql)).toMatch(/DELETE FROM model_lifecycle_item_files/);
+    expect(String(sql)).toMatch(/organization_id = :organizationId/);
+    expect(String(sql)).toMatch(/RETURNING/);
+    expect(options.replacements).toEqual({
+      organizationId: 1,
+      modelId: 10,
+      itemId: 20,
+      fileId: 99,
+    });
+    // The file may be linked elsewhere; the File Manager owns its deletion.
+    expect(fileDeletes()).toHaveLength(0);
   });
 });

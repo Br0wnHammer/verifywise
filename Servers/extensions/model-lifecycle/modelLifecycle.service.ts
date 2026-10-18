@@ -12,7 +12,8 @@ import { appendToAuditLedger } from "../../utils/auditLedger.utils";
  *
  * Note on file cleanup: on phase/item delete the extension unlinks and
  * hard-deletes any `files` rows attached via item_files — otherwise the
- * cascade would orphan the file blobs.
+ * cascade would orphan the file blobs. Detaching one file from one item
+ * (`detachFile`) only removes the link; the file stays in the File Manager.
  */
 
 // ---------------------------------------------------------------------------
@@ -640,27 +641,38 @@ export async function attachFile(
   return (rows[0] as any)?.[0] ?? { value_id: valueId, file_id: fileId };
 }
 
+/**
+ * Remove the link between a lifecycle item and a file. Returns false when the
+ * item had no link to that file, so the caller can answer 404.
+ *
+ * The `files` row is deliberately left in place. Lifecycle uploads go through
+ * the File Manager, so the file is listed there, and `attachFile` accepts any
+ * file id in the organization: the file may be evidence or a policy document
+ * that other records point to, some of them without a foreign key. Deleting
+ * it belongs to the File Manager, which checks the caller's role and project
+ * access and clears folder mappings.
+ */
 export async function detachFile(
   organizationId: number,
   modelId: number,
   itemId: number,
   fileId: number,
-): Promise<void> {
-  await sequelize.query(
+): Promise<boolean> {
+  const rows = (await sequelize.query(
     `DELETE FROM model_lifecycle_item_files
       WHERE organization_id = :organizationId AND file_id = :fileId
         AND value_id = (
           SELECT id FROM model_lifecycle_values
            WHERE organization_id = :organizationId
              AND model_inventory_id = :modelId AND item_id = :itemId
-        );`,
-    { replacements: { organizationId, fileId, modelId, itemId } },
-  );
-  // Hard-delete the file so we don't accumulate orphans.
-  await sequelize.query(
-    `DELETE FROM files WHERE organization_id = :organizationId AND id = :fileId;`,
-    { replacements: { organizationId, fileId } },
-  );
+        )
+      RETURNING id;`,
+    {
+      replacements: { organizationId, fileId, modelId, itemId },
+      type: QueryTypes.DELETE,
+    },
+  )) as unknown as Array<{ id: number }> | undefined;
+  return Array.isArray(rows) && rows.length > 0;
 }
 
 // ---------------------------------------------------------------------------
