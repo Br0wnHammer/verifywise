@@ -197,6 +197,11 @@ function isPortAt(token: string, from: number): boolean {
  * second URL in the same token) is accepted; under-redaction is not. Keeps
  * scheme, user and whatever follows the last "@".
  *
+ * Known gap: a password containing whitespace is split across tokens. The
+ * first token is redacted to its end, or not at all when its part of the
+ * password is digits (read as a port); later parts are not redacted. The
+ * failing tests in redact.test.ts track it.
+ *
  * Linear: "://" positions are visited in order, and each user part is
  * scanned only up to the next ":" (which is at or before the next "://").
  */

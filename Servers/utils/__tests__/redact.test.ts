@@ -135,9 +135,6 @@ describe("redactSensitiveInfo", () => {
       JSON.stringify({ dsn: 'postgres://u:1234","hunter2' }),
       '{"dsn":"postgres://u:[REDACTED]',
     ],
-    // Known gap, not pinned: URL credentials are scanned per whitespace-
-    // separated token, so a password containing a space is redacted only up
-    // to the space.
     // Accepted over-redaction (fail closed): a host:port followed by a quote,
     // query, fragment or punctuation loses the rest of its token, which in a
     // compact JSON line is the rest of the line.
@@ -498,6 +495,29 @@ describe("redactSensitiveInfo", () => {
     }
     // Asserted after the restore, so Jest's failure message runs unpatched.
     expect(result).toBe(UNSCANNABLE_PLACEHOLDER);
+  });
+});
+
+// Known gap: URL credentials are scanned per whitespace-separated token, so
+// a password containing whitespace leaks after the space, and entirely when
+// its first part is digits (read as a port). it.failing keeps the gap
+// visible; these start passing, and must be turned into it.each cases, once
+// it is fixed.
+describe("redactSensitiveInfo: password containing whitespace (known gap)", () => {
+  it.failing("redacts the part after the space", () => {
+    expect(redactSensitiveInfo("x postgres://u:abc def@db/x")).toBe(
+      "x postgres://u:[REDACTED]@db/x",
+    );
+  });
+  it.failing("redacts a password whose first part is digits", () => {
+    expect(redactSensitiveInfo("x postgres://u:2024 5678@db/x")).toBe(
+      "x postgres://u:[REDACTED]@db/x",
+    );
+  });
+  it.failing("redacts a digits-then-word password", () => {
+    expect(redactSensitiveInfo("connect postgres://app:1234 hunter2@db failed")).toBe(
+      "connect postgres://app:[REDACTED]@db failed",
+    );
   });
 });
 
