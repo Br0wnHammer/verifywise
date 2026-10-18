@@ -23,6 +23,7 @@ import {
 import { Trash2, Upload, FileText, Check, X } from "lucide-react";
 import { LifecycleItem, LifecycleValue } from "./useModelLifecycle";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
+import type CustomException from "../../../../infrastructure/exceptions/customeException";
 
 // User type for dropdown
 interface User {
@@ -332,8 +333,13 @@ function DocumentsFieldRenderer({
           `/extensions/model-lifecycle/models/${modelId}/lifecycle/items/${item.id}/files/${fileId}`,
         );
         onValueChanged?.();
-      } catch {
-        /* retry */
+      } catch (error) {
+        // 404: the link is already gone (removed in another tab, or a double
+        // click), so refresh to drop the stale row. Anything else: keep the
+        // row so the user can retry.
+        if ((error as CustomException | undefined)?.status === 404) {
+          onValueChanged?.();
+        }
       }
     },
     [modelId, item.id, onValueChanged],
