@@ -52,9 +52,18 @@ describe("DELETE /reporting/:id guard", () => {
     expect(deleteGeneratedReportById).toHaveBeenCalledTimes(1);
   });
 
-  it("answers 400 for an id that is not a positive integer", async () => {
-    const res = await request(app).delete("/api/reporting/abc").set("x-test-role", "Admin");
-    expect(res.status).toBe(400);
-    expect(deleteGeneratedReportById).not.toHaveBeenCalled();
+  it.each(["abc", "0", "2147483648", "99999999999999999999"])(
+    "answers 400 for id %s, which no INTEGER row can have",
+    async (id) => {
+      const res = await request(app).delete(`/api/reporting/${id}`).set("x-test-role", "Admin");
+      expect(res.status).toBe(400);
+      expect(deleteGeneratedReportById).not.toHaveBeenCalled();
+    },
+  );
+
+  it("passes the largest INTEGER id through", async () => {
+    const res = await request(app).delete("/api/reporting/2147483647").set("x-test-role", "Admin");
+    expect(res.status).toBe(200);
+    expect(deleteGeneratedReportById).toHaveBeenCalledTimes(1);
   });
 });

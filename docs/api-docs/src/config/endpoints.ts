@@ -9490,7 +9490,7 @@ export const reportingEndpoints: Endpoint[] = [
     ],
     responses: [
       { status: 200, description: "Deleted successfully" },
-      { status: 400, description: "id is not a positive integer" },
+      { status: 400, description: "id is not a positive integer up to 2147483647" },
       { status: 401, description: "Unauthorized" },
       { status: 403, description: "Role not allowed to delete reports" },
       { status: 404, description: "No generated report with this id in the organization" },

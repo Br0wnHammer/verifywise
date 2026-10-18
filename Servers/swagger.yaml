@@ -16607,7 +16607,7 @@ paths:
         '200':
           description: 'Deleted successfully'
         '400':
-          description: 'id is not a positive integer'
+          description: 'id is not a positive integer up to 2147483647'
         '401':
           description: Unauthorized
         '403':
