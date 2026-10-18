@@ -1,6 +1,5 @@
 import { sequelize } from "../database/db";
 import { ProjectsMembersModel } from "../domain.layer/models/projectsMembers/projectsMembers.model";
-import { FileModel } from "../domain.layer/models/file/file.model";
 import { QueryTypes, Transaction } from "sequelize";
 import { getVisibleEuCategoryIdsForProject } from "./eu.utils";
 import { AnnexStructISOModel } from "../domain.layer/frameworks/ISO-42001/annexStructISO.model";
@@ -52,22 +51,39 @@ export const getMembersByProjectIdQuery = async (
 };
 
 /**
- * The `files.source` values that mark a file as a generated report. The report
+ * The `files.source` values that mark a file as a generated report: exactly
+ * what report generation writes (mapReportTypeToFileSource for manual and
+ * scheduled runs, "All reports" for scheduled delivery to storage). The report
  * list shows only these, and the report delete touches only these, so the
  * reporting routes can never reach an evidence, policy or other uploaded file.
+ *
+ * No upload path outside report generation may write one of these. Excluded on
+ * purpose:
+ * - "Reference controls group" / "Management system clauses group": ISO 42001
+ *   annex / clause evidence (iso42001.ctrl.ts). Mid-2025 builds also saved
+ *   annexes / clauses reports under these labels, but such a row cannot be
+ *   told apart from evidence, so it is not treated as a report.
+ * - "ISO 27001 report": a legacy enum value nothing generates.
+ * - "Post-Market Monitoring report": owned by the PMM module through
+ *   pmm_reports.file_id, not by the Reports page.
  */
-export const REPORT_FILE_SOURCES: readonly string[] = [
+export const REPORT_FILE_SOURCES = [
   "Project risks report",
   "Compliance tracker report",
   "Assessment tracker report",
-  "Reference controls group",
   "Clauses and annexes report",
   "Vendors and risks report",
   "Models and risks report",
   "Training registry report",
   "Policy manager report",
   "All reports",
-];
+] as const;
+
+export type ReportFileSource = (typeof REPORT_FILE_SOURCES)[number];
+
+export function isReportFileSource(value: unknown): value is ReportFileSource {
+  return (REPORT_FILE_SOURCES as readonly unknown[]).includes(value);
+}
 
 interface GetGeneratedReportsOptions {
   userId: number;
@@ -124,60 +140,25 @@ export const getGeneratedReportsQuery = async (
 };
 
 /**
- * Delete a generated report and its folder mappings. Only files whose source
- * is a report source are touched; returns false when no such report exists.
+ * Delete a generated report. Only files whose source is a report source are
+ * touched; returns false when no such report exists in the organization.
+ * Its folder mappings go with it (file_folder_mappings.file_id is
+ * ON DELETE CASCADE), so this is one statement and needs no transaction.
  */
-export const deleteReportByIdQuery = async (
-  id: number,
-  organizationId: number,
-  transaction: Transaction,
-) => {
-  const replacements = { id, organizationId, sources: REPORT_FILE_SOURCES };
-
-  // Clean up any virtual folder mappings for this report
-  await sequelize.query(
-    `DELETE FROM file_folder_mappings
-      WHERE organization_id = :organizationId AND file_id = :id
-        AND EXISTS (
-          SELECT 1 FROM files
-           WHERE organization_id = :organizationId AND id = :id AND source IN (:sources)
-        )`,
-    { replacements, transaction },
-  );
-
-  const result = await sequelize.query(
+export const deleteReportByIdQuery = async (id: number, organizationId: number) => {
+  // Typed void for QueryTypes.DELETE, but with RETURNING the postgres dialect
+  // resolves to the deleted rows.
+  const deleted = (await sequelize.query(
     `DELETE FROM files
       WHERE organization_id = :organizationId AND id = :id AND source IN (:sources)
-      RETURNING *`,
-    {
-      replacements,
-      mapToModel: true,
-      model: FileModel,
-      type: QueryTypes.DELETE,
-      transaction,
-    },
-  );
-
-  return result.length > 0;
-};
-
-/** A generated report by id, or undefined for a missing id or a non-report file. */
-export const getReportByIdQuery = async (
-  id: number,
-  organizationId: number,
-  transaction?: Transaction,
-) => {
-  const result = await sequelize.query(
-    `SELECT * FROM files
-      WHERE organization_id = :organizationId AND id = :id AND source IN (:sources)`,
+      RETURNING id`,
     {
       replacements: { id, organizationId, sources: REPORT_FILE_SOURCES },
-      mapToModel: true,
-      model: FileModel,
-      transaction,
+      type: QueryTypes.DELETE,
     },
-  );
-  return result[0];
+  )) as unknown as { id: number }[];
+
+  return deleted.length > 0;
 };
 
 export const getAssessmentReportQuery = async (

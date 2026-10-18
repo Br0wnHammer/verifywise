@@ -12,36 +12,20 @@ type FileRow = { id: number; organization_id: number; source: string };
 type MappingRow = { file_id: number; organization_id: number };
 
 const db: { files: FileRow[]; mappings: MappingRow[] } = { files: [], mappings: [] };
-const transaction = { commit: jest.fn(), rollback: jest.fn() };
-
-/** Applies the WHERE clauses the reporting utils use for files. */
-function matchingFiles(sql: string, r: any): FileRow[] {
-  return db.files.filter(
-    (f) =>
-      f.organization_id === r.organizationId &&
-      f.id === r.id &&
-      (!/source IN \(:sources\)/.test(sql) || r.sources.includes(f.source)),
-  );
-}
 
 function fakeQuery(sql: string, options: any = {}): any {
   const r = options.replacements ?? {};
-  if (/^\s*DELETE FROM file_folder_mappings/.test(sql)) {
-    const guarded = /EXISTS/.test(sql);
-    if (!guarded || matchingFiles(sql, r).length > 0) {
-      db.mappings = db.mappings.filter(
-        (m) => !(m.organization_id === r.organizationId && m.file_id === r.id),
-      );
-    }
-    return [[], 0];
-  }
   if (/^\s*DELETE FROM files/.test(sql)) {
-    const hit = matchingFiles(sql, r);
+    const hit = db.files.filter(
+      (f) =>
+        f.organization_id === r.organizationId &&
+        f.id === r.id &&
+        (!/source IN \(:sources\)/.test(sql) || r.sources.includes(f.source)),
+    );
     db.files = db.files.filter((f) => !hit.includes(f));
-    return hit;
-  }
-  if (/^\s*SELECT \* FROM files/.test(sql)) {
-    return matchingFiles(sql, r);
+    // file_folder_mappings.file_id REFERENCES files(id) ON DELETE CASCADE
+    db.mappings = db.mappings.filter((m) => !hit.some((f) => f.id === m.file_id));
+    return hit.map((f) => ({ id: f.id }));
   }
   throw new Error(`unexpected query: ${sql}`);
 }
@@ -49,7 +33,9 @@ function fakeQuery(sql: string, options: any = {}): any {
 jest.mock("../../database/db", () => ({
   sequelize: {
     query: jest.fn(async (sql: string, options: any) => fakeQuery(sql, options)),
-    transaction: jest.fn(async () => transaction),
+    transaction: jest.fn(async () => {
+      throw new Error("the report delete is a single statement and opens no transaction");
+    }),
   },
 }));
 // Prevent loading the real reporting engine (Playwright/docx) at import time.
@@ -76,9 +62,31 @@ jest.mock("../../utils/i18n.utils", () => ({
   translateError: jest.fn((_r, e) => (e as Error).message),
 }));
 
-import { deleteGeneratedReportById } from "../reporting.ctrl";
+import { deleteGeneratedReportById, mapReportTypeToFileSource } from "../reporting.ctrl";
+import { REPORT_FILE_SOURCES } from "../../utils/reporting.utils";
 
 const ORG = 5;
+
+/**
+ * Sources written by upload paths that are not report generation. Each must
+ * stay out of reach of the report delete.
+ */
+const NON_REPORT_SOURCES = [
+  "Reference controls group", // ISO 42001 annex evidence (iso42001.ctrl.ts)
+  "Management system clauses group", // ISO 42001 clause evidence
+  "Main clauses group", // ISO 27001 clause / NIST AI RMF subcategory evidence
+  "Annex controls group", // ISO 27001 annex evidence
+  "Assessment tracker group", // EU AI Act assessment evidence
+  "Compliance tracker group", // EU AI Act control evidence
+  "AI trust center group",
+  "SOC 2 controls", // per-framework evidence label
+  "Evidence",
+  "File Manager",
+  "policy_editor",
+  "dataset_bulk_upload",
+  "Post-Market Monitoring report", // owned by pmm_reports.file_id
+  "ISO 27001 report", // legacy enum value, never generated
+];
 
 function createMockReq(id: number): Partial<Request> {
   return {
@@ -101,30 +109,28 @@ describe("deleteGeneratedReportById", () => {
     jest.clearAllMocks();
     db.files = [
       { id: 1, organization_id: ORG, source: "Project risks report" },
-      { id: 2, organization_id: ORG, source: "File Manager" },
-      { id: 3, organization_id: ORG, source: "Assessment tracker evidence" },
       { id: 4, organization_id: 99, source: "All reports" },
+      ...NON_REPORT_SOURCES.map((source, i) => ({ id: 100 + i, organization_id: ORG, source })),
     ];
-    db.mappings = [
-      { file_id: 1, organization_id: ORG },
-      { file_id: 2, organization_id: ORG },
-    ];
+    db.mappings = db.files
+      .filter((f) => f.organization_id === ORG)
+      .map((f) => ({ file_id: f.id, organization_id: ORG }));
   });
 
-  it.each([
-    ["a File Manager upload", 2],
-    ["an evidence file", 3],
-  ])("answers 404 for %s and leaves it and its folder mapping in place", async (_label, id) => {
-    const res = createMockRes();
+  it.each(NON_REPORT_SOURCES.map((source, i) => [source, 100 + i] as const))(
+    "answers 404 for a %s file and leaves it and its folder mapping in place",
+    async (_source, id) => {
+      const filesBefore = db.files.length;
+      const mappingsBefore = db.mappings.length;
+      const res = createMockRes();
 
-    await deleteGeneratedReportById(createMockReq(id) as Request, res);
+      await deleteGeneratedReportById(createMockReq(id) as Request, res);
 
-    expect(res.status).toHaveBeenCalledWith(404);
-    expect(db.files.map((f) => f.id)).toContain(id);
-    expect(db.mappings).toHaveLength(2);
-    expect(transaction.rollback).toHaveBeenCalledTimes(1);
-    expect(transaction.commit).not.toHaveBeenCalled();
-  });
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(db.files).toHaveLength(filesBefore);
+      expect(db.mappings).toHaveLength(mappingsBefore);
+    },
+  );
 
   it("answers 404 for a report in another organization", async () => {
     const res = createMockRes();
@@ -136,22 +142,56 @@ describe("deleteGeneratedReportById", () => {
   });
 
   it("answers 404 for a missing id", async () => {
+    const filesBefore = db.files.length;
     const res = createMockRes();
 
     await deleteGeneratedReportById(createMockReq(404) as Request, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(db.files).toHaveLength(4);
+    expect(db.files).toHaveLength(filesBefore);
   });
 
-  it("deletes a generated report and its folder mapping", async () => {
+  it("deletes a generated report, and its folder mapping goes with it", async () => {
     const res = createMockRes();
 
     await deleteGeneratedReportById(createMockReq(1) as Request, res);
 
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(db.files.map((f) => f.id)).toEqual([2, 3, 4]);
-    expect(db.mappings).toEqual([{ file_id: 2, organization_id: ORG }]);
-    expect(transaction.commit).toHaveBeenCalledTimes(1);
+    expect(db.files.map((f) => f.id)).not.toContain(1);
+    expect(db.mappings.map((m) => m.file_id)).not.toContain(1);
+    expect(db.files).toHaveLength(1 + NON_REPORT_SOURCES.length);
+  });
+});
+
+describe("report file sources", () => {
+  it("contains no source a non-report upload path writes", () => {
+    for (const source of NON_REPORT_SOURCES) {
+      expect(REPORT_FILE_SOURCES).not.toContain(source);
+    }
+  });
+
+  it.each([
+    ["projectRisks"],
+    ["vendorRisks"],
+    ["modelRisks"],
+    ["compliance"],
+    ["assessment"],
+    ["clausesAndAnnexes"],
+    ["nistSubcategories"],
+    ["trainingRegistry"],
+    ["policyManager"],
+    ["incidentManagement"],
+    ["all"],
+    ["Clauses and annexes report"],
+    ["ISO 27001 report"],
+    ["Reference controls group"],
+    ["toString"],
+    ["unknown"],
+  ])("saves a %s report under a report source", (reportType) => {
+    expect(REPORT_FILE_SOURCES).toContain(mapReportTypeToFileSource(reportType));
+  });
+
+  it("saves a multi-section report as All reports", () => {
+    expect(mapReportTypeToFileSource(["projectRisks", "vendorRisks"])).toBe("All reports");
   });
 });
