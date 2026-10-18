@@ -113,6 +113,46 @@ describe("redactSensitiveInfo", () => {
     ],
     // host:port then "@" in the path is indistinguishable too (safe side).
     ["port then @ in the path (safe side)", "http://host:8080/a@b", "http://host:[REDACTED]@b"],
+    // A port ends only at "/" or the end of the token. Anything else after
+    // the digits is read as a password: token-level rules that let quotes
+    // or punctuation end a port could not tell JSON structure from a
+    // password containing the same characters, and leaked.
+    ["digits then a quote", 'x "postgres://u:1234"secret y', 'x "postgres://u:[REDACTED] y'],
+    ["digits then #", "x postgres://u:2024#Pa ss@db/x", "x postgres://u:[REDACTED] ss@db/x"],
+    ["digits then !", "x postgres://admin:2024! y", "x postgres://admin:[REDACTED] y"],
+    [
+      "digits then a closer and more",
+      "x (postgres://admin:1234).RealPass y",
+      "x (postgres://admin:[REDACTED] y",
+    ],
+    [
+      "quote, comma, quote in a password",
+      'x "postgres://u:1234","hunter2 tail@h"',
+      'x "postgres://u:[REDACTED] tail@h"',
+    ],
+    [
+      "stringified quote and comma in a password",
+      JSON.stringify({ dsn: 'postgres://u:1234","hunter2' }),
+      '{"dsn":"postgres://u:[REDACTED]',
+    ],
+    // Accepted over-redaction (fail closed): a host:port followed by a quote,
+    // query, fragment or punctuation loses the rest of its token, which in a
+    // compact JSON line is the rest of the line.
+    [
+      "port inside a JSON value (safe side)",
+      JSON.stringify({ target: "http://localhost:8000", status: 502 }),
+      '{"target":"http://localhost:[REDACTED]',
+    ],
+    [
+      "port then a query (safe side)",
+      "GET http://localhost:3000?x=1",
+      "GET http://localhost:[REDACTED]",
+    ],
+    [
+      "port then a period (safe side)",
+      "Listening on http://localhost:3000.",
+      "Listening on http://localhost:[REDACTED]",
+    ],
     // passwords containing characters that used to end the URL early
     ["password with {", "postgres://u:ab{cd@h/db", "postgres://u:[REDACTED]@h/db"],
     ['password with "', 'postgres://u:ab"cd@h/db', "postgres://u:[REDACTED]@h/db"],
