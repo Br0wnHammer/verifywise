@@ -118,7 +118,7 @@ describe("redactSensitiveInfo", () => {
     // or punctuation end a port could not tell JSON structure from a
     // password containing the same characters, and leaked.
     ["digits then a quote", 'x "postgres://u:1234"secret y', 'x "postgres://u:[REDACTED] y'],
-    ["digits then #", "x postgres://u:2024#Pa ss@db/x", "x postgres://u:[REDACTED] ss@db/x"],
+    ["digits then #", "x postgres://u:2024#Pass y", "x postgres://u:[REDACTED] y"],
     ["digits then !", "x postgres://admin:2024! y", "x postgres://admin:[REDACTED] y"],
     [
       "digits then a closer and more",
@@ -127,14 +127,17 @@ describe("redactSensitiveInfo", () => {
     ],
     [
       "quote, comma, quote in a password",
-      'x "postgres://u:1234","hunter2 tail@h"',
-      'x "postgres://u:[REDACTED] tail@h"',
+      'x "postgres://u:1234","hunter2 y',
+      'x "postgres://u:[REDACTED] y',
     ],
     [
       "stringified quote and comma in a password",
       JSON.stringify({ dsn: 'postgres://u:1234","hunter2' }),
       '{"dsn":"postgres://u:[REDACTED]',
     ],
+    // Known gap, not pinned: URL credentials are scanned per whitespace-
+    // separated token, so a password containing a space is redacted only up
+    // to the space.
     // Accepted over-redaction (fail closed): a host:port followed by a quote,
     // query, fragment or punctuation loses the rest of its token, which in a
     // compact JSON line is the rest of the line.
