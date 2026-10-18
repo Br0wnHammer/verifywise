@@ -9483,13 +9483,17 @@ export const reportingEndpoints: Endpoint[] = [
     method: 'DELETE',
     path: '/reporting/{id}',
     summary: "Delete Generated Report By Id",
+    description: "Admin only. Deletes a generated report file; any other file id answers 404.",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
     ],
     responses: [
       { status: 200, description: "Deleted successfully" },
+      { status: 400, description: "id is not a positive integer" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Role not allowed to delete reports" },
+      { status: 404, description: "No generated report with this id in the organization" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Reporting",

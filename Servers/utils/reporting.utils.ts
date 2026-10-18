@@ -51,6 +51,24 @@ export const getMembersByProjectIdQuery = async (
   return members;
 };
 
+/**
+ * The `files.source` values that mark a file as a generated report. The report
+ * list shows only these, and the report delete touches only these, so the
+ * reporting routes can never reach an evidence, policy or other uploaded file.
+ */
+export const REPORT_FILE_SOURCES: readonly string[] = [
+  "Project risks report",
+  "Compliance tracker report",
+  "Assessment tracker report",
+  "Reference controls group",
+  "Clauses and annexes report",
+  "Vendors and risks report",
+  "Models and risks report",
+  "Training registry report",
+  "Policy manager report",
+  "All reports",
+];
+
 interface GetGeneratedReportsOptions {
   userId: number;
   role: string;
@@ -61,19 +79,6 @@ export const getGeneratedReportsQuery = async (
   { userId, role, transaction }: GetGeneratedReportsOptions,
   organizationId: number,
 ) => {
-  const validSources = [
-    "Project risks report",
-    "Compliance tracker report",
-    "Assessment tracker report",
-    "Reference controls group",
-    "Clauses and annexes report",
-    "Vendors and risks report",
-    "Models and risks report",
-    "Training registry report",
-    "Policy manager report",
-    "All reports",
-  ];
-
   const isAdmin = role === "Admin" || role === "SuperAdmin";
 
   const baseQueryParts = [
@@ -95,7 +100,7 @@ export const getGeneratedReportsQuery = async (
     `report.organization_id = :organizationId`,
     `report.source IN (:sources)`,
   ];
-  const replacements: any = { sources: validSources, organizationId };
+  const replacements: any = { sources: REPORT_FILE_SOURCES, organizationId };
 
   if (!isAdmin) {
     baseQueryParts.push(
@@ -118,24 +123,34 @@ export const getGeneratedReportsQuery = async (
   });
 };
 
+/**
+ * Delete a generated report and its folder mappings. Only files whose source
+ * is a report source are touched; returns false when no such report exists.
+ */
 export const deleteReportByIdQuery = async (
   id: number,
   organizationId: number,
   transaction: Transaction,
 ) => {
-  // Clean up any virtual folder mappings for this file
+  const replacements = { id, organizationId, sources: REPORT_FILE_SOURCES };
+
+  // Clean up any virtual folder mappings for this report
   await sequelize.query(
-    `DELETE FROM file_folder_mappings WHERE organization_id = :organizationId AND file_id = :id`,
-    {
-      replacements: { id, organizationId },
-      transaction,
-    },
+    `DELETE FROM file_folder_mappings
+      WHERE organization_id = :organizationId AND file_id = :id
+        AND EXISTS (
+          SELECT 1 FROM files
+           WHERE organization_id = :organizationId AND id = :id AND source IN (:sources)
+        )`,
+    { replacements, transaction },
   );
 
   const result = await sequelize.query(
-    `DELETE FROM files WHERE organization_id = :organizationId AND id = :id RETURNING *`,
+    `DELETE FROM files
+      WHERE organization_id = :organizationId AND id = :id AND source IN (:sources)
+      RETURNING *`,
     {
-      replacements: { id, organizationId },
+      replacements,
       mapToModel: true,
       model: FileModel,
       type: QueryTypes.DELETE,
@@ -146,13 +161,20 @@ export const deleteReportByIdQuery = async (
   return result.length > 0;
 };
 
-export const getReportByIdQuery = async (id: number, organizationId: number) => {
+/** A generated report by id, or undefined for a missing id or a non-report file. */
+export const getReportByIdQuery = async (
+  id: number,
+  organizationId: number,
+  transaction?: Transaction,
+) => {
   const result = await sequelize.query(
-    `SELECT * FROM files WHERE organization_id = :organizationId AND id = :id`,
+    `SELECT * FROM files
+      WHERE organization_id = :organizationId AND id = :id AND source IN (:sources)`,
     {
-      replacements: { id, organizationId },
+      replacements: { id, organizationId, sources: REPORT_FILE_SOURCES },
       mapToModel: true,
       model: FileModel,
+      transaction,
     },
   );
   return result[0];

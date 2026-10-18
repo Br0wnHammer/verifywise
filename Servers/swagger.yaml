@@ -16591,6 +16591,7 @@ paths:
       tags:
         - Reporting
       summary: 'Delete Generated Report By Id'
+      description: 'Admin only. Deletes a generated report file; any other file id answers 404.'
       operationId: deleteGeneratedReportById
       security:
         -
@@ -16605,8 +16606,14 @@ paths:
       responses:
         '200':
           description: 'Deleted successfully'
+        '400':
+          description: 'id is not a positive integer'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Role not allowed to delete reports'
+        '404':
+          description: 'No generated report with this id in the organization'
         '500':
           description: 'Internal server error'
   /dashboard:

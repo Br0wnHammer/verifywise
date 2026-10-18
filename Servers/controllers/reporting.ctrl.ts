@@ -169,8 +169,11 @@ export async function deleteGeneratedReportById(req: Request, res: Response): Pr
   logger.debug(`🗑️ Deleting generated report ID ${reportId}`);
 
   try {
-    const report = await getReportByIdQuery(reportId, req.organizationId!); // get report detail
+    // Only generated reports qualify: any other file in the organization
+    // answers 404, the same as a missing id.
+    const report = await getReportByIdQuery(reportId, req.organizationId!, transaction);
     if (!report) {
+      await transaction.rollback();
       await logFailure({
         eventType: "Delete",
         description: `Report not found: ID ${reportId}`,
