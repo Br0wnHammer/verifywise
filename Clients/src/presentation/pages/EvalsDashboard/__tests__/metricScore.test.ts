@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { findMetricEntry, isSkipped, lowerIsBetter, metricPassed } from "../metricScore";
+import {
+  entryError,
+  findMetricEntry,
+  lowerIsBetter,
+  metricPassed,
+  metricStatus,
+} from "../metricScore";
 
 describe("lowerIsBetter", () => {
   it("covers bias, toxicity and hallucination in any naming", () => {
@@ -39,21 +45,38 @@ describe("metricPassed", () => {
     expect(metricPassed("Toxicity", 0.6)).toBe(false);
     expect(metricPassed("Relevance", 0.5)).toBe(true);
   });
+});
 
-  it("fails an errored metric", () => {
-    expect(metricPassed("Faithfulness", { score: null, passed: false, error: "timeout" })).toBe(
-      false,
+describe("metricStatus", () => {
+  it("passes or fails a scored metric", () => {
+    expect(metricStatus("Bias", { score: 0, passed: true })).toBe("passed");
+    expect(metricStatus("Bias", 0.1)).toBe("passed");
+    expect(metricStatus("Correctness", { score: 0.2, passed: false })).toBe("failed");
+  });
+
+  it("fails an errored metric, even with an empty message", () => {
+    expect(metricStatus("Toxicity", { score: null, passed: false, error: "timeout" })).toBe(
+      "failed",
     );
-    expect(metricPassed("Faithfulness", undefined)).toBe(false);
+    expect(metricStatus("Toxicity", { score: null, passed: false, error: "" })).toBe("failed");
+  });
+
+  it("does not evaluate skipped, missing or unscored metrics", () => {
+    expect(metricStatus("Faithfulness", { score: null, passed: false, skipped: true })).toBe(
+      "notEvaluated",
+    );
+    expect(metricStatus("Faithfulness", undefined)).toBe("notEvaluated");
+    expect(metricStatus("Faithfulness", null)).toBe("notEvaluated");
+    // A passed flag without a score does not claim a pass.
+    expect(metricStatus("Bias", { score: null, passed: true })).toBe("notEvaluated");
   });
 });
 
-describe("isSkipped", () => {
-  it("is true only for metrics the evaluator skipped", () => {
-    expect(isSkipped({ score: null, passed: false, skipped: true })).toBe(true);
-    expect(isSkipped({ score: null, passed: false, error: "timeout" })).toBe(false);
-    expect(isSkipped({ score: 0, passed: true })).toBe(false);
-    expect(isSkipped(0.7)).toBe(false);
+describe("entryError", () => {
+  it("returns the error message only when one is set", () => {
+    expect(entryError({ score: null, error: "Judge timeout" })).toBe("Judge timeout");
+    expect(entryError({ score: 0.5 })).toBeNull();
+    expect(entryError(0.5)).toBeNull();
   });
 });
 

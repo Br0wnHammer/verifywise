@@ -41,10 +41,9 @@ export const entryScore = (entry: MetricScoreEntry): number | null => {
   return typeof entry?.score === "number" ? entry.score : null;
 };
 
-// A metric skipped for missing input (e.g. no retrieval context) was never evaluated.
-// An errored metric was attempted and counts as failed.
-export const isSkipped = (entry: MetricScoreEntry): boolean =>
-  typeof entry === "object" && entry?.skipped === true;
+// The evaluator's error message, or null when the metric did not error.
+export const entryError = (entry: MetricScoreEntry): string | null =>
+  typeof entry === "object" && typeof entry?.error === "string" ? entry.error : null;
 
 // The backend's passed flag already means "good" for every metric, lower is better
 // ones included. Without it, a higher is better metric is compared with its stored
@@ -58,4 +57,17 @@ export const metricPassed = (metricName: string, entry: MetricScoreEntry): boole
   const threshold =
     typeof entry === "object" && typeof entry?.threshold === "number" ? entry.threshold : 0.5;
   return score >= threshold;
+};
+
+export type MetricStatus = "passed" | "failed" | "notEvaluated";
+
+// One rule for every view. An errored metric was attempted and failed. A missing or
+// skipped metric (e.g. no retrieval context), or one with no score and no error, was
+// not evaluated and is left out of pass counts.
+export const metricStatus = (metricName: string, entry: MetricScoreEntry): MetricStatus => {
+  if (entry == null) return "notEvaluated";
+  if (typeof entry === "object" && entry.skipped === true) return "notEvaluated";
+  if (entryError(entry) !== null) return "failed";
+  if (entryScore(entry) === null) return "notEvaluated";
+  return metricPassed(metricName, entry) ? "passed" : "failed";
 };

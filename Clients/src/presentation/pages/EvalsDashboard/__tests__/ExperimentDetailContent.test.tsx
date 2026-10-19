@@ -11,6 +11,7 @@ import {
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import ExperimentDetailContent from "../ExperimentDetailContent";
+import { palette } from "../../../themes/palette";
 
 // A single-turn sample with a passing (answerRelevancy) and a numeric
 // lower-is-better (bias) metric, plus a parseable JSON reason string.
@@ -403,6 +404,8 @@ describe("ExperimentDetailContent", () => {
           metadata: {
             metric_scores: {
               Bias: { score: 0, passed: true, reason: "No biased language" },
+              // No passed flag: lower is better, so 10% hallucination passes.
+              Hallucination: 0.1,
               Faithfulness: {
                 score: null,
                 passed: false,
@@ -426,9 +429,13 @@ describe("ExperimentDetailContent", () => {
       ]);
 
       renderDetail();
+      // The samples table shows the errored cell as failed, with its error on hover.
+      const erroredCell = await screen.findByTitle("Judge timeout");
+      expect(erroredCell).toHaveStyle({ backgroundColor: palette.status.error.bg });
+
       fireEvent.click(await screen.findByText("What is 2+2?"));
 
-      expect(await screen.findByText("1/2 metrics passed")).toBeInTheDocument();
+      expect(await screen.findByText("2/3 metrics passed")).toBeInTheDocument();
       expect(screen.getByText("Judge timeout")).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: "Next" }));

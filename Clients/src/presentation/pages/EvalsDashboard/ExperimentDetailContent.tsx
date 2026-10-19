@@ -44,9 +44,9 @@ import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import {
   entryScore,
   findMetricEntry,
-  isSkipped,
+  entryError,
   lowerIsBetter,
-  metricPassed,
+  metricStatus,
   type MetricScoreEntry,
 } from "./metricScore";
 
@@ -1557,22 +1557,22 @@ export default function ExperimentDetailContent({
                           {metricColumns.map((metric) => {
                             const entry = getMetricEntry(log, metric);
                             const score = entryScore(entry);
-                            // Errored metrics show as failed; skipped or missing ones stay neutral.
-                            const evaluated = entry != null && !isSkipped(entry);
-                            const passed = metricPassed(metric, entry);
+                            const status = metricStatus(metric, entry);
                             return (
                               <td
                                 key={metric}
+                                title={entryError(entry) || undefined}
                                 style={{
                                   textAlign: "center",
                                   padding: "12px 16px",
                                   borderBottom: `1px solid ${palette.border.dark}`,
                                   borderRight: `1px solid ${palette.border.dark}`,
-                                  backgroundColor: evaluated
-                                    ? passed
-                                      ? "rgba(16, 185, 129, 0.18)"
-                                      : "rgba(239, 68, 68, 0.18)"
-                                    : "transparent",
+                                  backgroundColor:
+                                    status === "passed"
+                                      ? palette.status.success.bg
+                                      : status === "failed"
+                                        ? palette.status.error.bg
+                                        : "transparent",
                                   fontSize: "12px",
                                   fontWeight: 500,
                                   color:
@@ -1631,13 +1631,10 @@ export default function ExperimentDetailContent({
                   string,
                   MetricScoreEntry
                 >;
-                // Skipped metrics were never evaluated; errored ones count as failed.
-                const scoreEntries = Object.entries(metricScores).filter(
-                  ([, data]) => !isSkipped(data),
-                );
-                const passedCount = scoreEntries.filter(([name, data]) =>
-                  metricPassed(name, data),
-                ).length;
+                const statuses = Object.entries(metricScores)
+                  .map(([name, data]) => metricStatus(name, data))
+                  .filter((status) => status !== "notEvaluated");
+                const passedCount = statuses.filter((status) => status === "passed").length;
 
                 return (
                   <StandardModal
@@ -1645,9 +1642,9 @@ export default function ExperimentDetailContent({
                     onClose={() => setSelectedSampleIndex(null)}
                     title={`Sample ${selectedSampleIndex + 1}`}
                     description={
-                      scoreEntries.length === 0
+                      statuses.length === 0
                         ? "No metrics were evaluated"
-                        : `${passedCount}/${scoreEntries.length} metrics passed`
+                        : `${passedCount}/${statuses.length} metrics passed`
                     }
                     maxWidth="1100px"
                     fitContent
@@ -1918,18 +1915,20 @@ export default function ExperimentDetailContent({
                               ([metricName, metricData]) => {
                                 const entry = metricData as MetricScoreEntry;
                                 const score = entryScore(entry);
-                                const statusColor = isSkipped(entry)
-                                  ? palette.status.default.text
-                                  : metricPassed(metricName, entry)
+                                const status = metricStatus(metricName, entry);
+                                const statusColor =
+                                  status === "passed"
                                     ? palette.status.success.text
-                                    : palette.status.error.text;
-                                // An errored metric has no reason; show its error instead.
+                                    : status === "failed"
+                                      ? palette.status.error.text
+                                      : palette.status.default.text;
                                 const rawReason =
                                   typeof metricData === "object" && metricData !== null
-                                    ? ((metricData as { reason?: string }).reason ??
-                                      (metricData as { error?: string }).error)
+                                    ? (metricData as { reason?: string }).reason
                                     : undefined;
-                                const reason = parseMetricReason(rawReason);
+                                // An errored metric has no reason; show its error as written.
+                                const reason =
+                                  parseMetricReason(rawReason) || entryError(entry) || undefined;
                                 const friendlyMetric = formatMetricName(
                                   metricName.replace(/^G-Eval\s*\((.+)\)$/i, "$1"),
                                 );
