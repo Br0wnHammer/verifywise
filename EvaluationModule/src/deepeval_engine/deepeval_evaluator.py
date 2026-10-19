@@ -223,6 +223,21 @@ def get_judge_llm(provider: str, model_name: str):
     return CustomDeepEvalLLM(model_name=model_name, provider=provider)
 
 
+LOWER_IS_BETTER_METRICS = {"bias", "toxicity", "hallucination"}
+
+
+def to_stored_score(metric_name: str, metric, score: Optional[float]) -> Optional[float]:
+    """The score as stored: Bias, Toxicity and Hallucination are lower is better (0 = none found).
+
+    GEvalLikeMetric rubrics score them 1.0 when the answer is clean, so they are inverted.
+    DeepEval's native BiasMetric and ToxicityMetric (OpenAI judges) already score 0 for
+    a clean answer and are stored as they are.
+    """
+    if score is None or metric_name.lower() not in LOWER_IS_BETTER_METRICS:
+        return score
+    return 1.0 - score if isinstance(metric, GEvalLikeMetric) else score
+
+
 class GEvalLikeMetric:
     """
     Lightweight G-Eval style metric using a judge LLM via ModelRunner.
@@ -655,11 +670,8 @@ class DeepEvalEvaluator:
                             score = metric.score
                             passed = metric.is_successful()
                             
-                            # Invert scores for "lower is better" metrics (Bias, Toxicity, Hallucination)
-                            # Claude returns 1.0 for "no bias" but we want to display 0% bias
-                            is_inverse_metric = metric_name.lower() in ['bias', 'toxicity', 'hallucination']
-                            display_score = (1.0 - score) if (score is not None and is_inverse_metric) else score
-                            
+                            display_score = to_stored_score(metric_name, metric, score)
+
                             metric_scores[metric_name] = {
                                 "score": round(display_score, 3) if display_score is not None else None,
                                 "passed": passed,
@@ -822,10 +834,7 @@ class DeepEvalEvaluator:
                         score = metric.score
                         passed = metric.is_successful()
 
-                        # Invert scores for "lower is better" metrics (Bias, Toxicity, Hallucination)
-                        # Claude returns 1.0 for "no bias" but we want to display 0% bias
-                        is_inverse_metric = metric_name.lower() in ['bias', 'toxicity', 'hallucination']
-                        display_score = (1.0 - score) if (score is not None and is_inverse_metric) else score
+                        display_score = to_stored_score(metric_name, metric, score)
 
                         metric_scores[metric_name] = {
                             "score": round(display_score, 3) if display_score is not None else None,

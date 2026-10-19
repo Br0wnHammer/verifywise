@@ -15,9 +15,6 @@ import ConfirmationModal from "../../components/Dialogs/ConfirmationModal";
 import StandardModal from "../../components/Modals/StandardModal";
 import VWTooltip from "../../components/VWTooltip";
 import {
-  TrendingUp,
-  TrendingDown,
-  Minus,
   X,
   Pencil,
   Check,
@@ -62,6 +59,18 @@ const getDisplayScore = (score: number, _metricName: string): number => score;
 const lowerIsBetter = (metricName: string): boolean => {
   const n = metricName.toLowerCase();
   return n.includes("bias") || n.includes("toxicity") || n.includes("hallucination");
+};
+
+// The backend's passed flag already means "good" for every metric, lower is better ones
+// included. Without it, fall back to a 0.5 cut-off in the metric's own direction.
+const metricPassed = (
+  metricName: string,
+  score: number | null | undefined,
+  backendPassed: boolean | undefined,
+): boolean => {
+  if (backendPassed !== undefined) return backendPassed;
+  if (typeof score !== "number") return false;
+  return lowerIsBetter(metricName) ? score <= 0.5 : score >= 0.5;
 };
 
 // Convert camelCase or concatenated metric names to proper display format
@@ -1044,9 +1053,7 @@ export default function ExperimentDetailContent({
           };
 
           // Get score color based on value thresholds.
-          // Hallucination is the only truly inverse metric (0 = no hallucination = best).
-          // Bias and Toxicity use the same 0→1 scale as quality metrics: the EvalServer
-          // stores score=1 when the output is unbiased/non-toxic and score=0 when it fails.
+          // Bias, Toxicity and Hallucination are stored lower is better (0 = none found = best).
           const getScoreColor = (score: number | undefined, metricKey?: string) => {
             if (score === undefined)
               return {
@@ -1096,21 +1103,6 @@ export default function ExperimentDetailContent({
               bg: palette.status.error.bg,
               text: palette.status.error.text,
               icon: palette.status.error.text,
-            };
-          };
-
-          // Get delta indicator (simulated - in real app would compare to previous experiment)
-          const getDeltaIndicator = (scores: number[]) => {
-            if (scores.length < 2) return null;
-            const firstHalf = scores.slice(0, Math.floor(scores.length / 2));
-            const secondHalf = scores.slice(Math.floor(scores.length / 2));
-            const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-            const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-            const delta = secondAvg - firstAvg;
-            if (Math.abs(delta) < 0.02) return { type: "neutral" as const, value: 0 };
-            return {
-              type: delta > 0 ? ("up" as const) : ("down" as const),
-              value: Math.abs(delta * 100),
             };
           };
 
@@ -1248,7 +1240,6 @@ export default function ExperimentDetailContent({
             const avgValue = entry ? entry.sum / Math.max(1, entry.count) : undefined;
             const scores = entry?.scores || [];
             const colors = getScoreColor(avgValue, metric.label);
-            const delta = getDeltaIndicator(scores);
             const BackgroundIcon = getMetricIcon(metric.key);
 
             return (
@@ -1310,46 +1301,6 @@ export default function ExperimentDetailContent({
                     >
                       {metric.label}
                     </Typography>
-                    {delta && (
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 0.5,
-                          px: 1,
-                          py: 0.25,
-                          borderRadius: "4px",
-                          backgroundColor:
-                            delta.type === "up"
-                              ? palette.status.success.bg
-                              : delta.type === "down"
-                                ? palette.status.error.bg
-                                : palette.status.default.bg,
-                        }}
-                      >
-                        {delta.type === "up" ? (
-                          <TrendingUp size={10} color={palette.status.success.text} />
-                        ) : delta.type === "down" ? (
-                          <TrendingDown size={10} color={palette.status.error.text} />
-                        ) : (
-                          <Minus size={10} color={palette.status.default.text} />
-                        )}
-                        <Typography
-                          sx={{
-                            fontSize: "9px",
-                            fontWeight: 600,
-                            color:
-                              delta.type === "up"
-                                ? palette.status.success.text
-                                : delta.type === "down"
-                                  ? palette.status.error.text
-                                  : palette.status.default.text,
-                          }}
-                        >
-                          {delta.value.toFixed(1)}%
-                        </Typography>
-                      </Box>
-                    )}
                   </Box>
                   <Box
                     sx={{
@@ -1667,17 +1618,8 @@ export default function ExperimentDetailContent({
                               "passed" in rawMetricData
                                 ? (rawMetricData as { passed?: boolean }).passed
                                 : undefined;
-                            // For lower-is-better metrics the backend's passed flag is inverted
-                            // (it uses score >= threshold). Flip it so green = low = good.
                             const passed =
-                              score !== null &&
-                              (backendPassedRaw !== undefined
-                                ? lowerIsBetter(metric)
-                                  ? !backendPassedRaw
-                                  : backendPassedRaw
-                                : lowerIsBetter(metric)
-                                  ? score <= 0.5
-                                  : score >= 0.5);
+                              score !== null && metricPassed(metric, score, backendPassedRaw);
                             return (
                               <td
                                 key={metric}
@@ -1752,15 +1694,11 @@ export default function ExperimentDetailContent({
                 const scoreEntries = Object.entries(metricScores);
                 const passedCount = scoreEntries.filter(([name, data]) => {
                   if (typeof data === "object" && data !== null && "passed" in (data as object)) {
-                    const bp = (data as { passed?: boolean }).passed;
-                    // Backend uses score >= threshold for all metrics — flip for lower-is-better ones
-                    return lowerIsBetter(name) ? bp === false : bp === true;
+                    return (data as { passed?: boolean }).passed === true;
                   }
                   const score =
                     typeof data === "number" ? data : (data as { score?: number })?.score;
-                  return (
-                    typeof score === "number" && (lowerIsBetter(name) ? score <= 0.5 : score >= 0.5)
-                  );
+                  return metricPassed(name, score, undefined);
                 }).length;
 
                 return (
@@ -2048,13 +1986,7 @@ export default function ExperimentDetailContent({
                                   "passed" in (metricData as object)
                                     ? (metricData as { passed?: boolean }).passed
                                     : undefined;
-                                const passed =
-                                  backendPassed !== undefined
-                                    ? lowerIsBetter(metricName)
-                                      ? !backendPassed
-                                      : backendPassed
-                                    : typeof score === "number" &&
-                                      (lowerIsBetter(metricName) ? score <= 0.5 : score >= 0.5);
+                                const passed = metricPassed(metricName, score, backendPassed);
                                 const rawReason =
                                   typeof metricData === "object" && metricData !== null
                                     ? (metricData as { reason?: string }).reason
