@@ -15,7 +15,7 @@ export const compileMjmlToHtml = async (
   // "{{key}}" inside a value is not substituted by a later key.
   const compiledTemplate = mjmlTemplate.replace(/{{(\w+)}}/g, (placeholder, key: string) => {
     if (!Object.prototype.hasOwnProperty.call(data, key)) return placeholder;
-    return RAW_HTML_KEY.test(key) ? data[key] : escapeHtml(data[key]);
+    return RAW_HTML_KEY.test(key) ? String(data[key] ?? "") : escapeHtml(data[key]);
   });
 
   // mjml v5 returns a Promise at runtime even though the TypeScript types
