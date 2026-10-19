@@ -434,8 +434,7 @@ export default function ExperimentDetailContent({
   );
 
   // Prompts of a finished run with no numeric score (e.g. the model returned nothing).
-  // The header shows both numbers; for runs saved before results.prompts_attempted
-  // existed, the experiments list shows only the scored count.
+  // They are logged but left out of the averages, so the header shows both numbers.
   const unscoredPrompts =
     experiment.status === "completed"
       ? logs.filter(
@@ -986,6 +985,8 @@ export default function ExperimentDetailContent({
             "Tool Selection": "toolSelection",
             "Action Relevance": "actionRelevance",
             "Planning Quality": "planningQuality",
+            // Not enabled by run_evaluation, but other evaluator entry points emit it
+            "Plan Quality": "planQuality",
             "Plan Adherence": "planAdherence",
             "Argument Correctness": "argumentCorrectness",
             "Step Efficiency": "stepEfficiency",
@@ -1101,6 +1102,7 @@ export default function ExperimentDetailContent({
               category: "quality",
               singleTurnOnly: true,
             },
+            planQuality: { label: "Plan Quality", category: "quality", singleTurnOnly: true },
             planAdherence: {
               label: "Plan Adherence",
               category: "quality",

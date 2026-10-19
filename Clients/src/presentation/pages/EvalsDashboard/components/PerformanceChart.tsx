@@ -115,6 +115,8 @@ export default function PerformanceChart({ projectId, timeRange }: PerformanceCh
   const [data, setData] = useState<ChartPoint[]>([]);
   const [activeMetrics, setActiveMetrics] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  // Measured chart width, for the legend height estimate below
+  const [chartWidth, setChartWidth] = useState(900);
 
   // Get cutoff date based on time range
   const getCutoffDate = useCallback((range: TimeRange): Date | null => {
@@ -221,15 +223,15 @@ export default function PerformanceChart({ projectId, timeRange }: PerformanceCh
   const metricsToDisplay =
     activeMetrics.length > 0 ? activeMetrics : Object.keys(metricDefinitions);
 
-  // Calculate dynamic height based on the legend's length. Rough estimate: ~6.5px per
-  // character at 11px plus ~34px for each item's icon and gap, on a ~900px wide chart;
-  // labels vary in length (e.g. "Hallucination (lower is better)").
+  // Calculate dynamic height based on the legend's length against the measured chart
+  // width. Rough estimate: ~6.5px per character at 11px plus ~34px for each item's icon
+  // and gap; labels vary in length (e.g. "Hallucination (lower is better)").
   const legendLineHeight = 20;
   const legendWidth = metricsToDisplay.reduce(
     (width, metricKey) => width + metricLabel(metricKey).length * 6.5 + 34,
     0,
   );
-  const legendLines = Math.max(1, Math.ceil(legendWidth / 900));
+  const legendLines = Math.max(1, Math.ceil(legendWidth / Math.max(chartWidth - 40, 200)));
   const baseChartHeight = 200; // Base height for chart area
   const legendHeight = legendLines * legendLineHeight + 12; // +12 for padding
   const dynamicHeight = baseChartHeight + legendHeight;
@@ -339,6 +341,7 @@ export default function PerformanceChart({ projectId, timeRange }: PerformanceCh
         height={Math.max(dynamicHeight, 220)}
         minWidth={0}
         debounce={1}
+        onResize={(width) => setChartWidth((prev) => (Math.abs(prev - width) > 1 ? width : prev))}
       >
         <LineChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
