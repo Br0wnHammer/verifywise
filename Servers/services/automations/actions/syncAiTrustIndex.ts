@@ -12,6 +12,7 @@ import {
 import { sendAutomationEmail } from "../../emailService";
 import { compileMjmlToHtml } from "../../../tools/mjmlCompiler";
 import logger from "../../../utils/logger/fileLogger";
+import { escapeHtml } from "../../../utils/sanitization.utils";
 
 const FRONTEND = process.env.FRONTEND_URL ?? "http://localhost:5173";
 // Deep links surfaced in the digest. The module link lands on Browse (the bare
@@ -19,18 +20,6 @@ const FRONTEND = process.env.FRONTEND_URL ?? "http://localhost:5173";
 const MODULE_URL = FRONTEND + "/ai-trust-index/browse";
 const TRACKED_URL = FRONTEND + "/ai-trust-index/tracked";
 const SETTINGS_URL = FRONTEND + "/ai-trust-index/settings";
-
-// Escape HTML metacharacters so a slug can never inject markup into the
-// rendered email (defensive — the feed is first-party, but the digest is HTML).
-// Exported for unit testing of the HTML-escaping path (no behavioral change).
-export function escapeHtml(s: string): string {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 // A single row in a digest section: the human app name (falls back to the slug
 // when no name resolved) and, for changed apps, what moved. Removed apps carry
@@ -160,8 +149,8 @@ async function renderDigest(orgChanged: DigestItem[], orgRemoved: DigestItem[]):
   const tmplPath = path.join(__dirname, "../../../templates/ai-trust-index-digest.mjml");
   const template = await fs.readFile(tmplPath, "utf8");
   return compileMjmlToHtml(template, {
-    changedSection: changedSectionHtml(orgChanged),
-    removedSection: removedSectionHtml(orgRemoved),
+    changedSectionHtml: changedSectionHtml(orgChanged),
+    removedSectionHtml: removedSectionHtml(orgRemoved),
     moduleUrl: MODULE_URL,
     trackedUrl: TRACKED_URL,
     settingsUrl: SETTINGS_URL,

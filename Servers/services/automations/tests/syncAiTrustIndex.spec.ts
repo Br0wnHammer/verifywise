@@ -5,10 +5,10 @@ jest.mock("../../emailService", () => ({
 
 import {
   syncAiTrustIndex,
-  escapeHtml,
   changedSectionHtml,
   removedSectionHtml,
 } from "../actions/syncAiTrustIndex";
+import { escapeHtml } from "../../../utils/sanitization.utils";
 import * as utils from "../../../utils/aiTrustIndex.utils";
 import { sendAutomationEmail } from "../../emailService";
 import { compileMjmlToHtml } from "../../../tools/mjmlCompiler";
@@ -217,11 +217,11 @@ describe("email HTML escaping", () => {
       "utf8",
     );
     const out = await compileMjmlToHtml(template, {
-      changedSection: changedSectionHtml([
+      changedSectionHtml: changedSectionHtml([
         { name: "Workday", diff: diff("B", "F", 60, 34) },
         { name: "Cursor", diff: diff("B", "C", 69, 59) },
       ]),
-      removedSection: "",
+      removedSectionHtml: "",
       moduleUrl: "u",
       trackedUrl: "u",
       settingsUrl: "u",
