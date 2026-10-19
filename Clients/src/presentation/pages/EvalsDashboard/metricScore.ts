@@ -15,10 +15,14 @@ export type MetricScoreEntry =
   | null
   | undefined;
 
-// Metrics where a lower score is better (green = low, red = high)
+// Metrics where a lower score is better (0 = none found; green = low, red = high).
+// Matched by exact name, so a custom scorer such as "unbiasedTone" is not inverted.
+// Keep in sync with EvalServer/src/utils/metric_constants.py.
+const LOWER_IS_BETTER_METRICS = new Set(["bias", "toxicity", "hallucination"]);
+
 export const lowerIsBetter = (metricName: string): boolean => {
-  const n = metricName.toLowerCase();
-  return n.includes("bias") || n.includes("toxicity") || n.includes("hallucination");
+  const name = metricName.replace(/^G-Eval\s*\((.+)\)$/i, "$1");
+  return LOWER_IS_BETTER_METRICS.has(name.toLowerCase().replace(/[\s_]/g, ""));
 };
 
 // Finds a metric's entry by exact name, "G-Eval (<name>)", or either form ignoring case.

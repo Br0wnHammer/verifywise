@@ -9,6 +9,12 @@ describe("lowerIsBetter", () => {
     expect(lowerIsBetter("Correctness")).toBe(false);
     expect(lowerIsBetter("Conversation Safety")).toBe(false);
   });
+
+  it("does not invert a metric whose name only contains one of those words", () => {
+    expect(lowerIsBetter("unbiasedTone")).toBe(false);
+    expect(lowerIsBetter("Hallucination Resistance")).toBe(false);
+    expect(lowerIsBetter("G-Eval (Toxicity-free tone)")).toBe(false);
+  });
 });
 
 describe("metricStatus", () => {
