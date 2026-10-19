@@ -214,8 +214,26 @@ describe("ExperimentDetailContent", () => {
       fireEvent.mouseOver(screen.getByRole("button", { name: "Copy" }));
       expect(await screen.findByText(EXPERIMENT_ACTION_TOOLTIPS.copyFull)).toBeInTheDocument();
 
-      fireEvent.mouseOver(screen.getByRole("button", { name: "Rerun" }));
+      const rerunButton = screen.getByRole("button", { name: "Rerun" });
+      fireEvent.mouseOver(rerunButton);
       expect(await screen.findByText(EXPERIMENT_ACTION_TOOLTIPS.rerun)).toBeInTheDocument();
+      // The tooltip describes the button; its name stays "Rerun".
+      expect(screen.getByRole("button", { name: "Rerun" })).toBe(rerunButton);
+    });
+
+    it("treats a pending experiment as in progress", async () => {
+      deepEvalMocks.getExperiment.mockResolvedValue({
+        experiment: { ...mockExperiment, status: "pending" },
+      });
+      renderDetail();
+      await screen.findByText("Test Experiment");
+
+      const rerun = screen.getByRole("button", { name: "Rerun" });
+      expect(rerun).toBeDisabled();
+      fireEvent.mouseOver(rerun.parentElement as HTMLElement);
+      expect(
+        await screen.findByText(EXPERIMENT_ACTION_TOOLTIPS.rerunWhileRunning),
+      ).toBeInTheDocument();
     });
 
     it("explains why rerun is disabled while the experiment runs", async () => {

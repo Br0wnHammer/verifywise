@@ -413,6 +413,11 @@ export default function ExperimentDetailContent({
   const failureReason =
     experiment.status === "failed" ? experiment.error_message?.trim() || undefined : undefined;
 
+  // A new experiment is pending until the runner picks it up; like the table, treat
+  // that as in progress so it can't be rerun before it finishes.
+  const experimentInProgress = experiment.status === "running" || experiment.status === "pending";
+  const rerunDisabled = rerunLoading || experimentInProgress;
+
   return (
     <Box>
       {alert && (
@@ -545,6 +550,7 @@ export default function ExperimentDetailContent({
             content={EXPERIMENT_ACTION_TOOLTIPS.downloadFull}
             placement="bottom"
             maxWidth={280}
+            describeChild
           >
             <CustomizableButton
               variant="outlined"
@@ -583,6 +589,7 @@ export default function ExperimentDetailContent({
             content={EXPERIMENT_ACTION_TOOLTIPS.copyFull}
             placement="bottom"
             maxWidth={280}
+            describeChild
           >
             <CustomizableButton
               variant="outlined"
@@ -616,19 +623,27 @@ export default function ExperimentDetailContent({
           />
           <VWTooltip
             content={
-              experiment.status === "running"
-                ? EXPERIMENT_ACTION_TOOLTIPS.rerunWhileRunning
-                : EXPERIMENT_ACTION_TOOLTIPS.rerun
+              rerunLoading
+                ? EXPERIMENT_ACTION_TOOLTIPS.rerunStarting
+                : experimentInProgress
+                  ? EXPERIMENT_ACTION_TOOLTIPS.rerunWhileRunning
+                  : EXPERIMENT_ACTION_TOOLTIPS.rerun
             }
             placement="bottom-end"
             maxWidth={280}
+            describeChild
           >
-            {/* A disabled button fires no hover events, so the span carries the tooltip. */}
-            <Box component="span" sx={{ display: "inline-flex" }}>
+            {/* A disabled button fires no hover or focus events, so the span carries the
+                tooltip and takes focus instead. */}
+            <Box
+              component="span"
+              tabIndex={rerunDisabled ? 0 : undefined}
+              sx={{ display: "inline-flex" }}
+            >
               <CustomizableButton
                 variant="contained"
                 onClick={handleRerunExperiment}
-                isDisabled={rerunLoading || experiment.status === "running"}
+                isDisabled={rerunDisabled}
                 startIcon={<RotateCcw size={14} />}
                 sx={{
                   "backgroundColor": palette.brand.primary,

@@ -320,10 +320,15 @@ const ExperimentTableBody: React.FC<IExperimentTableBodyProps> = ({
               }
               placement="left"
               maxWidth={280}
+              describeChild
             >
-              {/* A disabled button fires no hover events, so the span carries the tooltip;
-                  column flex keeps the button full width. */}
-              <Box component="span" sx={{ display: "flex", flexDirection: "column" }}>
+              {/* A disabled button fires no hover or focus events, so the span carries the
+                  tooltip and takes focus instead; column flex keeps the button full width. */}
+              <Box
+                component="span"
+                tabIndex={menuRowIsRunning ? 0 : undefined}
+                sx={{ display: "flex", flexDirection: "column" }}
+              >
                 <CustomizableButton
                   variant="outlined"
                   onClick={handleRerunClick}
@@ -354,6 +359,7 @@ const ExperimentTableBody: React.FC<IExperimentTableBodyProps> = ({
               content={EXPERIMENT_ACTION_TOOLTIPS.downloadSummary}
               placement="left"
               maxWidth={280}
+              describeChild
             >
               <CustomizableButton
                 variant="outlined"
@@ -383,6 +389,7 @@ const ExperimentTableBody: React.FC<IExperimentTableBodyProps> = ({
               content={EXPERIMENT_ACTION_TOOLTIPS.copySummary}
               placement="left"
               maxWidth={280}
+              describeChild
             >
               <CustomizableButton
                 variant="outlined"

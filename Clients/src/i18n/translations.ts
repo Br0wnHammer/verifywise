@@ -4959,18 +4959,19 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "Kopiert!",
     "Copy": "Kopieren",
     "Copy results to clipboard": "Ergebnisse in die Zwischenablage kopieren",
-    "Start a new experiment with the same model, dataset, judge and metrics. This experiment is kept, and every prompt is sent to the model and judge again.":
-      "Ein neues Experiment mit demselben Modell, Datensatz, Bewerter und denselben Metriken starten. Dieses Experiment bleibt erhalten, und jeder Prompt wird erneut an das Modell und den Bewerter gesendet.",
     "You can rerun this experiment once it finishes.":
       "Sie können dieses Experiment erneut ausführen, sobald es abgeschlossen ist.",
-    "Save this experiment's settings and summary results as a JSON file. To include every sample, open the experiment and use Download there.":
-      "Die Einstellungen und zusammengefassten Ergebnisse dieses Experiments als JSON-Datei speichern. Um alle Stichproben einzuschließen, öffnen Sie das Experiment und verwenden Sie dort „Herunterladen“.",
-    "Copy this experiment's settings and summary results as JSON. To include every sample, open the experiment and use Copy there.":
-      "Die Einstellungen und zusammengefassten Ergebnisse dieses Experiments als JSON kopieren. Um alle Stichproben einzuschließen, öffnen Sie das Experiment und verwenden Sie dort „Kopieren“.",
-    "Save this experiment's settings and every sample's input, output and scores as a JSON file.":
-      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON-Datei speichern.",
-    "Copy this experiment's settings and every sample's input, output and scores to the clipboard as JSON.":
-      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON in die Zwischenablage kopieren.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Ein neues Experiment mit denselben Einstellungen starten. Dieses Experiment bleibt erhalten, und jeder Prompt wird erneut ausgeführt und bewertet.",
+    "Starting a new run of this experiment.": "Ein neuer Lauf dieses Experiments wird gestartet.",
+    "Save this experiment's settings, average scores and the first 10 samples as a JSON file. To include more samples, open the experiment and use Download there.":
+      "Die Einstellungen, Durchschnittswerte und die ersten 10 Stichproben dieses Experiments als JSON-Datei speichern. Um weitere Stichproben einzuschließen, öffnen Sie das Experiment und verwenden Sie dort „Herunterladen“.",
+    "Copy this experiment's settings, average scores and the first 10 samples as JSON. To include more samples, open the experiment and use Copy there.":
+      "Die Einstellungen, Durchschnittswerte und die ersten 10 Stichproben dieses Experiments als JSON kopieren. Um weitere Stichproben einzuschließen, öffnen Sie das Experiment und verwenden Sie dort „Kopieren“.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to 1,000 samples are included.":
+      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON-Datei speichern. Es werden bis zu 1.000 Stichproben einbezogen.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to 1,000 samples are included.":
+      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON in die Zwischenablage kopieren. Es werden bis zu 1.000 Stichproben einbezogen.",
     "Copy this key now. You won't be able to see it again.":
       "Kopieren Sie diesen Schlüssel jetzt. Sie können ihn nicht mehr einsehen.",
     "Core definition test (EU AI Act)": "Kerndefinitionstest (EU-KI-Verordnung)",
@@ -15475,18 +15476,20 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "Copié !",
     "Copy": "Copier",
     "Copy results to clipboard": "Copier les résultats dans le presse-papiers",
-    "Start a new experiment with the same model, dataset, judge and metrics. This experiment is kept, and every prompt is sent to the model and judge again.":
-      "Lancer une nouvelle expérience avec le même modèle, le même jeu de données, le même juge et les mêmes métriques. Cette expérience est conservée, et chaque prompt est de nouveau envoyé au modèle et au juge.",
     "You can rerun this experiment once it finishes.":
       "Vous pourrez réexécuter cette expérience une fois qu'elle sera terminée.",
-    "Save this experiment's settings and summary results as a JSON file. To include every sample, open the experiment and use Download there.":
-      "Enregistrer les paramètres et les résultats récapitulatifs de cette expérience dans un fichier JSON. Pour inclure tous les échantillons, ouvrez l'expérience et utilisez « Télécharger ».",
-    "Copy this experiment's settings and summary results as JSON. To include every sample, open the experiment and use Copy there.":
-      "Copier les paramètres et les résultats récapitulatifs de cette expérience au format JSON. Pour inclure tous les échantillons, ouvrez l'expérience et utilisez « Copier ».",
-    "Save this experiment's settings and every sample's input, output and scores as a JSON file.":
-      "Enregistrer les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon dans un fichier JSON.",
-    "Copy this experiment's settings and every sample's input, output and scores to the clipboard as JSON.":
-      "Copier dans le presse-papiers, au format JSON, les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Lancer une nouvelle expérience avec les mêmes paramètres. Cette expérience est conservée, et chaque prompt est de nouveau exécuté et évalué.",
+    "Starting a new run of this experiment.":
+      "Lancement d'une nouvelle exécution de cette expérience.",
+    "Save this experiment's settings, average scores and the first 10 samples as a JSON file. To include more samples, open the experiment and use Download there.":
+      "Enregistrer les paramètres, les scores moyens et les 10 premiers échantillons de cette expérience dans un fichier JSON. Pour inclure plus d'échantillons, ouvrez l'expérience et utilisez « Télécharger » depuis celle-ci.",
+    "Copy this experiment's settings, average scores and the first 10 samples as JSON. To include more samples, open the experiment and use Copy there.":
+      "Copier les paramètres, les scores moyens et les 10 premiers échantillons de cette expérience au format JSON. Pour inclure plus d'échantillons, ouvrez l'expérience et utilisez « Copier » depuis celle-ci.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to 1,000 samples are included.":
+      "Enregistrer les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon dans un fichier JSON. Jusqu'à 1 000 échantillons sont inclus.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to 1,000 samples are included.":
+      "Copier dans le presse-papiers, au format JSON, les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon. Jusqu'à 1 000 échantillons sont inclus.",
     "Copy this key now. You won't be able to see it again.":
       "Copiez cette clé maintenant. Vous ne pourrez plus la voir.",
     "Core definition test (EU AI Act)": "Test de définition centrale (Règlement IA de l'UE)",
@@ -24369,18 +24372,19 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "¡Copiado!",
     "Copy": "Copiar",
     "Copy results to clipboard": "Copiar resultados al portapapeles",
-    "Start a new experiment with the same model, dataset, judge and metrics. This experiment is kept, and every prompt is sent to the model and judge again.":
-      "Iniciar un nuevo experimento con el mismo modelo, conjunto de datos, juez y métricas. Este experimento se conserva, y cada prompt se envía de nuevo al modelo y al juez.",
     "You can rerun this experiment once it finishes.":
       "Podrás volver a ejecutar este experimento cuando termine.",
-    "Save this experiment's settings and summary results as a JSON file. To include every sample, open the experiment and use Download there.":
-      "Guardar la configuración y los resultados resumidos de este experimento como archivo JSON. Para incluir todas las muestras, abre el experimento y usa «Descargar» allí.",
-    "Copy this experiment's settings and summary results as JSON. To include every sample, open the experiment and use Copy there.":
-      "Copiar la configuración y los resultados resumidos de este experimento como JSON. Para incluir todas las muestras, abre el experimento y usa «Copiar» allí.",
-    "Save this experiment's settings and every sample's input, output and scores as a JSON file.":
-      "Guardar la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra como archivo JSON.",
-    "Copy this experiment's settings and every sample's input, output and scores to the clipboard as JSON.":
-      "Copiar al portapapeles como JSON la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Iniciar un nuevo experimento con la misma configuración. Este experimento se conserva, y cada prompt se ejecuta y se evalúa de nuevo.",
+    "Starting a new run of this experiment.": "Iniciando una nueva ejecución de este experimento.",
+    "Save this experiment's settings, average scores and the first 10 samples as a JSON file. To include more samples, open the experiment and use Download there.":
+      "Guardar la configuración, las puntuaciones medias y las primeras 10 muestras de este experimento como archivo JSON. Para incluir más muestras, abre el experimento y usa «Descargar» allí.",
+    "Copy this experiment's settings, average scores and the first 10 samples as JSON. To include more samples, open the experiment and use Copy there.":
+      "Copiar la configuración, las puntuaciones medias y las primeras 10 muestras de este experimento como JSON. Para incluir más muestras, abre el experimento y usa «Copiar» allí.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to 1,000 samples are included.":
+      "Guardar la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra como archivo JSON. Se incluyen hasta 1000 muestras.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to 1,000 samples are included.":
+      "Copiar al portapapeles como JSON la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra. Se incluyen hasta 1000 muestras.",
     "Core definition test (EU AI Act)": "Prueba de definición básica (EU AI Act)",
     "Create Scorer": "Crear evaluador",
     "Create VerifyWise user account": "Crear cuenta de usuario de VerifyWise",
