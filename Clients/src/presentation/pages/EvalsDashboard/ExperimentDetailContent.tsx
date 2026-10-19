@@ -433,6 +433,18 @@ export default function ExperimentDetailContent({
     </CustomizableButton>
   );
 
+  // Prompts of a finished run with no numeric score (e.g. the model returned nothing).
+  // They are logged but left out of the averages, so the header shows both numbers.
+  const unscoredPrompts =
+    experiment.status === "completed"
+      ? logs.filter(
+          (log) =>
+            !Object.values(
+              (log.metadata?.metric_scores ?? {}) as Record<string, MetricScoreEntry>,
+            ).some((entry) => entryScore(entry) !== null),
+        ).length
+      : 0;
+
   return (
     <Box>
       {alert && (
@@ -879,18 +891,38 @@ export default function ExperimentDetailContent({
               >
                 Prompts
               </Typography>
-              <Typography
-                sx={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color:
-                    experiment.status === "completed"
-                      ? palette.status.success.text
-                      : palette.text.secondary,
-                }}
-              >
-                {logs.length}
-              </Typography>
+              {unscoredPrompts > 0 ? (
+                <VWTooltip
+                  content={`${unscoredPrompts} of ${logs.length} prompts got no score, usually because the model returned no response or an error. They are left out of the averages.`}
+                  placement="bottom"
+                  maxWidth={280}
+                >
+                  <Typography
+                    data-testid="experiment-scored-prompts"
+                    sx={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: palette.status.success.text,
+                      cursor: "help",
+                    }}
+                  >
+                    {logs.length} · {logs.length - unscoredPrompts} scored
+                  </Typography>
+                </VWTooltip>
+              ) : (
+                <Typography
+                  sx={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color:
+                      experiment.status === "completed"
+                        ? palette.status.success.text
+                        : palette.text.secondary,
+                  }}
+                >
+                  {logs.length}
+                </Typography>
+              )}
             </Box>
             <Box sx={{ textAlign: "center" }}>
               <Typography
@@ -941,6 +973,23 @@ export default function ExperimentDetailContent({
             "Coherence": "coherence",
             "Tonality": "tonality",
             "Safety": "safety",
+            // Names the evaluator stores today (EvaluationModule deepeval_evaluator.py)
+            "Relevance": "answerRelevancy",
+            "Correctness": "correctness",
+            "Completeness": "completeness",
+            "Instruction Following": "instructionFollowing",
+            // Same keys as results.avg_scores (run_evaluation metric_config_map)
+            "Context Relevancy": "contextRelevancy",
+            "Context Precision": "contextPrecision",
+            "Context Recall": "contextRecall",
+            "Tool Selection": "toolSelection",
+            "Action Relevance": "actionRelevance",
+            "Planning Quality": "planningQuality",
+            // Not enabled by run_evaluation, but other evaluator entry points emit it
+            "Plan Quality": "planQuality",
+            "Plan Adherence": "planAdherence",
+            "Argument Correctness": "argumentCorrectness",
+            "Step Efficiency": "stepEfficiency",
             // Conversational metrics (multi-turn)
             "Turn Relevancy": "turnRelevancy",
             "Knowledge Retention": "knowledgeRetention",
@@ -999,6 +1048,14 @@ export default function ExperimentDetailContent({
               category: "quality",
               singleTurnOnly: true,
             },
+            // Universal core G-Eval metrics (single-turn)
+            correctness: { label: "Correctness", category: "quality", singleTurnOnly: true },
+            completeness: { label: "Completeness", category: "quality", singleTurnOnly: true },
+            instructionFollowing: {
+              label: "Instruction Following",
+              category: "quality",
+              singleTurnOnly: true,
+            },
             faithfulness: { label: "Faithfulness", category: "quality", singleTurnOnly: true },
             contextualRelevancy: {
               label: "Contextual Relevancy",
@@ -1015,10 +1072,49 @@ export default function ExperimentDetailContent({
               category: "quality",
               singleTurnOnly: true,
             },
+            // RAG metrics as the evaluator names them today
+            contextRelevancy: {
+              label: "Context Relevancy",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            contextPrecision: {
+              label: "Context Precision",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            contextRecall: { label: "Context Recall", category: "quality", singleTurnOnly: true },
             hallucination: { label: "Hallucination", category: "safety", singleTurnOnly: true },
             // Agent metrics (single-turn)
             toolCorrectness: {
               label: "Tool Correctness",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            toolSelection: { label: "Tool Selection", category: "quality", singleTurnOnly: true },
+            actionRelevance: {
+              label: "Action Relevance",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            planningQuality: {
+              label: "Planning Quality",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            planQuality: { label: "Plan Quality", category: "quality", singleTurnOnly: true },
+            planAdherence: {
+              label: "Plan Adherence",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            argumentCorrectness: {
+              label: "Argument Correctness",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            stepEfficiency: {
+              label: "Step Efficiency",
               category: "quality",
               singleTurnOnly: true,
             },
@@ -1057,10 +1153,10 @@ export default function ExperimentDetailContent({
               category: "conversational",
               multiTurnOnly: true,
             },
+            // Scored for conversations and for single-turn (agent) runs alike.
             taskCompletion: {
               label: "Task Completion",
-              category: "conversational",
-              multiTurnOnly: true,
+              category: isMultiTurnExperiment ? "conversational" : "quality",
             },
             conversationSafety: {
               label: "Conversation Safety",

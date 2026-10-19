@@ -393,3 +393,54 @@ def test_threshold_keys_follow_the_metric_each_name_enables():
     assert route_threshold_keys({"answerCorrectness": 0.9}) == {"answerCorrectness": 0.9}
     assert route_threshold_keys(None) == {}
     assert route_threshold_keys(["bias"]) == {}
+
+
+@pytest.mark.asyncio
+async def test_results_count_attempted_prompts_and_average_task_completion(
+    standard_mode_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    stub_model_runner: MagicMock,
+    patched_crud: Dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One prompt gets no response: it is attempted but not scored. Task Completion,
+    an agent metric, gets an average like the core metrics."""
+    from deepeval_engine import deepeval_evaluator as evaluator_module
+
+    _patch_list_scorers(monkeypatch, [])
+    config = dict(standard_mode_config)
+    config["dataset"] = {
+        "prompts": [
+            {"id": "t1", "prompt": "What is 2+2?", "expected_output": "4"},
+            {"id": "t2", "prompt": "Say nothing", "expected_output": ""},
+            {"id": "t3", "prompt": "Capital of France?", "expected_output": "Paris"},
+        ]
+    }
+    config["metrics"] = {"taskCompletion": True}
+    stub_model_runner.side_effect = lambda prompt, **kwargs: (
+        "" if prompt == "Say nothing" else "stub response"
+    )
+    monkeypatch.setattr(
+        evaluator_module.DeepEvalEvaluator,
+        "run_evaluation",
+        MagicMock(
+            return_value=[
+                {"input": "What is 2+2?", "metric_scores": {"Task Completion": {"score": 1.0}}},
+                {"input": "Capital of France?", "metric_scores": {"Task Completion": {"score": 0.5}}},
+            ]
+        ),
+    )
+
+    from utils.run_evaluation import run_evaluation
+
+    result = await run_evaluation(
+        db=mock_db_session,
+        experiment_id="exp-counts",
+        config=config,
+        organization_id=1,
+    )
+
+    assert "error" not in result
+    assert result["prompts_attempted"] == 3
+    assert result["total_prompts"] == 2
+    assert result["avg_scores"]["taskCompletion"] == pytest.approx(0.75)

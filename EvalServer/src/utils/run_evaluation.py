@@ -912,7 +912,20 @@ async def run_evaluation(
                         return {"error": termination_reason, "early_termination": True}
 
                     continue
-        
+
+        # Prompts (or conversations) the run tried. total_prompts below counts only the
+        # ones that got a response and were evaluated; the UI shows both.
+        # - single-turn: every prompt is logged, answered or not;
+        # - conversations: only those that produced a test case are logged (one with no
+        #   user turns is skipped), so count those to match the experiment's logs;
+        # - simulated: no logs are written; count the scenarios the run tried.
+        if simulated_mode and simulated_scenarios:
+            prompts_attempted = len(simulated_scenarios)
+        elif conversations:
+            prompts_attempted = len(test_cases_data)
+        else:
+            prompts_attempted = len(prompts)
+
         if not test_cases_data:
             error_msg = build_no_responses_message(len(prompts), list(generation_errors.values()))
             await crud.update_experiment_status(
@@ -1308,6 +1321,10 @@ async def run_evaluation(
             "tool_correctness": {"display": "Tool Correctness", "camel": "toolCorrectness"},
             "action_relevance": {"display": "Action Relevance", "camel": "actionRelevance"},
             "planning_quality": {"display": "Planning Quality", "camel": "planningQuality"},
+            "plan_adherence": {"display": "Plan Adherence", "camel": "planAdherence"},
+            "argument_correctness": {"display": "Argument Correctness", "camel": "argumentCorrectness"},
+            "task_completion": {"display": "Task Completion", "camel": "taskCompletion"},
+            "step_efficiency": {"display": "Step Efficiency", "camel": "stepEfficiency"},
         }
         
         # Conversational metric names (for multi-turn datasets)
@@ -1424,6 +1441,7 @@ async def run_evaluation(
         # Update experiment with results
         experiment_results: Dict[str, Any] = {
             "total_prompts": total_prompts,
+            "prompts_attempted": prompts_attempted,
             "avg_scores": avg_scores,  # Contains both DeepEval and custom scorer averages
             "detailed_results": results[:10],  # Store first 10 for preview (includes custom scorer scores in metric_scores)
             "completed_at": datetime.now().isoformat(),
