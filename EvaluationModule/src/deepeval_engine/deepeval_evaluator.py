@@ -224,6 +224,12 @@ def get_judge_llm(provider: str, model_name: str):
     return CustomDeepEvalLLM(model_name=model_name, provider=provider)
 
 
+# No metric reads contextual_relevancy; that name enables context_relevancy (as in
+# METRIC_NAME_MAP in EvalServer/src/utils/run_evaluation.py). Callers that bypass
+# EvalServer's routing, such as the /deepeval controller and main.py, rely on this.
+_THRESHOLD_KEY_ALIASES = {"contextual_relevancy": "context_relevancy"}
+
+
 def normalize_metric_thresholds(thresholds: Optional[Dict[str, Any]]) -> Dict[str, float]:
     """Thresholds keyed by the snake_case metric name the evaluator looks up.
 
@@ -235,6 +241,7 @@ def normalize_metric_thresholds(thresholds: Optional[Dict[str, Any]]) -> Dict[st
     normalized: Dict[str, float] = {}
     for key, value in (thresholds or {}).items():
         snake = re.sub(r"(?<!^)(?=[A-Z])", "_", str(key)).lower()
+        snake = _THRESHOLD_KEY_ALIASES.get(snake, snake)
         number: Optional[float] = None
         if isinstance(value, (int, float, str)) and not isinstance(value, bool):
             try:

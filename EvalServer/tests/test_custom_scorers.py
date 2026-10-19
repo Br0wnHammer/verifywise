@@ -400,6 +400,23 @@ async def test_run_custom_scorer_reports_the_threshold_it_used(
     assert result.passed is False
     assert result.threshold == 0.7
 
+    for bad in ("inf", "abc", float("nan")):
+        invalid = _scorer_row()
+        invalid["defaultThreshold"] = bad
+        result = await run_custom_scorer(scorer_config=invalid, input_text="Q", output_text="A")
+        assert result.threshold == 0.5, bad
+
+    # No threshold on a scale below 0: the stored line is the lowest score, so no row
+    # shows as failing on the dashboard while every row passed.
+    negative = _scorer_row(
+        choice_scores=[{"label": "PASS", "score": 1.0}, {"label": "FAIL", "score": -1.0}]
+    )
+    negative["defaultThreshold"] = None
+    result = await run_custom_scorer(scorer_config=negative, input_text="Q", output_text="A")
+    assert result.score == -1.0
+    assert result.passed is True
+    assert result.threshold == -1.0
+
 
 @pytest.mark.asyncio
 async def test_run_custom_scorer_error_result_keeps_the_threshold(
