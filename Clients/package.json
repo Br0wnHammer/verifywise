@@ -81,7 +81,7 @@
     "dayjs": "^1.11.23",
     "dompurify": "^3.4.17",
     "dotenv": "^18.0.8",
-    "emoji-picker-react": "^4.22.3",
+    "emoji-picker-react": "^5.0.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "exceljs": "^4.4.0",
@@ -117,7 +117,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.14.0",
+    "@axe-core/playwright": "4.13.0",
     "@emotion/jest": "^11.14.2",
     "@playwright/test": "^1.64.1",
     "@svgr/webpack": "^8.1.0",
