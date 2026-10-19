@@ -31,7 +31,7 @@ VerifyWise uses a multi-provider email service supporting MJML templates, multip
 │  │  (Templates)     │     │                  │                             │
 │  └────────┬─────────┘     └──────────────────┘                             │
 │           │                                                                 │
-│           │ 3. Variable replacement: {{key}} → value                        │
+│           │ 3. Variable replacement: {{key}} → escaped value                │
 │           ▼                                                                 │
 │  ┌──────────────────────────────────────────────────────────────────────┐  │
 │  │                      Email Provider Factory                           │  │
@@ -208,27 +208,23 @@ Templates are stored in `Servers/templates/` as `.mjml` files.
 
 ### Template Variable Replacement
 
+`compileMjmlToHtml(template, data)` in `Servers/tools/mjmlCompiler.ts` fills every `{{key}}` in one pass:
+
+- **Values are HTML-escaped by default.** Names, titles, descriptions and other user-entered text can never inject markup, in element content or in attributes such as `href="{{url}}"`. Pass plain text; don't escape it yourself, or it will be escaped twice.
+- **Keys ending in `Html` or `_html` are inserted raw** (for example `downloadButtonHtml`, `entity_links_html`, `changedSectionHtml`). Use this suffix only for markup the server builds itself, and escape every piece of user text inside it with `escapeHtml` from `Servers/utils/sanitization.utils.ts`.
+- Values are inserted literally: a `$&` or `$'` in a value is not a replacement pattern, and a `{{key}}` inside a value is not substituted.
+- Placeholders with no matching key are left as they are.
+
 ```typescript
-// File: Servers/tools/mjmlCompiler.ts
+// Plain text: escaped automatically
+await compileMjmlToHtml(template, { use_case_title: title, url: link });
 
-const compileMjmlTemplate = (
-  templateContent: string,
-  data: Record<string, string>
-): string => {
-  // Replace {{key}} with values
-  let compiled = templateContent;
-  for (const [key, value] of Object.entries(data)) {
-    compiled = compiled.replace(
-      new RegExp(`{{${key}}}`, "g"),
-      value
-    );
-  }
-
-  // Convert MJML to HTML
-  const { html } = mjml2html(compiled);
-  return html;
-};
+// Server-built markup: suffix the key, escape the user text inside
+const rowsHtml = items.map((i) => `<tr><td>${escapeHtml(i.name)}</td></tr>`).join("");
+await compileMjmlToHtml(template, { items_html: rowsHtml });
 ```
+
+User-configured automation emails (the `send_email` action) don't use MJML. Their body is plain text from the automation's textarea, with `{{entity.field}}` values filled in by `replaceTemplateVariables`. `actions/sendEmail.ts` escapes the whole body, then turns line breaks into `<br>`.
 
 ### Template Constants
 
