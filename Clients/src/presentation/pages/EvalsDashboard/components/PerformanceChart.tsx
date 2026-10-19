@@ -221,11 +221,15 @@ export default function PerformanceChart({ projectId, timeRange }: PerformanceCh
   const metricsToDisplay =
     activeMetrics.length > 0 ? activeMetrics : Object.keys(metricDefinitions);
 
-  // Calculate dynamic height based on number of legend items
-  // Estimate ~10 items per line, each line ~20px
-  const itemsPerLine = 10;
+  // Calculate dynamic height based on the legend's length. Rough estimate: ~6.5px per
+  // character at 11px plus ~34px for each item's icon and gap, on a ~900px wide chart;
+  // labels vary in length (e.g. "Hallucination (lower is better)").
   const legendLineHeight = 20;
-  const legendLines = Math.ceil(metricsToDisplay.length / itemsPerLine);
+  const legendWidth = metricsToDisplay.reduce(
+    (width, metricKey) => width + metricLabel(metricKey).length * 6.5 + 34,
+    0,
+  );
+  const legendLines = Math.max(1, Math.ceil(legendWidth / 900));
   const baseChartHeight = 200; // Base height for chart area
   const legendHeight = legendLines * legendLineHeight + 12; // +12 for padding
   const dynamicHeight = baseChartHeight + legendHeight;

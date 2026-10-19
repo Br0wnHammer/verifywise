@@ -41,6 +41,7 @@ import { useAuth } from "../../../application/hooks/useAuth";
 import allowedRoles from "../../../application/constants/permissions";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import { displayFormattedTime } from "../../tools/isoDateToString";
+import { experimentPromptCount } from "./experimentPromptCount";
 
 interface ProjectExperimentsProps {
   projectId: string;
@@ -239,14 +240,7 @@ export default function ProjectExperiments({
 
       // Use pre-computed avg_scores from experiment results (no need to fetch logs)
       const experimentsWithMetrics = (data.experiments || []).map((exp: Experiment) => {
-        // Prompts the run tried; runs saved before prompts_attempted existed only have
-        // total_prompts, which counts the scored ones.
-        const sampleCount =
-          exp.results?.prompts_attempted ||
-          exp.results?.total_prompts ||
-          exp.config?.dataset?.count ||
-          exp.config?.dataset?.prompts?.length ||
-          0;
+        const sampleCount = experimentPromptCount(exp);
 
         // Use pre-computed avg_scores from results (computed when experiment completes)
         // This eliminates N individual log requests!

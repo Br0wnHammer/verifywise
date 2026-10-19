@@ -915,15 +915,23 @@ async def run_evaluation(
 
         # Prompts (or conversations) the run tried. total_prompts below counts only the
         # ones that got a response and were evaluated; the UI shows both.
+        # - single-turn: every prompt is logged, answered or not;
+        # - conversations: only those that produced a test case are logged (one with no
+        #   user turns is skipped), so count those to match the experiment's logs;
+        # - simulated: no logs are written; count the scenarios the run tried.
+        # The failure message below counts every input, logged or not.
         if simulated_mode and simulated_scenarios:
-            prompts_attempted = len(test_cases_data)
+            prompts_attempted = len(simulated_scenarios)
+            inputs_tried = prompts_attempted
         elif conversations:
-            prompts_attempted = len(conversations)
+            prompts_attempted = len(test_cases_data)
+            inputs_tried = len(conversations)
         else:
             prompts_attempted = len(prompts)
+            inputs_tried = prompts_attempted
 
         if not test_cases_data:
-            error_msg = build_no_responses_message(len(prompts), list(generation_errors.values()))
+            error_msg = build_no_responses_message(inputs_tried, list(generation_errors.values()))
             await crud.update_experiment_status(
                 db=db,
                 experiment_id=experiment_id,

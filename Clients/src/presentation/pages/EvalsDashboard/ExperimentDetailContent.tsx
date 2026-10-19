@@ -894,7 +894,7 @@ export default function ExperimentDetailContent({
               </Typography>
               {unscoredPrompts > 0 ? (
                 <VWTooltip
-                  content={`${unscoredPrompts} of ${logs.length} prompts got no score, usually because the model returned no response or an error. Averages use only the ${logs.length - unscoredPrompts} scored prompts.`}
+                  content={`${unscoredPrompts} of ${logs.length} prompts got no score, usually because the model returned no response or an error. They are left out of the averages.`}
                   placement="bottom"
                   maxWidth={280}
                 >
@@ -979,13 +979,13 @@ export default function ExperimentDetailContent({
             "Correctness": "correctness",
             "Completeness": "completeness",
             "Instruction Following": "instructionFollowing",
-            "Context Relevancy": "contextualRelevancy",
-            "Context Precision": "contextualPrecision",
-            "Context Recall": "contextualRecall",
+            // Same keys as results.avg_scores (run_evaluation metric_config_map)
+            "Context Relevancy": "contextRelevancy",
+            "Context Precision": "contextPrecision",
+            "Context Recall": "contextRecall",
             "Tool Selection": "toolSelection",
             "Action Relevance": "actionRelevance",
             "Planning Quality": "planningQuality",
-            "Plan Quality": "planQuality",
             "Plan Adherence": "planAdherence",
             "Argument Correctness": "argumentCorrectness",
             "Step Efficiency": "stepEfficiency",
@@ -1071,6 +1071,18 @@ export default function ExperimentDetailContent({
               category: "quality",
               singleTurnOnly: true,
             },
+            // RAG metrics as the evaluator names them today
+            contextRelevancy: {
+              label: "Context Relevancy",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            contextPrecision: {
+              label: "Context Precision",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            contextRecall: { label: "Context Recall", category: "quality", singleTurnOnly: true },
             hallucination: { label: "Hallucination", category: "safety", singleTurnOnly: true },
             // Agent metrics (single-turn)
             toolCorrectness: {
@@ -1089,7 +1101,6 @@ export default function ExperimentDetailContent({
               category: "quality",
               singleTurnOnly: true,
             },
-            planQuality: { label: "Plan Quality", category: "quality", singleTurnOnly: true },
             planAdherence: {
               label: "Plan Adherence",
               category: "quality",
