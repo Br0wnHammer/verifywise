@@ -74,7 +74,7 @@ def test_evaluator_marks_the_three_safety_metrics_lower_is_better(monkeypatch):
 
     # A non-OpenAI judge takes the G-Eval path; the judge is never called here.
     monkeypatch.setenv("G_EVAL_PROVIDER", "ollama")
-    monkeypatch.setattr(deepeval_evaluator, "get_judge_llm", lambda **_: None)
+    monkeypatch.setattr(deepeval_evaluator, "get_judge_llm", lambda *_, **__: None)
     evaluator = DeepEvalEvaluator.__new__(DeepEvalEvaluator)
     evaluator.metric_thresholds = {}
 
@@ -101,9 +101,10 @@ def test_threshold_keys_are_normalised_to_snake_case():
 def test_threshold_aliases_map_to_the_metric_they_enable():
     from deepeval_engine.deepeval_evaluator import normalize_metric_thresholds
 
+    # plan_quality is a metric of its own, so it keeps its key.
     assert normalize_metric_thresholds(
-        {"planQuality": 0.8, "contextualRelevancy": 0.6, "plan_quality": 0.8}
-    ) == {"planning_quality": 0.8, "context_relevancy": 0.6}
+        {"contextualRelevancy": 0.6, "planQuality": 0.8, "planningQuality": 0.7}
+    ) == {"context_relevancy": 0.6, "plan_quality": 0.8, "planning_quality": 0.7}
 
 
 def test_threshold_normalisation_accepts_numeric_strings():
@@ -117,7 +118,15 @@ def test_threshold_normalisation_drops_non_numeric_values():
 
     assert (
         normalize_metric_thresholds(
-            {"bias": None, "toxicity": "high", "hallucination": True, "correctness": float("nan")}
+            {
+                "bias": None,
+                "toxicity": "high",
+                "hallucination": True,
+                "correctness": float("nan"),
+                "completeness": "inf",
+                "faithfulness": 50,
+                "answer_relevancy": -0.1,
+            }
         )
         == {}
     )

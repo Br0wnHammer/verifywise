@@ -31,6 +31,8 @@ class ScorerResult:
     score: float
     raw_response: str
     passed: bool
+    # The pass line `passed` was decided against; None when the scorer errored.
+    threshold: Optional[float] = None
     reason: Optional[str] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
@@ -423,6 +425,8 @@ async def run_custom_scorer(
             score=score,
             raw_response=raw_response,
             passed=passed,
+            # Without a threshold every score passes, i.e. the pass line is 0.
+            threshold=float(threshold) if threshold is not None else 0.0,
             reason=extracted_reason,
             prompt_tokens=getattr(usage, "prompt_tokens", None),
             completion_tokens=getattr(usage, "completion_tokens", None),

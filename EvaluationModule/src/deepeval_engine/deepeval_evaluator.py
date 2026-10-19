@@ -224,20 +224,20 @@ def get_judge_llm(provider: str, model_name: str):
     return CustomDeepEvalLLM(model_name=model_name, provider=provider)
 
 
-# Alternative names that enable a metric under another key. Keep in sync with
-# metric_name_map in EvalServer/src/utils/run_evaluation.py.
+# contextualRelevancy enables context_relevancy (metric_name_map in
+# EvalServer/src/utils/run_evaluation.py), and no metric reads contextual_relevancy.
+# plan_quality is not aliased: it is a metric of its own, separate from planning_quality.
 _THRESHOLD_KEY_ALIASES = {
     "contextual_relevancy": "context_relevancy",
-    "plan_quality": "planning_quality",
 }
 
 
 def normalize_metric_thresholds(thresholds: Optional[Dict[str, Any]]) -> Dict[str, float]:
     """Thresholds keyed by the snake_case metric name the evaluator looks up.
 
-    answerRelevancy and answer_relevancy both become answer_relevancy; aliases such as
-    planQuality become the metric they enable (planning_quality). Numeric strings are
-    accepted; anything else is dropped with a warning, so the metric keeps its default.
+    answerRelevancy and answer_relevancy both become answer_relevancy. A number, or a
+    numeric string, between 0 and 1 is kept; anything else is dropped with a warning,
+    so the metric keeps its default.
     """
     normalized: Dict[str, float] = {}
     for key, value in (thresholds or {}).items():
@@ -251,9 +251,10 @@ def normalize_metric_thresholds(thresholds: Optional[Dict[str, Any]]) -> Dict[st
                 number = float(value)
             except ValueError:
                 number = None
-        if number is None or number != number:  # number != number catches NaN
+        # The range check also rejects NaN and infinity.
+        if number is None or not 0.0 <= number <= 1.0:
             if value is not None:
-                print(f"⚠️  Ignoring non-numeric threshold for {snake}: {value!r}")
+                print(f"⚠️  Ignoring invalid threshold for {snake[:80]}: {repr(value)[:80]}")
             continue
         normalized[snake] = number
     return normalized

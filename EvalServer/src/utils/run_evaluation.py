@@ -1132,7 +1132,7 @@ async def run_evaluation(
                                         "passed": result.passed,
                                         # The pass line run_custom_scorer used, so the
                                         # dashboard colours the average against it.
-                                        "threshold": scorer.get("defaultThreshold", 0.5),
+                                        "threshold": result.threshold,
                                         "reason": result.reason if result.reason else (result.raw_response if result.raw_response else ""),
                                     }
                                 

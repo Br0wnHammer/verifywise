@@ -9,18 +9,12 @@ on:
     paths:
       - 'EvalServer/**'
       - 'EvaluationModule/**'
-      # Copies the drift test in EvalServer/tests/test_inverted_metrics_in_sync.py checks
-      - '.github/actions/eval/**'
-      - 'Clients/src/presentation/pages/EvalsDashboard/metricScore.ts'
       - '.github/workflows/evalserver-checks.yml'
   push:
     branches: ['master', 'develop']
     paths:
       - 'EvalServer/**'
       - 'EvaluationModule/**'
-      # Copies the drift test in EvalServer/tests/test_inverted_metrics_in_sync.py checks
-      - '.github/actions/eval/**'
-      - 'Clients/src/presentation/pages/EvalsDashboard/metricScore.ts'
       - '.github/workflows/evalserver-checks.yml'
 
 jobs:

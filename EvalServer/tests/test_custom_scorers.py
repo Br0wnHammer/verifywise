@@ -367,6 +367,32 @@ async def test_run_custom_scorer_threshold_boundary(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
+async def test_run_custom_scorer_reports_the_threshold_it_used(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The result carries its pass line; with no threshold every score passes, i.e. 0."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _mock_openai_response("FAIL")
+    monkeypatch.setattr(
+        "utils.run_custom_scorer.get_provider_client",
+        lambda *args, **kwargs: (fake_client, "sk-test"),
+    )
+
+    result = await run_custom_scorer(
+        scorer_config=_scorer_row(threshold=0.8), input_text="Q", output_text="A"
+    )
+    assert result.threshold == 0.8
+
+    no_threshold = _scorer_row()
+    no_threshold["defaultThreshold"] = None
+    result = await run_custom_scorer(scorer_config=no_threshold, input_text="Q", output_text="A")
+    assert result.passed is True
+    assert result.threshold == 0.0
+
+
+@pytest.mark.asyncio
 async def test_run_custom_scorer_renders_messages_with_io(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify {{input}}, {{output}}, {{expected}} are substituted before sending to LLM."""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
