@@ -276,50 +276,47 @@ export async function getMetaQuery() {
   return rows[0] ?? { seeded_at: null, last_good_count: null, last_run_week: null };
 }
 
-// Human-readable description of what changed on a tracked app, surfaced in the
-// weekly digest. `changes` reads like "grade B → C", "score 78 → 71", "policy
-// updated" — built from the material fields so a recipient sees what moved, not
-// just the current grade. Grade comparisons use displayedGrade (the B-capped,
-// governance-relevant grade), never the raw letterGrade.
-export interface MaterialChange {
-  slug: string;
-  changes: string[];
+// What changed on a tracked app, surfaced in the weekly digest as one row per
+// app: grade and score as old → new, plus notes like "policy updated". Grade
+// comparisons use displayedGrade (the B-capped, governance-relevant grade),
+// never the raw letterGrade. `from` is null when there is no previous value;
+// `from === to` means that field did not change.
+export interface MaterialDiff {
+  grade: { from: string | null; to: string };
+  score: { from: number | null; to: number };
+  notes: string[];
 }
 
-// Compare the material fields of the previous and current app records and
-// return human-readable change lines. Grade uses displayedGrade (B-capped) so
-// the digest matches the grade shown everywhere else in the product.
-export function describeMaterialChanges(
+export interface MaterialChange extends MaterialDiff {
+  slug: string;
+}
+
+// Compare the material fields of the previous and current app records. Grade
+// uses displayedGrade (B-capped) so the digest matches the grade shown
+// everywhere else in the product.
+export function diffMaterialFields(
   prev: Partial<ITrustIndexAppData> | null | undefined,
   next: ITrustIndexAppData,
-): string[] {
-  const out: string[] = [];
-  const prevGrade = prev?.displayedGrade ?? null;
-  if (prevGrade && prevGrade !== next.displayedGrade) {
-    out.push(`grade ${prevGrade} → ${next.displayedGrade}`);
-  } else if (!prevGrade && next.displayedGrade) {
-    out.push(`grade ${next.displayedGrade}`);
-  }
-  if (prev?.scoreOutOf100 != null && prev.scoreOutOf100 !== next.scoreOutOf100) {
-    out.push(`score ${prev.scoreOutOf100} → ${next.scoreOutOf100}`);
-  }
+): MaterialDiff {
+  const notes: string[] = [];
   const prevFlags = (prev?.dealbreakerFlags ?? []).length;
   const nextFlags = (next.dealbreakerFlags ?? []).length;
   if (prevFlags !== nextFlags) {
-    out.push(nextFlags > prevFlags ? "new dealbreaker flag" : "dealbreaker flag cleared");
+    notes.push(nextFlags > prevFlags ? "new dealbreaker flag" : "dealbreaker flag cleared");
   }
   if ((prev?.policyLastUpdated ?? null) !== (next.policyLastUpdated ?? null)) {
-    out.push("policy updated");
+    notes.push("policy updated");
   }
   if (prev?.processesBiometrics != null && prev.processesBiometrics !== next.processesBiometrics) {
-    out.push(
+    notes.push(
       next.processesBiometrics ? "now processes biometrics" : "no longer processes biometrics",
     );
   }
-  // Fall back to the current grade if the material hash differed but none of the
-  // mapped fields explain it (defensive — keeps the line meaningful).
-  if (!out.length) out.push(`grade ${next.displayedGrade}`);
-  return out;
+  return {
+    grade: { from: prev?.displayedGrade ?? null, to: next.displayedGrade },
+    score: { from: prev?.scoreOutOf100 ?? null, to: next.scoreOutOf100 },
+    notes,
+  };
 }
 
 export async function upsertFeedTx(
@@ -369,7 +366,7 @@ export async function upsertFeedTx(
           // `data` is JSONB — the driver returns it parsed. Read the previous
           // material fields from it so the digest can show old → new.
           const prev = existing[0].data as Partial<ITrustIndexAppData> | null;
-          materialChanged.push({ slug, changes: describeMaterialChanges(prev, app) });
+          materialChanged.push({ slug, ...diffMaterialFields(prev, app) });
         }
         const fullChanged = existing[0].full_hash !== fullHash;
         await sequelize.query(

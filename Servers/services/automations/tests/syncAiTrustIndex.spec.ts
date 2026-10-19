@@ -3,9 +3,12 @@ jest.mock("../../emailService", () => ({
   sendAutomationEmail: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { syncAiTrustIndex, escapeHtml, sectionMjml } from "../actions/syncAiTrustIndex";
+import { syncAiTrustIndex, escapeHtml, sectionHtml } from "../actions/syncAiTrustIndex";
 import * as utils from "../../../utils/aiTrustIndex.utils";
 import { sendAutomationEmail } from "../../emailService";
+import { compileMjmlToHtml } from "../../../tools/mjmlCompiler";
+import { readFileSync } from "fs";
+import path from "path";
 
 const feedApp = (slug: string, grade = "B") => ({
   slug,
@@ -31,6 +34,18 @@ const feed = {
   apps: Array.from({ length: 12 }, (_, i) => feedApp(`a${i}`)),
 };
 
+const diff = (
+  gradeFrom: string,
+  gradeTo: string,
+  scoreFrom = 70,
+  scoreTo = 70,
+  notes: string[] = [],
+) => ({
+  grade: { from: gradeFrom, to: gradeTo },
+  score: { from: scoreFrom, to: scoreTo },
+  notes,
+});
+
 describe("syncAiTrustIndex", () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -41,7 +56,7 @@ describe("syncAiTrustIndex", () => {
       last_run_week: null,
     });
     (utils.upsertFeedTx as jest.Mock).mockResolvedValue({
-      materialChanged: [{ slug: "a0", changes: ["grade A → B"] }],
+      materialChanged: [{ slug: "a0", ...diff("A", "B") }],
       newlyRemoved: [],
       wasFirstSeed: true,
     });
@@ -57,7 +72,7 @@ describe("syncAiTrustIndex", () => {
       last_run_week: "2026-W10",
     });
     (utils.upsertFeedTx as jest.Mock).mockResolvedValue({
-      materialChanged: [{ slug: "a0", changes: ["grade A → B", "policy updated"] }],
+      materialChanged: [{ slug: "a0", ...diff("A", "B", 72, 61, ["policy updated"]) }],
       newlyRemoved: ["a9"],
       wasFirstSeed: false,
     });
@@ -103,21 +118,71 @@ describe("email HTML escaping", () => {
       "&lt;b&gt;x&lt;/b&gt; &amp; &quot;y&quot; &#39;z&#39;",
     );
   });
-  it("renders an item's name HTML-escaped inside the MJML section", () => {
-    const mjml = sectionMjml("Changed", [{ name: "<b>evil</b>" }]);
-    expect(mjml).toContain("&lt;b&gt;evil&lt;/b&gt;");
-    expect(mjml).not.toContain("<b>evil</b>");
+  it("renders an item's name HTML-escaped inside the section", () => {
+    const html = sectionHtml("Changed", [{ name: "<b>evil</b>" }]);
+    expect(html).toContain("&lt;b&gt;evil&lt;/b&gt;");
+    expect(html).not.toContain("<b>evil</b>");
   });
-  it("renders the app name with its change detail (name — detail)", () => {
-    const mjml = sectionMjml("Changed", [{ name: "Paxton AI", detail: "now grade B" }]);
-    expect(mjml).toContain("Paxton AI — now grade B");
+  it("renders plain HTML table rows, never <mj-*> tags", () => {
+    const html = sectionHtml("Changed", [{ name: "Workday", diff: diff("B", "F", 60, 34) }]);
+    expect(html).toContain("<table");
+    expect(html).toContain("<tr>");
+    expect(html).not.toMatch(/<mj-/);
   });
-  it("renders just the name when no detail is given", () => {
-    const mjml = sectionMjml("No longer assessed", [{ name: "Leonardo AI" }]);
-    expect(mjml).toContain("Leonardo AI");
-    expect(mjml).not.toContain("—");
+  it("shows grade and score as old → new with the score delta", () => {
+    const html = sectionHtml("Changed", [{ name: "Workday", diff: diff("B", "F", 60, 34) }]);
+    expect(html).toMatch(/B →<\/span> <span style="color: #B42318[^"]*">F</);
+    expect(html).toMatch(/60 →<\/span> <span style="color: #B42318[^"]*">34</);
+    expect(html).toContain("−26");
+  });
+  it("colours an improvement green", () => {
+    const html = sectionHtml("Changed", [{ name: "Gemini", diff: diff("F", "C", 31, 53) }]);
+    expect(html).toMatch(/<span style="color: #067647[^"]*">C</);
+    expect(html).toContain("+22");
+  });
+  it("shows an unchanged grade as the plain value", () => {
+    const html = sectionHtml("Changed", [{ name: "DeepSeek", diff: diff("C", "C", 54, 55) }]);
+    expect(html).not.toContain("C →");
+  });
+  it("lists notes in sentence case under the app name", () => {
+    const html = sectionHtml("Changed", [
+      { name: "Cursor", diff: diff("B", "C", 69, 59, ["new dealbreaker flag", "policy updated"]) },
+    ]);
+    expect(html).toContain("New dealbreaker flag · Policy updated");
+  });
+  it("lists the biggest score drop first", () => {
+    const html = sectionHtml("Changed", [
+      { name: "Up", diff: diff("F", "C", 31, 53) },
+      { name: "Small drop", diff: diff("B", "B", 66, 65) },
+      { name: "Big drop", diff: diff("B", "F", 60, 34) },
+    ]);
+    expect(html.indexOf("Big drop")).toBeLessThan(html.indexOf("Small drop"));
+    expect(html.indexOf("Small drop")).toBeLessThan(html.indexOf("Up"));
+  });
+  it("renders removed apps as name-only rows without a header", () => {
+    const html = sectionHtml("No longer assessed", [{ name: "Leonardo AI" }]);
+    expect(html).toContain("Leonardo AI");
+    expect(html).not.toContain("<th");
+  });
+  it("compiles inside the real template as a table, one row per app", async () => {
+    const template = readFileSync(
+      path.join(__dirname, "../../../templates/ai-trust-index-digest.mjml"),
+      "utf8",
+    );
+    const out = await compileMjmlToHtml(template, {
+      changedSection: sectionHtml("Changed", [
+        { name: "Workday", diff: diff("B", "F", 60, 34) },
+        { name: "Cursor", diff: diff("B", "C", 69, 59) },
+      ]),
+      removedSection: "",
+      moduleUrl: "u",
+      trackedUrl: "u",
+      settingsUrl: "u",
+    });
+    expect(out).toMatch(/<tr><td[^>]*><span[^>]*>Workday</);
+    expect(out).toMatch(/<tr><td[^>]*><span[^>]*>Cursor</);
   });
   it("returns empty string for no items", () => {
-    expect(sectionMjml("Changed", [])).toBe("");
+    expect(sectionHtml("Changed", [])).toBe("");
   });
 });
