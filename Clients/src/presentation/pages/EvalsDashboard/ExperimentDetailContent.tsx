@@ -1052,6 +1052,7 @@ export default function ExperimentDetailContent({
             score: number | undefined,
             metricName: string,
             threshold: number | null,
+            passFailOnly: boolean,
           ) => {
             if (score === undefined)
               return {
@@ -1059,7 +1060,8 @@ export default function ExperimentDetailContent({
                 text: palette.status.default.text,
                 icon: palette.status.default.text,
               };
-            const { bg, text } = SCORE_BAND_COLORS[scoreBand(metricName, score, threshold)];
+            const band = scoreBand(metricName, score, threshold, { passFailOnly });
+            const { bg, text } = SCORE_BAND_COLORS[band];
             return { bg, text, icon: text };
           };
 
@@ -1196,7 +1198,13 @@ export default function ExperimentDetailContent({
               metricsSum[metric.key];
             const avgValue = entry ? entry.sum / Math.max(1, entry.count) : undefined;
             const scores = entry?.scores || [];
-            const colors = getScoreColor(avgValue, metric.label, entry?.threshold ?? null);
+            // Custom scorers use their own score scale, so they get pass/fail colours only.
+            const colors = getScoreColor(
+              avgValue,
+              metric.label,
+              entry?.threshold ?? null,
+              metric.category === "scorer",
+            );
             const BackgroundIcon = getMetricIcon(metric.key);
 
             return (

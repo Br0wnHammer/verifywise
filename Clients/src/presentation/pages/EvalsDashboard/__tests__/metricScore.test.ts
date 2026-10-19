@@ -40,10 +40,20 @@ describe("scoreBand", () => {
   });
 
   it("shows any score as good against a line that cannot be missed", () => {
-    // A custom scorer with no threshold stores 0: every row passes.
-    expect(scoreBand("Helpfulness", 0, 0)).toBe("good");
-    expect(scoreBand("Helpfulness", 0.1, 0)).toBe("good");
+    expect(scoreBand("Correctness", 0, 0)).toBe("good");
+    expect(scoreBand("Correctness", 0.1, 0)).toBe("good");
     expect(scoreBand("Bias", 0.9, 1)).toBe("good");
+  });
+
+  it("uses pass/fail only for custom scorers, whatever their scale", () => {
+    const passFailOnly = { passFailOnly: true };
+    // Choices 0/5/10, threshold 5: 5.1 passes but is not perfect on that scale.
+    expect(scoreBand("Helpfulness", 5.1, 5, passFailOnly)).toBe("good");
+    expect(scoreBand("Helpfulness", 4.9, 5, passFailOnly)).toBe("failed");
+    // Best choice 0.8, threshold 0.7: an all-best run is good, not close.
+    expect(scoreBand("Helpfulness", 0.8, 0.7, passFailOnly)).toBe("good");
+    // No threshold on a scale below 0: the stored line is the lowest score.
+    expect(scoreBand("Helpfulness", -1, -1, passFailOnly)).toBe("good");
   });
 });
 

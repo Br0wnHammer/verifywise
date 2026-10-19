@@ -240,7 +240,11 @@ def normalize_metric_thresholds(thresholds: Optional[Dict[str, Any]]) -> Dict[st
     """
     normalized: Dict[str, float] = {}
     for key, value in (thresholds or {}).items():
-        snake = re.sub(r"(?<!^)(?=[A-Z])", "_", str(key)).lower()
+        name = str(key).strip()
+        if name.isupper():  # BIAS, not B_I_A_S
+            name = name.lower()
+        snake = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+        snake = re.sub(r"[\s_]+", "_", snake)  # "Answer Relevancy" -> answer_relevancy
         snake = _THRESHOLD_KEY_ALIASES.get(snake, snake)
         number: Optional[float] = None
         if isinstance(value, (int, float, str)) and not isinstance(value, bool):

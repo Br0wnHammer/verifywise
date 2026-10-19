@@ -32,7 +32,8 @@ class ScorerResult:
     score: float
     raw_response: str
     passed: bool
-    # The pass line `passed` is decided against (0 when the scorer has none).
+    # The pass line `passed` is decided against. Without a threshold every score passes,
+    # and this is the lowest score the scorer can return (0, or below on such a scale).
     threshold: Optional[float] = None
     reason: Optional[str] = None
     prompt_tokens: Optional[int] = None

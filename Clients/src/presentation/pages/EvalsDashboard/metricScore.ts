@@ -59,9 +59,10 @@ export const entryReason = (entry: MetricScoreEntry): string | undefined =>
   typeof entry === "object" && typeof entry?.reason === "string" ? entry.reason : undefined;
 
 // For a scored entry. The backend's passed flag already means "good" for every metric,
-// lower is better ones included. Without it, a higher is better metric is compared with
-// its stored threshold. Lower is better ones use 0.5: for G-Eval judges their stored
-// threshold applies to the score before it was inverted.
+// lower is better ones included. Without it (only very old rows), a higher is better
+// metric is compared with its stored threshold. Lower is better ones use 0.5: rows that
+// old come from G-Eval judges that stored the threshold for the score before it was
+// inverted. Newer rows store score and threshold on one scale and always carry passed.
 const scoredMetricPassed = (metricName: string, entry: MetricScoreEntry, score: number) => {
   if (typeof entry === "object" && typeof entry?.passed === "boolean") return entry.passed;
   if (lowerIsBetter(metricName)) return score <= 0.5;
@@ -103,17 +104,21 @@ const EPSILON = 1e-9;
 // pass/fail: failed = misses the threshold; close = passes by less than CLOSE_MARGIN;
 // good otherwise. A perfect score is always good, even when the threshold leaves less
 // than CLOSE_MARGIN of headroom, and so is any score against a line that cannot be
-// missed (e.g. 0 for a custom scorer with no threshold). Scores and thresholds share
-// one scale; lower is better metrics pass at or below the threshold.
+// missed (a threshold of 0). Scores and thresholds share one scale; lower is better
+// metrics pass at or below the threshold.
+// The margin and "perfect" assume a 0 to 1 scale. Custom scorers can use any scale
+// (their choice scores), so pass passFailOnly for them: good or failed, never close.
 export const scoreBand = (
   metricName: string,
   score: number,
   threshold: number | null = null,
+  { passFailOnly = false }: { passFailOnly?: boolean } = {},
 ): ScoreBand => {
   const line = threshold ?? 0.5;
   const inverse = lowerIsBetter(metricName);
   const margin = inverse ? line - score : score - line;
   if (margin < -EPSILON) return "failed";
+  if (passFailOnly) return "good";
   const perfect = inverse ? score <= EPSILON : score >= 1 - EPSILON;
   const cannotFail = inverse ? line >= 1 - EPSILON : line <= EPSILON;
   if (perfect || cannotFail || margin >= CLOSE_MARGIN - EPSILON) return "good";
@@ -121,7 +126,7 @@ export const scoreBand = (
 };
 
 export const SCORE_BAND_COLORS: Record<ScoreBand, { bg: string; text: string }> = {
-  good: { bg: palette.status.success.bg, text: palette.status.success.text },
+  good: METRIC_STATUS_COLORS.passed,
   close: { bg: palette.status.warning.bg, text: palette.status.warning.text },
-  failed: { bg: palette.status.error.bg, text: palette.status.error.text },
+  failed: METRIC_STATUS_COLORS.failed,
 };

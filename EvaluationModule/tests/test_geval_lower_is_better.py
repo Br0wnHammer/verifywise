@@ -106,6 +106,10 @@ def test_threshold_normalisation_changes_only_the_case():
         "plan_quality": 0.8,
         "planning_quality": 0.7,
     }
+    assert normalize_metric_thresholds({"BIAS": 0.2, "Answer Relevancy": 0.8}) == {
+        "bias": 0.2,
+        "answer_relevancy": 0.8,
+    }
     # No metric reads contextual_relevancy, so it goes to context_relevancy.
     assert normalize_metric_thresholds({"contextualRelevancy": 0.6}) == {"context_relevancy": 0.6}
 
