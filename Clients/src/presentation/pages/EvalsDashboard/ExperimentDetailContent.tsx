@@ -916,9 +916,8 @@ export default function ExperimentDetailContent({
               Object.entries(log.metadata.metric_scores).forEach(([rawKey, value]) => {
                 // Normalize key: convert display names to camelCase, or keep if already camelCase
                 const key = displayNameToKey[rawKey] || rawKey;
-                const score =
-                  typeof value === "number" ? value : (value as { score?: number })?.score;
-                if (typeof score === "number") {
+                const score = entryScore(value as MetricScoreEntry);
+                if (score !== null) {
                   if (!metricsSum[key]) metricsSum[key] = { sum: 0, count: 0, scores: [] };
                   metricsSum[key].sum += score;
                   metricsSum[key].count += 1;
