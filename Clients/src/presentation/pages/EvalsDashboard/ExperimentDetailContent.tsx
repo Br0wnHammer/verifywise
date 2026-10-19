@@ -646,9 +646,11 @@ export default function ExperimentDetailContent({
             maxWidth={280}
             describeChild
           >
-            {/* A disabled button fires no hover events, so a span carries the tooltip
-                then; an enabled button takes it directly, so it is described. */}
-            {rerunDisabled ? (
+            {/* While the experiment runs, the disabled button fires no hover events, so a
+                span carries the tooltip; otherwise the button takes it directly, so it is
+                described. Not keyed on rerunLoading: clicking Rerun must not remount the
+                hovered button (the brief "Starting…" state just shows no tooltip). */}
+            {experiment.status === "running" ? (
               <Box component="span" sx={{ display: "inline-flex" }}>
                 {rerunButton}
               </Box>
