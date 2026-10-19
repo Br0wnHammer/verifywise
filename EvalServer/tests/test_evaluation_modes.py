@@ -327,3 +327,69 @@ async def test_scorer_mode_skeleton_results_are_built_for_each_test_case(
     assert "error" not in result
     assert result.get("total_prompts") == 2
     assert custom_scorer_mock.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_custom_scorer_entries_store_the_threshold_used(
+    scorer_mode_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    stub_model_runner: MagicMock,
+    evaluator_mock: MagicMock,
+    patched_crud: Dict[str, Any],
+    fake_llm_scorer_row: Dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dashboard colours a scorer's average against the threshold stored per entry."""
+    from crud import evaluation_logs as crud_module
+    from utils import run_evaluation as run_eval_module
+    from utils.run_custom_scorer import ScorerResult
+
+    _patch_list_scorers(monkeypatch, [fake_llm_scorer_row])
+
+    async def _stub(*args, **kwargs):
+        return ScorerResult(
+            scorer_id="scorer-llm-1",
+            scorer_name="Helpfulness Judge",
+            label="FAIL",
+            score=0.0,
+            raw_response="FAIL",
+            passed=False,
+            threshold=0.8,
+        )
+
+    monkeypatch.setattr(run_eval_module, "run_custom_scorer", AsyncMock(side_effect=_stub))
+
+    await run_eval_module.run_evaluation(
+        db=mock_db_session,
+        experiment_id="exp-threshold",
+        config=scorer_mode_config,
+        organization_id=1,
+    )
+
+    stored = [
+        call.kwargs["metadata"]["metric_scores"]["Helpfulness Judge"]
+        for call in crud_module.update_log_metadata.call_args_list
+    ]
+    assert stored, "no metric scores were saved"
+    assert all(entry["threshold"] == 0.8 for entry in stored)
+
+
+def test_threshold_keys_follow_the_metric_each_name_enables():
+    from utils.run_evaluation import route_threshold_keys
+
+    # planQuality enables planning_quality; contextualRelevancy enables context_relevancy.
+    assert route_threshold_keys({"planQuality": 0.8, "contextualRelevancy": 0.6}) == {
+        "planning_quality": 0.8,
+        "context_relevancy": 0.6,
+    }
+    # The UI sends both names; the one naming the metric directly wins, in either order.
+    assert route_threshold_keys({"planQuality": 0.8, "planningQuality": 0.7}) == {
+        "planning_quality": 0.7
+    }
+    assert route_threshold_keys({"planningQuality": 0.7, "planQuality": 0.8}) == {
+        "planning_quality": 0.7
+    }
+    # Unknown names pass through for the evaluator to normalise.
+    assert route_threshold_keys({"answerCorrectness": 0.9}) == {"answerCorrectness": 0.9}
+    assert route_threshold_keys(None) == {}
+    assert route_threshold_keys(["bias"]) == {}

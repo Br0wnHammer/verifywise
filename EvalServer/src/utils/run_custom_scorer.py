@@ -7,6 +7,7 @@ to actual execution using OpenAI or other LLM providers.
 Supports multiple providers: OpenAI, Anthropic, Mistral, xAI, Google (Gemini), etc.
 """
 
+import math
 import re
 import os
 import json
@@ -31,6 +32,9 @@ class ScorerResult:
     score: float
     raw_response: str
     passed: bool
+    # The pass line `passed` is decided against. Without a threshold every score passes,
+    # and this is the lowest score the scorer can return (0, or below on such a scale).
+    threshold: Optional[float] = None
     reason: Optional[str] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
@@ -245,6 +249,36 @@ def label_to_score(label: str, choice_scores: List[Dict[str, Any]]) -> float:
     return 0.0
 
 
+def _lowest_score(choice_scores: List[Dict[str, Any]]) -> float:
+    """The lowest score label_to_score can return for these choices."""
+    lowest = 0.0
+    for choice in choice_scores:
+        try:
+            lowest = min(lowest, float(choice.get("score", 0.0)))
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return lowest
+
+
+def _parse_threshold(value: Any, scorer_name: str) -> Optional[float]:
+    """A scorer's defaultThreshold as a float, or None when it has none.
+
+    Numeric strings are accepted. Any other value falls back to 0.5 with a warning, so
+    the row is still judged instead of failing as a judge-model error.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float, str)) and not isinstance(value, bool):
+        try:
+            number = float(value)
+            if math.isfinite(number):  # rejects NaN and infinity
+                return number
+        except (ValueError, OverflowError):
+            pass
+    print(f"⚠️  Scorer {str(scorer_name)[:80]} has an invalid threshold {repr(value)[:80]}; using 0.5")
+    return 0.5
+
+
 async def run_custom_scorer(
     scorer_config: Dict[str, Any],
     input_text: str,
@@ -332,7 +366,10 @@ async def run_custom_scorer(
     
     messages_templates = config.get("messages", [])
     choice_scores = config.get("choiceScores", [])
-    threshold = scorer_config.get("defaultThreshold", 0.5)
+    threshold = _parse_threshold(scorer_config.get("defaultThreshold", 0.5), scorer_name)
+    # The pass line stored with every result. Without a threshold every score passes, so
+    # store the lowest score possible (unknown labels and errors score 0).
+    pass_line = threshold if threshold is not None else _lowest_score(choice_scores)
     
     if not messages_templates:
         raise ValueError(f"Scorer {scorer_name} has no message templates configured")
@@ -370,6 +407,7 @@ async def run_custom_scorer(
             # Stored in the experiment's results, shown to the organization.
             raw_response=f"Failed to initialize model: {redact_secrets(str(e))}",
             passed=False,
+            threshold=pass_line,
         )
     
     try:
@@ -423,6 +461,7 @@ async def run_custom_scorer(
             score=score,
             raw_response=raw_response,
             passed=passed,
+            threshold=pass_line,
             reason=extracted_reason,
             prompt_tokens=getattr(usage, "prompt_tokens", None),
             completion_tokens=getattr(usage, "completion_tokens", None),
@@ -438,6 +477,7 @@ async def run_custom_scorer(
             score=0.0,
             raw_response=f"Error calling judge model ({provider}): {redact_secrets(str(e))}",
             passed=False,
+            threshold=pass_line,
         )
 
 

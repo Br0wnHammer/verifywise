@@ -1,5 +1,70 @@
 import { describe, expect, it } from "vitest";
-import { entryError, findMetricEntry, lowerIsBetter, metricStatus } from "../metricScore";
+import {
+  entryError,
+  entryThreshold,
+  findMetricEntry,
+  lowerIsBetter,
+  metricStatus,
+  scoreBand,
+} from "../metricScore";
+
+describe("scoreBand", () => {
+  it("bands higher is better metrics against the default 0.5 line", () => {
+    expect(scoreBand("Correctness", 0.49)).toBe("failed");
+    expect(scoreBand("Correctness", 0.5)).toBe("close");
+    expect(scoreBand("Correctness", 0.69)).toBe("close");
+    expect(scoreBand("Correctness", 0.7)).toBe("good");
+  });
+
+  it("bands lower is better metrics against the default 0.5 line", () => {
+    expect(scoreBand("Bias", 0.51)).toBe("failed");
+    expect(scoreBand("Bias", 0.5)).toBe("close");
+    expect(scoreBand("Bias", 0.31)).toBe("close");
+    expect(scoreBand("Bias", 0.3)).toBe("good");
+    expect(scoreBand("G-Eval (Toxicity)", 0)).toBe("good");
+  });
+
+  it("uses the stored threshold when there is one", () => {
+    // A score of 0.65 passes at 0.5 but fails a 0.8 bar.
+    expect(scoreBand("Correctness", 0.65, 0.8)).toBe("failed");
+    expect(scoreBand("Correctness", 0.85, 0.8)).toBe("close");
+    expect(scoreBand("Hallucination", 0.25, 0.2)).toBe("failed");
+    expect(scoreBand("Hallucination", 0.15, 0.2)).toBe("close");
+    expect(scoreBand("Correctness", 0.4, 0.2)).toBe("good");
+  });
+
+  it("shows a perfect score as good even with less headroom than the margin", () => {
+    expect(scoreBand("Correctness", 1, 0.9)).toBe("good");
+    expect(scoreBand("Bias", 0, 0.1)).toBe("good");
+    expect(scoreBand("Correctness", 0.95, 0.9)).toBe("close");
+  });
+
+  it("shows any score as good against a line that cannot be missed", () => {
+    expect(scoreBand("Correctness", 0, 0)).toBe("good");
+    expect(scoreBand("Correctness", 0.1, 0)).toBe("good");
+    expect(scoreBand("Bias", 0.9, 1)).toBe("good");
+  });
+
+  it("uses pass/fail only for custom scorers, whatever their scale", () => {
+    const passFailOnly = { passFailOnly: true };
+    // Choices 0/5/10, threshold 5: 5.1 passes but is not perfect on that scale.
+    expect(scoreBand("Helpfulness", 5.1, 5, passFailOnly)).toBe("good");
+    expect(scoreBand("Helpfulness", 4.9, 5, passFailOnly)).toBe("failed");
+    // Best choice 0.8, threshold 0.7: an all-best run is good, not close.
+    expect(scoreBand("Helpfulness", 0.8, 0.7, passFailOnly)).toBe("good");
+    // No threshold on a scale below 0: the stored line is the lowest score.
+    expect(scoreBand("Helpfulness", -1, -1, passFailOnly)).toBe("good");
+  });
+});
+
+describe("entryThreshold", () => {
+  it("reads a numeric threshold and ignores everything else", () => {
+    expect(entryThreshold({ score: 0.6, threshold: 0.7 })).toBe(0.7);
+    expect(entryThreshold({ score: 0.6, threshold: null })).toBeNull();
+    expect(entryThreshold(0.6)).toBeNull();
+    expect(entryThreshold(undefined)).toBeNull();
+  });
+});
 
 describe("lowerIsBetter", () => {
   it("covers bias, toxicity and hallucination in any naming", () => {
@@ -8,6 +73,12 @@ describe("lowerIsBetter", () => {
     expect(lowerIsBetter("G-Eval (Hallucination)")).toBe(true);
     expect(lowerIsBetter("Correctness")).toBe(false);
     expect(lowerIsBetter("Conversation Safety")).toBe(false);
+  });
+
+  it("does not invert a metric whose name only contains one of those words", () => {
+    expect(lowerIsBetter("unbiasedTone")).toBe(false);
+    expect(lowerIsBetter("Hallucination Resistance")).toBe(false);
+    expect(lowerIsBetter("G-Eval (Toxicity-free tone)")).toBe(false);
   });
 });
 

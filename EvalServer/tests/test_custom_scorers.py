@@ -367,6 +367,76 @@ async def test_run_custom_scorer_threshold_boundary(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
+async def test_run_custom_scorer_reports_the_threshold_it_used(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The result carries its pass line; with no threshold every score passes, i.e. 0."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _mock_openai_response("FAIL")
+    monkeypatch.setattr(
+        "utils.run_custom_scorer.get_provider_client",
+        lambda *args, **kwargs: (fake_client, "sk-test"),
+    )
+
+    result = await run_custom_scorer(
+        scorer_config=_scorer_row(threshold=0.8), input_text="Q", output_text="A"
+    )
+    assert result.threshold == 0.8
+
+    no_threshold = _scorer_row()
+    no_threshold["defaultThreshold"] = None
+    result = await run_custom_scorer(scorer_config=no_threshold, input_text="Q", output_text="A")
+    assert result.passed is True
+    assert result.threshold == 0.0
+
+    string_threshold = _scorer_row()
+    string_threshold["defaultThreshold"] = "0.7"
+    result = await run_custom_scorer(
+        scorer_config=string_threshold, input_text="Q", output_text="A"
+    )
+    assert result.label == "FAIL"
+    assert result.passed is False
+    assert result.threshold == 0.7
+
+    for bad in ("inf", "abc", float("nan")):
+        invalid = _scorer_row()
+        invalid["defaultThreshold"] = bad
+        result = await run_custom_scorer(scorer_config=invalid, input_text="Q", output_text="A")
+        assert result.threshold == 0.5, bad
+
+    # No threshold on a scale below 0: the stored line is the lowest score, so no row
+    # shows as failing on the dashboard while every row passed.
+    negative = _scorer_row(
+        choice_scores=[{"label": "PASS", "score": 1.0}, {"label": "FAIL", "score": -1.0}]
+    )
+    negative["defaultThreshold"] = None
+    result = await run_custom_scorer(scorer_config=negative, input_text="Q", output_text="A")
+    assert result.score == -1.0
+    assert result.passed is True
+    assert result.threshold == -1.0
+
+
+@pytest.mark.asyncio
+async def test_run_custom_scorer_error_result_keeps_the_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.side_effect = RuntimeError("judge down")
+    monkeypatch.setattr(
+        "utils.run_custom_scorer.get_provider_client",
+        lambda *args, **kwargs: (fake_client, "sk-test"),
+    )
+
+    result = await run_custom_scorer(
+        scorer_config=_scorer_row(threshold=0.8), input_text="Q", output_text="A"
+    )
+    assert result.label == "ERROR"
+    assert result.threshold == 0.8
+
+
+@pytest.mark.asyncio
 async def test_run_custom_scorer_renders_messages_with_io(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify {{input}}, {{output}}, {{expected}} are substituted before sending to LLM."""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
