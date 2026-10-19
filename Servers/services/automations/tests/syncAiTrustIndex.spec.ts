@@ -56,7 +56,7 @@ describe("syncAiTrustIndex", () => {
       last_run_week: null,
     });
     (utils.upsertFeedTx as jest.Mock).mockResolvedValue({
-      materialChanged: [{ slug: "a0", ...diff("A", "B") }],
+      materialChanged: [{ slug: "a0", diff: diff("A", "B") }],
       newlyRemoved: [],
       wasFirstSeed: true,
     });
@@ -72,7 +72,7 @@ describe("syncAiTrustIndex", () => {
       last_run_week: "2026-W10",
     });
     (utils.upsertFeedTx as jest.Mock).mockResolvedValue({
-      materialChanged: [{ slug: "a0", ...diff("A", "B", 72, 61, ["policy updated"]) }],
+      materialChanged: [{ slug: "a0", diff: diff("A", "B", 72, 61, ["policy updated"]) }],
       newlyRemoved: ["a9"],
       wasFirstSeed: false,
     });
@@ -158,6 +158,26 @@ describe("email HTML escaping", () => {
     ]);
     expect(html.indexOf("Big drop")).toBeLessThan(html.indexOf("Small drop"));
     expect(html.indexOf("Small drop")).toBeLessThan(html.indexOf("Up"));
+  });
+  it("lists a grade drop above a larger score drop with no grade change", () => {
+    const html = sectionHtml("Changed", [
+      { name: "Score only", diff: diff("C", "C", 66, 50) },
+      { name: "Grade drop", diff: diff("B", "F", 60, 60) },
+    ]);
+    expect(html.indexOf("Grade drop")).toBeLessThan(html.indexOf("Score only"));
+  });
+  it("rounds a fractional score delta", () => {
+    const html = sectionHtml("Changed", [{ name: "Frac", diff: diff("C", "C", 70.2, 71.3) }]);
+    expect(html).toContain("+1.1");
+    expect(html).not.toContain("1.0999");
+  });
+  it("gives a changed app with no diff empty grade and score cells", () => {
+    const html = sectionHtml("Changed", [
+      { name: "Has diff", diff: diff("B", "C", 60, 50) },
+      { name: "No diff" },
+    ]);
+    const row = html.slice(html.indexOf("No diff"));
+    expect(row.match(/<td/g)).toHaveLength(2);
   });
   it("renders removed apps as name-only rows without a header", () => {
     const html = sectionHtml("No longer assessed", [{ name: "Leonardo AI" }]);

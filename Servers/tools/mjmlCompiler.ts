@@ -4,10 +4,12 @@ export const compileMjmlToHtml = async (
   mjmlTemplate: string,
   data: Record<string, string>,
 ): Promise<string> => {
-  let compiledTemplate = mjmlTemplate;
-  Object.keys(data).forEach((key) => {
-    compiledTemplate = compiledTemplate.replace(new RegExp(`{{${key}}}`, "g"), data[key]);
-  });
+  // One pass with a replacer function: values are inserted literally, so a
+  // "$&" or "$'" in user text is not read as a replacement pattern, and a
+  // "{{key}}" inside a value is not substituted by a later key.
+  const compiledTemplate = mjmlTemplate.replace(/{{(\w+)}}/g, (placeholder, key: string) =>
+    Object.prototype.hasOwnProperty.call(data, key) ? data[key] : placeholder,
+  );
 
   // mjml v5 returns a Promise at runtime even though the TypeScript types
   // still describe a sync return. Await through `unknown` so we tolerate

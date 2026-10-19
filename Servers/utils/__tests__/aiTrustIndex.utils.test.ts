@@ -213,12 +213,13 @@ describe("diffMaterialFields", () => {
   });
 
   it("does NOT report a grade transition when only the uncapped letterGrade moved", () => {
-    // letterGrade A→B but displayedGrade stays B: the grade reads as unchanged.
+    // letterGrade A→B but displayedGrade stays B: the grade reads as unchanged,
+    // and a note keeps the row from showing no change at all.
     const prev = { ...feedApp("a0"), letterGrade: "A", displayedGrade: "B" };
     const next = { ...feedApp("a0"), letterGrade: "B", displayedGrade: "B" };
     const out = diffMaterialFields(prev, next);
     expect(out.grade).toEqual({ from: "B", to: "B" });
-    expect(out.notes).toEqual([]);
+    expect(out.notes).toEqual(["assessment updated"]);
   });
 
   it("reports a score change as old → new", () => {
@@ -250,6 +251,11 @@ describe("diffMaterialFields", () => {
     const prev = { ...feedApp("a0"), processesBiometrics: false };
     const next = { ...feedApp("a0"), processesBiometrics: true };
     expect(diffMaterialFields(prev, next).notes).toContain("now processes biometrics");
+  });
+
+  it("reads a stored string score as a number", () => {
+    const prev = { ...feedApp("a0"), scoreOutOf100: "80" as unknown as number };
+    expect(diffMaterialFields(prev, feedApp("a0")).score).toEqual({ from: 80, to: 80 });
   });
 
   it("has no previous values when no previous record exists", () => {

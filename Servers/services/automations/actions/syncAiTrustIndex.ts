@@ -45,17 +45,23 @@ const MUTED = "#667085";
 const WORSE = "#B42318";
 const BETTER = "#067647";
 const DIVIDER = "1px solid #eaecf0";
+// Outlook and some other clients do not pass the template's font into a table.
+const FONT =
+  "Geist, Inter, system-ui, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif";
 const GRADE_ORDER = "ABCDF";
 
 // Positive when the grade got worse, negative when better, 0 when unknown.
-function gradeTrend(from: string, to: string): number {
-  const a = GRADE_ORDER.indexOf(from.charAt(0).toUpperCase());
-  const b = GRADE_ORDER.indexOf(to.charAt(0).toUpperCase());
+function gradeTrend(diff?: MaterialDiff): number {
+  if (!diff || diff.grade.from === null) return 0;
+  const a = GRADE_ORDER.indexOf(diff.grade.from.charAt(0).toUpperCase());
+  const b = GRADE_ORDER.indexOf(diff.grade.to.charAt(0).toUpperCase());
   return a < 0 || b < 0 ? 0 : b - a;
 }
 
+// Rounded to one decimal so a fractional feed score never prints a float tail.
 function scoreDelta(diff?: MaterialDiff): number {
-  return diff && diff.score.from !== null ? diff.score.to - diff.score.from : 0;
+  if (!diff || diff.score.from === null) return 0;
+  return Math.round((diff.score.to - diff.score.from) * 10) / 10;
 }
 
 // "B → F" with the new value coloured by direction, or just the value when it
@@ -95,23 +101,31 @@ function appCellHtml(item: DigestItem): string {
 // Build an HTML table for one digest section. It is injected into a {{...}}
 // slot inside the template's <mj-text>, so it must be plain HTML: <mj-*> tags
 // nested in <mj-text> do not render as blocks and the rows run together.
-// Changed apps are listed biggest score drop first. Exported for unit testing.
+// Changed apps are listed worst grade change first, then biggest score drop.
+// Exported for unit testing.
 export function sectionHtml(title: string, items: DigestItem[]): string {
   if (!items.length) return "";
   const withDiff = items.some((it) => it.diff);
   const ordered = withDiff
-    ? [...items].sort((a, b) => scoreDelta(a.diff) - scoreDelta(b.diff))
+    ? [...items].sort(
+        (a, b) =>
+          gradeTrend(b.diff) - gradeTrend(a.diff) || scoreDelta(a.diff) - scoreDelta(b.diff),
+      )
     : items;
+  const gradeStyle = cellStyle(" white-space: nowrap;");
+  const scoreStyle = cellStyle(" white-space: nowrap; padding-right: 0;");
   const rows = ordered
     .map((it) => {
-      if (!it.diff) return `<tr>${appCellHtml(it)}</tr>`;
-      const { grade } = it.diff;
-      const trend = grade.from === null ? 0 : gradeTrend(grade.from, grade.to);
-      const gradeCell = transitionHtml(grade.from, grade.to, trend);
+      if (!withDiff) return `<tr>${appCellHtml(it)}</tr>`;
+      // A changed app whose diff did not resolve still fills all three columns.
+      const gradeCell = it.diff
+        ? transitionHtml(it.diff.grade.from, it.diff.grade.to, gradeTrend(it.diff))
+        : "";
+      const scoreCell = it.diff ? scoreHtml(it.diff) : "";
       return (
         `<tr>${appCellHtml(it)}` +
-        `<td style="${cellStyle(" white-space: nowrap;")}">${gradeCell}</td>` +
-        `<td style="${cellStyle(" white-space: nowrap; padding-right: 0;")}">${scoreHtml(it.diff)}</td></tr>`
+        `<td style="${gradeStyle}">${gradeCell}</td>` +
+        `<td style="${scoreStyle}">${scoreCell}</td></tr>`
       );
     })
     .join("");
@@ -122,7 +136,7 @@ export function sectionHtml(title: string, items: DigestItem[]): string {
     : "";
   return (
     `<p style="color: ${TEXT}; font-size: 15px; font-weight: 600; margin: 8px 0 12px 0;">${escapeHtml(title)}</p>` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 0 24px 0; font-size: 14px; line-height: 20px;">${head}${rows}</table>`
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 0 24px 0; font-family: ${FONT}; font-size: 14px; line-height: 20px; color: ${TEXT};">${head}${rows}</table>`
   );
 }
 
@@ -204,9 +218,7 @@ export async function syncAiTrustIndex(deps?: { feed?: unknown }): Promise<{
   // Map each changed slug to what moved (grade, score, notes). These come from
   // upsertFeedTx, which compares the previous and current records using
   // displayedGrade — the governance grade.
-  const diffBySlug = new Map<string, MaterialDiff>(
-    materialChanged.map(({ slug, ...diff }) => [slug, diff]),
-  );
+  const diffBySlug = new Map(materialChanged.map((m) => [m.slug, m.diff]));
   const changedSlugs = Array.from(
     new Set([...materialChanged.map((m) => m.slug), ...newlyRemoved]),
   );

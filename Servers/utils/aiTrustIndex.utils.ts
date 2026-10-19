@@ -287,8 +287,15 @@ export interface MaterialDiff {
   notes: string[];
 }
 
-export interface MaterialChange extends MaterialDiff {
+export interface MaterialChange {
   slug: string;
+  diff: MaterialDiff;
+}
+
+// Scores come from a JSON feed and from stored JSONB; read either as a number.
+function toScore(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  return value == null || !Number.isFinite(n) ? null : n;
 }
 
 // Compare the material fields of the previous and current app records. Grade
@@ -312,11 +319,15 @@ export function diffMaterialFields(
       next.processesBiometrics ? "now processes biometrics" : "no longer processes biometrics",
     );
   }
-  return {
-    grade: { from: prev?.displayedGrade ?? null, to: next.displayedGrade },
-    score: { from: prev?.scoreOutOf100 ?? null, to: next.scoreOutOf100 },
-    notes,
-  };
+  const grade = { from: prev?.displayedGrade ?? null, to: next.displayedGrade };
+  const score = { from: toScore(prev?.scoreOutOf100), to: toScore(next.scoreOutOf100) ?? 0 };
+  // The material hash also covers the uncapped letterGrade, which the digest
+  // never shows. When only that moved, say so rather than show a row with no
+  // visible change.
+  if (!notes.length && grade.from === grade.to && score.from === score.to) {
+    notes.push("assessment updated");
+  }
+  return { grade, score, notes };
 }
 
 export async function upsertFeedTx(
@@ -366,7 +377,7 @@ export async function upsertFeedTx(
           // `data` is JSONB — the driver returns it parsed. Read the previous
           // material fields from it so the digest can show old → new.
           const prev = existing[0].data as Partial<ITrustIndexAppData> | null;
-          materialChanged.push({ slug, ...diffMaterialFields(prev, app) });
+          materialChanged.push({ slug, diff: diffMaterialFields(prev, app) });
         }
         const fullChanged = existing[0].full_hash !== fullHash;
         await sequelize.query(
