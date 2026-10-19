@@ -45,7 +45,9 @@ import {
   entryScore,
   findMetricEntry,
   entryError,
+  entryReason,
   lowerIsBetter,
+  METRIC_STATUS_COLORS,
   metricStatus,
   type MetricScoreEntry,
 } from "./metricScore";
@@ -1567,12 +1569,7 @@ export default function ExperimentDetailContent({
                                   padding: "12px 16px",
                                   borderBottom: `1px solid ${palette.border.dark}`,
                                   borderRight: `1px solid ${palette.border.dark}`,
-                                  backgroundColor:
-                                    status === "passed"
-                                      ? palette.status.success.bg
-                                      : status === "failed"
-                                        ? palette.status.error.bg
-                                        : "transparent",
+                                  backgroundColor: METRIC_STATUS_COLORS[status].bg,
                                   fontSize: "12px",
                                   fontWeight: 500,
                                   color:
@@ -1916,19 +1913,11 @@ export default function ExperimentDetailContent({
                                 const entry = metricData as MetricScoreEntry;
                                 const score = entryScore(entry);
                                 const status = metricStatus(metricName, entry);
-                                const statusColor =
-                                  status === "passed"
-                                    ? palette.status.success.text
-                                    : status === "failed"
-                                      ? palette.status.error.text
-                                      : palette.status.default.text;
-                                const rawReason =
-                                  typeof metricData === "object" && metricData !== null
-                                    ? (metricData as { reason?: string }).reason
-                                    : undefined;
-                                // An errored metric has no reason; show its error as written.
+                                const statusColor = METRIC_STATUS_COLORS[status].text;
+                                // An error explains the failure, so it wins over the judge's
+                                // reason and is shown as written.
                                 const reason =
-                                  parseMetricReason(rawReason) || entryError(entry) || undefined;
+                                  entryError(entry) || parseMetricReason(entryReason(entry));
                                 const friendlyMetric = formatMetricName(
                                   metricName.replace(/^G-Eval\s*\((.+)\)$/i, "$1"),
                                 );

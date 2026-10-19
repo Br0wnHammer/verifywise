@@ -1,3 +1,5 @@
+import { palette } from "../../themes/palette";
+
 // One metric's entry in an evaluation log's metadata.metric_scores.
 // Older logs store a bare number; current ones store an object.
 export type MetricScoreEntry =
@@ -8,6 +10,7 @@ export type MetricScoreEntry =
       threshold?: number | null;
       skipped?: boolean;
       error?: string;
+      reason?: string;
     }
   | null
   | undefined;
@@ -45,14 +48,15 @@ export const entryScore = (entry: MetricScoreEntry): number | null => {
 export const entryError = (entry: MetricScoreEntry): string | null =>
   typeof entry === "object" && typeof entry?.error === "string" ? entry.error : null;
 
-// The backend's passed flag already means "good" for every metric, lower is better
-// ones included. Without it, a higher is better metric is compared with its stored
-// threshold. Lower is better ones use 0.5: for G-Eval judges their stored threshold
-// applies to the score before it was inverted.
-export const metricPassed = (metricName: string, entry: MetricScoreEntry): boolean => {
+export const entryReason = (entry: MetricScoreEntry): string | undefined =>
+  typeof entry === "object" && typeof entry?.reason === "string" ? entry.reason : undefined;
+
+// For a scored entry. The backend's passed flag already means "good" for every metric,
+// lower is better ones included. Without it, a higher is better metric is compared with
+// its stored threshold. Lower is better ones use 0.5: for G-Eval judges their stored
+// threshold applies to the score before it was inverted.
+const scoredMetricPassed = (metricName: string, entry: MetricScoreEntry, score: number) => {
   if (typeof entry === "object" && typeof entry?.passed === "boolean") return entry.passed;
-  const score = entryScore(entry);
-  if (score === null) return false;
   if (lowerIsBetter(metricName)) return score <= 0.5;
   const threshold =
     typeof entry === "object" && typeof entry?.threshold === "number" ? entry.threshold : 0.5;
@@ -61,13 +65,25 @@ export const metricPassed = (metricName: string, entry: MetricScoreEntry): boole
 
 export type MetricStatus = "passed" | "failed" | "notEvaluated";
 
-// One rule for every view. An errored metric was attempted and failed. A missing or
-// skipped metric (e.g. no retrieval context), or one with no score and no error, was
-// not evaluated and is left out of pass counts.
+// One rule for every view:
+// - an error, or an explicit passed: false without a score (e.g. an unparseable judge
+//   reply), is a failure;
+// - a missing or skipped metric (e.g. no retrieval context), or one with no score and
+//   no failure recorded, was not evaluated and is left out of pass counts;
+// - otherwise the score decides.
 export const metricStatus = (metricName: string, entry: MetricScoreEntry): MetricStatus => {
   if (entry == null) return "notEvaluated";
-  if (typeof entry === "object" && entry.skipped === true) return "notEvaluated";
   if (entryError(entry) !== null) return "failed";
-  if (entryScore(entry) === null) return "notEvaluated";
-  return metricPassed(metricName, entry) ? "passed" : "failed";
+  if (typeof entry === "object" && entry.skipped === true) return "notEvaluated";
+  const score = entryScore(entry);
+  if (score === null) {
+    return typeof entry === "object" && entry.passed === false ? "failed" : "notEvaluated";
+  }
+  return scoredMetricPassed(metricName, entry, score) ? "passed" : "failed";
+};
+
+export const METRIC_STATUS_COLORS: Record<MetricStatus, { bg: string; text: string }> = {
+  passed: { bg: palette.status.success.bg, text: palette.status.success.text },
+  failed: { bg: palette.status.error.bg, text: palette.status.error.text },
+  notEvaluated: { bg: "transparent", text: palette.status.default.text },
 };
