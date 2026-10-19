@@ -81,7 +81,7 @@
     "dayjs": "^1.11.23",
     "dompurify": "^3.4.16",
     "dotenv": "^18.0.6",
-    "emoji-picker-react": "^4.22.3",
+    "emoji-picker-react": "^5.0.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "exceljs": "^4.4.0",
