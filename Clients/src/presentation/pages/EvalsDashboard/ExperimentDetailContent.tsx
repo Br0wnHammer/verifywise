@@ -41,7 +41,14 @@ import {
   type EvaluationLog,
 } from "../../../application/repository/deepEval.repository";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
-import { isScored, lowerIsBetter, metricPassed, type MetricScoreEntry } from "./metricScore";
+import {
+  entryScore,
+  findMetricEntry,
+  isSkipped,
+  lowerIsBetter,
+  metricPassed,
+  type MetricScoreEntry,
+} from "./metricScore";
 
 // Preprocess LaTeX delimiters to work with remark-math
 const preprocessLatex = (text: string): string => {
@@ -1414,32 +1421,11 @@ export default function ExperimentDetailContent({
         const metricColumns = Array.from(allMetricNames);
 
         // Helper to get metric score from log
-        const getMetricScore = (log: EvaluationLog, metricName: string): number | null => {
-          if (!log.metadata?.metric_scores) return null;
-          // Try exact match first
-          const scores = log.metadata.metric_scores as Record<string, number | { score?: number }>;
-          if (scores[metricName] !== undefined) {
-            const data = scores[metricName];
-            return typeof data === "number" ? data : (data?.score ?? null);
-          }
-          // Try G-Eval format
-          const gevalKey = `G-Eval (${metricName})`;
-          if (scores[gevalKey] !== undefined) {
-            const data = scores[gevalKey];
-            return typeof data === "number" ? data : (data?.score ?? null);
-          }
-          // Try case-insensitive match
-          const key = Object.keys(scores).find(
-            (k) =>
-              k.toLowerCase() === metricName.toLowerCase() ||
-              k.replace(/^G-Eval\s*\((.+)\)$/i, "$1").toLowerCase() === metricName.toLowerCase(),
+        const getMetricEntry = (log: EvaluationLog, metricName: string): MetricScoreEntry =>
+          findMetricEntry(
+            log.metadata?.metric_scores as Record<string, MetricScoreEntry> | undefined,
+            metricName,
           );
-          if (key) {
-            const data = scores[key];
-            return typeof data === "number" ? data : (data?.score ?? null);
-          }
-          return null;
-        };
 
         return (
           <>
@@ -1569,28 +1555,9 @@ export default function ExperimentDetailContent({
                             {log.input_text || "-"}
                           </td>
                           {metricColumns.map((metric) => {
-                            const score = getMetricScore(log, metric);
-                            // Prefer the backend-computed passed flag; fall back to the threshold
-                            const rawMetricData = (() => {
-                              const ms = log.metadata?.metric_scores as
-                                | Record<string, number | { score?: number; passed?: boolean }>
-                                | undefined;
-                              if (!ms) return undefined;
-                              return (
-                                ms[metric] ??
-                                ms[`G-Eval (${metric})`] ??
-                                ms[
-                                  Object.keys(ms).find(
-                                    (k) =>
-                                      k.toLowerCase() === metric.toLowerCase() ||
-                                      k.replace(/^G-Eval\s*\((.+)\)$/i, "$1").toLowerCase() ===
-                                        metric.toLowerCase(),
-                                  ) ?? ""
-                                ]
-                              );
-                            })();
-                            const passed =
-                              score !== null && metricPassed(metric, rawMetricData ?? score);
+                            const entry = getMetricEntry(log, metric);
+                            const score = entryScore(entry);
+                            const passed = score !== null && metricPassed(metric, entry);
                             return (
                               <td
                                 key={metric}
@@ -1663,8 +1630,9 @@ export default function ExperimentDetailContent({
                   string,
                   MetricScoreEntry
                 >;
-                const scoreEntries = Object.entries(metricScores).filter(([, data]) =>
-                  isScored(data),
+                // Skipped metrics were never evaluated; errored ones count as failed.
+                const scoreEntries = Object.entries(metricScores).filter(
+                  ([, data]) => !isSkipped(data),
                 );
                 const passedCount = scoreEntries.filter(([name, data]) =>
                   metricPassed(name, data),
@@ -1675,7 +1643,11 @@ export default function ExperimentDetailContent({
                     isOpen={selectedSampleIndex !== null}
                     onClose={() => setSelectedSampleIndex(null)}
                     title={`Sample ${selectedSampleIndex + 1}`}
-                    description={`${passedCount}/${scoreEntries.length} metrics passed`}
+                    description={
+                      scoreEntries.length === 0
+                        ? "No metrics were evaluated"
+                        : `${passedCount}/${scoreEntries.length} metrics passed`
+                    }
                     maxWidth="1100px"
                     fitContent
                     customFooter={
@@ -1943,14 +1915,13 @@ export default function ExperimentDetailContent({
                           <Stack spacing={2} sx={{ flex: 1, overflowY: "auto", pr: 1 }}>
                             {Object.entries(selectedLog.metadata.metric_scores).map(
                               ([metricName, metricData]) => {
-                                const score =
-                                  typeof metricData === "number"
-                                    ? metricData
-                                    : (metricData as { score?: number })?.score;
-                                const passed = metricPassed(
-                                  metricName,
-                                  metricData as MetricScoreEntry,
-                                );
+                                const entry = metricData as MetricScoreEntry;
+                                const score = entryScore(entry);
+                                const statusColor = isSkipped(entry)
+                                  ? palette.status.default.text
+                                  : metricPassed(metricName, entry)
+                                    ? palette.status.success.text
+                                    : palette.status.error.text;
                                 const rawReason =
                                   typeof metricData === "object" && metricData !== null
                                     ? (metricData as { reason?: string }).reason
@@ -1968,7 +1939,7 @@ export default function ExperimentDetailContent({
                                       borderRadius: "6px",
                                       backgroundColor: palette.background.main,
                                       border: `1px solid ${palette.border.light}`,
-                                      borderLeft: `3px solid ${passed ? palette.status.success.text : palette.status.error.text}`,
+                                      borderLeft: `3px solid ${statusColor}`,
                                     }}
                                   >
                                     <Stack
@@ -1990,9 +1961,7 @@ export default function ExperimentDetailContent({
                                         sx={{
                                           fontSize: 13,
                                           fontWeight: 700,
-                                          color: passed
-                                            ? palette.status.success.text
-                                            : palette.status.error.text,
+                                          color: statusColor,
                                         }}
                                       >
                                         {typeof score === "number"
@@ -2014,10 +1983,8 @@ export default function ExperimentDetailContent({
                                       <Box
                                         sx={{
                                           height: "100%",
-                                          width: `${(typeof score === "number" ? score : 0) * 100}%`,
-                                          backgroundColor: passed
-                                            ? palette.status.success.text
-                                            : palette.status.error.text,
+                                          width: `${(score ?? 0) * 100}%`,
+                                          backgroundColor: statusColor,
                                           borderRadius: 2,
                                           transition: "width 0.3s ease",
                                         }}

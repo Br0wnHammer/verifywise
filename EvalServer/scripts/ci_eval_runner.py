@@ -26,7 +26,7 @@ except ImportError:
     print("ERROR: 'requests' package required. Install with: pip install requests")
     sys.exit(2)
 
-INVERTED_KEYWORDS = ("bias", "toxicity", "hallucination", "conversationsafety")
+INVERTED_KEYWORDS = ("bias", "toxicity", "hallucination")
 EM_DASH = "\u2014"
 CHECK = "\u2705"
 CROSS = "\u274C"
