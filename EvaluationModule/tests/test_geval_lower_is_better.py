@@ -68,16 +68,26 @@ def test_unparseable_reply_has_no_score_and_fails(lower_is_better):
     assert not metric.is_successful()
 
 
-def test_evaluator_marks_the_three_safety_metrics_lower_is_better():
-    import inspect
-
+def test_evaluator_marks_the_three_safety_metrics_lower_is_better(monkeypatch):
     from deepeval_engine import deepeval_evaluator
+    from deepeval_engine.deepeval_evaluator import DeepEvalEvaluator, GEvalLikeMetric
 
-    source = inspect.getsource(deepeval_evaluator.DeepEvalEvaluator._initialize_metrics)
-    for rubric in ("Hallucination Detection:", "Toxicity Detection:", "Bias Detection:"):
-        start = source.index(rubric)
-        block = source[source.rindex("GEvalLikeMetric(", 0, start) : start]
-        assert "lower_is_better=True" in block, rubric
+    # A non-OpenAI judge takes the G-Eval path; the judge is never called here.
+    monkeypatch.setenv("G_EVAL_PROVIDER", "ollama")
+    monkeypatch.setattr(deepeval_evaluator, "get_judge_llm", lambda **_: None)
+    evaluator = DeepEvalEvaluator.__new__(DeepEvalEvaluator)
+    evaluator.metric_thresholds = {}
+
+    metrics = evaluator._initialize_metrics(
+        {"hallucination": True, "toxicity": True, "bias": True, "correctness": True}
+    )
+    flags = {
+        name: metric.lower_is_better
+        for name, metric in metrics
+        if isinstance(metric, GEvalLikeMetric)
+    }
+    assert {name for name, lower in flags.items() if lower} == {"Hallucination", "Toxicity", "Bias"}
+    assert flags["Correctness"] is False
 
 
 def test_threshold_keys_are_normalised_to_snake_case():
@@ -88,8 +98,27 @@ def test_threshold_keys_are_normalised_to_snake_case():
     ) == {"answer_relevancy": 0.7, "instruction_following": 0.6, "bias": 0.2}
 
 
+def test_threshold_aliases_map_to_the_metric_they_enable():
+    from deepeval_engine.deepeval_evaluator import normalize_metric_thresholds
+
+    assert normalize_metric_thresholds(
+        {"planQuality": 0.8, "contextualRelevancy": 0.6, "plan_quality": 0.8}
+    ) == {"planning_quality": 0.8, "context_relevancy": 0.6}
+
+
+def test_threshold_normalisation_accepts_numeric_strings():
+    from deepeval_engine.deepeval_evaluator import normalize_metric_thresholds
+
+    assert normalize_metric_thresholds({"bias": "0.2"}) == {"bias": 0.2}
+
+
 def test_threshold_normalisation_drops_non_numeric_values():
     from deepeval_engine.deepeval_evaluator import normalize_metric_thresholds
 
-    assert normalize_metric_thresholds({"bias": None, "toxicity": "0.5", "hallucination": True}) == {}
+    assert (
+        normalize_metric_thresholds(
+            {"bias": None, "toxicity": "high", "hallucination": True, "correctness": float("nan")}
+        )
+        == {}
+    )
     assert normalize_metric_thresholds(None) == {}

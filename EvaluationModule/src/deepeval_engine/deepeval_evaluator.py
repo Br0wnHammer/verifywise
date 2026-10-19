@@ -224,17 +224,38 @@ def get_judge_llm(provider: str, model_name: str):
     return CustomDeepEvalLLM(model_name=model_name, provider=provider)
 
 
-def normalize_metric_thresholds(thresholds: Optional[Dict[str, Any]]) -> Dict[str, float]:
-    """Thresholds keyed by snake_case metric name, keeping only numeric values.
+# Alternative names that enable a metric under another key. Keep in sync with
+# metric_name_map in EvalServer/src/utils/run_evaluation.py.
+_THRESHOLD_KEY_ALIASES = {
+    "contextual_relevancy": "context_relevancy",
+    "plan_quality": "planning_quality",
+}
 
-    answerRelevancy and answer_relevancy both become answer_relevancy.
+
+def normalize_metric_thresholds(thresholds: Optional[Dict[str, Any]]) -> Dict[str, float]:
+    """Thresholds keyed by the snake_case metric name the evaluator looks up.
+
+    answerRelevancy and answer_relevancy both become answer_relevancy; aliases such as
+    planQuality become the metric they enable (planning_quality). Numeric strings are
+    accepted; anything else is dropped with a warning, so the metric keeps its default.
     """
     normalized: Dict[str, float] = {}
     for key, value in (thresholds or {}).items():
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            continue
         snake = re.sub(r"(?<!^)(?=[A-Z])", "_", str(key)).lower()
-        normalized[snake] = float(value)
+        snake = _THRESHOLD_KEY_ALIASES.get(snake, snake)
+        number: Optional[float] = None
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            number = float(value)
+        elif isinstance(value, str):
+            try:
+                number = float(value)
+            except ValueError:
+                number = None
+        if number is None or number != number:  # number != number catches NaN
+            if value is not None:
+                print(f"⚠️  Ignoring non-numeric threshold for {snake}: {value!r}")
+            continue
+        normalized[snake] = number
     return normalized
 
 
