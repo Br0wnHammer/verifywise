@@ -46,9 +46,11 @@ import {
   findMetricEntry,
   entryError,
   entryReason,
-  lowerIsBetter,
+  entryThreshold,
   METRIC_STATUS_COLORS,
   metricStatus,
+  SCORE_BAND_COLORS,
+  scoreBand,
   type MetricScoreEntry,
 } from "./metricScore";
 
@@ -910,7 +912,11 @@ export default function ExperimentDetailContent({
           };
 
           // Calculate overall averages and per-sample scores for sparklines
-          const metricsSum: Record<string, { sum: number; count: number; scores: number[] }> = {};
+          // threshold = the first one stored on the metric's entries (the run uses one).
+          const metricsSum: Record<
+            string,
+            { sum: number; count: number; scores: number[]; threshold: number | null }
+          > = {};
           logs.forEach((log) => {
             if (log.metadata?.metric_scores) {
               Object.entries(log.metadata.metric_scores).forEach(([rawKey, value]) => {
@@ -918,10 +924,12 @@ export default function ExperimentDetailContent({
                 const key = displayNameToKey[rawKey] || rawKey;
                 const score = entryScore(value as MetricScoreEntry);
                 if (score !== null) {
-                  if (!metricsSum[key]) metricsSum[key] = { sum: 0, count: 0, scores: [] };
+                  if (!metricsSum[key])
+                    metricsSum[key] = { sum: 0, count: 0, scores: [], threshold: null };
                   metricsSum[key].sum += score;
                   metricsSum[key].count += 1;
                   metricsSum[key].scores.push(score);
+                  metricsSum[key].threshold ??= entryThreshold(value as MetricScoreEntry);
                 }
               });
             }
@@ -1039,58 +1047,20 @@ export default function ExperimentDetailContent({
             },
           };
 
-          // Get score color based on value thresholds.
-          // Bias, Toxicity and Hallucination are stored lower is better (0 = none found = best).
-          const getScoreColor = (score: number | undefined, metricKey?: string) => {
+          // Colour the average against the metric's pass line (see scoreBand).
+          const getScoreColor = (
+            score: number | undefined,
+            metricName: string,
+            threshold: number | null,
+          ) => {
             if (score === undefined)
               return {
                 bg: palette.status.default.bg,
                 text: palette.status.default.text,
                 icon: palette.status.default.text,
               };
-
-            // Lower-is-better metrics: hallucination, bias, toxicity
-            const isInverse = metricKey && lowerIsBetter(metricKey);
-
-            if (isInverse) {
-              // For inverse metrics: low = good (green), high = bad (red)
-              if (score <= 0.3)
-                return {
-                  bg: palette.status.success.bg,
-                  text: palette.status.success.text,
-                  icon: palette.status.success.text,
-                };
-              if (score <= 0.6)
-                return {
-                  bg: palette.status.warning.bg,
-                  text: palette.status.warning.text,
-                  icon: palette.status.warning.text,
-                };
-              return {
-                bg: palette.status.error.bg,
-                text: palette.status.error.text,
-                icon: palette.status.error.text,
-              };
-            }
-
-            // Normal metrics: high = good (green), low = bad (red)
-            if (score >= 0.7)
-              return {
-                bg: palette.status.success.bg,
-                text: palette.status.success.text,
-                icon: palette.status.success.text,
-              };
-            if (score >= 0.4)
-              return {
-                bg: palette.status.warning.bg,
-                text: palette.status.warning.text,
-                icon: palette.status.warning.text,
-              };
-            return {
-              bg: palette.status.error.bg,
-              text: palette.status.error.text,
-              icon: palette.status.error.text,
-            };
+            const { bg, text } = SCORE_BAND_COLORS[scoreBand(metricName, score, threshold)];
+            return { bg, text, icon: text };
           };
 
           // Simple SVG sparkline component
@@ -1226,7 +1196,7 @@ export default function ExperimentDetailContent({
               metricsSum[metric.key];
             const avgValue = entry ? entry.sum / Math.max(1, entry.count) : undefined;
             const scores = entry?.scores || [];
-            const colors = getScoreColor(avgValue, metric.label);
+            const colors = getScoreColor(avgValue, metric.label, entry?.threshold ?? null);
             const BackgroundIcon = getMetricIcon(metric.key);
 
             return (

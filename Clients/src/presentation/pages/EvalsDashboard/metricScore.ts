@@ -52,6 +52,9 @@ export const entryScore = (entry: MetricScoreEntry): number | null => {
 export const entryError = (entry: MetricScoreEntry): string | null =>
   typeof entry === "object" && typeof entry?.error === "string" ? entry.error : null;
 
+export const entryThreshold = (entry: MetricScoreEntry): number | null =>
+  typeof entry === "object" && typeof entry?.threshold === "number" ? entry.threshold : null;
+
 export const entryReason = (entry: MetricScoreEntry): string | undefined =>
   typeof entry === "object" && typeof entry?.reason === "string" ? entry.reason : undefined;
 
@@ -62,9 +65,7 @@ export const entryReason = (entry: MetricScoreEntry): string | undefined =>
 const scoredMetricPassed = (metricName: string, entry: MetricScoreEntry, score: number) => {
   if (typeof entry === "object" && typeof entry?.passed === "boolean") return entry.passed;
   if (lowerIsBetter(metricName)) return score <= 0.5;
-  const threshold =
-    typeof entry === "object" && typeof entry?.threshold === "number" ? entry.threshold : 0.5;
-  return score >= threshold;
+  return score >= (entryThreshold(entry) ?? 0.5);
 };
 
 export type MetricStatus = "passed" | "failed" | "notEvaluated";
@@ -90,4 +91,35 @@ export const METRIC_STATUS_COLORS: Record<MetricStatus, { bg: string; text: stri
   passed: { bg: palette.status.success.bg, text: palette.status.success.text },
   failed: { bg: palette.status.error.bg, text: palette.status.error.text },
   notEvaluated: { bg: "transparent", text: palette.status.default.text },
+};
+
+export type ScoreBand = "good" | "close" | "failed";
+
+// Passing by less than this margin is shown as "close" (amber).
+const CLOSE_MARGIN = 0.2;
+const EPSILON = 1e-9;
+
+// Bands an average score against the metric's pass line, so the colour agrees with
+// pass/fail: failed = misses the threshold; close = passes by less than CLOSE_MARGIN;
+// good otherwise. A perfect score is always good, even when the threshold leaves less
+// than CLOSE_MARGIN of headroom. Scores and thresholds share one scale; lower is better
+// metrics pass at or below the threshold.
+export const scoreBand = (
+  metricName: string,
+  score: number,
+  threshold: number | null = null,
+): ScoreBand => {
+  const line = threshold ?? 0.5;
+  const inverse = lowerIsBetter(metricName);
+  const margin = inverse ? line - score : score - line;
+  if (margin < -EPSILON) return "failed";
+  const perfect = inverse ? score <= EPSILON : score >= 1 - EPSILON;
+  if (perfect || margin >= CLOSE_MARGIN - EPSILON) return "good";
+  return "close";
+};
+
+export const SCORE_BAND_COLORS: Record<ScoreBand, { bg: string; text: string }> = {
+  good: { bg: palette.status.success.bg, text: palette.status.success.text },
+  close: { bg: palette.status.warning.bg, text: palette.status.warning.text },
+  failed: { bg: palette.status.error.bg, text: palette.status.error.text },
 };
