@@ -258,6 +258,15 @@ describe("diffMaterialFields", () => {
     expect(diffMaterialFields(prev, feedApp("a0")).score).toEqual({ from: 80, to: 80 });
   });
 
+  it("reads a non-numeric score as unknown, never 0", () => {
+    for (const bad of ["", "N/A", true, [], {}]) {
+      const prev = { ...feedApp("a0"), scoreOutOf100: bad as unknown as number };
+      const next = { ...feedApp("a0"), scoreOutOf100: bad as unknown as number };
+      const out = diffMaterialFields(prev, next).score;
+      expect(out).toEqual({ from: null, to: null });
+    }
+  });
+
   it("has no previous values when no previous record exists", () => {
     const out = diffMaterialFields(null, feedApp("a0"));
     expect(out.grade).toEqual({ from: null, to: "B" });

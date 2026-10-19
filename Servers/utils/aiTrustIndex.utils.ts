@@ -283,7 +283,7 @@ export async function getMetaQuery() {
 // `from === to` means that field did not change.
 export interface MaterialDiff {
   grade: { from: string | null; to: string };
-  score: { from: number | null; to: number };
+  score: { from: number | null; to: number | null };
   notes: string[];
 }
 
@@ -292,10 +292,15 @@ export interface MaterialChange {
   diff: MaterialDiff;
 }
 
-// Scores come from a JSON feed and from stored JSONB; read either as a number.
+// Scores come from a JSON feed and from stored JSONB. Accept a finite number or
+// a numeric string; anything else is unknown (null), never a made-up 0.
 function toScore(value: unknown): number | null {
-  const n = typeof value === "number" ? value : Number(value);
-  return value == null || !Number.isFinite(n) ? null : n;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 // Compare the material fields of the previous and current app records. Grade
@@ -320,7 +325,7 @@ export function diffMaterialFields(
     );
   }
   const grade = { from: prev?.displayedGrade ?? null, to: next.displayedGrade };
-  const score = { from: toScore(prev?.scoreOutOf100), to: toScore(next.scoreOutOf100) ?? 0 };
+  const score = { from: toScore(prev?.scoreOutOf100), to: toScore(next.scoreOutOf100) };
   // The material hash also covers the uncapped letterGrade, which the digest
   // never shows. When only that moved, say so rather than show a row with no
   // visible change.

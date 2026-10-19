@@ -3,7 +3,12 @@ jest.mock("../../emailService", () => ({
   sendAutomationEmail: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { syncAiTrustIndex, escapeHtml, sectionHtml } from "../actions/syncAiTrustIndex";
+import {
+  syncAiTrustIndex,
+  escapeHtml,
+  changedSectionHtml,
+  removedSectionHtml,
+} from "../actions/syncAiTrustIndex";
 import * as utils from "../../../utils/aiTrustIndex.utils";
 import { sendAutomationEmail } from "../../emailService";
 import { compileMjmlToHtml } from "../../../tools/mjmlCompiler";
@@ -119,39 +124,39 @@ describe("email HTML escaping", () => {
     );
   });
   it("renders an item's name HTML-escaped inside the section", () => {
-    const html = sectionHtml("Changed", [{ name: "<b>evil</b>" }]);
+    const html = changedSectionHtml([{ name: "<b>evil</b>" }]);
     expect(html).toContain("&lt;b&gt;evil&lt;/b&gt;");
     expect(html).not.toContain("<b>evil</b>");
   });
   it("renders plain HTML table rows, never <mj-*> tags", () => {
-    const html = sectionHtml("Changed", [{ name: "Workday", diff: diff("B", "F", 60, 34) }]);
+    const html = changedSectionHtml([{ name: "Workday", diff: diff("B", "F", 60, 34) }]);
     expect(html).toContain("<table");
     expect(html).toContain("<tr>");
     expect(html).not.toMatch(/<mj-/);
   });
   it("shows grade and score as old → new with the score delta", () => {
-    const html = sectionHtml("Changed", [{ name: "Workday", diff: diff("B", "F", 60, 34) }]);
+    const html = changedSectionHtml([{ name: "Workday", diff: diff("B", "F", 60, 34) }]);
     expect(html).toMatch(/B →<\/span> <span style="color: #B42318[^"]*">F</);
     expect(html).toMatch(/60 →<\/span> <span style="color: #B42318[^"]*">34</);
     expect(html).toContain("−26");
   });
   it("colours an improvement green", () => {
-    const html = sectionHtml("Changed", [{ name: "Gemini", diff: diff("F", "C", 31, 53) }]);
+    const html = changedSectionHtml([{ name: "Gemini", diff: diff("F", "C", 31, 53) }]);
     expect(html).toMatch(/<span style="color: #067647[^"]*">C</);
     expect(html).toContain("+22");
   });
   it("shows an unchanged grade as the plain value", () => {
-    const html = sectionHtml("Changed", [{ name: "DeepSeek", diff: diff("C", "C", 54, 55) }]);
+    const html = changedSectionHtml([{ name: "DeepSeek", diff: diff("C", "C", 54, 55) }]);
     expect(html).not.toContain("C →");
   });
   it("lists notes in sentence case under the app name", () => {
-    const html = sectionHtml("Changed", [
+    const html = changedSectionHtml([
       { name: "Cursor", diff: diff("B", "C", 69, 59, ["new dealbreaker flag", "policy updated"]) },
     ]);
     expect(html).toContain("New dealbreaker flag · Policy updated");
   });
   it("lists the biggest score drop first", () => {
-    const html = sectionHtml("Changed", [
+    const html = changedSectionHtml([
       { name: "Up", diff: diff("F", "C", 31, 53) },
       { name: "Small drop", diff: diff("B", "B", 66, 65) },
       { name: "Big drop", diff: diff("B", "F", 60, 34) },
@@ -160,19 +165,41 @@ describe("email HTML escaping", () => {
     expect(html.indexOf("Small drop")).toBeLessThan(html.indexOf("Up"));
   });
   it("lists a grade drop above a larger score drop with no grade change", () => {
-    const html = sectionHtml("Changed", [
+    const html = changedSectionHtml([
       { name: "Score only", diff: diff("C", "C", 66, 50) },
       { name: "Grade drop", diff: diff("B", "F", 60, 60) },
     ]);
     expect(html.indexOf("Grade drop")).toBeLessThan(html.indexOf("Score only"));
   });
+  it("shows an unknown current score as a dash, never a drop to 0", () => {
+    const html = changedSectionHtml([
+      { name: "Odd", diff: { ...diff("C", "C", 72, 72), score: { from: 72, to: null } } },
+    ]);
+    expect(html).toContain("—");
+    expect(html).not.toMatch(/72 →/);
+  });
+  it("keeps Grade and Score columns when no changed app has a diff", () => {
+    const html = changedSectionHtml([{ name: "No diff" }]);
+    expect(html).toContain(">Grade<");
+    expect(html.slice(html.indexOf("No diff")).match(/<td/g)).toHaveLength(2);
+  });
+  it("rounds displayed scores, and treats a sub-0.05 move as unchanged", () => {
+    const html = changedSectionHtml([
+      { name: "Frac", diff: diff("C", "C", 70.15, 71.2833333) },
+      { name: "Tiny", diff: diff("C", "C", 70.01, 70.04) },
+    ]);
+    expect(html).toContain("71.3");
+    expect(html).not.toContain("71.28");
+    const tinyRow = html.slice(html.indexOf("Tiny"));
+    expect(tinyRow.slice(0, tinyRow.indexOf("</tr>"))).not.toContain("→");
+  });
   it("rounds a fractional score delta", () => {
-    const html = sectionHtml("Changed", [{ name: "Frac", diff: diff("C", "C", 70.2, 71.3) }]);
+    const html = changedSectionHtml([{ name: "Frac", diff: diff("C", "C", 70.2, 71.3) }]);
     expect(html).toContain("+1.1");
     expect(html).not.toContain("1.0999");
   });
   it("gives a changed app with no diff empty grade and score cells", () => {
-    const html = sectionHtml("Changed", [
+    const html = changedSectionHtml([
       { name: "Has diff", diff: diff("B", "C", 60, 50) },
       { name: "No diff" },
     ]);
@@ -180,7 +207,7 @@ describe("email HTML escaping", () => {
     expect(row.match(/<td/g)).toHaveLength(2);
   });
   it("renders removed apps as name-only rows without a header", () => {
-    const html = sectionHtml("No longer assessed", [{ name: "Leonardo AI" }]);
+    const html = removedSectionHtml([{ name: "Leonardo AI" }]);
     expect(html).toContain("Leonardo AI");
     expect(html).not.toContain("<th");
   });
@@ -190,7 +217,7 @@ describe("email HTML escaping", () => {
       "utf8",
     );
     const out = await compileMjmlToHtml(template, {
-      changedSection: sectionHtml("Changed", [
+      changedSection: changedSectionHtml([
         { name: "Workday", diff: diff("B", "F", 60, 34) },
         { name: "Cursor", diff: diff("B", "C", 69, 59) },
       ]),
@@ -203,6 +230,6 @@ describe("email HTML escaping", () => {
     expect(out).toMatch(/<tr><td[^>]*><span[^>]*>Cursor</);
   });
   it("returns empty string for no items", () => {
-    expect(sectionHtml("Changed", [])).toBe("");
+    expect(changedSectionHtml([])).toBe("");
   });
 });

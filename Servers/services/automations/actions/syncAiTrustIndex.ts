@@ -46,6 +46,7 @@ const WORSE = "#B42318";
 const BETTER = "#067647";
 const DIVIDER = "1px solid #eaecf0";
 // Outlook and some other clients do not pass the template's font into a table.
+// Keep in step with <mj-all font-family> in templates/ai-trust-index-digest.mjml.
 const FONT =
   "Geist, Inter, system-ui, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif";
 const GRADE_ORDER = "ABCDF";
@@ -58,10 +59,13 @@ function gradeTrend(diff?: MaterialDiff): number {
   return a < 0 || b < 0 ? 0 : b - a;
 }
 
-// Rounded to one decimal so a fractional feed score never prints a float tail.
+// Scores and deltas are shown to one decimal so a fractional feed score never
+// prints a float tail.
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
 function scoreDelta(diff?: MaterialDiff): number {
-  if (!diff || diff.score.from === null) return 0;
-  return Math.round((diff.score.to - diff.score.from) * 10) / 10;
+  if (!diff || diff.score.from === null || diff.score.to === null) return 0;
+  return round1(round1(diff.score.to) - round1(diff.score.from));
 }
 
 // "B → F" with the new value coloured by direction, or just the value when it
@@ -74,8 +78,13 @@ function transitionHtml(from: string | null, to: string, trend: number): string 
 
 function scoreHtml(diff: MaterialDiff): string {
   const { from, to } = diff.score;
+  if (to === null) return `<span style="color: ${MUTED};">—</span>`;
   const delta = scoreDelta(diff);
-  const cell = transitionHtml(from === null ? null : String(from), String(to), -delta);
+  const cell = transitionHtml(
+    from === null ? null : String(round1(from)),
+    String(round1(to)),
+    -delta,
+  );
   if (!delta) return cell;
   const sign = delta > 0 ? "+" : "−";
   return `${cell}<br><span style="color: ${delta > 0 ? BETTER : WORSE}; font-size: 12px;">${sign}${Math.abs(delta)}</span>`;
@@ -98,26 +107,30 @@ function appCellHtml(item: DigestItem): string {
   return `<td style="${cellStyle()}">${name}${notes}</td>`;
 }
 
-// Build an HTML table for one digest section. It is injected into a {{...}}
-// slot inside the template's <mj-text>, so it must be plain HTML: <mj-*> tags
-// nested in <mj-text> do not render as blocks and the rows run together.
-// Changed apps are listed worst grade change first, then biggest score drop.
-// Exported for unit testing.
-export function sectionHtml(title: string, items: DigestItem[]): string {
+function sectionTitleHtml(title: string): string {
+  return `<p style="color: ${TEXT}; font-size: 15px; font-weight: 600; margin: 8px 0 12px 0;">${escapeHtml(title)}</p>`;
+}
+
+function tableHtml(inner: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 0 24px 0; font-family: ${FONT}; font-size: 14px; line-height: 20px; color: ${TEXT};">${inner}</table>`;
+}
+
+// The digest sections are HTML tables injected into {{...}} slots inside the
+// template's <mj-text>, so they must be plain HTML: <mj-*> tags nested in
+// <mj-text> do not render as blocks and the rows run together. Exported for
+// unit testing.
+
+// Changed apps: App / Grade / Score, worst grade change first, then biggest
+// score drop. An app whose diff did not resolve still fills all three columns.
+export function changedSectionHtml(items: DigestItem[]): string {
   if (!items.length) return "";
-  const withDiff = items.some((it) => it.diff);
-  const ordered = withDiff
-    ? [...items].sort(
-        (a, b) =>
-          gradeTrend(b.diff) - gradeTrend(a.diff) || scoreDelta(a.diff) - scoreDelta(b.diff),
-      )
-    : items;
+  const ordered = [...items].sort(
+    (a, b) => gradeTrend(b.diff) - gradeTrend(a.diff) || scoreDelta(a.diff) - scoreDelta(b.diff),
+  );
   const gradeStyle = cellStyle(" white-space: nowrap;");
   const scoreStyle = cellStyle(" white-space: nowrap; padding-right: 0;");
   const rows = ordered
     .map((it) => {
-      if (!withDiff) return `<tr>${appCellHtml(it)}</tr>`;
-      // A changed app whose diff did not resolve still fills all three columns.
       const gradeCell = it.diff
         ? transitionHtml(it.diff.grade.from, it.diff.grade.to, gradeTrend(it.diff))
         : "";
@@ -129,23 +142,26 @@ export function sectionHtml(title: string, items: DigestItem[]): string {
       );
     })
     .join("");
-  const head = withDiff
-    ? `<tr><th style="${headStyle()}">App</th>` +
-      `<th style="${headStyle(" width: 64px;")}">Grade</th>` +
-      `<th style="${headStyle(" width: 88px; padding-right: 0;")}">Score</th></tr>`
-    : "";
-  return (
-    `<p style="color: ${TEXT}; font-size: 15px; font-weight: 600; margin: 8px 0 12px 0;">${escapeHtml(title)}</p>` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 0 24px 0; font-family: ${FONT}; font-size: 14px; line-height: 20px; color: ${TEXT};">${head}${rows}</table>`
-  );
+  const head =
+    `<tr><th style="${headStyle()}">App</th>` +
+    `<th style="${headStyle(" width: 64px;")}">Grade</th>` +
+    `<th style="${headStyle(" width: 88px; padding-right: 0;")}">Score</th></tr>`;
+  return sectionTitleHtml("Changed") + tableHtml(head + rows);
+}
+
+// Apps no longer assessed: one name per row, no columns.
+export function removedSectionHtml(items: DigestItem[]): string {
+  if (!items.length) return "";
+  const rows = items.map((it) => `<tr>${appCellHtml(it)}</tr>`).join("");
+  return sectionTitleHtml("No longer assessed") + tableHtml(rows);
 }
 
 async function renderDigest(orgChanged: DigestItem[], orgRemoved: DigestItem[]): Promise<string> {
   const tmplPath = path.join(__dirname, "../../../templates/ai-trust-index-digest.mjml");
   const template = await fs.readFile(tmplPath, "utf8");
   return compileMjmlToHtml(template, {
-    changedSection: sectionHtml("Changed", orgChanged),
-    removedSection: sectionHtml("No longer assessed", orgRemoved),
+    changedSection: changedSectionHtml(orgChanged),
+    removedSection: removedSectionHtml(orgRemoved),
     moduleUrl: MODULE_URL,
     trackedUrl: TRACKED_URL,
     settingsUrl: SETTINGS_URL,
