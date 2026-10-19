@@ -15,9 +15,6 @@ import ConfirmationModal from "../../components/Dialogs/ConfirmationModal";
 import StandardModal from "../../components/Modals/StandardModal";
 import VWTooltip from "../../components/VWTooltip";
 import {
-  TrendingUp,
-  TrendingDown,
-  Minus,
   X,
   Pencil,
   Check,
@@ -44,6 +41,16 @@ import {
   type EvaluationLog,
 } from "../../../application/repository/deepEval.repository";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
+import {
+  entryScore,
+  findMetricEntry,
+  entryError,
+  entryReason,
+  lowerIsBetter,
+  METRIC_STATUS_COLORS,
+  metricStatus,
+  type MetricScoreEntry,
+} from "./metricScore";
 
 // Preprocess LaTeX delimiters to work with remark-math
 const preprocessLatex = (text: string): string => {
@@ -52,16 +59,6 @@ const preprocessLatex = (text: string): string => {
   // Convert \( \) to $ $ (inline math)
   processed = processed.replace(/\\\(/g, "$").replace(/\\\)/g, "$");
   return processed;
-};
-
-// For bias and toxicity the raw score IS the level (0 = none = best, 1 = worst).
-// Display it directly — no inversion needed.
-const getDisplayScore = (score: number, _metricName: string): number => score;
-
-// Metrics where a lower displayed score is better (green = low, red = high)
-const lowerIsBetter = (metricName: string): boolean => {
-  const n = metricName.toLowerCase();
-  return n.includes("bias") || n.includes("toxicity") || n.includes("hallucination");
 };
 
 // Convert camelCase or concatenated metric names to proper display format
@@ -919,9 +916,8 @@ export default function ExperimentDetailContent({
               Object.entries(log.metadata.metric_scores).forEach(([rawKey, value]) => {
                 // Normalize key: convert display names to camelCase, or keep if already camelCase
                 const key = displayNameToKey[rawKey] || rawKey;
-                const score =
-                  typeof value === "number" ? value : (value as { score?: number })?.score;
-                if (typeof score === "number") {
+                const score = entryScore(value as MetricScoreEntry);
+                if (score !== null) {
                   if (!metricsSum[key]) metricsSum[key] = { sum: 0, count: 0, scores: [] };
                   metricsSum[key].sum += score;
                   metricsSum[key].count += 1;
@@ -1044,9 +1040,7 @@ export default function ExperimentDetailContent({
           };
 
           // Get score color based on value thresholds.
-          // Hallucination is the only truly inverse metric (0 = no hallucination = best).
-          // Bias and Toxicity use the same 0→1 scale as quality metrics: the EvalServer
-          // stores score=1 when the output is unbiased/non-toxic and score=0 when it fails.
+          // Bias, Toxicity and Hallucination are stored lower is better (0 = none found = best).
           const getScoreColor = (score: number | undefined, metricKey?: string) => {
             if (score === undefined)
               return {
@@ -1096,21 +1090,6 @@ export default function ExperimentDetailContent({
               bg: palette.status.error.bg,
               text: palette.status.error.text,
               icon: palette.status.error.text,
-            };
-          };
-
-          // Get delta indicator (simulated - in real app would compare to previous experiment)
-          const getDeltaIndicator = (scores: number[]) => {
-            if (scores.length < 2) return null;
-            const firstHalf = scores.slice(0, Math.floor(scores.length / 2));
-            const secondHalf = scores.slice(Math.floor(scores.length / 2));
-            const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-            const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-            const delta = secondAvg - firstAvg;
-            if (Math.abs(delta) < 0.02) return { type: "neutral" as const, value: 0 };
-            return {
-              type: delta > 0 ? ("up" as const) : ("down" as const),
-              value: Math.abs(delta * 100),
             };
           };
 
@@ -1248,7 +1227,6 @@ export default function ExperimentDetailContent({
             const avgValue = entry ? entry.sum / Math.max(1, entry.count) : undefined;
             const scores = entry?.scores || [];
             const colors = getScoreColor(avgValue, metric.label);
-            const delta = getDeltaIndicator(scores);
             const BackgroundIcon = getMetricIcon(metric.key);
 
             return (
@@ -1310,46 +1288,6 @@ export default function ExperimentDetailContent({
                     >
                       {metric.label}
                     </Typography>
-                    {delta && (
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 0.5,
-                          px: 1,
-                          py: 0.25,
-                          borderRadius: "4px",
-                          backgroundColor:
-                            delta.type === "up"
-                              ? palette.status.success.bg
-                              : delta.type === "down"
-                                ? palette.status.error.bg
-                                : palette.status.default.bg,
-                        }}
-                      >
-                        {delta.type === "up" ? (
-                          <TrendingUp size={10} color={palette.status.success.text} />
-                        ) : delta.type === "down" ? (
-                          <TrendingDown size={10} color={palette.status.error.text} />
-                        ) : (
-                          <Minus size={10} color={palette.status.default.text} />
-                        )}
-                        <Typography
-                          sx={{
-                            fontSize: "9px",
-                            fontWeight: 600,
-                            color:
-                              delta.type === "up"
-                                ? palette.status.success.text
-                                : delta.type === "down"
-                                  ? palette.status.error.text
-                                  : palette.status.default.text,
-                          }}
-                        >
-                          {delta.value.toFixed(1)}%
-                        </Typography>
-                      </Box>
-                    )}
                   </Box>
                   <Box
                     sx={{
@@ -1368,9 +1306,7 @@ export default function ExperimentDetailContent({
                         fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
                       }}
                     >
-                      {avgValue === undefined
-                        ? "N/A"
-                        : `${(getDisplayScore(avgValue, metric.label) * 100).toFixed(1)}%`}
+                      {avgValue === undefined ? "N/A" : `${(avgValue * 100).toFixed(1)}%`}
                     </Typography>
                     {scores.length >= 2 && <Sparkline scores={scores} color={colors.icon} />}
                   </Box>
@@ -1486,32 +1422,11 @@ export default function ExperimentDetailContent({
         const metricColumns = Array.from(allMetricNames);
 
         // Helper to get metric score from log
-        const getMetricScore = (log: EvaluationLog, metricName: string): number | null => {
-          if (!log.metadata?.metric_scores) return null;
-          // Try exact match first
-          const scores = log.metadata.metric_scores as Record<string, number | { score?: number }>;
-          if (scores[metricName] !== undefined) {
-            const data = scores[metricName];
-            return typeof data === "number" ? data : (data?.score ?? null);
-          }
-          // Try G-Eval format
-          const gevalKey = `G-Eval (${metricName})`;
-          if (scores[gevalKey] !== undefined) {
-            const data = scores[gevalKey];
-            return typeof data === "number" ? data : (data?.score ?? null);
-          }
-          // Try case-insensitive match
-          const key = Object.keys(scores).find(
-            (k) =>
-              k.toLowerCase() === metricName.toLowerCase() ||
-              k.replace(/^G-Eval\s*\((.+)\)$/i, "$1").toLowerCase() === metricName.toLowerCase(),
+        const getMetricEntry = (log: EvaluationLog, metricName: string): MetricScoreEntry =>
+          findMetricEntry(
+            log.metadata?.metric_scores as Record<string, MetricScoreEntry> | undefined,
+            metricName,
           );
-          if (key) {
-            const data = scores[key];
-            return typeof data === "number" ? data : (data?.score ?? null);
-          }
-          return null;
-        };
 
         return (
           <>
@@ -1641,66 +1556,26 @@ export default function ExperimentDetailContent({
                             {log.input_text || "-"}
                           </td>
                           {metricColumns.map((metric) => {
-                            const score = getMetricScore(log, metric);
-                            // Prefer the backend-computed passed flag; fall back to score >= 0.5
-                            const rawMetricData = (() => {
-                              const ms = log.metadata?.metric_scores as
-                                | Record<string, number | { score?: number; passed?: boolean }>
-                                | undefined;
-                              if (!ms) return undefined;
-                              return (
-                                ms[metric] ??
-                                ms[`G-Eval (${metric})`] ??
-                                ms[
-                                  Object.keys(ms).find(
-                                    (k) =>
-                                      k.toLowerCase() === metric.toLowerCase() ||
-                                      k.replace(/^G-Eval\s*\((.+)\)$/i, "$1").toLowerCase() ===
-                                        metric.toLowerCase(),
-                                  ) ?? ""
-                                ]
-                              );
-                            })();
-                            const backendPassedRaw =
-                              typeof rawMetricData === "object" &&
-                              rawMetricData !== null &&
-                              "passed" in rawMetricData
-                                ? (rawMetricData as { passed?: boolean }).passed
-                                : undefined;
-                            // For lower-is-better metrics the backend's passed flag is inverted
-                            // (it uses score >= threshold). Flip it so green = low = good.
-                            const passed =
-                              score !== null &&
-                              (backendPassedRaw !== undefined
-                                ? lowerIsBetter(metric)
-                                  ? !backendPassedRaw
-                                  : backendPassedRaw
-                                : lowerIsBetter(metric)
-                                  ? score <= 0.5
-                                  : score >= 0.5);
+                            const entry = getMetricEntry(log, metric);
+                            const score = entryScore(entry);
+                            const status = metricStatus(metric, entry);
                             return (
                               <td
                                 key={metric}
+                                title={entryError(entry) || undefined}
                                 style={{
                                   textAlign: "center",
                                   padding: "12px 16px",
                                   borderBottom: `1px solid ${palette.border.dark}`,
                                   borderRight: `1px solid ${palette.border.dark}`,
-                                  backgroundColor:
-                                    score !== null
-                                      ? passed
-                                        ? "rgba(16, 185, 129, 0.18)"
-                                        : "rgba(239, 68, 68, 0.18)"
-                                      : "transparent",
+                                  backgroundColor: METRIC_STATUS_COLORS[status].bg,
                                   fontSize: "12px",
                                   fontWeight: 500,
                                   color:
                                     score !== null ? palette.text.secondary : palette.text.disabled,
                                 }}
                               >
-                                {score !== null
-                                  ? `${(getDisplayScore(score, metric) * 100).toFixed(0)}%`
-                                  : "-"}
+                                {score !== null ? `${(score * 100).toFixed(0)}%` : "-"}
                               </td>
                             );
                           })}
@@ -1748,27 +1623,25 @@ export default function ExperimentDetailContent({
                 };
 
                 // Calculate overall pass/fail for this sample
-                const metricScores = selectedLog.metadata?.metric_scores || {};
-                const scoreEntries = Object.entries(metricScores);
-                const passedCount = scoreEntries.filter(([name, data]) => {
-                  if (typeof data === "object" && data !== null && "passed" in (data as object)) {
-                    const bp = (data as { passed?: boolean }).passed;
-                    // Backend uses score >= threshold for all metrics — flip for lower-is-better ones
-                    return lowerIsBetter(name) ? bp === false : bp === true;
-                  }
-                  const score =
-                    typeof data === "number" ? data : (data as { score?: number })?.score;
-                  return (
-                    typeof score === "number" && (lowerIsBetter(name) ? score <= 0.5 : score >= 0.5)
-                  );
-                }).length;
+                const metricScores = (selectedLog.metadata?.metric_scores || {}) as Record<
+                  string,
+                  MetricScoreEntry
+                >;
+                const statuses = Object.entries(metricScores)
+                  .map(([name, data]) => metricStatus(name, data))
+                  .filter((status) => status !== "notEvaluated");
+                const passedCount = statuses.filter((status) => status === "passed").length;
 
                 return (
                   <StandardModal
                     isOpen={selectedSampleIndex !== null}
                     onClose={() => setSelectedSampleIndex(null)}
                     title={`Sample ${selectedSampleIndex + 1}`}
-                    description={`${passedCount}/${scoreEntries.length} metrics passed`}
+                    description={
+                      statuses.length === 0
+                        ? "No metrics were evaluated"
+                        : `${passedCount}/${statuses.length} metrics passed`
+                    }
                     maxWidth="1100px"
                     fitContent
                     customFooter={
@@ -2036,30 +1909,14 @@ export default function ExperimentDetailContent({
                           <Stack spacing={2} sx={{ flex: 1, overflowY: "auto", pr: 1 }}>
                             {Object.entries(selectedLog.metadata.metric_scores).map(
                               ([metricName, metricData]) => {
-                                const score =
-                                  typeof metricData === "number"
-                                    ? metricData
-                                    : (metricData as { score?: number })?.score;
-                                // Use the backend-computed passed flag when present.
-                                // It already handles per-metric thresholds and semantics.
-                                const backendPassed =
-                                  typeof metricData === "object" &&
-                                  metricData !== null &&
-                                  "passed" in (metricData as object)
-                                    ? (metricData as { passed?: boolean }).passed
-                                    : undefined;
-                                const passed =
-                                  backendPassed !== undefined
-                                    ? lowerIsBetter(metricName)
-                                      ? !backendPassed
-                                      : backendPassed
-                                    : typeof score === "number" &&
-                                      (lowerIsBetter(metricName) ? score <= 0.5 : score >= 0.5);
-                                const rawReason =
-                                  typeof metricData === "object" && metricData !== null
-                                    ? (metricData as { reason?: string }).reason
-                                    : undefined;
-                                const reason = parseMetricReason(rawReason);
+                                const entry = metricData as MetricScoreEntry;
+                                const score = entryScore(entry);
+                                const status = metricStatus(metricName, entry);
+                                const statusColor = METRIC_STATUS_COLORS[status].text;
+                                // An error explains the failure, so it wins over the judge's
+                                // reason and is shown as written.
+                                const reason =
+                                  entryError(entry) || parseMetricReason(entryReason(entry));
                                 const friendlyMetric = formatMetricName(
                                   metricName.replace(/^G-Eval\s*\((.+)\)$/i, "$1"),
                                 );
@@ -2072,7 +1929,7 @@ export default function ExperimentDetailContent({
                                       borderRadius: "6px",
                                       backgroundColor: palette.background.main,
                                       border: `1px solid ${palette.border.light}`,
-                                      borderLeft: `3px solid ${passed ? palette.status.success.text : palette.status.error.text}`,
+                                      borderLeft: `3px solid ${statusColor}`,
                                     }}
                                   >
                                     <Stack
@@ -2094,13 +1951,11 @@ export default function ExperimentDetailContent({
                                         sx={{
                                           fontSize: 13,
                                           fontWeight: 700,
-                                          color: passed
-                                            ? palette.status.success.text
-                                            : palette.status.error.text,
+                                          color: statusColor,
                                         }}
                                       >
                                         {typeof score === "number"
-                                          ? `${(getDisplayScore(score, metricName) * 100).toFixed(0)}%`
+                                          ? `${(score * 100).toFixed(0)}%`
                                           : "N/A"}
                                       </Typography>
                                     </Stack>
@@ -2118,10 +1973,8 @@ export default function ExperimentDetailContent({
                                       <Box
                                         sx={{
                                           height: "100%",
-                                          width: `${(typeof score === "number" ? getDisplayScore(score, metricName) : 0) * 100}%`,
-                                          backgroundColor: passed
-                                            ? palette.status.success.text
-                                            : palette.status.error.text,
+                                          width: `${(score ?? 0) * 100}%`,
+                                          backgroundColor: statusColor,
                                           borderRadius: 2,
                                           transition: "width 0.3s ease",
                                         }}

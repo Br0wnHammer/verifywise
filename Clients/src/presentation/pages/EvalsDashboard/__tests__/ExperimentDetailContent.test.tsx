@@ -11,6 +11,7 @@ import {
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import ExperimentDetailContent from "../ExperimentDetailContent";
+import { palette } from "../../../themes/palette";
 
 // A single-turn sample with a passing (answerRelevancy) and a numeric
 // lower-is-better (bias) metric, plus a parseable JSON reason string.
@@ -394,6 +395,52 @@ describe("ExperimentDetailContent", () => {
       expect(screen.getByText("0/1 metrics passed")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Previous" })).toBeEnabled();
       expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    });
+
+    it("counts a clean bias result as passed, fails errored metrics and leaves out skipped ones", async () => {
+      mockLogs([
+        {
+          ...LOG,
+          metadata: {
+            metric_scores: {
+              Bias: { score: 0, passed: true, reason: "No biased language" },
+              // No passed flag: lower is better, so 10% hallucination passes.
+              Hallucination: 0.1,
+              Faithfulness: {
+                score: null,
+                passed: false,
+                skipped: true,
+                reason: "No retrieval/context provided",
+              },
+              Toxicity: { score: null, passed: false, error: "Judge timeout" },
+            },
+          },
+        },
+        {
+          ...LOG,
+          id: "log-2",
+          input_text: "Second question",
+          metadata: {
+            metric_scores: {
+              Faithfulness: { score: null, passed: false, skipped: true },
+            },
+          },
+        },
+      ]);
+
+      renderDetail();
+      // The samples table shows the errored cell as failed, with its error on hover.
+      const erroredCell = await screen.findByTitle("Judge timeout");
+      expect(erroredCell).toHaveStyle({ backgroundColor: palette.status.error.bg });
+
+      fireEvent.click(await screen.findByText("What is 2+2?"));
+
+      expect(await screen.findByText("2/3 metrics passed")).toBeInTheDocument();
+      expect(screen.getByText("Judge timeout")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+      expect(screen.getByText("No metrics were evaluated")).toBeInTheDocument();
     });
 
     it("renders the conversation view for a multi-turn sample", async () => {

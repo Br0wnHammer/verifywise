@@ -189,7 +189,7 @@ def parse_results(experiment: Dict[str, Any], threshold: float) -> Dict[str, Any
         score = float(score)
         mt = metric_thresholds_raw.get(name)
         mt = float(mt) if mt is not None else threshold
-        inverted = any(k in name.lower() for k in ["bias", "toxicity", "hallucination", "conversationsafety"])
+        inverted = any(k in name.lower() for k in ["bias", "toxicity", "hallucination"])
         passed = (score <= mt) if inverted else (score >= mt)
         if not passed:
             all_passed = False
