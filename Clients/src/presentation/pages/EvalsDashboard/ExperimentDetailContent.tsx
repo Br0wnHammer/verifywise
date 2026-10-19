@@ -413,10 +413,25 @@ export default function ExperimentDetailContent({
   const failureReason =
     experiment.status === "failed" ? experiment.error_message?.trim() || undefined : undefined;
 
-  // A new experiment is pending until the runner picks it up; like the table, treat
-  // that as in progress so it can't be rerun before it finishes.
-  const experimentInProgress = experiment.status === "running" || experiment.status === "pending";
-  const rerunDisabled = rerunLoading || experimentInProgress;
+  const rerunDisabled = rerunLoading || experiment.status === "running";
+  const rerunButton = (
+    <CustomizableButton
+      variant="contained"
+      onClick={handleRerunExperiment}
+      isDisabled={rerunDisabled}
+      startIcon={<RotateCcw size={14} />}
+      sx={{
+        "backgroundColor": palette.brand.primary,
+        "border": `1px solid ${palette.brand.primary}`,
+        "&:hover": {
+          backgroundColor: palette.brand.primaryHover,
+          border: `1px solid ${palette.brand.primaryHover}`,
+        },
+      }}
+    >
+      {rerunLoading ? "Starting…" : "Rerun"}
+    </CustomizableButton>
+  );
 
   return (
     <Box>
@@ -623,40 +638,23 @@ export default function ExperimentDetailContent({
           />
           <VWTooltip
             content={
-              rerunLoading
-                ? EXPERIMENT_ACTION_TOOLTIPS.rerunStarting
-                : experimentInProgress
-                  ? EXPERIMENT_ACTION_TOOLTIPS.rerunWhileRunning
-                  : EXPERIMENT_ACTION_TOOLTIPS.rerun
+              experiment.status === "running"
+                ? EXPERIMENT_ACTION_TOOLTIPS.rerunWhileRunning
+                : EXPERIMENT_ACTION_TOOLTIPS.rerun
             }
             placement="bottom-end"
             maxWidth={280}
             describeChild
           >
-            {/* A disabled button fires no hover or focus events, so the span carries the
-                tooltip and takes focus instead. */}
-            <Box
-              component="span"
-              tabIndex={rerunDisabled ? 0 : undefined}
-              sx={{ display: "inline-flex" }}
-            >
-              <CustomizableButton
-                variant="contained"
-                onClick={handleRerunExperiment}
-                isDisabled={rerunDisabled}
-                startIcon={<RotateCcw size={14} />}
-                sx={{
-                  "backgroundColor": palette.brand.primary,
-                  "border": `1px solid ${palette.brand.primary}`,
-                  "&:hover": {
-                    backgroundColor: palette.brand.primaryHover,
-                    border: `1px solid ${palette.brand.primaryHover}`,
-                  },
-                }}
-              >
-                {rerunLoading ? "Starting…" : "Rerun"}
-              </CustomizableButton>
-            </Box>
+            {/* A disabled button fires no hover events, so a span carries the tooltip
+                then; an enabled button takes it directly, so it is described. */}
+            {rerunDisabled ? (
+              <Box component="span" sx={{ display: "inline-flex" }}>
+                {rerunButton}
+              </Box>
+            ) : (
+              rerunButton
+            )}
           </VWTooltip>
         </Stack>
       </Box>

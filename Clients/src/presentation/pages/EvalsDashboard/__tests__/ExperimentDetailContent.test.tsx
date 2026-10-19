@@ -221,21 +221,6 @@ describe("ExperimentDetailContent", () => {
       expect(screen.getByRole("button", { name: "Rerun" })).toBe(rerunButton);
     });
 
-    it("treats a pending experiment as in progress", async () => {
-      deepEvalMocks.getExperiment.mockResolvedValue({
-        experiment: { ...mockExperiment, status: "pending" },
-      });
-      renderDetail();
-      await screen.findByText("Test Experiment");
-
-      const rerun = screen.getByRole("button", { name: "Rerun" });
-      expect(rerun).toBeDisabled();
-      fireEvent.mouseOver(rerun.parentElement as HTMLElement);
-      expect(
-        await screen.findByText(EXPERIMENT_ACTION_TOOLTIPS.rerunWhileRunning),
-      ).toBeInTheDocument();
-    });
-
     it("explains why rerun is disabled while the experiment runs", async () => {
       deepEvalMocks.getExperiment.mockResolvedValue({
         experiment: { ...mockExperiment, status: "running" },

@@ -69,6 +69,31 @@ const ExperimentTableBody: React.FC<IExperimentTableBodyProps> = ({
     closeExperimentMenu();
   };
 
+  const rerunMenuButton = (
+    <CustomizableButton
+      variant="outlined"
+      onClick={handleRerunClick}
+      isDisabled={menuRowIsRunning}
+      startIcon={<RotateCcw size={14} />}
+      sx={{
+        "height": "34px",
+        "fontSize": "13px",
+        "fontWeight": 500,
+        "color": palette.text.secondary,
+        "borderColor": palette.border.dark,
+        "backgroundColor": "transparent",
+        "justifyContent": "flex-start",
+        "&:hover": {
+          backgroundColor: palette.status.success.bg,
+          borderColor: palette.brand.primary,
+          color: palette.brand.primary,
+        },
+      }}
+    >
+      Rerun
+    </CustomizableButton>
+  );
+
   const handleDownloadClick = () => {
     if (menuRow && onDownload) onDownload(menuRow);
     closeExperimentMenu();
@@ -322,36 +347,16 @@ const ExperimentTableBody: React.FC<IExperimentTableBodyProps> = ({
               maxWidth={280}
               describeChild
             >
-              {/* A disabled button fires no hover or focus events, so the span carries the
-                  tooltip and takes focus instead; column flex keeps the button full width. */}
-              <Box
-                component="span"
-                tabIndex={menuRowIsRunning ? 0 : undefined}
-                sx={{ display: "flex", flexDirection: "column" }}
-              >
-                <CustomizableButton
-                  variant="outlined"
-                  onClick={handleRerunClick}
-                  isDisabled={menuRowIsRunning}
-                  startIcon={<RotateCcw size={14} />}
-                  sx={{
-                    "height": "34px",
-                    "fontSize": "13px",
-                    "fontWeight": 500,
-                    "color": palette.text.secondary,
-                    "borderColor": palette.border.dark,
-                    "backgroundColor": "transparent",
-                    "justifyContent": "flex-start",
-                    "&:hover": {
-                      backgroundColor: palette.status.success.bg,
-                      borderColor: palette.brand.primary,
-                      color: palette.brand.primary,
-                    },
-                  }}
-                >
-                  Rerun
-                </CustomizableButton>
-              </Box>
+              {/* A disabled button fires no hover events, so a span carries the tooltip
+                  then (column flex keeps the button full width); an enabled button takes
+                  it directly, so it is described. */}
+              {menuRowIsRunning ? (
+                <Box component="span" sx={{ display: "flex", flexDirection: "column" }}>
+                  {rerunMenuButton}
+                </Box>
+              ) : (
+                rerunMenuButton
+              )}
             </VWTooltip>
           )}
           {onDownload && menuRow?.status === "Completed" && (
