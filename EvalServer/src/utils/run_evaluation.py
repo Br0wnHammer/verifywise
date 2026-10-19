@@ -34,6 +34,73 @@ from utils.error_detection import (
 )
 
 
+# Map metric names to backend snake_case names.
+# Accepts both camelCase (frontend) and snake_case (CI runner / API).
+METRIC_NAME_MAP = {
+    # Universal Core — camelCase
+    "answerRelevancy": "answer_relevancy",
+    "correctness": "correctness",
+    "completeness": "completeness",
+    "hallucination": "hallucination",
+    "instructionFollowing": "instruction_following",
+    "toxicity": "toxicity",
+    "bias": "bias",
+    # RAG — camelCase
+    "contextRelevancy": "context_relevancy",
+    "contextualRelevancy": "context_relevancy",
+    "contextPrecision": "context_precision",
+    "contextRecall": "context_recall",
+    "faithfulness": "faithfulness",
+    # Agent — camelCase
+    "toolSelection": "tool_selection",
+    "toolCorrectness": "tool_correctness",
+    "actionRelevance": "action_relevance",
+    "planningQuality": "planning_quality",
+    "planQuality": "planning_quality",
+    "planAdherence": "plan_adherence",
+    "argumentCorrectness": "argument_correctness",
+    "taskCompletion": "task_completion",
+    "stepEfficiency": "step_efficiency",
+    # snake_case identity (CI runner sends these)
+    "answer_relevancy": "answer_relevancy",
+    "instruction_following": "instruction_following",
+    "context_relevancy": "context_relevancy",
+    "contextual_relevancy": "context_relevancy",
+    "context_precision": "context_precision",
+    "context_recall": "context_recall",
+    "tool_selection": "tool_selection",
+    "tool_correctness": "tool_correctness",
+    "action_relevance": "action_relevance",
+    "planning_quality": "planning_quality",
+    "plan_quality": "planning_quality",
+    "plan_adherence": "plan_adherence",
+    "argument_correctness": "argument_correctness",
+    "task_completion": "task_completion",
+    "step_efficiency": "step_efficiency",
+}
+
+
+def route_threshold_keys(thresholds: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Key thresholds by the metric each name enables, the same way as metric toggles.
+
+    planQuality enables planning_quality, so its threshold goes there too. When a payload
+    names a metric both ways (the UI sends planQuality and planningQuality), the key that
+    names the metric directly wins. Names not in METRIC_NAME_MAP pass through unchanged.
+    """
+    if not isinstance(thresholds, dict):
+        return {}
+    routed: Dict[str, Any] = {}
+    direct: set = set()
+    for key, value in thresholds.items():
+        target = METRIC_NAME_MAP.get(key, key)
+        is_direct = re.sub(r"(?<!^)(?=[A-Z])", "_", str(key)).lower() == target
+        if is_direct or target not in direct:
+            routed[target] = value
+            if is_direct:
+                direct.add(target)
+    return routed
+
+
 async def _upsert_judge_scorer(
     *,
     db: AsyncSession,
@@ -205,7 +272,7 @@ async def run_evaluation(
         judge_config = config.get("judgeLlm", {})
         dataset_config = config.get("dataset", {})
         metrics_config = config.get("metrics", {})
-        thresholds_config = config.get("thresholds", {})
+        thresholds_config = route_threshold_keys(config.get("thresholds"))
         
         # Evaluation mode: "scorer" = custom only, "standard" = judge only, "both" = run both
         evaluation_mode = config.get("evaluationMode", "standard")
@@ -886,50 +953,6 @@ async def run_evaluation(
         task_type = (config.get("taskType") or config.get("task_type") or "").strip().lower()
         bundles = config.get("bundles") or {}
         
-        # Map metric names to backend snake_case names.
-        # Accepts both camelCase (frontend) and snake_case (CI runner / API).
-        metric_name_map = {
-            # Universal Core — camelCase
-            "answerRelevancy": "answer_relevancy",
-            "correctness": "correctness",
-            "completeness": "completeness",
-            "hallucination": "hallucination",
-            "instructionFollowing": "instruction_following",
-            "toxicity": "toxicity",
-            "bias": "bias",
-            # RAG — camelCase
-            "contextRelevancy": "context_relevancy",
-            "contextualRelevancy": "context_relevancy",
-            "contextPrecision": "context_precision",
-            "contextRecall": "context_recall",
-            "faithfulness": "faithfulness",
-            # Agent — camelCase
-            "toolSelection": "tool_selection",
-            "toolCorrectness": "tool_correctness",
-            "actionRelevance": "action_relevance",
-            "planningQuality": "planning_quality",
-            "planQuality": "planning_quality",
-            "planAdherence": "plan_adherence",
-            "argumentCorrectness": "argument_correctness",
-            "taskCompletion": "task_completion",
-            "stepEfficiency": "step_efficiency",
-            # snake_case identity (CI runner sends these)
-            "answer_relevancy": "answer_relevancy",
-            "instruction_following": "instruction_following",
-            "context_relevancy": "context_relevancy",
-            "contextual_relevancy": "context_relevancy",
-            "context_precision": "context_precision",
-            "context_recall": "context_recall",
-            "tool_selection": "tool_selection",
-            "tool_correctness": "tool_correctness",
-            "action_relevance": "action_relevance",
-            "planning_quality": "planning_quality",
-            "plan_quality": "planning_quality",
-            "plan_adherence": "plan_adherence",
-            "argument_correctness": "argument_correctness",
-            "task_completion": "task_completion",
-            "step_efficiency": "step_efficiency",
-        }
 
         # Start with all metrics disabled
         deepeval_metrics_config = {
@@ -958,7 +981,7 @@ async def run_evaluation(
         }
         
         # Enable metrics based on UI selection
-        for ui_key, backend_key in metric_name_map.items():
+        for ui_key, backend_key in METRIC_NAME_MAP.items():
             if ui_metrics.get(ui_key, False):
                 deepeval_metrics_config[backend_key] = True
         

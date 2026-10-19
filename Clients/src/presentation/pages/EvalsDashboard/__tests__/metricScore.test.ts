@@ -38,6 +38,13 @@ describe("scoreBand", () => {
     expect(scoreBand("Bias", 0, 0.1)).toBe("good");
     expect(scoreBand("Correctness", 0.95, 0.9)).toBe("close");
   });
+
+  it("shows any score as good against a line that cannot be missed", () => {
+    // A custom scorer with no threshold stores 0: every row passes.
+    expect(scoreBand("Helpfulness", 0, 0)).toBe("good");
+    expect(scoreBand("Helpfulness", 0.1, 0)).toBe("good");
+    expect(scoreBand("Bias", 0.9, 1)).toBe("good");
+  });
 });
 
 describe("entryThreshold", () => {

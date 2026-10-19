@@ -224,32 +224,22 @@ def get_judge_llm(provider: str, model_name: str):
     return CustomDeepEvalLLM(model_name=model_name, provider=provider)
 
 
-# contextualRelevancy enables context_relevancy (metric_name_map in
-# EvalServer/src/utils/run_evaluation.py), and no metric reads contextual_relevancy.
-# plan_quality is not aliased: it is a metric of its own, separate from planning_quality.
-_THRESHOLD_KEY_ALIASES = {
-    "contextual_relevancy": "context_relevancy",
-}
-
-
 def normalize_metric_thresholds(thresholds: Optional[Dict[str, Any]]) -> Dict[str, float]:
     """Thresholds keyed by the snake_case metric name the evaluator looks up.
 
-    answerRelevancy and answer_relevancy both become answer_relevancy. A number, or a
+    answerRelevancy and answer_relevancy both become answer_relevancy. (EvalServer first
+    routes aliases such as planQuality to the metric they enable.) A number, or a
     numeric string, between 0 and 1 is kept; anything else is dropped with a warning,
     so the metric keeps its default.
     """
     normalized: Dict[str, float] = {}
     for key, value in (thresholds or {}).items():
         snake = re.sub(r"(?<!^)(?=[A-Z])", "_", str(key)).lower()
-        snake = _THRESHOLD_KEY_ALIASES.get(snake, snake)
         number: Optional[float] = None
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            number = float(value)
-        elif isinstance(value, str):
+        if isinstance(value, (int, float, str)) and not isinstance(value, bool):
             try:
                 number = float(value)
-            except ValueError:
+            except (ValueError, OverflowError):
                 number = None
         # The range check also rejects NaN and infinity.
         if number is None or not 0.0 <= number <= 1.0:

@@ -102,8 +102,9 @@ const EPSILON = 1e-9;
 // Bands an average score against the metric's pass line, so the colour agrees with
 // pass/fail: failed = misses the threshold; close = passes by less than CLOSE_MARGIN;
 // good otherwise. A perfect score is always good, even when the threshold leaves less
-// than CLOSE_MARGIN of headroom. Scores and thresholds share one scale; lower is better
-// metrics pass at or below the threshold.
+// than CLOSE_MARGIN of headroom, and so is any score against a line that cannot be
+// missed (e.g. 0 for a custom scorer with no threshold). Scores and thresholds share
+// one scale; lower is better metrics pass at or below the threshold.
 export const scoreBand = (
   metricName: string,
   score: number,
@@ -114,7 +115,8 @@ export const scoreBand = (
   const margin = inverse ? line - score : score - line;
   if (margin < -EPSILON) return "failed";
   const perfect = inverse ? score <= EPSILON : score >= 1 - EPSILON;
-  if (perfect || margin >= CLOSE_MARGIN - EPSILON) return "good";
+  const cannotFail = inverse ? line >= 1 - EPSILON : line <= EPSILON;
+  if (perfect || cannotFail || margin >= CLOSE_MARGIN - EPSILON) return "good";
   return "close";
 };
 

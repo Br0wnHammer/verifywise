@@ -98,13 +98,14 @@ def test_threshold_keys_are_normalised_to_snake_case():
     ) == {"answer_relevancy": 0.7, "instruction_following": 0.6, "bias": 0.2}
 
 
-def test_threshold_aliases_map_to_the_metric_they_enable():
+def test_threshold_normalisation_changes_only_the_case():
     from deepeval_engine.deepeval_evaluator import normalize_metric_thresholds
 
-    # plan_quality is a metric of its own, so it keeps its key.
-    assert normalize_metric_thresholds(
-        {"contextualRelevancy": 0.6, "planQuality": 0.8, "planningQuality": 0.7}
-    ) == {"context_relevancy": 0.6, "plan_quality": 0.8, "planning_quality": 0.7}
+    # Aliases are routed by EvalServer; plan_quality is a metric of its own here.
+    assert normalize_metric_thresholds({"planQuality": 0.8, "planningQuality": 0.7}) == {
+        "plan_quality": 0.8,
+        "planning_quality": 0.7,
+    }
 
 
 def test_threshold_normalisation_accepts_numeric_strings():
@@ -126,6 +127,7 @@ def test_threshold_normalisation_drops_non_numeric_values():
                 "completeness": "inf",
                 "faithfulness": 50,
                 "answer_relevancy": -0.1,
+                "tool_selection": 10**400,
             }
         )
         == {}

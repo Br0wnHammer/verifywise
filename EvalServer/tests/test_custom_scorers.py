@@ -391,6 +391,33 @@ async def test_run_custom_scorer_reports_the_threshold_it_used(
     assert result.passed is True
     assert result.threshold == 0.0
 
+    string_threshold = _scorer_row()
+    string_threshold["defaultThreshold"] = "0.7"
+    result = await run_custom_scorer(
+        scorer_config=string_threshold, input_text="Q", output_text="A"
+    )
+    assert result.label == "FAIL"
+    assert result.passed is False
+    assert result.threshold == 0.7
+
+
+@pytest.mark.asyncio
+async def test_run_custom_scorer_error_result_keeps_the_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.side_effect = RuntimeError("judge down")
+    monkeypatch.setattr(
+        "utils.run_custom_scorer.get_provider_client",
+        lambda *args, **kwargs: (fake_client, "sk-test"),
+    )
+
+    result = await run_custom_scorer(
+        scorer_config=_scorer_row(threshold=0.8), input_text="Q", output_text="A"
+    )
+    assert result.label == "ERROR"
+    assert result.threshold == 0.8
+
 
 @pytest.mark.asyncio
 async def test_run_custom_scorer_renders_messages_with_io(monkeypatch: pytest.MonkeyPatch) -> None:
