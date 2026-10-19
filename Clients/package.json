@@ -89,7 +89,7 @@
     "globals": "^17.13.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.9",
-    "jszip": "3.10.1",
+    "jszip": "^3.10.1",
     "katex": "^0.19.0",
     "lucide-react": "^1.57.0",
     "papaparse": "^5.7.0",
@@ -117,7 +117,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
+    "@axe-core/playwright": "^4.13.0",
     "@emotion/jest": "^11.14.2",
     "@playwright/test": "^1.64.1",
     "@svgr/webpack": "^8.1.0",
