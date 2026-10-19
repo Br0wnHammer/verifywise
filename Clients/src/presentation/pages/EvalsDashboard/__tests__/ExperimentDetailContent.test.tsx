@@ -396,6 +396,46 @@ describe("ExperimentDetailContent", () => {
       expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
     });
 
+    it("counts a clean bias result as passed, fails errored metrics and leaves out skipped ones", async () => {
+      mockLogs([
+        {
+          ...LOG,
+          metadata: {
+            metric_scores: {
+              Bias: { score: 0, passed: true, reason: "No biased language" },
+              Faithfulness: {
+                score: null,
+                passed: false,
+                skipped: true,
+                reason: "No retrieval/context provided",
+              },
+              Toxicity: { score: null, passed: false, error: "Judge timeout" },
+            },
+          },
+        },
+        {
+          ...LOG,
+          id: "log-2",
+          input_text: "Second question",
+          metadata: {
+            metric_scores: {
+              Faithfulness: { score: null, passed: false, skipped: true },
+            },
+          },
+        },
+      ]);
+
+      renderDetail();
+      fireEvent.click(await screen.findByText("What is 2+2?"));
+
+      expect(await screen.findByText("1/2 metrics passed")).toBeInTheDocument();
+      expect(screen.getByText("Judge timeout")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+      expect(screen.getByText("No metrics were evaluated")).toBeInTheDocument();
+    });
+
     it("renders the conversation view for a multi-turn sample", async () => {
       mockLogs([
         {

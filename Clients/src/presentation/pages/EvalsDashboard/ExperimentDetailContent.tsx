@@ -1557,7 +1557,9 @@ export default function ExperimentDetailContent({
                           {metricColumns.map((metric) => {
                             const entry = getMetricEntry(log, metric);
                             const score = entryScore(entry);
-                            const passed = score !== null && metricPassed(metric, entry);
+                            // Errored metrics show as failed; skipped or missing ones stay neutral.
+                            const evaluated = entry != null && !isSkipped(entry);
+                            const passed = metricPassed(metric, entry);
                             return (
                               <td
                                 key={metric}
@@ -1566,12 +1568,11 @@ export default function ExperimentDetailContent({
                                   padding: "12px 16px",
                                   borderBottom: `1px solid ${palette.border.dark}`,
                                   borderRight: `1px solid ${palette.border.dark}`,
-                                  backgroundColor:
-                                    score !== null
-                                      ? passed
-                                        ? "rgba(16, 185, 129, 0.18)"
-                                        : "rgba(239, 68, 68, 0.18)"
-                                      : "transparent",
+                                  backgroundColor: evaluated
+                                    ? passed
+                                      ? "rgba(16, 185, 129, 0.18)"
+                                      : "rgba(239, 68, 68, 0.18)"
+                                    : "transparent",
                                   fontSize: "12px",
                                   fontWeight: 500,
                                   color:
@@ -1922,9 +1923,11 @@ export default function ExperimentDetailContent({
                                   : metricPassed(metricName, entry)
                                     ? palette.status.success.text
                                     : palette.status.error.text;
+                                // An errored metric has no reason; show its error instead.
                                 const rawReason =
                                   typeof metricData === "object" && metricData !== null
-                                    ? (metricData as { reason?: string }).reason
+                                    ? ((metricData as { reason?: string }).reason ??
+                                      (metricData as { error?: string }).error)
                                     : undefined;
                                 const reason = parseMetricReason(rawReason);
                                 const friendlyMetric = formatMetricName(
