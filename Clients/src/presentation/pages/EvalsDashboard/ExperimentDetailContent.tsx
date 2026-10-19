@@ -14,6 +14,7 @@ import Alert from "../../components/Alert";
 import ConfirmationModal from "../../components/Dialogs/ConfirmationModal";
 import StandardModal from "../../components/Modals/StandardModal";
 import VWTooltip from "../../components/VWTooltip";
+import { EXPERIMENT_ACTION_TOOLTIPS } from "../../components/Table/ExperimentTable/actionTooltips";
 import {
   X,
   Pencil,
@@ -540,81 +541,108 @@ export default function ExperimentDetailContent({
 
         {/* Action buttons */}
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 3 }}>
-          <CustomizableButton
-            variant="outlined"
-            onClick={async () => {
-              try {
-                const blob = new Blob([JSON.stringify({ experiment, logs }, null, 2)], {
-                  type: "application/json",
-                });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `${experiment.id}_results.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-              } catch (err) {
-                console.error("Failed to download:", err);
-              }
-            }}
-            startIcon={<Download size={14} />}
-            sx={{
-              "borderColor": palette.border.dark,
-              "color": palette.text.secondary,
-              "&:hover": {
-                borderColor: palette.brand.primary,
-                color: palette.brand.primary,
-                backgroundColor: palette.status.success.bg,
-              },
-            }}
+          <VWTooltip
+            content={EXPERIMENT_ACTION_TOOLTIPS.downloadFull}
+            placement="bottom"
+            maxWidth={280}
           >
-            Download
-          </CustomizableButton>
-          <CustomizableButton
-            variant="outlined"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(JSON.stringify({ experiment, logs }, null, 2));
-                setAlert({ variant: "success", body: "Results copied to clipboard" });
-                setTimeout(() => setAlert(null), 3000);
-              } catch (err) {
-                console.error("Failed to copy:", err);
-              }
-            }}
-            startIcon={<Copy size={14} />}
-            sx={{
-              "borderColor": palette.border.dark,
-              "color": palette.text.secondary,
-              "&:hover": {
-                borderColor: palette.brand.primary,
-                color: palette.brand.primary,
-                backgroundColor: palette.status.success.bg,
-              },
-            }}
+            <CustomizableButton
+              variant="outlined"
+              onClick={async () => {
+                try {
+                  const blob = new Blob([JSON.stringify({ experiment, logs }, null, 2)], {
+                    type: "application/json",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${experiment.id}_results.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                } catch (err) {
+                  console.error("Failed to download:", err);
+                }
+              }}
+              startIcon={<Download size={14} />}
+              sx={{
+                "borderColor": palette.border.dark,
+                "color": palette.text.secondary,
+                "&:hover": {
+                  borderColor: palette.brand.primary,
+                  color: palette.brand.primary,
+                  backgroundColor: palette.status.success.bg,
+                },
+              }}
+            >
+              Download
+            </CustomizableButton>
+          </VWTooltip>
+          <VWTooltip
+            content={EXPERIMENT_ACTION_TOOLTIPS.copyFull}
+            placement="bottom"
+            maxWidth={280}
           >
-            Copy
-          </CustomizableButton>
+            <CustomizableButton
+              variant="outlined"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(
+                    JSON.stringify({ experiment, logs }, null, 2),
+                  );
+                  setAlert({ variant: "success", body: "Results copied to clipboard" });
+                  setTimeout(() => setAlert(null), 3000);
+                } catch (err) {
+                  console.error("Failed to copy:", err);
+                }
+              }}
+              startIcon={<Copy size={14} />}
+              sx={{
+                "borderColor": palette.border.dark,
+                "color": palette.text.secondary,
+                "&:hover": {
+                  borderColor: palette.brand.primary,
+                  color: palette.brand.primary,
+                  backgroundColor: palette.status.success.bg,
+                },
+              }}
+            >
+              Copy
+            </CustomizableButton>
+          </VWTooltip>
           <Box
             sx={{ width: "1px", height: "24px", backgroundColor: palette.border.light, mx: 0.5 }}
           />
-          <CustomizableButton
-            variant="contained"
-            onClick={handleRerunExperiment}
-            isDisabled={rerunLoading || experiment.status === "running"}
-            startIcon={<RotateCcw size={14} />}
-            sx={{
-              "backgroundColor": palette.brand.primary,
-              "border": `1px solid ${palette.brand.primary}`,
-              "&:hover": {
-                backgroundColor: palette.brand.primaryHover,
-                border: `1px solid ${palette.brand.primaryHover}`,
-              },
-            }}
+          <VWTooltip
+            content={
+              experiment.status === "running"
+                ? EXPERIMENT_ACTION_TOOLTIPS.rerunWhileRunning
+                : EXPERIMENT_ACTION_TOOLTIPS.rerun
+            }
+            placement="bottom-end"
+            maxWidth={280}
           >
-            {rerunLoading ? "Starting…" : "Rerun"}
-          </CustomizableButton>
+            {/* A disabled button fires no hover events, so the span carries the tooltip. */}
+            <Box component="span" sx={{ display: "inline-flex" }}>
+              <CustomizableButton
+                variant="contained"
+                onClick={handleRerunExperiment}
+                isDisabled={rerunLoading || experiment.status === "running"}
+                startIcon={<RotateCcw size={14} />}
+                sx={{
+                  "backgroundColor": palette.brand.primary,
+                  "border": `1px solid ${palette.brand.primary}`,
+                  "&:hover": {
+                    backgroundColor: palette.brand.primaryHover,
+                    border: `1px solid ${palette.brand.primaryHover}`,
+                  },
+                }}
+              >
+                {rerunLoading ? "Starting…" : "Rerun"}
+              </CustomizableButton>
+            </Box>
+          </VWTooltip>
         </Stack>
       </Box>
 

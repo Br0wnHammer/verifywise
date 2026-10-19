@@ -12,6 +12,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import ExperimentDetailContent from "../ExperimentDetailContent";
 import { palette } from "../../../themes/palette";
+import { EXPERIMENT_ACTION_TOOLTIPS } from "../../../components/Table/ExperimentTable/actionTooltips";
 
 // A single-turn sample with a passing (answerRelevancy) and a numeric
 // lower-is-better (bias) metric, plus a parseable JSON reason string.
@@ -201,6 +202,35 @@ describe("ExperimentDetailContent", () => {
 
       expect(await screen.findByText("Status")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Rerun" })).toBeDisabled();
+    });
+
+    it("explains what download, copy and rerun do in tooltips", async () => {
+      renderDetail();
+      await screen.findByText("Test Experiment");
+
+      fireEvent.mouseOver(screen.getByRole("button", { name: "Download" }));
+      expect(await screen.findByText(EXPERIMENT_ACTION_TOOLTIPS.downloadFull)).toBeInTheDocument();
+
+      fireEvent.mouseOver(screen.getByRole("button", { name: "Copy" }));
+      expect(await screen.findByText(EXPERIMENT_ACTION_TOOLTIPS.copyFull)).toBeInTheDocument();
+
+      fireEvent.mouseOver(screen.getByRole("button", { name: "Rerun" }));
+      expect(await screen.findByText(EXPERIMENT_ACTION_TOOLTIPS.rerun)).toBeInTheDocument();
+    });
+
+    it("explains why rerun is disabled while the experiment runs", async () => {
+      deepEvalMocks.getExperiment.mockResolvedValue({
+        experiment: { ...mockExperiment, status: "running" },
+      });
+      renderDetail();
+      await screen.findByText("Status");
+
+      // The disabled button fires no hover events; its wrapper shows the tooltip.
+      const rerun = screen.getByRole("button", { name: "Rerun" });
+      fireEvent.mouseOver(rerun.parentElement as HTMLElement);
+      expect(
+        await screen.findByText(EXPERIMENT_ACTION_TOOLTIPS.rerunWhileRunning),
+      ).toBeInTheDocument();
     });
   });
 
