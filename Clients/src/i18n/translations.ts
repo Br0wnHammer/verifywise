@@ -7642,6 +7642,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Menschen mit Behinderungen",
     "Plan Adherence": "Plantreue",
     "Plan Quality": "Planqualität",
+    "Planning Quality": "Planungsqualität",
+    "Bias (lower is better)": "Bias (niedriger ist besser)",
+    "Toxicity (lower is better)": "Toxizität (niedriger ist besser)",
+    "Hallucination (lower is better)": "Halluzination (niedriger ist besser)",
     "Plan responses to AI system risks, including defining risk tolerance and mitigation strategies.":
       "Planen Sie Reaktionen auf KI-Systemrisiken, einschließlich der Festlegung von Risikotoleranz und Minderungsstrategien.",
     "Please add at least one recipient to the Send Email action before saving.":
@@ -18156,6 +18160,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Personnes handicapées",
     "Plan Adherence": "Respect du plan",
     "Plan Quality": "Qualité du plan",
+    "Planning Quality": "Qualité de la planification",
+    "Bias (lower is better)": "Biais (plus bas est meilleur)",
+    "Toxicity (lower is better)": "Toxicité (plus bas est meilleur)",
+    "Hallucination (lower is better)": "Hallucination (plus bas est meilleur)",
     "Plan responses to AI system risks, including defining risk tolerance and mitigation strategies.":
       "Planifiez les réponses aux risques du système IA, y compris la définition de la tolérance au risque et des stratégies d'atténuation.",
     "Please add at least one recipient to the Send Email action before saving.":
@@ -25852,6 +25860,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Personas con discapacidad",
     "Plan Adherence": "Cumplimiento del plan",
     "Plan Quality": "Calidad del plan",
+    "Planning Quality": "Calidad de la planificación",
+    "Bias (lower is better)": "Sesgo (más bajo es mejor)",
+    "Toxicity (lower is better)": "Toxicidad (más bajo es mejor)",
+    "Hallucination (lower is better)": "Alucinación (más bajo es mejor)",
     "Please enter a token": "Introduce un token",
     "Please enter a token to test": "Introduce un token para probar",
     "Please enter an email address": "Introduce una dirección de correo electrónico",

@@ -361,6 +361,7 @@ export default function ProjectOverview({
 
       // Calculate prompt count from config or results
       const promptCount =
+        exp.results?.prompts_attempted ||
         exp.config?.dataset?.count ||
         exp.config?.dataset?.prompts?.length ||
         exp.results?.total_prompts ||

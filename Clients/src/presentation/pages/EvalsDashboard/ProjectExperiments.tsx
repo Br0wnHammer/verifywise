@@ -239,8 +239,10 @@ export default function ProjectExperiments({
 
       // Use pre-computed avg_scores from experiment results (no need to fetch logs)
       const experimentsWithMetrics = (data.experiments || []).map((exp: Experiment) => {
-        // Get prompt count from config or results
+        // Prompts the run tried; runs saved before prompts_attempted existed only have
+        // total_prompts, which counts the scored ones.
         const sampleCount =
+          exp.results?.prompts_attempted ||
           exp.results?.total_prompts ||
           exp.config?.dataset?.count ||
           exp.config?.dataset?.prompts?.length ||

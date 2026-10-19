@@ -367,6 +367,51 @@ describe("ExperimentDetailContent", () => {
       expect(screen.getAllByText("Customer Engagement").length).toBeGreaterThan(0);
     });
 
+    it("treats the evaluator's metric names as built-in metrics, Task Completion included", async () => {
+      mockLogs([
+        {
+          ...LOG,
+          metadata: {
+            metric_scores: {
+              "Relevance": { score: 0.9, passed: true },
+              "Correctness": { score: 0.8, passed: true },
+              "Instruction Following": { score: 0.7, passed: true },
+              // run_evaluation saves Task Completion under its camelCase key
+              "taskCompletion": { score: 0.6, passed: true },
+            },
+          },
+        },
+      ]);
+
+      renderDetail();
+
+      expect(await screen.findByText("Quality metrics")).toBeInTheDocument();
+      expect(screen.queryByText("Custom scorers")).not.toBeInTheDocument();
+      expect(screen.queryByText("Conversational metrics")).not.toBeInTheDocument();
+      expect(screen.getAllByText("Task Completion").length).toBeGreaterThan(0);
+      expect(screen.getByText("60.0%")).toBeInTheDocument();
+    });
+
+    it("shows how many prompts were scored when some got no score", async () => {
+      mockLogs([
+        LOG,
+        {
+          ...LOG,
+          id: "log-2",
+          output_text: "",
+          status: "error",
+          error_message: "empty_output",
+          metadata: {},
+        },
+      ]);
+
+      renderDetail();
+
+      expect(await screen.findByTestId("experiment-scored-prompts")).toHaveTextContent(
+        "2 · 1 scored",
+      );
+    });
+
     it("skips the metrics header when no log has metric scores", async () => {
       mockLogs([{ ...LOG, metadata: {} }]);
 

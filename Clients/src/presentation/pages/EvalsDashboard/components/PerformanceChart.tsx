@@ -17,6 +17,7 @@ import {
 import { vwTooltipStyle, ChartOutlineWrapper } from "../../../components/Charts/VWCharts";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import { displayFormattedTime } from "../../../tools/isoDateToString";
+import { lowerIsBetter } from "../metricScore";
 
 export type TimeRange = "7d" | "30d" | "100d" | "all";
 
@@ -75,6 +76,13 @@ const metricDefinitions: Record<string, { label: string }> = {
   coherence: { label: "Coherence" },
   tonality: { label: "Tonality" },
   safety: { label: "Safety" },
+};
+
+// Legend and tooltip label. Lower is better metrics (bias, toxicity, hallucination) share
+// the 0-100% axis with the rest, so say which way is good: 0% is the best score for them.
+export const metricLabel = (metricKey: string): string => {
+  const label = metricDefinitions[metricKey]?.label || formatMetricLabel(metricKey);
+  return lowerIsBetter(metricKey) ? `${label} (lower is better)` : label;
 };
 
 // Get color for a metric by index to ensure unique colors
@@ -284,8 +292,7 @@ export default function PerformanceChart({ projectId, timeRange }: PerformanceCh
         </Typography>
         {validEntries.map((entry: TooltipEntry) => {
           const metricKey = entry.dataKey as string;
-          const metricDef = metricDefinitions[metricKey as keyof typeof metricDefinitions];
-          const metricLabel = metricDef?.label || formatMetricLabel(metricKey);
+          const label = metricLabel(metricKey);
           const color = metricColorMap[metricKey] || entry.color;
           // Use the actual value from the data point, not from entry.value (which can be interpolated)
           const rawValue = dataPoint[metricKey];
@@ -311,7 +318,7 @@ export default function PerformanceChart({ projectId, timeRange }: PerformanceCh
                 }}
               />
               <Typography sx={{ fontSize: "12px", color: "#374151" }}>
-                {metricLabel} : <span style={{ fontWeight: 600 }}>{value}%</span>
+                {label} : <span style={{ fontWeight: 600 }}>{value}%</span>
               </Typography>
             </Box>
           );
@@ -358,10 +365,7 @@ export default function PerformanceChart({ projectId, timeRange }: PerformanceCh
           <Tooltip content={<CustomTooltip />} />
           <Legend
             wrapperStyle={{ paddingTop: 12, fontSize: 11 }}
-            formatter={(value: string) => {
-              const metricDef = metricDefinitions[value as keyof typeof metricDefinitions];
-              return metricDef?.label || formatMetricLabel(value);
-            }}
+            formatter={(value: string) => metricLabel(value)}
           />
           {metricsToDisplay.map((metricKey, index) => {
             const color = getMetricColor(index);
