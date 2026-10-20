@@ -26,6 +26,7 @@ from crud import evaluation_logs as crud
 from crud.deepeval_scorers import list_scorers, create_scorer, update_scorer, touch_scorer_updated_at
 from deepeval_engine.gatekeeper import evaluate_gate
 from utils.run_custom_scorer import run_custom_scorer, ScorerResult
+from utils.safe_outbound_url import assert_safe_outbound_url
 from utils.error_detection import (
     FatalErrorTracker,
     build_no_responses_message,
@@ -443,11 +444,11 @@ async def run_evaluation(
         runner_provider = provider_mapping.get(model_provider, "ollama")
         
         # Set custom endpoint if provided
-        if model_config.get("endpointUrl") and runner_provider == "ollama":
-            os.environ["OLLAMA_HOST"] = model_config["endpointUrl"]
-
         custom_key = model_config.get("apiKey")
         try:
+            if model_config.get("endpointUrl") and runner_provider == "ollama":
+                # User-entered: same outbound policy as custom_api endpoints (ModelRunner)
+                os.environ["OLLAMA_HOST"] = assert_safe_outbound_url(model_config["endpointUrl"])
             model_runner = ModelRunner(
                 model_name=model_name,
                 provider=runner_provider,

@@ -333,3 +333,26 @@ def test_self_hosted_judge_runs_against_its_endpoint(monkeypatch: pytest.MonkeyP
     built.clear()
     deepeval_evaluator.judge_runner("gpt-4o-mini", "openai")
     assert built == {"model_name": "gpt-4o-mini", "provider": "openai"}
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://169.254.169.254/latest/meta-data", "file:///etc/passwd", "http://user:pw@host/v1", "http://0.0.0.0:8000"],
+)
+def test_custom_api_refuses_unsafe_endpoints(url: str) -> None:
+    from deepeval_engine.model_runner import ModelRunner
+    from deepeval_engine.safe_outbound_url import UnsafeOutboundUrlError
+
+    with pytest.raises(UnsafeOutboundUrlError):
+        ModelRunner(model_name="m", provider="custom_api", device="cpu", endpoint_url=url)
+
+
+def test_outbound_policy_matches_the_gateway_copy() -> None:
+    """EvaluationModule keeps its own copy (separate deploy); it must not drift."""
+    from pathlib import Path
+
+    here = Path(__file__).resolve().parents[1] / "src" / "deepeval_engine" / "safe_outbound_url.py"
+    gateway = Path(__file__).resolve().parents[2] / "AIGateway" / "src" / "utils" / "safe_outbound_url.py"
+    if not gateway.is_file():
+        pytest.skip("AIGateway source not present")
+    assert here.read_text() == gateway.read_text()

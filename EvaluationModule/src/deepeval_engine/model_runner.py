@@ -153,8 +153,13 @@ class ModelRunner:
             raise ValueError("A custom API model needs an endpoint URL")
         from openai import OpenAI
 
+        from deepeval_engine.safe_outbound_url import assert_safe_outbound_url
+
+        # The endpoint is user-entered: same outbound policy as the gateway and Express
+        # (private hosts allowed for on-prem; metadata, wildcard and non-http refused)
+        base_url = assert_safe_outbound_url(endpoint_url).rstrip("/")
         # Self-hosted servers often take no key, but the client requires one
-        self.custom_client = OpenAI(api_key=api_key or "not-needed", base_url=endpoint_url.rstrip("/"))
+        self.custom_client = OpenAI(api_key=api_key or "not-needed", base_url=base_url)
         print(f"✓ Custom API configured: {endpoint_url}")
 
     def _setup_ollama(self):

@@ -43,7 +43,9 @@ def _self_hosted_client(api_key: Optional[str] = None, endpoint_url: Optional[st
     """An OpenAI-compatible client for a self-hosted or Ollama server."""
     if OpenAI is None:
         raise RuntimeError("openai package not installed")
-    base = (endpoint_url or "http://localhost:11434").rstrip("/")
+    from utils.safe_outbound_url import assert_safe_outbound_url
+
+    base = assert_safe_outbound_url(endpoint_url or "http://localhost:11434").rstrip("/")
     if not base.endswith("/v1"):
         base += "/v1"
     return OpenAI(api_key=api_key or "not-needed", base_url=base)

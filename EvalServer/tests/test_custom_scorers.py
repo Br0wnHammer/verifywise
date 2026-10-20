@@ -677,3 +677,8 @@ async def test_saved_scorer_gets_its_temperature_tokens_and_top_p(
     await run_custom_scorer(scorer_config=row, input_text="Q", output_text="A")
 
     assert (seen["temperature"], seen["max_tokens"], seen["top_p"]) == (0.3, 512, 0.4)
+
+
+def test_get_provider_client_self_hosted_refuses_the_metadata_endpoint() -> None:
+    with pytest.raises(RuntimeError, match="Self-hosted endpoint refused"):
+        get_provider_client("self-hosted", endpoint_url="http://169.254.169.254/v1")
