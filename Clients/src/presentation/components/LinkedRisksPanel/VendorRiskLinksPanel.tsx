@@ -151,6 +151,7 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
     return (
       <Alert
         severity="error"
+        sx={{ fontSize: "13px" }}
         action={
           <CustomizableButton size="small" variant="text" onClick={() => void refetch()}>
             Retry
@@ -166,9 +167,9 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
   const activeLinks = showDismissed ? [] : links;
 
   return (
-    <Stack spacing={8} sx={{ py: 8 }}>
+    <Stack spacing="16px" sx={{ py: "16px" }}>
       <Stack direction="row" justifyContent="space-between">
-        <Stack direction="row" spacing={4}>
+        <Stack direction="row" spacing="8px">
           <CustomizableButton size="small" variant="text" onClick={() => toggleForm("child")}>
             {form === "child" ? "Cancel" : "Link a project risk"}
           </CustomizableButton>
@@ -212,12 +213,16 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
         />
       )}
 
-      {notice && <Alert severity="info">{notice}</Alert>}
+      {notice && (
+        <Alert severity="info" sx={{ fontSize: "13px" }}>
+          {notice}
+        </Alert>
+      )}
 
       {isLoading && <CircularProgress size={20} />}
 
       {!isLoading && links.length === 0 && (
-        <Stack spacing={4} alignItems="center">
+        <Stack spacing="8px" alignItems="center">
           <EmptyState icon={Network} message="No linked risks yet." showBorder={false} />
           <Typography sx={{ ...textStyles.caption, color: "text.accent" }}>
             Link a project risk that this vendor risk applies to, or relate another vendor risk.
@@ -246,13 +251,13 @@ export default function VendorRiskLinksPanel({ vendorRiskId }: VendorRiskLinksPa
         if (group.length === 0) return null;
         return (
           <Box key={title}>
-            <Typography sx={{ ...textStyles.subsectionTitle, color: "text.primary", mb: 2 }}>
+            <Typography sx={{ ...textStyles.subsectionTitle, color: "text.primary", mb: "4px" }}>
               {title}
             </Typography>
-            <Typography sx={{ ...textStyles.caption, color: "text.accent", mb: 4 }}>
+            <Typography sx={{ ...textStyles.caption, color: "text.accent", mb: "8px" }}>
               {caption}
             </Typography>
-            <Stack spacing={4}>
+            <Stack spacing="8px">
               {group.map((link) => (
                 <LinkRow
                   key={link.id}

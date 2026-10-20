@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
+import { Alert, Box, CircularProgress, Stack, Tooltip, Typography } from "@mui/material";
 import { Network } from "lucide-react";
 import { CustomizableButton } from "../button/customizable-button";
 import { EmptyState } from "../EmptyState";
@@ -38,7 +38,7 @@ const GROUPS: { title: string; match: (link: RiskLink) => boolean }[] = [
     title: "Child risks",
     match: (l) => l.relationType === "inherits_from" && l.direction === "incoming",
   },
-  { title: "Relates to", match: (l) => l.relationType === "related_to" },
+  { title: "Related risks", match: (l) => l.relationType === "related_to" },
 ];
 
 export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
@@ -122,14 +122,21 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
             ? "No clusters of related risks to group yet. Run a scan for related risks first."
             : fill(
                 t(
-                  "Grouping {count} clusters of related risks. Suggestions appear here as they finish.",
+                  result.enqueued === 1
+                    ? "Grouping {count} cluster of related risks. Suggestions appear here as they finish."
+                    : "Grouping {count} clusters of related risks. Suggestions appear here as they finish.",
                 ),
                 { count: result.enqueued },
               ) +
                 (result.skipped > 0
-                  ? ` ${fill(t("{count} clusters were too large to group in one pass."), {
-                      count: result.skipped,
-                    })}`
+                  ? ` ${fill(
+                      t(
+                        result.skipped === 1
+                          ? "{count} cluster was too large to group in one pass."
+                          : "{count} clusters were too large to group in one pass.",
+                      ),
+                      { count: result.skipped },
+                    )}`
                   : ""),
         );
         // Nothing was queued, so there is nothing to wait for. The grouping
@@ -151,6 +158,7 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
     return (
       <Alert
         severity="error"
+        sx={{ fontSize: "13px" }}
         action={
           <CustomizableButton size="small" variant="text" onClick={() => void refetch()}>
             Retry
@@ -163,31 +171,43 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
   }
 
   return (
-    <Stack spacing={8} sx={{ py: 8 }}>
+    <Stack spacing="16px" sx={{ py: "16px" }}>
+      <Typography sx={{ ...textStyles.body, color: "text.secondary" }}>
+        Link this risk to others it is connected to. VerifyWise also suggests links from what risks
+        have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion
+        to keep it, or dismiss it.
+      </Typography>
+
       <Stack direction="row" justifyContent="space-between">
-        <Stack direction="row" spacing={4}>
-          <CustomizableButton
-            size="small"
-            variant="text"
-            onClick={() => setShowForm((open) => !open)}
-          >
-            {showForm ? "Cancel" : "Link a risk"}
-          </CustomizableButton>
+        <Stack direction="row" spacing="8px">
+          {/* The form has its own Cancel, so this button only opens it. */}
+          {!showForm && (
+            <CustomizableButton size="small" variant="text" onClick={() => setShowForm(true)}>
+              Link a risk
+            </CustomizableButton>
+          )}
           {/*
             Here rather than in the empty state below: a hierarchy pass groups
             risks that are ALREADY related, so a button that only appeared when
             there were no links would be unreachable exactly when it is useful.
           */}
           {isAdmin && (
-            <CustomizableButton
-              size="small"
-              variant="text"
-              color="secondary"
-              onClick={handleSuggestHierarchy}
-              isDisabled={suggestHierarchy.isPending || isWatching}
+            <Tooltip
+              title="Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm."
+              arrow
             >
-              Suggest hierarchy
-            </CustomizableButton>
+              <span>
+                <CustomizableButton
+                  size="small"
+                  variant="text"
+                  color="secondary"
+                  onClick={handleSuggestHierarchy}
+                  isDisabled={suggestHierarchy.isPending || isWatching}
+                >
+                  Suggest hierarchy
+                </CustomizableButton>
+              </span>
+            </Tooltip>
           )}
         </Stack>
         <CustomizableButton
@@ -215,12 +235,16 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
         />
       )}
 
-      {notice && <Alert severity="info">{notice}</Alert>}
+      {notice && (
+        <Alert severity="info" sx={{ fontSize: "13px" }}>
+          {notice}
+        </Alert>
+      )}
 
       {isLoading && <CircularProgress size={20} />}
 
       {!isLoading && links.length === 0 && (
-        <Stack spacing={4} alignItems="center">
+        <Stack spacing="8px" alignItems="center">
           {/* showBorder={false}: this list lives inside a tab panel, not a table. */}
           <EmptyState icon={Network} message="No linked risks yet." showBorder={false} />
           {isAdmin ? (
@@ -245,10 +269,10 @@ export default function LinkedRisksPanel({ riskId }: LinkedRisksPanelProps) {
         if (group.length === 0) return null;
         return (
           <Box key={title}>
-            <Typography sx={{ ...textStyles.subsectionTitle, color: "text.primary", mb: 4 }}>
+            <Typography sx={{ ...textStyles.subsectionTitle, color: "text.primary", mb: "8px" }}>
               {title}
             </Typography>
-            <Stack spacing={4}>
+            <Stack spacing="8px">
               {group.map((link) => (
                 <LinkRow
                   key={link.id}

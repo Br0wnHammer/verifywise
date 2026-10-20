@@ -134,7 +134,7 @@ describe("LinkedRisksPanel grouping", () => {
     // collide with the heading and make getByText ambiguous.
     expect(screen.getByText("Parent risk")).toBeInTheDocument();
     expect(screen.getByText("Child risks")).toBeInTheDocument();
-    expect(screen.getByText("Relates to")).toBeInTheDocument();
+    expect(screen.getByText("Related risks")).toBeInTheDocument();
     expect(screen.queryByText("Inherits from")).not.toBeInTheDocument();
     expect(screen.queryByText("Inherited by")).not.toBeInTheDocument();
     expect(screen.getByText("Upstream risk")).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe("LinkedRisksPanel grouping", () => {
     mockUseRiskLinks.mockReturnValue(queryResult([link()]));
     render(<LinkedRisksPanel riskId={42} />);
 
-    expect(screen.getByText("Relates to")).toBeInTheDocument();
+    expect(screen.getByText("Related risks")).toBeInTheDocument();
     expect(screen.queryByText("Parent risk")).not.toBeInTheDocument();
     expect(screen.queryByText("Child risks")).not.toBeInTheDocument();
   });
@@ -368,7 +368,7 @@ describe("LinkedRisksPanel empty state", () => {
     await act(async () => {
       vi.advanceTimersByTime(30000);
     });
-    expect(screen.getByText(/Grouping 1 clusters/)).toBeInTheDocument();
+    expect(screen.getByText(/Grouping 1 cluster of/)).toBeInTheDocument();
 
     await act(async () => {
       vi.advanceTimersByTime(150000);
