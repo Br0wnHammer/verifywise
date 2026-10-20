@@ -31,7 +31,7 @@ setup("authenticate", async ({ page }) => {
   // This setup deletes and recreates an organization; never against staging or production
   if (isDeployedTarget() && process.env.E2E_ALLOW_DEPLOYED_SETUP !== "1") {
     throw new Error(
-      `global.setup refuses to run against ${e2eBaseUrl()}:it deletes and recreates organizations. ` +
+      `global.setup refuses to run against ${e2eBaseUrl()}: it deletes and recreates organizations. ` +
         "Run the canary project for deployed environments, or set E2E_ALLOW_DEPLOYED_SETUP=1 for a disposable one.",
     );
   }
