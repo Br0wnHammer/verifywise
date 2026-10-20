@@ -73,10 +73,14 @@ def _google_error(resp: httpx.Response) -> tuple[str, list[str]]:
     """The status and detail reasons of a Google API error body; empty when it isn't one."""
     try:
         error = resp.json().get("error") or {}
-        reasons = [d.get("reason", "") for d in error.get("details") or [] if isinstance(d, dict)]
-        return str(error.get("status") or ""), reasons
-    except (ValueError, AttributeError, TypeError):
+        status = str(error.get("status") or "")
+    except (ValueError, AttributeError):
         return "", []
+    # A malformed details list must not throw away a valid status
+    details = error.get("details")
+    if not isinstance(details, list):
+        return status, []
+    return status, [d.get("reason", "") for d in details if isinstance(d, dict)]
 
 
 def _rejects_key(provider: str, resp: httpx.Response, forbidden_rejects: bool) -> bool:

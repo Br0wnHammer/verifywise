@@ -152,6 +152,8 @@ export default function NewExperimentModal({
   const keysGeneration = useRef(-1);
   // orgId the saved models were last loaded for, so a late orgId reloads only the models
   const modelsOrgId = useRef<string | undefined>(undefined);
+  // listModels reads null, undefined and "" alike
+  const modelsOrg = orgId || undefined;
 
   // Saved models from the Models page (database)
   const [savedModels, setSavedModels] = useState<SavedModel[]>([]);
@@ -457,7 +459,6 @@ export default function NewExperimentModal({
     const generation = ++openGeneration.current;
     checkedKeyIds.current = new Set();
     setRejectedKeyIds(new Set());
-    const modelsOrg = orgId || undefined;
     modelsOrgId.current = modelsOrg;
     (async () => {
       setLoadingApiKeys(true);
@@ -488,7 +489,6 @@ export default function NewExperimentModal({
 
   // Saved models depend on orgId, which may arrive after the modal opens
   useEffect(() => {
-    const modelsOrg = orgId || undefined;
     if (!isOpen || modelsOrg === modelsOrgId.current) return;
     modelsOrgId.current = modelsOrg;
     let stale = false;
@@ -501,7 +501,7 @@ export default function NewExperimentModal({
     return () => {
       stale = true;
     };
-  }, [isOpen, orgId]);
+  }, [isOpen, modelsOrg]);
 
   // Check the saved keys of the chosen model and judge providers once per open, so a dead
   // key shows the key field instead of "API key configured" and the run doesn't fail on it

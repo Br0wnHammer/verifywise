@@ -114,8 +114,9 @@ async def test_saved_key_403_is_not_read_as_a_rejected_key(monkeypatch):
         '"status": "PERMISSION_DENIED"}}',
         '{"error": {"status": "PERMISSION_DENIED", "details": [{"reason": "SERVICE_DISABLED"}]}}',
         '{"error": {"status": "PERMISSION_DENIED", "details": [{"reason": "API_KEY_SERVICE_BLOCKED"}]}}',
+        '{"error": {"status": "PERMISSION_DENIED", "details": 5}}',
     ],
-    ids=["leaked", "api-disabled", "blocked"],
+    ids=["leaked", "api-disabled", "blocked", "malformed-details"],
 )
 async def test_saved_gemini_key_403_is_a_rejected_key(monkeypatch, body):
     # Gemini answers a leaked, blocked or API-disabled key with 403
