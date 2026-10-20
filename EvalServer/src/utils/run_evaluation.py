@@ -26,7 +26,7 @@ from crud import evaluation_logs as crud
 from crud.deepeval_scorers import list_scorers, create_scorer, update_scorer, touch_scorer_updated_at
 from deepeval_engine.gatekeeper import evaluate_gate
 from utils.run_custom_scorer import run_custom_scorer, ScorerResult
-from utils.safe_outbound_url import assert_safe_outbound_url
+from utils.safe_outbound_url import openai_base_url
 from utils.error_detection import (
     FatalErrorTracker,
     build_no_responses_message,
@@ -376,9 +376,8 @@ async def run_evaluation(
                 # Self-hosted / Ollama judge uses OpenAI-compatible API
                 endpoint_url = judge_config.get("endpointUrl", "")
                 if endpoint_url:
-                    base_url = endpoint_url.rstrip("/")
-                    if not base_url.endswith("/v1"):
-                        base_url = base_url + "/v1"
+                    # Checked now, so a refused endpoint fails the run before generation
+                    base_url = openai_base_url(endpoint_url)
                     os.environ["G_EVAL_BASE_URL"] = base_url
                     print(f"✅ Judge endpoint set to {base_url}")
                 elif provider == "ollama":
@@ -446,13 +445,11 @@ async def run_evaluation(
         # Set custom endpoint if provided
         custom_key = model_config.get("apiKey")
         try:
-            if model_config.get("endpointUrl") and runner_provider == "ollama":
-                # User-entered: same outbound policy as custom_api endpoints (ModelRunner)
-                os.environ["OLLAMA_HOST"] = assert_safe_outbound_url(model_config["endpointUrl"])
+            # The endpoint goes to this run's client (checked there), never the environment
             model_runner = ModelRunner(
                 model_name=model_name,
                 provider=runner_provider,
-                endpoint_url=model_config.get("endpointUrl") if runner_provider == "custom_api" else None,
+                endpoint_url=model_config.get("endpointUrl") if runner_provider in ("custom_api", "ollama") else None,
                 api_key=custom_key if runner_provider == "custom_api" and custom_key != "***" else None,
             )
         except Exception as e:

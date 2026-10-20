@@ -1,27 +1,13 @@
-"""SSRF hardening for admin-stored outbound URLs (MCP server addresses).
+"""SSRF policy for user-entered model endpoints in LLM Evals (custom_api models,
+self-hosted and Ollama judges, scorers and report summaries).
 
-Port of the house policy in ``Servers/utils/safeOutboundUrl.ts``. An org admin
-stores a URL and the gateway then calls it (discovery on save, tool calls), so
-this is the single choke point that validates it first.
-
-VerifyWise runs on-prem in many deployments, and MCP servers frequently sit on
-10.x, 172.16.x, 192.168.x or localhost. Private IP space is therefore NOT
-blocked, exactly as in the Express policy. What is refused:
-
-  * non-http(s) schemes (file:, ftp:, gopher:, ...)
-  * embedded credentials (``user:pass@host``), which leak into logs
-  * cloud metadata endpoints (169.254.169.254, fd00:ec2::254) and kernel
-    wildcards (0.0.0.0, ::), in any literal spelling of those addresses
-    (decimal, hex, octal, IPv4-mapped, Unicode dots). Hostnames are not
-    resolved, so a DNS name pointing at the metadata IP is not caught; this
-    matches the Express policy and is an accepted residual risk.
-
-Unlike the Express version, the path is kept exactly as entered: some MCP
-servers mount at a slash-terminated path and redirect, and httpx does not
-follow redirects.
-
-Unlike the Express version, error messages never echo the raw URL: it may carry
-a token in its query string.
+The code below is the house policy (Servers/utils/safeOutboundUrl.ts), the same as
+AIGateway/src/utils/safe_outbound_url.py; a test keeps everything after this docstring
+identical to the gateway copy. Private IP space is NOT blocked: on-prem model servers
+sit on localhost and 10.x/172.16.x/192.168.x. Refused: non-http(s) schemes, embedded
+credentials, cloud metadata and wildcard hosts in any literal spelling. Hostnames are
+not resolved (accepted residual risk, as in the other copies). Redirects are handled by
+the clients in endpoint_client.py, which never follow them.
 """
 
 import ipaddress

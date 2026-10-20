@@ -348,14 +348,22 @@ def test_custom_api_refuses_unsafe_endpoints(url: str) -> None:
 
 
 def test_outbound_policy_matches_the_gateway_copy() -> None:
-    """EvaluationModule keeps its own copy (separate deploy); it must not drift."""
+    """EvaluationModule keeps its own copy (separate deploy); its code must not drift.
+    Only the module docstring may differ (it describes where each copy is used)."""
+    import ast
     from pathlib import Path
+
+    def code(path: Path) -> str:
+        tree = ast.parse(path.read_text())
+        if ast.get_docstring(tree) is not None:
+            tree.body = tree.body[1:]
+        return ast.dump(tree)
 
     here = Path(__file__).resolve().parents[1] / "src" / "deepeval_engine" / "safe_outbound_url.py"
     gateway = Path(__file__).resolve().parents[2] / "AIGateway" / "src" / "utils" / "safe_outbound_url.py"
     if not gateway.is_file():
         pytest.skip("AIGateway source not present")
-    assert here.read_text() == gateway.read_text()
+    assert code(here) == code(gateway)
 
 
 def test_endpoint_clients_do_not_follow_redirects() -> None:
@@ -389,3 +397,29 @@ def test_local_model_is_refused_not_loaded_or_sent_to_the_gateway(monkeypatch: p
     with pytest.raises(ValueError, match="custom API model"):
         ModelRunner(model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0", provider="local", device="cpu")
     assert loaded == []
+
+
+@pytest.mark.parametrize(
+    "entered, base",
+    [
+        ("localhost:11434", "http://localhost:11434/v1"),
+        ("192.168.1.5:8000/", "http://192.168.1.5:8000/v1"),
+        ("http://proxy:4000?api-version=2024-02", "http://proxy:4000/v1?api-version=2024-02"),
+        ("http://host:8000/openai", "http://host:8000/openai/v1"),
+        ("https://host/v1", "https://host/v1"),
+    ],
+)
+def test_openai_base_url_normalises_entered_endpoints(entered: str, base: str) -> None:
+    from deepeval_engine.endpoint_client import openai_base_url
+
+    assert openai_base_url(entered) == base
+
+
+def test_ollama_client_uses_this_runs_checked_host_not_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deepeval_engine.endpoint_client import ollama_client
+    from deepeval_engine.safe_outbound_url import UnsafeOutboundUrlError
+
+    monkeypatch.setenv("OLLAMA_HOST", "http://other-orgs-host:11434")
+    assert "10.0.0.5" in str(ollama_client("10.0.0.5:11434")._client.base_url)
+    with pytest.raises(UnsafeOutboundUrlError):
+        ollama_client("http://169.254.169.254")

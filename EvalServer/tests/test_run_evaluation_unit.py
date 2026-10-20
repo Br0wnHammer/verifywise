@@ -399,6 +399,26 @@ async def test_judge_self_hosted_sets_its_endpoint(
 
 
 @pytest.mark.asyncio
+async def test_judge_with_a_refused_endpoint_fails_before_generation(
+    inline_prompts_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    stub_model_runner: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_run_eval_dependencies(monkeypatch)
+
+    cfg = dict(inline_prompts_config)
+    cfg["judgeLlm"] = {"provider": "self-hosted", "model": "m", "endpointUrl": "http://169.254.169.254"}
+
+    from utils.run_evaluation import run_evaluation
+
+    result = await run_evaluation(db=mock_db_session, experiment_id="exp-refused", config=cfg, organization_id=1)
+    assert "not allowed" in result["error"]
+    assert os.environ.get("G_EVAL_BASE_URL") is None
+    stub_model_runner.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_judge_ollama_sets_default_base(
     inline_prompts_config: Dict[str, Any],
     mock_db_session: AsyncMock,

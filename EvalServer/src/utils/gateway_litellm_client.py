@@ -5,18 +5,7 @@ The client lives in EvaluationModule (deepeval_engine.gateway_litellm_client), w
 EvalServer already imports; this module re-exports it so both use one implementation.
 """
 
-import sys
-from pathlib import Path
-
-# Docker copies deepeval_engine next to the app (/app/deepeval_engine); a checkout needs
-# EvaluationModule/src on the path, which run_evaluation adds too, but this module may be
-# imported first. Walk up rather than index parents: /app/utils has only two above it.
-for _parent in Path(__file__).resolve().parents:
-    _candidate = _parent / "EvaluationModule" / "src"
-    if _candidate.is_dir():
-        if str(_candidate) not in sys.path:
-            sys.path.insert(0, str(_candidate))
-        break
+import utils.deepeval_engine_path  # noqa: F401  (puts deepeval_engine on sys.path)
 
 from deepeval_engine.gateway_litellm_client import (  # noqa: E402,F401
     BILLING_WORDS,

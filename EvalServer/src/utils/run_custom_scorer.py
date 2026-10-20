@@ -112,18 +112,14 @@ def get_provider_client(
             raise RuntimeError("Self-hosted provider requires 'endpointUrl' in judgeModel config")
         from utils.safe_outbound_url import (
             UnsafeOutboundUrlError,
-            assert_safe_outbound_url,
+            openai_base_url,
             openai_compatible_client,
         )
 
         try:
-            endpoint_url = assert_safe_outbound_url(endpoint_url)
+            base = openai_base_url(endpoint_url)
         except UnsafeOutboundUrlError as e:
             raise RuntimeError(f"Self-hosted endpoint refused: {e}") from None
-        # Ensure the base URL ends with /v1 for OpenAI-compatible APIs (e.g. Ollama)
-        base = endpoint_url.rstrip("/")
-        if not base.endswith("/v1"):
-            base += "/v1"
         resolved_key = api_key or "not-needed"
         return openai_compatible_client(base, resolved_key), resolved_key
 

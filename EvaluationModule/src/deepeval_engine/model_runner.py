@@ -6,7 +6,6 @@ Generates responses from language models for evaluation prompts.
 
 import os
 import time
-from urllib.parse import urlsplit
 from typing import TYPE_CHECKING, Optional, Dict, Any
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
@@ -62,7 +61,7 @@ class ModelRunner:
             model_name: Name of the model (HuggingFace model ID, OpenAI model name, etc.)
             provider: Provider type ("huggingface", "openai", "ollama")
             device: Device to run on ("cpu", "cuda", "mps"). Auto-detected if None.
-            endpoint_url: Base URL of a custom_api (OpenAI-compatible) endpoint
+            endpoint_url: Base URL of a custom_api (OpenAI-compatible) or Ollama endpoint
             api_key: Key for a custom_api endpoint, if it needs one
         """
         self.model_name = model_name
@@ -114,7 +113,7 @@ class ModelRunner:
         elif self.provider == "custom_api":
             self._setup_custom_api(endpoint_url, api_key)
         elif self.provider == "ollama":
-            self._setup_ollama()
+            self._setup_ollama(endpoint_url)
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -159,24 +158,20 @@ class ModelRunner:
         """An OpenAI-compatible server the user runs or names (vLLM, LM Studio, a proxy)."""
         if not endpoint_url:
             raise ValueError("A custom API model needs an endpoint URL")
-        from deepeval_engine.endpoint_client import openai_compatible_client
-        from deepeval_engine.safe_outbound_url import assert_safe_outbound_url
+        from deepeval_engine.endpoint_client import openai_base_url, openai_compatible_client
 
-        # The endpoint is user-entered: same outbound policy as the gateway and Express
-        # (private hosts allowed for on-prem; metadata, wildcard and non-http refused)
-        base_url = assert_safe_outbound_url(endpoint_url).rstrip("/")
-        # A bare host gets the OpenAI-compatible path, as self-hosted judges and scorers do
-        if urlsplit(base_url).path in ("", "/"):
-            base_url += "/v1"
+        # User-entered: the outbound policy (private hosts allowed for on-prem; metadata,
+        # wildcard and non-http refused), then the /v1 path self-hosted judges use too
+        base_url = openai_base_url(endpoint_url)
         self.custom_client = openai_compatible_client(base_url, api_key)
         print(f"✓ Custom API configured: {endpoint_url}")
 
-    def _setup_ollama(self):
+    def _setup_ollama(self, endpoint_url: Optional[str] = None):
         """Setup Ollama."""
         try:
             from deepeval_engine.endpoint_client import ollama_client
 
-            self.ollama_client = ollama_client()
+            self.ollama_client = ollama_client(endpoint_url)
             print(f"✓ Ollama configured")
         except ImportError:
             raise ImportError("ollama package not installed. Install with: pip install ollama")
@@ -324,7 +319,9 @@ class ModelRunner:
             "num_predict": max_tokens,
             "temperature": temperature,
         }
-        if top_p is not None:
+        from deepeval_engine.gateway_litellm_client import top_p_to_send
+
+        if top_p_to_send(top_p) is not None:
             options["top_p"] = top_p
         response = self.ollama_client.generate(model=self.model_name, prompt=prompt, options=options)
         

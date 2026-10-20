@@ -343,7 +343,8 @@ async def run_deepeval_evaluation_task(
             provider_env_map = {
                 "openai": "OPENAI_API_KEY",
                 "anthropic": "ANTHROPIC_API_KEY",
-                "google": "GEMINI_API_KEY",
+                # ModelRunner, scorers and summaries read the org's Google key here
+                "google": "GOOGLE_API_KEY",
                 "xai": "XAI_API_KEY",
             }
 

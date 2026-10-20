@@ -76,6 +76,7 @@ def test_typed_non_recovering_rate_limits_are_fatal(message: str, code: str) -> 
         ("Rate limit exceeded", True),
         # ...unless the endpoint says when to retry
         ("Rate limit exceeded, please retry in 20s", False),
+        ("429 Too Many Requests, retry in 20s", False),
     ],
 )
 def test_untyped_rate_limits_use_the_same_rule(message: str, fatal: bool) -> None:
