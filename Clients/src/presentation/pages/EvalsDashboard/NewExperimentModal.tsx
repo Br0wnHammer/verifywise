@@ -691,13 +691,17 @@ export default function NewExperimentModal({
         modelProvider !== "huggingface"
       ) {
         try {
-          const validation = await validateModel(modelName, modelProvider);
+          // probe: one tiny call with the saved key catches a refused key or a model the
+          // provider no longer serves before the run spends anything
+          const validation = await validateModel(modelName, modelProvider, true);
           if (!validation.valid) {
             // Show warning but allow user to proceed by clicking again
             setAlert({
               show: true,
               variant: "warning",
-              title: "API key may not be configured",
+              title: validation.probe_failed
+                ? "The provider refused this model"
+                : "API key may not be configured",
               body: `${validation.error_message || `The API key for ${validation.provider || modelProvider} may not be configured.`} Click "Run experiment" again to proceed anyway.`,
             });
             setApiKeyWarningAcknowledged(true);

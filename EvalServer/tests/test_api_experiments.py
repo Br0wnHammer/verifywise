@@ -336,6 +336,106 @@ def test_validate_model_returns_error_when_no_key(
     assert "ANTHROPIC_API_KEY" in (body["error_message"] or "")
 
 
+def _saved_key_only(monkeypatch: pytest.MonkeyPatch, probe_result):
+    from routers import evaluation_logs as router_module
+
+    monkeypatch.setattr(router_module, "check_db_api_key_available", AsyncMock(return_value=True))
+    monkeypatch.setattr(router_module, "check_db_openrouter_available", AsyncMock(return_value=False))
+    probe = AsyncMock(return_value=probe_result)
+    monkeypatch.setattr(router_module, "probe_model", probe)
+    return probe
+
+
+def test_validate_model_probe_reports_a_refused_model(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    probe = _saved_key_only(monkeypatch, "The model was not found or is not available to this API key.")
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gemini-2.5-pro", "provider": "google", "probe": True},
+        headers=_headers(),
+    )
+    body = res.json()
+    assert body["valid"] is False
+    assert body["probe_failed"] is True
+    assert "not available to this API key" in body["error_message"]
+    probe.assert_awaited_once()
+
+
+def test_validate_model_does_not_probe_unless_asked(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    probe = _saved_key_only(monkeypatch, "refused")
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gemini-2.5-pro", "provider": "google"},
+        headers=_headers(),
+    )
+    assert res.json()["valid"] is True
+    probe.assert_not_awaited()
+
+
+def test_validate_model_probe_that_passes_keeps_it_valid(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    _saved_key_only(monkeypatch, None)
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gemini-3.8-flash", "provider": "google", "probe": True},
+        headers=_headers(),
+    )
+    body = res.json()
+    assert body["valid"] is True
+    assert body["probe_failed"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raised, expected",
+    [
+        ("NotFoundError", "not available to this API key"),
+        ("AuthenticationError", "rejected the API key"),
+        ("RateLimitError", None),
+        ("BadRequestError", None),
+    ],
+)
+async def test_probe_model_maps_typed_refusals(
+    monkeypatch: pytest.MonkeyPatch, gateway_env: str, raised: str, expected
+) -> None:
+    from routers import evaluation_logs as router_module
+    from utils.gateway_litellm_client import GatewayProviderError
+
+    monkeypatch.setattr(router_module, "_newest_saved_key", AsyncMock(return_value="AIza-saved"))
+    sent = {}
+
+    async def fake_completion(model, messages, key, **kwargs):
+        sent.update(model=model, key=key, max_tokens=kwargs.get("max_tokens"))
+        raise GatewayProviderError(raised, 400, "x")
+
+    monkeypatch.setattr("utils.gateway_litellm_client.gateway_completion_async", fake_completion)
+
+    message = await router_module.probe_model(1, "google", "gemini-2.5-pro")
+    assert sent == {"model": "gemini/gemini-2.5-pro", "key": "AIza-saved", "max_tokens": 1}
+    if expected is None:
+        assert message is None
+    else:
+        assert expected in message
+
+
+@pytest.mark.asyncio
+async def test_probe_model_outage_or_no_key_does_not_block(
+    monkeypatch: pytest.MonkeyPatch, gateway_env: str
+) -> None:
+    from routers import evaluation_logs as router_module
+
+    async def down(*_args, **_kwargs):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr("utils.gateway_litellm_client.gateway_completion_async", down)
+    monkeypatch.setattr(router_module, "_newest_saved_key", AsyncMock(return_value="sk-saved"))
+    assert await router_module.probe_model(1, "openai", "gpt-4o") is None
+
+    monkeypatch.setattr(router_module, "_newest_saved_key", AsyncMock(return_value=None))
+    assert await router_module.probe_model(1, "openai", "gpt-4o") is None
+
+
 
 # --------------------------------------------------------------------------- #
 # Middleware: internal-key authentication                                      #

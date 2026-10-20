@@ -121,6 +121,70 @@ async def check_db_openrouter_available(organization_id: int) -> bool:
     return await check_db_api_key_available(organization_id, "openrouter")
 
 
+PROBE_TIMEOUT_SECONDS = 20.0
+
+
+async def _newest_saved_key(organization_id: int, provider: str) -> Optional[str]:
+    """The org's newest active saved key for the provider, decrypted; None if none can be read."""
+    from controllers.reports import _decrypt_api_key
+
+    p = (provider or "").lower()
+    providers = ["google", "gemini"] if p in ("google", "gemini") else [p]
+    try:
+        async with get_db() as db:
+            result = await db.execute(
+                text(
+                    "SELECT encrypted_key FROM ai_gateway_api_keys "
+                    "WHERE organization_id = :organization_id AND is_active = true "
+                    "AND LOWER(provider) = ANY(:providers) "
+                    "ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1"
+                ),
+                {"organization_id": organization_id, "providers": providers},
+            )
+            row = result.fetchone()
+        return _decrypt_api_key(row[0]) if row and row[0] else None
+    except Exception as e:
+        print(f"Could not read the saved provider entry for the model check: {type(e).__name__}")
+        return None
+
+
+async def probe_model(organization_id: int, provider: str, model_name: str) -> Optional[str]:
+    """
+    Ask the provider for one token with the org's saved key, through the AI Gateway.
+
+    Returns a message when the provider refuses the key or the model (the same typed
+    errors that stop a run), else None. A check that cannot run, times out or fails for
+    another reason returns None: an outage must not block a run.
+    """
+    from utils.error_detection import TYPED_FATAL_ERRORS
+    from utils.gateway_litellm_client import (
+        GatewayProviderError,
+        gateway_completion_async,
+        gateway_mode_enabled,
+        to_litellm_model,
+    )
+
+    if not gateway_mode_enabled():
+        return None
+    key = await _newest_saved_key(organization_id, provider)
+    if not key:
+        return None
+    try:
+        await gateway_completion_async(
+            to_litellm_model(provider, model_name),
+            [{"role": "user", "content": "ping"}],
+            key,
+            max_tokens=1,
+            timeout=PROBE_TIMEOUT_SECONDS,
+        )
+    except GatewayProviderError as e:
+        refusal = TYPED_FATAL_ERRORS.get(e.error_type)
+        return refusal[1] if refusal else None
+    except Exception:
+        return None
+    return None
+
+
 # ==================== REQUEST MODELS ====================
 
 class CreateLogRequest(BaseModel):
@@ -185,6 +249,9 @@ router = APIRouter(prefix="/deepeval", tags=["Evaluation Logs & Monitoring"])
 class ValidateModelRequest(BaseModel):
     model_name: str
     provider: Optional[str] = None  # If not provided, will be auto-detected
+    # Also make a 1-token call with the saved key, so a refused key or a model the provider
+    # no longer serves to it shows before the run starts
+    probe: bool = False
 
 
 @router.post("/models/validate")
@@ -246,6 +313,13 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
         else:
             error_message = f"API key for provider '{provider}' is not configured."
 
+    # Only a saved key can be probed; an env-only key is the server's, not the org's
+    probe_failed = False
+    if is_valid and payload.probe and has_api_key_db:
+        probe_error = await probe_model(organization_id, provider, model_name)
+        if probe_error:
+            is_valid, probe_failed, error_message = False, True, probe_error
+
     return JSONResponse(content={
         "valid": is_valid,
         "model_name": model_name,
@@ -253,6 +327,7 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
         "has_api_key": has_api_key,
         "has_openrouter_fallback": has_openrouter,
         "error_message": error_message,
+        "probe_failed": probe_failed,
     })
 
 

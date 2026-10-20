@@ -251,8 +251,8 @@ export const getMetricAggregates = (
 
 // ==================== MODEL VALIDATION ====================
 
-export const validateModel = (modelName: string, provider?: string) =>
-  modelValidationService.validateModel(modelName, provider);
+export const validateModel = (modelName: string, provider?: string, probe = false) =>
+  modelValidationService.validateModel(modelName, provider, probe);
 
 export const validateModelForExperiment = (config: Record<string, unknown>) =>
   experimentsService.validateModelForExperiment(config);
