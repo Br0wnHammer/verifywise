@@ -143,7 +143,7 @@ async def test_providers_reuse_the_grouped_models(fake_cost_map):
     assert {m["id"] for m in data["models"]["openai"]} >= {"gpt-4o", "text-embedding-3-small"}
 
 
-def test_eval_report_summary_defaults_are_current_litellm_chat_models():
+def test_eval_report_summary_defaults_are_current_litellm_chat_models(monkeypatch):
     """EvalServer's report-summary DEFAULT_MODELS must be chat models the pinned LiteLLM
     knows; an unknown default can't be priced and may not be served.
 
@@ -162,14 +162,19 @@ def test_eval_report_summary_defaults_are_current_litellm_chat_models():
     client = repo / "EvaluationModule" / "src"
     if not reports.is_file() or not client.is_dir():
         pytest.skip("EvalServer / EvaluationModule source not present")
-    sys.path.insert(0, str(client))
+    monkeypatch.syspath_prepend(str(client))
     from deepeval_engine.gateway_litellm_client import to_litellm_model
 
-    defaults = next(
-        ast.literal_eval(node.value)
-        for node in ast.parse(reports.read_text()).body
-        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "DEFAULT_MODELS" for t in node.targets)
-    )
+    def constant(name):
+        return next(
+            ast.literal_eval(node.value)
+            for node in ast.parse(reports.read_text()).body
+            if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets)
+        )
+
+    defaults = constant("DEFAULT_MODELS")
+    # Every provider the summary may pick has a default
+    assert set(defaults) == set(constant("PREFERRED_PROVIDERS"))
     bundled = json.loads(
         (importlib.resources.files("litellm") / "model_prices_and_context_window_backup.json").read_text()
     )

@@ -19,6 +19,7 @@ for _parent in Path(__file__).resolve().parents:
         break
 
 from deepeval_engine.gateway_litellm_client import (  # noqa: E402,F401
+    BILLING_WORDS,
     DEFAULT_GATEWAY_URL,
     GatewayCompletion,
     GatewayProviderError,

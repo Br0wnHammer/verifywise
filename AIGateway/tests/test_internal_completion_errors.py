@@ -155,3 +155,17 @@ async def test_no_sampling_settings_means_nothing_dropped(monkeypatch):
     monkeypatch.setattr(completions, "chat_completion", fake)
     res = await completions.chat_completions(_request(), _body())
     assert res["dropped_params"] == []
+
+
+async def test_renamed_settings_count_as_applied_and_fallbacks_report_nothing(monkeypatch):
+    async def fake(**_kwargs):
+        return {"choices": [{"message": {"content": "ok"}}]}
+
+    monkeypatch.setattr(completions, "chat_completion", fake)
+    msgs = [{"role": "user", "content": "hi"}]
+    cohere = completions.CompletionRequest(model="cohere/command-r", messages=msgs, temperature=0.0, top_p=0.5)
+    assert (await completions.chat_completions(_request(), cohere))["dropped_params"] == []
+    with_fallback = completions.CompletionRequest(
+        model="o3-mini", messages=msgs, temperature=0.0, fallback_models=["gpt-4o-mini"]
+    )
+    assert (await completions.chat_completions(_request(), with_fallback))["dropped_params"] == []

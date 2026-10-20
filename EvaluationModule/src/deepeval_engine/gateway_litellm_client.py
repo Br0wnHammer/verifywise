@@ -63,7 +63,7 @@ class GatewayProviderError(RuntimeError):
 _DAILY_LIMIT_WORDS = ("per day", "per_day", "perday")
 _NO_ALLOWANCE = re.compile(r"\blimit:\s*0\b")
 _USED_UP_WORDS = ("insufficient",)
-_BILLING_WORDS = ("billing", "credit")
+BILLING_WORDS = ("billing", "credit")
 _PER_MINUTE_WORDS = ("per min", "per_min", "permin")
 _RETRY_HINT = re.compile(r"retry(?: in|delay\W*)\s*(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
 
@@ -87,7 +87,7 @@ def rate_limit_recovers(message: str) -> bool:
         return False
     if any(w in text for w in _PER_MINUTE_WORDS) or retry_hint_seconds(text) is not None:
         return True
-    return not any(w in text for w in _BILLING_WORDS) and "quota" not in text
+    return not any(w in text for w in BILLING_WORDS) and "quota" not in text
 
 
 def gateway_mode_enabled() -> bool:
@@ -178,21 +178,9 @@ def _to_completion(payload: Dict[str, Any]) -> GatewayCompletion:
     )
 
 
-# (model, setting) pairs already warned about; one line per process, not per prompt
-_WARNED_DROPS: set = set()
-
-
 def _dropped_params(payload: Dict[str, Any]) -> List[str]:
     dropped = payload.get("dropped_params")
-    if not isinstance(dropped, list):
-        return []
-    names = [d for d in dropped if isinstance(d, str)]
-    model = str(payload.get("model") or "")
-    new = [d for d in names if (model, d) not in _WARNED_DROPS]
-    if new:
-        _WARNED_DROPS.update((model, d) for d in new)
-        logger.warning("Model %s does not take %s; LiteLLM left it out", model, ", ".join(new))
-    return names
+    return [d for d in dropped if isinstance(d, str)] if isinstance(dropped, list) else []
 
 
 def _raise_for_error(resp: httpx.Response) -> None:
@@ -237,8 +225,12 @@ def _request(
         "temperature": temperature,
         "stream": False,
     }
-    if top_p is not None:
+    # top_p 1 changes nothing, so it is sent only when it narrows sampling. Anthropic
+    # refuses temperature and top_p together; as the direct SDK path did, top_p wins.
+    if top_p is not None and top_p < 1:
         body["top_p"] = top_p
+        if litellm_model.startswith("anthropic/"):
+            del body["temperature"]
     return url, headers, body
 
 

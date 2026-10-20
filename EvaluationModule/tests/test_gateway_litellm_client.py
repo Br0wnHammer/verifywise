@@ -164,6 +164,24 @@ def test_completion_omits_top_p_when_unset(gateway_env: str) -> None:
         return_value=httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
     )
     completion = gateway_completion_sync("gpt-4o-mini", [{"role": "user", "content": "hi"}], "sk-x")
-
+    assert "top_p" not in json.loads(route.calls.last.request.read())
+    # 1 changes nothing and Anthropic refuses it beside temperature
+    gateway_completion_sync("claude-haiku-4-5", [{"role": "user", "content": "hi"}], "sk-x", top_p=1)
     assert "top_p" not in json.loads(route.calls.last.request.read())
     assert completion.dropped_params == []
+
+
+
+@respx.mock
+def test_anthropic_gets_top_p_alone(gateway_env: str) -> None:
+    import json
+
+    from deepeval_engine.gateway_litellm_client import gateway_completion_sync
+
+    route = respx.post(COMPLETIONS_URL).mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+    )
+    gateway_completion_sync("anthropic/claude-haiku-4-5", [{"role": "user", "content": "hi"}], "sk-x", top_p=0.9)
+    body = json.loads(route.calls.last.request.read())
+    assert body["top_p"] == 0.9
+    assert "temperature" not in body

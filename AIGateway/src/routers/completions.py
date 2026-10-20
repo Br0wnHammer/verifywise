@@ -26,21 +26,29 @@ _SAMPLING_PARAMS = ("temperature", "top_p")
 def _dropped_params(model: str, kwargs: dict) -> list[str]:
     """
     The sampling settings LiteLLM leaves out of the provider request for this model, so
-    the caller can record that its setting was not applied. Supported-params lists can't
-    tell (o3-mini "supports" temperature yet drops any value but 1), so this runs the same
-    mapping the call does. Unknown when the mapping itself fails: report nothing.
+    the caller can record that its setting was not applied. Each setting is mapped with
+    drop_params off: a refusal is exactly what drop_params would have dropped, and a
+    provider that renames it (Bedrock topP, Cohere p) counts as applied. Supported-params
+    lists can't tell (o3-mini "supports" temperature yet refuses any value but 1).
+    Unknown when the mapping itself fails: report nothing.
     """
-    sent = {k: kwargs[k] for k in _SAMPLING_PARAMS if kwargs.get(k) is not None}
-    if not sent:
-        return []
     try:
         model_name, provider, _, _ = litellm.get_llm_provider(model)
-        applied = get_optional_params(
-            model=model_name, custom_llm_provider=provider, drop_params=True, **sent
-        )
     except Exception:
         return []
-    return [k for k in sent if k not in applied]
+    dropped = []
+    for key in _SAMPLING_PARAMS:
+        if kwargs.get(key) is None:
+            continue
+        try:
+            get_optional_params(
+                model=model_name, custom_llm_provider=provider, drop_params=False, **{key: kwargs[key]}
+            )
+        except litellm.UnsupportedParamsError:
+            dropped.append(key)
+        except Exception:
+            continue
+    return dropped
 
 
 def _provider_error(failure: ProviderCallError, api_key: str) -> JSONResponse:
@@ -151,7 +159,8 @@ async def chat_completions(request: Request, body: CompletionRequest):
         )
     except ProviderCallError as failure:
         return _provider_error(failure, api_key)
-    result["dropped_params"] = _dropped_params(body.model, kwargs)
+    # With fallbacks another model may have answered, so what it dropped is unknown
+    result["dropped_params"] = [] if body.fallback_models else _dropped_params(body.model, kwargs)
     return result
 
 

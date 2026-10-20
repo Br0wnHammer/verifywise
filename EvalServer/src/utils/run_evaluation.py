@@ -351,6 +351,9 @@ async def run_evaluation(
         print(f"📝 Judge LLM config: provider={judge_config.get('provider')}, has_apiKey={bool(judge_config.get('apiKey'))}")
         has_judge_key = judge_config.get("apiKey") and judge_config["apiKey"] not in ["***", "", None]
         is_self_hosted_judge = judge_config.get("provider", "").lower() in ("self-hosted", "ollama")
+        # Set below only for a self-hosted judge; never inherit one from an earlier run
+        os.environ.pop("G_EVAL_BASE_URL", None)
+        os.environ.pop("G_EVAL_API_KEY", None)
 
         if has_judge_key or is_self_hosted_judge:
             provider = judge_config.get("provider", "").lower()
@@ -375,19 +378,17 @@ async def run_evaluation(
                     base_url = endpoint_url.rstrip("/")
                     if not base_url.endswith("/v1"):
                         base_url = base_url + "/v1"
-                    os.environ["OPENAI_API_BASE"] = base_url
-                    print(f"✅ OPENAI_API_BASE set to {base_url}")
+                    os.environ["G_EVAL_BASE_URL"] = base_url
+                    print(f"✅ Judge endpoint set to {base_url}")
                 elif provider == "ollama":
                     # Default Ollama endpoint
-                    os.environ["OPENAI_API_BASE"] = "http://localhost:11434/v1"
-                    print(f"✅ OPENAI_API_BASE set to http://localhost:11434/v1 (default Ollama)")
-                # Set API key or dummy for self-hosted endpoints that don't require auth
+                    os.environ["G_EVAL_BASE_URL"] = "http://localhost:11434/v1"
+                    print(f"✅ Judge endpoint set to http://localhost:11434/v1 (default Ollama)")
+                # The judge calls this endpoint directly (deepeval_evaluator.judge_runner), not the
+                # gateway; many self-hosted servers need no key
                 if judge_config.get("apiKey") and judge_config["apiKey"] not in ["***", "", None]:
-                    os.environ["OPENAI_API_KEY"] = judge_config["apiKey"]
-                else:
-                    os.environ["OPENAI_API_KEY"] = "not-needed"
-                    print(f"✅ OPENAI_API_KEY set to dummy (self-hosted endpoint)")
-                # DeepEval's G-Eval uses the OpenAI client, so set provider to openai
+                    os.environ["G_EVAL_API_KEY"] = judge_config["apiKey"]
+                # DeepEval's native metrics are picked for provider "openai"
                 provider = "openai"
 
             # Expose judge provider/model for evaluator (provider-agnostic G‑Eval)
@@ -415,11 +416,7 @@ async def run_evaluation(
                 os.environ["MISTRAL_API_KEY"] = model_config["apiKey"]
             elif provider == "openrouter":
                 os.environ["OPENROUTER_API_KEY"] = model_config["apiKey"]
-            elif provider == "custom_api":
-                # For custom API, we'll set as OPENAI_API_KEY since we use OpenAI client
-                os.environ["OPENAI_API_KEY"] = model_config["apiKey"]
-                if model_config.get("endpointUrl"):
-                    os.environ["OPENAI_API_BASE"] = model_config["endpointUrl"]
+            # custom_api: the key goes straight to ModelRunner below, not the environment
         
         # 1. Initialize Model Runner
         print(f"📦 Initializing model: {model_config.get('name', 'unknown')}")
@@ -432,7 +429,7 @@ async def run_evaluation(
         # Map frontend provider names to ModelRunner names
         provider_mapping = {
             "local": "huggingface",    # Local files treated as HuggingFace models
-            "custom_api": "openai",    # Custom API uses OpenAI client with custom base_url
+            "custom_api": "custom_api",  # The user's OpenAI-compatible endpoint, not the gateway
             "openai": "openai",        # OpenAI API
             "anthropic": "anthropic",  # Anthropic API
             "google": "google",        # Google API (for Gemini models)
@@ -446,16 +443,16 @@ async def run_evaluation(
         runner_provider = provider_mapping.get(model_provider, "ollama")
         
         # Set custom endpoint if provided
-        if model_config.get("endpointUrl"):
-            if runner_provider == "ollama":
-                os.environ["OLLAMA_HOST"] = model_config["endpointUrl"]
-            elif runner_provider == "openai":
-                os.environ["OPENAI_API_BASE"] = model_config["endpointUrl"]
-        
+        if model_config.get("endpointUrl") and runner_provider == "ollama":
+            os.environ["OLLAMA_HOST"] = model_config["endpointUrl"]
+
+        custom_key = model_config.get("apiKey")
         try:
             model_runner = ModelRunner(
                 model_name=model_name,
                 provider=runner_provider,
+                endpoint_url=model_config.get("endpointUrl") if runner_provider == "custom_api" else None,
+                api_key=custom_key if runner_provider == "custom_api" and custom_key != "***" else None,
             )
         except Exception as e:
             error_msg = f"Failed to initialize model: {str(e)}"

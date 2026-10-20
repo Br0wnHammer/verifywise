@@ -110,10 +110,7 @@ class CustomDeepEvalLLM(DeepEvalBaseLLM):
         """Lazily initialize the ModelRunner to avoid startup issues."""
         if self._runner is None:
             try:
-                self._runner = ModelRunner(
-                    model_name=self.model_name,
-                    provider=self.provider
-                )
+                self._runner = judge_runner(self.model_name, self.provider)
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize {self.provider} runner: {e}")
     
@@ -194,15 +191,27 @@ class CustomDeepEvalLLM(DeepEvalBaseLLM):
         return f"{self.provider}/{self.model_name}"
 
 
+def judge_runner(model_name: str, provider: str) -> ModelRunner:
+    """
+    The ModelRunner a judge calls. A self-hosted or Ollama judge runs against its own
+    OpenAI-compatible endpoint (G_EVAL_BASE_URL, set per run by run_evaluation) and keeps
+    provider "openai" for metric selection; every cloud judge goes through the gateway.
+    """
+    base_url = os.getenv("G_EVAL_BASE_URL")
+    if base_url:
+        return ModelRunner(
+            model_name=model_name,
+            provider="custom_api",
+            endpoint_url=base_url,
+            api_key=os.getenv("G_EVAL_API_KEY"),
+        )
+    return ModelRunner(model_name=model_name, provider=provider)
+
+
 def get_judge_llm(provider: str, model_name: str):
     """
-    Get the appropriate LLM instance for DeepEval metrics based on provider.
-    
-    For OpenAI: Returns the model name string (DeepEval handles it natively)
-    For other providers: Returns a CustomDeepEvalLLM wrapper
-    
-    When AI Gateway LiteLLM mode is enabled, always use CustomDeepEvalLLM so all
-    judge traffic routes through the gateway (not DeepEval's direct OpenAI client).
+    The LLM for DeepEval metrics: always a CustomDeepEvalLLM, so judge traffic goes
+    through the gateway (or a self-hosted endpoint), never DeepEval's own OpenAI client.
     
     Args:
         provider: The LLM provider (openai, anthropic, mistral, google, xai)
@@ -211,17 +220,7 @@ def get_judge_llm(provider: str, model_name: str):
     Returns:
         Either a model name string (OpenAI) or CustomDeepEvalLLM instance
     """
-    from deepeval_engine.gateway_litellm_client import gateway_mode_enabled
-
-    provider = provider.lower()
-
-    if gateway_mode_enabled():
-        return CustomDeepEvalLLM(model_name=model_name, provider=provider)
-
-    if provider == "openai":
-        return model_name
-
-    return CustomDeepEvalLLM(model_name=model_name, provider=provider)
+    return CustomDeepEvalLLM(model_name=model_name, provider=provider.lower())
 
 
 # No metric reads contextual_relevancy; that name enables context_relevancy (as in
@@ -314,7 +313,7 @@ class GEvalLikeMetric:
 
     def _ensure_runner(self) -> None:
         if self._runner is None:
-            self._runner = ModelRunner(model_name=self.model_name, provider=self.provider)
+            self._runner = judge_runner(self.model_name, self.provider)
 
     def _build_prompt(self, *, input_text: str, actual_output: str, expected_output: str | None = None) -> str:
         rubric = self._custom_rubric or (
@@ -475,9 +474,10 @@ class DeepEvalEvaluator:
             "openrouter":  os.getenv("OPENROUTER_API_KEY"),
         }
         configured_judge_provider = os.getenv("G_EVAL_PROVIDER", "openai").lower()
-        # For self-hosted/ollama, G_EVAL_PROVIDER is already normalised to "openai" with OPENAI_API_KEY set
+        # A self-hosted/ollama judge has an endpoint (G_EVAL_BASE_URL) and often no key
         self.has_llm_key = bool(_provider_key_map.get(configured_judge_provider) or
-                                any(_provider_key_map.values()))
+                                any(_provider_key_map.values()) or
+                                os.getenv("G_EVAL_BASE_URL"))
         if not self.has_llm_key:
             print("\n⚠️  NOTE: G‑Eval metrics require a model API key (OpenAI/Anthropic/Gemini/Mistral/xAI/OpenRouter).")
             print("    No supported LLM API key found; G‑Eval metrics will be skipped.\n")

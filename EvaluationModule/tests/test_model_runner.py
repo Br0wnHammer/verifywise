@@ -31,11 +31,7 @@ def _make_runner(provider: str, model_name: str = "test-model", gateway_mode: bo
     runner._gateway_api_key = "sk-fake" if gateway_mode else None
     runner.last_completion = None
     runner.dropped_params = set()
-    runner.openai_client = MagicMock()
-    runner.anthropic_client = MagicMock()
-    runner.google_client = MagicMock()
-    runner.xai_client = MagicMock()
-    runner.mistral_client = MagicMock()
+    runner.custom_client = MagicMock()
     runner.ollama_client = MagicMock()
     runner.openrouter_client = MagicMock()
     return runner
@@ -44,27 +40,6 @@ def _make_runner(provider: str, model_name: str = "test-model", gateway_mode: bo
 # --------------------------------------------------------------------------- #
 # Provider dispatch table — gateway OFF                                       #
 # --------------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize(
-    "provider,private_method",
-    [
-        ("openai", "_generate_openai"),
-        ("anthropic", "_generate_anthropic"),
-        ("google", "_generate_google"),
-        ("xai", "_generate_xai"),
-        ("mistral", "_generate_mistral"),
-        ("openrouter", "_generate_openrouter"),
-        ("ollama", "_generate_ollama"),
-        ("huggingface", "_generate_huggingface"),
-    ],
-)
-def test_generate_dispatches_to_correct_provider(provider: str, private_method: str) -> None:
-    runner = _make_runner(provider)
-    with patch.object(runner, private_method, return_value="dispatched") as mocked:
-        result = runner.generate("hello", max_tokens=10)
-    assert result == "dispatched"
-    mocked.assert_called_once()
 
 
 def test_generate_unknown_provider_raises() -> None:
@@ -127,137 +102,8 @@ def test_generate_gateway_mode_requires_api_key(monkeypatch: pytest.MonkeyPatch)
 
 
 # --------------------------------------------------------------------------- #
-# _retry_with_backoff — rate-limit retries                                    #
+# Local providers (Ollama, HuggingFace)                                       #
 # --------------------------------------------------------------------------- #
-
-
-def test_retry_with_backoff_retries_on_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("deepeval_engine.model_runner.time.sleep", lambda _: None)
-    runner = _make_runner("openai")
-
-    attempts = {"count": 0}
-
-    def flaky():
-        attempts["count"] += 1
-        if attempts["count"] < 3:
-            raise RuntimeError("Status 429: rate limit hit")
-        return "ok"
-
-    result = runner._retry_with_backoff(flaky, max_retries=3, base_delay=1)
-    assert result == "ok"
-    assert attempts["count"] == 3
-
-
-def test_retry_with_backoff_raises_on_non_rate_limit() -> None:
-    runner = _make_runner("openai")
-
-    def boom():
-        raise ValueError("not a rate limit")
-
-    with pytest.raises(ValueError, match="not a rate limit"):
-        runner._retry_with_backoff(boom, max_retries=3, base_delay=0)
-
-
-def test_retry_with_backoff_exhausts_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("deepeval_engine.model_runner.time.sleep", lambda _: None)
-    runner = _make_runner("openai")
-
-    def always_rate_limit():
-        raise RuntimeError("Status 429 rate limit")
-
-    with pytest.raises(RuntimeError, match="429"):
-        runner._retry_with_backoff(always_rate_limit, max_retries=2, base_delay=1)
-
-
-# --------------------------------------------------------------------------- #
-# Provider-specific generate paths (no real SDK calls)                        #
-# --------------------------------------------------------------------------- #
-
-
-def test_generate_openai_returns_content() -> None:
-    runner = _make_runner("openai")
-    response = MagicMock()
-    response.choices = [MagicMock(message=MagicMock(content="hello world"))]
-    runner.openai_client.chat.completions.create.return_value = response
-
-    result = runner._generate_openai("prompt", max_tokens=10, temperature=0.5, top_p=None)
-    assert result == "hello world"
-
-
-def test_generate_openai_drops_top_p_for_o_series_models() -> None:
-    runner = _make_runner("openai", model_name="o3-mini")
-    response = MagicMock()
-    response.choices = [MagicMock(message=MagicMock(content="resp"))]
-    runner.openai_client.chat.completions.create.return_value = response
-
-    runner._generate_openai("prompt", max_tokens=10, temperature=0.5, top_p=0.9)
-    call_kwargs = runner.openai_client.chat.completions.create.call_args.kwargs
-    assert "top_p" not in call_kwargs
-
-
-def test_generate_openai_includes_top_p_for_normal_models() -> None:
-    runner = _make_runner("openai", model_name="gpt-4o")
-    response = MagicMock()
-    response.choices = [MagicMock(message=MagicMock(content="resp"))]
-    runner.openai_client.chat.completions.create.return_value = response
-
-    runner._generate_openai("prompt", max_tokens=10, temperature=0.5, top_p=0.9)
-    call_kwargs = runner.openai_client.chat.completions.create.call_args.kwargs
-    assert call_kwargs["top_p"] == 0.9
-
-
-def test_generate_openai_raises_on_empty_content() -> None:
-    runner = _make_runner("openai")
-    response = MagicMock()
-    response.choices = [MagicMock(message=MagicMock(content=None))]
-    runner.openai_client.chat.completions.create.return_value = response
-    with pytest.raises(ValueError, match="empty response"):
-        runner._generate_openai("p", max_tokens=10, temperature=0.5, top_p=None)
-
-
-def test_generate_anthropic_extracts_text() -> None:
-    runner = _make_runner("anthropic")
-    block = MagicMock()
-    block.text = "anthropic out"
-    runner.anthropic_client.messages.create.return_value = MagicMock(content=[block])
-    result = runner._generate_anthropic("prompt", max_tokens=5, temperature=0.5, top_p=None)
-    assert result == "anthropic out"
-
-
-def test_generate_anthropic_top_p_excludes_temperature() -> None:
-    runner = _make_runner("anthropic")
-    block = MagicMock()
-    block.text = "ok"
-    runner.anthropic_client.messages.create.return_value = MagicMock(content=[block])
-    runner._generate_anthropic("p", max_tokens=5, temperature=0.5, top_p=0.9)
-    kwargs = runner.anthropic_client.messages.create.call_args.kwargs
-    assert "top_p" in kwargs
-    assert "temperature" not in kwargs
-
-
-def test_generate_google_returns_text() -> None:
-    runner = _make_runner("google")
-    runner.google_client.generate_content.return_value = MagicMock(text="g out")
-    out = runner._generate_google("p", max_tokens=10, temperature=0.0, top_p=None)
-    assert out == "g out"
-
-
-def test_generate_mistral_handles_string_content() -> None:
-    runner = _make_runner("mistral")
-    chat_response = MagicMock()
-    chat_response.choices = [MagicMock(message=MagicMock(content="m out"))]
-    runner.mistral_client.chat.complete.return_value = chat_response
-    out = runner._generate_mistral("p", max_tokens=5, temperature=0.0, top_p=None)
-    assert out == "m out"
-
-
-def test_generate_mistral_handles_list_content_with_text_blocks() -> None:
-    runner = _make_runner("mistral")
-    chat_response = MagicMock()
-    chat_response.choices = [MagicMock(message=MagicMock(content=[{"text": "a"}, {"text": "b"}]))]
-    runner.mistral_client.chat.complete.return_value = chat_response
-    out = runner._generate_mistral("p", max_tokens=5, temperature=0.0, top_p=None)
-    assert out == "ab"
 
 
 def test_generate_ollama_returns_response() -> None:
@@ -265,29 +111,6 @@ def test_generate_ollama_returns_response() -> None:
     runner.ollama_client.generate.return_value = {"response": "  ollama out  "}
     out = runner._generate_ollama("p", max_tokens=5, temperature=0.0, top_p=None)
     assert out == "ollama out"
-
-
-def test_generate_openrouter_returns_content() -> None:
-    runner = _make_runner("openrouter")
-    response = MagicMock()
-    response.choices = [MagicMock(message=MagicMock(content="or out"))]
-    runner.openrouter_client.chat.completions.create.return_value = response
-    out = runner._generate_openrouter("p", max_tokens=5, temperature=0.0, top_p=None)
-    assert out == "or out"
-
-
-def test_generate_openrouter_raises_on_empty_content() -> None:
-    runner = _make_runner("openrouter")
-    response = MagicMock()
-    response.choices = [MagicMock(message=MagicMock(content=None))]
-    runner.openrouter_client.chat.completions.create.return_value = response
-    with pytest.raises(ValueError, match="empty response"):
-        runner._generate_openrouter("p", max_tokens=5, temperature=0.0, top_p=None)
-
-
-# --------------------------------------------------------------------------- #
-# generate_batch                                                               #
-# --------------------------------------------------------------------------- #
 
 
 def test_generate_batch_returns_list_of_same_length(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -452,3 +275,61 @@ def test_gateway_forwards_top_p_and_collects_dropped_settings(monkeypatch: pytes
     assert runner.generate("hi", temperature=0.7, top_p=0.5) == "ok"
     assert seen["top_p"] == 0.5
     assert runner.dropped_params == {"temperature", "top_p"}
+
+
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "google", "xai", "mistral", "openrouter"])
+def test_cloud_provider_without_the_gateway_raises(monkeypatch: pytest.MonkeyPatch, provider: str) -> None:
+    from deepeval_engine.model_runner import ModelRunner
+
+    monkeypatch.delenv("AI_GATEWAY_INTERNAL_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="AI_GATEWAY_INTERNAL_KEY"):
+        ModelRunner(model_name="m", provider=provider, device="cpu")
+
+
+def test_custom_api_uses_its_own_endpoint_not_the_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deepeval_engine.model_runner import ModelRunner
+
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "internal-test-key")
+    built = {}
+
+    class FakeOpenAI:
+        def __init__(self, api_key, base_url):
+            built.update(api_key=api_key, base_url=base_url)
+            self.chat = MagicMock()
+            self.chat.completions.create.return_value = MagicMock(
+                choices=[MagicMock(message=MagicMock(content=" out "))]
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    runner = ModelRunner(
+        model_name="my-model", provider="custom_api", device="cpu",
+        endpoint_url="http://vllm.local:8000/v1/", api_key="k-1",
+    )
+    assert runner._gateway_mode is False
+    assert built == {"api_key": "k-1", "base_url": "http://vllm.local:8000/v1"}
+    assert runner.generate("hi", top_p=0.5) == "out"
+    assert runner.custom_client.chat.completions.create.call_args.kwargs["top_p"] == 0.5
+
+
+def test_custom_api_needs_an_endpoint() -> None:
+    from deepeval_engine.model_runner import ModelRunner
+
+    with pytest.raises(ValueError, match="endpoint URL"):
+        ModelRunner(model_name="m", provider="custom_api", device="cpu")
+
+
+def test_self_hosted_judge_runs_against_its_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deepeval_engine import deepeval_evaluator
+
+    built = {}
+    monkeypatch.setattr(deepeval_evaluator, "ModelRunner", lambda **kw: built.update(kw) or "runner")
+    monkeypatch.setenv("G_EVAL_BASE_URL", "http://host:8080/v1")
+    monkeypatch.delenv("G_EVAL_API_KEY", raising=False)
+
+    assert deepeval_evaluator.judge_runner("tinyllama", "openai") == "runner"
+    assert built == {"model_name": "tinyllama", "provider": "custom_api", "endpoint_url": "http://host:8080/v1", "api_key": None}
+
+    monkeypatch.delenv("G_EVAL_BASE_URL")
+    built.clear()
+    deepeval_evaluator.judge_runner("gpt-4o-mini", "openai")
+    assert built == {"model_name": "gpt-4o-mini", "provider": "openai"}

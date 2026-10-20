@@ -74,7 +74,7 @@ def _patch_run_eval_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     "config_provider,expected_runner",
     [
         ("local", "huggingface"),
-        ("custom_api", "openai"),
+        ("custom_api", "custom_api"),
         ("openai", "openai"),
         ("anthropic", "anthropic"),
         ("google", "google"),
@@ -358,7 +358,7 @@ async def test_judge_api_key_injected_into_env(
 
 
 @pytest.mark.asyncio
-async def test_judge_self_hosted_sets_openai_api_base(
+async def test_judge_self_hosted_sets_its_endpoint(
     inline_prompts_config: Dict[str, Any],
     mock_db_session: AsyncMock,
     stub_model_runner: MagicMock,
@@ -382,13 +382,20 @@ async def test_judge_self_hosted_sets_openai_api_base(
         config=cfg,
         organization_id=1,
     )
-    base = os.environ.get("OPENAI_API_BASE")
-    assert base is not None
-    assert base.endswith("/v1")
-    # Self-hosted with no key sets a dummy
-    assert os.environ.get("OPENAI_API_KEY") in ("not-needed", None) or os.environ.get(
-        "OPENAI_API_KEY"
-    ).startswith("not-needed")
+    assert os.environ.get("G_EVAL_BASE_URL") == "http://host:8080/v1"
+    # No key: the judge sends none, and OpenAI's own variables are untouched
+    assert os.environ.get("G_EVAL_API_KEY") is None
+    assert os.environ.get("OPENAI_API_BASE") is None
+
+    # A later run with a cloud judge must not inherit the endpoint
+    cfg["judgeLlm"] = {"provider": "openai", "model": "gpt-4o-mini", "apiKey": "sk-test"}
+    await run_evaluation(
+        db=mock_db_session,
+        experiment_id="exp-cloud-after",
+        config=cfg,
+        organization_id=1,
+    )
+    assert os.environ.get("G_EVAL_BASE_URL") is None
 
 
 @pytest.mark.asyncio
@@ -411,7 +418,7 @@ async def test_judge_ollama_sets_default_base(
         config=cfg,
         organization_id=1,
     )
-    assert os.environ.get("OPENAI_API_BASE") == "http://localhost:11434/v1"
+    assert os.environ.get("G_EVAL_BASE_URL") == "http://localhost:11434/v1"
 
 
 @pytest.mark.asyncio

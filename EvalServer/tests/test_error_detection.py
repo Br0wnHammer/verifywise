@@ -71,6 +71,9 @@ def test_typed_non_recovering_rate_limits_are_fatal(message: str, code: str) -> 
         ("Quota exceeded for metric requests per minute. Please retry in 30s", False),
         ("Quota exceeded per day, please try again", True),
         ("Rate limit reached on requests per day (RPD). Please try again in 8s", True),
+        ("429 RESOURCE_EXHAUSTED: quota for requests per day. Please retry in 30s", True),
+        # Nothing retries an untyped plain rate limit, so it stays fatal
+        ("Rate limit exceeded", True),
     ],
 )
 def test_untyped_rate_limits_use_the_same_rule(message: str, fatal: bool) -> None:

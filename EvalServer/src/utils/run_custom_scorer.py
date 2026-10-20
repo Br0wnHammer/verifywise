@@ -48,40 +48,18 @@ class ScorerResult:
 _PLACEHOLDER_PATTERN = re.compile(r"{{\s*([a-zA-Z0-9_]+)\s*}}")
 
 
-# Provider detection and configuration
+# Env var holding each provider's key when the scorer config carries none. Cloud
+# providers run through the AI Gateway; only self-hosted calls its endpoint directly.
 PROVIDER_CONFIG = {
-    "openai": {
-        "env_var": "OPENAI_API_KEY",
-        "base_url": None,  # Use default
-    },
-    "anthropic": {
-        "env_var": "ANTHROPIC_API_KEY",
-        "base_url": "https://api.anthropic.com/v1",
-    },
-    "mistral": {
-        "env_var": "MISTRAL_API_KEY",
-        "base_url": "https://api.mistral.ai/v1",
-    },
-    "xai": {
-        "env_var": "XAI_API_KEY",
-        "base_url": "https://api.x.ai/v1",
-    },
-    "google": {
-        "env_var": "GEMINI_API_KEY",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-    },
-    "gemini": {
-        "env_var": "GEMINI_API_KEY",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-    },
-    "huggingface": {
-        "env_var": "HF_API_KEY",
-        "base_url": "https://api-inference.huggingface.co/v1",
-    },
-    "self-hosted": {
-        "env_var": None,
-        "base_url": None,
-    },
+    "openai": {"env_var": "OPENAI_API_KEY"},
+    "anthropic": {"env_var": "ANTHROPIC_API_KEY"},
+    "mistral": {"env_var": "MISTRAL_API_KEY"},
+    "xai": {"env_var": "XAI_API_KEY"},
+    "google": {"env_var": "GEMINI_API_KEY"},
+    "gemini": {"env_var": "GEMINI_API_KEY"},
+    "openrouter": {"env_var": "OPENROUTER_API_KEY"},
+    "huggingface": {"env_var": "HF_API_KEY"},
+    "self-hosted": {"env_var": None},
 }
 
 def get_provider_from_config(judge_model_config: Any) -> Tuple[str, Optional[str], Optional[str]]:
@@ -112,23 +90,17 @@ def get_provider_client(
     api_key: Optional[str] = None,
 ) -> Tuple[Any, str]:
     """
-    Get the appropriate API client and key for a provider.
+    The client and key for a scorer's judge.
 
-    Args:
-        provider: Provider name (e.g., "openai", "mistral", "self-hosted")
-        endpoint_url: Optional base URL override (required for self-hosted)
-        api_key: Optional API key override from config
-
-    Returns:
-        Tuple of (OpenAI client, api_key)
+    Self-hosted gets an OpenAI-compatible client for its endpoint. A cloud provider gets
+    no client (None): it runs through the AI Gateway, which must be configured.
 
     Raises:
-        RuntimeError: If API key is not set for the provider
+        RuntimeError: missing endpoint, missing key, or no AI Gateway for a cloud provider
     """
-    if OpenAI is None:
-        raise RuntimeError("OpenAI package not installed")
-
     if provider == "self-hosted":
+        if OpenAI is None:
+            raise RuntimeError("OpenAI package not installed")
         if not endpoint_url:
             raise RuntimeError("Self-hosted provider requires 'endpointUrl' in judgeModel config")
         # Ensure the base URL ends with /v1 for OpenAI-compatible APIs (e.g. Ollama)
@@ -136,26 +108,20 @@ def get_provider_client(
         if not base.endswith("/v1"):
             base += "/v1"
         resolved_key = api_key or "not-needed"
-        client = OpenAI(api_key=resolved_key, base_url=base)
-        return client, resolved_key
+        return OpenAI(api_key=resolved_key, base_url=base), resolved_key
 
-    config = PROVIDER_CONFIG.get(provider, PROVIDER_CONFIG["openai"])
-    env_var = config["env_var"]
-    base_url = config["base_url"]
+    from utils.gateway_litellm_client import gateway_mode_enabled
 
+    if not gateway_mode_enabled():
+        raise RuntimeError(f"Provider '{provider}' runs through the AI Gateway; set AI_GATEWAY_INTERNAL_KEY")
+    env_var = PROVIDER_CONFIG.get(provider, PROVIDER_CONFIG["openai"])["env_var"]
     resolved_key = api_key or os.getenv(env_var)
     if not resolved_key:
         raise RuntimeError(
             f"No API key found for provider '{provider}' (expected env var: {env_var}). "
             f"Please save your {provider.upper()} API key in LLM Evals Settings."
         )
-
-    if base_url:
-        client = OpenAI(api_key=resolved_key, base_url=base_url)
-    else:
-        client = OpenAI(api_key=resolved_key)
-
-    return client, resolved_key
+    return None, resolved_key
 
 
 def render_template(template: str, values: Dict[str, str]) -> str:
@@ -419,7 +385,7 @@ async def run_custom_scorer(
     # Get the appropriate client for this provider
     try:
         client, api_key = get_provider_client(provider, endpoint_url=endpoint_url, api_key=config_api_key)
-        print(f"   ✅ Using {provider.upper()} API client")
+        print(f"   ✅ Judge provider ready: {provider}")
     except RuntimeError as e:
         # Stored in the experiment's results, shown to the organization.
         init_error = f"Failed to initialize model: {redact_secrets(str(e))}"
@@ -435,9 +401,9 @@ async def run_custom_scorer(
         )
     
     try:
-        from utils.gateway_litellm_client import gateway_completion_sync, gateway_mode_enabled, to_litellm_model
+        from utils.gateway_litellm_client import gateway_completion_sync, to_litellm_model
 
-        if provider != "self-hosted" and gateway_mode_enabled():
+        if provider != "self-hosted":
             litellm_model = to_litellm_model(provider, model_name)
             completion = gateway_completion_sync(
                 litellm_model,
@@ -456,6 +422,8 @@ async def run_custom_scorer(
                 messages=rendered_messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                # Same rule as the gateway client: 1 changes nothing
+                **({"top_p": top_p} if top_p is not None and top_p < 1 else {}),
             )
 
             raw_response = response.choices[0].message.content.strip()

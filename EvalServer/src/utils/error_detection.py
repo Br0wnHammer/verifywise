@@ -8,7 +8,7 @@ and should stop the experiment early to avoid wasting time.
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from utils.gateway_litellm_client import rate_limit_recovers
+from utils.gateway_litellm_client import BILLING_WORDS, rate_limit_recovers
 
 # Fatal error patterns that won't recover - experiment should stop
 # Format: (pattern_to_match, error_code, user_friendly_message)
@@ -157,8 +157,15 @@ _QUOTA_EXCEEDED = next((code, msg) for pattern, code, msg in FATAL_ERROR_PATTERN
 _INSUFFICIENT_CREDITS = next(
     (code, msg) for pattern, code, msg in FATAL_ERROR_PATTERNS if code == "insufficient_credits"
 )
-# Untyped text that is a rate limit all the same (direct SDK calls, wrapped messages)
-_RATE_LIMIT_WORDS = ("rate limit", "quota exceeded", "exceeded your current quota", "resource exhausted")
+# Untyped quota text (direct SDK calls, wrapped messages) that the rule decides. A plain
+# untyped "rate limit exceeded" stays with the patterns: nothing retries it, so it is fatal.
+_RATE_LIMIT_WORDS = (
+    "quota exceeded",
+    "exceeded your current quota",
+    "resource_exhausted",
+    "resource has been exhausted",
+    "per day",
+)
 _TYPED_ERROR = re.compile(r"\b([A-Z]\w*(?:Error|Timeout)) \((\d{3}|-)\): ")
 
 
@@ -197,7 +204,7 @@ def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optiona
         for pattern, error_code, user_message in FATAL_ERROR_PATTERNS:
             if pattern in error_lower:
                 return True, error_code, user_message
-        if any(word in error_lower for word in ("credit", "billing")):
+        if any(word in error_lower for word in BILLING_WORDS):
             return True, *_INSUFFICIENT_CREDITS
         return True, *_QUOTA_EXCEEDED
 
