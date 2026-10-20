@@ -99,9 +99,7 @@ test.describe("Framework stats card empty state (ISO 42001)", () => {
     );
   });
 
-  test("page has no critical or serious accessibility violations", async ({
-    isoOrgPage: page,
-  }) => {
+  test("page has no critical or serious accessibility violations", async ({ isoOrgPage: page }) => {
     await page.goto("/framework/controls?framework=iso-42001");
     await page.waitForLoadState("domcontentloaded");
 
