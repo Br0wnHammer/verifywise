@@ -49,6 +49,8 @@ export interface ModelStepProps {
   selectedModelInventoryId: number | null;
   fieldsRef?: RefObject<HTMLDivElement | null>;
   getProviderModels: (providerId: string) => ModelInfo[];
+  /** The organization's saved model IDs for a provider, listed first in the picker */
+  getSavedModelIds?: (providerId: string) => string[];
   hasApiKey: (providerId: string) => boolean;
   savedKeyRejected: (providerId: string) => boolean;
   onProviderSelect: (providerId: ProviderType) => void;
@@ -70,6 +72,7 @@ export default function ModelStep({
   selectedModelInventoryId,
   fieldsRef,
   getProviderModels,
+  getSavedModelIds,
   hasApiKey,
   savedKeyRejected,
   onProviderSelect,
@@ -311,6 +314,7 @@ export default function ModelStep({
           needsUrl={!!(selectedModelProvider && selectedModelProvider.needsUrl)}
           fieldsRef={fieldsRef}
           getProviderModels={getProviderModels}
+          savedModelIds={getSavedModelIds?.(modelConfig.accessMethod)}
           onModelChange={onModelNameChange}
           onEndpointChange={onEndpointUrlChange}
           onApiKeyChange={onApiKeyChange}

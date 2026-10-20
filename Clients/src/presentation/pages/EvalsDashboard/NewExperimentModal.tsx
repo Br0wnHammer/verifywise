@@ -290,10 +290,11 @@ export default function NewExperimentModal({
     },
   });
 
-  // Reset warning acknowledgment when model changes
+  // Reset warning acknowledgment when model changes; picking another saved model counts,
+  // so a model the provider refused does not let the next one skip the check
   useEffect(() => {
     setApiKeyWarningAcknowledged(false);
-  }, [config.model.name, config.model.accessMethod]);
+  }, [config.model.name, config.model.accessMethod, selectedSavedModelId]);
 
   // Fetch model inventories when modal opens
   useEffect(() => {
@@ -1116,12 +1117,18 @@ export default function NewExperimentModal({
       description: m.endpointUrl ? `Saved · ${m.endpointUrl}` : "Saved model",
     }));
 
-    // Use live gateway catalog if already loaded for this provider
+    // Use live gateway catalog if already loaded for this provider. Its entries are named
+    // by ID only; a model the bundled list knows keeps that list's name and description.
     const live = gatewayModels[providerId];
     if (live && live.length > 0) {
+      const known = new Map((PROVIDERS[providerId]?.models ?? []).map((m) => [m.id, m]));
+      const named = live.map((m) => {
+        const k = known.get(m.id);
+        return k ? { ...m, name: k.name, description: k.description } : m;
+      });
       const liveIds = new Set(live.map((m) => m.id));
       const uniqueSaved = saved.filter((s) => !liveIds.has(s.id));
-      return [...uniqueSaved, ...live];
+      return [...uniqueSaved, ...named];
     }
 
     // Fall back to bundled static JSON while gateway loads (or if gateway is down)
@@ -1228,6 +1235,9 @@ export default function NewExperimentModal({
             selectedModelInventoryId={selectedModelInventoryId}
             fieldsRef={formFieldsRef}
             getProviderModels={getProviderModels}
+            getSavedModelIds={(providerId) =>
+              getSavedModelsForProvider(providerId).map((m) => m.name)
+            }
             hasApiKey={hasApiKey}
             savedKeyRejected={savedKeyRejected}
             onProviderSelect={(providerId) => {

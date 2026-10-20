@@ -13,6 +13,8 @@ export interface ModelInfo {
   inputCost?: number; // Cost per 1M input tokens in USD
   outputCost?: number; // Cost per 1M output tokens in USD
   recommended?: boolean;
+  contextWindow?: number; // Max input tokens
+  deprecationDate?: string; // ISO date the provider retires the model
 }
 
 export interface ProviderConfig {

@@ -200,8 +200,8 @@ describe("NewExperimentModal", () => {
 
       fireEvent.click(screen.getByText("OpenAI"));
 
-      // Cloud provider renders a model Select + API key field
-      expect(await screen.findByText("Select a model")).toBeInTheDocument();
+      // Cloud provider renders the searchable model picker + API key field
+      expect(await screen.findByPlaceholderText("Search or type a model ID")).toBeInTheDocument();
       expect(screen.getByLabelText("API key")).toBeInTheDocument();
     });
 
