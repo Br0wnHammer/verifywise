@@ -94,14 +94,16 @@ async def test_chat_completion_passes_fallbacks(monkeypatch):
 
 
 async def test_chat_completion_provider_errors_propagate(monkeypatch):
-    """The service does not swallow provider errors; the router maps them."""
+    """The service does not swallow provider errors: it wraps them, keeping the original."""
 
     async def raise_rate_limit(**_kwargs):
         raise litellm.RateLimitError("slow down", llm_provider="openai", model="gpt-4o")
 
     monkeypatch.setattr(llm_service.litellm, "acompletion", raise_rate_limit)
-    with pytest.raises(litellm.RateLimitError):
+    with pytest.raises(llm_service.ProviderCallError) as excinfo:
         await llm_service.chat_completion("gpt-4o", [], "key")
+    assert isinstance(excinfo.value.cause, litellm.RateLimitError)
+    assert excinfo.value.__cause__ is excinfo.value.cause
 
 
 # ─── Router error mapping: stable shape for provider failures ────────────────
