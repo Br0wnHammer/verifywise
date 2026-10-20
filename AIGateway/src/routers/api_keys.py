@@ -69,6 +69,16 @@ PROVIDER_VERIFY_ENDPOINTS: dict[str, dict] = {
 }
 
 
+def _google_error(resp: httpx.Response) -> tuple[str, list[str]]:
+    """The status and detail reasons of a Google API error body; empty when it isn't one."""
+    try:
+        error = resp.json().get("error") or {}
+        reasons = [d.get("reason", "") for d in error.get("details") or [] if isinstance(d, dict)]
+        return str(error.get("status") or ""), reasons
+    except (ValueError, AttributeError):
+        return "", []
+
+
 def _rejects_key(provider: str, resp: httpx.Response, forbidden_rejects: bool) -> bool:
     """True when the provider refused the key itself."""
     if resp.status_code == 401:
@@ -77,11 +87,17 @@ def _rejects_key(provider: str, resp: httpx.Response, forbidden_rejects: bool) -
     # restricted key, an Anthropic permission_error). Unless the caller counts every 403,
     # only Google's own PERMISSION_DENIED from Gemini does: its key travels in the URL, so
     # that reply means the key is leaked, blocked or has the API disabled, and every model
-    # call would fail too. A proxy's or firewall's 403 page doesn't carry that status.
+    # call through the gateway would fail too. A proxy's or firewall's 403 page doesn't.
     if resp.status_code == 403:
-        return forbidden_rejects or (provider == "gemini" and "PERMISSION_DENIED" in resp.text)
+        return forbidden_rejects or (
+            provider == "gemini" and _google_error(resp)[0] == "PERMISSION_DENIED"
+        )
     # Gemini answers an invalid or expired key with 400 API_KEY_INVALID, not 401.
-    return provider == "gemini" and resp.status_code == 400 and "API_KEY_INVALID" in resp.text
+    return (
+        provider == "gemini"
+        and resp.status_code == 400
+        and "API_KEY_INVALID" in _google_error(resp)[1]
+    )
 
 
 async def _check_provider_key(provider: str, api_key: str, forbidden_rejects: bool = True) -> dict:

@@ -295,18 +295,21 @@ describe("NewExperimentModal", () => {
         />
       );
 
-      const { rerender } = renderWithProviders(modal(true));
-      fireEvent.click(await screen.findByText("Gemini"));
-      expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
+      try {
+        const { rerender } = renderWithProviders(modal(true));
+        fireEvent.click(await screen.findByText("Gemini"));
+        expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
 
-      deepEvalMocks.getAllLlmApiKeys.mockRejectedValue(new Error("502"));
-      rerender(modal(false));
-      rerender(modal(true));
-      fireEvent.click(await screen.findByText("Gemini"));
+        deepEvalMocks.getAllLlmApiKeys.mockRejectedValue(new Error("502"));
+        rerender(modal(false));
+        rerender(modal(true));
+        fireEvent.click(await screen.findByText("Gemini"));
 
-      expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
-      expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(2);
-      warn.mockRestore();
+        expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
+        expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(2);
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it("keeps a refused key and does not check it again when orgId arrives late", async () => {

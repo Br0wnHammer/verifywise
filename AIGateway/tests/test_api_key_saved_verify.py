@@ -125,9 +125,14 @@ async def test_saved_gemini_key_403_is_a_rejected_key(monkeypatch, body):
     assert res["data"]["valid"] is False
 
 
-async def test_saved_gemini_key_403_from_a_proxy_is_not_a_rejected_key(monkeypatch):
-    # An egress proxy or firewall in front of Google answers with its own page
-    _provider_replies(monkeypatch, 403, "<html><body>403 Forbidden</body></html>")
+@pytest.mark.parametrize(
+    "body",
+    ["<html><body>403 Forbidden</body></html>", '{"error": "PERMISSION_DENIED by egress policy"}'],
+    ids=["html-page", "proxy-json"],
+)
+async def test_saved_gemini_key_403_from_a_proxy_is_not_a_rejected_key(monkeypatch, body):
+    # An egress proxy or firewall in front of Google answers with its own body
+    _provider_replies(monkeypatch, 403, body)
     _saved_key(monkeypatch, {"id": 6, "provider": "gemini", "encrypted_key": encrypt("AIza-ok")})
     res = await router.verify_saved_api_key(6, _request())
     assert res["data"]["valid"] is True

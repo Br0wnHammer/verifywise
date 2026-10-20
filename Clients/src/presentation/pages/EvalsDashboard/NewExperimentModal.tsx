@@ -150,6 +150,8 @@ export default function NewExperimentModal({
   // Bumped on each open; key checks and the key list belong to the open that started them
   const openGeneration = useRef(0);
   const keysGeneration = useRef(-1);
+  // orgId the saved models were last loaded for, so a late orgId reloads only the models
+  const modelsOrgId = useRef<string | null | undefined>(undefined);
 
   // Saved models from the Models page (database)
   const [savedModels, setSavedModels] = useState<SavedModel[]>([]);
@@ -447,42 +449,49 @@ export default function NewExperimentModal({
     setActiveStep((prev) => prev + 1);
   };
 
-  // Load configured API keys when the modal opens. The modal stays mounted between opens,
-  // so key checks start afresh each time: a key fixed or revoked in the meantime is seen
-  // as it is now.
+  // Load configured API keys and saved models when the modal opens. The modal stays mounted
+  // between opens, so key checks start afresh each time: a key fixed or revoked in the
+  // meantime is seen as it is now.
   useEffect(() => {
     if (!isOpen) return;
     const generation = ++openGeneration.current;
     checkedKeyIds.current = new Set();
     setRejectedKeyIds(new Set());
+    modelsOrgId.current = orgId;
     (async () => {
-      try {
-        setLoadingApiKeys(true);
-        const keys = await getAllLlmApiKeys();
-        // A slower load from an earlier open must not replace this open's list
-        if (generation === openGeneration.current) setConfiguredApiKeys(keys);
-      } catch (err) {
+      setLoadingApiKeys(true);
+      // listModels never rejects (it returns [] on error), so only the key list can fail
+      const [keys, models] = await Promise.allSettled([
+        getAllLlmApiKeys(),
+        evalModelsService.listModels(orgId || undefined),
+      ]);
+      // A slower load from an earlier open must not replace this open's lists
+      if (generation !== openGeneration.current) return;
+      if (keys.status === "fulfilled") {
+        setConfiguredApiKeys(keys.value);
+      } else {
         // Keep checking the last list loaded, so a key refused before is not shown as configured
-        console.warn("Failed to load saved API keys:", err);
-      } finally {
-        if (generation === openGeneration.current) {
-          keysGeneration.current = generation;
-          setLoadingApiKeys(false);
-        }
+        console.warn("Failed to load saved API keys:", keys.reason);
       }
+      // A late orgId reloads the models itself; this open's older list must not replace it
+      if (models.status === "fulfilled" && modelsOrgId.current === orgId) {
+        setSavedModels(models.value);
+      }
+      keysGeneration.current = generation;
+      setLoadingApiKeys(false);
     })();
+    // orgId arriving after the open is handled below, without reloading keys
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // Saved models depend on orgId, which may arrive after the modal opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || orgId === modelsOrgId.current) return;
+    modelsOrgId.current = orgId;
     let stale = false;
-    evalModelsService
-      .listModels(orgId || undefined)
-      .then((models) => {
-        if (!stale) setSavedModels(models);
-      })
-      .catch((err) => console.warn("Failed to load saved models:", err));
+    void evalModelsService.listModels(orgId || undefined).then((models) => {
+      if (!stale) setSavedModels(models);
+    });
     return () => {
       stale = true;
     };
