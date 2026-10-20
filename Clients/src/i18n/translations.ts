@@ -25,6 +25,77 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    // Jira incidents extension
+    "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
+      "Importiert werden nur Vorgänge, die nach dieser Einrichtung in Jira erstellt werden. VerifyWise erstellt keine Jira-Vorgänge.",
+    "After import, only status stays in sync, in both directions. Later changes to other Jira fields aren't copied.":
+      "Nach dem Import bleibt nur der Status synchron, in beide Richtungen. Spätere Änderungen an anderen Jira-Feldern werden nicht übernommen.",
+    "If a Jira status move needs a field such as Resolution, VerifyWise can't make it. Those incidents show an error, and you can change the status in Jira.":
+      "Wenn ein Statuswechsel in Jira ein Feld wie Lösung erfordert, kann VerifyWise ihn nicht ausführen. Diese Vorfälle zeigen einen Fehler, und Sie können den Status in Jira ändern.",
+    "Create a classic API token for the service account at id.atlassian.com. Scoped tokens aren't supported.":
+      "Erstellen Sie unter id.atlassian.com ein klassisches API-Token für das Dienstkonto. Tokens mit Bereichen werden nicht unterstützt.",
+    "Stored. Enter a new token to replace it":
+      "Gespeichert. Geben Sie ein neues Token ein, um es zu ersetzen",
+    "API token": "API-Token",
+    "Choose": "Auswählen",
+    "Choose a project and issue type to map statuses.":
+      "Wählen Sie ein Projekt und einen Vorgangstyp, um Status zuzuordnen.",
+    "Choose a use case": "Anwendungsfall auswählen",
+    "Choose an incident type": "Vorfallstyp auswählen",
+    "Choose an issue type": "Vorgangstyp auswählen",
+    "Connection": "Verbindung",
+    "Could not load the Jira incidents settings. Reload the page to try again.":
+      "Die Einstellungen für Jira-Vorfälle konnten nicht geladen werden. Laden Sie die Seite neu, um es erneut zu versuchen.",
+    "Could not load the sync activity.":
+      "Die Synchronisierungsaktivität konnte nicht geladen werden.",
+    "Defaults for imported incidents": "Standardwerte für importierte Vorfälle",
+    "Import only issues with this label. Leave empty to import every issue.":
+      "Nur Vorgänge mit diesem Label importieren. Leer lassen, um alle Vorgänge zu importieren.",
+    "Issue type": "Vorgangstyp",
+    "Jira project": "Jira-Projekt",
+    "Jira site URL": "Jira-Website-URL",
+    "Jira to VerifyWise": "Jira nach VerifyWise",
+    "VerifyWise to Jira": "VerifyWise nach Jira",
+    "No sync activity yet": "Noch keine Synchronisierungsaktivität",
+    "Save the connection to choose a Jira project.":
+      "Speichern Sie die Verbindung, um ein Jira-Projekt auszuwählen.",
+    "Save the connection to map Jira priorities.":
+      "Speichern Sie die Verbindung, um Jira-Prioritäten zuzuordnen.",
+    "Service account email": "E-Mail des Dienstkontos",
+    "Settings saved.": "Einstellungen gespeichert.",
+    "Severity mapping": "Zuordnung des Schweregrads",
+    "Status mapping": "Statuszuordnung",
+    "Sync activity": "Synchronisierungsaktivität",
+    "Which issues to import": "Welche Vorgänge importiert werden",
+    "Label": "Label",
+    "Jira status": "Jira-Status",
+    "VerifyWise status": "VerifyWise-Status",
+    "Jira priority": "Jira-Priorität",
+    "Don't change Jira": "Jira nicht ändern",
+    "Event": "Ereignis",
+    "Jira issue": "Jira-Vorgang",
+    "Imported": "Importiert",
+    "Status from Jira": "Status aus Jira",
+    "Status to Jira": "Status nach Jira",
+    "Conflict": "Konflikt",
+    "Deleted in Jira": "In Jira gelöscht",
+    "Sync error": "Synchronisierungsfehler",
+    "Jira left unchanged": "Jira unverändert gelassen",
+    "Enter your Jira site URL": "Geben Sie die URL Ihrer Jira-Website ein",
+    "Enter the service account email": "Geben Sie die E-Mail des Dienstkontos ein",
+    "Enter the API token": "Geben Sie das API-Token ein",
+    "Enter the API token again after changing the site URL or email":
+      "Geben Sie das API-Token nach einer Änderung der Website-URL oder E-Mail erneut ein",
+    "Map every Jira status": "Ordnen Sie jeden Jira-Status zu",
+    "Enter the reporter": "Geben Sie den Meldenden ein",
+    "Could not save the settings.": "Die Einstellungen konnten nicht gespeichert werden.",
+    "Could not test the connection to Jira.":
+      "Die Verbindung zu Jira konnte nicht getestet werden.",
+    "Could not load the options from Jira.": "Die Optionen aus Jira konnten nicht geladen werden.",
+    "Import new Jira issues and sync status on a schedule":
+      "Neue Jira-Vorgänge importieren und Status nach Zeitplan synchronisieren",
+    "Each sync imports issues created since the last one, then syncs status both ways.":
+      "Jede Synchronisierung importiert die seit der letzten erstellten Vorgänge und synchronisiert dann den Status in beide Richtungen.",
     // Agent Control monitor only mode
     "Enforce": "Durchsetzen",
     "Monitor only": "Nur überwachen",
@@ -81,6 +152,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Server switched on": "Server eingeschaltet",
     "The server offered no tools": "Der Server hat keine Tools angeboten",
     "One tool found": "Ein Tool gefunden",
+    "Tools updated": "Tools aktualisiert",
+    "No changes": "Keine Änderungen",
+    "View tools": "Tools anzeigen",
+    "{count} tools found": "{count} Tools gefunden",
+    "{count} new": "{count} neu",
+    "{count} removed": "{count} entfernt",
+    "{count} changed": "{count} geändert",
+    "View {count} tools": "{count} Tools anzeigen",
+    "View one tool": "Ein Tool anzeigen",
     "Discovery failed": "Erkennung fehlgeschlagen",
     "Server saved, but discovery failed":
       "Server gespeichert, aber die Erkennung ist fehlgeschlagen",
@@ -692,6 +772,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Approval workflows": "Genehmigungsabläufe",
     "Settings": "Einstellungen",
     "Event Tracker": "Ereignisverfolgung",
+    "Event Tracker gives you a live window into VerifyWise. It records every user action and system event. Use it to see who did what, spot patterns, and keep your application healthy.":
+      "Die Ereignisverfolgung bietet Ihnen einen Live-Einblick in VerifyWise. Sie zeichnet jede Benutzeraktion und jedes Systemereignis auf. Nutzen Sie sie, um zu sehen, wer was getan hat, Muster zu erkennen und Ihre Anwendung funktionsfähig zu halten.",
     "AI governance": "KI-Governance",
     "AI governance directory": "KI-Governance-Verzeichnis",
     "AI detection": "KI-Erkennung",
@@ -1379,6 +1461,10 @@ export const translations: Record<string, Record<string, string>> = {
     // Use cases
     "Use case": "Anwendungsfall",
     "Use case report": "Anwendungsfall-Bericht",
+    "This use case has no framework assigned":
+      "Diesem Anwendungsfall ist kein Rahmenwerk zugeordnet",
+    "Requirements, assessment tracker, clauses and annexes, and NIST subcategories need a framework, so they are left out. The report still covers risks, models, vendors, training, policies and incidents. Assign a framework to the use case to include compliance sections.":
+      "Anforderungen, Bewertungs-Tracker, Klauseln und Anhänge sowie NIST-Unterkategorien benötigen ein Rahmenwerk und entfallen daher. Der Bericht umfasst weiterhin Risiken, Modelle, Anbieter, Schulungen, Richtlinien und Vorfälle. Ordnen Sie dem Anwendungsfall ein Rahmenwerk zu, um Compliance-Abschnitte aufzunehmen.",
     "AI project": "KI-Projekt",
     "AI Project": "KI-Projekt",
     "AI PROJECT": "KI-PROJEKT",
@@ -2066,6 +2152,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Revoke invitation": "Einladung widerrufen",
     "Revoke key": "Schlüssel widerrufen",
     "Revoke virtual key": "Virtuellen Schlüssel widerrufen",
+    "Revoked": "Widerrufen",
     "Run all": "Alle ausführen",
     "Run first experiment": "Erstes Experiment ausführen",
     "Run your first experiment": "Ihr erstes Experiment ausführen",
@@ -2185,10 +2272,20 @@ export const translations: Record<string, Record<string, string>> = {
     "Annex III category": "Anhang-III-Kategorie",
     "Any additional context about this agent": "Zusätzlicher Kontext zu diesem Agenten",
     "Any language or framework": "Beliebige Sprache oder Rahmenwerk",
+    "Any endpoint or model": "Beliebiger Endpunkt oder beliebiges Modell",
     "API calls": "API-Aufrufe",
     "API key": "API-Schlüssel",
     "API Key": "API-Schlüssel",
     "API key may not be configured": "API-Schlüssel ist möglicherweise nicht konfiguriert",
+    "The provider refused this model": "Der Anbieter hat dieses Modell abgelehnt",
+    "The provider refused the saved API key":
+      "Der Anbieter hat den gespeicherten API-Schlüssel abgelehnt",
+    "The provider refused this request": "Der Anbieter hat diese Anfrage abgelehnt",
+    "Saved models": "Gespeicherte Modelle",
+    "Find a model or type its ID": "Modell suchen oder ID eingeben",
+    "Self-hosted model": "Selbst gehostetes Modell",
+    "Search or type a model ID": "Modell-ID suchen oder eingeben",
+    "Search or type an ID, e.g. openai/gpt-4o": "ID suchen oder eingeben, z. B. openai/gpt-4o",
     "API keys": "API-Schlüssel",
     "Applicability:": "Anwendbarkeit:",
     "Applicable": "Anwendbar",
@@ -2879,6 +2976,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Risikoname schreiben",
     "You can use": "Sie können",
     "Your app": "Ihre App",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "Der Anbieter hat den gespeicherten API-Schlüssel abgelehnt. Geben Sie einen funktionierenden Schlüssel ein. Er wird als neuer Schlüssel gespeichert, und ein Admin kann den alten in den AI Gateway-Einstellungen entfernen.",
     "Your key will be saved securely for future experiments":
       "Ihr Schlüssel wird für zukünftige Experimente sicher gespeichert",
     "Your name": "Ihr Name",
@@ -2932,6 +3031,9 @@ export const translations: Record<string, Record<string, string>> = {
     "No members have been assigned to the use case":
       "Dem Anwendungsfall wurden keine Mitglieder zugewiesen",
     "No models found": "Keine Modelle gefunden",
+    "Updating model list…": "Modellliste wird aktualisiert…",
+    "Choose a judge model to save this scorer":
+      "Wählen Sie ein Bewertungsmodell, um diesen Scorer zu speichern",
     "No models found. Model preferences are automatically saved when you run an experiment.":
       "Keine Modelle gefunden. Modellpräferenzen werden automatisch gespeichert, wenn Sie ein Experiment ausführen.",
     "No models match your filters.": "Keine Modelle entsprechen Ihren Filtern.",
@@ -4880,6 +4982,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "Kopiert!",
     "Copy": "Kopieren",
     "Copy results to clipboard": "Ergebnisse in die Zwischenablage kopieren",
+    "You can rerun this experiment once it finishes.":
+      "Sie können dieses Experiment erneut ausführen, sobald es abgeschlossen ist.",
+    "Save this experiment's settings, average scores and up to 10 samples as a JSON file. For more samples, open the experiment and use Download there.":
+      "Die Einstellungen, Durchschnittswerte und bis zu 10 Stichproben dieses Experiments als JSON-Datei speichern. Für weitere Stichproben öffnen Sie das Experiment und verwenden Sie dort „Herunterladen“.",
+    "Copy this experiment's settings, average scores and up to 10 samples as JSON. For more samples, open the experiment and use Copy there.":
+      "Die Einstellungen, Durchschnittswerte und bis zu 10 Stichproben dieses Experiments als JSON kopieren. Für weitere Stichproben öffnen Sie das Experiment und verwenden Sie dort „Kopieren“.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to the 1,000 most recent samples are included.":
+      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON-Datei speichern. Es werden bis zu 1.000 der neuesten Stichproben einbezogen.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to the 1,000 most recent samples are included.":
+      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON in die Zwischenablage kopieren. Es werden bis zu 1.000 der neuesten Stichproben einbezogen.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Ein neues Experiment mit denselben Einstellungen starten. Dieses Experiment bleibt erhalten, und jeder Prompt wird erneut ausgeführt und bewertet.",
     "Copy this key now. You won't be able to see it again.":
       "Kopieren Sie diesen Schlüssel jetzt. Sie können ihn nicht mehr einsehen.",
     "Core definition test (EU AI Act)": "Kerndefinitionstest (EU-KI-Verordnung)",
@@ -7551,6 +7665,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Menschen mit Behinderungen",
     "Plan Adherence": "Plantreue",
     "Plan Quality": "Planqualität",
+    "Planning Quality": "Planungsqualität",
+    "Bias (lower is better)": "Bias (niedriger ist besser)",
+    "Toxicity (lower is better)": "Toxizität (niedriger ist besser)",
+    "Hallucination (lower is better)": "Halluzination (niedriger ist besser)",
     "Plan responses to AI system risks, including defining risk tolerance and mitigation strategies.":
       "Planen Sie Reaktionen auf KI-Systemrisiken, einschließlich der Festlegung von Risikotoleranz und Minderungsstrategien.",
     "Please add at least one recipient to the Send Email action before saving.":
@@ -8571,6 +8689,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Avg confidence": "Avg confidence",
     "Avg wait time": "Avg wait time",
     "By type": "By type",
+    "By {name} · {date}": "Von {name} · {date}",
     "Complete audit trail for every AI action (EU AI Act art. 12)":
       "Complete audit trail for every AI action (EU AI Act art. 12)",
     "Complete audit trail for every AI action. EU AI Act Article 12 compliance.":
@@ -9533,6 +9652,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Vendor {id}": "Anbieter {id}",
     "Vendor risk {id}": "Anbieterrisiko {id}",
     "{linked} of {total}": "{linked} von {total}",
+    "{name} (inactive)": "{name} (inaktiv)",
+    "#{id} (not found)": "#{id} (nicht gefunden)",
+    "No endpoints": "Keine Endpunkte",
     "Vendors with reach": "Anbieter mit Reichweite",
     "Inheriting project risks": "Erbende Projektrisiken",
     "Affected use cases": "Betroffene Anwendungsfälle",
@@ -9625,6 +9747,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Verwandte Anbieterrisiken beschreiben dieselbe Gefährdung, bei diesem oder einem anderen Anbieter. Keines erbt vom anderen.",
     "Similar wording": "Ähnliche Formulierung",
     "Same vendor": "Gleicher Anbieter",
+    "Sample text must be at most {max} characters":
+      "Der Beispieltext darf höchstens {max} Zeichen lang sein",
     "Shared framework": "Gemeinsames Rahmenwerk",
     "Shared use case": "Gemeinsamer Anwendungsfall",
     "Why are you dismissing {name}?": "Warum verwerfen Sie {name}?",
@@ -10498,6 +10622,75 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    // Jira incidents extension
+    "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
+      "Seuls les tickets créés dans Jira après cette configuration sont importés. VerifyWise ne crée pas de tickets Jira.",
+    "After import, only status stays in sync, in both directions. Later changes to other Jira fields aren't copied.":
+      "Après l'import, seul le statut reste synchronisé, dans les deux sens. Les modifications ultérieures des autres champs Jira ne sont pas copiées.",
+    "If a Jira status move needs a field such as Resolution, VerifyWise can't make it. Those incidents show an error, and you can change the status in Jira.":
+      "Si un changement de statut dans Jira exige un champ comme Résolution, VerifyWise ne peut pas l'effectuer. Ces incidents affichent une erreur, et vous pouvez changer le statut dans Jira.",
+    "Create a classic API token for the service account at id.atlassian.com. Scoped tokens aren't supported.":
+      "Créez un jeton d'API classique pour le compte de service sur id.atlassian.com. Les jetons à portée limitée ne sont pas pris en charge.",
+    "Stored. Enter a new token to replace it":
+      "Enregistré. Saisissez un nouveau jeton pour le remplacer",
+    "API token": "Jeton d'API",
+    "Choose": "Choisir",
+    "Choose a project and issue type to map statuses.":
+      "Choisissez un projet et un type de ticket pour mapper les statuts.",
+    "Choose a use case": "Choisir un cas d'usage",
+    "Choose an incident type": "Choisir un type d'incident",
+    "Choose an issue type": "Choisir un type de ticket",
+    "Connection": "Connexion",
+    "Could not load the Jira incidents settings. Reload the page to try again.":
+      "Impossible de charger les paramètres des incidents Jira. Rechargez la page pour réessayer.",
+    "Could not load the sync activity.": "Impossible de charger l'activité de synchronisation.",
+    "Defaults for imported incidents": "Valeurs par défaut des incidents importés",
+    "Import only issues with this label. Leave empty to import every issue.":
+      "Importer uniquement les tickets portant cette étiquette. Laissez vide pour importer tous les tickets.",
+    "Issue type": "Type de ticket",
+    "Jira project": "Projet Jira",
+    "Jira site URL": "URL du site Jira",
+    "Jira to VerifyWise": "De Jira vers VerifyWise",
+    "VerifyWise to Jira": "De VerifyWise vers Jira",
+    "No sync activity yet": "Aucune activité de synchronisation pour l'instant",
+    "Save the connection to choose a Jira project.":
+      "Enregistrez la connexion pour choisir un projet Jira.",
+    "Save the connection to map Jira priorities.":
+      "Enregistrez la connexion pour mapper les priorités Jira.",
+    "Service account email": "E-mail du compte de service",
+    "Settings saved.": "Paramètres enregistrés.",
+    "Severity mapping": "Mappage de la gravité",
+    "Status mapping": "Mappage des statuts",
+    "Sync activity": "Activité de synchronisation",
+    "Which issues to import": "Tickets à importer",
+    "Label": "Étiquette",
+    "Jira status": "Statut Jira",
+    "VerifyWise status": "Statut VerifyWise",
+    "Jira priority": "Priorité Jira",
+    "Don't change Jira": "Ne pas modifier Jira",
+    "Event": "Événement",
+    "Jira issue": "Ticket Jira",
+    "Imported": "Importé",
+    "Status from Jira": "Statut depuis Jira",
+    "Status to Jira": "Statut vers Jira",
+    "Conflict": "Conflit",
+    "Deleted in Jira": "Supprimé dans Jira",
+    "Sync error": "Erreur de synchronisation",
+    "Jira left unchanged": "Jira laissé inchangé",
+    "Enter your Jira site URL": "Saisissez l'URL de votre site Jira",
+    "Enter the service account email": "Saisissez l'e-mail du compte de service",
+    "Enter the API token": "Saisissez le jeton d'API",
+    "Enter the API token again after changing the site URL or email":
+      "Saisissez de nouveau le jeton d'API après avoir modifié l'URL du site ou l'e-mail",
+    "Map every Jira status": "Mappez chaque statut Jira",
+    "Enter the reporter": "Saisissez le rapporteur",
+    "Could not save the settings.": "Impossible d'enregistrer les paramètres.",
+    "Could not test the connection to Jira.": "Impossible de tester la connexion à Jira.",
+    "Could not load the options from Jira.": "Impossible de charger les options depuis Jira.",
+    "Import new Jira issues and sync status on a schedule":
+      "Importer les nouveaux tickets Jira et synchroniser les statuts selon un planning",
+    "Each sync imports issues created since the last one, then syncs status both ways.":
+      "Chaque synchronisation importe les tickets créés depuis la précédente, puis synchronise les statuts dans les deux sens.",
     // Agent Control monitor only mode
     "Enforce": "Appliquer",
     "Monitor only": "Surveillance uniquement",
@@ -10554,6 +10747,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Server switched on": "Serveur activé",
     "The server offered no tools": "Le serveur n'a proposé aucun outil",
     "One tool found": "Un outil trouvé",
+    "Tools updated": "Outils mis à jour",
+    "No changes": "Aucune modification",
+    "View tools": "Voir les outils",
+    "{count} tools found": "{count} outils trouvés",
+    "{count} new": "{count} nouveau(x)",
+    "{count} removed": "{count} supprimé(s)",
+    "{count} changed": "{count} modifié(s)",
+    "View {count} tools": "Voir les {count} outils",
+    "View one tool": "Voir l'outil",
     "Discovery failed": "Échec de la découverte",
     "Server saved, but discovery failed": "Serveur enregistré, mais la découverte a échoué",
     "Server switched on, but discovery failed": "Serveur activé, mais la découverte a échoué",
@@ -11163,6 +11365,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Approval workflows": "Flux d'approbation",
     "Settings": "Paramètres",
     "Event Tracker": "Suivi des événements",
+    "Event Tracker gives you a live window into VerifyWise. It records every user action and system event. Use it to see who did what, spot patterns, and keep your application healthy.":
+      "Le suivi des événements vous offre une vue en direct sur VerifyWise. Il enregistre chaque action utilisateur et chaque événement système. Utilisez-le pour savoir qui a fait quoi, repérer des tendances et garder votre application en bonne santé.",
     "AI governance": "Gouvernance de l'IA",
     "AI governance directory": "Annuaire de gouvernance IA",
     "AI detection": "Détection d'IA",
@@ -11593,6 +11797,9 @@ export const translations: Record<string, Record<string, string>> = {
     // Use cases
     "Use case": "Cas d'usage",
     "Use case report": "Rapport de cas d'usage",
+    "This use case has no framework assigned": "Aucun référentiel n'est associé à ce cas d'usage",
+    "Requirements, assessment tracker, clauses and annexes, and NIST subcategories need a framework, so they are left out. The report still covers risks, models, vendors, training, policies and incidents. Assign a framework to the use case to include compliance sections.":
+      "Les exigences, le suivi des évaluations, les clauses et annexes ainsi que les sous-catégories NIST nécessitent un référentiel et sont donc exclus. Le rapport couvre toujours les risques, les modèles, les fournisseurs, les formations, les politiques et les incidents. Associez un référentiel au cas d'usage pour inclure les sections de conformité.",
     "AI project": "Projet IA",
     "AI Project": "Projet IA",
     "Project": "Projet",
@@ -12665,6 +12872,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Revoke invitation": "Révoquer l'invitation",
     "Revoke key": "Révoquer la clé",
     "Revoke virtual key": "Révoquer la clé virtuelle",
+    "Revoked": "Révoqué",
     "Run all": "Tout exécuter",
     "Run first experiment": "Lancer la première expérience",
     "Run your first experiment": "Lancez votre première expérience",
@@ -12774,10 +12982,19 @@ export const translations: Record<string, Record<string, string>> = {
     "Annex III category": "Catégorie de l'annexe III",
     "Any additional context about this agent": "Tout contexte supplémentaire sur cet agent",
     "Any language or framework": "Toute langue ou référentiel",
+    "Any endpoint or model": "N'importe quel point de terminaison ou modèle",
     "API calls": "Appels API",
     "API key": "Clé API",
     "API Key": "Clé API",
     "API key may not be configured": "La clé API n'est peut-être pas configurée",
+    "The provider refused this model": "Le fournisseur a refusé ce modèle",
+    "The provider refused the saved API key": "Le fournisseur a refusé la clé API enregistrée",
+    "The provider refused this request": "Le fournisseur a refusé cette requête",
+    "Saved models": "Modèles enregistrés",
+    "Find a model or type its ID": "Rechercher un modèle ou saisir son ID",
+    "Self-hosted model": "Modèle auto-hébergé",
+    "Search or type a model ID": "Rechercher ou saisir un ID de modèle",
+    "Search or type an ID, e.g. openai/gpt-4o": "Rechercher ou saisir un ID, p. ex. openai/gpt-4o",
     "API keys": "Clés API",
     "Applicability:": "Applicabilité :",
     "Applicable": "Applicable",
@@ -13465,6 +13682,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Rédiger le nom du risque",
     "You can use": "Vous pouvez utiliser",
     "Your app": "Votre application",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "Le fournisseur a refusé la clé API enregistrée. Saisissez une clé valide. Elle est enregistrée comme nouvelle clé, et un administrateur peut supprimer l'ancienne dans les paramètres d'AI Gateway.",
     "Your key will be saved securely for future experiments":
       "Votre clé sera enregistrée de manière sécurisée pour de futures expériences",
     "Your name": "Votre nom",
@@ -13516,6 +13735,9 @@ export const translations: Record<string, Record<string, string>> = {
     "No members have been assigned to the use case":
       "Aucun membre n'a été assigné à ce cas d'usage",
     "No models found": "Aucun modèle trouvé",
+    "Updating model list…": "Mise à jour de la liste des modèles…",
+    "Choose a judge model to save this scorer":
+      "Choisissez un modèle juge pour enregistrer ce scorer",
     "No models found. Model preferences are automatically saved when you run an experiment.":
       "Aucun modèle trouvé. Les préférences de modèles sont automatiquement enregistrées lorsque vous lancez une expérience.",
     "No models match your filters.": "Aucun modèle ne correspond à vos filtres.",
@@ -15302,6 +15524,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "Copié !",
     "Copy": "Copier",
     "Copy results to clipboard": "Copier les résultats dans le presse-papiers",
+    "You can rerun this experiment once it finishes.":
+      "Vous pourrez réexécuter cette expérience une fois qu'elle sera terminée.",
+    "Save this experiment's settings, average scores and up to 10 samples as a JSON file. For more samples, open the experiment and use Download there.":
+      "Enregistrer les paramètres, les scores moyens et jusqu'à 10 échantillons de cette expérience dans un fichier JSON. Pour plus d'échantillons, ouvrez l'expérience et utilisez « Télécharger » depuis celle-ci.",
+    "Copy this experiment's settings, average scores and up to 10 samples as JSON. For more samples, open the experiment and use Copy there.":
+      "Copier les paramètres, les scores moyens et jusqu'à 10 échantillons de cette expérience au format JSON. Pour plus d'échantillons, ouvrez l'expérience et utilisez « Copier » depuis celle-ci.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to the 1,000 most recent samples are included.":
+      "Enregistrer les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon dans un fichier JSON. Jusqu'aux 1 000 échantillons les plus récents sont inclus.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to the 1,000 most recent samples are included.":
+      "Copier dans le presse-papiers, au format JSON, les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon. Jusqu'aux 1 000 échantillons les plus récents sont inclus.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Lancer une nouvelle expérience avec les mêmes paramètres. Cette expérience est conservée, et chaque prompt est de nouveau exécuté et évalué.",
     "Copy this key now. You won't be able to see it again.":
       "Copiez cette clé maintenant. Vous ne pourrez plus la voir.",
     "Core definition test (EU AI Act)": "Test de définition centrale (Règlement IA de l'UE)",
@@ -17971,6 +18205,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Personnes handicapées",
     "Plan Adherence": "Respect du plan",
     "Plan Quality": "Qualité du plan",
+    "Planning Quality": "Qualité de la planification",
+    "Bias (lower is better)": "Biais (plus bas est meilleur)",
+    "Toxicity (lower is better)": "Toxicité (plus bas est meilleur)",
+    "Hallucination (lower is better)": "Hallucination (plus bas est meilleur)",
     "Plan responses to AI system risks, including defining risk tolerance and mitigation strategies.":
       "Planifiez les réponses aux risques du système IA, y compris la définition de la tolérance au risque et des stratégies d'atténuation.",
     "Please add at least one recipient to the Send Email action before saving.":
@@ -18990,6 +19228,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Avg confidence": "Avg confidence",
     "Avg wait time": "Avg wait time",
     "By type": "By type",
+    "By {name} · {date}": "Par {name} · {date}",
     "Complete audit trail for every AI action (EU AI Act art. 12)":
       "Complete audit trail for every AI action (EU AI Act art. 12)",
     "Complete audit trail for every AI action. EU AI Act Article 12 compliance.":
@@ -19952,6 +20191,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Vendor {id}": "Fournisseur {id}",
     "Vendor risk {id}": "Risque fournisseur {id}",
     "{linked} of {total}": "{linked} sur {total}",
+    "{name} (inactive)": "{name} (inactif)",
+    "#{id} (not found)": "#{id} (introuvable)",
+    "No endpoints": "Aucun point de terminaison",
     "Vendors with reach": "Fournisseurs avec portée",
     "Inheriting project risks": "Risques de projet héritiers",
     "Affected use cases": "Cas d'usage concernés",
@@ -20043,6 +20285,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Des risques fournisseurs connexes décrivent la même exposition, chez ce fournisseur ou un autre. Aucun n'hérite de l'autre.",
     "Similar wording": "Formulation similaire",
     "Same vendor": "Même fournisseur",
+    "Sample text must be at most {max} characters":
+      "Le texte d'exemple ne doit pas dépasser {max} caractères",
     "Shared framework": "Cadre commun",
     "Shared use case": "Cas d'usage commun",
     "Why are you dismissing {name}?": "Pourquoi rejetez-vous {name} ?",
@@ -20911,6 +21155,75 @@ export const translations: Record<string, Record<string, string>> = {
       "sont considérées comme de faible qualité. Les fichiers sans analyse IA ne comptent pas comme suffisants.",
   },
   es: {
+    // Jira incidents extension
+    "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
+      "Solo se importan las incidencias creadas en Jira después de esta configuración. VerifyWise no crea incidencias en Jira.",
+    "After import, only status stays in sync, in both directions. Later changes to other Jira fields aren't copied.":
+      "Tras la importación, solo el estado se mantiene sincronizado, en ambos sentidos. Los cambios posteriores en otros campos de Jira no se copian.",
+    "If a Jira status move needs a field such as Resolution, VerifyWise can't make it. Those incidents show an error, and you can change the status in Jira.":
+      "Si un cambio de estado en Jira requiere un campo como Resolución, VerifyWise no puede hacerlo. Esos incidentes muestran un error y puede cambiar el estado en Jira.",
+    "Create a classic API token for the service account at id.atlassian.com. Scoped tokens aren't supported.":
+      "Cree un token de API clásico para la cuenta de servicio en id.atlassian.com. Los tokens con ámbito no son compatibles.",
+    "Stored. Enter a new token to replace it":
+      "Guardado. Introduzca un token nuevo para reemplazarlo",
+    "API token": "Token de API",
+    "Choose": "Elegir",
+    "Choose a project and issue type to map statuses.":
+      "Elija un proyecto y un tipo de incidencia para asignar los estados.",
+    "Choose a use case": "Elegir un caso de uso",
+    "Choose an incident type": "Elegir un tipo de incidente",
+    "Choose an issue type": "Elegir un tipo de incidencia",
+    "Connection": "Conexión",
+    "Could not load the Jira incidents settings. Reload the page to try again.":
+      "No se pudo cargar la configuración de incidentes de Jira. Recargue la página para intentarlo de nuevo.",
+    "Could not load the sync activity.": "No se pudo cargar la actividad de sincronización.",
+    "Defaults for imported incidents": "Valores predeterminados de los incidentes importados",
+    "Import only issues with this label. Leave empty to import every issue.":
+      "Importar solo las incidencias con esta etiqueta. Déjelo vacío para importar todas.",
+    "Issue type": "Tipo de incidencia",
+    "Jira project": "Proyecto de Jira",
+    "Jira site URL": "URL del sitio de Jira",
+    "Jira to VerifyWise": "De Jira a VerifyWise",
+    "VerifyWise to Jira": "De VerifyWise a Jira",
+    "No sync activity yet": "Aún no hay actividad de sincronización",
+    "Save the connection to choose a Jira project.":
+      "Guarde la conexión para elegir un proyecto de Jira.",
+    "Save the connection to map Jira priorities.":
+      "Guarde la conexión para asignar las prioridades de Jira.",
+    "Service account email": "Correo de la cuenta de servicio",
+    "Settings saved.": "Configuración guardada.",
+    "Severity mapping": "Asignación de gravedad",
+    "Status mapping": "Asignación de estados",
+    "Sync activity": "Actividad de sincronización",
+    "Which issues to import": "Qué incidencias importar",
+    "Label": "Etiqueta",
+    "Jira status": "Estado de Jira",
+    "VerifyWise status": "Estado de VerifyWise",
+    "Jira priority": "Prioridad de Jira",
+    "Don't change Jira": "No cambiar Jira",
+    "Event": "Evento",
+    "Jira issue": "Incidencia de Jira",
+    "Imported": "Importado",
+    "Status from Jira": "Estado desde Jira",
+    "Status to Jira": "Estado hacia Jira",
+    "Conflict": "Conflicto",
+    "Deleted in Jira": "Eliminado en Jira",
+    "Sync error": "Error de sincronización",
+    "Jira left unchanged": "Jira sin cambios",
+    "Enter your Jira site URL": "Introduzca la URL de su sitio de Jira",
+    "Enter the service account email": "Introduzca el correo de la cuenta de servicio",
+    "Enter the API token": "Introduzca el token de API",
+    "Enter the API token again after changing the site URL or email":
+      "Vuelva a introducir el token de API después de cambiar la URL del sitio o el correo",
+    "Map every Jira status": "Asigne cada estado de Jira",
+    "Enter the reporter": "Introduzca el notificador",
+    "Could not save the settings.": "No se pudo guardar la configuración.",
+    "Could not test the connection to Jira.": "No se pudo probar la conexión con Jira.",
+    "Could not load the options from Jira.": "No se pudieron cargar las opciones de Jira.",
+    "Import new Jira issues and sync status on a schedule":
+      "Importar nuevas incidencias de Jira y sincronizar estados según una programación",
+    "Each sync imports issues created since the last one, then syncs status both ways.":
+      "Cada sincronización importa las incidencias creadas desde la anterior y luego sincroniza los estados en ambos sentidos.",
     // Agent Control monitor only mode
     "Enforce": "Aplicar",
     "Monitor only": "Solo supervisión",
@@ -20966,6 +21279,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Server switched on": "Servidor activado",
     "The server offered no tools": "El servidor no ofreció herramientas",
     "One tool found": "Se encontró una herramienta",
+    "Tools updated": "Herramientas actualizadas",
+    "No changes": "Sin cambios",
+    "View tools": "Ver herramientas",
+    "{count} tools found": "Se encontraron {count} herramientas",
+    "{count} new": "{count} nueva(s)",
+    "{count} removed": "{count} eliminada(s)",
+    "{count} changed": "{count} modificada(s)",
+    "View {count} tools": "Ver las {count} herramientas",
+    "View one tool": "Ver la herramienta",
     "Discovery failed": "Error en la detección",
     "Server saved, but discovery failed": "Servidor guardado, pero la detección falló",
     "Server switched on, but discovery failed": "Servidor activado, pero la detección falló",
@@ -21364,6 +21686,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Approval workflows": "Flujos de aprobación",
     "Settings": "Configuración",
     "Event Tracker": "Registro de eventos",
+    "Event Tracker gives you a live window into VerifyWise. It records every user action and system event. Use it to see who did what, spot patterns, and keep your application healthy.":
+      "El registro de eventos le ofrece una vista en directo de VerifyWise. Registra cada acción de usuario y cada evento del sistema. Úselo para ver quién hizo qué, detectar patrones y mantener su aplicación en buen estado.",
     "AI governance": "Gobernanza de IA",
     "AI governance directory": "Directorio de gobernanza de IA",
     "AI detection": "Detección de IA",
@@ -21991,6 +22315,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Analytics": "Analíticas",
     "Use case": "Caso de uso",
     "Use case report": "Informe de caso de uso",
+    "This use case has no framework assigned": "Este caso de uso no tiene ningún marco asignado",
+    "Requirements, assessment tracker, clauses and annexes, and NIST subcategories need a framework, so they are left out. The report still covers risks, models, vendors, training, policies and incidents. Assign a framework to the use case to include compliance sections.":
+      "Los requisitos, el seguimiento de evaluaciones, las cláusulas y anexos y las subcategorías de NIST necesitan un marco, por lo que se omiten. El informe sigue cubriendo riesgos, modelos, proveedores, formación, políticas e incidentes. Asigne un marco al caso de uso para incluir las secciones de cumplimiento.",
     "AI project": "Proyecto de IA",
     "AI Project": "Proyecto de IA",
     "AI PROJECT": "PROYECTO DE IA",
@@ -22485,6 +22812,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Revoke invitation": "Revocar invitación",
     "Revoke key": "Revocar clave",
     "Revoke virtual key": "Revocar clave virtual",
+    "Revoked": "Revocado",
     "Run all": "Ejecutar todo",
     "Run first experiment": "Ejecutar primer experimento",
     "Run your first experiment": "Ejecuta tu primer experimento",
@@ -22597,10 +22925,19 @@ export const translations: Record<string, Record<string, string>> = {
     "Annex III category": "Categoría del Anexo III",
     "Any additional context about this agent": "Cualquier contexto adicional sobre este agente",
     "Any language or framework": "Cualquier lenguaje o marco",
+    "Any endpoint or model": "Cualquier endpoint o modelo",
     "API calls": "Llamadas a la API",
     "API key": "Clave de API",
     "API Key": "Clave de API",
     "API key may not be configured": "Es posible que la clave de API no esté configurada",
+    "The provider refused this model": "El proveedor rechazó este modelo",
+    "The provider refused the saved API key": "El proveedor rechazó la clave de API guardada",
+    "The provider refused this request": "El proveedor rechazó esta solicitud",
+    "Saved models": "Modelos guardados",
+    "Find a model or type its ID": "Busca un modelo o escribe su ID",
+    "Self-hosted model": "Modelo autoalojado",
+    "Search or type a model ID": "Busca o escribe un ID de modelo",
+    "Search or type an ID, e.g. openai/gpt-4o": "Busca o escribe un ID, p. ej., openai/gpt-4o",
     "API keys": "Claves de API",
     "Applicability:": "Aplicabilidad:",
     "Applicable": "Aplicable",
@@ -23272,6 +23609,8 @@ export const translations: Record<string, Record<string, string>> = {
     "No label": "Sin etiqueta",
     "No linked items found.": "No se han encontrado elementos vinculados.",
     "No models found": "No se han encontrado modelos",
+    "Updating model list…": "Actualizando la lista de modelos…",
+    "Choose a judge model to save this scorer": "Elija un modelo juez para guardar este evaluador",
     "No models match your filters.": "Ningún modelo coincide con tus filtros.",
     "No more questions.": "No hay más preguntas.",
     "No policies found": "No se han encontrado políticas",
@@ -24102,6 +24441,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "¡Copiado!",
     "Copy": "Copiar",
     "Copy results to clipboard": "Copiar resultados al portapapeles",
+    "You can rerun this experiment once it finishes.":
+      "Podrás volver a ejecutar este experimento cuando termine.",
+    "Save this experiment's settings, average scores and up to 10 samples as a JSON file. For more samples, open the experiment and use Download there.":
+      "Guardar la configuración, las puntuaciones medias y hasta 10 muestras de este experimento como archivo JSON. Para ver más muestras, abre el experimento y usa «Descargar» allí.",
+    "Copy this experiment's settings, average scores and up to 10 samples as JSON. For more samples, open the experiment and use Copy there.":
+      "Copiar la configuración, las puntuaciones medias y hasta 10 muestras de este experimento como JSON. Para ver más muestras, abre el experimento y usa «Copiar» allí.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to the 1,000 most recent samples are included.":
+      "Guardar la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra como archivo JSON. Se incluyen hasta las 1000 muestras más recientes.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to the 1,000 most recent samples are included.":
+      "Copiar al portapapeles como JSON la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra. Se incluyen hasta las 1000 muestras más recientes.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Iniciar un nuevo experimento con la misma configuración. Este experimento se conserva, y cada prompt se ejecuta y se evalúa de nuevo.",
     "Core definition test (EU AI Act)": "Prueba de definición básica (EU AI Act)",
     "Create Scorer": "Crear evaluador",
     "Create VerifyWise user account": "Crear cuenta de usuario de VerifyWise",
@@ -25573,6 +25924,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Personas con discapacidad",
     "Plan Adherence": "Cumplimiento del plan",
     "Plan Quality": "Calidad del plan",
+    "Planning Quality": "Calidad de la planificación",
+    "Bias (lower is better)": "Sesgo (más bajo es mejor)",
+    "Toxicity (lower is better)": "Toxicidad (más bajo es mejor)",
+    "Hallucination (lower is better)": "Alucinación (más bajo es mejor)",
     "Please enter a token": "Introduce un token",
     "Please enter a token to test": "Introduce un token para probar",
     "Please enter an email address": "Introduce una dirección de correo electrónico",
@@ -26032,6 +26387,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Avg confidence": "Confianza media",
     "Avg wait time": "Tiempo de espera medio",
     "By type": "Por tipo",
+    "By {name} · {date}": "Por {name} · {date}",
     "Conditions (JSON)": "Condiciones (JSON)",
     "Content": "Contenido",
     "Coverage of requirements": "Cobertura de los requisitos",
@@ -26550,6 +26906,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Lo que sus barreras de protección detectaron en este periodo",
     "Whose name and role appear on the declaration document":
       "Cuyo nombre y cargo aparecen en el documento de declaración",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "El proveedor rechazó la clave de API guardada. Introduzca una clave válida. Se guarda como una clave nueva, y un administrador puede eliminar la anterior en la configuración de AI Gateway.",
     "Your key will be saved securely for future experiments":
       "Su clave se guardará de forma segura para futuros experimentos",
     "No AI tools detected yet. Connect a data source to monitor AI tool usage.":
@@ -30283,6 +30641,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Vendor {id}": "Proveedor {id}",
     "Vendor risk {id}": "Riesgo del proveedor {id}",
     "{linked} of {total}": "{linked} de {total}",
+    "{name} (inactive)": "{name} (inactivo)",
+    "#{id} (not found)": "#{id} (no encontrado)",
+    "No endpoints": "Sin endpoints",
     "Vendors with reach": "Proveedores con alcance",
     "Inheriting project risks": "Riesgos de proyecto que heredan",
     "Affected use cases": "Casos de uso afectados",
@@ -30375,6 +30736,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Los riesgos de proveedor relacionados describen la misma exposición, en este proveedor o en otro. Ninguno hereda del otro.",
     "Similar wording": "Redacción similar",
     "Same vendor": "Mismo proveedor",
+    "Sample text must be at most {max} characters":
+      "El texto de ejemplo no puede superar los {max} caracteres",
     "Shared framework": "Marco compartido",
     "Shared use case": "Caso de uso compartido",
     "Why are you dismissing {name}?": "¿Por qué descartas {name}?",

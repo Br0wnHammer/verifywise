@@ -1,15 +1,15 @@
 """
 CRUD router for AI Gateway guardrail rules, settings, logs, and stats.
 Handles management operations (create/update/delete rules, settings, purge logs).
-NOTE: scan/test routes live in routers/guardrails.py — this file is guardrails_crud.py
-      to avoid a naming conflict.
+NOTE: the "Test guardrails" route lives in routers/guardrails.py — this file is
+      guardrails_crud.py to avoid a naming conflict.
 """
 
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from utils.auth import get_org_id, get_user_id, require_admin
 from utils.change_history import record_guardrail_change
 from utils.notifications import config_event, notify_config_change
@@ -91,8 +91,6 @@ async def create_guardrail_rule(request: Request):
     # Validate guardrail_type
     guardrail_type = body.get("guardrail_type", "")
     if guardrail_type not in VALID_GUARDRAIL_TYPES:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=400,
             detail=f"guardrail_type must be one of {sorted(VALID_GUARDRAIL_TYPES)}",
@@ -101,8 +99,6 @@ async def create_guardrail_rule(request: Request):
     # Validate action
     action = body.get("action", "block")
     if action not in VALID_ACTIONS:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=400,
             detail=f"action must be one of {sorted(VALID_ACTIONS)}",
@@ -113,8 +109,6 @@ async def create_guardrail_rule(request: Request):
         config = body.get("config", {})
         pattern = config.get("pattern") if isinstance(config, dict) else None
         if pattern and not _validate_regex(pattern):
-            from fastapi import HTTPException
-
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid regex pattern: {pattern!r}",
@@ -149,8 +143,6 @@ async def update_guardrail_rule(rule_id: int, request: Request):
 
     # Validate action if provided
     if "action" in body and body["action"] not in VALID_ACTIONS:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=400,
             detail=f"action must be one of {sorted(VALID_ACTIONS)}",
@@ -161,8 +153,6 @@ async def update_guardrail_rule(rule_id: int, request: Request):
     if isinstance(config, dict):
         pattern = config.get("pattern")
         if pattern and not _validate_regex(pattern):
-            from fastapi import HTTPException
-
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid regex pattern: {pattern!r}",
@@ -171,8 +161,6 @@ async def update_guardrail_rule(rule_id: int, request: Request):
     updated = await update_guardrail(org_id, rule_id, body)
 
     if updated is None:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="Guardrail rule not found")
 
     # Record change history
@@ -209,8 +197,6 @@ async def delete_guardrail_rule(rule_id: int, request: Request):
     deleted = await delete_guardrail(org_id, rule_id)
 
     if not deleted:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="Guardrail rule not found")
 
     await notify_config_change(

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Box, Typography, Stack, IconButton } from "@mui/material";
+import { useSearchParams } from "react-router";
 import {
   Wrench,
   Pencil,
@@ -17,6 +18,7 @@ import StandardModal from "../../../components/Modals/StandardModal";
 import { PageHeaderExtended } from "../../../components/Layout/PageHeaderExtended";
 import { CustomizableButton } from "../../../components/button/customizable-button";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
+import { getGatewayErrorText } from "../../../../application/utils/apiErrorReason";
 import palette from "../../../themes/palette";
 import { useCardSx } from "../shared";
 import MCPTable from "../MCPTable";
@@ -68,8 +70,20 @@ export default function MCPToolCatalogPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Filters
-  const [filterServer, setFilterServer] = useState("");
+  // Filters. The server filter lives in the URL (?server=<id>) so the
+  // MCP servers page can link straight to one server's tools.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const serverParam = searchParams.get("server") ?? "";
+  const setFilterServer = (value: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) next.set("server", value);
+        else next.delete("server");
+        return next;
+      },
+      { replace: true },
+    );
   const [filterRisk, setFilterRisk] = useState("");
 
   // Edit modal
@@ -126,6 +140,9 @@ export default function MCPToolCatalogPage() {
     [],
   );
 
+  // An id that matches no server (deleted, or a typo in the URL) means "All servers".
+  const filterServer = servers.some((s) => String(s.id) === serverParam) ? serverParam : "";
+
   const filteredTools = useMemo(() => {
     let result = tools;
     if (filterServer) {
@@ -175,9 +192,7 @@ export default function MCPToolCatalogPage() {
       setEditingTool(null);
       await loadData();
     } catch (err: any) {
-      setFormError(
-        err?.response?.data?.detail || err?.response?.data?.message || "Failed to update tool",
-      );
+      setFormError(getGatewayErrorText(err, "Failed to update tool"));
     } finally {
       setIsSubmitting(false);
     }
