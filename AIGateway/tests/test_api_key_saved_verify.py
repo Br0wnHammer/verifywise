@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import urlparse
 
 os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key-32-chars-long!!")
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -170,5 +171,5 @@ async def test_saved_key_provider_name_is_normalised(monkeypatch):
     seen = _provider_replies(monkeypatch, 400, GEMINI_BAD_KEY)
     _saved_key(monkeypatch, {"id": 6, "provider": "Google", "encrypted_key": encrypt("AIza-dead")})
     res = await router.verify_saved_api_key(6, _request())
-    assert seen and "generativelanguage.googleapis.com" in seen[0]
+    assert seen and urlparse(seen[0]).hostname == "generativelanguage.googleapis.com"
     assert res["data"]["valid"] is False
