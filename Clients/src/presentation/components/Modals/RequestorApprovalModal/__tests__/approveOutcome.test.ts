@@ -1,4 +1,8 @@
-import { getApproveOutcome, getApproveOutcomeMessage } from "../approveOutcome";
+import {
+  approveMayHaveChangedEntity,
+  getApproveOutcome,
+  getApproveOutcomeMessage,
+} from "../approveOutcome";
 
 const identity = (key: string) => key;
 
@@ -60,5 +64,20 @@ describe("getApproveOutcomeMessage", () => {
     expect(getApproveOutcomeMessage({ kind: "waitingOnStep", remaining: 2 }, t)).toBe(
       "Noch 2 offen.",
     );
+  });
+});
+
+describe("approveMayHaveChangedEntity", () => {
+  it("is true once the request is approved", () => {
+    expect(approveMayHaveChangedEntity(request("Completed", ["Approved"], "Approved"))).toBe(true);
+  });
+
+  it("is false while the request still waits on other approvers or steps", () => {
+    expect(approveMayHaveChangedEntity(request("Pending", ["Approved", "Pending"]))).toBe(false);
+    expect(approveMayHaveChangedEntity(request("Completed", ["Approved"]))).toBe(false);
+  });
+
+  it("is true when the refresh failed and the outcome is unknown", () => {
+    expect(approveMayHaveChangedEntity(undefined)).toBe(true);
   });
 });

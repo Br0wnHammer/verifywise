@@ -220,15 +220,7 @@ export const withdrawalBodyStyle = {
   fontSize: 13,
 };
 
-// StepDetailsModal styles
-export const stepDetailsContainerStack = {
-  spacing: 4,
-};
-
-export const stepDetailFieldStack = {
-  spacing: 1,
-};
-
+// DetailField styles
 export const stepDetailLabelStyle = {
   fontWeight: 600,
   fontSize: 14,

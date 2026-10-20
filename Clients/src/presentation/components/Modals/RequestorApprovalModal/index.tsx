@@ -71,7 +71,12 @@ import {
 import { logEngine } from "../../../../application/tools/log.engine";
 import { showAlert } from "../../../../application/tools/alertUtils";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
-import { getApproveOutcome, getApproveOutcomeMessage } from "./approveOutcome";
+import {
+  approveMayHaveChangedEntity,
+  getApproveOutcome,
+  getApproveOutcomeMessage,
+  type RequestAfterApprove,
+} from "./approveOutcome";
 import { EmptyState } from "../../EmptyState";
 import DetailField from "./DetailField";
 import EntityDetailsSection from "./EntityDetailsSection";
@@ -277,7 +282,7 @@ const RequestorApprovalModal: FC<IRequestorApprovalProps> = ({ isOpen, onClose, 
 
     // The vote is committed from here on. A failed refresh must not report
     // "Failed to approve": a retry would only get a 409.
-    let approvedRequest: Parameters<typeof getApproveOutcome>[0];
+    let approvedRequest: RequestAfterApprove | undefined;
     try {
       // Clear selected item before refreshing data so the auto-select picks the next item
       setSelectedItem(null);
@@ -307,16 +312,18 @@ const RequestorApprovalModal: FC<IRequestorApprovalProps> = ({ isOpen, onClose, 
       isToast: true,
     });
 
+    const entityChanged = approveMayHaveChangedEntity(approvedRequest);
+
     // If this was a file approval, dispatch event to refresh file lists
-    if (requestDetails?.entityType === "file") {
+    if (entityChanged && requestDetails?.entityType === "file") {
       dispatchFileApprovalChanged({ status: "approved" });
     }
 
     // If this was an AI write action (e.g. agent_create_risk), tell
     // any background page showing that entity's table to refetch.
-    // The AI executor runs inside the same approve transaction, so
-    // by the time approveRequest resolves the new row exists.
-    if (requestDetails?.entityType === "ai_action") {
+    // The AI executor runs inside the approve transaction that completes
+    // the last step, so by the time that call resolves the new row exists.
+    if (entityChanged && requestDetails?.entityType === "ai_action") {
       dispatchAiActionCompleted({
         toolName: requestDetails?.aiToolName,
         status: "approved",

@@ -11,7 +11,7 @@ export type ApproveOutcome =
   | { kind: "movedToNextStep" }
   | { kind: "recorded" };
 
-interface RequestAfterApprove {
+export interface RequestAfterApprove {
   status?: string;
   steps?: {
     id: number;
@@ -45,6 +45,18 @@ export function getApproveOutcome(
     (a) => a.approval_result?.toLowerCase() === "pending",
   ).length;
   return remaining > 0 ? { kind: "waitingOnStep", remaining } : { kind: "recorded" };
+}
+
+/**
+ * Whether listeners of the approved entity (file lists, the table an AI
+ * action writes to) should refetch. The entity only changes once the last
+ * step completes; an approval that leaves the request pending changes
+ * nothing. If the refresh failed the outcome is unknown, so they refetch.
+ */
+export function approveMayHaveChangedEntity(
+  request: RequestAfterApprove | null | undefined,
+): boolean {
+  return request ? request.status?.toLowerCase() === "approved" : true;
 }
 
 export function getApproveOutcomeMessage(
