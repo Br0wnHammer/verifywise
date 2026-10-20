@@ -77,6 +77,8 @@ def test_typed_non_recovering_rate_limits_are_fatal(message: str, code: str) -> 
         # ...unless the endpoint says when to retry
         ("Rate limit exceeded, please retry in 20s", False),
         ("429 Too Many Requests, retry in 20s", False),
+        # 429 inside a port or id is not a rate limit
+        ("Invalid API key (request id ab429f), retry in 5s", True),
     ],
 )
 def test_untyped_rate_limits_use_the_same_rule(message: str, fatal: bool) -> None:

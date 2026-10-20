@@ -423,3 +423,17 @@ def test_ollama_client_uses_this_runs_checked_host_not_the_environment(monkeypat
     assert "10.0.0.5" in str(ollama_client("10.0.0.5:11434")._client.base_url)
     with pytest.raises(UnsafeOutboundUrlError):
         ollama_client("http://169.254.169.254")
+
+
+@pytest.mark.parametrize(
+    "entered, base",
+    [
+        ("https://generativelanguage.googleapis.com/v1beta/openai", "https://generativelanguage.googleapis.com/v1beta/openai"),
+        ("http://host:8000", "http://host:8000/v1"),
+        ("proxy:4000?target=http://x", "http://proxy:4000/v1?target=http://x"),
+    ],
+)
+def test_custom_api_keeps_an_entered_path(entered: str, base: str) -> None:
+    from deepeval_engine.endpoint_client import openai_base_url
+
+    assert openai_base_url(entered, keep_entered_path=True) == base

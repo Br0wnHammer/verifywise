@@ -26,7 +26,7 @@ from crud import evaluation_logs as crud
 from crud.deepeval_scorers import list_scorers, create_scorer, update_scorer, touch_scorer_updated_at
 from deepeval_engine.gatekeeper import evaluate_gate
 from utils.run_custom_scorer import run_custom_scorer, ScorerResult
-from utils.safe_outbound_url import openai_base_url
+from utils.safe_outbound_url import checked_endpoint, openai_base_url
 from utils.error_detection import (
     FatalErrorTracker,
     build_no_responses_message,
@@ -266,7 +266,7 @@ async def run_evaluation(
     
     try:
         # Helper: ensure Ollama model is locally available
-        def ensure_ollama_model(model_name: str) -> None:
+        def ensure_ollama_model(model_name: str, host: Optional[str] = None) -> None:
             # Security: Validate model name to prevent command injection
             if not model_name or not SAFE_MODEL_NAME_PATTERN.match(model_name):
                 print(f"⚠️  Invalid model name format: '{model_name}'. Skipping Ollama check.")
@@ -277,12 +277,14 @@ async def run_evaluation(
 
             try:
                 # Check if model exists locally
-                list_proc = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=30)
+                # The CLI talks to this run's server (host already checked), not a shared env
+                cli_env = {**os.environ, "OLLAMA_HOST": host} if host else None
+                list_proc = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=30, env=cli_env)
                 if list_proc.returncode == 0 and model_name in list_proc.stdout:
                     print(f"✓ Ollama model '{model_name}' is available locally")
                     return
                 print(f"• Ollama model '{model_name}' not found locally; pulling...")
-                pull_proc = subprocess.run(["ollama", "pull", model_name], text=True, timeout=600)
+                pull_proc = subprocess.run(["ollama", "pull", model_name], text=True, timeout=600, env=cli_env)
                 if pull_proc.returncode == 0:
                     print(f"✓ Pulled Ollama model '{model_name}' successfully")
                 else:
@@ -466,7 +468,8 @@ async def run_evaluation(
         
         # If using Ollama, proactively ensure the model exists locally before generation
         if runner_provider == "ollama" and isinstance(model_name, str):
-            ensure_ollama_model(model_name)
+            entered = model_config.get("endpointUrl")
+            ensure_ollama_model(model_name, checked_endpoint(entered) if entered else None)
         
         # 2. Load Dataset (builtin by name, custom path, prompts, conversations, or benchmarks)
         print(f"\n📊 Loading dataset...")

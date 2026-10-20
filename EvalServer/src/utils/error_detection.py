@@ -158,7 +158,9 @@ _INSUFFICIENT_CREDITS = next(
     (code, msg) for pattern, code, msg in FATAL_ERROR_PATTERNS if code == "insufficient_credits"
 )
 # How self-hosted servers word a rate limit; with a retry hint the rule decides it
-_UNTYPED_RATE_LIMIT_WORDS = ("rate limit", "rate_limit", "too many requests", "429")
+_UNTYPED_RATE_LIMIT_WORDS = ("rate limit", "rate_limit", "too many requests")
+# A 429 status, not a port, request id or token count that contains the digits
+_STATUS_429 = re.compile(r"(?<![\w.:-])429(?![\w.:-])")
 # Untyped quota text (direct SDK calls, wrapped messages) that the rule decides. A plain
 # untyped "rate limit exceeded" stays with the patterns: nothing retries it, so it is fatal.
 _RATE_LIMIT_WORDS = (
@@ -202,7 +204,7 @@ def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optiona
         or any(word in error_lower for word in _RATE_LIMIT_WORDS)
         # An untyped rate limit that says when to retry lifts; without a hint it stays fatal
         or (
-            any(word in error_lower for word in _UNTYPED_RATE_LIMIT_WORDS)
+            (any(word in error_lower for word in _UNTYPED_RATE_LIMIT_WORDS) or _STATUS_429.search(error_lower))
             and retry_hint_seconds(error_lower) is not None
         )
     )

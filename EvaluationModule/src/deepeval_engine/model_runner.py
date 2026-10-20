@@ -162,7 +162,7 @@ class ModelRunner:
 
         # User-entered: the outbound policy (private hosts allowed for on-prem; metadata,
         # wildcard and non-http refused), then the /v1 path self-hosted judges use too
-        base_url = openai_base_url(endpoint_url)
+        base_url = openai_base_url(endpoint_url, keep_entered_path=True)
         self.custom_client = openai_compatible_client(base_url, api_key)
         print(f"✓ Custom API configured: {endpoint_url}")
 
@@ -249,8 +249,9 @@ class ModelRunner:
         }
         from deepeval_engine.gateway_litellm_client import top_p_to_send
 
-        if top_p_to_send(top_p) is not None:
-            params["top_p"] = top_p
+        sent_top_p = top_p_to_send(top_p)
+        if sent_top_p is not None:
+            params["top_p"] = sent_top_p
         response = self.custom_client.chat.completions.create(**params)
         content = response.choices[0].message.content if response.choices else None
         if content is None:
@@ -321,8 +322,9 @@ class ModelRunner:
         }
         from deepeval_engine.gateway_litellm_client import top_p_to_send
 
-        if top_p_to_send(top_p) is not None:
-            options["top_p"] = top_p
+        sent_top_p = top_p_to_send(top_p)
+        if sent_top_p is not None:
+            options["top_p"] = sent_top_p
         response = self.ollama_client.generate(model=self.model_name, prompt=prompt, options=options)
         
         return response['response'].strip()

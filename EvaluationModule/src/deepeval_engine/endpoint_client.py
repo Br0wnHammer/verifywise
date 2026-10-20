@@ -5,10 +5,14 @@ builds their clients. The clients never follow redirects, so an allowed host can
 bounce the request on to a refused one (cloud metadata, a wildcard address).
 """
 
+import re
 from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
 from deepeval_engine.safe_outbound_url import assert_safe_outbound_url
+
+
+_HAS_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
 
 
 def checked_endpoint(raw: str) -> str:
@@ -17,16 +21,24 @@ def checked_endpoint(raw: str) -> str:
     ("localhost:11434", the form Ollama's own docs use). Raises UnsafeOutboundUrlError.
     """
     raw = (raw or "").strip()
-    if raw and "://" not in raw:
+    if raw and not _HAS_SCHEME.match(raw):
         raw = "http://" + raw
     return assert_safe_outbound_url(raw)
 
 
-def openai_base_url(raw: str) -> str:
-    """checked_endpoint() ending in the OpenAI-compatible /v1 path; a query is kept."""
+def openai_base_url(raw: str, keep_entered_path: bool = False) -> str:
+    """
+    checked_endpoint() with the OpenAI-compatible /v1 path; a query is kept.
+
+    Self-hosted judges and scorers have always had /v1 added unless the path ends with
+    it, and saved configs rely on that. A custom_api model keeps any path the user typed
+    (Gemini's .../v1beta/openai, an Azure deployment path); only a bare host gets /v1.
+    """
     parts = urlsplit(checked_endpoint(raw))
     path = parts.path.rstrip("/")
-    if not path.endswith("/v1"):
+    if keep_entered_path and path:
+        pass
+    elif not path.endswith("/v1"):
         path += "/v1"
     return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
 
