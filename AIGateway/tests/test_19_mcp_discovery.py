@@ -7,7 +7,9 @@ import asyncio
 import json
 import os
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key-32-chars-long!!")
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -208,6 +210,50 @@ class TestDiffDiscoveredTools:
         existing = [_row("a", "d", '{"b": 1, "a": 2}')]
         tools = [{"name": "a", "description": "d", "inputSchema": {"a": 2, "b": 1}}]
         assert svc.diff_discovered_tools(existing, tools) == {**NO_CHANGES, "unchanged": 1}
+
+
+def _fake_db(existing_rows):
+    """A get_db replacement that records every statement and returns existing_rows."""
+    executed = []
+
+    result = MagicMock()
+    result.mappings.return_value.all.return_value = existing_rows
+
+    db = MagicMock()
+    db.commit = AsyncMock()
+
+    async def execute(stmt, params=None):
+        executed.append((str(stmt), params))
+        return result
+
+    db.execute = execute
+
+    @asynccontextmanager
+    async def get_db():
+        yield db
+
+    return get_db, executed
+
+
+@pytest.mark.asyncio
+class TestStoreDiscoveredTools:
+    async def test_locks_the_server_row_before_reading_tools(self, monkeypatch):
+        get_db, executed = _fake_db([])
+        monkeypatch.setattr(svc, "get_db", get_db)
+        await svc.store_discovered_tools(1, 5, [{"name": "a"}])
+        assert "FOR UPDATE" in executed[0][0]
+        assert executed[0][1] == {"org_id": 1, "server_id": 5}
+
+    async def test_duplicate_names_are_stored_once(self, monkeypatch):
+        get_db, executed = _fake_db([])
+        monkeypatch.setattr(svc, "get_db", get_db)
+        tools = [{"name": "a", "description": "first"}, {"name": "b"}, {"name": "a", "description": "last"}]
+        stored, changes = await svc.store_discovered_tools(1, 5, tools)
+        assert [t["tool_name"] for t in stored] == ["a", "b"]
+        assert stored[0]["description"] == "last"
+        assert changes == {**NO_CHANGES, "added": 2}
+        inserts = [p for sql, p in executed if "INSERT INTO ai_gateway_mcp_tools" in sql]
+        assert [p["tool_name"] for p in inserts] == ["a", "b"]
 
 
 class TestErrorMessages:

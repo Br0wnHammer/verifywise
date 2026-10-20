@@ -299,12 +299,26 @@ async def store_discovered_tools(
 ) -> tuple[list[dict], dict]:
     """Database phase of discovery: upsert advertised tools, deactivate the rest.
 
-    Returns the stored tools and the counts from diff_discovered_tools.
+    Returns the stored tools, one per name, and the counts from
+    diff_discovered_tools.
     """
-    discovered_tool_names = set()
+    # A server that lists a name twice gets one row; the last entry wins, as the
+    # upserts below would do anyway.
+    advertised = {tool.get("name", ""): tool for tool in tools}
     discovered_tools = []
 
     async with get_db() as db:
+        # Lock the server row so two discoveries of one server run one after the
+        # other; otherwise both diff against the same old rows and report the
+        # same changes.
+        await db.execute(
+            text("""
+                SELECT id FROM ai_gateway_mcp_servers
+                WHERE organization_id = :org_id AND id = :server_id
+                FOR UPDATE
+            """),
+            {"org_id": org_id, "server_id": server_id},
+        )
         existing = await db.execute(
             text("""
                 SELECT tool_name, description, input_schema, is_active
@@ -315,11 +329,9 @@ async def store_discovered_tools(
         )
         changes = diff_discovered_tools([dict(r) for r in existing.mappings().all()], tools)
 
-        for tool in tools:
-            tool_name = tool.get("name", "")
+        for tool_name, tool in advertised.items():
             description = tool.get("description", "")
             input_schema = tool.get("inputSchema", {})
-            discovered_tool_names.add(tool_name)
 
             await db.execute(
                 text("""
@@ -350,7 +362,7 @@ async def store_discovered_tools(
                 "input_schema": input_schema,
             })
 
-        if discovered_tool_names:
+        if advertised:
             await db.execute(
                 text("""
                     UPDATE ai_gateway_mcp_tools
@@ -363,7 +375,7 @@ async def store_discovered_tools(
                 {
                     "org_id": org_id,
                     "server_id": server_id,
-                    "tool_names": list(discovered_tool_names),
+                    "tool_names": list(advertised),
                 },
             )
         else:

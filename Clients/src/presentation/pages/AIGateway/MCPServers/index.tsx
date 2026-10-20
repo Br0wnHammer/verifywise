@@ -32,6 +32,9 @@ import { slugify } from "../shared";
 import MCPTable from "../MCPTable";
 import CustomizableSkeleton from "../../../components/Skeletons";
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
+import { useTranslation } from "../../../../application/hooks/useTranslation";
+import { fill } from "../../../../i18n/fill";
+import { VWLink } from "../../../components/Link/VWLink";
 
 interface ServerForm {
   name: string;
@@ -87,25 +90,42 @@ type Discovery = {
   error: string | null;
 };
 
-const toolsFound = (n: number) =>
-  n === 0 ? "The server offered no tools" : n === 1 ? "One tool found" : `${n} tools found`;
+type Translate = (key: string) => string;
+
+// Counts are filled into translated templates: the DOM translator only matches
+// whole strings, so "3 tools found" would otherwise stay in English.
+const toolsFound = (t: Translate, n: number) =>
+  n === 0
+    ? t("The server offered no tools")
+    : n === 1
+      ? t("One tool found")
+      : fill(t("{count} tools found"), { count: n });
 
 const hasChanges = (c: DiscoveryChanges) => c.added + c.removed + c.changed > 0;
 
-// Starts with a digit, so the DOM translator leaves it alone.
-const changeSummary = (c: DiscoveryChanges) =>
+const changeSummary = (t: Translate, c: DiscoveryChanges) =>
   [
-    c.added && `${c.added} new`,
-    c.removed && `${c.removed} removed`,
-    c.changed && `${c.changed} changed`,
+    c.added && fill(t("{count} new"), { count: c.added }),
+    c.removed && fill(t("{count} removed"), { count: c.removed }),
+    c.changed && fill(t("{count} changed"), { count: c.changed }),
   ]
     .filter(Boolean)
     .join(", ");
+
+// One wording for every successful discovery, whether it ran on save or from
+// the Discover button. With no active tools stored before the run (a new
+// server, or one whose tools had all gone) there is nothing to compare, so
+// only the total means anything.
+const discoveryBody = (t: Translate, total: number, c?: DiscoveryChanges | null) =>
+  c && c.removed + c.changed + c.unchanged > 0 && hasChanges(c)
+    ? changeSummary(t, c)
+    : toolsFound(t, total);
 
 const toolsCatalogPath = (serverId: number) => `/ai-gateway/mcp/tools?server=${serverId}`;
 
 export default function MCPServersPage() {
   const formatDate = useFormattedDate();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,11 +144,11 @@ export default function MCPServersPage() {
     body?: string;
     action?: { label: string; onClick: () => void };
   } | null>(null);
-  const [discoveringId, setDiscoveringId] = useState<number | null>(null);
+  // Ids of servers with a discovery running; each row has its own spinner.
+  const [discoveringIds, setDiscoveringIds] = useState<ReadonlySet<number>>(new Set());
 
-  // Fixed phrases go in the title (and the 0/1 tool counts in the body) so each
-  // renders as its own text node and the DOM translator can match it.
-  // One dismiss timer at a time: an older alert's timer must not close a newer one.
+  // Titles are fixed phrases the DOM translator matches; bodies with counts
+  // arrive already translated. One dismiss timer at a time: an older alert's timer must not close a newer one.
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showAlert = (
     variant: "success" | "warning" | "error",
@@ -155,14 +175,12 @@ export default function MCPServersPage() {
     if (!discovery || discovery.status === "skipped") {
       showAlert("success", prefix);
     } else if (discovery.status === "success") {
-      const c = discovery.changes;
-      // A brand-new server has nothing to compare against: report the total.
-      const updated = c && hasChanges(c) && c.removed + c.changed + c.unchanged > 0;
+      const total = discovery.tools_discovered;
       showAlert(
         "success",
         prefix,
-        updated ? changeSummary(c) : toolsFound(discovery.tools_discovered),
-        discovery.tools_discovered > 0 || updated ? serverId : undefined,
+        discoveryBody(t, total, discovery.changes),
+        total > 0 ? serverId : undefined,
       );
     } else {
       // The server is saved either way; say so, or the admin may think the save failed.
@@ -292,21 +310,20 @@ export default function MCPServersPage() {
   };
 
   const handleDiscover = async (id: number) => {
-    setDiscoveringId(id);
+    setDiscoveringIds((prev) => new Set(prev).add(id));
     try {
       const res = await apiServices.post<Record<string, any>>(
         `/ai-gateway/mcp/servers/${id}/discover`,
       );
       const total: number = res?.data?.tools_discovered ?? 0;
       const changes: DiscoveryChanges | null | undefined = res?.data?.changes;
-      const viewFor = total > 0 || (changes && hasChanges(changes)) ? id : undefined;
-      if (!changes) {
-        showAlert("success", toolsFound(total), undefined, viewFor);
-      } else if (hasChanges(changes)) {
-        showAlert("success", "Tools updated", changeSummary(changes), viewFor);
-      } else {
-        showAlert("success", "No changes", toolsFound(total), viewFor);
-      }
+      showAlert(
+        "success",
+        changes && !hasChanges(changes) ? "No changes" : "Tools updated",
+        discoveryBody(t, total, changes),
+        // A run that only removed tools leaves nothing to view.
+        total > 0 ? id : undefined,
+      );
     } catch (err: any) {
       showAlert(
         "error",
@@ -314,8 +331,13 @@ export default function MCPServersPage() {
         getGatewayErrorDetail(err) ?? getClientErrorReason(err) ?? undefined,
       );
     } finally {
-      setDiscoveringId(null);
+      // Reload first so the spinner stays until the new tool count is on screen.
       await loadData();
+      setDiscoveringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -434,26 +456,16 @@ export default function MCPServersPage() {
                 </span>
               </Tooltip>,
               srv.tool_count > 0 ? (
-                <Box
-                  component="button"
-                  type="button"
-                  aria-label="View tools"
+                <VWLink
+                  ariaLabel={fill(t("View {count} tools"), { count: srv.tool_count })}
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate(toolsCatalogPath(srv.id));
                   }}
-                  sx={{
-                    p: 0,
-                    border: "none",
-                    background: "none",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    color: palette.brand.primary,
-                    textDecoration: "underline",
-                  }}
+                  sx={{ fontSize: 12 }}
                 >
                   {srv.tool_count}
-                </Box>
+                </VWLink>
               ) : (
                 <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>—</Typography>
               ),
@@ -492,12 +504,12 @@ export default function MCPServersPage() {
                     <IconButton
                       size="small"
                       onClick={() => handleDiscover(srv.id)}
-                      disabled={discoveringId === srv.id}
+                      disabled={discoveringIds.has(srv.id)}
                       sx={{ p: 0.5 }}
                       aria-label="Discover tools"
-                      aria-busy={discoveringId === srv.id}
+                      aria-busy={discoveringIds.has(srv.id)}
                     >
-                      {discoveringId === srv.id ? (
+                      {discoveringIds.has(srv.id) ? (
                         <CircularProgress size={14} sx={{ color: palette.text.tertiary }} />
                       ) : (
                         <Search size={14} strokeWidth={1.5} color={palette.text.tertiary} />

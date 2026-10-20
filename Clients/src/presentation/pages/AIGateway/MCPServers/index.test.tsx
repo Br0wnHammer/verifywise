@@ -409,10 +409,50 @@ describe("MCPServersPage", () => {
     renderWithProviders(<MCPServersPage />, { route: "/ai-gateway/mcp/servers" });
     await waitFor(() => expect(screen.getByText("Search Server")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "View tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "View 4 tools" }));
 
     expect(mockNavigate).toHaveBeenCalledWith("/ai-gateway/mcp/tools?server=3");
     expect(screen.queryByText("Edit server")).not.toBeInTheDocument();
+  });
+
+  it("offers no tools link when discovery only removed tools", async () => {
+    mockGet.mockResolvedValue({ data: { servers: [makeServer({ id: 3, tool_count: 0 })] } });
+    mockPost.mockResolvedValue({
+      data: {
+        status: "success",
+        tools_discovered: 0,
+        changes: { added: 0, removed: 2, changed: 0, unchanged: 0 },
+      },
+    });
+    renderWithProviders(<MCPServersPage />, { route: "/ai-gateway/mcp/servers" });
+    await waitFor(() => expect(screen.getByText("Search Server")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Discover tools" }));
+
+    await waitFor(() => expect(screen.getByText("2 removed")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "View tools" })).not.toBeInTheDocument();
+  });
+
+  it("keeps each row's spinner until its own discovery finishes", async () => {
+    mockGet.mockResolvedValue({
+      data: { servers: [makeServer({ id: 1 }), makeServer({ id: 2, name: "Other Server" })] },
+    });
+    const finish: Array<(v: unknown) => void> = [];
+    mockPost.mockImplementation(() => new Promise((resolve) => finish.push(resolve)));
+    renderWithProviders(<MCPServersPage />, { route: "/ai-gateway/mcp/servers" });
+    await waitFor(() => expect(screen.getByText("Other Server")).toBeInTheDocument());
+
+    const [first, second] = screen.getAllByRole("button", { name: "Discover tools" });
+    fireEvent.click(first);
+    fireEvent.click(second);
+    await waitFor(() => expect(finish).toHaveLength(2));
+
+    finish[0]({ data: { status: "success", tools_discovered: 4 } });
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "false"));
+    expect(second).toHaveAttribute("aria-busy", "true");
+
+    finish[1]({ data: { status: "success", tools_discovered: 4 } });
+    await waitFor(() => expect(second).toHaveAttribute("aria-busy", "false"));
   });
 
   it("keeps the table and spins the discover button while discovery runs", async () => {

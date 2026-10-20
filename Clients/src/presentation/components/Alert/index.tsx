@@ -16,6 +16,7 @@ import { AlertProps } from "../../types/alert.types";
 import { closeIconStyles, iconButtonStyles } from "./style";
 import { CloseIconProps } from "../../../domain/interfaces/i.widget";
 import AlertBody from "./AlertBody";
+import { VWLink } from "../Link/VWLink";
 
 import {
   Info as BlueInfoIcon,
@@ -97,23 +98,13 @@ const Alert: React.FC<AlertProps> = ({
         {title && <Typography sx={{ fontWeight: 700, color: text }}>{title}</Typography>}
         {body && <AlertBody body={body} textColor={text} />}
         {action && (
-          <Box
-            component="button"
-            type="button"
-            onClick={action.onClick}
-            sx={{
-              alignSelf: "flex-start",
-              p: 0,
-              border: "none",
-              background: "none",
-              cursor: "pointer",
-              color: text,
-              fontSize: 13,
-              fontWeight: 600,
-              textDecoration: "underline",
-            }}
-          >
-            {action.label}
+          <Box>
+            <VWLink
+              onClick={action.onClick}
+              sx={{ "color": text, "fontWeight": 600, "&:hover": { color: text } }}
+            >
+              {action.label}
+            </VWLink>
           </Box>
         )}
       </Stack>
