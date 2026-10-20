@@ -223,9 +223,10 @@ def _generation_usage(model_runner: Any, *texts: Any) -> Tuple[int, Optional[flo
     price when it reported them, else a word count of the texts and no cost (local models).
     """
     completion = getattr(model_runner, "last_completion", None)
+    cost = completion.cost_usd if completion is not None else None
     if completion is not None and completion.total_tokens is not None:
-        return completion.total_tokens, completion.cost_usd
-    return sum(len(t.split()) for t in texts if isinstance(t, str)), None
+        return completion.total_tokens, cost
+    return sum(len(t.split()) for t in texts if isinstance(t, str)), cost
 
 
 def _add_cost(total: Optional[float], cost: Optional[float]) -> Optional[float]:
@@ -708,6 +709,11 @@ async def run_evaluation(
                         # Track success to reset fatal error counter
                         fatal_error_tracker.track_success()
 
+                        # Only a turn that answered counts; an error placeholder billed nothing
+                        turn_tokens, turn_cost = _generation_usage(model_runner, user_msg, assistant_response)
+                        total_tokens += turn_tokens
+                        total_cost = _add_cost(total_cost, turn_cost)
+
                     except Exception as gen_err:
                         print(f"    ⚠️ Generation error on turn {turn_idx + 1}: {redact_secrets(str(gen_err))}")
                         # Stored as the turn's output, which the organization sees.
@@ -734,11 +740,7 @@ async def run_evaluation(
                     turn_objects.append(Turn(role="assistant", content=assistant_response))
                     conversation_history.append({"role": "assistant", "content": assistant_response})
                     generated_assistant_turns.append(assistant_response)
-                    
-                    turn_tokens, turn_cost = _generation_usage(model_runner, user_msg, assistant_response)
-                    total_tokens += turn_tokens
-                    total_cost = _add_cost(total_cost, turn_cost)
-                
+
                 latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
                 
                 print(f"    ✓ Generated {len(generated_assistant_turns)} responses ({latency_ms}ms)")

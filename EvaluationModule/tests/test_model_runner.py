@@ -331,3 +331,21 @@ def test_env_api_key_for_unknown_provider_returns_none() -> None:
     from deepeval_engine.model_runner import ModelRunner
 
     assert ModelRunner._env_api_key_for_provider_static("not-real") is None
+
+
+def test_gateway_rate_limit_is_not_retried_with_a_blocking_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deepeval_engine.gateway_litellm_client import GatewayProviderError
+
+    runner = _make_runner("openai", model_name="gpt-4o", gateway_mode=True)
+    calls = {"count": 0}
+
+    def quota(*_args, **_kwargs):
+        calls["count"] += 1
+        raise GatewayProviderError("RateLimitError", 429, "insufficient_quota")
+
+    monkeypatch.setattr("deepeval_engine.gateway_litellm_client.gateway_completion_sync", quota)
+    monkeypatch.setattr("deepeval_engine.model_runner.time.sleep", lambda _s: pytest.fail("slept"))
+
+    with pytest.raises(GatewayProviderError):
+        runner.generate("hi")
+    assert calls["count"] == 1

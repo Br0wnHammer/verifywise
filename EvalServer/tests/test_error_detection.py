@@ -51,3 +51,16 @@ def test_tracker_stops_after_repeated_typed_errors() -> None:
     err = str(GatewayProviderError("NotFoundError", 404, "gone"))
     assert tracker.track_error(err) is False
     assert tracker.track_error(err) is True
+
+
+@pytest.mark.parametrize(
+    "text, secret",
+    [
+        ("https://host/v1/x?key=lowercaseonlysecret&alt=sse", "lowercaseonlysecret"),
+        ("https://host/v1/x?alt=sse&key=abc123xyz", "abc123xyz"),
+    ],
+)
+def test_key_query_parameters_are_always_redacted(text: str, secret: str) -> None:
+    from utils.error_detection import redact_secrets
+
+    assert secret not in redact_secrets(text)

@@ -1255,6 +1255,8 @@ async def test_deepeval_scorer_controller(
                 "rawResponse": result.raw_response,
                 # Set when the judge could not be called; label and score are placeholders
                 "error": result.error,
+                # LiteLLM's price for the judge call; null when unknown (not via the gateway)
+                "costUsd": result.cost_usd,
                 "tokenUsage": {
                     "promptTokens": result.prompt_tokens,
                     "completionTokens": result.completion_tokens,

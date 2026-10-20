@@ -19,6 +19,9 @@ _STRONG_LABEL_VALUE = re.compile(
     r"(?i)" + _LABEL_START + r"(password|passwd|secret|client[_-]?secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
     r"([\"']?\s*[:=]\s*[\"']?)([^\s\"',;&]+)"
 )
+# A key or token query parameter in a URL the error echoes (Gemini sends ?key=...): the
+# value is redacted whatever it looks like
+_QUERY_SECRET = re.compile(r"(?i)([?&](?:key|api[_-]?key|access[_-]?token|token)=)[^&\s\"'#]+")
 # user:password@ in a URL the error echoes (a proxy or api_base URL)
 _URL_USERINFO = re.compile(r"(://[^/\s:@]*:)(\S+)(@)(?=[^@\s]*(?:\s|$))")
 _WEAK_LABEL_VALUE = re.compile(
@@ -55,6 +58,7 @@ def redact_secrets(text: str, known_secret: str = "") -> str:
         label, sep, value = match.groups()
         return f"{label}{sep}[redacted]" if _looks_like_secret(value) else match.group(0)
 
+    text = _QUERY_SECRET.sub(lambda m: f"{m.group(1)}[redacted]", text)
     text = _URL_USERINFO.sub(lambda m: f"{m.group(1)}[redacted]{m.group(3)}", text)
     text = _STRONG_LABEL_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", text)
     text = _SCHEME_VALUE.sub(_keep_label, text)

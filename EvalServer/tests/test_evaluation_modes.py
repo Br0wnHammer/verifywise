@@ -536,6 +536,8 @@ def test_generation_usage_falls_back_to_a_word_count_without_gateway_usage() -> 
     assert _generation_usage(SimpleNamespace(last_completion=None), "one two", "three") == (3, None)
     no_usage = SimpleNamespace(last_completion=GatewayCompletion(text="x"))
     assert _generation_usage(no_usage, "one two") == (2, None)
+    cost_only = SimpleNamespace(last_completion=GatewayCompletion(text="x", cost_usd=0.01))
+    assert _generation_usage(cost_only, "one two") == (2, 0.01)
     assert _generation_usage(object(), "one") == (1, None)
 
 

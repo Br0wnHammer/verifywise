@@ -20,6 +20,8 @@ from utils.redaction import redact_secrets  # noqa: E402
         ("OPENAI_API_KEY=whatever-value", "whatever-value"),
         ("hf token hf_abcdefghij1234 rejected", "hf_abcdefghij1234"),
         ("xai key xai-abcdefgh12 rejected", "xai-abcdefgh12"),
+        ("https://host/v1/x?key=lowercaseonlysecret&alt=sse", "lowercaseonlysecret"),
+        ("https://host/v1/x?alt=sse&key=abc123xyz", "abc123xyz"),
     ],
 )
 def test_secrets_are_redacted(text: str, secret: str) -> None:

@@ -318,6 +318,11 @@ _PREFIXED_SECRETS = [
 ]
 
 
+# A key or token query parameter in a URL the error echoes (Gemini sends ?key=...): the
+# value is redacted whatever it looks like. Same rule as AIGateway/src/utils/redaction.py.
+_QUERY_SECRET = re.compile(r"(?i)([?&](?:key|api[_-]?key|access[_-]?token|token)=)[^&\s\"'#]+")
+
+
 def _looks_like_secret(value: str) -> bool:
     """A credential has a digit, mixed case, base64 padding, or is very long."""
     return (
@@ -335,6 +340,7 @@ def redact_secrets(text: str) -> str:
         label, sep, value = match.groups()
         return f"{label}{sep}[redacted]" if _looks_like_secret(value) else match.group(0)
 
+    text = _QUERY_SECRET.sub(lambda m: f"{m.group(1)}[redacted]", text)
     text = _URL_USERINFO.sub(lambda m: f"{m.group(1)}[redacted]{m.group(3)}", text)
     text = _STRONG_LABEL_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", text)
     text = _SCHEME_VALUE.sub(_keep_label, text)

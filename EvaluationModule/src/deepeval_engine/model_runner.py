@@ -367,16 +367,15 @@ class ModelRunner:
         if not key:
             raise RuntimeError("Gateway mode without API key")
 
-        def _call():
-            return gateway_completion_sync(
-                litellm_model,
-                messages,
-                key,
-                max_tokens=max_tokens,
-                temperature=temperature if top_p is None else temperature,
-            )
-
-        completion = self._retry_with_backoff(_call)
+        # No _retry_with_backoff here: its "429" text check would match the typed
+        # "RateLimitError (429)" and sleep (blocking the event loop) even on quota errors
+        completion = gateway_completion_sync(
+            litellm_model,
+            messages,
+            key,
+            max_tokens=max_tokens,
+            temperature=temperature if top_p is None else temperature,
+        )
         self.last_completion = completion
         return completion.text
 

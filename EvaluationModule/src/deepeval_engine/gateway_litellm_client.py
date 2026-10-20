@@ -124,12 +124,14 @@ def _int_or_none(value: Any) -> Optional[int]:
 def _to_completion(payload: Dict[str, Any]) -> GatewayCompletion:
     usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
     cost = payload.get("cost_usd")
+    # The gateway reports 0.0 for a model LiteLLM cannot price, so 0 means "unknown"
+    priced = isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost > 0
     return GatewayCompletion(
         text=_extract_assistant_text(payload),
         prompt_tokens=_int_or_none(usage.get("prompt_tokens")),
         completion_tokens=_int_or_none(usage.get("completion_tokens")),
         total_tokens=_int_or_none(usage.get("total_tokens")),
-        cost_usd=float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None,
+        cost_usd=float(cost) if priced else None,
     )
 
 

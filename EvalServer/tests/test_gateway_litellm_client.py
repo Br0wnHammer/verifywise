@@ -185,6 +185,20 @@ def test_gateway_completion_sync_returns_usage_and_cost(gateway_env: str) -> Non
 
 
 @respx.mock
+def test_gateway_completion_sync_unpriced_cost_is_unknown(gateway_env: str) -> None:
+    # The gateway sends 0.0 for a model LiteLLM cannot price
+    respx.post(COMPLETIONS_URL).mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "hi"}}], "cost_usd": 0.0}
+        ),
+    )
+    completion = gateway_completion_sync(
+        litellm_model="openrouter/x", messages=[{"role": "user", "content": "x"}], api_key="sk"
+    )
+    assert completion.cost_usd is None
+
+
+@respx.mock
 def test_gateway_completion_sync_without_usage_leaves_it_unset(gateway_env: str) -> None:
     respx.post(COMPLETIONS_URL).mock(
         return_value=httpx.Response(200, json={"choices": [{"message": {"content": "hi"}}]}),
