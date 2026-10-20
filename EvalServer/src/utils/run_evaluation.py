@@ -695,7 +695,11 @@ async def run_evaluation(
                             max_tokens=1024,
                             temperature=0.7,
                         )
-                        
+                        # Counted from the model's own answer, before any placeholder text
+                        turn_tokens, turn_cost = _generation_usage(
+                            model_runner, user_msg, assistant_response or ""
+                        )
+
                         # Clean up response if needed
                         if assistant_response:
                             assistant_response = assistant_response.strip()
@@ -710,7 +714,6 @@ async def run_evaluation(
                         fatal_error_tracker.track_success()
 
                         # Only a turn that answered counts; an error placeholder billed nothing
-                        turn_tokens, turn_cost = _generation_usage(model_runner, user_msg, assistant_response)
                         total_tokens += turn_tokens
                         total_cost = _add_cost(total_cost, turn_cost)
 

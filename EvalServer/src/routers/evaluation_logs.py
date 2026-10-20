@@ -131,7 +131,8 @@ async def _newest_saved_key(organization_id: int, provider: str) -> Optional[str
     from controllers.reports import _decrypt_api_key
 
     p = (provider or "").lower()
-    providers = ["google", "gemini"] if p in ("google", "gemini") else [p]
+    # Same alias rule as check_db_api_key_available: only "google" also reads "gemini" rows
+    providers = ["google", "gemini"] if p == "google" else [p]
     try:
         async with get_db() as db:
             result = await db.execute(
@@ -317,11 +318,11 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
         else:
             error_message = f"API key for provider '{provider}' is not configured."
 
-    # Only a saved key is probed (probe_model finds it, google and gemini alike); an
-    # env-only key is the server's, not the org's
+    # Only a saved key the run would use is probed (the backend injects it for the
+    # providers check_db_api_key_available accepts); an env-only key is the server's
     probe_failed = False
     probe_error_code = None
-    if is_valid and payload.probe:
+    if is_valid and payload.probe and has_api_key_db:
         refusal = await probe_model(organization_id, provider, model_name)
         if refusal:
             probe_error_code, error_message = refusal

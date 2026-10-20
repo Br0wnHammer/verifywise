@@ -64,3 +64,15 @@ def test_key_query_parameters_are_always_redacted(text: str, secret: str) -> Non
     from utils.error_detection import redact_secrets
 
     assert secret not in redact_secrets(text)
+
+
+def test_query_secret_rule_matches_the_gateway_copy() -> None:
+    """The gateway keeps its own copy of the rule (separate deploy); they must not drift."""
+    from pathlib import Path
+
+    from utils.error_detection import _QUERY_SECRET
+
+    gateway = Path(__file__).resolve().parents[2] / "AIGateway" / "src" / "utils" / "redaction.py"
+    if not gateway.is_file():
+        pytest.skip("AIGateway source not present")
+    assert _QUERY_SECRET.pattern in gateway.read_text()

@@ -333,7 +333,7 @@ def test_env_api_key_for_unknown_provider_returns_none() -> None:
     assert ModelRunner._env_api_key_for_provider_static("not-real") is None
 
 
-def test_gateway_rate_limit_is_not_retried_with_a_blocking_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gateway_quota_error_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
     from deepeval_engine.gateway_litellm_client import GatewayProviderError
 
     runner = _make_runner("openai", model_name="gpt-4o", gateway_mode=True)
@@ -349,3 +349,25 @@ def test_gateway_rate_limit_is_not_retried_with_a_blocking_sleep(monkeypatch: py
     with pytest.raises(GatewayProviderError):
         runner.generate("hi")
     assert calls["count"] == 1
+
+
+def test_gateway_passing_rate_limit_is_retried_with_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deepeval_engine.gateway_litellm_client import GatewayCompletion, GatewayProviderError
+
+    runner = _make_runner("openai", model_name="gpt-4o", gateway_mode=True)
+    calls = {"count": 0}
+    slept = []
+
+    def flaky(*_args, **_kwargs):
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise GatewayProviderError("RateLimitError", 429, "Rate limit reached for requests per min")
+        return GatewayCompletion(text="ok")
+
+    monkeypatch.setattr("deepeval_engine.gateway_litellm_client.gateway_completion_sync", flaky)
+    monkeypatch.setattr("deepeval_engine.model_runner.time.sleep", slept.append)
+
+    assert runner.generate("hi") == "ok"
+    assert calls["count"] == 3
+    assert slept == [2, 4]
+

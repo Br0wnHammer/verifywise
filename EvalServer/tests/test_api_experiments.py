@@ -462,7 +462,7 @@ def test_invalid_internal_key_is_rejected(client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_newest_saved_key_reads_the_newest_active_row_for_either_google_alias(
+async def test_newest_saved_key_reads_the_newest_active_row_with_the_google_alias(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from routers import evaluation_logs as router_module
@@ -486,8 +486,11 @@ async def test_newest_saved_key_reads_the_newest_active_row_for_either_google_al
     monkeypatch.setattr(router_module, "get_db", fake_db)
     monkeypatch.setattr("controllers.reports._decrypt_api_key", lambda value: f"plain-{value}")
 
-    assert await router_module._newest_saved_key(5, "Gemini") == "plain-ciphertext"
+    assert await router_module._newest_saved_key(5, "Google") == "plain-ciphertext"
     assert seen["params"] == {"organization_id": 5, "providers": ["google", "gemini"]}
+    # "gemini" is not a provider the backend injects a key for, so it is not aliased
+    await router_module._newest_saved_key(5, "gemini")
+    assert seen["params"]["providers"] == ["gemini"]
     assert "is_active = true" in seen["sql"]
     assert "ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1" in seen["sql"]
 
@@ -503,3 +506,21 @@ async def test_newest_saved_key_is_none_when_the_lookup_fails(monkeypatch: pytes
 
     monkeypatch.setattr(router_module, "get_db", broken_db)
     assert await router_module._newest_saved_key(5, "openai") is None
+
+
+def test_validate_model_does_not_probe_without_a_saved_key(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    from routers import evaluation_logs as router_module
+
+    monkeypatch.setattr(router_module, "check_db_api_key_available", AsyncMock(return_value=False))
+    monkeypatch.setattr(router_module, "check_db_openrouter_available", AsyncMock(return_value=True))
+    probe = AsyncMock(return_value=("model_not_found", "x"))
+    monkeypatch.setattr(router_module, "probe_model", probe)
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gpt-4o", "provider": "openai", "probe": True},
+        headers=_headers(),
+    )
+    assert res.json()["valid"] is True
+    probe.assert_not_awaited()
+

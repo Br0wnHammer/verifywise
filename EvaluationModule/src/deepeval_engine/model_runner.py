@@ -11,7 +11,18 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 
 if TYPE_CHECKING:
-    from deepeval_engine.gateway_litellm_client import GatewayCompletion
+    from deepeval_engine.gateway_litellm_client import GatewayCompletion, GatewayProviderError
+
+GATEWAY_RATE_LIMIT_RETRIES = 3
+_NON_RECOVERING_LIMIT_WORDS = ("quota", "billing", "credit", "insufficient")
+
+
+def _is_passing_rate_limit(error: "GatewayProviderError") -> bool:
+    """A per-minute rate limit recovers; a used-up quota or billing limit does not."""
+    message = error.message.lower()
+    return error.error_type == "RateLimitError" and not any(
+        word in message for word in _NON_RECOVERING_LIMIT_WORDS
+    )
 
 
 class ModelRunner:
@@ -357,6 +368,7 @@ class ModelRunner:
         top_p: Optional[float],
     ) -> str:
         from deepeval_engine.gateway_litellm_client import (
+            GatewayProviderError,
             gateway_completion_sync,
             to_litellm_model,
         )
@@ -367,15 +379,24 @@ class ModelRunner:
         if not key:
             raise RuntimeError("Gateway mode without API key")
 
-        # No _retry_with_backoff here: its "429" text check would match the typed
-        # "RateLimitError (429)" and sleep (blocking the event loop) even on quota errors
-        completion = gateway_completion_sync(
-            litellm_model,
-            messages,
-            key,
-            max_tokens=max_tokens,
-            temperature=temperature if top_p is None else temperature,
-        )
+        # Not _retry_with_backoff: its "429" text check would also wait out quota and
+        # billing errors, which never recover. Only a passing rate limit is retried.
+        for attempt in range(GATEWAY_RATE_LIMIT_RETRIES + 1):
+            try:
+                completion = gateway_completion_sync(
+                    litellm_model,
+                    messages,
+                    key,
+                    max_tokens=max_tokens,
+                    temperature=temperature if top_p is None else temperature,
+                )
+                break
+            except GatewayProviderError as e:
+                if not _is_passing_rate_limit(e) or attempt == GATEWAY_RATE_LIMIT_RETRIES:
+                    raise
+                delay = 2 * (2 ** attempt)
+                print(f"⏳ Rate limit hit. Retrying in {delay}s... (attempt {attempt + 1}/{GATEWAY_RATE_LIMIT_RETRIES})")
+                time.sleep(delay)
         self.last_completion = completion
         return completion.text
 
