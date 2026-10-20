@@ -118,7 +118,10 @@ test.describe("Reporting journey: generate → download", () => {
     await page.goto("/reporting");
     await expect(page).toHaveURL(/\/reporting/);
 
-    const reportRow = page.getByRole("row", { name: new RegExp(reportName) }).first();
+    // The runs table shows the generated file name, where spaces become underscores
+    const reportRow = page
+      .getByRole("row", { name: new RegExp(reportName.replace(/ /g, "[ _]")) })
+      .first();
     await expect(reportRow).toBeVisible({ timeout: 20_000 });
 
     const rowActions = reportRow.getByRole("button", { name: /actions/i });
