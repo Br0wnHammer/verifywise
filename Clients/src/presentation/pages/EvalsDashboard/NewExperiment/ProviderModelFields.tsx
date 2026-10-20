@@ -76,11 +76,8 @@ export default function ProviderModelFields({
       label="Endpoint URL"
       value={endpointUrl}
       onChange={(e) => onEndpointChange(e.target.value)}
-      placeholder={
-        providerId === "local"
-          ? "http://localhost:11434/api/generate"
-          : "https://api.example.com/v1/chat/completions"
-      }
+      // The OpenAI-compatible base URL; the client adds /chat/completions
+      placeholder="http://localhost:8000/v1"
     />
   ) : null;
 

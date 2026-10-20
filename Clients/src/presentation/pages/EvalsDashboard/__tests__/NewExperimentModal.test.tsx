@@ -106,10 +106,11 @@ describe("NewExperimentModal", () => {
         "HuggingFace",
         "Ollama",
         "Custom / Self-hosted",
-        "Local",
       ]) {
         expect(screen.getByText(name)).toBeInTheDocument();
       }
+      // EvalServer does not run local model files; there is no bare "Local" provider
+      expect(screen.queryByText("Local")).not.toBeInTheDocument();
 
       // No saved models in the org yet → the "Saved Models" section stays hidden.
       expect(screen.queryByText("Saved Models")).not.toBeInTheDocument();

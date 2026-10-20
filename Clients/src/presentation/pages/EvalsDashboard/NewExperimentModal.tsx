@@ -1757,7 +1757,8 @@ export default function NewExperimentModal({
                                       judgeLlm: { ...prev.judgeLlm, endpointUrl: e.target.value },
                                     }))
                                   }
-                                  placeholder="https://api.example.com/v1/chat/completions"
+                                  // The OpenAI-compatible base URL; /chat/completions is added
+                                  placeholder="http://localhost:8000/v1"
                                 />
                               )}
 
