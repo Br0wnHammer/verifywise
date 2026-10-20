@@ -102,7 +102,14 @@ class ModelRunner:
                 )
             self._gateway_mode = True
             print(f"✓ Model runner via AI Gateway (LiteLLM): {model_name} ({self.provider})")
-        elif self.provider in ("huggingface", "local"):
+        elif self.provider == "local":
+            # Loading a user-named model in the shared server process would download any
+            # repo and unpickle its weights; local models run behind their own endpoint
+            raise ValueError(
+                "Local model files are not run inside EvalServer. Serve the model with "
+                "Ollama, vLLM or another OpenAI-compatible server and add it as a custom API model."
+            )
+        elif self.provider == "huggingface":
             self._load_huggingface_model()
         elif self.provider == "custom_api":
             self._setup_custom_api(endpoint_url, api_key)
@@ -196,7 +203,7 @@ class ModelRunner:
         self.last_completion = None
         if getattr(self, "_gateway_mode", False):
             return self._generate_gateway(prompt, max_tokens, temperature, top_p)
-        if self.provider in ("huggingface", "local"):
+        if self.provider == "huggingface":
             return self._generate_huggingface(prompt, max_tokens, temperature, top_p)
         elif self.provider == "custom_api":
             return self._generate_custom_api(prompt, max_tokens, temperature, top_p)

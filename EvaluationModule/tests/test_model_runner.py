@@ -380,12 +380,12 @@ def test_custom_api_bare_host_gets_v1(monkeypatch: pytest.MonkeyPatch, entered: 
     assert seen["url"] == base
 
 
-def test_local_model_loads_in_process_even_with_the_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_local_model_is_refused_not_loaded_or_sent_to_the_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
     from deepeval_engine.model_runner import ModelRunner
 
     monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "internal-test-key")
     loaded = []
     monkeypatch.setattr(ModelRunner, "_load_huggingface_model", lambda self: loaded.append(self.model_name))
-    runner = ModelRunner(model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0", provider="local", device="cpu")
-    assert runner._gateway_mode is False
-    assert loaded == ["TinyLlama/TinyLlama-1.1B-Chat-v1.0"]
+    with pytest.raises(ValueError, match="custom API model"):
+        ModelRunner(model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0", provider="local", device="cpu")
+    assert loaded == []
