@@ -524,7 +524,11 @@ describe("virtualKeyProxyLimiter 429 body", () => {
   let limited: LimitedApp;
 
   beforeAll(() => {
-    limited = createLimitedApp(createRateLimiter(PROD.virtualKeyProxy, gatewayErrorBody));
+    // The production limit itself is covered by the describe.each above; a
+    // budget of 1 checks the body without 3000 more requests
+    limited = createLimitedApp(
+      createRateLimiter({ ...PROD.virtualKeyProxy, maxRequests: 1 }, gatewayErrorBody),
+    );
   });
 
   afterAll(async () => {
@@ -532,7 +536,7 @@ describe("virtualKeyProxyLimiter 429 body", () => {
   });
 
   it("answers in the gateway's { detail } shape once the budget is spent", async () => {
-    await consumeAs(limited, IP, PROD.virtualKeyProxy.maxRequests);
+    await consumeAs(limited, IP, 1);
 
     const res = await get(limited, IP);
     expect(res.status).toBe(429);

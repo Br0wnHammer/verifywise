@@ -68,8 +68,14 @@ server {
         # SDK clients expect JSON, not the HTML maintenance page above.
         # A timeout is its own error: the model call may still have run (and
         # been billed), so it must not read as "unavailable, retry".
+        error_page 413 = @v1_too_large;
         error_page 502 503 = @v1_unavailable;
         error_page 504 = @v1_timeout;
+    }
+
+    location @v1_too_large {
+        default_type application/json;
+        return 413 '{"detail":"Request body is larger than 10 MB"}';
     }
 
     location @v1_unavailable {

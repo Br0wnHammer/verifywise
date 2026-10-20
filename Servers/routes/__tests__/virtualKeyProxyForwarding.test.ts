@@ -113,6 +113,22 @@ describe("/v1 virtual key proxy body handling", () => {
     expect(res.body).toEqual({ forwarded: json });
   });
 
+  it("drops Expect once the body is read, so the proxy writes the body", async () => {
+    const app = appWithRoute();
+    app.use((req, res) => {
+      res.json({ expect: req.headers.expect ?? null });
+    });
+
+    const res = await request(app)
+      .post("/v1/chat/completions")
+      .set("Content-Type", "application/octet-stream")
+      .set("Expect", "100-continue")
+      .send(Buffer.from("{}"));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ expect: null });
+  });
+
   it("names the problem when the body's encoding is not supported", async () => {
     const res = await request(appWithRoute())
       .post("/v1/chat/completions")

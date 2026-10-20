@@ -70,6 +70,13 @@ function virtualKeyProxyRoutes() {
   });
 
   router.use(rawBody);
+  // The body has been read, so "Expect: 100-continue" is already answered.
+  // Forwarded, it makes the proxy skip the proxyReq hook above, and the
+  // gateway then waits for a body that is never written.
+  router.use((req: Request, _res: Response, next: NextFunction) => {
+    delete req.headers.expect;
+    next();
+  });
   router.use("/", proxy);
   // Body errors (too large, aborted upload) answered in the gateway's shape
   router.use(
