@@ -20,8 +20,9 @@
       "id": "grok-code-fast-1",
       "name": "Grok Code Fast 1",
       "description": "Optimized for code",
-      "inputCost": 0.2,
-      "outputCost": 1.5
+      "inputCost": 1.0,
+      "outputCost": 2.0,
+      "contextWindow": 256000
     },
     {
       "id": "grok-4-fast-reasoning",

@@ -7,7 +7,8 @@
       "name": "Mistral Large 3",
       "description": "State-of-the-art multimodal, 256k context",
       "inputCost": 0.5,
-      "outputCost": 1.5
+      "outputCost": 1.5,
+      "contextWindow": 262144
     },
     {
       "id": "mistral-large-2411",
@@ -49,21 +50,24 @@
       "name": "Ministral 3 14B",
       "description": "Largest Ministral, 256k context",
       "inputCost": 0.2,
-      "outputCost": 0.2
+      "outputCost": 0.2,
+      "contextWindow": 262144
     },
     {
       "id": "ministral-8b-2512",
       "name": "Ministral 3 8B",
       "description": "Edge deployment, 256k context",
       "inputCost": 0.15,
-      "outputCost": 0.15
+      "outputCost": 0.15,
+      "contextWindow": 262144
     },
     {
       "id": "ministral-3b-2512",
       "name": "Ministral 3 3B",
       "description": "Smallest and most efficient, 256k context",
       "inputCost": 0.1,
-      "outputCost": 0.1
+      "outputCost": 0.1,
+      "contextWindow": 131072
     },
     {
       "id": "open-mistral-nemo-2407",
