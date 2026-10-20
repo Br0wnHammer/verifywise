@@ -188,6 +188,57 @@ describe("AIGateway shared utilities", () => {
       expect(result.current.getModelsForProvider("unknown")).toEqual([]);
     });
 
+    it("does not prefix model ids that already carry the provider", async () => {
+      // LiteLLM lists most Gemini (and xAI, Mistral...) models as
+      // "gemini/<model>"; prefixing them again gave "gemini/gemini/<model>",
+      // which the provider rejects. Some keys appear both with and without
+      // the prefix, so they must collapse into one item.
+      mockGet.mockResolvedValue({
+        data: {
+          data: {
+            providers: ["gemini"],
+            models: {
+              gemini: [
+                { id: "gemini/gemini-2.5-flash", mode: "chat" },
+                { id: "gemini-flash-latest", mode: "chat" },
+                { id: "gemini/gemini-flash-latest", mode: "chat" },
+              ],
+            },
+          },
+        },
+      });
+
+      const { result } = renderHook(() => useGatewayModels());
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.getModelsForProvider("gemini")).toEqual([
+        { _id: "gemini/gemini-2.5-flash", name: "gemini-2.5-flash" },
+        { _id: "gemini/gemini-flash-latest", name: "gemini-flash-latest" },
+      ]);
+    });
+
+    it("returns the same array for a provider across calls and re-renders", async () => {
+      mockGet.mockResolvedValue({
+        data: {
+          data: {
+            providers: ["openai"],
+            models: { openai: [{ id: "gpt-4o", mode: "chat" }] },
+          },
+        },
+      });
+
+      const { result, rerender } = renderHook(() => useGatewayModels());
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const first = result.current.getModelsForProvider("openai");
+      const firstUnknown = result.current.getModelsForProvider("unknown");
+      rerender();
+      expect(result.current.getModelsForProvider("openai")).toBe(first);
+      expect(result.current.getModelsForProvider("unknown")).toBe(firstUnknown);
+    });
+
     it("drops providers that an API key cannot be stored for", async () => {
       mockGet.mockResolvedValue({
         data: {

@@ -191,6 +191,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Server switched on": "Server eingeschaltet",
     "The server offered no tools": "Der Server hat keine Tools angeboten",
     "One tool found": "Ein Tool gefunden",
+    "Tools updated": "Tools aktualisiert",
+    "No changes": "Keine Änderungen",
+    "View tools": "Tools anzeigen",
+    "{count} tools found": "{count} Tools gefunden",
+    "{count} new": "{count} neu",
+    "{count} removed": "{count} entfernt",
+    "{count} changed": "{count} geändert",
+    "View {count} tools": "{count} Tools anzeigen",
+    "View one tool": "Ein Tool anzeigen",
     "Discovery failed": "Erkennung fehlgeschlagen",
     "Server saved, but discovery failed":
       "Server gespeichert, aber die Erkennung ist fehlgeschlagen",
@@ -2193,6 +2202,15 @@ export const translations: Record<string, Record<string, string>> = {
     "API key": "API-Schlüssel",
     "API Key": "API-Schlüssel",
     "API key may not be configured": "API-Schlüssel ist möglicherweise nicht konfiguriert",
+    "The provider refused this model": "Der Anbieter hat dieses Modell abgelehnt",
+    "The provider refused the saved API key":
+      "Der Anbieter hat den gespeicherten API-Schlüssel abgelehnt",
+    "The provider refused this request": "Der Anbieter hat diese Anfrage abgelehnt",
+    "Saved models": "Gespeicherte Modelle",
+    "Find a model or type its ID": "Modell suchen oder ID eingeben",
+    "Self-hosted model": "Selbst gehostetes Modell",
+    "Search or type a model ID": "Modell-ID suchen oder eingeben",
+    "Search or type an ID, e.g. openai/gpt-4o": "ID suchen oder eingeben, z. B. openai/gpt-4o",
     "API keys": "API-Schlüssel",
     "Applicability:": "Anwendbarkeit:",
     "Applicable": "Anwendbar",
@@ -2874,6 +2892,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Risikoname schreiben",
     "You can use": "Sie können",
     "Your app": "Ihre App",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "Der Anbieter hat den gespeicherten API-Schlüssel abgelehnt. Geben Sie einen funktionierenden Schlüssel ein. Er wird als neuer Schlüssel gespeichert, und ein Admin kann den alten in den AI Gateway-Einstellungen entfernen.",
     "Your key will be saved securely for future experiments":
       "Ihr Schlüssel wird für zukünftige Experimente sicher gespeichert",
     "Your name": "Ihr Name",
@@ -2925,6 +2945,9 @@ export const translations: Record<string, Record<string, string>> = {
     "No members have been assigned to the use case":
       "Dem Anwendungsfall wurden keine Mitglieder zugewiesen",
     "No models found": "Keine Modelle gefunden",
+    "Updating model list…": "Modellliste wird aktualisiert…",
+    "Choose a judge model to save this scorer":
+      "Wählen Sie ein Bewertungsmodell, um diesen Scorer zu speichern",
     "No models found. Model preferences are automatically saved when you run an experiment.":
       "Keine Modelle gefunden. Modellpräferenzen werden automatisch gespeichert, wenn Sie ein Experiment ausführen.",
     "No models match your filters.": "Keine Modelle entsprechen Ihren Filtern.",
@@ -4848,6 +4871,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "Kopiert!",
     "Copy": "Kopieren",
     "Copy results to clipboard": "Ergebnisse in die Zwischenablage kopieren",
+    "You can rerun this experiment once it finishes.":
+      "Sie können dieses Experiment erneut ausführen, sobald es abgeschlossen ist.",
+    "Save this experiment's settings, average scores and up to 10 samples as a JSON file. For more samples, open the experiment and use Download there.":
+      "Die Einstellungen, Durchschnittswerte und bis zu 10 Stichproben dieses Experiments als JSON-Datei speichern. Für weitere Stichproben öffnen Sie das Experiment und verwenden Sie dort „Herunterladen“.",
+    "Copy this experiment's settings, average scores and up to 10 samples as JSON. For more samples, open the experiment and use Copy there.":
+      "Die Einstellungen, Durchschnittswerte und bis zu 10 Stichproben dieses Experiments als JSON kopieren. Für weitere Stichproben öffnen Sie das Experiment und verwenden Sie dort „Kopieren“.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to the 1,000 most recent samples are included.":
+      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON-Datei speichern. Es werden bis zu 1.000 der neuesten Stichproben einbezogen.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to the 1,000 most recent samples are included.":
+      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON in die Zwischenablage kopieren. Es werden bis zu 1.000 der neuesten Stichproben einbezogen.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Ein neues Experiment mit denselben Einstellungen starten. Dieses Experiment bleibt erhalten, und jeder Prompt wird erneut ausgeführt und bewertet.",
     "Copy this key now. You won't be able to see it again.":
       "Kopieren Sie diesen Schlüssel jetzt. Sie können ihn nicht mehr einsehen.",
     "Core definition test (EU AI Act)": "Kerndefinitionstest (EU-KI-Verordnung)",
@@ -7449,6 +7484,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Menschen mit Behinderungen",
     "Plan Adherence": "Plantreue",
     "Plan Quality": "Planqualität",
+    "Planning Quality": "Planungsqualität",
+    "Bias (lower is better)": "Bias (niedriger ist besser)",
+    "Toxicity (lower is better)": "Toxizität (niedriger ist besser)",
+    "Hallucination (lower is better)": "Halluzination (niedriger ist besser)",
     "Plan responses to AI system risks, including defining risk tolerance and mitigation strategies.":
       "Planen Sie Reaktionen auf KI-Systemrisiken, einschließlich der Festlegung von Risikotoleranz und Minderungsstrategien.",
     "Please add at least one recipient to the Send Email action before saving.":
@@ -8372,6 +8411,13 @@ export const translations: Record<string, Record<string, string>> = {
       "Sie können dieses Onboarding jederzeit aus Ihrem Profilmenü erneut aufrufen.",
     "Your AI governance and compliance platform. In 3 minutes, we":
       "Ihre KI-Governance- und Compliance-Plattform. In 3 Minuten",
+    "Your approval is recorded.": "Ihre Genehmigung wurde erfasst.",
+    "Your approval is recorded. Waiting on 1 more approver for this step.":
+      "Ihre Genehmigung wurde erfasst. Für diesen Schritt fehlt noch 1 Genehmiger.",
+    "Your approval is recorded. Waiting on {count} more approvers for this step.":
+      "Ihre Genehmigung wurde erfasst. Für diesen Schritt fehlen noch {count} Genehmiger.",
+    "Your approval is recorded. The request moved to the next step.":
+      "Ihre Genehmigung wurde erfasst. Die Anfrage ist zum nächsten Schritt übergegangen.",
     "Your name, email and personal details":
       "Ihr Name, Ihre E-Mail-Adresse und persönlichen Angaben",
     "Your new task has been added.": "Ihre neue Aufgabe wurde hinzugefügt.",
@@ -10462,6 +10508,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Server switched on": "Serveur activé",
     "The server offered no tools": "Le serveur n'a proposé aucun outil",
     "One tool found": "Un outil trouvé",
+    "Tools updated": "Outils mis à jour",
+    "No changes": "Aucune modification",
+    "View tools": "Voir les outils",
+    "{count} tools found": "{count} outils trouvés",
+    "{count} new": "{count} nouveau(x)",
+    "{count} removed": "{count} supprimé(s)",
+    "{count} changed": "{count} modifié(s)",
+    "View {count} tools": "Voir les {count} outils",
+    "View one tool": "Voir l'outil",
     "Discovery failed": "Échec de la découverte",
     "Server saved, but discovery failed": "Serveur enregistré, mais la découverte a échoué",
     "Server switched on, but discovery failed": "Serveur activé, mais la découverte a échoué",
@@ -12580,6 +12635,14 @@ export const translations: Record<string, Record<string, string>> = {
     "API key": "Clé API",
     "API Key": "Clé API",
     "API key may not be configured": "La clé API n'est peut-être pas configurée",
+    "The provider refused this model": "Le fournisseur a refusé ce modèle",
+    "The provider refused the saved API key": "Le fournisseur a refusé la clé API enregistrée",
+    "The provider refused this request": "Le fournisseur a refusé cette requête",
+    "Saved models": "Modèles enregistrés",
+    "Find a model or type its ID": "Rechercher un modèle ou saisir son ID",
+    "Self-hosted model": "Modèle auto-hébergé",
+    "Search or type a model ID": "Rechercher ou saisir un ID de modèle",
+    "Search or type an ID, e.g. openai/gpt-4o": "Rechercher ou saisir un ID, p. ex. openai/gpt-4o",
     "API keys": "Clés API",
     "Applicability:": "Applicabilité :",
     "Applicable": "Applicable",
@@ -13258,6 +13321,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Rédiger le nom du risque",
     "You can use": "Vous pouvez utiliser",
     "Your app": "Votre application",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "Le fournisseur a refusé la clé API enregistrée. Saisissez une clé valide. Elle est enregistrée comme nouvelle clé, et un administrateur peut supprimer l'ancienne dans les paramètres d'AI Gateway.",
     "Your key will be saved securely for future experiments":
       "Votre clé sera enregistrée de manière sécurisée pour de futures expériences",
     "Your name": "Votre nom",
@@ -13307,6 +13372,9 @@ export const translations: Record<string, Record<string, string>> = {
     "No members have been assigned to the use case":
       "Aucun membre n'a été assigné à ce cas d'usage",
     "No models found": "Aucun modèle trouvé",
+    "Updating model list…": "Mise à jour de la liste des modèles…",
+    "Choose a judge model to save this scorer":
+      "Choisissez un modèle juge pour enregistrer ce scorer",
     "No models found. Model preferences are automatically saved when you run an experiment.":
       "Aucun modèle trouvé. Les préférences de modèles sont automatiquement enregistrées lorsque vous lancez une expérience.",
     "No models match your filters.": "Aucun modèle ne correspond à vos filtres.",
@@ -15067,6 +15135,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "Copié !",
     "Copy": "Copier",
     "Copy results to clipboard": "Copier les résultats dans le presse-papiers",
+    "You can rerun this experiment once it finishes.":
+      "Vous pourrez réexécuter cette expérience une fois qu'elle sera terminée.",
+    "Save this experiment's settings, average scores and up to 10 samples as a JSON file. For more samples, open the experiment and use Download there.":
+      "Enregistrer les paramètres, les scores moyens et jusqu'à 10 échantillons de cette expérience dans un fichier JSON. Pour plus d'échantillons, ouvrez l'expérience et utilisez « Télécharger » depuis celle-ci.",
+    "Copy this experiment's settings, average scores and up to 10 samples as JSON. For more samples, open the experiment and use Copy there.":
+      "Copier les paramètres, les scores moyens et jusqu'à 10 échantillons de cette expérience au format JSON. Pour plus d'échantillons, ouvrez l'expérience et utilisez « Copier » depuis celle-ci.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to the 1,000 most recent samples are included.":
+      "Enregistrer les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon dans un fichier JSON. Jusqu'aux 1 000 échantillons les plus récents sont inclus.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to the 1,000 most recent samples are included.":
+      "Copier dans le presse-papiers, au format JSON, les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon. Jusqu'aux 1 000 échantillons les plus récents sont inclus.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Lancer une nouvelle expérience avec les mêmes paramètres. Cette expérience est conservée, et chaque prompt est de nouveau exécuté et évalué.",
     "Copy this key now. You won't be able to see it again.":
       "Copiez cette clé maintenant. Vous ne pourrez plus la voir.",
     "Core definition test (EU AI Act)": "Test de définition centrale (Règlement IA de l'UE)",
@@ -17667,6 +17747,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Personnes handicapées",
     "Plan Adherence": "Respect du plan",
     "Plan Quality": "Qualité du plan",
+    "Planning Quality": "Qualité de la planification",
+    "Bias (lower is better)": "Biais (plus bas est meilleur)",
+    "Toxicity (lower is better)": "Toxicité (plus bas est meilleur)",
+    "Hallucination (lower is better)": "Hallucination (plus bas est meilleur)",
     "Plan responses to AI system risks, including defining risk tolerance and mitigation strategies.":
       "Planifiez les réponses aux risques du système IA, y compris la définition de la tolérance au risque et des stratégies d'atténuation.",
     "Please add at least one recipient to the Send Email action before saving.":
@@ -18589,6 +18673,13 @@ export const translations: Record<string, Record<string, string>> = {
       "Vous pouvez toujours revoir cette intégration depuis le menu de votre profil.",
     "Your AI governance and compliance platform. In 3 minutes, we":
       "Votre plateforme de gouvernance et de conformité IA. En 3 minutes, nous",
+    "Your approval is recorded.": "Votre approbation est enregistrée.",
+    "Your approval is recorded. Waiting on 1 more approver for this step.":
+      "Votre approbation est enregistrée. Il manque encore 1 approbateur pour cette étape.",
+    "Your approval is recorded. Waiting on {count} more approvers for this step.":
+      "Votre approbation est enregistrée. Il manque encore {count} approbateurs pour cette étape.",
+    "Your approval is recorded. The request moved to the next step.":
+      "Votre approbation est enregistrée. La demande est passée à l’étape suivante.",
     "Your name, email and personal details": "Vos nom, e-mail et coordonnées personnelles",
     "Your new task has been added.": "Votre nouvelle tâche a été ajoutée.",
     "Your report is being generated.": "Votre rapport est en cours de génération.",
@@ -20672,6 +20763,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Server switched on": "Servidor activado",
     "The server offered no tools": "El servidor no ofreció herramientas",
     "One tool found": "Se encontró una herramienta",
+    "Tools updated": "Herramientas actualizadas",
+    "No changes": "Sin cambios",
+    "View tools": "Ver herramientas",
+    "{count} tools found": "Se encontraron {count} herramientas",
+    "{count} new": "{count} nueva(s)",
+    "{count} removed": "{count} eliminada(s)",
+    "{count} changed": "{count} modificada(s)",
+    "View {count} tools": "Ver las {count} herramientas",
+    "View one tool": "Ver la herramienta",
     "Discovery failed": "Error en la detección",
     "Server saved, but discovery failed": "Servidor guardado, pero la detección falló",
     "Server switched on, but discovery failed": "Servidor activado, pero la detección falló",
@@ -22227,6 +22327,14 @@ export const translations: Record<string, Record<string, string>> = {
     "API key": "Clave de API",
     "API Key": "Clave de API",
     "API key may not be configured": "Es posible que la clave de API no esté configurada",
+    "The provider refused this model": "El proveedor rechazó este modelo",
+    "The provider refused the saved API key": "El proveedor rechazó la clave de API guardada",
+    "The provider refused this request": "El proveedor rechazó esta solicitud",
+    "Saved models": "Modelos guardados",
+    "Find a model or type its ID": "Busca un modelo o escribe su ID",
+    "Self-hosted model": "Modelo autoalojado",
+    "Search or type a model ID": "Busca o escribe un ID de modelo",
+    "Search or type an ID, e.g. openai/gpt-4o": "Busca o escribe un ID, p. ej., openai/gpt-4o",
     "API keys": "Claves de API",
     "Applicability:": "Aplicabilidad:",
     "Applicable": "Aplicable",
@@ -22887,6 +22995,8 @@ export const translations: Record<string, Record<string, string>> = {
     "No label": "Sin etiqueta",
     "No linked items found.": "No se han encontrado elementos vinculados.",
     "No models found": "No se han encontrado modelos",
+    "Updating model list…": "Actualizando la lista de modelos…",
+    "Choose a judge model to save this scorer": "Elija un modelo juez para guardar este evaluador",
     "No models match your filters.": "Ningún modelo coincide con tus filtros.",
     "No more questions.": "No hay más preguntas.",
     "No policies found": "No se han encontrado políticas",
@@ -23710,6 +23820,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "¡Copiado!",
     "Copy": "Copiar",
     "Copy results to clipboard": "Copiar resultados al portapapeles",
+    "You can rerun this experiment once it finishes.":
+      "Podrás volver a ejecutar este experimento cuando termine.",
+    "Save this experiment's settings, average scores and up to 10 samples as a JSON file. For more samples, open the experiment and use Download there.":
+      "Guardar la configuración, las puntuaciones medias y hasta 10 muestras de este experimento como archivo JSON. Para ver más muestras, abre el experimento y usa «Descargar» allí.",
+    "Copy this experiment's settings, average scores and up to 10 samples as JSON. For more samples, open the experiment and use Copy there.":
+      "Copiar la configuración, las puntuaciones medias y hasta 10 muestras de este experimento como JSON. Para ver más muestras, abre el experimento y usa «Copiar» allí.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to the 1,000 most recent samples are included.":
+      "Guardar la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra como archivo JSON. Se incluyen hasta las 1000 muestras más recientes.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to the 1,000 most recent samples are included.":
+      "Copiar al portapapeles como JSON la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra. Se incluyen hasta las 1000 muestras más recientes.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Iniciar un nuevo experimento con la misma configuración. Este experimento se conserva, y cada prompt se ejecuta y se evalúa de nuevo.",
     "Core definition test (EU AI Act)": "Prueba de definición básica (EU AI Act)",
     "Create Scorer": "Crear evaluador",
     "Create a custom risk manually": "Crear un riesgo personalizado manualmente",
@@ -25155,6 +25277,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Personas con discapacidad",
     "Plan Adherence": "Cumplimiento del plan",
     "Plan Quality": "Calidad del plan",
+    "Planning Quality": "Calidad de la planificación",
+    "Bias (lower is better)": "Sesgo (más bajo es mejor)",
+    "Toxicity (lower is better)": "Toxicidad (más bajo es mejor)",
+    "Hallucination (lower is better)": "Alucinación (más bajo es mejor)",
     "Please enter a token": "Introduce un token",
     "Please enter a token to test": "Introduce un token para probar",
     "Please login again to continue.": "Vuelve a iniciar sesión para continuar.",
@@ -25550,6 +25676,13 @@ export const translations: Record<string, Record<string, string>> = {
     "Workflow": "Flujo de trabajo",
     "Yes/No": "Sí/No",
     "You are ready to work with VerifyWise": "Ya está listo para trabajar con VerifyWise",
+    "Your approval is recorded.": "Tu aprobación se ha registrado.",
+    "Your approval is recorded. Waiting on 1 more approver for this step.":
+      "Tu aprobación se ha registrado. Falta 1 aprobador más en este paso.",
+    "Your approval is recorded. Waiting on {count} more approvers for this step.":
+      "Tu aprobación se ha registrado. Faltan {count} aprobadores más en este paso.",
+    "Your approval is recorded. The request moved to the next step.":
+      "Tu aprobación se ha registrado. La solicitud pasó al siguiente paso.",
     "Your new task has been added.": "Su nueva tarea se ha añadido.",
     "Your report is being generated.": "Su informe se está generando.",
     "Add tags": "Añadir etiquetas",
@@ -26068,6 +26201,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Lo que sus barreras de protección detectaron en este periodo",
     "Whose name and role appear on the declaration document":
       "Cuyo nombre y cargo aparecen en el documento de declaración",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "El proveedor rechazó la clave de API guardada. Introduzca una clave válida. Se guarda como una clave nueva, y un administrador puede eliminar la anterior en la configuración de AI Gateway.",
     "Your key will be saved securely for future experiments":
       "Su clave se guardará de forma segura para futuros experimentos",
     "No AI tools detected yet. Connect a data source to monitor AI tool usage.":
