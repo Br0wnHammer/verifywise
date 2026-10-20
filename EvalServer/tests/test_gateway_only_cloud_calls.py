@@ -16,7 +16,7 @@ def test_summary_cloud_call_without_gateway_raises() -> None:
         _call_llm("anthropic", "claude-haiku-4-5", "sys", "user", api_key="sk-x", endpoint_url=None)
 
 
-def test_summary_cloud_call_uses_the_gateway_with_the_env_key(
+def test_summary_cloud_call_uses_the_gateway_with_the_org_key(
     monkeypatch: pytest.MonkeyPatch, gateway_env: str
 ) -> None:
     from utils import report_summarizer
@@ -28,13 +28,30 @@ def test_summary_cloud_call_uses_the_gateway_with_the_env_key(
         return "summary"
 
     monkeypatch.setattr(report_summarizer, "gateway_chat_completion_sync", fake)
-    monkeypatch.setenv("XAI_API_KEY", "xai-env-key")
+    monkeypatch.setenv("XAI_API_KEY", "xai-server-key")
 
     out = report_summarizer._call_llm(
-        "xai", "grok-4.20-non-reasoning", "sys", "user", api_key=None, endpoint_url=None
+        "xai", "grok-4.20-non-reasoning", "sys", "user", api_key="xai-org-key", endpoint_url=None
     )
     assert out == "summary"
-    assert seen == {"model": "xai/grok-4.20-non-reasoning", "key": "xai-env-key"}
+    assert seen == {"model": "xai/grok-4.20-non-reasoning", "key": "xai-org-key"}
+
+
+def test_summary_never_falls_back_to_a_server_env_key(
+    monkeypatch: pytest.MonkeyPatch, gateway_env: str
+) -> None:
+    """Summaries run in the server process for any org; the operator's key isn't theirs."""
+    from utils import report_summarizer
+
+    called = MagicMock()
+    monkeypatch.setattr(report_summarizer, "gateway_chat_completion_sync", called)
+    monkeypatch.setenv("XAI_API_KEY", "xai-server-key")
+
+    with pytest.raises(RuntimeError, match="No API key"):
+        report_summarizer._call_llm(
+            "xai", "grok-4.20-non-reasoning", "sys", "user", api_key=None, endpoint_url=None
+        )
+    called.assert_not_called()
 
 
 def test_summary_self_hosted_call_skips_the_gateway(monkeypatch: pytest.MonkeyPatch) -> None:

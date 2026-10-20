@@ -223,6 +223,14 @@ def test_get_provider_client_explicit_key_overrides_env(monkeypatch: pytest.Monk
     assert key == "explicit-key"
 
 
+def test_get_provider_client_without_env_fallback_ignores_the_env(
+    monkeypatch: pytest.MonkeyPatch, gateway_env: str
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-server")
+    with pytest.raises(RuntimeError, match="No saved API key"):
+        get_provider_client("openai", env_fallback=False)
+
+
 def test_get_provider_client_missing_key_raises(gateway_env: str) -> None:
     with pytest.raises(RuntimeError, match="No API key found for provider"):
         get_provider_client("openai")
@@ -279,6 +287,53 @@ def _mock_openai_response(content: str, total_tokens: int = 10):
     response.choices = [MagicMock(message=MagicMock(content=content))]
     response.usage = MagicMock(prompt_tokens=5, completion_tokens=5, total_tokens=total_tokens)
     return response
+
+
+@pytest.mark.asyncio
+async def test_run_custom_scorer_key_resolver_supplies_the_org_key_not_the_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The scorer test endpoint runs in the server process: the org's saved key, never the env."""
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "test-internal-key-not-real")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-server")
+    sent = {}
+
+    def fake_gateway(litellm_model, messages, api_key, **kwargs):
+        sent["key"] = api_key
+        return GatewayCompletion(text="PASS", prompt_tokens=1, completion_tokens=1, total_tokens=2)
+
+    monkeypatch.setattr("utils.gateway_litellm_client.gateway_completion_sync", fake_gateway)
+    asked = []
+
+    async def org_key(provider):
+        asked.append(provider)
+        return "sk-org"
+
+    result = await run_custom_scorer(
+        scorer_config=_scorer_row(), input_text="Q", output_text="A", key_resolver=org_key
+    )
+    assert asked == ["openai"]
+    assert sent["key"] == "sk-org"
+    assert result.label == "PASS"
+
+
+@pytest.mark.asyncio
+async def test_run_custom_scorer_key_resolver_without_a_saved_key_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "test-internal-key-not-real")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-server")
+    gateway = MagicMock()
+    monkeypatch.setattr("utils.gateway_litellm_client.gateway_completion_sync", gateway)
+
+    async def no_key(_provider):
+        return None
+
+    result = await run_custom_scorer(
+        scorer_config=_scorer_row(), input_text="Q", output_text="A", key_resolver=no_key
+    )
+    assert result.error and "No saved API key" in result.error
+    gateway.assert_not_called()
 
 
 @pytest.mark.asyncio
