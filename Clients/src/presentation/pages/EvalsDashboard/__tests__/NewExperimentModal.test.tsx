@@ -218,6 +218,28 @@ describe("NewExperimentModal", () => {
         await screen.findByText("API key configured — will be saved for future experiments"),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
+      expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledWith(1);
+    });
+
+    it("asks for a new key when the provider rejects the saved one", async () => {
+      deepEvalMocks.getAllLlmApiKeys.mockResolvedValue([
+        { id: 6, provider: "google", apiKey: "AIza-dead" },
+      ]);
+      deepEvalMocks.verifySavedLlmApiKey.mockResolvedValue({ valid: false });
+
+      renderModal();
+      await screen.findByText("Model provider");
+
+      fireEvent.click(screen.getByText("Gemini"));
+
+      expect(await screen.findByLabelText("API key")).toBeInTheDocument();
+      expect(
+        screen.getByText("The provider rejected the saved API key. Enter a new key to replace it."),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText("API key configured — will be saved for future experiments"),
+      ).not.toBeInTheDocument();
+      expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(1);
     });
   });
 

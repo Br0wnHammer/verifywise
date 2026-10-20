@@ -29,6 +29,8 @@ from utils.run_custom_scorer import run_custom_scorer, ScorerResult
 from utils.error_detection import (
     FatalErrorTracker,
     build_no_responses_message,
+    any_metric_scored,
+    build_no_scores_message,
     detect_fatal_error,
     redact_secrets,
 )
@@ -1448,7 +1450,26 @@ async def run_evaluation(
         }
         if gatekeeper_result is not None:
             experiment_results["gatekeeper"] = gatekeeper_result
-        
+
+        # Metrics were asked for but none scored a single prompt (typically the judge
+        # failed on every call). A "completed" run with no scores reads as a success,
+        # so fail it with the reason; the answers and logs stay for inspection.
+        metrics_requested = (
+            evaluation_mode in ("standard", "both") and any(deepeval_metrics_config.values())
+        ) or bool(enabled_scorers)
+        if metrics_requested and results and not any_metric_scored(results):
+            error_msg = build_no_scores_message(results)
+            print(f"\n❌ {error_msg}")
+            await crud.update_experiment_status(
+                db=db,
+                experiment_id=experiment_id,
+                organization_id=organization_id,
+                status="failed",
+                results=experiment_results,
+                error_message=error_msg,
+            )
+            return {"error": error_msg}
+
         await crud.update_experiment_status(
             db=db,
             experiment_id=experiment_id,

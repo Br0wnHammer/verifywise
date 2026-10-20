@@ -33,6 +33,10 @@ export const MODEL_PROVIDERS_WITHOUT_API_KEY = ["ollama", "local"] as const;
  */
 export const SCORER_PROVIDERS_WITHOUT_API_KEY = ["self-hosted", "ollama"] as const;
 
+/** Key field hint when the provider refused the saved key. Also in i18n/translations.ts. */
+export const REJECTED_SAVED_KEY_HINT =
+  "The provider rejected the saved API key. Enter a new key to replace it.";
+
 export type TaskType = "chatbot" | "rag" | "agent";
 
 export type DatasetTurnType = "single-turn" | "multi-turn" | "simulated";

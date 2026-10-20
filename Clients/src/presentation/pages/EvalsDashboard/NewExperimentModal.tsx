@@ -45,6 +45,7 @@ import {
   listScorers,
   getAllLlmApiKeys,
   addLlmApiKey,
+  verifySavedLlmApiKey,
   validateModel,
   type DeepEvalScorer,
   type LLMApiKey,
@@ -63,6 +64,7 @@ import {
   type JudgeMode,
   type ProviderType,
   type UserDataset,
+  REJECTED_SAVED_KEY_HINT,
   WIZARD_STEPS,
 } from "./NewExperiment/newExperimentConfig";
 import {
@@ -142,6 +144,9 @@ export default function NewExperimentModal({
   // Configured API keys state
   const [configuredApiKeys, setConfiguredApiKeys] = useState<LLMApiKey[]>([]);
   const [loadingApiKeys, setLoadingApiKeys] = useState(true);
+  // Saved keys the provider refused when the wizard checked them; those count as missing
+  const [rejectedKeyIds, setRejectedKeyIds] = useState<Set<number>>(new Set());
+  const checkedKeyIds = useRef<Set<number>>(new Set());
 
   // Saved models from the Models page (database)
   const [savedModels, setSavedModels] = useState<SavedModel[]>([]);
@@ -458,6 +463,21 @@ export default function NewExperimentModal({
       }
     })();
   }, [isOpen, orgId]);
+
+  // Check the saved key of each chosen provider once, so a dead key shows the key field
+  // instead of "API key configured" and the run doesn't fail on it later
+  useEffect(() => {
+    if (!isOpen) return;
+    for (const providerId of [config.model.accessMethod, config.judgeLlm.provider]) {
+      const key = configuredApiKeys.find((k) => k.provider === providerId);
+      if (key?.id === undefined || checkedKeyIds.current.has(key.id)) continue;
+      const keyId = key.id;
+      checkedKeyIds.current.add(keyId);
+      void verifySavedLlmApiKey(keyId).then(({ valid }) => {
+        if (!valid) setRejectedKeyIds((prev) => new Set(prev).add(keyId));
+      });
+    }
+  }, [isOpen, config.model.accessMethod, config.judgeLlm.provider, configuredApiKeys]);
 
   // Reset model selection and apply saved judge preferences on each open
   useEffect(() => {
@@ -1001,10 +1021,16 @@ export default function NewExperimentModal({
     });
   };
 
-  // Check if a provider has a configured API key
+  // Check if a provider has a configured API key the provider has not refused
   const hasApiKey = (providerId: string): boolean => {
-    return configuredApiKeys.some((k) => k.provider === providerId);
+    return configuredApiKeys.some(
+      (k) => k.provider === providerId && !(k.id !== undefined && rejectedKeyIds.has(k.id)),
+    );
   };
+
+  // A saved key exists for the provider, but the provider refused it
+  const savedKeyRejected = (providerId: string): boolean =>
+    !hasApiKey(providerId) && configuredApiKeys.some((k) => k.provider === providerId);
 
   const selectedProvider = availableJudgeProviders.find((p) => p.id === config.judgeLlm.provider);
 
@@ -1143,6 +1169,7 @@ export default function NewExperimentModal({
             fieldsRef={formFieldsRef}
             getProviderModels={getProviderModels}
             hasApiKey={hasApiKey}
+            savedKeyRejected={savedKeyRejected}
             onProviderSelect={(providerId) => {
               setSelectedSavedModelId(null);
               setConfig((prev) => ({
@@ -1987,7 +2014,11 @@ export default function NewExperimentModal({
                             }
                             placeholder={`Enter your ${selectedProvider.name} API key`}
                             autoComplete="off"
-                            helperText="Your key will be saved securely for future experiments"
+                            helperText={
+                              savedKeyRejected(config.judgeLlm.provider)
+                                ? REJECTED_SAVED_KEY_HINT
+                                : "Your key will be saved securely for future experiments"
+                            }
                           />
                         ))}
                     </Stack>

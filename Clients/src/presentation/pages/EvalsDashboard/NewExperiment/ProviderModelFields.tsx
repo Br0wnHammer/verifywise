@@ -20,7 +20,7 @@ import type { RefObject } from "react";
 import Field from "../../../components/Inputs/Field";
 import { palette } from "../../../themes/palette";
 import { PROVIDERS, type ModelInfo } from "../../../utils/providers";
-import type { ProviderType } from "./newExperimentConfig";
+import { REJECTED_SAVED_KEY_HINT, type ProviderType } from "./newExperimentConfig";
 import { OPENROUTER_POPULAR_MODELS } from "./providerConfig";
 
 export interface ProviderModelFieldsProps {
@@ -33,6 +33,8 @@ export interface ProviderModelFieldsProps {
   apiKey: string;
   useCustomModelName: boolean;
   hasApiKeyConfigured: boolean;
+  /** A key is saved but the provider refused it; the key field explains why it is back. */
+  savedKeyRejected?: boolean;
   needsApiKey: boolean;
   needsUrl: boolean;
   fieldsRef?: RefObject<HTMLDivElement | null>;
@@ -52,6 +54,7 @@ export default function ProviderModelFields({
   apiKey,
   useCustomModelName,
   hasApiKeyConfigured,
+  savedKeyRejected = false,
   needsApiKey,
   needsUrl,
   fieldsRef,
@@ -361,7 +364,9 @@ export default function ProviderModelFields({
               helperText={
                 providerId === "custom_api"
                   ? undefined
-                  : "Your key will be saved securely for future experiments"
+                  : savedKeyRejected
+                    ? REJECTED_SAVED_KEY_HINT
+                    : "Your key will be saved securely for future experiments"
               }
             />
           ))}

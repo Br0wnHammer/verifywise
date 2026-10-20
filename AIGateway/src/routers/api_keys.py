@@ -11,11 +11,13 @@ from fastapi import APIRouter, HTTPException, Request
 
 from crud.api_keys import (
     get_all_api_keys,
+    get_api_key_by_id,
     create_api_key,
     update_api_key,
     delete_api_key,
 )
 from utils.auth import get_org_id, get_user_id, require_admin, require_admin_or_editor
+from utils.encryption import decrypt
 from utils.notifications import config_event, notify_config_change
 
 logger = logging.getLogger("uvicorn")
@@ -67,6 +69,41 @@ PROVIDER_VERIFY_ENDPOINTS: dict[str, dict] = {
 }
 
 
+def _rejects_key(provider: str, resp: httpx.Response) -> bool:
+    """True when the provider refused the key itself."""
+    if resp.status_code in (401, 403):
+        return True
+    # Gemini answers an invalid or expired key with 400 API_KEY_INVALID, not 401.
+    return provider == "gemini" and resp.status_code == 400 and "API_KEY_INVALID" in resp.text
+
+
+async def _check_provider_key(provider: str, api_key: str) -> dict:
+    """Ask the provider's models endpoint whether it accepts the key."""
+    trimmed = api_key.strip()
+    config = PROVIDER_VERIFY_ENDPOINTS.get(provider)
+
+    if not config:
+        return {"valid": True, "message": "Provider does not support live verification"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                config["url"](trimmed),
+                headers=config["headers"](trimmed),
+            )
+
+        if _rejects_key(provider, resp):
+            return {"valid": False, "message": "Invalid API key — authentication failed"}
+
+        if resp.status_code == 429:
+            return {"valid": True, "message": "Key is valid (rate limited)"}
+
+        return {"valid": True, "message": "Key is valid"}
+    except Exception:
+        # Network error — assume valid (provider might be down)
+        return {"valid": True, "message": "Could not reach provider — key assumed valid"}
+
+
 @router.post("/verify")
 async def verify_api_key(request: Request):
     """Verify a provider API key by hitting the provider's models endpoint."""
@@ -79,29 +116,22 @@ async def verify_api_key(request: Request):
     if not provider or not api_key:
         raise HTTPException(status_code=400, detail="provider and api_key are required")
 
-    trimmed = api_key.strip()
-    config = PROVIDER_VERIFY_ENDPOINTS.get(provider)
+    return {"data": await _check_provider_key(provider, api_key)}
 
-    if not config:
-        return {"data": {"valid": True, "message": "Provider does not support live verification"}}
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                config["url"](trimmed),
-                headers=config["headers"](trimmed),
-            )
+@router.post("/{key_id}/verify")
+async def verify_saved_api_key(key_id: int, request: Request):
+    """Verify a saved key without sending it to the client. Only says valid or not."""
+    require_admin_or_editor(request)
+    org_id = get_org_id(request)
 
-        if resp.status_code in (401, 403):
-            return {"data": {"valid": False, "message": "Invalid API key — authentication failed"}}
+    key = await get_api_key_by_id(org_id, key_id)
+    if not key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    if not key.get("encrypted_key"):
+        return {"data": {"valid": False, "message": "No key is stored"}}
 
-        if resp.status_code == 429:
-            return {"data": {"valid": True, "message": "Key is valid (rate limited)"}}
-
-        return {"data": {"valid": True, "message": "Key is valid"}}
-    except Exception:
-        # Network error — assume valid (provider might be down)
-        return {"data": {"valid": True, "message": "Could not reach provider — key assumed valid"}}
+    return {"data": await _check_provider_key(key["provider"], decrypt(key["encrypted_key"]))}
 
 
 @router.get("")

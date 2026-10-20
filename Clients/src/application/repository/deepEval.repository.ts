@@ -220,6 +220,8 @@ export const deleteLlmApiKey = (provider: LLMProvider, id?: number) =>
 
 export const hasLlmApiKey = (provider: LLMProvider) => evaluationLlmApiKeysService.hasKey(provider);
 
+export const verifySavedLlmApiKey = (id: number) => evaluationLlmApiKeysService.verifySavedKey(id);
+
 export const verifyLlmApiKey = (provider: string, apiKey: string) =>
   evaluationLlmApiKeysService.verifyKey({ provider, apiKey });
 

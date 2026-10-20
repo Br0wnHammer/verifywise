@@ -6,7 +6,7 @@ and should stop the experiment early to avoid wasting time.
 """
 
 import re
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Fatal error patterns that won't recover - experiment should stop
 # Format: (pattern_to_match, error_code, user_friendly_message)
@@ -329,13 +329,73 @@ def build_no_responses_message(total_prompts: int, errors: List[str]) -> str:
         "No responses generated: <failed>/<total> prompts failed. First error: <error>",
         or the bare "No responses generated" when no error was recorded.
     """
-    first_error = next((" ".join(e.split()) for e in errors if e and e.strip()), None)
+    first_error = _first_error(errors)
     if first_error is None:
         return NO_RESPONSES_MESSAGE
-    first_error = redact_secrets(first_error)
-    if len(first_error) > MAX_FIRST_ERROR_CHARS:
-        first_error = first_error[:MAX_FIRST_ERROR_CHARS] + "…"
     return (
         f"{NO_RESPONSES_MESSAGE}: {len(errors)}/{total_prompts} prompts failed. "
         f"First error: {first_error}"
     )
+
+
+NO_SCORES_MESSAGE = "No scores recorded"
+_GEVAL_ERROR_PREFIX = "G-Eval error:"
+
+
+def _first_error(errors: List[str]) -> Optional[str]:
+    """The first non-blank error on one line, redacted and clipped for display."""
+    first = next((" ".join(e.split()) for e in errors if e and e.strip()), None)
+    if first is None:
+        return None
+    first = redact_secrets(first)
+    if len(first) > MAX_FIRST_ERROR_CHARS:
+        first = first[:MAX_FIRST_ERROR_CHARS] + "…"
+    return first
+
+
+def _metric_error(entry: Any) -> Optional[str]:
+    """Why a metric entry has no score, when it records one."""
+    if not isinstance(entry, dict) or isinstance(entry.get("score"), (int, float)):
+        return None
+    if isinstance(entry.get("error"), str):
+        return entry["error"]
+    # G-Eval keeps the exception in its reason instead of an error field
+    reason = entry.get("reason")
+    if isinstance(reason, str) and reason.startswith(_GEVAL_ERROR_PREFIX):
+        return reason[len(_GEVAL_ERROR_PREFIX):].strip()
+    return None
+
+
+def any_metric_scored(results: List[Dict[str, Any]]) -> bool:
+    """True when at least one metric, under any name, has a numeric score."""
+    return any(
+        isinstance(entry, (int, float))
+        or (isinstance(entry, dict) and isinstance(entry.get("score"), (int, float)))
+        for r in results
+        for entry in (r.get("metric_scores") or {}).values()
+    )
+
+
+def build_no_scores_message(results: List[Dict[str, Any]]) -> str:
+    """
+    Build the failure reason for a run in which no metric scored any prompt.
+
+    The model answered, but every metric came back without a score, usually
+    because the judge model failed on every call (unknown model, bad key).
+
+    Args:
+        results: Per-prompt results, each with a ``metric_scores`` dict
+
+    Returns:
+        "No scores recorded: no metric scored any of the <n> prompts. First error: <error>",
+        without the first error when no entry recorded one.
+    """
+    errors = [
+        err
+        for r in results
+        for entry in (r.get("metric_scores") or {}).values()
+        if (err := _metric_error(entry))
+    ]
+    message = f"{NO_SCORES_MESSAGE}: no metric scored any of the {len(results)} prompts."
+    first_error = _first_error(errors)
+    return f"{message} First error: {first_error}" if first_error else message

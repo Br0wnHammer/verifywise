@@ -50,6 +50,7 @@ export interface ModelStepProps {
   fieldsRef?: RefObject<HTMLDivElement | null>;
   getProviderModels: (providerId: string) => ModelInfo[];
   hasApiKey: (providerId: string) => boolean;
+  savedKeyRejected: (providerId: string) => boolean;
   onProviderSelect: (providerId: ProviderType) => void;
   onModelNameChange: (name: string) => void;
   onEndpointUrlChange: (url: string) => void;
@@ -70,6 +71,7 @@ export default function ModelStep({
   fieldsRef,
   getProviderModels,
   hasApiKey,
+  savedKeyRejected,
   onProviderSelect,
   onModelNameChange,
   onEndpointUrlChange,
@@ -304,6 +306,7 @@ export default function ModelStep({
           apiKey={modelConfig.apiKey}
           useCustomModelName={useCustomModelName}
           hasApiKeyConfigured={hasApiKey(modelConfig.accessMethod)}
+          savedKeyRejected={savedKeyRejected(modelConfig.accessMethod)}
           needsApiKey={!!selectedModelProvider?.needsApiKey}
           needsUrl={!!(selectedModelProvider && selectedModelProvider.needsUrl)}
           fieldsRef={fieldsRef}

@@ -2958,6 +2958,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Risikoname schreiben",
     "You can use": "Sie können",
     "Your app": "Ihre App",
+    "The provider rejected the saved API key. Enter a new key to replace it.":
+      "Der Anbieter hat den gespeicherten API-Schlüssel abgelehnt. Geben Sie einen neuen Schlüssel ein, um ihn zu ersetzen.",
     "Your key will be saved securely for future experiments":
       "Ihr Schlüssel wird für zukünftige Experimente sicher gespeichert",
     "Your name": "Ihr Name",
@@ -13642,6 +13644,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Rédiger le nom du risque",
     "You can use": "Vous pouvez utiliser",
     "Your app": "Votre application",
+    "The provider rejected the saved API key. Enter a new key to replace it.":
+      "Le fournisseur a refusé la clé API enregistrée. Saisissez une nouvelle clé pour la remplacer.",
     "Your key will be saved securely for future experiments":
       "Votre clé sera enregistrée de manière sécurisée pour de futures expériences",
     "Your name": "Votre nom",
@@ -26842,6 +26846,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Lo que sus barreras de protección detectaron en este periodo",
     "Whose name and role appear on the declaration document":
       "Cuyo nombre y cargo aparecen en el documento de declaración",
+    "The provider rejected the saved API key. Enter a new key to replace it.":
+      "El proveedor rechazó la clave de API guardada. Introduzca una clave nueva para reemplazarla.",
     "Your key will be saved securely for future experiments":
       "Su clave se guardará de forma segura para futuros experimentos",
     "No AI tools detected yet. Connect a data source to monitor AI tool usage.":

@@ -680,3 +680,125 @@ async def test_no_responses_reason_counts_each_prompt_once(
         "First error: Model returned an empty response"
     }
 
+
+
+# --------------------------------------------------------------------------- #
+# Failure reason when no metric scored any prompt                              #
+# --------------------------------------------------------------------------- #
+
+
+def _judged(*entries: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """One result per entry set, shaped like DeepEvalEvaluator.run_evaluation output."""
+    return [
+        {"input": f"q{i}", "output": "a", "expected": None, "context": None, "metric_scores": scores}
+        for i, scores in enumerate(entries)
+    ]
+
+
+GEVAL_404 = {
+    "score": None,
+    "passed": False,
+    "threshold": 0.5,
+    "reason": "G-Eval error: 404 This model models/gemini-2.5-pro is no longer available to new users.",
+}
+
+
+def test_no_scores_message_takes_the_first_geval_error() -> None:
+    from utils.error_detection import build_no_scores_message
+
+    message = build_no_scores_message(_judged({"Relevance": GEVAL_404}, {"Relevance": GEVAL_404}))
+
+    assert message == (
+        "No scores recorded: no metric scored any of the 2 prompts. "
+        "First error: 404 This model models/gemini-2.5-pro is no longer available to new users."
+    )
+
+
+def test_no_scores_message_reads_error_fields_and_redacts_keys() -> None:
+    from utils.error_detection import build_no_scores_message
+
+    message = build_no_scores_message(
+        _judged({"Bias": {"score": None, "passed": False, "error": "bad key AIzaSyDEADBEEF1234567890"}})
+    )
+
+    assert message.endswith("First error: bad key [redacted]")
+
+
+def test_no_scores_message_without_a_recorded_error() -> None:
+    from utils.error_detection import build_no_scores_message
+
+    message = build_no_scores_message(_judged({"Faithfulness": {"score": None, "skipped": True}}))
+
+    assert message == "No scores recorded: no metric scored any of the 1 prompts."
+
+
+@pytest.mark.asyncio
+async def test_run_with_no_scores_fails_and_keeps_its_results(
+    inline_prompts_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _capture_runner_init(monkeypatch)
+    _patch_run_eval_dependencies(monkeypatch)
+
+    from crud import evaluation_logs as crud_module
+    from deepeval_engine import deepeval_evaluator as evaluator_module
+
+    monkeypatch.setattr(
+        evaluator_module.DeepEvalEvaluator,
+        "run_evaluation",
+        lambda self, **kwargs: _judged({"Relevance": GEVAL_404}, {"Relevance": GEVAL_404}),
+    )
+
+    from utils.run_evaluation import run_evaluation
+
+    result = await run_evaluation(
+        db=mock_db_session,
+        experiment_id="exp-no-scores",
+        config=dict(inline_prompts_config),
+        organization_id=1,
+    )
+
+    assert result["error"].startswith("No scores recorded: no metric scored any of the 2 prompts.")
+    statuses = [c.kwargs.get("status") for c in crud_module.update_experiment_status.call_args_list]
+    assert "completed" not in statuses
+    failed = [
+        c for c in crud_module.update_experiment_status.call_args_list
+        if c.kwargs.get("status") == "failed"
+    ][-1]
+    assert failed.kwargs["error_message"] == result["error"]
+    assert len(failed.kwargs["results"]["detailed_results"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_with_one_scored_metric_still_completes(
+    inline_prompts_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _capture_runner_init(monkeypatch)
+    _patch_run_eval_dependencies(monkeypatch)
+
+    from crud import evaluation_logs as crud_module
+    from deepeval_engine import deepeval_evaluator as evaluator_module
+
+    scored = {"score": 0.9, "passed": True, "threshold": 0.5, "reason": "ok"}
+    monkeypatch.setattr(
+        evaluator_module.DeepEvalEvaluator,
+        "run_evaluation",
+        lambda self, **kwargs: _judged(
+            {"Relevance": scored, "Bias": GEVAL_404}, {"Relevance": GEVAL_404, "Bias": GEVAL_404}
+        ),
+    )
+
+    from utils.run_evaluation import run_evaluation
+
+    result = await run_evaluation(
+        db=mock_db_session,
+        experiment_id="exp-some-scores",
+        config=dict(inline_prompts_config),
+        organization_id=1,
+    )
+
+    assert "error" not in result
+    assert crud_module.update_experiment_status.call_args_list[-1].kwargs["status"] == "completed"
