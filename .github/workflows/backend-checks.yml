@@ -145,12 +145,22 @@ jobs:
   # the pace for every backend PR. Each job has its own Postgres, and each
   # suite's globalSetup migrates it, so no suite depends on another having run.
   tenant-isolation-tests:
-    name: Tenant Isolation Integration Tests (${{ matrix.suite }})
+    name: Tenant Isolation Integration Tests (${{ matrix.suite }}${{ matrix.rls == 'on' && ', RLS enforced' || '' }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         suite: [isolation-matrix, regression-suites, smoke-and-audit]
+        # (#4680) The isolation pack must be proven with the RLS runtime flag
+        # both off (current default) and on (RLS_ENFORCEMENT_ENABLED=true), so
+        # the flag can be flipped in production without losing the guarantee.
+        # Other suites are flag-independent — run them once, RLS off.
+        rls: [off, on]
+        exclude:
+          - suite: regression-suites
+            rls: on
+          - suite: smoke-and-audit
+            rls: on
     defaults:
       run:
         working-directory: Servers
@@ -201,6 +211,10 @@ jobs:
 
       - name: Run tenant-isolation integration matrix
         if: matrix.suite == 'isolation-matrix'
+        env:
+          # (#4680) Flag read by Servers/middleware/rls.middleware.ts and the
+          # RLS pack (tests/integration/tenant-isolation/rls.enforcement.test.ts).
+          RLS_ENFORCEMENT_ENABLED: ${{ matrix.rls == 'on' && 'true' || '' }}
         run: npm run test:integration -- --testPathPatterns=tenant-isolation
 
       # These suites live outside tests/integration/tenant-isolation/, so the
