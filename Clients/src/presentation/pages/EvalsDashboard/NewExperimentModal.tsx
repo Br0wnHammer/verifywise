@@ -65,6 +65,7 @@ import {
   type ProviderType,
   type UserDataset,
   apiKeyHelperText,
+  validationAlertTitle,
   WIZARD_STEPS,
 } from "./NewExperiment/newExperimentConfig";
 import {
@@ -699,10 +700,8 @@ export default function NewExperimentModal({
             setAlert({
               show: true,
               variant: "warning",
-              title: validation.probe_failed
-                ? "The provider refused this model"
-                : "API key may not be configured",
-              body: `${validation.error_message || `The API key for ${validation.provider || modelProvider} may not be configured.`} Click "Run experiment" again to proceed anyway.`,
+              title: validationAlertTitle(validation.probe_failed, validation.probe_error_code),
+              body: `${validation.error_message || `The API key for ${validation.provider || modelProvider} may not be configured.`} Click "Start Experiment" again to proceed anyway.`,
             });
             setApiKeyWarningAcknowledged(true);
             setLoading(false);

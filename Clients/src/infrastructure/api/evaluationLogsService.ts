@@ -162,6 +162,8 @@ export interface ModelValidationResult {
   error_message: string | null;
   /** The 1-token check with the saved key was refused (bad key, or model not served to it) */
   probe_failed?: boolean;
+  /** What was refused: invalid_api_key, permission_denied, model_not_found or budget_exceeded */
+  probe_error_code?: string | null;
 }
 
 export const modelValidationService = {

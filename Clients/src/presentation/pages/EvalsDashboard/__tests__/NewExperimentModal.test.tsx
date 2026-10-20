@@ -573,6 +573,7 @@ describe("NewExperimentModal", () => {
       deepEvalMocks.validateModel.mockResolvedValue({
         valid: false,
         probe_failed: true,
+        probe_error_code: "model_not_found",
         error_message: "The model was not found or is not available to this API key.",
         provider: "openai",
       });

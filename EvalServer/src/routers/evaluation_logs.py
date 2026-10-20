@@ -7,7 +7,7 @@ Shared-schema multi-tenancy: Uses organization_id from request.state.
 from fastapi import APIRouter, Query, Path, Request, HTTPException
 from fastapi.responses import JSONResponse
 import os
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import text
 
@@ -121,7 +121,9 @@ async def check_db_openrouter_available(organization_id: int) -> bool:
     return await check_db_api_key_available(organization_id, "openrouter")
 
 
-PROBE_TIMEOUT_SECONDS = 20.0
+# The probe runs while the user waits on "Start Experiment"; a slow provider gets the
+# benefit of the doubt rather than a long spinner
+PROBE_TIMEOUT_SECONDS = 8.0
 
 
 async def _newest_saved_key(organization_id: int, provider: str) -> Optional[str]:
@@ -148,13 +150,16 @@ async def _newest_saved_key(organization_id: int, provider: str) -> Optional[str
         return None
 
 
-async def probe_model(organization_id: int, provider: str, model_name: str) -> Optional[str]:
+async def probe_model(
+    organization_id: int, provider: str, model_name: str
+) -> Optional[Tuple[str, str]]:
     """
     Ask the provider for one token with the org's saved key, through the AI Gateway.
 
-    Returns a message when the provider refuses the key or the model (the same typed
-    errors that stop a run), else None. A check that cannot run, times out or fails for
-    another reason returns None: an outage must not block a run.
+    Returns (error_code, message) when the provider refuses the key or the model (the same
+    typed errors that stop a run), else None. A check that cannot run (no saved key, no
+    gateway), times out or fails for another reason returns None: an outage must not
+    block a run.
     """
     from utils.error_detection import TYPED_FATAL_ERRORS
     from utils.gateway_litellm_client import (
@@ -178,8 +183,7 @@ async def probe_model(organization_id: int, provider: str, model_name: str) -> O
             timeout=PROBE_TIMEOUT_SECONDS,
         )
     except GatewayProviderError as e:
-        refusal = TYPED_FATAL_ERRORS.get(e.error_type)
-        return refusal[1] if refusal else None
+        return TYPED_FATAL_ERRORS.get(e.error_type)
     except Exception:
         return None
     return None
@@ -313,12 +317,15 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
         else:
             error_message = f"API key for provider '{provider}' is not configured."
 
-    # Only a saved key can be probed; an env-only key is the server's, not the org's
+    # Only a saved key is probed (probe_model finds it, google and gemini alike); an
+    # env-only key is the server's, not the org's
     probe_failed = False
-    if is_valid and payload.probe and has_api_key_db:
-        probe_error = await probe_model(organization_id, provider, model_name)
-        if probe_error:
-            is_valid, probe_failed, error_message = False, True, probe_error
+    probe_error_code = None
+    if is_valid and payload.probe:
+        refusal = await probe_model(organization_id, provider, model_name)
+        if refusal:
+            probe_error_code, error_message = refusal
+            is_valid, probe_failed = False, True
 
     return JSONResponse(content={
         "valid": is_valid,
@@ -328,6 +335,8 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
         "has_openrouter_fallback": has_openrouter,
         "error_message": error_message,
         "probe_failed": probe_failed,
+        # invalid_api_key, permission_denied, model_not_found or budget_exceeded
+        "probe_error_code": probe_error_code,
     })
 
 

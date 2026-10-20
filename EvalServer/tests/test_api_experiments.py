@@ -347,7 +347,10 @@ def _saved_key_only(monkeypatch: pytest.MonkeyPatch, probe_result):
 
 
 def test_validate_model_probe_reports_a_refused_model(client, monkeypatch: pytest.MonkeyPatch) -> None:
-    probe = _saved_key_only(monkeypatch, "The model was not found or is not available to this API key.")
+    probe = _saved_key_only(
+        monkeypatch,
+        ("model_not_found", "The model was not found or is not available to this API key."),
+    )
 
     res = client.post(
         "/deepeval/models/validate",
@@ -357,12 +360,13 @@ def test_validate_model_probe_reports_a_refused_model(client, monkeypatch: pytes
     body = res.json()
     assert body["valid"] is False
     assert body["probe_failed"] is True
+    assert body["probe_error_code"] == "model_not_found"
     assert "not available to this API key" in body["error_message"]
     probe.assert_awaited_once()
 
 
 def test_validate_model_does_not_probe_unless_asked(client, monkeypatch: pytest.MonkeyPatch) -> None:
-    probe = _saved_key_only(monkeypatch, "refused")
+    probe = _saved_key_only(monkeypatch, ("invalid_api_key", "refused"))
 
     res = client.post(
         "/deepeval/models/validate",
@@ -390,8 +394,8 @@ def test_validate_model_probe_that_passes_keeps_it_valid(client, monkeypatch: py
 @pytest.mark.parametrize(
     "raised, expected",
     [
-        ("NotFoundError", "not available to this API key"),
-        ("AuthenticationError", "rejected the API key"),
+        ("NotFoundError", "model_not_found"),
+        ("AuthenticationError", "invalid_api_key"),
         ("RateLimitError", None),
         ("BadRequestError", None),
     ],
@@ -416,7 +420,8 @@ async def test_probe_model_maps_typed_refusals(
     if expected is None:
         assert message is None
     else:
-        assert expected in message
+        assert message[0] == expected
+        assert message[1]
 
 
 @pytest.mark.asyncio
@@ -454,3 +459,47 @@ def test_invalid_internal_key_is_rejected(client) -> None:
         headers={"x-internal-key": "wrong-key", "x-organization-id": "7"},
     )
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_newest_saved_key_reads_the_newest_active_row_for_either_google_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from routers import evaluation_logs as router_module
+
+    seen = {}
+
+    class _Result:
+        def fetchone(self):
+            return ("ciphertext",)
+
+    class _Session:
+        async def execute(self, statement, params):
+            seen["sql"] = str(statement)
+            seen["params"] = params
+            return _Result()
+
+    @asynccontextmanager
+    async def fake_db():
+        yield _Session()
+
+    monkeypatch.setattr(router_module, "get_db", fake_db)
+    monkeypatch.setattr("controllers.reports._decrypt_api_key", lambda value: f"plain-{value}")
+
+    assert await router_module._newest_saved_key(5, "Gemini") == "plain-ciphertext"
+    assert seen["params"] == {"organization_id": 5, "providers": ["google", "gemini"]}
+    assert "is_active = true" in seen["sql"]
+    assert "ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1" in seen["sql"]
+
+
+@pytest.mark.asyncio
+async def test_newest_saved_key_is_none_when_the_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    from routers import evaluation_logs as router_module
+
+    @asynccontextmanager
+    async def broken_db():
+        raise RuntimeError("db down")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(router_module, "get_db", broken_db)
+    assert await router_module._newest_saved_key(5, "openai") is None
