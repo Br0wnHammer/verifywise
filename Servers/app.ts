@@ -192,7 +192,8 @@ export function createApp(preRoutesMiddleware?: RequestHandler[]): express.Appli
     }
     // The /v1 virtual key proxy forwards the raw body: the AI Gateway parses
     // and validates it, and answers bad JSON in its own error format.
-    if (req.url.startsWith("/v1/")) {
+    // Lower-cased because Express matches the "/v1" mount case-insensitively.
+    if (req.url.toLowerCase().startsWith("/v1/")) {
       return next();
     }
     express.json({ limit: "10mb" })(req, res, next);

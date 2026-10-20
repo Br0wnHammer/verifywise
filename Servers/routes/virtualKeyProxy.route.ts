@@ -11,10 +11,12 @@ import { getGatewayUrl } from "../utils/aiGatewayConfig";
 
 const MAX_BODY = "10mb";
 
-// app.ts skips its JSON parser for /v1 so the gateway receives the exact bytes
-// the client sent. This keeps the size cap without parsing: the body is read
-// as raw bytes (still compressed, if it was) and written to the gateway as is.
-const rawBody = express.raw({ type: () => true, limit: MAX_BODY, inflate: false });
+// app.ts skips its JSON parser for /v1 so the gateway receives the bytes the
+// client sent. This keeps the size cap without parsing: the body is read as
+// raw bytes and written to the gateway as is. A gzip/deflate/br body is
+// decompressed first (the cap then applies to the decompressed size), because
+// the gateway does not decompress request bodies.
+const rawBody = express.raw({ type: () => true, limit: MAX_BODY });
 
 function virtualKeyProxyRoutes() {
   const router = Router();
@@ -37,6 +39,10 @@ function virtualKeyProxyRoutes() {
       proxyReq: (proxyReq, req) => {
         const body = (req as Request).body;
         if (Buffer.isBuffer(body)) {
+          // The body is now a complete, decompressed buffer: the client's
+          // chunked framing and content encoding no longer describe it
+          proxyReq.removeHeader("Transfer-Encoding");
+          proxyReq.removeHeader("Content-Encoding");
           proxyReq.setHeader("Content-Length", body.length);
           proxyReq.write(body);
           return;
@@ -49,15 +55,15 @@ function virtualKeyProxyRoutes() {
           `[Virtual Key Proxy] Error for ${req.url}:`,
           errAny.message || errAny.code || errAny,
         );
-        if (res && "writeHead" in res) {
-          (res as any).writeHead(502, { "Content-Type": "application/json" });
-          (res as any).end(
-            JSON.stringify({
-              error: "AI Gateway proxy error",
-              message: errAny.message || errAny.code || "Unknown error",
-            }),
-          );
+        if (!res || !("writeHead" in res)) return;
+        // A streamed response may fail after headers or chunks went out;
+        // writing a status then would throw, so close the response instead
+        if (res.headersSent) {
+          res.end();
+          return;
         }
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ detail: "AI Gateway proxy error" }));
       },
     },
   });

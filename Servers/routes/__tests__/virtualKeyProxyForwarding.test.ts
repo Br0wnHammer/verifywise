@@ -10,6 +10,7 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import express from "express";
 import request from "supertest";
+import { gzipSync } from "zlib";
 
 const proxyOptions: any[] = [];
 const fixRequestBody = jest.fn();
@@ -71,12 +72,74 @@ describe("/v1 virtual key proxy body handling", () => {
   it("writes a raw body to the proxied request unchanged", () => {
     virtualKeyProxyRoutes();
     const raw = Buffer.from('{"model":"faq","seed":12345678901234567890}');
-    const proxyReq = { setHeader: jest.fn(), write: jest.fn() };
+    const proxyReq = { setHeader: jest.fn(), removeHeader: jest.fn(), write: jest.fn() };
 
     proxyOptions[0].on.proxyReq(proxyReq, { body: raw }, {});
 
     expect(proxyReq.setHeader).toHaveBeenCalledWith("Content-Length", raw.length);
     expect(proxyReq.write).toHaveBeenCalledWith(raw);
     expect(fixRequestBody).not.toHaveBeenCalled();
+  });
+
+  it("drops the client's framing and encoding headers, which no longer fit the body", () => {
+    // Sending Transfer-Encoding: chunked next to Content-Length is rejected by
+    // strict HTTP parsers; the body is also decompressed by then
+    virtualKeyProxyRoutes();
+    const proxyReq = { setHeader: jest.fn(), removeHeader: jest.fn(), write: jest.fn() };
+
+    proxyOptions[0].on.proxyReq(proxyReq, { body: Buffer.from("{}") }, {});
+
+    expect(proxyReq.removeHeader).toHaveBeenCalledWith("Transfer-Encoding");
+    expect(proxyReq.removeHeader).toHaveBeenCalledWith("Content-Encoding");
+  });
+
+  it("decompresses a gzip body before forwarding it", async () => {
+    // The stubbed proxy calls next(), so this handler sees what would be sent
+    const app = appWithRoute();
+    app.use((req, res) => {
+      res.json({ forwarded: (req.body as Buffer).toString("utf8") });
+    });
+    const json = '{"model":"faq","messages":[]}';
+
+    const res = await request(app)
+      .post("/v1/chat/completions")
+      // supertest re-serializes a Buffer sent as application/json; the route
+      // reads every content type the same way
+      .set("Content-Type", "application/octet-stream")
+      .set("Content-Encoding", "gzip")
+      .send(gzipSync(json));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ forwarded: json });
+  });
+});
+
+describe("/v1 virtual key proxy errors", () => {
+  const fakeRes = (headersSent: boolean) => ({
+    headersSent,
+    writeHead: jest.fn(),
+    end: jest.fn(),
+  });
+
+  it("answers 502 in the gateway's error shape when the gateway cannot be reached", () => {
+    virtualKeyProxyRoutes();
+    const res = fakeRes(false);
+
+    proxyOptions[0].on.error(new Error("connect ECONNREFUSED"), { url: "/chat/completions" }, res);
+
+    expect(res.writeHead).toHaveBeenCalledWith(502, { "Content-Type": "application/json" });
+    expect(JSON.parse(res.end.mock.calls[0][0] as string)).toEqual({
+      detail: "AI Gateway proxy error",
+    });
+  });
+
+  it("closes a response that already started streaming instead of writing a status", () => {
+    virtualKeyProxyRoutes();
+    const res = fakeRes(true);
+
+    proxyOptions[0].on.error(new Error("socket hang up"), { url: "/chat/completions" }, res);
+
+    expect(res.writeHead).not.toHaveBeenCalled();
+    expect(res.end).toHaveBeenCalledWith();
   });
 });

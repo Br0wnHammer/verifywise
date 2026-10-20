@@ -29,7 +29,7 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
 import {
   buildRateLimitConfigs,
   createRateLimiter,
-  virtualKeyProxyRateLimitHandler,
+  gatewayErrorBody,
 } from "../../../middleware/rateLimit.middleware";
 import {
   advancePastWindow,
@@ -524,9 +524,7 @@ describe("virtualKeyProxyLimiter 429 body", () => {
   let limited: LimitedApp;
 
   beforeAll(() => {
-    limited = createLimitedApp(
-      createRateLimiter(PROD.virtualKeyProxy, virtualKeyProxyRateLimitHandler),
-    );
+    limited = createLimitedApp(createRateLimiter(PROD.virtualKeyProxy, gatewayErrorBody));
   });
 
   afterAll(async () => {
