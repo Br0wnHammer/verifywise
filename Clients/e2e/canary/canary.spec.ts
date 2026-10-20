@@ -12,7 +12,8 @@ import { test, expect } from "../fixtures/auth.fixture";
  *     --project=canary --grep @canary
  *
  * Journey covered (kept intentionally tiny so it finishes in seconds):
- *   1. Authenticated session is restored from storage state (global.setup).
+ *   1. Authenticated session is restored from storage state (canary.setup.ts
+ *      on a deployed target, global.setup.ts locally).
  *   2. Dashboard (/) renders.
  *   3. Project list on /overview loads (table, grid, cards, or the seeded
  *      baseline project entry).
@@ -41,7 +42,7 @@ test.describe("@canary critical journey", () => {
       .or(page.getByRole("grid"))
       .or(page.getByRole("list"))
       .or(page.locator('[class*="card" i]'))
-      .or(page.getByText(/e2e baseline project/i)); // seeded by global.setup
+      .or(page.getByText(/e2e baseline project/i)); // seeded by global.setup (local runs only)
     await expect(projectList.first()).toBeVisible({ timeout: 15_000 });
   });
 });
