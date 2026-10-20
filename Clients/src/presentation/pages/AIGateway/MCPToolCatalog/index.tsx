@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Box, Typography, Stack, IconButton } from "@mui/material";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
+  ArrowLeft,
   Wrench,
   Pencil,
   ShieldAlert,
@@ -65,6 +66,7 @@ const RISK_COLORS: Record<string, { bg: string; text: string; border: string }> 
 
 export default function MCPToolCatalogPage() {
   const cardSx = useCardSx();
+  const navigate = useNavigate();
   const [tools, setTools] = useState<MCPTool[]>([]);
   const [servers, setServers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -292,6 +294,19 @@ export default function MCPToolCatalogPage() {
       description="View and manage all discovered MCP tools across your servers."
       tipBoxEntity="ai-gateway-mcp-tools"
       helpArticlePath="ai-gateway/mcp-tools"
+      backButton={
+        // Shown when the page was opened for one server (?server=<id>), which is
+        // how the MCP servers page links here.
+        serverParam ? (
+          <CustomizableButton
+            text="Back to MCP servers"
+            onClick={() => navigate("/ai-gateway/mcp/servers")}
+            variant="text"
+            startIcon={<ArrowLeft size={16} />}
+            testId="mcp-tools-back"
+          />
+        ) : undefined
+      }
     >
       {/* Filters */}
       {!loading && tools.length > 0 && (

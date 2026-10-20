@@ -1,6 +1,13 @@
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 
+const mockNavigate = vi.fn();
+
+vi.mock("react-router", async () => {
+  const actual: any = await vi.importActual("react-router");
+  return { ...actual, useNavigate: () => mockNavigate };
+});
+
 vi.mock("../../../../infrastructure/api/networkServices", () => ({
   apiServices: {
     get: vi.fn(),
@@ -12,8 +19,9 @@ vi.mock("../../../../infrastructure/api/networkServices", () => ({
 }));
 
 vi.mock("../../../components/Layout/PageHeaderExtended", () => ({
-  PageHeaderExtended: ({ children, title, actionButton }: any) => (
+  PageHeaderExtended: ({ children, title, actionButton, backButton }: any) => (
     <div data-testid="page-header">
+      {backButton}
       <h1>{title}</h1>
       {actionButton}
       {children}
@@ -129,6 +137,23 @@ describe("MCPToolCatalogPage", () => {
 
     await waitFor(() => expect(screen.getByText("solo_tool")).toBeInTheDocument());
     expect(screen.queryByText("search_docs")).not.toBeInTheDocument();
+  });
+
+  it("links back to the MCP servers page when opened for one server", async () => {
+    mockLoad([makeTool()]);
+    renderWithProviders(<MCPToolCatalogPage />, { route: "/ai-gateway/mcp/tools?server=10" });
+
+    await waitFor(() => expect(screen.getByText("search_docs")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("mcp-tools-back"));
+    expect(mockNavigate).toHaveBeenCalledWith("/ai-gateway/mcp/servers");
+  });
+
+  it("shows no back link when opened without a server", async () => {
+    mockLoad([makeTool()]);
+    renderWithProviders(<MCPToolCatalogPage />, { route: "/ai-gateway/mcp/tools" });
+
+    await waitFor(() => expect(screen.getByText("search_docs")).toBeInTheDocument());
+    expect(screen.queryByTestId("mcp-tools-back")).not.toBeInTheDocument();
   });
 
   it("shows all tools when the URL names an unknown server", async () => {
