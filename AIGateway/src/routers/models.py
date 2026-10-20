@@ -87,6 +87,8 @@ def build_model_catalog() -> list:
             "supports_system_messages": info.get("supports_system_messages", False),
             "supports_tool_choice": info.get("supports_tool_choice", False),
             "supports_parallel_function_calling": info.get("supports_parallel_function_calling", False),
+            # ISO date the provider retires the model, when LiteLLM knows it
+            "deprecation_date": info.get("deprecation_date"),
         })
 
     _cached_catalog = catalog

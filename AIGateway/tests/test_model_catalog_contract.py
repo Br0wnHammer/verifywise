@@ -30,6 +30,7 @@ MODEL_INFO_FIELDS = {
     "supports_system_messages",
     "supports_tool_choice",
     "supports_parallel_function_calling",
+    "deprecation_date",
 }
 
 # A small, fixed stand-in for litellm.model_cost so the contract doesn't
@@ -44,6 +45,11 @@ FAKE_COST_MAP = {
         "max_input_tokens": 128000,
         "max_output_tokens": 16384,
         "supports_vision": True,
+    },
+    "gemini/gemini-2.0-flash": {
+        "litellm_provider": "gemini",
+        "mode": "chat",
+        "deprecation_date": "2026-03-31",
     },
     "text-embedding-3-small": {
         "litellm_provider": "openai",
@@ -80,13 +86,21 @@ async def test_proxied_catalog_matches_models_page_contract(fake_cost_map):
     assert by_id["gpt-4o"]["output_cost_per_million"] == 10.0
 
 
+async def test_catalog_carries_the_deprecation_date(fake_cost_map):
+    # LLM Evals hides retired models from its picker using this date
+    response = await tenant_chat.get_model_catalog(MagicMock())
+    by_id = {m["id"]: m for m in response["data"]["models"]}
+    assert by_id["gemini/gemini-2.0-flash"]["deprecation_date"] == "2026-03-31"
+    assert by_id["gpt-4o"]["deprecation_date"] is None
+
+
 async def test_catalog_skips_pricing_tiers_without_a_mode(fake_cost_map):
     response = await tenant_chat.get_model_catalog(MagicMock())
     ids = {m["id"] for m in response["data"]["models"]}
 
     assert "fireworks-ai-embedding-up-to-150m" not in ids
     assert "sample_spec" not in ids
-    assert ids == {"gpt-4o", "text-embedding-3-small"}
+    assert ids == {"gpt-4o", "gemini/gemini-2.0-flash", "text-embedding-3-small"}
 
 
 async def test_catalog_failure_is_an_error_not_an_empty_list(fake_cost_map, monkeypatch):
