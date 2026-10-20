@@ -82,6 +82,9 @@ spec:
         - name: AI_GATEWAY_INTERNAL_KEY
           valueFrom:
             secretKeyRef: { name: {{ include "verifywise.secretName" . }}, key: AI_GATEWAY_INTERNAL_KEY }
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef: { name: {{ include "verifywise.secretName" . }}, key: ENCRYPTION_KEY }
 
         livenessProbe:
           httpGet: { path: /health, port: 8000 }

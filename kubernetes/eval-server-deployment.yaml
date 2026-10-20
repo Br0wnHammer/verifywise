@@ -91,6 +91,13 @@ spec:
               name: verifywise-secrets
               key: AI_GATEWAY_INTERNAL_KEY
 
+        # Decrypts AI Gateway keys stored by the backend (report AI summaries)
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: verifywise-secrets
+              key: ENCRYPTION_KEY
+
         livenessProbe:
           httpGet:
             path: /health
