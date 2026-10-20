@@ -124,13 +124,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Ubuntu's prometheus package ships promtool; alertmanager ships amtool.
+      # Ubuntu's prometheus package ships promtool. The alertmanager apt
+      # package is not published in the runner's default repos, so fetch a
+      # pinned amtool binary from the official GitHub release instead.
       - name: Install promtool and amtool
+        env:
+          AMTOOL_VERSION: 0.27.0
         run: |
           sudo apt-get update
-          sudo apt-get install -y prometheus alertmanager python3-yaml
+          sudo apt-get install -y prometheus python3-yaml
+          curl -fsSL "https://github.com/prometheus/alertmanager/releases/download/v${AMTOOL_VERSION}/alertmanager-${AMTOOL_VERSION}.linux-amd64.tar.gz" | tar -xz
+          sudo cp "alertmanager-${AMTOOL_VERSION}.linux-amd64/amtool" /usr/local/bin/amtool
           promtool --version
-          amtool --version || true
+          amtool --version
 
       - name: promtool check config (prometheus.yml)
         run: promtool check config observability/prometheus.yml
