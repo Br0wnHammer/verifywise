@@ -15,7 +15,6 @@ import {
   AccordionSummary,
   AccordionDetails,
   FormHelperText,
-  Chip as MuiChip,
 } from "@mui/material";
 import {
   Check,
@@ -33,6 +32,7 @@ import {
 import StepperModal from "../../components/Modals/StepperModal";
 import SelectableCard from "../../components/SelectableCard";
 import Field from "../../components/Inputs/Field";
+import ModelPicker from "../../components/Inputs/ModelPicker";
 import Checkbox from "../../components/Inputs/Checkbox";
 import Alert from "../../components/Alert";
 import Chip from "../../components/Chip";
@@ -55,6 +55,7 @@ import { getAllEntities } from "../../../application/repository/entity.repositor
 import { PROVIDERS, type ModelInfo } from "../../utils/providers";
 import { evalModelsService, type SavedModel } from "../../../infrastructure/api/evalModelsService";
 import { useModelPreferences } from "../../../application/hooks/useModelPreferences";
+import { mergeWithBundledModels } from "../../../application/hooks/useProviderModels";
 import {
   datasetNameFromPresetPath,
   generateDefaultExperimentName,
@@ -1117,15 +1118,10 @@ export default function NewExperimentModal({
       description: m.endpointUrl ? `Saved · ${m.endpointUrl}` : "Saved model",
     }));
 
-    // Use live gateway catalog if already loaded for this provider. Its entries are named
-    // by ID only; a model the bundled list knows keeps that list's name and description.
+    // Use live gateway catalog if already loaded for this provider
     const live = gatewayModels[providerId];
     if (live && live.length > 0) {
-      const known = new Map((PROVIDERS[providerId]?.models ?? []).map((m) => [m.id, m]));
-      const named = live.map((m) => {
-        const k = known.get(m.id);
-        return k ? { ...m, name: k.name, description: k.description } : m;
-      });
+      const named = mergeWithBundledModels(providerId, live);
       const liveIds = new Set(live.map((m) => m.id));
       const uniqueSaved = saved.filter((s) => !liveIds.has(s.id));
       return [...uniqueSaved, ...named];
@@ -1156,39 +1152,30 @@ export default function NewExperimentModal({
 
   // Load live model catalog from AI Gateway when a cloud provider is selected.
   // Runs for both the model-under-test and the judge provider.
-  useEffect(() => {
-    const loadForProvider = async (provider: string) => {
-      if (!provider || gatewayModelsLoaded.current.has(provider)) return;
-      // Only cloud providers — local/custom providers don't have a LiteLLM catalog entry
-      if (!(CLOUD_PROVIDER_IDS as readonly string[]).includes(provider)) return;
-      gatewayModelsLoaded.current.add(provider); // mark before fetch to prevent concurrent calls
-      try {
-        const models = await evalModelsService.getGatewayModelsForProvider(provider);
-        if (models.length > 0) {
-          setGatewayModels((prev) => ({ ...prev, [provider]: models }));
-        }
-      } catch {
-        // Gateway unreachable — static fallback will be used
+  const loadGatewayModels = async (provider: string) => {
+    if (!provider || gatewayModelsLoaded.current.has(provider)) return;
+    // Only cloud providers — local/custom providers don't have a LiteLLM catalog entry
+    if (!(CLOUD_PROVIDER_IDS as readonly string[]).includes(provider)) return;
+    gatewayModelsLoaded.current.add(provider); // mark before fetch to prevent concurrent calls
+    try {
+      const models = await evalModelsService.getGatewayModelsForProvider(provider);
+      if (models.length > 0) {
+        setGatewayModels((prev) => ({ ...prev, [provider]: models }));
+      } else {
+        // Gateway down or restarting: the bundled list shows, and the next pick asks again
+        gatewayModelsLoaded.current.delete(provider);
       }
-    };
-    loadForProvider(config.model.accessMethod as string);
+    } catch {
+      gatewayModelsLoaded.current.delete(provider);
+    }
+  };
+
+  useEffect(() => {
+    void loadGatewayModels(config.model.accessMethod as string);
   }, [config.model.accessMethod]);
 
   useEffect(() => {
-    const loadForProvider = async (provider: string) => {
-      if (!provider || gatewayModelsLoaded.current.has(provider)) return;
-      if (!(CLOUD_PROVIDER_IDS as readonly string[]).includes(provider)) return;
-      gatewayModelsLoaded.current.add(provider);
-      try {
-        const models = await evalModelsService.getGatewayModelsForProvider(provider);
-        if (models.length > 0) {
-          setGatewayModels((prev) => ({ ...prev, [provider]: models }));
-        }
-      } catch {
-        // Gateway unreachable — static fallback will be used
-      }
-    };
-    loadForProvider(config.judgeLlm.provider as string);
+    void loadGatewayModels(config.judgeLlm.provider as string);
   }, [config.judgeLlm.provider]);
 
   // Auto-load default dataset when reaching step 2 (Dataset)
@@ -1252,12 +1239,14 @@ export default function NewExperimentModal({
               }));
               setUseCustomModelName(false);
             }}
-            onModelNameChange={(name) =>
+            onModelNameChange={(name) => {
+              // A model chosen in the picker replaces a saved model picked above it
+              setSelectedSavedModelId(null);
               setConfig((prev) => ({
                 ...prev,
                 model: { ...prev.model, name },
-              }))
-            }
+              }));
+            }}
             onEndpointUrlChange={(url) =>
               setConfig((prev) => ({
                 ...prev,
@@ -1720,154 +1709,27 @@ export default function NewExperimentModal({
                   <Box ref={formFieldsRef}>
                     <Stack spacing={3}>
                       {/* Model Selection - Dropdown for cloud providers, text input for local/OpenRouter */}
-                      {config.judgeLlm.provider === "openrouter" ? (
-                        /* OpenRouter - Custom model input with suggestions */
-                        <Box>
-                          <Typography
-                            sx={{
-                              fontSize: "13px",
-                              fontWeight: 500,
-                              color: palette.text.secondary,
-                              mb: 1,
-                            }}
-                          >
-                            Model
-                          </Typography>
-                          <Typography
-                            sx={{ fontSize: "11px", color: palette.text.tertiary, mb: 1.5 }}
-                          >
-                            OpenRouter supports any model. Enter the model ID or select from saved
-                            or popular options.
-                          </Typography>
-                          <Field
-                            label=""
-                            value={config.judgeLlm.model}
-                            onChange={(e) =>
-                              setConfig((prev) => ({
-                                ...prev,
-                                judgeLlm: { ...prev.judgeLlm, model: e.target.value },
-                              }))
-                            }
-                            placeholder="e.g., openai/gpt-4o, anthropic/claude-3-opus"
-                          />
-                          <Typography
-                            sx={{
-                              fontSize: "11px",
-                              fontWeight: 600,
-                              color: palette.text.disabled,
-                              mt: 2,
-                              mb: 1,
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            Popular Models
-                          </Typography>
-                          <Stack direction="row" flexWrap="wrap" gap={1}>
-                            {[
-                              { id: "openai/gpt-4o", name: "GPT-4o" },
-                              { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet" },
-                              { id: "google/gemini-pro-1.5", name: "Gemini Pro 1.5" },
-                              { id: "meta-llama/llama-3.1-70b-instruct", name: "Llama 3.1 70B" },
-                              { id: "mistralai/mistral-large", name: "Mistral Large" },
-                            ].map((m) => (
-                              <MuiChip
-                                key={m.id}
-                                label={m.name}
-                                variant={config.judgeLlm.model === m.id ? "filled" : "outlined"}
-                                onClick={() =>
-                                  setConfig((prev) => ({
-                                    ...prev,
-                                    judgeLlm: { ...prev.judgeLlm, model: m.id },
-                                  }))
-                                }
-                                sx={{
-                                  "cursor": "pointer",
-                                  "backgroundColor":
-                                    config.judgeLlm.model === m.id
-                                      ? palette.brand.primaryLight
-                                      : "transparent",
-                                  "borderColor":
-                                    config.judgeLlm.model === m.id
-                                      ? palette.brand.primary
-                                      : palette.border.dark,
-                                  "color":
-                                    config.judgeLlm.model === m.id
-                                      ? palette.brand.primary
-                                      : palette.text.secondary,
-                                  "&:hover": {
-                                    backgroundColor:
-                                      config.judgeLlm.model === m.id
-                                        ? palette.brand.primaryLight
-                                        : palette.background.accent,
-                                    borderColor: palette.brand.primary,
-                                  },
-                                }}
-                              />
-                            ))}
-                          </Stack>
-                        </Box>
-                      ) : PROVIDERS[config.judgeLlm.provider] ? (
-                        <Box>
-                          <Typography
-                            sx={{
-                              fontSize: "13px",
-                              fontWeight: 500,
-                              color: palette.text.secondary,
-                              mb: 1,
-                            }}
-                          >
-                            Model
-                          </Typography>
-                          <FormControl fullWidth size="small">
-                            <Select
-                              value={config.judgeLlm.model}
-                              onChange={(e) =>
-                                setConfig((prev) => ({
-                                  ...prev,
-                                  judgeLlm: { ...prev.judgeLlm, model: e.target.value as string },
-                                }))
-                              }
-                              displayEmpty
-                              sx={{
-                                "fontSize": "13px",
-                                "& .MuiOutlinedInput-notchedOutline": {
-                                  borderColor: palette.border.dark,
-                                },
-                                "&:hover .MuiOutlinedInput-notchedOutline": {
-                                  borderColor: palette.border.dark,
-                                },
-                                "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                                  borderColor: palette.brand.primary,
-                                },
-                              }}
-                            >
-                              <MenuItem value="" disabled>
-                                <Typography sx={{ color: palette.text.disabled, fontSize: "13px" }}>
-                                  Select a model
-                                </Typography>
-                              </MenuItem>
-                              {getProviderModels(config.judgeLlm.provider).map((model) => (
-                                <MenuItem key={model.id} value={model.id}>
-                                  <Stack
-                                    direction="row"
-                                    alignItems="center"
-                                    justifyContent="space-between"
-                                    sx={{ width: "100%" }}
-                                  >
-                                    <Typography sx={{ fontSize: "13px" }}>{model.name}</Typography>
-                                    {model.inputCost !== undefined && (
-                                      <Typography
-                                        sx={{ fontSize: "11px", color: palette.text.disabled }}
-                                      >
-                                        ${model.inputCost}/1M in
-                                      </Typography>
-                                    )}
-                                  </Stack>
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Box>
+                      {PROVIDERS[config.judgeLlm.provider] ? (
+                        /* Cloud judges, OpenRouter included: the gateway catalog, any ID typed */
+                        <ModelPicker
+                          value={config.judgeLlm.model}
+                          onChange={(model) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              judgeLlm: { ...prev.judgeLlm, model },
+                            }))
+                          }
+                          models={getProviderModels(config.judgeLlm.provider)}
+                          savedModelIds={getSavedModelsForProvider(config.judgeLlm.provider).map(
+                            (m) => m.name,
+                          )}
+                          placeholder={
+                            config.judgeLlm.provider === "openrouter"
+                              ? "Search or type an ID, e.g. openai/gpt-4o"
+                              : "Search or type a model ID"
+                          }
+                          testId="judge"
+                        />
                       ) : (
                         /* Local judge providers (Ollama, HuggingFace, Custom / Self-hosted) */
                         (() => {

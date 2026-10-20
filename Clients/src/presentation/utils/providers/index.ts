@@ -64,6 +64,9 @@ const PROVIDER_META: Record<string, { displayName: string; iconColor: string; lo
   },
 };
 
+/** Judge used until the user picks one or a saved preference exists. */
+export const DEFAULT_JUDGE = { provider: "openai", model: "gpt-4o" } as const;
+
 export const PROVIDERS: Record<string, ProviderConfig> = {
   "openai": {
     ...(openaiModels as { provider: string; displayName: string; models: ModelInfo[] }),

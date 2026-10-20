@@ -175,7 +175,10 @@ class EvalModelsService {
         const response = await CustomAxios.get<GatewayCatalogResponse>(
           "/ai-gateway/models/catalog",
         );
-        _gatewayModelsCache = response.data?.data?.models ?? response.data?.models ?? [];
+        const catalog = response.data?.data?.models ?? response.data?.models ?? [];
+        // An empty catalog means the gateway is down or restarting: ask again next time
+        if (catalog.length === 0) return [];
+        _gatewayModelsCache = catalog;
         _gatewayModelsCacheExpiry = Date.now() + GATEWAY_MODELS_TTL_MS;
       }
 

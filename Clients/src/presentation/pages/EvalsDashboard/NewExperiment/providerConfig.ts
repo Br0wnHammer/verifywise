@@ -35,14 +35,6 @@ export const CLOUD_PROVIDER_IDS = [
   "openrouter",
 ] as const;
 
-export const OPENROUTER_POPULAR_MODELS = [
-  { id: "openai/gpt-4o", name: "GPT-4o" },
-  { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet" },
-  { id: "google/gemini-pro-1.5", name: "Gemini Pro 1.5" },
-  { id: "meta-llama/llama-3.1-70b-instruct", name: "Llama 3.1 70B" },
-  { id: "mistralai/mistral-large", name: "Mistral Large" },
-] as const;
-
 /** Cloud providers that need API keys. */
 export const cloudProviders: readonly ProviderEntry[] = [
   {

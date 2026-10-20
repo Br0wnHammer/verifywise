@@ -6,6 +6,7 @@
  */
 
 import { deepEvalProjectsService } from "../../infrastructure/api/deepEvalProjectsService";
+import { evalModelsService } from "../../infrastructure/api/evalModelsService";
 import {
   deepEvalDatasetsService,
   isSingleTurnPrompt,
@@ -248,6 +249,12 @@ export const getMetrics = (params: Parameters<typeof metricsService.getMetrics>[
 export const getMetricAggregates = (
   params: Parameters<typeof metricsService.getMetricAggregates>[0],
 ) => metricsService.getMetricAggregates(params);
+
+// ==================== MODEL CATALOG ====================
+
+/** The provider's current chat models from the AI Gateway's LiteLLM catalog ([] when down). */
+export const getGatewayModelsForProvider = (provider: string) =>
+  evalModelsService.getGatewayModelsForProvider(provider);
 
 // ==================== MODEL VALIDATION ====================
 
