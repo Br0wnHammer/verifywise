@@ -14,12 +14,18 @@ once is reduced to one ("gemini/gemini/x" becomes "gemini/x"):
 - ai_gateway_virtual_keys.allowed_models and blocked_models. An admin may have
   copied the doubled name from the endpoints list; virtual key access rules
   compare these entries with the endpoint's model, so they are repaired the
-  same way or a block would stop matching. Order and NULLs are kept.
+  same way or a block would stop matching. Order and NULLs are kept. Entries
+  with a "*" are left alone: rewriting "gemini/gemini/*" to "gemini/*" would
+  let a key reach endpoints it was never allowed.
 
 Only the providers an API key can be stored for are repaired, the same set
-normalize_endpoint_model uses. A few real model names do repeat the prefix
-("perplexity/perplexity/sonar"); none of them belong to these providers
-(checked against LiteLLM's model list).
+normalize_endpoint_model uses. OpenRouter model ids are "<vendor>/<model>" and
+"openrouter" is itself a vendor, so LiteLLM has real names such as
+"openrouter/openrouter/auto". An OpenRouter name is never cut below three
+parts: "openrouter/openrouter/auto" is kept and
+"openrouter/openrouter/openrouter/auto" becomes "openrouter/openrouter/auto".
+No other provider in this set has a real name that repeats the prefix (checked
+against LiteLLM's model list).
 
 There is no downgrade: the doubled names never worked, so there is nothing to
 restore.
@@ -42,21 +48,31 @@ def upgrade() -> None:
     op.execute("SET search_path TO verifywise")
 
     # The provider list is VALID_PROVIDERS in routers/api_keys.py when this
-    # migration was written, frozen here on purpose.
+    # migration was written, frozen here on purpose. "rest" is the model with
+    # every leading provider prefix removed.
     op.execute(
         """
-        WITH repaired AS (
-            SELECT id, organization_id, model AS old_model,
-                   regexp_replace(model, '^(' || provider || '/)+', provider || '/') AS new_model
+        WITH stripped AS (
+            SELECT id, organization_id, provider, model AS old_model,
+                   regexp_replace(model, '^(' || provider || '/)+', '') AS rest
             FROM ai_gateway_endpoints
             WHERE provider IN ('openai', 'anthropic', 'gemini', 'mistral', 'xai', 'openrouter', 'together_ai', 'cohere')
               AND left(model, 2 * length(provider) + 2) = provider || '/' || provider || '/'
+        ),
+        repaired AS (
+            SELECT id, organization_id, old_model,
+                   CASE WHEN provider = 'openrouter' AND strpos(rest, '/') = 0
+                        THEN 'openrouter/openrouter/' || rest
+                        ELSE provider || '/' || rest
+                   END AS new_model
+            FROM stripped
         ),
         updated AS (
             UPDATE ai_gateway_endpoints e
             SET model = r.new_model
             FROM repaired r
             WHERE e.id = r.id
+              AND r.new_model <> r.old_model
             RETURNING e.id
         )
         INSERT INTO ai_gateway_endpoint_change_history
@@ -67,14 +83,25 @@ def upgrade() -> None:
         """
     )
 
-    # Same repair for virtual key access lists, keeping entry order
+    # Same repair for virtual key access lists, keeping entry order. "p" is the
+    # doubled provider, or NULL when the entry does not start with one.
     op.execute(
         r"""
         UPDATE ai_gateway_virtual_keys
         SET allowed_models = ARRAY(
-            SELECT regexp_replace(m, '^(openai|anthropic|gemini|mistral|xai|openrouter|together_ai|cohere)/(\1/)+', '\1/')
+            SELECT CASE
+                       WHEN a.p IS NULL OR strpos(t.m, '*') > 0 THEN t.m
+                       WHEN a.p = 'openrouter' AND strpos(b.rest, '/') = 0 THEN 'openrouter/openrouter/' || b.rest
+                       ELSE a.p || '/' || b.rest
+                   END
             FROM unnest(allowed_models) WITH ORDINALITY AS t(m, n)
-            ORDER BY n
+            CROSS JOIN LATERAL (
+                SELECT substring(t.m from '^(openai|anthropic|gemini|mistral|xai|openrouter|together_ai|cohere)/\1/') AS p
+            ) a
+            CROSS JOIN LATERAL (
+                SELECT regexp_replace(t.m, '^(' || a.p || '/)+', '') AS rest
+            ) b
+            ORDER BY t.n
         )
         WHERE allowed_models IS NOT NULL
           AND EXISTS (
@@ -87,9 +114,19 @@ def upgrade() -> None:
         r"""
         UPDATE ai_gateway_virtual_keys
         SET blocked_models = ARRAY(
-            SELECT regexp_replace(m, '^(openai|anthropic|gemini|mistral|xai|openrouter|together_ai|cohere)/(\1/)+', '\1/')
+            SELECT CASE
+                       WHEN a.p IS NULL OR strpos(t.m, '*') > 0 THEN t.m
+                       WHEN a.p = 'openrouter' AND strpos(b.rest, '/') = 0 THEN 'openrouter/openrouter/' || b.rest
+                       ELSE a.p || '/' || b.rest
+                   END
             FROM unnest(blocked_models) WITH ORDINALITY AS t(m, n)
-            ORDER BY n
+            CROSS JOIN LATERAL (
+                SELECT substring(t.m from '^(openai|anthropic|gemini|mistral|xai|openrouter|together_ai|cohere)/\1/') AS p
+            ) a
+            CROSS JOIN LATERAL (
+                SELECT regexp_replace(t.m, '^(' || a.p || '/)+', '') AS rest
+            ) b
+            ORDER BY t.n
         )
         WHERE blocked_models IS NOT NULL
           AND EXISTS (

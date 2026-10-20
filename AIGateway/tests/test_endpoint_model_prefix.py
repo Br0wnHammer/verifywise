@@ -29,6 +29,20 @@ def test_routed_model_names_are_kept():
     assert normalize_endpoint_model("openrouter", "openrouter/openai/gpt-4o") == "openrouter/openai/gpt-4o"
 
 
+def test_openrouter_own_models_are_kept():
+    # OpenRouter's own models have the vendor "openrouter" ("openrouter/auto"),
+    # so LiteLLM names them "openrouter/openrouter/auto"
+    for name in ("auto", "free", "bodybuilder"):
+        model = f"openrouter/openrouter/{name}"
+        assert normalize_endpoint_model("openrouter", model) == model
+
+
+def test_openrouter_own_models_saved_with_extra_prefix_are_repaired():
+    # The old form added "openrouter/" in front of LiteLLM's "openrouter/openrouter/auto"
+    assert normalize_endpoint_model("openrouter", "openrouter/openrouter/openrouter/auto") == "openrouter/openrouter/auto"
+    assert normalize_endpoint_model("openrouter", "openrouter/openrouter/openai/gpt-4o") == "openrouter/openai/gpt-4o"
+
+
 def test_real_model_names_that_repeat_the_prefix_are_kept():
     # LiteLLM lists some Perplexity models this way; they are valid names
     assert normalize_endpoint_model("perplexity", "perplexity/perplexity/sonar") == "perplexity/perplexity/sonar"
