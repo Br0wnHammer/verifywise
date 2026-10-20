@@ -1,5 +1,7 @@
+import logging
+
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from services.cost_service import estimate_prompt_cost
@@ -10,6 +12,31 @@ from services.llm_service import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+ERROR_MESSAGE_LIMIT = 500
+
+
+def _provider_error(exc: Exception) -> JSONResponse:
+    """
+    A failed provider call as a typed error: LiteLLM's exception class (AuthenticationError,
+    NotFoundError, RateLimitError, ...) and the provider's status code.
+
+    The HTTP status stays 502: callers forward it, and a provider's 401 must not read as
+    the caller's own session expiring.
+    """
+    status = getattr(exc, "status_code", None)
+    logger.warning("Provider call failed: %s (%s)", type(exc).__name__, status)
+    return JSONResponse(
+        status_code=502,
+        content={
+            "error": {
+                "type": type(exc).__name__,
+                "status_code": status if isinstance(status, int) else None,
+                "message": str(exc)[:ERROR_MESSAGE_LIMIT],
+            }
+        },
+    )
 
 
 class CompletionRequest(BaseModel):
@@ -74,15 +101,17 @@ async def chat_completions(request: Request, body: CompletionRequest):
             media_type="text/event-stream",
         )
 
-    result = await chat_completion(
-        model=body.model,
-        messages=body.messages,
-        api_key=api_key,
-        num_retries=body.num_retries,
-        fallback_models=body.fallback_models,
-        **kwargs,
-    )
-    return result
+    try:
+        return await chat_completion(
+            model=body.model,
+            messages=body.messages,
+            api_key=api_key,
+            num_retries=body.num_retries,
+            fallback_models=body.fallback_models,
+            **kwargs,
+        )
+    except Exception as exc:
+        return _provider_error(exc)
 
 
 @router.post("/v1/embeddings")
