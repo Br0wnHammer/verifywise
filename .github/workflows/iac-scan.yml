@@ -124,15 +124,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Ubuntu's prometheus package ships promtool. The alertmanager apt
-      # package is not published in the runner's default repos, so fetch a
-      # pinned amtool binary from the official GitHub release instead.
+      # The apt prometheus package is a 2.x build that cannot parse the v3
+      # `otlp` field this stack's config uses (compose deploys
+      # prom/prometheus:v3.1.0), and the alertmanager apt package is not in
+      # the runner's default repos — so fetch pinned upstream binaries.
       - name: Install promtool and amtool
         env:
+          PROMETHEUS_VERSION: 3.1.0
           AMTOOL_VERSION: 0.27.0
         run: |
           sudo apt-get update
-          sudo apt-get install -y prometheus python3-yaml
+          sudo apt-get install -y python3-yaml
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" | tar -xz
+          sudo cp "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
           curl -fsSL "https://github.com/prometheus/alertmanager/releases/download/v${AMTOOL_VERSION}/alertmanager-${AMTOOL_VERSION}.linux-amd64.tar.gz" | tar -xz
           sudo cp "alertmanager-${AMTOOL_VERSION}.linux-amd64/amtool" /usr/local/bin/amtool
           promtool --version
