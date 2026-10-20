@@ -5,8 +5,8 @@
  * Virtual key authentication is handled by the AIGateway Python service.
  */
 
-import { createProxyMiddleware } from "http-proxy-middleware";
-import { Router } from "express";
+import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
+import { Request, Router } from "express";
 import { getGatewayUrl } from "../utils/aiGatewayConfig";
 
 function virtualKeyProxyRoutes() {
@@ -19,8 +19,16 @@ function virtualKeyProxyRoutes() {
     // read now rather than when the router was built.
     router: () => getGatewayUrl(),
     changeOrigin: true,
-    // /v1/* → /v1/* (no rewrite — AIGateway already handles /v1/*)
+    // The router is mounted at /v1, so Express hands it "/chat/completions".
+    // The gateway serves these routes under /v1, so put the prefix back.
+    pathRewrite: (path: string) => `/v1${path}`,
     on: {
+      // The app-wide express.json() parser has already read the body from the
+      // stream; write it to the proxied request again or the gateway waits for
+      // a body that never arrives.
+      proxyReq: (proxyReq, req) => {
+        fixRequestBody(proxyReq, req as Request);
+      },
       error: (err, req, res) => {
         const errAny = err as any;
         console.error(
