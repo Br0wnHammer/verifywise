@@ -29,6 +29,11 @@ def test_routed_model_names_are_kept():
     assert normalize_endpoint_model("openrouter", "openrouter/openai/gpt-4o") == "openrouter/openai/gpt-4o"
 
 
+def test_real_model_names_that_repeat_the_prefix_are_kept():
+    # LiteLLM lists some Perplexity models this way; they are valid names
+    assert normalize_endpoint_model("perplexity", "perplexity/perplexity/sonar") == "perplexity/perplexity/sonar"
+
+
 def test_model_without_prefix_is_kept():
     assert normalize_endpoint_model("openai", "gpt-4o") == "gpt-4o"
 

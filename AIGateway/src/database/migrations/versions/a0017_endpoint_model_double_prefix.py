@@ -8,8 +8,11 @@ the provider rejects, so every request through them failed.
 The form and the endpoint API now keep a single prefix. This migration repairs
 rows saved before that: a model that starts with its provider prefix more than
 once is reduced to one ("gemini/gemini/x" becomes "gemini/x"). Other models are
-not touched. Provider names are checked to be plain identifiers before they are
-used in the pattern.
+not touched.
+
+Only the providers an API key can be stored for are repaired. A few real model
+names do repeat the prefix ("perplexity/perplexity/sonar"); none of them belong
+to these providers (checked against LiteLLM's model list).
 
 There is no downgrade: the doubled names never worked, so there is nothing to
 restore.
@@ -35,7 +38,10 @@ def upgrade() -> None:
         """
         UPDATE ai_gateway_endpoints
         SET model = regexp_replace(model, '^(' || provider || '/)+', provider || '/')
-        WHERE provider ~ '^[A-Za-z0-9_-]+$'
+        WHERE provider IN (
+            'openai', 'anthropic', 'gemini', 'mistral',
+            'xai', 'openrouter', 'together_ai', 'cohere'
+        )
           AND left(model, 2 * length(provider) + 2) = provider || '/' || provider || '/'
         """
     )
