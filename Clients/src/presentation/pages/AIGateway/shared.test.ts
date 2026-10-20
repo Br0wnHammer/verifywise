@@ -218,6 +218,27 @@ describe("AIGateway shared utilities", () => {
       ]);
     });
 
+    it("returns the same array for a provider across calls and re-renders", async () => {
+      mockGet.mockResolvedValue({
+        data: {
+          data: {
+            providers: ["openai"],
+            models: { openai: [{ id: "gpt-4o", mode: "chat" }] },
+          },
+        },
+      });
+
+      const { result, rerender } = renderHook(() => useGatewayModels());
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const first = result.current.getModelsForProvider("openai");
+      const firstUnknown = result.current.getModelsForProvider("unknown");
+      rerender();
+      expect(result.current.getModelsForProvider("openai")).toBe(first);
+      expect(result.current.getModelsForProvider("unknown")).toBe(firstUnknown);
+    });
+
     it("drops providers that an API key cannot be stored for", async () => {
       mockGet.mockResolvedValue({
         data: {
