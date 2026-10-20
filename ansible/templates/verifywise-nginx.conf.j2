@@ -65,12 +65,20 @@ server {
         proxy_buffering off;
         proxy_read_timeout 300s;
         client_max_body_size 10m;
-        # SDK clients expect JSON, not the HTML maintenance page above
-        error_page 502 503 504 = @v1_unavailable;
+        # SDK clients expect JSON, not the HTML maintenance page above.
+        # A timeout is its own error: the model call may still have run (and
+        # been billed), so it must not read as "unavailable, retry".
+        error_page 502 503 = @v1_unavailable;
+        error_page 504 = @v1_timeout;
     }
 
     location @v1_unavailable {
         default_type application/json;
         return 503 '{"detail":"VerifyWise is unavailable, please retry shortly"}';
+    }
+
+    location @v1_timeout {
+        default_type application/json;
+        return 504 '{"detail":"The AI Gateway did not respond within 300 seconds"}';
     }
 }

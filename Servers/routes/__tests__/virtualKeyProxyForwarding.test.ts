@@ -112,6 +112,17 @@ describe("/v1 virtual key proxy body handling", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ forwarded: json });
   });
+
+  it("names the problem when the body's encoding is not supported", async () => {
+    const res = await request(appWithRoute())
+      .post("/v1/chat/completions")
+      .set("Content-Type", "application/octet-stream")
+      .set("Content-Encoding", "compress")
+      .send(Buffer.from("x"));
+
+    expect(res.status).toBe(415);
+    expect(res.body).toEqual({ detail: "Unsupported Content-Encoding; use gzip, deflate or br" });
+  });
 });
 
 describe("/v1 virtual key proxy errors", () => {
@@ -119,6 +130,7 @@ describe("/v1 virtual key proxy errors", () => {
     headersSent,
     writeHead: jest.fn(),
     end: jest.fn(),
+    destroy: jest.fn(),
   });
 
   it("answers 502 in the gateway's error shape when the gateway cannot be reached", () => {
@@ -133,13 +145,14 @@ describe("/v1 virtual key proxy errors", () => {
     });
   });
 
-  it("closes a response that already started streaming instead of writing a status", () => {
+  it("cuts a response that already started streaming, so the client sees it was not complete", () => {
     virtualKeyProxyRoutes();
     const res = fakeRes(true);
 
     proxyOptions[0].on.error(new Error("socket hang up"), { url: "/chat/completions" }, res);
 
     expect(res.writeHead).not.toHaveBeenCalled();
-    expect(res.end).toHaveBeenCalledWith();
+    expect(res.end).not.toHaveBeenCalled();
+    expect(res.destroy).toHaveBeenCalled();
   });
 });

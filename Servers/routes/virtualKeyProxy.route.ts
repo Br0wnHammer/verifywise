@@ -57,9 +57,10 @@ function virtualKeyProxyRoutes() {
         );
         if (!res || !("writeHead" in res)) return;
         // A streamed response may fail after headers or chunks went out;
-        // writing a status then would throw, so close the response instead
+        // writing a status then would throw. Destroy the connection instead
+        // of ending it, so the client sees a cut-off stream, not a complete one
         if (res.headersSent) {
-          res.end();
+          res.destroy();
           return;
         }
         res.writeHead(502, { "Content-Type": "application/json" });
@@ -75,6 +76,10 @@ function virtualKeyProxyRoutes() {
     (err: { type?: string; status?: number }, _req: Request, res: Response, next: NextFunction) => {
       if (err?.type === "entity.too.large") {
         res.status(413).json({ detail: "Request body is larger than 10 MB" });
+        return;
+      }
+      if (err?.type === "encoding.unsupported") {
+        res.status(415).json({ detail: "Unsupported Content-Encoding; use gzip, deflate or br" });
         return;
       }
       if (err?.status && err.status >= 400 && err.status < 500) {
