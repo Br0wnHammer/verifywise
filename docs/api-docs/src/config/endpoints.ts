@@ -7148,6 +7148,46 @@ export const llmKeyEndpoints: Endpoint[] = [
   },
 ];
 
+// Mcp endpoints
+export const mcpEndpoints: Endpoint[] = [
+  {
+    method: 'GET',
+    path: '/mcp',
+    summary: "Anonymous",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Mcp",
+  },
+  {
+    method: 'POST',
+    path: '/mcp',
+    summary: "Anonymous",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Mcp",
+  },
+  {
+    method: 'DELETE',
+    path: '/mcp',
+    summary: "Anonymous",
+    description: "Requires role: Super Admin",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Mcp",
+  },
+];
+
 // Model Inventory endpoints
 export const modelInventoryEndpoints: Endpoint[] = [
   {
@@ -11031,42 +11071,6 @@ export const superAdminEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
-    path: '/super-admin/mcp-server',
-    summary: "Get Mcp Server",
-    description: "Requires role: Super Admin",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Super Admin",
-  },
-  {
-    method: 'DELETE',
-    path: '/super-admin/mcp-server',
-    summary: "Uninstall Mcp Server Handler",
-    description: "Requires role: Super Admin",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Super Admin",
-  },
-  {
-    method: 'POST',
-    path: '/super-admin/mcp-server/install',
-    summary: "Install Mcp Server Handler",
-    description: "Requires role: Super Admin",
-    requiresAuth: true,
-    responses: [
-      { status: 200, description: "Success" },
-      { status: 500, description: "Internal server error" },
-    ],
-    tag: "Super Admin",
-  },
-  {
-    method: 'GET',
     path: '/super-admin/super-admins',
     summary: "List Super Admins",
     description: "Requires role: Super Admin",
@@ -12101,6 +12105,7 @@ export const allEndpoints = {
   iso42001: iso42001Endpoints,
   llmEvals: llmEvalsEndpoints,
   llmKey: llmKeyEndpoints,
+  mcp: mcpEndpoints,
   modelInventory: modelInventoryEndpoints,
   modelRisk: modelRiskEndpoints,
   mrm: mrmEndpoints,

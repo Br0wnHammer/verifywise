@@ -7817,6 +7817,8 @@ tags:
   -
     name: Mail
   -
+    name: Mcp
+  -
     name: 'Model Inventory'
   -
     name: 'Model Risks'
@@ -26171,50 +26173,6 @@ paths:
         -
           bearerAuth: []
       description: 'Requires role: Super Admin'
-  /super-admin/mcp-server:
-    get:
-      summary: 'Get Mcp Server'
-      responses:
-        '200':
-          description: Success
-        '500':
-          description: 'Internal server error'
-      tags:
-        - 'Super Admin'
-      operationId: getMcpServer
-      security:
-        -
-          bearerAuth: []
-      description: 'Requires role: Super Admin'
-    delete:
-      summary: 'Uninstall Mcp Server Handler'
-      responses:
-        '200':
-          description: Success
-        '500':
-          description: 'Internal server error'
-      tags:
-        - 'Super Admin'
-      operationId: uninstallMcpServerHandler
-      security:
-        -
-          bearerAuth: []
-      description: 'Requires role: Super Admin'
-  /super-admin/mcp-server/install:
-    post:
-      summary: 'Install Mcp Server Handler'
-      responses:
-        '200':
-          description: Success
-        '500':
-          description: 'Internal server error'
-      tags:
-        - 'Super Admin'
-      operationId: installMcpServerHandler
-      security:
-        -
-          bearerAuth: []
-      description: 'Requires role: Super Admin'
   /super-admin/super-admins:
     get:
       summary: 'List Super Admins'
@@ -26255,6 +26213,49 @@ paths:
       tags:
         - 'Super Admin'
       operationId: revokeSuperAdmin
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Super Admin'
+  /mcp:
+    post:
+      summary: Anonymous
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Mcp
+      operationId: mcp_anonymous
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Super Admin'
+    get:
+      summary: Anonymous
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Mcp
+      operationId: mcp_anonymous
+      security:
+        -
+          bearerAuth: []
+      description: 'Requires role: Super Admin'
+    delete:
+      summary: Anonymous
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - Mcp
+      operationId: mcp_anonymous
       security:
         -
           bearerAuth: []
