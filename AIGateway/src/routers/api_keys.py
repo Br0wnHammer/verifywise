@@ -73,10 +73,12 @@ def _rejects_key(provider: str, resp: httpx.Response, forbidden_rejects: bool) -
     """True when the provider refused the key itself."""
     if resp.status_code == 401:
         return True
-    # A 403 can also mean a working key without permission to list models
-    # (e.g. an OpenAI restricted key), so callers decide whether it counts.
+    # A 403 can also mean a working key without permission to list models (an OpenAI
+    # restricted key, an Anthropic permission_error). Unless the caller counts every 403,
+    # only one whose body blames the key itself does: Gemini's API_KEY_* reasons for a
+    # blocked or leaked key.
     if resp.status_code == 403:
-        return forbidden_rejects
+        return forbidden_rejects or "API_KEY" in resp.text
     # Gemini answers an invalid or expired key with 400 API_KEY_INVALID, not 401.
     return provider == "gemini" and resp.status_code == 400 and "API_KEY_INVALID" in resp.text
 
@@ -144,12 +146,9 @@ async def verify_saved_api_key(key_id: int, request: Request):
     provider = str(key.get("provider") or "").strip().lower()
     if provider == "google":
         provider = "gemini"
-    # The wizard runs this check on every open. An OpenAI restricted key can call
-    # models but gets 403 listing them, so OpenAI's 403 does not mark the key refused;
-    # elsewhere a 403 means the key is blocked (Gemini PERMISSION_DENIED, for one).
-    return {
-        "data": await _check_provider_key(provider, api_key, forbidden_rejects=provider != "openai")
-    }
+    # The wizard runs this check on every open: a 403 for missing permissions must not
+    # lock out a key that can still call models.
+    return {"data": await _check_provider_key(provider, api_key, forbidden_rejects=False)}
 
 
 @router.get("")

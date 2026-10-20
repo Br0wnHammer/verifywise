@@ -202,12 +202,17 @@ async def _upsert_judge_scorer(
 
 
 def _scorer_summary(scorer_scores: List[Dict[str, Any]]) -> Optional[Tuple[float, float]]:
-    """Average score and pass rate over the calls that returned a score; None without any."""
+    """
+    Average score and pass rate of one scorer, or None when no call returned a score.
+
+    Like a built-in metric: an errored call counts as failed in the pass rate and is
+    left out of the average, so 1 pass and 9 errors reads avg 1.0, pass rate 10%.
+    """
     scored = [s for s in scorer_scores if isinstance(s.get("score"), (int, float))]
     if not scored:
         return None
     avg_score = sum(s["score"] for s in scored) / len(scored)
-    passed_rate = sum(1 for s in scored if s["passed"]) / len(scored)
+    passed_rate = sum(1 for s in scorer_scores if s["passed"]) / len(scorer_scores)
     return avg_score, passed_rate
 
 
@@ -1150,7 +1155,7 @@ async def run_evaluation(
                             print(f"      Output: {output_text[:80]}...")
                             
                             try:
-                                result: Optional[ScorerResult] = await run_custom_scorer(
+                                result: ScorerResult = await run_custom_scorer(
                                     scorer_config=scorer,
                                     input_text=input_text,
                                     output_text=output_text,
@@ -1158,10 +1163,9 @@ async def run_evaluation(
                                 )
                                 scorer_error = result.error
                             except Exception as scorer_err:
-                                result = None
                                 scorer_error = redact_secrets(str(scorer_err))
 
-                            if result is None or scorer_error is not None:
+                            if scorer_error is not None:
                                 # The judge was not reached: no score, rather than a 0.0
                                 print(f"      ❌ Error: {scorer_error}")
                                 scorer_scores.append({

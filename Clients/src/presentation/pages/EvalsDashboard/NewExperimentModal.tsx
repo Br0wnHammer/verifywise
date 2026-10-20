@@ -72,11 +72,7 @@ import {
   availableModelProviders,
   CLOUD_PROVIDER_IDS,
 } from "./NewExperiment/providerConfig";
-import {
-  canProceedToNextStep,
-  getMissingKeyProviders,
-  getScorerJudgeProviders,
-} from "./NewExperiment/stepValidation";
+import { canProceedToNextStep, getMissingKeyProviders } from "./NewExperiment/stepValidation";
 import DatasetStep from "./NewExperiment/DatasetStep";
 import ModelStep from "./NewExperiment/ModelStep";
 
@@ -451,20 +447,14 @@ export default function NewExperimentModal({
     setActiveStep((prev) => prev + 1);
   };
 
-  // The modal stays mounted between opens: check keys afresh each time, so a key fixed
-  // or revoked in the meantime is seen as it is now. Declared before the key load so
-  // the load picks up this open's generation.
+  // Load configured API keys and saved models when modal opens. The modal stays mounted
+  // between opens, so key checks start afresh each time: a key fixed or revoked in the
+  // meantime is seen as it is now.
   useEffect(() => {
     if (!isOpen) return;
-    openGeneration.current += 1;
+    const generation = ++openGeneration.current;
     checkedKeyIds.current = new Set();
     setRejectedKeyIds(new Set());
-  }, [isOpen]);
-
-  // Load configured API keys and saved models when modal opens
-  useEffect(() => {
-    if (!isOpen) return;
-    const generation = openGeneration.current;
     (async () => {
       try {
         setLoadingApiKeys(true);
@@ -472,27 +462,28 @@ export default function NewExperimentModal({
           getAllLlmApiKeys(),
           evalModelsService.listModels(orgId || undefined),
         ]);
-        keysGeneration.current = generation;
+        // A slower load from an earlier open must not replace this open's list
+        if (generation !== openGeneration.current) return;
         setConfiguredApiKeys(keys);
         setSavedModels(models);
       } catch {
-        /* ignore */
+        /* ignore: checks run against the list already loaded */
       } finally {
-        setLoadingApiKeys(false);
+        if (generation === openGeneration.current) {
+          keysGeneration.current = generation;
+          setLoadingApiKeys(false);
+        }
       }
     })();
   }, [isOpen, orgId]);
 
-  // Check the saved keys of each chosen provider once per open, so a dead key shows the
-  // key field instead of "API key configured" and the run doesn't fail on it later
+  // Check the saved keys of the chosen model and judge providers once per open, so a dead
+  // key shows the key field instead of "API key configured" and the run doesn't fail on it
   useEffect(() => {
     // Wait for this open's key list; the previous open's may name deleted keys
-    if (!isOpen || keysGeneration.current !== openGeneration.current) return;
+    if (!isOpen || loadingApiKeys || keysGeneration.current !== openGeneration.current) return;
     const generation = openGeneration.current;
-    const providers: string[] = [
-      config.model.accessMethod,
-      ...getScorerJudgeProviders({ judgeMode, selectedScorerIds, userScorers }),
-    ];
+    const providers: string[] = [config.model.accessMethod];
     // The standard judge only runs outside scorer-only mode
     if (judgeMode !== "scorer") providers.push(config.judgeLlm.provider);
     for (const key of configuredApiKeys) {
@@ -509,9 +500,8 @@ export default function NewExperimentModal({
     }
   }, [
     isOpen,
+    loadingApiKeys,
     judgeMode,
-    selectedScorerIds,
-    userScorers,
     config.model.accessMethod,
     config.judgeLlm.provider,
     configuredApiKeys,
@@ -2730,9 +2720,9 @@ export default function NewExperimentModal({
         judgeMode,
         selectedScorerIds,
         userScorers,
-        configuredApiKeys: usableApiKeys,
+        configuredApiKeys,
       }),
-    [judgeMode, selectedScorerIds, userScorers, usableApiKeys],
+    [judgeMode, selectedScorerIds, userScorers, configuredApiKeys],
   );
 
   const canProceed = canProceedToNextStep({

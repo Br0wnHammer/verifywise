@@ -508,10 +508,10 @@ async def test_scorer_errors_fail_the_run_with_the_error_and_save_no_metric(
     assert quality == []
 
 
-def test_scorer_summary_leaves_errored_calls_out_of_average_and_pass_rate() -> None:
+def test_scorer_summary_counts_errored_calls_as_failed_but_not_in_the_average() -> None:
     from utils.run_evaluation import _scorer_summary
 
     calls = [{"score": 1.0, "passed": True}] + [{"score": None, "passed": False}] * 9
 
-    assert _scorer_summary(calls) == (1.0, 1.0)
+    assert _scorer_summary(calls) == (1.0, 0.1)
     assert _scorer_summary([{"score": None, "passed": False}]) is None

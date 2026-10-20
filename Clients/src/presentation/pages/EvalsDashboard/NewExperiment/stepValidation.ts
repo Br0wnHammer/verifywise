@@ -39,41 +39,9 @@ export interface ModelProviderForValidation {
 }
 
 /**
- * Cloud providers whose API key the selected scorers' judge models need.
- * Self-hosted / Ollama scorers are excluded since they don't need a cloud key.
- */
-export function getScorerJudgeProviders(params: {
-  judgeMode: JudgeMode;
-  selectedScorerIds: string[];
-  userScorers: ScorerForValidation[];
-}): string[] {
-  const { judgeMode, selectedScorerIds, userScorers } = params;
-  if (judgeMode !== "scorer" && judgeMode !== "both") return [];
-
-  const scorersToCheck =
-    selectedScorerIds.length > 0
-      ? userScorers.filter((s) => selectedScorerIds.includes(s.id))
-      : userScorers;
-
-  const providers: string[] = [];
-  for (const scorer of scorersToCheck) {
-    const judgeModel = scorer.config?.judgeModel;
-    if (typeof judgeModel === "object" && judgeModel?.provider) {
-      const provider = judgeModel.provider.toLowerCase();
-      if (
-        !(SCORER_PROVIDERS_WITHOUT_API_KEY as readonly string[]).includes(provider) &&
-        !providers.includes(provider)
-      ) {
-        providers.push(provider);
-      }
-    }
-  }
-  return providers;
-}
-
-/**
- * Providers required by selected scorers that have no usable saved API key in org
- * settings.
+ * Providers required by selected scorers that have no saved API key in org
+ * settings. Self-hosted / Ollama scorers are excluded since they don't need a
+ * cloud key.
  */
 export function getMissingKeyProviders(params: {
   judgeMode: JudgeMode;
@@ -81,10 +49,29 @@ export function getMissingKeyProviders(params: {
   userScorers: ScorerForValidation[];
   configuredApiKeys: ApiKeyForValidation[];
 }): string[] {
-  const { configuredApiKeys } = params;
-  return getScorerJudgeProviders(params).filter(
-    (provider) => !configuredApiKeys.some((k) => k.provider === provider),
-  );
+  const { judgeMode, selectedScorerIds, userScorers, configuredApiKeys } = params;
+  if (judgeMode !== "scorer" && judgeMode !== "both") return [];
+
+  const scorersToCheck =
+    selectedScorerIds.length > 0
+      ? userScorers.filter((s) => selectedScorerIds.includes(s.id))
+      : userScorers;
+
+  const missing: string[] = [];
+  for (const scorer of scorersToCheck) {
+    const judgeModel = scorer.config?.judgeModel;
+    if (typeof judgeModel === "object" && judgeModel?.provider) {
+      const provider = judgeModel.provider.toLowerCase();
+      if (
+        !(SCORER_PROVIDERS_WITHOUT_API_KEY as readonly string[]).includes(provider) &&
+        !configuredApiKeys.some((k) => k.provider === provider) &&
+        !missing.includes(provider)
+      ) {
+        missing.push(provider);
+      }
+    }
+  }
+  return missing;
 }
 
 export function canProceedToNextStep(params: {

@@ -401,16 +401,17 @@ async def run_custom_scorer(
         client, api_key = get_provider_client(provider, endpoint_url=endpoint_url, api_key=config_api_key)
         print(f"   ✅ Using {provider.upper()} API client")
     except RuntimeError as e:
+        # Stored in the experiment's results, shown to the organization.
+        init_error = f"Failed to initialize model: {redact_secrets(str(e))}"
         return ScorerResult(
             scorer_id=scorer_id,
             scorer_name=scorer_name,
             label="ERROR",
             score=0.0,
-            # Stored in the experiment's results, shown to the organization.
-            raw_response=f"Failed to initialize model: {redact_secrets(str(e))}",
+            raw_response=init_error,
             passed=False,
             threshold=pass_line,
-            error=f"Failed to initialize model: {redact_secrets(str(e))}",
+            error=init_error,
         )
     
     try:
@@ -473,15 +474,16 @@ async def run_custom_scorer(
         
     except Exception as e:
         # Return a failed result on error
+        call_error = f"Error calling judge model ({provider}): {redact_secrets(str(e))}"
         return ScorerResult(
             scorer_id=scorer_id,
             scorer_name=scorer_name,
             label="ERROR",
             score=0.0,
-            raw_response=f"Error calling judge model ({provider}): {redact_secrets(str(e))}",
+            raw_response=call_error,
             passed=False,
             threshold=pass_line,
-            error=f"Error calling judge model ({provider}): {redact_secrets(str(e))}",
+            error=call_error,
         )
 
 

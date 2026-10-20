@@ -1253,6 +1253,8 @@ async def test_deepeval_scorer_controller(
                 "score": result.score,
                 "passed": result.passed,
                 "rawResponse": result.raw_response,
+                # Set when the judge could not be called; label and score are placeholders
+                "error": result.error,
                 "tokenUsage": {
                     "promptTokens": result.prompt_tokens,
                     "completionTokens": result.completion_tokens,
