@@ -145,3 +145,83 @@ def test_non_string_model_is_rejected_on_update(monkeypatch):
     res = client.patch("/endpoints/7", json={"model": 5})
     assert res.status_code == 400
     assert "update" not in saved
+
+
+# ─── Virtual key access lists get the same repair ────────────────────────────
+
+from utils.endpoint_model import normalize_acl_models  # noqa: E402
+import routers.virtual_keys as vk_router  # noqa: E402
+
+
+def test_acl_entries_are_repaired_like_endpoint_models():
+    # Endpoint models are stored collapsed, so a doubled entry would never match
+    assert normalize_acl_models(
+        ["gemini/gemini/gemini-2.5-pro", "openrouter/openrouter/auto", "gpt-4o"], blocked=True
+    ) == ["gemini/gemini-2.5-pro", "openrouter/openrouter/auto", "gpt-4o"]
+
+
+def test_allowed_wildcards_are_kept_as_typed():
+    # Collapsing "gemini/gemini/*" to "gemini/*" would widen access
+    assert normalize_acl_models(["gemini/gemini/*"], blocked=False) == ["gemini/gemini/*"]
+
+
+def test_blocked_wildcards_also_cover_the_collapsed_names():
+    assert normalize_acl_models(["gemini/gemini/*", "openrouter/openrouter/a*"], blocked=True) == [
+        "gemini/gemini/*", "gemini/*", "openrouter/openrouter/a*", "openrouter/a*",
+    ]
+
+
+def test_saving_a_repaired_list_again_does_not_change_it():
+    once = normalize_acl_models(["gemini/gemini/*", "xai/xai/grok-4"], blocked=True)
+    assert normalize_acl_models(once, blocked=True) == once
+
+
+def _vk_client(monkeypatch):
+    saved = {}
+
+    async def fake_create(org_id, data):
+        saved["create"] = dict(data)
+        return {"id": 1, "plain_key": "sk-vw-test", **data}
+
+    async def fake_update(org_id, key_id, data):
+        saved["update"] = dict(data)
+        return {"id": key_id, **data}
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(vk_router, "create_virtual_key", fake_create)
+    monkeypatch.setattr(vk_router, "update_virtual_key", fake_update)
+    monkeypatch.setattr(vk_router, "notify_config_change", noop)
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def admin_context(request: Request, call_next):
+        request.state.organization_id = 1
+        request.state.user_id = 1
+        request.state.role = "Admin"
+        return await call_next(request)
+
+    app.include_router(vk_router.router)
+    return TestClient(app), saved
+
+
+def test_create_key_stores_repaired_access_lists(monkeypatch):
+    client, saved = _vk_client(monkeypatch)
+    res = client.post("/virtual-keys", json={
+        "name": "FAQ app",
+        "allowed_models": ["gemini/gemini/gemini-2.5-flash"],
+        "blocked_models": ["gemini/gemini/gemini-2.5-pro"],
+    })
+    assert res.status_code == 201, res.text
+    assert saved["create"]["allowed_models"] == ["gemini/gemini-2.5-flash"]
+    assert saved["create"]["blocked_models"] == ["gemini/gemini-2.5-pro"]
+
+
+def test_update_key_stores_repaired_access_lists(monkeypatch):
+    client, saved = _vk_client(monkeypatch)
+    res = client.patch("/virtual-keys/3", json={"blocked_models": ["xai/xai/*"], "allowed_providers": ["xai"]})
+    assert res.status_code == 200, res.text
+    assert saved["update"]["blocked_models"] == ["xai/xai/*", "xai/*"]
+    assert saved["update"]["allowed_providers"] == ["xai"]

@@ -11,6 +11,7 @@ from crud.virtual_keys import (
     update_virtual_key,
 )
 from utils.auth import get_org_id, get_role_id, get_user_id, require_admin
+from utils.endpoint_model import normalize_acl_models
 from utils.notifications import config_event, notify_config_change
 
 router = APIRouter(prefix="/virtual-keys", tags=["virtual-keys"])
@@ -82,6 +83,8 @@ async def create_key(request: Request):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"{field} must be an array of strings",
                 )
+            if field in ("allowed_models", "blocked_models"):
+                value = normalize_acl_models(value, blocked=field == "blocked_models")
             acl_fields[field] = value
 
     org_id = get_org_id(request)
@@ -198,7 +201,10 @@ async def update_key(key_id: int, request: Request):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"{field} must be an array of strings",
                 )
-            updates[field] = value if value is not None else []
+            value = value if value is not None else []
+            if field in ("allowed_models", "blocked_models"):
+                value = normalize_acl_models(value, blocked=field == "blocked_models")
+            updates[field] = value
 
     # metadata
     if "metadata" in body:

@@ -33,3 +33,31 @@ def normalize_endpoint_model(provider: Optional[str], model: Optional[str]) -> O
             break
         model = shorter
     return model
+
+
+def normalize_acl_models(entries: list[str], blocked: bool) -> list[str]:
+    """Repair a virtual key's allowed/blocked model list the way a0017 does.
+
+    Access rules are compared with the stored endpoint model, which is now
+    collapsed on save, so an entry typed with a doubled prefix would never
+    match. A plain entry gets the same repair as an endpoint model. Wildcards
+    fail closed: an allowed one is kept as typed (collapsing it would widen
+    access), a blocked one is kept and followed by its fully collapsed form.
+    Order is kept and duplicates are dropped, so saving a list twice is stable.
+    """
+    from routers.api_keys import VALID_PROVIDERS
+
+    result: list[str] = []
+    for entry in entries:
+        provider = entry.split("/", 1)[0]
+        if "*" not in entry:
+            result.append(normalize_endpoint_model(provider, entry))
+            continue
+        result.append(entry)
+        prefix = f"{provider}/"
+        if blocked and provider in VALID_PROVIDERS and entry.startswith(prefix + prefix):
+            collapsed = entry
+            while collapsed.startswith(prefix + prefix):
+                collapsed = collapsed[len(prefix):]
+            result.append(collapsed)
+    return list(dict.fromkeys(result))
