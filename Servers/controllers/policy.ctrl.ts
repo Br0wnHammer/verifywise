@@ -43,6 +43,14 @@ import {
 import { NotificationEntityType } from "../domain.layer/interfaces/i.notification";
 import logger from "../utils/logger/fileLogger";
 import { translateError } from "../utils/i18n.utils";
+import { roleHasPermission } from "../utils/rolePermissions.utils";
+
+/** Only a reviewer assigned to the policy, or an Admin, may approve or reject its review. */
+async function canDecideReview(req: Request, policy: any): Promise<boolean> {
+  const reviewerIds: number[] = (policy.assigned_reviewer_ids || []).map(Number);
+  if (reviewerIds.includes(req.userId!)) return true;
+  return roleHasPermission(req.organizationId ?? null, req.role!, "organization.admin");
+}
 import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper";
 import { sanitizeUserHtml } from "../utils/sanitization.utils";
 
@@ -425,6 +433,11 @@ export class PolicyController {
       }
       const policy = policyResult[0] as any;
 
+      if (!(await canDecideReview(req, policy))) {
+        await transaction.rollback();
+        return res.status(403).json(STATUS_CODE[403](req.t!("Access denied")));
+      }
+
       // Update review status to approved
       await updatePolicyReviewStatusQuery(
         req.organizationId!,
@@ -500,6 +513,11 @@ export class PolicyController {
         return res.status(404).json(STATUS_CODE[404](null));
       }
       const policy = policyResult[0] as any;
+
+      if (!(await canDecideReview(req, policy))) {
+        await transaction.rollback();
+        return res.status(403).json(STATUS_CODE[403](req.t!("Access denied")));
+      }
 
       // Update review status to changes_requested
       await updatePolicyReviewStatusQuery(

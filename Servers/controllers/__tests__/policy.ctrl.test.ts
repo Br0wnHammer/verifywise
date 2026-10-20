@@ -69,6 +69,9 @@ jest.mock("../../utils/statusCode.utils", () => ({
 jest.mock("../../utils/i18n.utils", () => ({
   translateError: jest.fn((_, err) => (err as Error).message),
 }));
+jest.mock("../../utils/rolePermissions.utils", () => ({
+  roleHasPermission: jest.fn(async (_org: any, role: string) => role === "Admin"),
+}));
 jest.mock("../../domain.layer/exceptions/custom.exception", () => ({
   ForbiddenException: class ForbiddenException extends Error {},
   ValidationException: class ValidationException extends Error {},
@@ -85,6 +88,7 @@ import {
 import { generatePolicyPDF } from "../../services/policies/policyExporter";
 import { convertDocxToHtml } from "../../services/policies/policyImporter";
 import { ForbiddenException } from "../../domain.layer/exceptions/custom.exception";
+import { updatePolicyReviewStatusQuery } from "../../utils/policyManager.utils";
 
 const mockGetAll = getAllPoliciesQuery as jest.MockedFunction<typeof getAllPoliciesQuery>;
 const mockGetById = getPolicyByIdQuery as jest.MockedFunction<typeof getPolicyByIdQuery>;
@@ -479,6 +483,34 @@ describe("policy.ctrl", () => {
         }),
       });
     });
+    it("lets an assigned reviewer of any role approve", async () => {
+      mockGetById.mockResolvedValue([
+        { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7] },
+      ] as any);
+      const req = createReq({ userId: 7, role: "Auditor", params: { id: "1" }, body: {} } as any);
+      const res = createRes();
+      await PolicyController.approveReview(req, res);
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+    it("returns 403 when the caller is neither an assigned reviewer nor an Admin", async () => {
+      mockGetById.mockResolvedValue([
+        { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7] },
+      ] as any);
+      const req = createReq({ userId: 8, role: "Editor", params: { id: "1" }, body: {} } as any);
+      const res = createRes();
+      await PolicyController.approveReview(req, res);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(updatePolicyReviewStatusQuery).not.toHaveBeenCalled();
+    });
+    it("lets an unassigned Admin approve", async () => {
+      mockGetById.mockResolvedValue([
+        { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7] },
+      ] as any);
+      const req = createReq({ userId: 8, role: "Admin", params: { id: "1" }, body: {} } as any);
+      const res = createRes();
+      await PolicyController.approveReview(req, res);
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
     it("should return 500 on error", async () => {
       mockGetById.mockRejectedValue(new Error("DB error"));
       const req = createReq({ params: { id: "1" }, body: { comment: "ok" } });
@@ -540,6 +572,21 @@ describe("policy.ctrl", () => {
           assigned_reviewer_ids: [2],
         }),
       });
+    });
+    it("returns 403 when the caller is neither an assigned reviewer nor an Admin", async () => {
+      mockGetById.mockResolvedValue([
+        { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7] },
+      ] as any);
+      const req = createReq({
+        userId: 8,
+        role: "Auditor",
+        params: { id: "1" },
+        body: { comment: "fix" },
+      } as any);
+      const res = createRes();
+      await PolicyController.rejectReview(req, res);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(updatePolicyReviewStatusQuery).not.toHaveBeenCalled();
     });
     it("should return 500 on error", async () => {
       mockGetById.mockRejectedValue(new Error("DB error"));
