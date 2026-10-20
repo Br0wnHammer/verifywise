@@ -85,6 +85,6 @@ server {
 
     location @v1_timeout {
         default_type application/json;
-        return 504 '{"detail":"The AI Gateway did not respond within 300 seconds"}';
+        return 504 '{"detail":"The AI Gateway request timed out"}';
     }
 }

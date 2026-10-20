@@ -153,11 +153,19 @@ from utils.endpoint_model import normalize_acl_models  # noqa: E402
 import routers.virtual_keys as vk_router  # noqa: E402
 
 
-def test_acl_entries_are_repaired_like_endpoint_models():
+def test_allowed_entries_are_repaired_like_endpoint_models():
     # Endpoint models are stored collapsed, so a doubled entry would never match
     assert normalize_acl_models(
-        ["gemini/gemini/gemini-2.5-pro", "openrouter/openrouter/auto", "gpt-4o"], blocked=True
+        ["gemini/gemini/gemini-2.5-pro", "openrouter/openrouter/auto", "gpt-4o"], blocked=False
     ) == ["gemini/gemini-2.5-pro", "openrouter/openrouter/auto", "gpt-4o"]
+
+
+def test_blocked_entries_keep_the_typed_form_too():
+    # An endpoint can still hold a doubled name (saved under another provider),
+    # so the block keeps matching it as well as the repaired name
+    assert normalize_acl_models(
+        ["gemini/gemini/gemini-2.5-pro", "openrouter/openrouter/auto", "gpt-4o"], blocked=True
+    ) == ["gemini/gemini/gemini-2.5-pro", "gemini/gemini-2.5-pro", "openrouter/openrouter/auto", "gpt-4o"]
 
 
 def test_allowed_wildcards_are_kept_as_typed():
@@ -216,7 +224,7 @@ def test_create_key_stores_repaired_access_lists(monkeypatch):
     })
     assert res.status_code == 201, res.text
     assert saved["create"]["allowed_models"] == ["gemini/gemini-2.5-flash"]
-    assert saved["create"]["blocked_models"] == ["gemini/gemini-2.5-pro"]
+    assert saved["create"]["blocked_models"] == ["gemini/gemini/gemini-2.5-pro", "gemini/gemini-2.5-pro"]
 
 
 def test_update_key_stores_repaired_access_lists(monkeypatch):

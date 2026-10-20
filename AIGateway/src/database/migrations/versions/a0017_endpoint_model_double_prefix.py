@@ -17,10 +17,12 @@ once is reduced to one ("gemini/gemini/x" becomes "gemini/x"):
   same way or a block would stop matching. Order and NULLs are kept.
   Wildcards fail closed: an allowed entry with a "*" is left alone (rewriting
   "gemini/gemini/*" to "gemini/*" would let a key reach endpoints it was never
-  allowed), while a blocked one is kept and followed by its fully collapsed
-  form ("gemini/gemini/*" adds "gemini/*", "openrouter/openrouter/a*" adds
-  "openrouter/a*"), so the block still covers the repaired endpoints and
-  OpenRouter's own models. A wider block can only refuse more.
+  allowed). Every blocked entry is kept and followed by its repaired form
+  ("gemini/gemini/x" adds "gemini/x", "gemini/gemini/*" adds "gemini/*",
+  "openrouter/openrouter/a*" adds "openrouter/a*"), so the block still covers
+  the repaired endpoints, any endpoint that keeps a doubled name, and
+  OpenRouter's own models. A wider block can only refuse more. The API
+  applies the same rules on save (normalize_acl_models).
 
 Only the providers an API key can be stored for are repaired, the same set
 normalize_endpoint_model uses. OpenRouter model ids are "<vendor>/<model>" and
@@ -126,17 +128,18 @@ def upgrade() -> None:
             CROSS JOIN LATERAL (
                 SELECT regexp_replace(t.m, '^(' || a.p || '/)+', '') AS rest
             ) b
-            -- k = 1 is the entry itself, repaired unless it is a wildcard;
-            -- k = 2 adds the fully collapsed form of a doubled wildcard
+            -- Blocks fail closed: k = 1 keeps the entry as it is, k = 2 adds
+            -- its repaired form (a wildcard fully collapsed)
             CROSS JOIN LATERAL (VALUES
-                (1, CASE
-                        WHEN a.p IS NULL OR strpos(t.m, '*') > 0 THEN t.m
+                (1, t.m),
+                (2, CASE
+                        WHEN a.p IS NULL THEN NULL
+                        WHEN strpos(t.m, '*') > 0 THEN a.p || '/' || b.rest
                         WHEN a.p = 'openrouter' AND strpos(b.rest, '/') = 0 THEN 'openrouter/openrouter/' || b.rest
                         ELSE a.p || '/' || b.rest
-                    END),
-                (2, CASE WHEN a.p IS NOT NULL AND strpos(t.m, '*') > 0 THEN a.p || '/' || b.rest END)
+                    END)
             ) AS v(k, m)
-            WHERE v.k = 1 OR v.m IS NOT NULL
+            WHERE v.k = 1 OR (v.m IS NOT NULL AND v.m <> t.m)
             ORDER BY t.n, v.k
         )
         WHERE blocked_models IS NOT NULL
