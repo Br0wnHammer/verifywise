@@ -49,7 +49,9 @@ interface CspWindowState {
 }
 
 declare global {
-  interface Window extends Partial<CspWindowState> {}
+  interface Window {
+    __cspViolations?: CspWindowState["__cspViolations"];
+  }
 }
 
 export class CspCollector {

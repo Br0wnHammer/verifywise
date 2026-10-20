@@ -89,6 +89,7 @@ jest.mock("http-proxy-middleware", () => {
   return { createProxyMiddleware, fixRequestBody };
 });
 
+import "./testEnv";
 import { createTestApp, testRequest } from "../integration/setup";
 
 interface CapturedRequest {

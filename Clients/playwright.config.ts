@@ -154,8 +154,9 @@ export default defineConfig({
     // Scheduled canary smoke tests (issue #4681-a) + CSP evidence capture
     // (issue #4686-a), both owned by the canary pod under e2e/canary/. The
     // scheduled workflow runs `npx playwright test --project=canary
-    // --grep @canary`, so both specs live in this project. Super-admin auth
-    // state (e2e/.auth/user.json) per the canary design; csp-capture tolerates
+    // --grep @canary`, so both specs live in this project. Org Admin auth
+    // state: the journey opens /overview, and ProtectedRoute sends a
+    // super-admin (user.json) to /super-admin instead. csp-capture tolerates
     // the login redirect on protected routes by design.
     {
       name: "canary",
@@ -167,7 +168,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         channel: browserChannel,
-        storageState: "e2e/.auth/user.json",
+        storageState: "e2e/.auth/admin.json",
       },
     },
     // Quarantined specs (currently only plugins.spec.ts, see the file's

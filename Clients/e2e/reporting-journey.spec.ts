@@ -35,6 +35,10 @@ test.describe("Reporting journey: generate → download", () => {
     projectPage: page,
     projectName,
   }) => {
+    // The default 60 s test timeout is shorter than the report poll alone; when
+    // generation ran long, the test was killed mid-poll and the retry's setup
+    // deleted the org under it (seen as "poll run failed: 401").
+    test.setTimeout(REPORT_POLL_TIMEOUT_MS + 60_000);
     const token = await readAuthToken(page);
 
     const { projectId } = await page.evaluate(

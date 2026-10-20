@@ -25,6 +25,20 @@ async function readAuthToken(page: import("@playwright/test").Page): Promise<str
   });
 }
 
+/**
+ * Open the dashboard with live metrics. useDashboardMetrics skips the network
+ * for 30 s after any earlier dashboard load (and storage state can carry that
+ * cache in), so a risk or use case created moments ago would not show.
+ */
+async function openFreshDashboard(page: import("@playwright/test").Page) {
+  await page.evaluate(() => {
+    Object.keys(localStorage)
+      .filter((key) => key.includes("dashboard_metrics_cache"))
+      .forEach((key) => localStorage.removeItem(key));
+  });
+  await page.goto("/");
+}
+
 async function dismissWelcomeDialog(page: import("@playwright/test").Page) {
   const welcomeSkip = page.getByRole("button", { name: /skip for now/i });
   if (await welcomeSkip.isVisible({ timeout: 3_000 }).catch(() => false)) {
@@ -81,7 +95,7 @@ test.describe("Dashboard recent activity navigation", () => {
     const riskId = riskResponse?.data?.id as number;
     expect(riskId).toBeGreaterThan(0);
 
-    await page.goto("/");
+    await openFreshDashboard(page);
     await dismissWelcomeDialog(page);
 
     // The Recent activity card lives in the executive view; switch when the
@@ -115,7 +129,7 @@ test.describe("Dashboard recent activity navigation", () => {
     projectPage: page,
     projectName,
   }) => {
-    await page.goto("/");
+    await openFreshDashboard(page);
     await dismissWelcomeDialog(page);
 
     const executiveToggle = page.getByRole("button", { name: /executive/i });
