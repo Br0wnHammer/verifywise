@@ -10628,6 +10628,16 @@ export const translations: Record<string, Record<string, string>> = {
     "Check it worked": "Prüfen, ob es funktioniert hat",
     "What the file contains": "Was die Datei enthält",
     "Tools it adds": "Hinzugefügte Tools",
+    "Download config file": "Konfigurationsdatei herunterladen",
+    "Preparing...": "Wird vorbereitet...",
+    "7 days": "7 Tage",
+    "30 days": "30 Tage",
+    "60 days": "60 Tage",
+    "90 days": "90 Tage",
+    "180 days": "180 Tage",
+    "Failed to create the config file.": "Die Konfigurationsdatei konnte nicht erstellt werden.",
+    "Downloading revokes the token issued here last time. Any copy of the previous file — on another machine, or in another project — stops working immediately.":
+      "Beim Herunterladen wird das zuletzt hier ausgestellte Token widerrufen. Jede Kopie der vorherigen Datei, auf einem anderen Rechner oder in einem anderen Projekt, funktioniert sofort nicht mehr.",
   },
 
   fr: {
@@ -21171,6 +21181,16 @@ export const translations: Record<string, Record<string, string>> = {
     "Check it worked": "Vérifier que cela fonctionne",
     "What the file contains": "Contenu du fichier",
     "Tools it adds": "Outils ajoutés",
+    "Download config file": "Télécharger le fichier de configuration",
+    "Preparing...": "Préparation...",
+    "7 days": "7 jours",
+    "30 days": "30 jours",
+    "60 days": "60 jours",
+    "90 days": "90 jours",
+    "180 days": "180 jours",
+    "Failed to create the config file.": "Impossible de créer le fichier de configuration.",
+    "Downloading revokes the token issued here last time. Any copy of the previous file — on another machine, or in another project — stops working immediately.":
+      "Le téléchargement révoque le jeton émis ici la dernière fois. Toute copie du fichier précédent, sur une autre machine ou dans un autre projet, cesse immédiatement de fonctionner.",
   },
   es: {
     // Jira incidents extension
@@ -31629,5 +31649,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Check it worked": "Comprobar que funcionó",
     "What the file contains": "Qué contiene el archivo",
     "Tools it adds": "Herramientas que añade",
+    "Download config file": "Descargar el archivo de configuración",
+    "Preparing...": "Preparando...",
+    "7 days": "7 días",
+    "30 days": "30 días",
+    "60 days": "60 días",
+    "90 days": "90 días",
+    "180 days": "180 días",
+    "Failed to create the config file.": "No se pudo crear el archivo de configuración.",
+    "Downloading revokes the token issued here last time. Any copy of the previous file — on another machine, or in another project — stops working immediately.":
+      "Al descargarlo se revoca el token emitido aquí la última vez. Cualquier copia del archivo anterior, en otro equipo o en otro proyecto, deja de funcionar de inmediato.",
   },
 };

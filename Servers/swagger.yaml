@@ -26219,47 +26219,43 @@ paths:
       description: 'Requires role: Super Admin'
   /mcp:
     post:
-      summary: Anonymous
+      summary: 'MCP JSON-RPC request'
       responses:
         '200':
-          description: Success
+          description: 'JSON-RPC response'
         '500':
           description: 'Internal server error'
       tags:
         - Mcp
-      operationId: mcp_anonymous
+      operationId: handleMcpRequest
       security:
         -
           bearerAuth: []
-      description: 'Requires role: Super Admin'
+      description: 'Stateless MCP endpoint for the super admin tools. Send a JSON-RPC message in the body; the reply is plain JSON, not an SSE stream. Requires role: Super Admin'
     get:
-      summary: Anonymous
+      summary: 'Rejected (use POST)'
       responses:
-        '200':
-          description: Success
-        '500':
-          description: 'Internal server error'
+        '405':
+          description: 'Method not allowed: this server has no event stream, use POST'
       tags:
         - Mcp
-      operationId: mcp_anonymous
+      operationId: rejectMcpGet
       security:
         -
           bearerAuth: []
-      description: 'Requires role: Super Admin'
+      description: 'Always returns 405. Requires role: Super Admin'
     delete:
-      summary: Anonymous
+      summary: 'Rejected (stateless server)'
       responses:
-        '200':
-          description: Success
-        '500':
-          description: 'Internal server error'
+        '405':
+          description: 'Method not allowed: there is no session to end'
       tags:
         - Mcp
-      operationId: mcp_anonymous
+      operationId: rejectMcpDelete
       security:
         -
           bearerAuth: []
-      description: 'Requires role: Super Admin'
+      description: 'Always returns 405. Requires role: Super Admin'
   /internal/ai-gateway/notify:
     post:
       tags:

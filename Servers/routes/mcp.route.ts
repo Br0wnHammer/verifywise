@@ -21,7 +21,7 @@ router.use(authenticateJWT, superAdminOnly);
  * `enableJsonResponse` keeps replies as ordinary JSON rather than an SSE
  * stream, which survives the proxy in front of the deployment unchanged.
  */
-router.post("/", async (req: Request, res: Response) => {
+async function handleMcpRequest(req: Request, res: Response) {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
@@ -47,17 +47,22 @@ router.post("/", async (req: Request, res: Response) => {
       res.status(500).json(STATUS_CODE[500]({ message: "MCP request failed" }));
     }
   }
-});
+}
 
 // Stateless mode serves no standalone event stream and keeps no session to
 // terminate, so the other two verbs the spec allows are answered explicitly
 // rather than falling through to the app's 404.
-router.get("/", (_req: Request, res: Response) => {
+function rejectMcpGet(_req: Request, res: Response) {
   res.status(405).json(STATUS_CODE[405]({ message: "Use POST for MCP requests" }));
-});
+}
 
-router.delete("/", (_req: Request, res: Response) => {
+function rejectMcpDelete(_req: Request, res: Response) {
   res.status(405).json(STATUS_CODE[405]({ message: "This MCP server is stateless" }));
-});
+}
+
+// Named handlers give each operation a distinct operationId in swagger.yaml.
+router.post("/", handleMcpRequest);
+router.get("/", rejectMcpGet);
+router.delete("/", rejectMcpDelete);
 
 export default router;
