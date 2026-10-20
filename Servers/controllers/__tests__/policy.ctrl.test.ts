@@ -502,6 +502,15 @@ describe("policy.ctrl", () => {
       expect(res.status).toHaveBeenCalledWith(403);
       expect(updatePolicyReviewStatusQuery).not.toHaveBeenCalled();
     });
+    it("returns 403 when the author assigned themselves as reviewer", async () => {
+      mockGetById.mockResolvedValue([
+        { id: 1, title: "P1", author_id: 7, assigned_reviewer_ids: [7] },
+      ] as any);
+      const req = createReq({ userId: 7, role: "Editor", params: { id: "1" }, body: {} } as any);
+      const res = createRes();
+      await PolicyController.approveReview(req, res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
     it("lets an unassigned Admin approve", async () => {
       mockGetById.mockResolvedValue([
         { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7] },

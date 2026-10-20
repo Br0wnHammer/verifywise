@@ -44,15 +44,21 @@ import { NotificationEntityType } from "../domain.layer/interfaces/i.notificatio
 import logger from "../utils/logger/fileLogger";
 import { translateError } from "../utils/i18n.utils";
 import { roleHasPermission } from "../utils/rolePermissions.utils";
-
-/** Only a reviewer assigned to the policy, or an Admin, may approve or reject its review. */
-async function canDecideReview(req: Request, policy: any): Promise<boolean> {
-  const reviewerIds: number[] = (policy.assigned_reviewer_ids || []).map(Number);
-  if (reviewerIds.includes(req.userId!)) return true;
-  return roleHasPermission(req.organizationId ?? null, req.role!, "organization.admin");
-}
 import { logProcessing, logSuccess, logFailure } from "../utils/logger/logHelper";
 import { sanitizeUserHtml } from "../utils/sanitization.utils";
+
+/**
+ * Only a reviewer assigned to the policy, or an Admin, may approve or reject
+ * its review. The author never reviews their own policy unless they are an Admin.
+ */
+async function canDecideReview(req: Request, policy: any): Promise<boolean> {
+  if (await roleHasPermission(req.organizationId ?? null, req.role!, "organization.admin")) {
+    return true;
+  }
+  if (Number(policy.author_id) === req.userId) return false;
+  const reviewerIds: number[] = (policy.assigned_reviewer_ids || []).map(Number);
+  return reviewerIds.includes(req.userId!);
+}
 
 export class PolicyController {
   // Get all policies
