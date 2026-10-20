@@ -29,11 +29,17 @@ import {
 const mockQuery = sequelize.query as unknown as jest.Mock;
 const transaction = {} as any;
 
-const queueRequestAndStep = (myApproval: { approval_result: string } | undefined) => {
+const queueRequestAndStep = (
+  myApproval: { approval_result: string } | undefined,
+  votedOnEarlierStep = false,
+) => {
   mockQuery
     .mockResolvedValueOnce([{ id: 7, status: ApprovalRequestStatus.PENDING, current_step: 1 }])
     .mockResolvedValueOnce([{ id: 70 }])
     .mockResolvedValueOnce(myApproval ? [myApproval] : []);
+  if (!myApproval) {
+    mockQuery.mockResolvedValueOnce(votedOnEarlierStep ? [{ "?column?": 1 }] : []);
+  }
 };
 
 const sqlCalls = () => mockQuery.mock.calls.map((call) => String(call[0]));
@@ -67,6 +73,24 @@ describe("processApprovalQuery decision guard", () => {
       expect(sqlCalls().some((sql) => /^\s*UPDATE/i.test(sql))).toBe(false);
     },
   );
+
+  it("treats a retry after the user's vote moved the request on as a repeat, not a 403", async () => {
+    queueRequestAndStep(undefined, true);
+
+    await expect(
+      processApprovalQuery(7, 5, ApprovalResult.APPROVED, undefined, 1, transaction),
+    ).rejects.toBeInstanceOf(ValidationException);
+
+    const [sql, options] = mockQuery.mock.calls[3];
+    expect(sql).toMatch(/ars\.request_id = :requestId/);
+    expect(options.replacements).toEqual({
+      organizationId: 1,
+      requestId: 7,
+      userId: 5,
+      pending: ApprovalResult.PENDING,
+    });
+    expect(sqlCalls().some((s) => /^\s*UPDATE/i.test(s))).toBe(false);
+  });
 
   it("locks the request row first so concurrent decisions run one at a time", async () => {
     queueRequestAndStep(undefined);

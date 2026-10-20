@@ -678,6 +678,27 @@ export const processApprovalQuery = async (
   )) as { approval_result: string }[];
 
   if (!myApproval) {
+    // A retry or double submit after this user's vote moved the request to
+    // the next step lands here too. That is a repeat, not an outsider.
+    const [earlierVote] = await sequelize.query(
+      `SELECT 1
+       FROM approval_request_step_approvals arsa
+       JOIN approval_request_steps ars
+         ON ars.id = arsa.request_step_id AND ars.organization_id = arsa.organization_id
+       WHERE arsa.organization_id = :organizationId
+         AND ars.request_id = :requestId
+         AND arsa.approver_id = :userId
+         AND arsa.approval_result <> :pending
+       LIMIT 1`,
+      {
+        replacements: { organizationId, requestId, userId, pending: ApprovalResult.PENDING },
+        type: "SELECT",
+        transaction,
+      },
+    );
+    if (earlierVote) {
+      throw new ValidationException("You have already responded to this step");
+    }
     throw new ForbiddenException("You are not an approver on the current step");
   }
   if (myApproval.approval_result !== ApprovalResult.PENDING) {
