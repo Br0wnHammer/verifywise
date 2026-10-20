@@ -69,21 +69,29 @@ def detect_provider_from_model(model_name: str) -> Optional[str]:
     return None
 
 
-def check_api_key_available(provider: str) -> bool:
-    """Check if the API key for a provider is available in environment variables."""
-    if provider not in PROVIDER_API_KEY_MAP:
-        return True  # Unknown provider, assume it's fine
-
-    env_var = PROVIDER_API_KEY_MAP.get(provider)
-    if env_var is None:
-        return True  # No API key required
-
-    return bool(os.getenv(env_var))
+def provider_needs_key(provider: str) -> bool:
+    """False for Ollama, HuggingFace and unknown providers, which run without a key."""
+    return PROVIDER_API_KEY_MAP.get(provider) is not None
 
 
-def check_openrouter_available() -> bool:
-    """Check if OpenRouter is configured as a fallback."""
-    return bool(os.getenv("OPENROUTER_API_KEY"))
+# Provider keys and judge settings a run must take from its own config only.
+# run_evaluation sets them inside the run subprocess from the org's saved keys.
+_RUN_ENV_STRIPPED = {
+    *(v for v in PROVIDER_API_KEY_MAP.values() if v),
+    "GEMINI_API_KEY",
+    "HF_API_KEY",
+}
+
+
+def run_subprocess_env() -> Dict[str, str]:
+    """The run subprocess environment: the server's, minus any provider key or G_EVAL_*
+    setting, so one org's run never falls back to a key that isn't that org's."""
+    env = {
+        k: v for k, v in os.environ.items()
+        if k not in _RUN_ENV_STRIPPED and not k.startswith("G_EVAL_")
+    }
+    env["PYTHONUNBUFFERED"] = "1"
+    return env
 
 
 async def check_db_api_key_available(organization_id: int, provider: str) -> bool:
@@ -268,7 +276,7 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
     """
     Validate that the required API key is available for a model.
 
-    Checks both environment variables AND the database for stored API keys.
+    Checks the organization's saved API keys (AI Gateway key storage).
 
     Returns:
     {
@@ -290,25 +298,21 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
 
     if not provider:
         # Unknown provider - can't validate, assume it's fine
-        has_openrouter_env = check_openrouter_available()
-        has_openrouter_db = await check_db_openrouter_available(organization_id)
+        has_openrouter = await check_db_openrouter_available(organization_id)
         return JSONResponse(content={
             "valid": True,
             "model_name": model_name,
             "provider": None,
             "has_api_key": True,
-            "has_openrouter_fallback": has_openrouter_env or has_openrouter_db,
+            "has_openrouter_fallback": has_openrouter,
             "error_message": None,
         })
 
-    # Check both environment variables and database for API keys
-    has_api_key_env = check_api_key_available(provider)
+    # Only the org's saved keys count: a run never sees keys from the server environment
     has_api_key_db = await check_db_api_key_available(organization_id, provider)
-    has_api_key = has_api_key_env or has_api_key_db
+    has_api_key = not provider_needs_key(provider) or has_api_key_db
 
-    has_openrouter_env = check_openrouter_available()
-    has_openrouter_db = await check_db_openrouter_available(organization_id)
-    has_openrouter = has_openrouter_env or has_openrouter_db
+    has_openrouter = await check_db_openrouter_available(organization_id)
 
     # Model is valid if it has its API key OR OpenRouter is available as fallback
     # Note: OpenRouter can proxy to many models but not all (e.g., not ollama/huggingface local)
@@ -322,7 +326,7 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
         else:
             error_message = f"API key for provider '{provider}' is not configured."
 
-    # Only a saved key the run would use is probed; an env-only key is the server's
+    # Only a saved key the run would use is probed
     probe_failed = False
     probe_error_code = None
     if is_valid and payload.probe and has_api_key_db and provider in RUN_KEY_PROVIDERS:
@@ -522,8 +526,7 @@ async def run_evaluation_task(experiment_id: str, config: Dict, organization_id:
         })
 
         # Async subprocess with piped output (non-blocking)
-        env = dict(**os.environ)
-        env["PYTHONUNBUFFERED"] = "1"
+        env = run_subprocess_env()
 
         proc = await asyncio.create_subprocess_exec(
             python_executable,

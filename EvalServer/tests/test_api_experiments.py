@@ -267,18 +267,11 @@ def test_update_experiment_wrong_type_422(client, patched_controllers) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_validate_model_with_valid_provider(
-    client, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_validate_model_with_a_saved_key(client, monkeypatch: pytest.MonkeyPatch) -> None:
     from routers import evaluation_logs as router_module
 
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-x")
-    monkeypatch.setattr(
-        router_module, "check_db_api_key_available", AsyncMock(return_value=False)
-    )
-    monkeypatch.setattr(
-        router_module, "check_db_openrouter_available", AsyncMock(return_value=False)
-    )
+    monkeypatch.setattr(router_module, "check_db_api_key_available", AsyncMock(return_value=True))
+    monkeypatch.setattr(router_module, "check_db_openrouter_available", AsyncMock(return_value=False))
 
     res = client.post(
         "/deepeval/models/validate",
@@ -290,6 +283,59 @@ def test_validate_model_with_valid_provider(
     assert body["valid"] is True
     assert body["provider"] == "openai"
     assert body["has_api_key"] is True
+
+
+def test_validate_model_ignores_server_env_keys(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A run never sees the server's provider keys, so they can't make a model valid."""
+    from routers import evaluation_logs as router_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-server")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-server")
+    monkeypatch.setattr(router_module, "check_db_api_key_available", AsyncMock(return_value=False))
+    monkeypatch.setattr(router_module, "check_db_openrouter_available", AsyncMock(return_value=False))
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gpt-4o-mini", "provider": "openai"},
+        headers=_headers(),
+    )
+    body = res.json()
+    assert body["valid"] is False
+    assert body["has_api_key"] is False
+    assert body["has_openrouter_fallback"] is False
+
+
+@pytest.mark.parametrize("provider", ["ollama", "huggingface"])
+def test_validate_model_keyless_providers_stay_valid(client, monkeypatch: pytest.MonkeyPatch, provider) -> None:
+    from routers import evaluation_logs as router_module
+
+    monkeypatch.setattr(router_module, "check_db_api_key_available", AsyncMock(return_value=False))
+    monkeypatch.setattr(router_module, "check_db_openrouter_available", AsyncMock(return_value=False))
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "llama3", "provider": provider},
+        headers=_headers(),
+    )
+    assert res.json()["valid"] is True
+
+
+def test_run_subprocess_env_drops_provider_keys_and_judge_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keys an earlier run or the operator left in the server env must not reach another org's run."""
+    from routers.evaluation_logs import run_subprocess_env
+
+    for var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY",
+                "MISTRAL_API_KEY", "OPENROUTER_API_KEY", "HF_API_KEY", "G_EVAL_BASE_URL", "G_EVAL_API_KEY",
+                "G_EVAL_PROVIDER"):
+        monkeypatch.setenv(var, "org-a-value")
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "gw")
+    monkeypatch.setenv("DB_HOST", "db")
+
+    env = run_subprocess_env()
+    assert "org-a-value" not in env.values()
+    assert env["AI_GATEWAY_INTERNAL_KEY"] == "gw"
+    assert env["DB_HOST"] == "db"
+    assert env["PYTHONUNBUFFERED"] == "1"
 
 
 def test_validate_model_auto_detects_provider(
