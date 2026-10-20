@@ -75,6 +75,10 @@ jest.mock("../../domain.layer/exceptions/custom.exception", () => ({
   ForbiddenException: class ForbiddenException extends Error {},
 }));
 
+jest.mock("../../utils/rolePermissions.utils", () => ({
+  roleHasPermission: jest.fn(async (_org: number, role: string) => role === "Admin"),
+}));
+
 // Mock BullMQ Queue to prevent Redis connection attempts
 jest.mock("bullmq", () => ({
   Queue: jest.fn().mockImplementation(() => ({
@@ -95,6 +99,7 @@ import {
   sendInAppNotification,
 } from "../../services/inAppNotification.service";
 import { sequelize } from "../../database/db";
+import { ApprovalResult } from "../../domain.layer/enums/approval-workflow.enum";
 import {
   createApprovalRequestQuery,
   getApprovalRequestByIdQuery,
@@ -855,6 +860,50 @@ describe("approvalRequest.ctrl", () => {
       expect(mockTransaction.rollback).toHaveBeenCalled();
       expect(mockTransaction.commit).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("refuses an override from a role without approvalRequest.admin", async () => {
+      const req = createReq({
+        role: "Editor",
+        params: { id: "1" },
+        body: { comments: "approver left", override: true, step_number: 2 },
+      });
+      const res = createRes();
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      mockProcessApprovalQuery.mockReset();
+
+      await approveRequest(req as Request, res as Response);
+
+      expect(mockProcessApprovalQuery).not.toHaveBeenCalled();
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("passes an admin override with its step number to the util", async () => {
+      const req = createReq({
+        role: "Admin",
+        params: { id: "1" },
+        body: { comments: "approver left", override: true, step_number: 2 },
+      });
+      const res = createRes();
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      mockProcessApprovalQuery.mockReset();
+      mockProcessApprovalQuery.mockResolvedValue(null);
+
+      await approveRequest(req as Request, res as Response);
+
+      expect(mockProcessApprovalQuery).toHaveBeenCalledWith(
+        1,
+        1,
+        ApprovalResult.APPROVED,
+        "approver left",
+        1,
+        mockTransaction,
+        { stepNumber: 2 },
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("returns 409 when the approver has already responded", async () => {

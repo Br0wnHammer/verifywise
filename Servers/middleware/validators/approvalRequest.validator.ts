@@ -15,6 +15,11 @@ export const validateCreateApprovalRequest = [
 export const validateApprovalActionBody = [
   param("id").isInt({ min: 1 }).withMessage("id must be a positive integer"),
   body("comments").optional({ nullable: true, checkFalsy: false }).isString(),
+  body("override").optional().isBoolean({ strict: true }).withMessage("override must be a boolean"),
+  body("step_number")
+    .if(body("override").equals("true"))
+    .isInt({ min: 1 })
+    .withMessage("step_number must be a positive integer when override is set"),
   handleValidationErrors,
 ];
 

@@ -202,6 +202,23 @@ anything else, so decisions on one request run one at a time. Without the lock,
 two approvers on a step that needs every approver could vote at once, each
 still see the other as pending, and leave the step stuck.
 
+An admin (any role with the `approvalRequest.admin` permission) can decide a
+step they are not an approver on, e.g. one stuck on an approver who left. The
+override is explicit: the approve/reject body carries `override: true`,
+`step_number` (the step the admin means) and a non-empty `comments` reason.
+
+| Override refused because                         | Response |
+| ------------------------------------------------ | -------- |
+| Role lacks `approvalRequest.admin`               | 403      |
+| The admin made the request                       | 403      |
+| `step_number` is no longer the current step      | 409      |
+| No comment                                       | 409      |
+
+The admin's vote is written to the step (replacing a vote of theirs, if any)
+and an approve completes the step whoever is still pending; a reject rejects
+the request as usual. The AI Advisor never overrides. There is no UI for it
+yet.
+
 The AI Advisor's approve/reject tools call the same function, so the same
 rules apply to them. They act as the user who confirmed the action and fail
 with an explicit error if no user id reaches them.

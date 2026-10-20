@@ -20,6 +20,7 @@ import { getPendingApprovalsQuery, processApprovalQuery } from "../approvalReque
 import {
   ApprovalRequestStatus,
   ApprovalResult,
+  ApprovalStepStatus,
 } from "../../domain.layer/enums/approval-workflow.enum";
 import {
   ForbiddenException,
@@ -135,6 +136,79 @@ describe("processApprovalQuery decision guard", () => {
       approvalResult: ApprovalResult.APPROVED,
       comments: "ok",
     });
+  });
+});
+
+describe("processApprovalQuery admin override", () => {
+  beforeEach(() => mockQuery.mockReset());
+
+  // Request 7 by user 3, on step 1 (id 70) of 2.
+  const queueOverrideRequest = () => {
+    mockQuery
+      .mockResolvedValueOnce([
+        { id: 7, status: ApprovalRequestStatus.PENDING, current_step: 1, requested_by: 3 },
+      ])
+      .mockResolvedValueOnce([{ id: 70 }]);
+  };
+
+  it.each([
+    ["the step it named has moved on", 2, 9, "approver left"],
+    ["it has no comment", 1, 9, "  "],
+  ])("refuses an override when %s", async (_label, stepNumber, userId, comments) => {
+    queueOverrideRequest();
+
+    await expect(
+      processApprovalQuery(7, userId, ApprovalResult.APPROVED, comments, 1, transaction, {
+        stepNumber,
+      }),
+    ).rejects.toBeInstanceOf(ValidationException);
+    expect(sqlCalls().some((sql) => /^\s*(INSERT|UPDATE)/i.test(sql))).toBe(false);
+  });
+
+  it("refuses an override of the admin's own request", async () => {
+    queueOverrideRequest();
+
+    await expect(
+      processApprovalQuery(7, 3, ApprovalResult.APPROVED, "mine", 1, transaction, {
+        stepNumber: 1,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(sqlCalls().some((sql) => /^\s*(INSERT|UPDATE)/i.test(sql))).toBe(false);
+  });
+
+  it("records the admin's vote and completes a step still waiting on others", async () => {
+    queueOverrideRequest();
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (/requires_all_approvers/.test(sql)) return [{ requires_all_approvers: true }];
+      if (/SELECT approver_id, approval_result/.test(sql)) {
+        return [
+          { approver_id: 6, approval_result: ApprovalResult.PENDING },
+          { approver_id: 9, approval_result: ApprovalResult.APPROVED },
+        ];
+      }
+      if (/COUNT\(\*\)/.test(sql)) return [{ count: "2" }];
+      return [];
+    });
+
+    await processApprovalQuery(7, 9, ApprovalResult.APPROVED, "approver left", 1, transaction, {
+      stepNumber: 1,
+    }).catch(() => undefined);
+
+    const insert = mockQuery.mock.calls.find((call) =>
+      /INSERT INTO approval_request_step_approvals/.test(String(call[0])),
+    );
+    expect(insert![1].replacements).toMatchObject({
+      requestStepId: 70,
+      userId: 9,
+      approvalResult: ApprovalResult.APPROVED,
+      comments: "approver left",
+    });
+    const completeStep = mockQuery.mock.calls.find(
+      (call) =>
+        /UPDATE approval_request_steps/.test(String(call[0])) &&
+        call[1].replacements.status === ApprovalStepStatus.COMPLETED,
+    );
+    expect(completeStep).toBeDefined();
   });
 });
 

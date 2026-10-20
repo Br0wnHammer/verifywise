@@ -31,7 +31,9 @@ import {
   processApprovalQuery,
   withdrawApprovalRequestQuery,
   tryAutoApproveRequestQuery,
+  ApprovalOverride,
 } from "../utils/approvalRequest.utils";
+import { roleHasPermission } from "../utils/rolePermissions.utils";
 import { TransientApprovalError } from "../advisor/approval/approvalGateway";
 import {
   getApprovalWorkflowByIdQuery,
@@ -55,6 +57,25 @@ import {
 import { EMAIL_TEMPLATES } from "../constants/emailTemplates";
 
 import { translateError } from "../utils/i18n.utils";
+
+/**
+ * Reads an admin override (`override: true` + `step_number`, validated by
+ * validateApprovalActionBody) from an approve/reject body. Only a role with
+ * approvalRequest.admin may override; anyone else gets a 403.
+ */
+async function resolveOverride(req: Request): Promise<ApprovalOverride | undefined> {
+  if (req.body?.override !== true) {
+    return undefined;
+  }
+  const allowed =
+    !!req.role &&
+    (await roleHasPermission(req.organizationId ?? null, req.role, "approvalRequest.admin"));
+  if (!allowed) {
+    throw new ForbiddenException("Only an admin can override an approval step");
+  }
+  return { stepNumber: Number(req.body.step_number) };
+}
+
 /**
  * Create new approval request
  * @route POST /api/approval-requests
@@ -375,6 +396,8 @@ export async function approveRequest(req: Request, res: Response): Promise<any> 
     // id validated by validateApprovalActionBody
     const requestId = parseInt(String(id), 10);
 
+    const override = await resolveOverride(req);
+
     // Process the approval
     const notificationInfo = await processApprovalQuery(
       requestId,
@@ -383,13 +406,16 @@ export async function approveRequest(req: Request, res: Response): Promise<any> 
       comments,
       organizationId,
       transaction,
+      override,
     );
 
     await transaction.commit();
 
     logStructured(
       "successful",
-      `approved request ${requestId}`,
+      override
+        ? `approved request ${requestId} step ${override.stepNumber} by admin override (user ${userId})`
+        : `approved request ${requestId}`,
       "approveRequest",
       "approvalRequest.ctrl.ts",
     );
@@ -574,6 +600,8 @@ export async function rejectRequest(req: Request, res: Response): Promise<any> {
     // id validated by validateApprovalActionBody
     const requestId = parseInt(String(id), 10);
 
+    const override = await resolveOverride(req);
+
     // Process the rejection
     const notificationInfo = await processApprovalQuery(
       requestId,
@@ -582,13 +610,16 @@ export async function rejectRequest(req: Request, res: Response): Promise<any> {
       comments,
       organizationId,
       transaction,
+      override,
     );
 
     await transaction.commit();
 
     logStructured(
       "successful",
-      `rejected request ${requestId}`,
+      override
+        ? `rejected request ${requestId} step ${override.stepNumber} by admin override (user ${userId})`
+        : `rejected request ${requestId}`,
       "rejectRequest",
       "approvalRequest.ctrl.ts",
     );
