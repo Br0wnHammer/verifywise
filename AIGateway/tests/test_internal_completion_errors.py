@@ -62,10 +62,23 @@ async def test_budget_error_is_typed(monkeypatch):
     assert error["type"] == "BudgetExceededError"
 
 
-async def test_unexpected_error_is_typed_by_class_without_a_status(monkeypatch):
-    error = await _error(monkeypatch, RuntimeError("boom"))
+async def test_unexpected_error_is_typed_by_class_without_its_text(monkeypatch):
+    error = await _error(monkeypatch, RuntimeError("boom sk-test internal detail"))
     assert error["type"] == "RuntimeError"
     assert error["status_code"] is None
+    assert "boom" not in error["message"]
+
+
+async def test_provider_message_never_carries_a_key(monkeypatch):
+    text = (
+        "bad key sk-test for https://generativelanguage.googleapis.com/v1beta/models/x"
+        "?key=AIzaSyA1234567890abcdefghijklmnop&alt=sse; other sk-proj-abcdefghijkl"
+    )
+    error = await _error(monkeypatch, litellm.AuthenticationError(text, "gemini", "gemini-x"))
+    assert "sk-test" not in error["message"]
+    assert "AIzaSyA1234567890abcdefghijklmnop" not in error["message"]
+    assert "sk-proj-abcdefghijkl" not in error["message"]
+    assert "key=***" in error["message"]
 
 
 async def test_long_message_is_clipped(monkeypatch):
