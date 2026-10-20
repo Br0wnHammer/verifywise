@@ -129,6 +129,30 @@ TRANSIENT_ERROR_PATTERNS = [
     "try again",
 ]
 
+# Typed errors from the AI Gateway (LiteLLM's exception class), read before any text pattern.
+# GatewayProviderError reads "<Type> (<status>): <message>", possibly inside a wrapper message.
+# Types not listed here (RateLimitError, BadRequestError, ...) fall through to the patterns,
+# so a quota 429 still counts as fatal and a plain rate limit does not.
+TYPED_FATAL_ERRORS = {
+    "AuthenticationError": (
+        "invalid_api_key",
+        "The provider rejected the API key. Please check your API key configuration.",
+    ),
+    "PermissionDeniedError": (
+        "permission_denied",
+        "Permission denied. Your API key may not have access to this model.",
+    ),
+    "NotFoundError": (
+        "model_not_found",
+        "The model was not found or is not available to this API key. Please choose another model.",
+    ),
+    "BudgetExceededError": (
+        "budget_exceeded",
+        "The budget for this provider has been reached.",
+    ),
+}
+_TYPED_ERROR = re.compile(r"\b([A-Z]\w*(?:Error|Timeout)) \((\d{3}|-)\): ")
+
 
 def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """
@@ -145,6 +169,11 @@ def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optiona
     """
     if not error_message:
         return False, None, None
+
+    typed = _TYPED_ERROR.search(error_message)
+    if typed and typed.group(1) in TYPED_FATAL_ERRORS:
+        error_code, user_message = TYPED_FATAL_ERRORS[typed.group(1)]
+        return True, error_code, user_message
 
     error_lower = error_message.lower()
 
@@ -285,6 +314,7 @@ _PREFIXED_SECRETS = [
     re.compile(r"\b(?:hf|gsk|xox[bpas]|ghp|gho|github_pat)_[A-Za-z0-9_]{10,}"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{10,}"),
     re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
+    re.compile(r"\bxai-[A-Za-z0-9]{8,}"),
 ]
 
 

@@ -1,16 +1,51 @@
-"""AI Gateway internal LiteLLM completions (mirrors EvalServer gateway client)."""
+"""
+AI Gateway internal LiteLLM completions. EvalServer re-exports this module
+(EvalServer/src/utils/gateway_litellm_client.py), so there is one client.
+
+Env:
+  AI_GATEWAY_URL — default http://127.0.0.1:8100
+  AI_GATEWAY_INTERNAL_KEY — required for cloud completions via gateway
+"""
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_GATEWAY_URL = "http://127.0.0.1:8100"
+
+
+@dataclass
+class GatewayCompletion:
+    """One completion: the answer text plus the gateway's token counts and LiteLLM cost."""
+
+    text: str
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    cost_usd: Optional[float] = None
+
+
+class GatewayProviderError(RuntimeError):
+    """
+    The provider refused or failed the call. error_type is LiteLLM's exception class
+    (AuthenticationError, NotFoundError, RateLimitError, ...), status_code the provider's.
+
+    str() reads "<error_type> (<status_code>): <message>", which error_detection parses.
+    """
+
+    def __init__(self, error_type: str, status_code: Optional[int], message: str):
+        self.error_type = error_type
+        self.status_code = status_code
+        self.message = message
+        status = status_code if status_code is not None else "-"
+        super().__init__(f"{error_type} ({status}): {message}")
 
 
 def gateway_mode_enabled() -> bool:
@@ -82,15 +117,42 @@ def _extract_assistant_text(payload: Dict[str, Any]) -> str:
     return ""
 
 
-def gateway_chat_completion_sync(
-    litellm_model: str,
-    messages: List[Dict[str, str]],
-    api_key: str,
-    *,
-    max_tokens: int = 1024,
-    temperature: float = 0.0,
-    timeout: float = 120.0,
-) -> str:
+def _int_or_none(value: Any) -> Optional[int]:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _to_completion(payload: Dict[str, Any]) -> GatewayCompletion:
+    usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+    cost = payload.get("cost_usd")
+    return GatewayCompletion(
+        text=_extract_assistant_text(payload),
+        prompt_tokens=_int_or_none(usage.get("prompt_tokens")),
+        completion_tokens=_int_or_none(usage.get("completion_tokens")),
+        total_tokens=_int_or_none(usage.get("total_tokens")),
+        cost_usd=float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None,
+    )
+
+
+def _raise_for_error(resp: httpx.Response) -> None:
+    """Raise GatewayProviderError for the gateway's typed error, else the HTTP error."""
+    if resp.status_code < 400:
+        return
+    logger.error("Gateway completion failed: %s %s", resp.status_code, (resp.text or "")[:500])
+    try:
+        error = resp.json().get("error")
+    except (ValueError, AttributeError):
+        error = None
+    if isinstance(error, dict) and isinstance(error.get("type"), str):
+        status = error.get("status_code")
+        raise GatewayProviderError(
+            error["type"],
+            status if isinstance(status, int) else None,
+            str(error.get("message") or ""),
+        )
+    resp.raise_for_status()
+
+
+def _request(litellm_model: str, messages: List[Dict[str, str]], api_key: str, max_tokens: int, temperature: float):
     if not gateway_mode_enabled():
         raise RuntimeError("AI_GATEWAY_INTERNAL_KEY is not set — cannot use gateway completions")
     url = f"{_gateway_url()}/internal/v1/chat/completions"
@@ -106,9 +168,69 @@ def gateway_chat_completion_sync(
         "temperature": temperature,
         "stream": False,
     }
+    return url, headers, body
+
+
+def gateway_completion_sync(
+    litellm_model: str,
+    messages: List[Dict[str, str]],
+    api_key: str,
+    *,
+    max_tokens: int = 1024,
+    temperature: float = 0.0,
+    timeout: float = 120.0,
+) -> GatewayCompletion:
+    """Synchronous chat completion via AI Gateway, with usage and cost."""
+    url, headers, body = _request(litellm_model, messages, api_key, max_tokens, temperature)
     with httpx.Client(timeout=timeout) as client:
         resp = client.post(url, headers=headers, json=body)
-    if resp.status_code >= 400:
-        logger.error("Gateway completion failed: %s %s", resp.status_code, (resp.text or "")[:500])
-        resp.raise_for_status()
-    return _extract_assistant_text(resp.json())
+    _raise_for_error(resp)
+    return _to_completion(resp.json())
+
+
+async def gateway_completion_async(
+    litellm_model: str,
+    messages: List[Dict[str, str]],
+    api_key: str,
+    *,
+    max_tokens: int = 1024,
+    temperature: float = 0.0,
+    timeout: float = 120.0,
+) -> GatewayCompletion:
+    """Async chat completion via AI Gateway, with usage and cost."""
+    url, headers, body = _request(litellm_model, messages, api_key, max_tokens, temperature)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(url, headers=headers, json=body)
+    _raise_for_error(resp)
+    return _to_completion(resp.json())
+
+
+def gateway_chat_completion_sync(
+    litellm_model: str,
+    messages: List[Dict[str, str]],
+    api_key: str,
+    *,
+    max_tokens: int = 1024,
+    temperature: float = 0.0,
+    timeout: float = 120.0,
+) -> str:
+    """Synchronous chat completion via AI Gateway; the answer text only."""
+    return gateway_completion_sync(
+        litellm_model, messages, api_key, max_tokens=max_tokens, temperature=temperature, timeout=timeout
+    ).text
+
+
+async def gateway_chat_completion_async(
+    litellm_model: str,
+    messages: List[Dict[str, str]],
+    api_key: str,
+    *,
+    max_tokens: int = 1024,
+    temperature: float = 0.0,
+    timeout: float = 120.0,
+) -> str:
+    """Async chat completion via AI Gateway; the answer text only."""
+    completion = await gateway_completion_async(
+        litellm_model, messages, api_key, max_tokens=max_tokens, temperature=temperature, timeout=timeout
+    )
+    return completion.text

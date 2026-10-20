@@ -6,9 +6,12 @@ Generates responses from language models for evaluation prompts.
 
 import os
 import time
-from typing import Optional, Dict, Any
+from typing import TYPE_CHECKING, Optional, Dict, Any
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+
+if TYPE_CHECKING:
+    from deepeval_engine.gateway_litellm_client import GatewayCompletion
 
 
 class ModelRunner:
@@ -49,6 +52,8 @@ class ModelRunner:
         self.tokenizer = None
         self._gateway_mode = False
         self._gateway_api_key: Optional[str] = None
+        # Usage and cost of the last generate() call, when the gateway reported them
+        self.last_completion: Optional["GatewayCompletion"] = None
 
         from deepeval_engine.gateway_litellm_client import gateway_mode_enabled
 
@@ -266,6 +271,7 @@ class ModelRunner:
         Returns:
             Generated response text
         """
+        self.last_completion = None
         if getattr(self, "_gateway_mode", False):
             return self._generate_gateway(prompt, max_tokens, temperature, top_p)
         if self.provider == "huggingface":
@@ -351,7 +357,7 @@ class ModelRunner:
         top_p: Optional[float],
     ) -> str:
         from deepeval_engine.gateway_litellm_client import (
-            gateway_chat_completion_sync,
+            gateway_completion_sync,
             to_litellm_model,
         )
 
@@ -362,7 +368,7 @@ class ModelRunner:
             raise RuntimeError("Gateway mode without API key")
 
         def _call():
-            return gateway_chat_completion_sync(
+            return gateway_completion_sync(
                 litellm_model,
                 messages,
                 key,
@@ -370,7 +376,9 @@ class ModelRunner:
                 temperature=temperature if top_p is None else temperature,
             )
 
-        return self._retry_with_backoff(_call)
+        completion = self._retry_with_backoff(_call)
+        self.last_completion = completion
+        return completion.text
 
     def _generate_anthropic(
         self,

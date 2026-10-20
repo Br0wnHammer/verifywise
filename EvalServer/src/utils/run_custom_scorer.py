@@ -41,6 +41,8 @@ class ScorerResult:
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
+    # LiteLLM's price for the judge call (gateway mode only)
+    cost_usd: Optional[float] = None
 
 
 _PLACEHOLDER_PATTERN = re.compile(r"{{\s*([a-zA-Z0-9_]+)\s*}}")
@@ -415,18 +417,20 @@ async def run_custom_scorer(
         )
     
     try:
-        from utils.gateway_litellm_client import gateway_chat_completion_sync, gateway_mode_enabled, to_litellm_model
+        from utils.gateway_litellm_client import gateway_completion_sync, gateway_mode_enabled, to_litellm_model
 
         if provider != "self-hosted" and gateway_mode_enabled():
             litellm_model = to_litellm_model(provider, model_name)
-            raw_response = gateway_chat_completion_sync(
+            completion = gateway_completion_sync(
                 litellm_model,
                 rendered_messages,
                 api_key,
                 max_tokens=max_tokens,
                 temperature=temperature,
-            ).strip()
-            usage = None
+            )
+            raw_response = completion.text.strip()
+            # Same token attributes as the OpenAI SDK's usage object, plus LiteLLM's cost
+            usage = completion
         else:
             response = client.chat.completions.create(
                 model=model_name,
@@ -470,8 +474,9 @@ async def run_custom_scorer(
             prompt_tokens=getattr(usage, "prompt_tokens", None),
             completion_tokens=getattr(usage, "completion_tokens", None),
             total_tokens=getattr(usage, "total_tokens", None),
+            cost_usd=getattr(usage, "cost_usd", None),
         )
-        
+
     except Exception as e:
         # Return a failed result on error
         call_error = f"Error calling judge model ({provider}): {redact_secrets(str(e))}"

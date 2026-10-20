@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from utils.gateway_litellm_client import GatewayCompletion
 from utils.run_custom_scorer import (
     PROVIDER_CONFIG,
     ScorerResult,
@@ -539,7 +540,9 @@ async def test_run_custom_scorer_uses_gateway_when_enabled(
         gateway_called["model"] = litellm_model
         gateway_called["api_key"] = api_key
         gateway_called["messages"] = messages
-        return "PASS"
+        return GatewayCompletion(
+            text="PASS", prompt_tokens=12, completion_tokens=1, total_tokens=13, cost_usd=0.00002
+        )
 
     fake_client = MagicMock()
     monkeypatch.setattr(
@@ -547,7 +550,7 @@ async def test_run_custom_scorer_uses_gateway_when_enabled(
         lambda *args, **kwargs: (fake_client, "sk-test"),
     )
     monkeypatch.setattr(
-        "utils.gateway_litellm_client.gateway_chat_completion_sync", fake_gateway_completion
+        "utils.gateway_litellm_client.gateway_completion_sync", fake_gateway_completion
     )
 
     result = await run_custom_scorer(
@@ -557,6 +560,9 @@ async def test_run_custom_scorer_uses_gateway_when_enabled(
     )
     assert gateway_called["model"] == "gpt-4o-mini"  # openai → no prefix
     assert result.label == "PASS"
+    # The gateway's usage and LiteLLM cost reach the result
+    assert (result.prompt_tokens, result.completion_tokens, result.total_tokens) == (12, 1, 13)
+    assert result.cost_usd == 0.00002
     # OpenAI client should NOT have been hit
     fake_client.chat.completions.create.assert_not_called()
 
@@ -580,7 +586,7 @@ async def test_run_custom_scorer_self_hosted_skips_gateway(
         return "PASS"
 
     monkeypatch.setattr(
-        "utils.gateway_litellm_client.gateway_chat_completion_sync", fake_gateway
+        "utils.gateway_litellm_client.gateway_completion_sync", fake_gateway
     )
 
     result = await run_custom_scorer(

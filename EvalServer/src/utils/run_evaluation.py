@@ -217,6 +217,22 @@ def _scorer_summary(scorer_scores: List[Dict[str, Any]]) -> Optional[Tuple[float
     return avg_score, passed_rate
 
 
+def _generation_usage(model_runner: Any, *texts: Any) -> Tuple[int, Optional[float]]:
+    """
+    Tokens and cost of the runner's last generate(): the gateway's counts and LiteLLM's
+    price when it reported them, else a word count of the texts and no cost (local models).
+    """
+    completion = getattr(model_runner, "last_completion", None)
+    if completion is not None and completion.total_tokens is not None:
+        return completion.total_tokens, completion.cost_usd
+    return sum(len(t.split()) for t in texts if isinstance(t, str)), None
+
+
+def _add_cost(total: Optional[float], cost: Optional[float]) -> Optional[float]:
+    """Sum costs, staying None until some call reported one."""
+    return cost if total is None else (total if cost is None else total + cost)
+
+
 async def run_evaluation(
     db: AsyncSession,
     experiment_id: str,
@@ -652,7 +668,8 @@ async def run_evaluation(
                 
                 start_time = datetime.now()
                 total_tokens = 0
-                
+                total_cost: Optional[float] = None
+
                 for turn_idx, user_msg in enumerate(user_turns_content):
                     # Add user turn
                     turn_objects.append(Turn(role="user", content=user_msg))
@@ -718,8 +735,9 @@ async def run_evaluation(
                     conversation_history.append({"role": "assistant", "content": assistant_response})
                     generated_assistant_turns.append(assistant_response)
                     
-                    # Estimate tokens for this turn
-                    total_tokens += len(user_msg.split()) + len(assistant_response.split())
+                    turn_tokens, turn_cost = _generation_usage(model_runner, user_msg, assistant_response)
+                    total_tokens += turn_tokens
+                    total_cost = _add_cost(total_cost, turn_cost)
                 
                 latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
                 
@@ -767,6 +785,7 @@ async def run_evaluation(
                     model_name=model_name,
                     latency_ms=latency_ms,
                     token_count=total_tokens,
+                    cost=total_cost,
                     metadata={
                         "is_conversational": True,
                         "scenario": scenario,
@@ -802,7 +821,9 @@ async def run_evaluation(
                         max_tokens=2048,
                         temperature=0.7,
                     )
-                    
+                    # Both attempts are billed, so their tokens and cost add up
+                    spent_tokens, spent_cost = _generation_usage(model_runner, response)
+
                     # If response is empty/whitespace, retry once with safer params
                     if not response or not str(response).strip():
                         print("     • Empty response, retrying with higher max_tokens/lower temperature...")
@@ -812,6 +833,9 @@ async def run_evaluation(
                                 max_tokens=2048,
                                 temperature=0.2,
                             )
+                            retry_tokens, retry_cost = _generation_usage(model_runner, response)
+                            spent_tokens += retry_tokens
+                            spent_cost = _add_cost(spent_cost, retry_cost)
                         except Exception as retry_err:
                             print(f"     • Retry failed: {retry_err}")
                             retry_error = str(retry_err)
@@ -830,7 +854,8 @@ async def run_evaluation(
                             output_text="",
                             model_name=model_name,
                             latency_ms=int((datetime.now() - start_time).total_seconds() * 1000),
-                            token_count=0,
+                            token_count=spent_tokens,
+                            cost=spent_cost,
                             status="error",
                             error_message="empty_output",
                         )
@@ -857,7 +882,8 @@ async def run_evaluation(
                         output_text=response,
                         model_name=model_name,
                         latency_ms=latency_ms,
-                        token_count=len(response.split()) if isinstance(response, str) else 0,  # Rough estimate
+                        token_count=spent_tokens,
+                        cost=spent_cost,
                         status="success",
                     )
                     

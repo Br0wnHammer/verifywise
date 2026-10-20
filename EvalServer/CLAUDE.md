@@ -1,6 +1,6 @@
 # EvalServer — Python LLM Evaluation Service
 
-> **Last Updated:** 2026-09-23
+> **Last Updated:** 2026-10-19
 
 ---
 
@@ -63,6 +63,8 @@ Both entry points (startup `check_and_run_migration()` and the CLI `migrate_to_s
 Key variables: `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `LLM_EVALS_PORT`, `ENCRYPTION_KEY`
 
 **AI Gateway (LiteLLM) — cloud LLM calls:** Set `AI_GATEWAY_URL` (default `http://127.0.0.1:8100`) and `AI_GATEWAY_INTERNAL_KEY` to match the Node backend. When the internal key is set, evaluations route provider calls through the gateway’s `/internal/v1/chat/completions` instead of direct vendor SDKs. Provider secrets are read from `verifywise.ai_gateway_api_keys` (same table as AI Gateway Settings).
+
+The one gateway client is `EvaluationModule/src/deepeval_engine/gateway_litellm_client.py`; `src/utils/gateway_litellm_client.py` re-exports it. `gateway_completion_sync/async` return a `GatewayCompletion` (text, prompt/completion/total tokens, LiteLLM `cost_usd`), which runs store in each log's `token_count` and `cost`. A provider failure comes back as HTTP 502 with `{"error": {"type", "status_code", "message"}}` (LiteLLM's exception class, the provider's status, a redacted message); the client raises `GatewayProviderError`, whose text `"<Type> (<status>): <message>"` `utils/error_detection.py` reads before its text patterns.
 
 **Note:** EvalServer may use a different database/port than the main server (e.g., port `5433` vs `5432`).
 

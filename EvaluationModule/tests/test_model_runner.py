@@ -14,6 +14,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from deepeval_engine.gateway_litellm_client import GatewayCompletion
+
 
 def _make_runner(provider: str, model_name: str = "test-model", gateway_mode: bool = False):
     """Build a ModelRunner instance without running __init__."""
@@ -98,15 +100,18 @@ def test_generate_gateway_mode_uses_litellm_prefix(
         captured["litellm_model"] = litellm_model
         captured["api_key"] = api_key
         captured["messages"] = messages
-        return "gateway response"
+        return GatewayCompletion(text="gateway response", total_tokens=11, cost_usd=0.0003)
 
     monkeypatch.setattr(
-        "deepeval_engine.gateway_litellm_client.gateway_chat_completion_sync",
+        "deepeval_engine.gateway_litellm_client.gateway_completion_sync",
         fake_completion,
     )
 
     result = runner.generate("hi", max_tokens=5, temperature=0.1)
     assert result == "gateway response"
+    # The gateway's usage and cost stay on the runner for the caller to record
+    assert runner.last_completion.total_tokens == 11
+    assert runner.last_completion.cost_usd == 0.0003
     assert captured["litellm_model"] == expected_litellm
     assert captured["api_key"] == "sk-fake"
     assert captured["messages"] == [{"role": "user", "content": "hi"}]
