@@ -12,6 +12,7 @@ from deepeval_engine.safe_outbound_url import (  # noqa: E402,F401
 # Checking and clients for those endpoints (no redirects, so a checked host can't bounce)
 from deepeval_engine.endpoint_client import (  # noqa: E402,F401
     checked_endpoint,
+    ollama_client,
     openai_base_url,
     openai_compatible_client,
 )

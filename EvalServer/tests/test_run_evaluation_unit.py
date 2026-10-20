@@ -159,6 +159,35 @@ async def test_default_provider_is_ollama_when_no_provider_or_access_method(
     assert captured["provider"] == "ollama"
 
 
+@pytest.mark.asyncio
+async def test_ollama_on_a_user_host_is_pulled_with_the_checked_client_not_the_cli(
+    inline_prompts_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _capture_runner_init(monkeypatch)
+    _patch_run_eval_dependencies(monkeypatch)
+    from utils import run_evaluation as run_eval_module
+    from utils import safe_outbound_url
+
+    cli = MagicMock()
+    monkeypatch.setattr(run_eval_module.subprocess, "run", cli)
+    client = MagicMock()
+    client.list.return_value = MagicMock(models=[])
+    hosts = []
+    monkeypatch.setattr(safe_outbound_url, "ollama_client", lambda host: hosts.append(host) or client)
+
+    cfg = dict(inline_prompts_config)
+    cfg["model"] = {"name": "llama3", "provider": "ollama", "endpointUrl": "10.0.0.5:11434"}
+    await run_eval_module.run_evaluation(
+        db=mock_db_session, experiment_id="exp-ollama-host", config=cfg, organization_id=1
+    )
+
+    cli.assert_not_called()
+    assert hosts == ["http://10.0.0.5:11434"]
+    client.pull.assert_called_once_with("llama3")
+
+
 # --------------------------------------------------------------------------- #
 # scorerApiKeys env-var injection                                              #
 # --------------------------------------------------------------------------- #

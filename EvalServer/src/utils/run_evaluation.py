@@ -276,15 +276,26 @@ async def run_evaluation(
                 return
 
             try:
-                # Check if model exists locally
-                # The CLI talks to this run's server (host already checked), not a shared env
-                cli_env = {**os.environ, "OLLAMA_HOST": host} if host else None
-                list_proc = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=30, env=cli_env)
+                if host:
+                    # A user-entered server: the checked client, which never follows a
+                    # redirect (the CLI might), never the CLI with the host in its env
+                    from utils.safe_outbound_url import ollama_client
+
+                    client = ollama_client(host)
+                    if any(m.model == model_name or m.model.split(":")[0] == model_name for m in client.list().models):
+                        print(f"✓ Ollama model '{model_name}' is available on the run's server")
+                        return
+                    print(f"• Ollama model '{model_name}' not found on the run's server; pulling...")
+                    client.pull(model_name)
+                    print(f"✓ Pulled Ollama model '{model_name}' successfully")
+                    return
+                # The operator's default server
+                list_proc = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=30)
                 if list_proc.returncode == 0 and model_name in list_proc.stdout:
                     print(f"✓ Ollama model '{model_name}' is available locally")
                     return
                 print(f"• Ollama model '{model_name}' not found locally; pulling...")
-                pull_proc = subprocess.run(["ollama", "pull", model_name], text=True, timeout=600, env=cli_env)
+                pull_proc = subprocess.run(["ollama", "pull", model_name], text=True, timeout=600)
                 if pull_proc.returncode == 0:
                     print(f"✓ Pulled Ollama model '{model_name}' successfully")
                 else:
