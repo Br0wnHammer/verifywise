@@ -65,5 +65,12 @@ server {
         proxy_buffering off;
         proxy_read_timeout 300s;
         client_max_body_size 10m;
+        # SDK clients expect JSON, not the HTML maintenance page above
+        error_page 502 503 504 = @v1_unavailable;
+    }
+
+    location @v1_unavailable {
+        default_type application/json;
+        return 503 '{"detail":"VerifyWise is unavailable, please retry shortly"}';
     }
 }

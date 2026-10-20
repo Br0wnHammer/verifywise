@@ -144,6 +144,16 @@ export const buildRateLimitConfigs = (relaxed: boolean): Record<string, RateLimi
       return tokenId !== undefined ? `mrm-token:${tokenId}` : ipKeyGenerator(req.ip ?? "");
     },
   },
+  // The OpenAI-compatible /v1 proxy for virtual keys. Mounted ahead of the
+  // global ceiling because one customer app server sends all of its LLM
+  // traffic from one IP. The per-key RPM and budget the gateway enforces are
+  // the real controls; this per-IP cap only stops floods of requests with
+  // made-up keys before they reach the gateway.
+  virtualKeyProxy: {
+    windowMinutes: 1,
+    maxRequests: relaxed ? 100000 : 3000,
+    message: "Too many requests from this IP, please slow down and retry",
+  },
   webhook: {
     windowMinutes: 1,
     maxRequests: relaxed ? 100000 : 100,
@@ -219,13 +229,16 @@ const createRateLimitHandler = (message: string) => {
  * Creates a rate limiter with the specified configuration
  * Uses express-rate-limit's built-in IP extraction and IPv6 normalization
  */
-export const createRateLimiter = (config: RateLimitConfig) => {
+export const createRateLimiter = (
+  config: RateLimitConfig,
+  handler: Options["handler"] = createRateLimitHandler(config.message),
+) => {
   const options: Partial<Options> = {
     windowMs: config.windowMinutes * 60 * 1000,
     max: config.maxRequests,
     standardHeaders: true, // Send rate limit info in RateLimit-* headers
     legacyHeaders: false, // Disable X-RateLimit-* headers
-    handler: createRateLimitHandler(config.message),
+    handler,
     // Let express-rate-limit handle IP extraction with IPv6 support
     // This automatically uses req.ip with proper IPv6 normalization
     ...(config.keyGenerator ? { keyGenerator: config.keyGenerator } : {}),
@@ -287,6 +300,22 @@ export const mrmIngestionLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.mrmInges
  * bounded so a misconfigured or malicious sender cannot flood the system.
  */
 export const webhookLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.webhook);
+
+/**
+ * 429 handler for the /v1 virtual key proxy. Answers in the AI Gateway's own
+ * error shape ({ detail }) so /v1 clients see one format for every error.
+ */
+export const virtualKeyProxyRateLimitHandler = (req: Request, res: Response) => {
+  const clientIp = req.ip || req.socket?.remoteAddress || "unknown";
+  logger.warn(`Rate limit exceeded for IP ${clientIp} on /v1${req.path}`);
+  res.status(429).json({ detail: RATE_LIMIT_CONFIGS.virtualKeyProxy.message });
+};
+
+/** Per-IP ceiling for the /v1 virtual key proxy (see the virtualKeyProxy config). */
+export const virtualKeyProxyLimiter = createRateLimiter(
+  RATE_LIMIT_CONFIGS.virtualKeyProxy,
+  virtualKeyProxyRateLimitHandler,
+);
 
 /**
  * Brute-force limiter for POST /users/login and /users/login-microsoft.

@@ -23,9 +23,10 @@ function virtualKeyProxyRoutes() {
     // The gateway serves these routes under /v1, so put the prefix back.
     pathRewrite: (path: string) => `/v1${path}`,
     on: {
-      // The app-wide express.json() parser has already read the body from the
-      // stream; write it to the proxied request again or the gateway waits for
-      // a body that never arrives.
+      // app.ts skips the JSON parser for /v1 so the raw body streams through.
+      // If a parser has read the body anyway (another mount, a reordered
+      // app.ts), write it to the proxied request again; otherwise the gateway
+      // waits for a body that never arrives. No-op when nothing was parsed.
       proxyReq: (proxyReq, req) => {
         fixRequestBody(proxyReq, req as Request);
       },
