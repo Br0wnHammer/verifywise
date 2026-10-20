@@ -113,4 +113,6 @@ jobs:
             tests/test_endpoint_role_visibility.py \
             tests/test_invalid_unicode_body.py \
             tests/test_api_key_saved_verify.py \
+            tests/test_endpoint_model_prefix.py \
+            tests/test_change_history_columns.py \
             -v

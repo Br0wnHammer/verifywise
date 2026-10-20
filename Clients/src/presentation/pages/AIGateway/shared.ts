@@ -261,6 +261,9 @@ export const API_KEY_PROVIDERS = [
 
 const API_KEY_PROVIDER_IDS = new Set(API_KEY_PROVIDERS.map((p) => p._id));
 
+type ModelItem = { _id: string; name: string };
+const NO_MODEL_ITEMS: ModelItem[] = [];
+
 /**
  * Hook: fetch models from the AI Gateway (LiteLLM registry) and provide
  * provider → model cascading data for Select components.
@@ -313,14 +316,30 @@ export function useGatewayModels() {
     return () => ctrl.abort();
   }, [load]);
 
-  /** Get Select-compatible items for a given provider (memoized) */
+  /**
+   * Select-compatible items per provider, built once per load.
+   * LiteLLM lists some models with the provider prefix ("gemini/gemini-2.5-flash")
+   * and some without ("gpt-4o"), and a few both ways. The value is always
+   * "<provider>/<model>" exactly once, and each model appears once.
+   */
+  const itemsByProvider = useMemo(() => {
+    const result: Record<string, ModelItem[]> = {};
+    for (const [provider, models] of Object.entries(modelsByProvider)) {
+      const prefix = `${provider}/`;
+      const items = new Map<string, ModelItem>();
+      for (const m of models) {
+        const name = m.id.startsWith(prefix) ? m.id.slice(prefix.length) : m.id;
+        items.set(name, { _id: `${prefix}${name}`, name });
+      }
+      result[provider] = [...items.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return result;
+  }, [modelsByProvider]);
+
+  /** Get Select-compatible items for a given provider (stable array identity) */
   const getModelsForProvider = useCallback(
-    (provider: string) =>
-      (modelsByProvider[provider] || []).map((m) => ({
-        _id: `${provider}/${m.id}`,
-        name: m.id,
-      })),
-    [modelsByProvider],
+    (provider: string) => itemsByProvider[provider] ?? NO_MODEL_ITEMS,
+    [itemsByProvider],
   );
 
   /** Get Select-compatible provider items (memoized) */
