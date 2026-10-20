@@ -21,9 +21,7 @@ import { CspCollector } from "../helpers/csp.helper";
 const PAGES = ["/login", "/", "/overview", "/project-view"];
 
 test.describe("@canary CSP evidence capture", () => {
-  test("collect CSP violations across main pages @canary @csp", async ({
-    page,
-  }) => {
+  test("collect CSP violations across main pages @canary @csp", async ({ page }) => {
     const collector = new CspCollector();
     await collector.attach(page);
     await collector.installReportEndpoint(page);
