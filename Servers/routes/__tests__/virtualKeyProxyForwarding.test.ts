@@ -8,6 +8,8 @@
  * tests check the options the route passes to it.
  */
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import express from "express";
+import request from "supertest";
 
 const proxyOptions: any[] = [];
 const fixRequestBody = jest.fn();
@@ -44,5 +46,37 @@ describe("/v1 virtual key proxy forwarding", () => {
     proxyOptions[0].on.proxyReq(proxyReq, req, {});
 
     expect(fixRequestBody).toHaveBeenCalledWith(proxyReq, req);
+  });
+});
+
+describe("/v1 virtual key proxy body handling", () => {
+  // The app-wide JSON parser skips /v1, so the route caps the size itself and
+  // forwards the exact bytes it received.
+  const appWithRoute = () => {
+    const app = express();
+    app.use("/v1", virtualKeyProxyRoutes());
+    return app;
+  };
+
+  it("rejects a body over 10 MB with the gateway's error shape", async () => {
+    const res = await request(appWithRoute())
+      .post("/v1/chat/completions")
+      .set("Content-Type", "application/json")
+      .send("x".repeat(10 * 1024 * 1024 + 1));
+
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ detail: "Request body is larger than 10 MB" });
+  });
+
+  it("writes a raw body to the proxied request unchanged", () => {
+    virtualKeyProxyRoutes();
+    const raw = Buffer.from('{"model":"faq","seed":12345678901234567890}');
+    const proxyReq = { setHeader: jest.fn(), write: jest.fn() };
+
+    proxyOptions[0].on.proxyReq(proxyReq, { body: raw }, {});
+
+    expect(proxyReq.setHeader).toHaveBeenCalledWith("Content-Length", raw.length);
+    expect(proxyReq.write).toHaveBeenCalledWith(raw);
+    expect(fixRequestBody).not.toHaveBeenCalled();
   });
 });

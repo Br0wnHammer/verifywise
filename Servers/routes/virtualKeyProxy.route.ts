@@ -6,8 +6,15 @@
  */
 
 import { createProxyMiddleware, fixRequestBody } from "http-proxy-middleware";
-import { Request, Router } from "express";
+import express, { NextFunction, Request, Response, Router } from "express";
 import { getGatewayUrl } from "../utils/aiGatewayConfig";
+
+const MAX_BODY = "10mb";
+
+// app.ts skips its JSON parser for /v1 so the gateway receives the exact bytes
+// the client sent. This keeps the size cap without parsing: the body is read
+// as raw bytes (still compressed, if it was) and written to the gateway as is.
+const rawBody = express.raw({ type: () => true, limit: MAX_BODY, inflate: false });
 
 function virtualKeyProxyRoutes() {
   const router = Router();
@@ -23,11 +30,17 @@ function virtualKeyProxyRoutes() {
     // The gateway serves these routes under /v1, so put the prefix back.
     pathRewrite: (path: string) => `/v1${path}`,
     on: {
-      // app.ts skips the JSON parser for /v1 so the raw body streams through.
-      // If a parser has read the body anyway (another mount, a reordered
-      // app.ts), write it to the proxied request again; otherwise the gateway
-      // waits for a body that never arrives. No-op when nothing was parsed.
+      // The body has been read before the proxy runs, so it must be written to
+      // the proxied request again or the gateway waits for a body that never
+      // arrives. rawBody leaves a Buffer, sent as is. fixRequestBody covers a
+      // parsed object, in case a JSON parser ever runs first.
       proxyReq: (proxyReq, req) => {
+        const body = (req as Request).body;
+        if (Buffer.isBuffer(body)) {
+          proxyReq.setHeader("Content-Length", body.length);
+          proxyReq.write(body);
+          return;
+        }
         fixRequestBody(proxyReq, req as Request);
       },
       error: (err, req, res) => {
@@ -49,7 +62,22 @@ function virtualKeyProxyRoutes() {
     },
   });
 
+  router.use(rawBody);
   router.use("/", proxy);
+  // Body errors (too large, aborted upload) answered in the gateway's shape
+  router.use(
+    (err: { type?: string; status?: number }, _req: Request, res: Response, next: NextFunction) => {
+      if (err?.type === "entity.too.large") {
+        res.status(413).json({ detail: "Request body is larger than 10 MB" });
+        return;
+      }
+      if (err?.status && err.status >= 400 && err.status < 500) {
+        res.status(err.status).json({ detail: "Invalid request body" });
+        return;
+      }
+      next(err);
+    },
+  );
 
   return router;
 }
