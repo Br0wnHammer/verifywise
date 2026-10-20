@@ -26,17 +26,17 @@ specs matched by no project silently never run (#4617 item 1). Verify with
 `npx playwright test --list` and diff against
 `Get-ChildItem e2e -Recurse -Filter *.spec.ts`.
 
-| Project | Auth state | Specs |
-|---|---|---|
-| `setup` | — (logs in via UI) | `global.setup.ts` — writes `e2e/.auth/user.json` (super-admin) and `e2e/.auth/admin.json` (org Admin of the seeded "E2E Global Setup Org") |
-| `auth-tests` | none | `auth.spec.ts` (login/register/forgot flows) |
-| `chromium` | `user.json` (super-admin) | `super-admin.spec.ts` |
-| `risk-inheritance-setup` / `risk-inheritance` | own setup → `risk-inheritance-admin.json` | `risk-inheritance.spec.ts` (+ `risk-inheritance.setup.ts`) |
-| `admin` | `admin.json` (org Admin) | Critical journeys: `use-cases`, `risk-management`, `tasks`, `critical-journey`, `reporting-journey`, `compliance-journey` |
-| `features` | `admin.json` | All other feature specs (see `FEATURE_SPECS` in `playwright.config.ts`), with axe tests (`/accessibility violations/`) grep-inverted |
-| `a11y` | `admin.json` | Same feature specs, only the axe tests (`grep /accessibility violations/`) — axe scans run exactly once |
-| `canary` | `user.json` (super-admin) | `e2e/canary/canary.spec.ts`, `e2e/canary/csp-capture.spec.ts` — scheduled smoke + CSP evidence (`--project=canary --grep @canary`). Owned by the canary pod. |
-| `quarantine` | `admin.json` | `plugins.spec.ts` — whole spec self-skips (`test.describe.skip`); targets the removed `/plugins` route. Rewrite against `/extensions` before reactivating. |
+| Project                                       | Auth state                                | Specs                                                                                                                                                        |
+| --------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `setup`                                       | — (logs in via UI)                        | `global.setup.ts` — writes `e2e/.auth/user.json` (super-admin) and `e2e/.auth/admin.json` (org Admin of the seeded "E2E Global Setup Org")                   |
+| `auth-tests`                                  | none                                      | `auth.spec.ts` (login/register/forgot flows)                                                                                                                 |
+| `chromium`                                    | `user.json` (super-admin)                 | `super-admin.spec.ts`                                                                                                                                        |
+| `risk-inheritance-setup` / `risk-inheritance` | own setup → `risk-inheritance-admin.json` | `risk-inheritance.spec.ts` (+ `risk-inheritance.setup.ts`)                                                                                                   |
+| `admin`                                       | `admin.json` (org Admin)                  | Critical journeys: `use-cases`, `risk-management`, `tasks`, `critical-journey`, `reporting-journey`, `compliance-journey`                                    |
+| `features`                                    | `admin.json`                              | All other feature specs (see `FEATURE_SPECS` in `playwright.config.ts`), with axe tests (`/accessibility violations/`) grep-inverted                         |
+| `a11y`                                        | `admin.json`                              | Same feature specs, only the axe tests (`grep /accessibility violations/`) — axe scans run exactly once                                                      |
+| `canary`                                      | `user.json` (super-admin)                 | `e2e/canary/canary.spec.ts`, `e2e/canary/csp-capture.spec.ts` — scheduled smoke + CSP evidence (`--project=canary --grep @canary`). Owned by the canary pod. |
+| `quarantine`                                  | `admin.json`                              | `plugins.spec.ts` — whole spec self-skips (`test.describe.skip`); targets the removed `/plugins` route. Rewrite against `/extensions` before reactivating.   |
 
 ## Auth states & fixtures
 
@@ -59,12 +59,12 @@ specs matched by no project silently never run (#4617 item 1). Verify with
 
 ## Framework / domain ids used by factories
 
-| Id | Framework |
-|---|---|
-| 1 | EU AI Act (non-organizational) |
-| 2 | ISO 42001 (organizational) |
-| 3 | ISO 27001 (organizational) |
-| 4 | NIST AI RMF (organizational) |
+| Id  | Framework                      |
+| --- | ------------------------------ |
+| 1   | EU AI Act (non-organizational) |
+| 2   | ISO 42001 (organizational)     |
+| 3   | ISO 27001 (organizational)     |
+| 4   | NIST AI RMF (organizational)   |
 
 Linking a framework to a project (at creation or via
 `addFrameworkToProject`) auto-generates all clause/subclause/control rows
