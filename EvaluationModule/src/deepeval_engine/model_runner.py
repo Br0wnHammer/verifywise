@@ -14,7 +14,9 @@ if TYPE_CHECKING:
     from deepeval_engine.gateway_litellm_client import GatewayCompletion, GatewayProviderError
 
 GATEWAY_RATE_LIMIT_RETRIES = 3
-_NON_RECOVERING_LIMIT_WORDS = ("quota", "billing", "credit", "insufficient")
+# Not "quota" alone: Gemini words its per-minute 429 as "Quota exceeded ... per minute".
+# OpenAI's used-up quota reads "insufficient_quota ... check your plan and billing details".
+_NON_RECOVERING_LIMIT_WORDS = ("insufficient", "billing", "credit")
 
 
 def _is_passing_rate_limit(error: "GatewayProviderError") -> bool:
@@ -380,7 +382,8 @@ class ModelRunner:
             raise RuntimeError("Gateway mode without API key")
 
         # Not _retry_with_backoff: its "429" text check would also wait out quota and
-        # billing errors, which never recover. Only a passing rate limit is retried.
+        # billing errors, which never recover. Only a passing rate limit is retried. The
+        # wait blocks like the call itself does: generate() is synchronous.
         for attempt in range(GATEWAY_RATE_LIMIT_RETRIES + 1):
             try:
                 completion = gateway_completion_sync(

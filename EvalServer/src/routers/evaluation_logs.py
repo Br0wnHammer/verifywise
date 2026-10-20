@@ -125,6 +125,10 @@ async def check_db_openrouter_available(organization_id: int) -> bool:
 # benefit of the doubt rather than a long spinner
 PROBE_TIMEOUT_SECONDS = 8.0
 
+# Providers whose saved key the backend injects into a run (Servers VALID_PROVIDERS in
+# evaluationLlmApiKey.model.ts). Probing any other name would test a key the run never gets.
+RUN_KEY_PROVIDERS = {"openai", "anthropic", "google", "xai", "mistral", "huggingface", "openrouter"}
+
 
 async def _newest_saved_key(organization_id: int, provider: str) -> Optional[str]:
     """The org's newest active saved key for the provider, decrypted; None if none can be read."""
@@ -318,11 +322,10 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
         else:
             error_message = f"API key for provider '{provider}' is not configured."
 
-    # Only a saved key the run would use is probed (the backend injects it for the
-    # providers check_db_api_key_available accepts); an env-only key is the server's
+    # Only a saved key the run would use is probed; an env-only key is the server's
     probe_failed = False
     probe_error_code = None
-    if is_valid and payload.probe and has_api_key_db:
+    if is_valid and payload.probe and has_api_key_db and provider in RUN_KEY_PROVIDERS:
         refusal = await probe_model(organization_id, provider, model_name)
         if refusal:
             probe_error_code, error_message = refusal

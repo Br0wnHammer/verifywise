@@ -524,3 +524,18 @@ def test_validate_model_does_not_probe_without_a_saved_key(client, monkeypatch: 
     assert res.json()["valid"] is True
     probe.assert_not_awaited()
 
+
+
+def test_validate_model_does_not_probe_a_provider_the_run_gets_no_key_for(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The backend injects saved keys for "google" but not "gemini"
+    probe = _saved_key_only(monkeypatch, ("invalid_api_key", "x"))
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gemini-3.8-flash", "provider": "gemini", "probe": True},
+        headers=_headers(),
+    )
+    assert res.json()["probe_failed"] is False
+    probe.assert_not_awaited()
