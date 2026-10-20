@@ -12,8 +12,13 @@
  * - ai-incident-management.enum.ts
  * - detection finding keys: severity critical/high/medium/low, risk_level high/medium/low
  *
- * Known spelling aliases are rewritten first. Any other value fails the
- * migration with a sample of the offending rows.
+ * Known aliases (legacy policy "In review") and case or whitespace variants
+ * of allowed values are rewritten first. Any other value fails the migration
+ * with a sample of the offending rows.
+ *
+ * Edited after release: deployments with legacy "In review" policies failed
+ * here (the transaction rolled back, so nothing was half-applied). Where it
+ * already ran, the edit changes nothing.
  */
 
 const CHECKS = [
@@ -72,43 +77,34 @@ function quoteList(values) {
 }
 
 async function normalizeAliases(queryInterface, transaction) {
-  const options = { transaction };
+  // Policies were saved as "In review" until the UI switched to "Under Review"
+  // (0e996b746); those rows were never migrated
   await queryInterface.sequelize.query(
     `
-    UPDATE verifywise.ai_incident_managements
-    SET severity = 'Very serious'
-    WHERE severity = 'Very Serious';
+    UPDATE verifywise.policy_manager
+    SET status = 'Under Review'
+    WHERE lower(btrim(status)) = 'in review';
   `,
-    options,
+    { transaction },
   );
-  await queryInterface.sequelize.query(
-    `
-    UPDATE verifywise.ai_incident_managements
-    SET approval_status = 'Not required'
-    WHERE approval_status = 'Not Required';
-  `,
-    options,
-  );
-  await queryInterface.sequelize.query(
-    `
-    UPDATE verifywise.ai_detection_findings
-    SET severity = lower(severity)
-    WHERE severity IS NOT NULL
-      AND severity <> lower(severity)
-      AND lower(severity) IN ('critical', 'high', 'medium', 'low');
-  `,
-    options,
-  );
-  await queryInterface.sequelize.query(
-    `
-    UPDATE verifywise.ai_detection_findings
-    SET risk_level = lower(risk_level)
-    WHERE risk_level IS NOT NULL
-      AND risk_level <> lower(risk_level)
-      AND lower(risk_level) IN ('high', 'medium', 'low');
-  `,
-    options,
-  );
+
+  // A value that differs from an allowed one only by case or surrounding
+  // spaces ("Very Serious", "Not Required", "HIGH") takes the allowed spelling
+  for (const check of CHECKS) {
+    const cases = check.allowed
+      .map((value) => `WHEN ${quoteList([value.toLowerCase()])} THEN ${quoteList([value])}`)
+      .join(" ");
+    await queryInterface.sequelize.query(
+      `
+      UPDATE verifywise.${check.table}
+      SET ${check.column} = CASE lower(btrim(${check.column})) ${cases} END
+      WHERE ${check.column} IS NOT NULL
+        AND ${check.column} NOT IN (${quoteList(check.allowed)})
+        AND lower(btrim(${check.column})) IN (${quoteList(check.allowed.map((value) => value.toLowerCase()))});
+    `,
+      { transaction },
+    );
+  }
 }
 
 async function assertAllowed(queryInterface, check, transaction) {
