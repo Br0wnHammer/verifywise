@@ -7,10 +7,14 @@
 
 global:
   # Sender address used for email notifications.
-  smtp_from: ${ALERTMANAGER_SMTP_FROM:-alertmanager@verifywise.local}
-  smtp_smarthost: ${ALERTMANAGER_SMTP_SMARTHOST:-localhost:25}
-  smtp_auth_username: ${ALERTMANAGER_SMTP_USERNAME:-}
-  smtp_auth_password: ${ALERTMANAGER_SMTP_PASSWORD:-}
+  # Defaults are literal and safe (loopback/no-op). Override by injecting env
+  # and using your own compose `environment:` mapping or a config patch — ${VAR}
+  # interpolation is intentionally NOT used here because amtool check-config
+  # validates this file raw (no compose expansion). See README.md.
+  smtp_from: alertmanager@verifywise.local
+  smtp_smarthost: localhost:25
+  smtp_auth_username: ''
+  smtp_auth_password: ''
   # Only warn when SMTP is not configured yet (no smarthost set).
   smtp_require_tls: false
 
@@ -49,12 +53,14 @@ receivers:
   # (via a Slack-compatible proxy) or a PagerDuty Events API v2 endpoint.
   - name: sre-webhook
     webhook_configs:
-      - url: ${ALERTMANAGER_WEBHOOK_URL:-http://localhost:5001/alerts}
+      # Loopback placeholder: replace via compose environment/config patch
+      # (see README.md) with your real Slack/Teams/PagerDuty bridge URL.
+      - url: http://127.0.0.1:5001/alerts
         send_resolved: true
 
   # Email receiver; only useful once SMTP env vars are set. Disabled by
   # default by pointing at the placeholder smarthost.
   - name: sre-email
     email_configs:
-      - to: ${ALERTMANAGER_EMAIL_TO:-sre@verifywise.local}
+      - to: sre@verifywise.local
         send_resolved: true

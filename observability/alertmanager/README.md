@@ -20,6 +20,9 @@ existing service/network shape; no custom image is needed, the stock
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
     environment:
+      # Compose expands these on the host before the container starts; the
+      # config file itself ships literal safe defaults because amtool
+      # check-config validates it raw (no compose expansion in CI).
       - ALERTMANAGER_SMTP_FROM=${ALERTMANAGER_SMTP_FROM:-alertmanager@verifywise.local}
       - ALERTMANAGER_SMTP_SMARTHOST=${ALERTMANAGER_SMTP_SMARTHOST:-localhost:25}
       - ALERTMANAGER_SMTP_USERNAME=${ALERTMANAGER_SMTP_USERNAME:-}
@@ -44,9 +47,18 @@ compose file.
 
 ## Environment variables
 
-All are interpolated into `alertmanager.yml` via `${VAR}` (with working
-`${VAR:-default}` fallbacks). Set them in the environment / `.env` of the
-monitoring VM.
+The shipped `alertmanager.yml` contains **literal safe defaults** (loopback
+SMTP, loopback webhook) so it passes `amtool check-config` as-is. To wire real
+destinations, either:
+
+1. **Recommended** — keep the compose service above: compose expands the
+   `ALERTMANAGER_*` host env (with `:-` fallbacks) into container env, and you
+   mount your own interpolated copy or override the config path, **or**
+2. Replace the placeholder values in `alertmanager.yml` directly (or keep env
+   injection by using plain `$VAR` references in your private overlay — never
+   `${VAR:-default}` in the committed file, since amtool validates it raw).
+
+Set them in the environment / `.env` of the monitoring VM.
 
 | Variable | Purpose | Default (placeholder) |
 |----------|---------|-----------------------|
