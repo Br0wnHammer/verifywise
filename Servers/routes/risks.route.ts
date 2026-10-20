@@ -52,6 +52,12 @@ router.post(
   suggestRisksWithAI,
 );
 router.put("/:id", authenticateJWT, authorize("risks.edit"), validateUpdateRisk, updateRiskById);
-router.delete("/:id", authenticateJWT, authorize("risks.edit"), validateRiskIdParam, deleteRiskById);
+router.delete(
+  "/:id",
+  authenticateJWT,
+  authorize("risks.edit"),
+  validateRiskIdParam,
+  deleteRiskById,
+);
 
 export default router;

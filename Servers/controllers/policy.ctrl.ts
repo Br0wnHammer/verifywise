@@ -443,6 +443,10 @@ export class PolicyController {
         await transaction.rollback();
         return res.status(403).json(STATUS_CODE[403](req.t!("Access denied")));
       }
+      if (policy.review_status !== "pending_review") {
+        await transaction.rollback();
+        return res.status(400).json(STATUS_CODE[400](req.t!("Policy is not awaiting review")));
+      }
 
       // Update review status to approved
       await updatePolicyReviewStatusQuery(
@@ -523,6 +527,10 @@ export class PolicyController {
       if (!(await canDecideReview(req, policy))) {
         await transaction.rollback();
         return res.status(403).json(STATUS_CODE[403](req.t!("Access denied")));
+      }
+      if (policy.review_status !== "pending_review") {
+        await transaction.rollback();
+        return res.status(400).json(STATUS_CODE[400](req.t!("Policy is not awaiting review")));
       }
 
       // Update review status to changes_requested

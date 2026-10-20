@@ -18,10 +18,20 @@ router.get("/", authenticateJWT, getAllLinkedObjects);
 router.get("/:policyId/linked-objects", authenticateJWT, getLinkedObjects);
 
 // POST /policy-linked/:policyId/linked-objects - Create a new linked object for a policy
-router.post("/:policyId/linked-objects", authenticateJWT, authorize("policy.edit"), createLinkedObject);
+router.post(
+  "/:policyId/linked-objects",
+  authenticateJWT,
+  authorize("policy.edit"),
+  createLinkedObject,
+);
 
 // DELETE /policy-linked/:policyId/linked-objects - Delete a linked object for a policy
-router.delete("/:policyId/linked-objects", authenticateJWT, authorize("policy.edit"), deleteLinkedObject);
+router.delete(
+  "/:policyId/linked-objects",
+  authenticateJWT,
+  authorize("policy.edit"),
+  deleteLinkedObject,
+);
 
 // DELETE /policy-linked/risk/:riskId/unlink-all - Delete a risk from all policies
 router.delete(

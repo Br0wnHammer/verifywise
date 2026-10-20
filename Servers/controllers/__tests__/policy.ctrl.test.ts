@@ -451,7 +451,9 @@ describe("policy.ctrl", () => {
       expect(res.status).toHaveBeenCalledWith(404);
     });
     it("should return 200 on success", async () => {
-      mockGetById.mockResolvedValue([{ id: 1, title: "P1", author_id: 1 }] as any);
+      mockGetById.mockResolvedValue([
+        { id: 1, title: "P1", author_id: 1, review_status: "pending_review" },
+      ] as any);
       const req = createReq({ params: { id: "1" }, body: { comment: "ok" } });
       const res = createRes();
       await PolicyController.approveReview(req, res);
@@ -462,6 +464,7 @@ describe("policy.ctrl", () => {
         id: 1,
         title: "P1",
         author_id: 1,
+        review_status: "pending_review",
         status: "Approved",
         tags: ["security"],
         assigned_reviewer_ids: [2],
@@ -485,7 +488,13 @@ describe("policy.ctrl", () => {
     });
     it("lets an assigned reviewer of any role approve", async () => {
       mockGetById.mockResolvedValue([
-        { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7] },
+        {
+          id: 1,
+          title: "P1",
+          author_id: 1,
+          assigned_reviewer_ids: [7],
+          review_status: "pending_review",
+        },
       ] as any);
       const req = createReq({ userId: 7, role: "Auditor", params: { id: "1" }, body: {} } as any);
       const res = createRes();
@@ -494,7 +503,13 @@ describe("policy.ctrl", () => {
     });
     it("returns 403 when the caller is neither an assigned reviewer nor an Admin", async () => {
       mockGetById.mockResolvedValue([
-        { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7] },
+        {
+          id: 1,
+          title: "P1",
+          author_id: 1,
+          assigned_reviewer_ids: [7],
+          review_status: "pending_review",
+        },
       ] as any);
       const req = createReq({ userId: 8, role: "Editor", params: { id: "1" }, body: {} } as any);
       const res = createRes();
@@ -504,16 +519,38 @@ describe("policy.ctrl", () => {
     });
     it("returns 403 when the author assigned themselves as reviewer", async () => {
       mockGetById.mockResolvedValue([
-        { id: 1, title: "P1", author_id: 7, assigned_reviewer_ids: [7] },
+        {
+          id: 1,
+          title: "P1",
+          author_id: 7,
+          assigned_reviewer_ids: [7],
+          review_status: "pending_review",
+        },
       ] as any);
       const req = createReq({ userId: 7, role: "Editor", params: { id: "1" }, body: {} } as any);
       const res = createRes();
       await PolicyController.approveReview(req, res);
       expect(res.status).toHaveBeenCalledWith(403);
     });
+    it("returns 400 when the policy is not awaiting review", async () => {
+      mockGetById.mockResolvedValue([
+        { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7], review_status: "approved" },
+      ] as any);
+      const req = createReq({ userId: 7, role: "Reviewer", params: { id: "1" }, body: {} } as any);
+      const res = createRes();
+      await PolicyController.approveReview(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(updatePolicyReviewStatusQuery).not.toHaveBeenCalled();
+    });
     it("lets an unassigned Admin approve", async () => {
       mockGetById.mockResolvedValue([
-        { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7] },
+        {
+          id: 1,
+          title: "P1",
+          author_id: 1,
+          assigned_reviewer_ids: [7],
+          review_status: "pending_review",
+        },
       ] as any);
       const req = createReq({ userId: 8, role: "Admin", params: { id: "1" }, body: {} } as any);
       const res = createRes();
@@ -550,7 +587,9 @@ describe("policy.ctrl", () => {
       expect(res.status).toHaveBeenCalledWith(404);
     });
     it("should return 200 on success", async () => {
-      mockGetById.mockResolvedValue([{ id: 1, title: "P1", author_id: 1 }] as any);
+      mockGetById.mockResolvedValue([
+        { id: 1, title: "P1", author_id: 1, review_status: "pending_review" },
+      ] as any);
       const req = createReq({ params: { id: "1" }, body: { comment: "fix" } });
       const res = createRes();
       await PolicyController.rejectReview(req, res);
@@ -561,6 +600,7 @@ describe("policy.ctrl", () => {
         id: 1,
         title: "P1",
         author_id: 1,
+        review_status: "pending_review",
         status: "Changes Requested",
         tags: ["security"],
         assigned_reviewer_ids: [2],
@@ -584,7 +624,13 @@ describe("policy.ctrl", () => {
     });
     it("returns 403 when the caller is neither an assigned reviewer nor an Admin", async () => {
       mockGetById.mockResolvedValue([
-        { id: 1, title: "P1", author_id: 1, assigned_reviewer_ids: [7] },
+        {
+          id: 1,
+          title: "P1",
+          author_id: 1,
+          assigned_reviewer_ids: [7],
+          review_status: "pending_review",
+        },
       ] as any);
       const req = createReq({
         userId: 8,

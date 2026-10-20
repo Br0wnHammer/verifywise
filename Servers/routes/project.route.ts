@@ -86,7 +86,13 @@ router.post(
 // router.post("/saveControls", authenticateJWT, saveControls);
 
 // Patches
-router.patch("/:id", authenticateJWT, authorize("useCase.edit"), validateUpdateProject, updateProjectById);
+router.patch(
+  "/:id",
+  authenticateJWT,
+  authorize("useCase.edit"),
+  validateUpdateProject,
+  updateProjectById,
+);
 router.patch(
   "/:id/status",
   authenticateJWT,
@@ -96,6 +102,12 @@ router.patch(
 );
 
 // DELETEs
-router.delete("/:id", authenticateJWT, authorize("useCase.edit"), validateProjectIdParam, deleteProjectById);
+router.delete(
+  "/:id",
+  authenticateJWT,
+  authorize("useCase.edit"),
+  validateProjectIdParam,
+  deleteProjectById,
+);
 
 export default router;

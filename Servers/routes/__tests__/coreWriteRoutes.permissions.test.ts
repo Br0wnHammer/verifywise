@@ -26,6 +26,7 @@ import policyLinkedRouter from "../policyLinkedObjects.route";
 import risksRouter from "../risks.route";
 import taskRouter from "../task.route";
 import trainingRouter from "../trainingRegistar.route";
+import quantitativeRiskRouter from "../quantitativeRisk.route";
 
 const permissionFor = (router: any, method: string, path: string) => {
   const layer = router.stack.find((l: any) => l.route?.path === path && l.route.methods[method]);
@@ -72,6 +73,8 @@ describe("core write routes require a permission", () => {
     ["risk", risksRouter, "post", "/suggest-ai", "risks.edit"],
     ["risk", risksRouter, "put", "/:id", "risks.edit"],
     ["risk", risksRouter, "delete", "/:id", "risks.edit"],
+    ["risk", quantitativeRiskRouter, "post", "/:riskId/apply-benchmark/:benchmarkId", "risks.edit"],
+    ["risk", quantitativeRiskRouter, "put", "/assessment-mode", "risks.edit"],
     ["task", taskRouter, "post", "/", "task.edit"],
     ["training", trainingRouter, "post", "/", "training.edit"],
     ["training", trainingRouter, "patch", "/:id", "training.edit"],

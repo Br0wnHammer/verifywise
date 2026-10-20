@@ -315,7 +315,7 @@ Reviewer and Auditor are read-only for core governance content, and the server e
 | `POST /projects`, `PATCH /projects/:id`, `PATCH /projects/:id/status`, `DELETE /projects/:id` | `useCase.edit` |
 | Vendor and vendor risk create, update, delete | `vendor.edit` |
 | Model inventory and model risk create, update, delete | `model.edit` |
-| Risk create, update, delete, AI suggestions; `DELETE /policy-linked/risk/:id/unlink-all` | `risks.edit` |
+| Risk create, update, delete, AI suggestions, quantitative benchmark and assessment mode; `DELETE /policy-linked/risk/:id/unlink-all` | `risks.edit` |
 | Policy create, update, delete, DOCX import, review request, linked objects | `policy.edit` |
 | `POST /tasks` | `task.edit` |
 | Training create, update | `training.edit` |
@@ -324,11 +324,11 @@ Reviewer and Auditor are read-only for core governance content, and the server e
 
 Some writes are decided by the record, not the role:
 
-- **Policy review approve/reject:** the caller must be an assigned reviewer of that policy (any role) or hold `organization.admin` (`canDecideReview` in `policy.ctrl.ts`).
+- **Policy review approve/reject:** the policy must be in `pending_review`, and the caller must hold `organization.admin` or be an assigned reviewer of that policy (any role) other than its author (`canDecideReview` in `policy.ctrl.ts`).
 - **Tasks:** update, archive, restore and hard delete keep the ownership rules in `task.utils.ts` (creator, assignee or Admin), so an assignee of any role can still update their task's status.
 - **Approval requests:** any assigned approver of the current step can approve or reject, whatever their role.
 
-`Servers/routes/__tests__/coreWriteRoutes.permissions.test.ts` asserts the keys above are wired.
+`Servers/routes/__tests__/coreWriteRoutes.permissions.test.ts` asserts the keys above are wired. Migration `20261020200000-grant-core-write-permissions-to-custom-roles.js` gave existing custom roles that held any `*.edit` key the editor keys above (and `training.admin` to those holding any `*.admin` key), since these routes used to need only a login.
 
 ### Usage in Routes
 
