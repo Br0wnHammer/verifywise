@@ -343,7 +343,8 @@ async def run_deepeval_evaluation_task(
             provider_env_map = {
                 "openai": "OPENAI_API_KEY",
                 "anthropic": "ANTHROPIC_API_KEY",
-                "google": "GEMINI_API_KEY",
+                # ModelRunner, scorers and summaries read the org's Google key here
+                "google": "GOOGLE_API_KEY",
                 "xai": "XAI_API_KEY",
             }
 
@@ -1255,6 +1256,8 @@ async def test_deepeval_scorer_controller(
                 "rawResponse": result.raw_response,
                 # Set when the judge could not be called; label and score are placeholders
                 "error": result.error,
+                # LiteLLM's price for the judge call; null when unknown (not via the gateway)
+                "costUsd": result.cost_usd,
                 "tokenUsage": {
                     "promptTokens": result.prompt_tokens,
                     "completionTokens": result.completion_tokens,

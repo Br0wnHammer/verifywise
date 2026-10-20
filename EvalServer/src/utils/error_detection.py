@@ -8,6 +8,8 @@ and should stop the experiment early to avoid wasting time.
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from utils.gateway_litellm_client import BILLING_WORDS, rate_limit_recovers, retry_hint_seconds
+
 # Fatal error patterns that won't recover - experiment should stop
 # Format: (pattern_to_match, error_code, user_friendly_message)
 FATAL_ERROR_PATTERNS = [
@@ -129,6 +131,47 @@ TRANSIENT_ERROR_PATTERNS = [
     "try again",
 ]
 
+# Typed errors from the AI Gateway (LiteLLM's exception class), read before any text pattern.
+# GatewayProviderError reads "<Type> (<status>): <message>", possibly inside a wrapper message.
+# Types not listed here (RateLimitError, BadRequestError, ...) fall through to the patterns,
+# so a quota 429 still counts as fatal and a plain rate limit does not.
+TYPED_FATAL_ERRORS = {
+    "AuthenticationError": (
+        "invalid_api_key",
+        "The provider rejected the API key. Please check your API key configuration.",
+    ),
+    "PermissionDeniedError": (
+        "permission_denied",
+        "Permission denied. Your API key may not have access to this model.",
+    ),
+    "NotFoundError": (
+        "model_not_found",
+        "The model was not found or is not available to this API key. Please choose another model.",
+    ),
+    "BudgetExceededError": (
+        "budget_exceeded",
+        "The budget for this provider has been reached.",
+    ),
+}
+_QUOTA_EXCEEDED = next((code, msg) for pattern, code, msg in FATAL_ERROR_PATTERNS if code == "quota_exceeded")
+_INSUFFICIENT_CREDITS = next(
+    (code, msg) for pattern, code, msg in FATAL_ERROR_PATTERNS if code == "insufficient_credits"
+)
+# How self-hosted servers word a rate limit; with a retry hint the rule decides it
+_UNTYPED_RATE_LIMIT_WORDS = ("rate limit", "rate_limit", "too many requests")
+# A 429 status, not a port, request id or token count that contains the digits
+_STATUS_429 = re.compile(r"(?<![\w.:-])429(?![\w.:-])")
+# Untyped quota text (direct SDK calls, wrapped messages) that the rule decides. A plain
+# untyped "rate limit exceeded" stays with the patterns: nothing retries it, so it is fatal.
+_RATE_LIMIT_WORDS = (
+    "quota exceeded",
+    "exceeded your current quota",
+    "resource_exhausted",
+    "resource has been exhausted",
+    "per day",
+)
+_TYPED_ERROR = re.compile(r"\b([A-Z]\w*(?:Error|Timeout)) \((\d{3}|-)\): ")
+
 
 def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """
@@ -146,7 +189,34 @@ def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optiona
     if not error_message:
         return False, None, None
 
+    typed = _TYPED_ERROR.search(error_message)
+    if typed and typed.group(1) in TYPED_FATAL_ERRORS:
+        error_code, user_message = TYPED_FATAL_ERRORS[typed.group(1)]
+        return True, error_code, user_message
+
     error_lower = error_message.lower()
+
+    # A rate limit follows the rule ModelRunner retries by, before any other pattern:
+    # Gemini's per-minute "Quota exceeded" recovers, a daily or billing one does not,
+    # whatever "try again" wording it carries. Typed, or recognisable from its text.
+    is_rate_limit = (
+        (typed and typed.group(1) == "RateLimitError")
+        or any(word in error_lower for word in _RATE_LIMIT_WORDS)
+        # An untyped rate limit that says when to retry lifts; without a hint it stays fatal
+        or (
+            (any(word in error_lower for word in _UNTYPED_RATE_LIMIT_WORDS) or _STATUS_429.search(error_lower))
+            and retry_hint_seconds(error_lower) is not None
+        )
+    )
+    if is_rate_limit:
+        if rate_limit_recovers(error_message):
+            return False, None, None
+        for pattern, error_code, user_message in FATAL_ERROR_PATTERNS:
+            if pattern in error_lower:
+                return True, error_code, user_message
+        if any(word in error_lower for word in BILLING_WORDS):
+            return True, *_INSUFFICIENT_CREDITS
+        return True, *_QUOTA_EXCEEDED
 
     # First check if it's a transient error (might recover)
     for pattern in TRANSIENT_ERROR_PATTERNS:
@@ -285,7 +355,13 @@ _PREFIXED_SECRETS = [
     re.compile(r"\b(?:hf|gsk|xox[bpas]|ghp|gho|github_pat)_[A-Za-z0-9_]{10,}"),
     re.compile(r"\bAIza[0-9A-Za-z_-]{10,}"),
     re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
+    re.compile(r"\bxai-[A-Za-z0-9]{8,}"),
 ]
+
+
+# A key or token query parameter in a URL the error echoes (Gemini sends ?key=...): the
+# value is redacted whatever it looks like. Same rule as AIGateway/src/utils/redaction.py.
+_QUERY_SECRET = re.compile(r"(?i)([?&](?:key|api[_-]?key|access[_-]?token|token)=)[^&\s\"'#]+")
 
 
 def _looks_like_secret(value: str) -> bool:
@@ -305,6 +381,7 @@ def redact_secrets(text: str) -> str:
         label, sep, value = match.groups()
         return f"{label}{sep}[redacted]" if _looks_like_secret(value) else match.group(0)
 
+    text = _QUERY_SECRET.sub(lambda m: f"{m.group(1)}[redacted]", text)
     text = _URL_USERINFO.sub(lambda m: f"{m.group(1)}[redacted]{m.group(3)}", text)
     text = _STRONG_LABEL_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", text)
     text = _SCHEME_VALUE.sub(_keep_label, text)

@@ -73,8 +73,8 @@ def _patch_run_eval_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     "config_provider,expected_runner",
     [
-        ("local", "huggingface"),
-        ("custom_api", "openai"),
+        ("local", "local"),
+        ("custom_api", "custom_api"),
         ("openai", "openai"),
         ("anthropic", "anthropic"),
         ("google", "google"),
@@ -157,6 +157,35 @@ async def test_default_provider_is_ollama_when_no_provider_or_access_method(
         organization_id=1,
     )
     assert captured["provider"] == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_ollama_on_a_user_host_is_pulled_with_the_checked_client_not_the_cli(
+    inline_prompts_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _capture_runner_init(monkeypatch)
+    _patch_run_eval_dependencies(monkeypatch)
+    from utils import run_evaluation as run_eval_module
+    from utils import safe_outbound_url
+
+    cli = MagicMock()
+    monkeypatch.setattr(run_eval_module.subprocess, "run", cli)
+    client = MagicMock()
+    client.list.return_value = MagicMock(models=[])
+    hosts = []
+    monkeypatch.setattr(safe_outbound_url, "ollama_client", lambda host: hosts.append(host) or client)
+
+    cfg = dict(inline_prompts_config)
+    cfg["model"] = {"name": "llama3", "provider": "ollama", "endpointUrl": "10.0.0.5:11434"}
+    await run_eval_module.run_evaluation(
+        db=mock_db_session, experiment_id="exp-ollama-host", config=cfg, organization_id=1
+    )
+
+    cli.assert_not_called()
+    assert hosts == ["http://10.0.0.5:11434"]
+    client.pull.assert_called_once_with("llama3")
 
 
 # --------------------------------------------------------------------------- #
@@ -358,7 +387,7 @@ async def test_judge_api_key_injected_into_env(
 
 
 @pytest.mark.asyncio
-async def test_judge_self_hosted_sets_openai_api_base(
+async def test_judge_self_hosted_sets_its_endpoint(
     inline_prompts_config: Dict[str, Any],
     mock_db_session: AsyncMock,
     stub_model_runner: MagicMock,
@@ -382,13 +411,40 @@ async def test_judge_self_hosted_sets_openai_api_base(
         config=cfg,
         organization_id=1,
     )
-    base = os.environ.get("OPENAI_API_BASE")
-    assert base is not None
-    assert base.endswith("/v1")
-    # Self-hosted with no key sets a dummy
-    assert os.environ.get("OPENAI_API_KEY") in ("not-needed", None) or os.environ.get(
-        "OPENAI_API_KEY"
-    ).startswith("not-needed")
+    assert os.environ.get("G_EVAL_BASE_URL") == "http://host:8080/v1"
+    # No key: the judge sends none, and OpenAI's own variables are untouched
+    assert os.environ.get("G_EVAL_API_KEY") is None
+    assert os.environ.get("OPENAI_API_BASE") is None
+
+    # A later run with a cloud judge must not inherit the endpoint
+    cfg["judgeLlm"] = {"provider": "openai", "model": "gpt-4o-mini", "apiKey": "sk-test"}
+    await run_evaluation(
+        db=mock_db_session,
+        experiment_id="exp-cloud-after",
+        config=cfg,
+        organization_id=1,
+    )
+    assert os.environ.get("G_EVAL_BASE_URL") is None
+
+
+@pytest.mark.asyncio
+async def test_judge_with_a_refused_endpoint_fails_before_generation(
+    inline_prompts_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    stub_model_runner: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_run_eval_dependencies(monkeypatch)
+
+    cfg = dict(inline_prompts_config)
+    cfg["judgeLlm"] = {"provider": "self-hosted", "model": "m", "endpointUrl": "http://169.254.169.254"}
+
+    from utils.run_evaluation import run_evaluation
+
+    result = await run_evaluation(db=mock_db_session, experiment_id="exp-refused", config=cfg, organization_id=1)
+    assert "not allowed" in result["error"]
+    assert os.environ.get("G_EVAL_BASE_URL") is None
+    stub_model_runner.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -411,7 +467,7 @@ async def test_judge_ollama_sets_default_base(
         config=cfg,
         organization_id=1,
     )
-    assert os.environ.get("OPENAI_API_BASE") == "http://localhost:11434/v1"
+    assert os.environ.get("G_EVAL_BASE_URL") == "http://localhost:11434/v1"
 
 
 @pytest.mark.asyncio

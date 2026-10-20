@@ -26,6 +26,7 @@ from crud import evaluation_logs as crud
 from crud.deepeval_scorers import list_scorers, create_scorer, update_scorer, touch_scorer_updated_at
 from deepeval_engine.gatekeeper import evaluate_gate
 from utils.run_custom_scorer import run_custom_scorer, ScorerResult
+from utils.safe_outbound_url import checked_endpoint, openai_base_url
 from utils.error_detection import (
     FatalErrorTracker,
     build_no_responses_message,
@@ -217,6 +218,23 @@ def _scorer_summary(scorer_scores: List[Dict[str, Any]]) -> Optional[Tuple[float
     return avg_score, passed_rate
 
 
+def _generation_usage(model_runner: Any, *texts: Any) -> Tuple[int, Optional[float]]:
+    """
+    Tokens and cost of the runner's last generate(): the gateway's counts and LiteLLM's
+    price when it reported them, else a word count of the texts and no cost (local models).
+    """
+    completion = getattr(model_runner, "last_completion", None)
+    cost = completion.cost_usd if completion is not None else None
+    if completion is not None and completion.total_tokens is not None:
+        return completion.total_tokens, cost
+    return sum(len(t.split()) for t in texts if isinstance(t, str)), cost
+
+
+def _add_cost(total: Optional[float], cost: Optional[float]) -> Optional[float]:
+    """Sum costs, staying None until some call reported one."""
+    return cost if total is None else (total if cost is None else total + cost)
+
+
 async def run_evaluation(
     db: AsyncSession,
     experiment_id: str,
@@ -248,7 +266,7 @@ async def run_evaluation(
     
     try:
         # Helper: ensure Ollama model is locally available
-        def ensure_ollama_model(model_name: str) -> None:
+        def ensure_ollama_model(model_name: str, host: Optional[str] = None) -> None:
             # Security: Validate model name to prevent command injection
             if not model_name or not SAFE_MODEL_NAME_PATTERN.match(model_name):
                 print(f"⚠️  Invalid model name format: '{model_name}'. Skipping Ollama check.")
@@ -258,7 +276,20 @@ async def run_evaluation(
                 return
 
             try:
-                # Check if model exists locally
+                if host:
+                    # A user-entered server: the checked client, which never follows a
+                    # redirect (the CLI might), never the CLI with the host in its env
+                    from utils.safe_outbound_url import ollama_client
+
+                    client = ollama_client(host)
+                    if any(m.model == model_name or m.model.split(":")[0] == model_name for m in client.list().models):
+                        print(f"✓ Ollama model '{model_name}' is available on the run's server")
+                        return
+                    print(f"• Ollama model '{model_name}' not found on the run's server; pulling...")
+                    client.pull(model_name)
+                    print(f"✓ Pulled Ollama model '{model_name}' successfully")
+                    return
+                # The operator's default server
                 list_proc = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=30)
                 if list_proc.returncode == 0 and model_name in list_proc.stdout:
                     print(f"✓ Ollama model '{model_name}' is available locally")
@@ -334,6 +365,9 @@ async def run_evaluation(
         print(f"📝 Judge LLM config: provider={judge_config.get('provider')}, has_apiKey={bool(judge_config.get('apiKey'))}")
         has_judge_key = judge_config.get("apiKey") and judge_config["apiKey"] not in ["***", "", None]
         is_self_hosted_judge = judge_config.get("provider", "").lower() in ("self-hosted", "ollama")
+        # Set below only for a self-hosted judge; never inherit one from an earlier run
+        os.environ.pop("G_EVAL_BASE_URL", None)
+        os.environ.pop("G_EVAL_API_KEY", None)
 
         if has_judge_key or is_self_hosted_judge:
             provider = judge_config.get("provider", "").lower()
@@ -355,22 +389,19 @@ async def run_evaluation(
                 # Self-hosted / Ollama judge uses OpenAI-compatible API
                 endpoint_url = judge_config.get("endpointUrl", "")
                 if endpoint_url:
-                    base_url = endpoint_url.rstrip("/")
-                    if not base_url.endswith("/v1"):
-                        base_url = base_url + "/v1"
-                    os.environ["OPENAI_API_BASE"] = base_url
-                    print(f"✅ OPENAI_API_BASE set to {base_url}")
+                    # Checked now, so a refused endpoint fails the run before generation
+                    base_url = openai_base_url(endpoint_url)
+                    os.environ["G_EVAL_BASE_URL"] = base_url
+                    print(f"✅ Judge endpoint set to {base_url}")
                 elif provider == "ollama":
                     # Default Ollama endpoint
-                    os.environ["OPENAI_API_BASE"] = "http://localhost:11434/v1"
-                    print(f"✅ OPENAI_API_BASE set to http://localhost:11434/v1 (default Ollama)")
-                # Set API key or dummy for self-hosted endpoints that don't require auth
+                    os.environ["G_EVAL_BASE_URL"] = "http://localhost:11434/v1"
+                    print(f"✅ Judge endpoint set to http://localhost:11434/v1 (default Ollama)")
+                # The judge calls this endpoint directly (deepeval_evaluator.judge_runner), not the
+                # gateway; many self-hosted servers need no key
                 if judge_config.get("apiKey") and judge_config["apiKey"] not in ["***", "", None]:
-                    os.environ["OPENAI_API_KEY"] = judge_config["apiKey"]
-                else:
-                    os.environ["OPENAI_API_KEY"] = "not-needed"
-                    print(f"✅ OPENAI_API_KEY set to dummy (self-hosted endpoint)")
-                # DeepEval's G-Eval uses the OpenAI client, so set provider to openai
+                    os.environ["G_EVAL_API_KEY"] = judge_config["apiKey"]
+                # DeepEval's native metrics are picked for provider "openai"
                 provider = "openai"
 
             # Expose judge provider/model for evaluator (provider-agnostic G‑Eval)
@@ -398,11 +429,7 @@ async def run_evaluation(
                 os.environ["MISTRAL_API_KEY"] = model_config["apiKey"]
             elif provider == "openrouter":
                 os.environ["OPENROUTER_API_KEY"] = model_config["apiKey"]
-            elif provider == "custom_api":
-                # For custom API, we'll set as OPENAI_API_KEY since we use OpenAI client
-                os.environ["OPENAI_API_KEY"] = model_config["apiKey"]
-                if model_config.get("endpointUrl"):
-                    os.environ["OPENAI_API_BASE"] = model_config["endpointUrl"]
+            # custom_api: the key goes straight to ModelRunner below, not the environment
         
         # 1. Initialize Model Runner
         print(f"📦 Initializing model: {model_config.get('name', 'unknown')}")
@@ -414,8 +441,8 @@ async def run_evaluation(
         
         # Map frontend provider names to ModelRunner names
         provider_mapping = {
-            "local": "huggingface",    # Local files treated as HuggingFace models
-            "custom_api": "openai",    # Custom API uses OpenAI client with custom base_url
+            "local": "local",          # Refused by ModelRunner: serve it as a custom API model
+            "custom_api": "custom_api",  # The user's OpenAI-compatible endpoint, not the gateway
             "openai": "openai",        # OpenAI API
             "anthropic": "anthropic",  # Anthropic API
             "google": "google",        # Google API (for Gemini models)
@@ -429,16 +456,14 @@ async def run_evaluation(
         runner_provider = provider_mapping.get(model_provider, "ollama")
         
         # Set custom endpoint if provided
-        if model_config.get("endpointUrl"):
-            if runner_provider == "ollama":
-                os.environ["OLLAMA_HOST"] = model_config["endpointUrl"]
-            elif runner_provider == "openai":
-                os.environ["OPENAI_API_BASE"] = model_config["endpointUrl"]
-        
+        custom_key = model_config.get("apiKey")
         try:
+            # The endpoint goes to this run's client (checked there), never the environment
             model_runner = ModelRunner(
                 model_name=model_name,
                 provider=runner_provider,
+                endpoint_url=model_config.get("endpointUrl") if runner_provider in ("custom_api", "ollama") else None,
+                api_key=custom_key if runner_provider == "custom_api" and custom_key != "***" else None,
             )
         except Exception as e:
             error_msg = f"Failed to initialize model: {str(e)}"
@@ -454,7 +479,8 @@ async def run_evaluation(
         
         # If using Ollama, proactively ensure the model exists locally before generation
         if runner_provider == "ollama" and isinstance(model_name, str):
-            ensure_ollama_model(model_name)
+            entered = model_config.get("endpointUrl")
+            ensure_ollama_model(model_name, checked_endpoint(entered) if entered else None)
         
         # 2. Load Dataset (builtin by name, custom path, prompts, conversations, or benchmarks)
         print(f"\n📊 Loading dataset...")
@@ -652,7 +678,8 @@ async def run_evaluation(
                 
                 start_time = datetime.now()
                 total_tokens = 0
-                
+                total_cost: Optional[float] = None
+
                 for turn_idx, user_msg in enumerate(user_turns_content):
                     # Add user turn
                     turn_objects.append(Turn(role="user", content=user_msg))
@@ -677,7 +704,11 @@ async def run_evaluation(
                             max_tokens=1024,
                             temperature=0.7,
                         )
-                        
+                        # Counted from the model's own answer, before any placeholder text
+                        turn_tokens, turn_cost = _generation_usage(
+                            model_runner, user_msg, assistant_response or ""
+                        )
+
                         # Clean up response if needed
                         if assistant_response:
                             assistant_response = assistant_response.strip()
@@ -690,6 +721,10 @@ async def run_evaluation(
 
                         # Track success to reset fatal error counter
                         fatal_error_tracker.track_success()
+
+                        # Only a turn that answered counts; an error placeholder billed nothing
+                        total_tokens += turn_tokens
+                        total_cost = _add_cost(total_cost, turn_cost)
 
                     except Exception as gen_err:
                         print(f"    ⚠️ Generation error on turn {turn_idx + 1}: {redact_secrets(str(gen_err))}")
@@ -717,10 +752,7 @@ async def run_evaluation(
                     turn_objects.append(Turn(role="assistant", content=assistant_response))
                     conversation_history.append({"role": "assistant", "content": assistant_response})
                     generated_assistant_turns.append(assistant_response)
-                    
-                    # Estimate tokens for this turn
-                    total_tokens += len(user_msg.split()) + len(assistant_response.split())
-                
+
                 latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
                 
                 print(f"    ✓ Generated {len(generated_assistant_turns)} responses ({latency_ms}ms)")
@@ -767,6 +799,7 @@ async def run_evaluation(
                     model_name=model_name,
                     latency_ms=latency_ms,
                     token_count=total_tokens,
+                    cost=total_cost,
                     metadata={
                         "is_conversational": True,
                         "scenario": scenario,
@@ -802,7 +835,9 @@ async def run_evaluation(
                         max_tokens=2048,
                         temperature=0.7,
                     )
-                    
+                    # Both attempts are billed, so their tokens and cost add up
+                    spent_tokens, spent_cost = _generation_usage(model_runner, response)
+
                     # If response is empty/whitespace, retry once with safer params
                     if not response or not str(response).strip():
                         print("     • Empty response, retrying with higher max_tokens/lower temperature...")
@@ -812,6 +847,9 @@ async def run_evaluation(
                                 max_tokens=2048,
                                 temperature=0.2,
                             )
+                            retry_tokens, retry_cost = _generation_usage(model_runner, response)
+                            spent_tokens += retry_tokens
+                            spent_cost = _add_cost(spent_cost, retry_cost)
                         except Exception as retry_err:
                             print(f"     • Retry failed: {retry_err}")
                             retry_error = str(retry_err)
@@ -830,7 +868,8 @@ async def run_evaluation(
                             output_text="",
                             model_name=model_name,
                             latency_ms=int((datetime.now() - start_time).total_seconds() * 1000),
-                            token_count=0,
+                            token_count=spent_tokens,
+                            cost=spent_cost,
                             status="error",
                             error_message="empty_output",
                         )
@@ -857,7 +896,8 @@ async def run_evaluation(
                         output_text=response,
                         model_name=model_name,
                         latency_ms=latency_ms,
-                        token_count=len(response.split()) if isinstance(response, str) else 0,  # Rough estimate
+                        token_count=spent_tokens,
+                        cost=spent_cost,
                         status="success",
                     )
                     
@@ -1484,6 +1524,11 @@ async def run_evaluation(
         }
         if gatekeeper_result is not None:
             experiment_results["gatekeeper"] = gatekeeper_result
+        # Settings the tested model did not take (a reasoning model drops temperature):
+        # the run used the provider's default instead, so say so on the run
+        dropped = sorted(getattr(model_runner, "dropped_params", None) or [])
+        if dropped:
+            experiment_results["dropped_params"] = dropped
 
         # Metrics were asked for but none scored a single prompt (typically the judge
         # failed on every call). A "completed" run with no scores reads as a success,

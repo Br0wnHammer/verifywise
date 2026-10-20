@@ -106,10 +106,11 @@ describe("NewExperimentModal", () => {
         "HuggingFace",
         "Ollama",
         "Custom / Self-hosted",
-        "Local",
       ]) {
         expect(screen.getByText(name)).toBeInTheDocument();
       }
+      // EvalServer does not run local model files; there is no bare "Local" provider
+      expect(screen.queryByText("Local")).not.toBeInTheDocument();
 
       // No saved models in the org yet → the "Saved Models" section stays hidden.
       expect(screen.queryByText("Saved Models")).not.toBeInTheDocument();
@@ -200,8 +201,8 @@ describe("NewExperimentModal", () => {
 
       fireEvent.click(screen.getByText("OpenAI"));
 
-      // Cloud provider renders a model Select + API key field
-      expect(await screen.findByText("Select a model")).toBeInTheDocument();
+      // Cloud provider renders the searchable model picker + API key field
+      expect(await screen.findByPlaceholderText("Search or type a model ID")).toBeInTheDocument();
       expect(screen.getByLabelText("API key")).toBeInTheDocument();
     });
 
@@ -551,13 +552,49 @@ describe("NewExperimentModal", () => {
       // First submit triggers model validation → warning
       fireEvent.click(screen.getByRole("button", { name: "Start Experiment" }));
       expect(await screen.findByText("API key may not be configured")).toBeInTheDocument();
-      expect(deepEvalMocks.validateModel).toHaveBeenCalledWith("gpt-4o", "openai");
+      expect(deepEvalMocks.validateModel).toHaveBeenCalledWith("gpt-4o", "openai", true);
       expect(deepEvalMocks.createExperiment).not.toHaveBeenCalled();
 
       // Second submit acknowledges the warning and creates the experiment
       fireEvent.click(screen.getByRole("button", { name: "Start Experiment" }));
       await waitFor(() => expect(deepEvalMocks.createExperiment).toHaveBeenCalled());
       expect(onStarted).toHaveBeenCalled();
+    });
+
+    it("says the provider refused the model when the live check fails", async () => {
+      deepEvalMocks.listModels.mockResolvedValue([
+        {
+          id: 1,
+          name: "gpt-4o",
+          provider: "OpenAI",
+          endpointUrl: "",
+          updatedAt: "2025-01-01T00:00:00Z",
+        },
+      ]);
+      deepEvalMocks.validateModel.mockResolvedValue({
+        valid: false,
+        probe_failed: true,
+        probe_error_code: "model_not_found",
+        error_message: "The model was not found or is not available to this API key.",
+        provider: "openai",
+      });
+      deepEvalMocks.readDataset.mockResolvedValue({ prompts: samplePrompts });
+      mockListDatasetsWith("chatbot", [DEFAULT_TEMPLATE_PATH]);
+
+      renderModal();
+      fireEvent.click(await screen.findByText("gpt-4o"));
+      await goToDatasetStep();
+      await waitFor(() =>
+        expect(deepEvalMocks.readDataset).toHaveBeenCalledWith(DEFAULT_TEMPLATE_PATH),
+      );
+      await goToScorerStep();
+      await selectLocalJudge();
+      await goToMetricsStep();
+
+      fireEvent.click(screen.getByRole("button", { name: "Start Experiment" }));
+      expect(await screen.findByText("The provider refused this model")).toBeInTheDocument();
+      expect(screen.getByText(/not available to this API key/)).toBeInTheDocument();
+      expect(deepEvalMocks.createExperiment).not.toHaveBeenCalled();
     });
   });
 

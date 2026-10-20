@@ -336,6 +336,111 @@ def test_validate_model_returns_error_when_no_key(
     assert "ANTHROPIC_API_KEY" in (body["error_message"] or "")
 
 
+def _saved_key_only(monkeypatch: pytest.MonkeyPatch, probe_result):
+    from routers import evaluation_logs as router_module
+
+    monkeypatch.setattr(router_module, "check_db_api_key_available", AsyncMock(return_value=True))
+    monkeypatch.setattr(router_module, "check_db_openrouter_available", AsyncMock(return_value=False))
+    probe = AsyncMock(return_value=probe_result)
+    monkeypatch.setattr(router_module, "probe_model", probe)
+    return probe
+
+
+def test_validate_model_probe_reports_a_refused_model(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    probe = _saved_key_only(
+        monkeypatch,
+        ("model_not_found", "The model was not found or is not available to this API key."),
+    )
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gemini-2.5-pro", "provider": "google", "probe": True},
+        headers=_headers(),
+    )
+    body = res.json()
+    assert body["valid"] is False
+    assert body["probe_failed"] is True
+    assert body["probe_error_code"] == "model_not_found"
+    assert "not available to this API key" in body["error_message"]
+    probe.assert_awaited_once()
+
+
+def test_validate_model_does_not_probe_unless_asked(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    probe = _saved_key_only(monkeypatch, ("invalid_api_key", "refused"))
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gemini-2.5-pro", "provider": "google"},
+        headers=_headers(),
+    )
+    assert res.json()["valid"] is True
+    probe.assert_not_awaited()
+
+
+def test_validate_model_probe_that_passes_keeps_it_valid(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    _saved_key_only(monkeypatch, None)
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gemini-3.8-flash", "provider": "google", "probe": True},
+        headers=_headers(),
+    )
+    body = res.json()
+    assert body["valid"] is True
+    assert body["probe_failed"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raised, expected",
+    [
+        ("NotFoundError", "model_not_found"),
+        ("AuthenticationError", "invalid_api_key"),
+        ("RateLimitError", None),
+        ("BadRequestError", None),
+    ],
+)
+async def test_probe_model_maps_typed_refusals(
+    monkeypatch: pytest.MonkeyPatch, gateway_env: str, raised: str, expected
+) -> None:
+    from routers import evaluation_logs as router_module
+    from utils.gateway_litellm_client import GatewayProviderError
+
+    monkeypatch.setattr(router_module, "_newest_saved_key", AsyncMock(return_value="AIza-saved"))
+    sent = {}
+
+    async def fake_completion(model, messages, key, **kwargs):
+        sent.update(model=model, key=key, max_tokens=kwargs.get("max_tokens"))
+        raise GatewayProviderError(raised, 400, "x")
+
+    monkeypatch.setattr("utils.gateway_litellm_client.gateway_completion_async", fake_completion)
+
+    message = await router_module.probe_model(1, "google", "gemini-2.5-pro")
+    assert sent == {"model": "gemini/gemini-2.5-pro", "key": "AIza-saved", "max_tokens": 1}
+    if expected is None:
+        assert message is None
+    else:
+        assert message[0] == expected
+        assert message[1]
+
+
+@pytest.mark.asyncio
+async def test_probe_model_outage_or_no_key_does_not_block(
+    monkeypatch: pytest.MonkeyPatch, gateway_env: str
+) -> None:
+    from routers import evaluation_logs as router_module
+
+    async def down(*_args, **_kwargs):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr("utils.gateway_litellm_client.gateway_completion_async", down)
+    monkeypatch.setattr(router_module, "_newest_saved_key", AsyncMock(return_value="sk-saved"))
+    assert await router_module.probe_model(1, "openai", "gpt-4o") is None
+
+    monkeypatch.setattr(router_module, "_newest_saved_key", AsyncMock(return_value=None))
+    assert await router_module.probe_model(1, "openai", "gpt-4o") is None
+
+
 
 # --------------------------------------------------------------------------- #
 # Middleware: internal-key authentication                                      #
@@ -354,3 +459,101 @@ def test_invalid_internal_key_is_rejected(client) -> None:
         headers={"x-internal-key": "wrong-key", "x-organization-id": "7"},
     )
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_newest_saved_key_reads_the_newest_active_row_with_the_google_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from routers import evaluation_logs as router_module
+
+    seen = {}
+
+    class _Result:
+        def fetchone(self):
+            return ("ciphertext",)
+
+    class _Session:
+        async def execute(self, statement, params):
+            seen["sql"] = str(statement)
+            seen["params"] = params
+            return _Result()
+
+    @asynccontextmanager
+    async def fake_db():
+        yield _Session()
+
+    monkeypatch.setattr(router_module, "get_db", fake_db)
+    monkeypatch.setattr("controllers.reports._decrypt_api_key", lambda value: f"plain-{value}")
+
+    assert await router_module._newest_saved_key(5, "Google") == "plain-ciphertext"
+    assert seen["params"] == {"organization_id": 5, "providers": ["google", "gemini"]}
+    # "gemini" is not a provider the backend injects a key for, so it is not aliased
+    await router_module._newest_saved_key(5, "gemini")
+    assert seen["params"]["providers"] == ["gemini"]
+    assert "is_active = true" in seen["sql"]
+    assert "ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1" in seen["sql"]
+
+
+@pytest.mark.asyncio
+async def test_newest_saved_key_is_none_when_the_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    from routers import evaluation_logs as router_module
+
+    @asynccontextmanager
+    async def broken_db():
+        raise RuntimeError("db down")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(router_module, "get_db", broken_db)
+    assert await router_module._newest_saved_key(5, "openai") is None
+
+
+def test_validate_model_does_not_probe_without_a_saved_key(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    from routers import evaluation_logs as router_module
+
+    monkeypatch.setattr(router_module, "check_db_api_key_available", AsyncMock(return_value=False))
+    monkeypatch.setattr(router_module, "check_db_openrouter_available", AsyncMock(return_value=True))
+    probe = AsyncMock(return_value=("model_not_found", "x"))
+    monkeypatch.setattr(router_module, "probe_model", probe)
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gpt-4o", "provider": "openai", "probe": True},
+        headers=_headers(),
+    )
+    assert res.json()["valid"] is True
+    probe.assert_not_awaited()
+
+
+
+def test_validate_model_does_not_probe_a_provider_the_run_gets_no_key_for(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The backend injects saved keys for "google" but not "gemini"
+    probe = _saved_key_only(monkeypatch, ("invalid_api_key", "x"))
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gemini-3.8-flash", "provider": "gemini", "probe": True},
+        headers=_headers(),
+    )
+    assert res.json()["probe_failed"] is False
+    probe.assert_not_awaited()
+
+
+def test_run_key_providers_match_the_backend_valid_providers() -> None:
+    """The probe runs only for providers Servers injects a saved key for; the lists must not drift."""
+    import re
+    from pathlib import Path
+
+    from routers.evaluation_logs import RUN_KEY_PROVIDERS
+
+    model = (
+        Path(__file__).resolve().parents[2]
+        / "Servers" / "domain.layer" / "models" / "evaluationLlmApiKey" / "evaluationLlmApiKey.model.ts"
+    )
+    if not model.is_file():
+        pytest.skip("Servers source not present")
+    block = re.search(r"export const VALID_PROVIDERS[^=]*=\s*\[(.*?)\]", model.read_text(), re.DOTALL)
+    assert block, "VALID_PROVIDERS not found in evaluationLlmApiKey.model.ts"
+    assert set(re.findall(r"\"([^\"]+)\"", block.group(1))) == RUN_KEY_PROVIDERS

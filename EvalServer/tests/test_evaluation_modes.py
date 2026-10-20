@@ -515,3 +515,36 @@ def test_scorer_summary_counts_errored_calls_as_failed_but_not_in_the_average() 
 
     assert _scorer_summary(calls) == (1.0, 0.1)
     assert _scorer_summary([{"score": None, "passed": False}]) is None
+
+
+def test_generation_usage_prefers_the_gateway_counts() -> None:
+    from types import SimpleNamespace
+
+    from utils.gateway_litellm_client import GatewayCompletion
+    from utils.run_evaluation import _generation_usage
+
+    runner = SimpleNamespace(last_completion=GatewayCompletion(text="a b", total_tokens=40, cost_usd=0.002))
+    assert _generation_usage(runner, "a b") == (40, 0.002)
+
+
+def test_generation_usage_falls_back_to_a_word_count_without_gateway_usage() -> None:
+    from types import SimpleNamespace
+
+    from utils.gateway_litellm_client import GatewayCompletion
+    from utils.run_evaluation import _generation_usage
+
+    assert _generation_usage(SimpleNamespace(last_completion=None), "one two", "three") == (3, None)
+    no_usage = SimpleNamespace(last_completion=GatewayCompletion(text="x"))
+    assert _generation_usage(no_usage, "one two") == (2, None)
+    cost_only = SimpleNamespace(last_completion=GatewayCompletion(text="x", cost_usd=0.01))
+    assert _generation_usage(cost_only, "one two") == (2, 0.01)
+    assert _generation_usage(object(), "one") == (1, None)
+
+
+def test_add_cost_stays_none_until_a_call_reports_one() -> None:
+    from utils.run_evaluation import _add_cost
+
+    assert _add_cost(None, None) is None
+    assert _add_cost(None, 0.5) == 0.5
+    assert _add_cost(0.5, None) == 0.5
+    assert _add_cost(0.5, 0.25) == 0.75
