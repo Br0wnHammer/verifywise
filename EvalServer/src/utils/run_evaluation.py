@@ -207,6 +207,7 @@ def _scorer_summary(scorer_scores: List[Dict[str, Any]]) -> Optional[Tuple[float
 
     Like a built-in metric: an errored call counts as failed in the pass rate and is
     left out of the average, so 1 pass and 9 errors reads avg 1.0, pass rate 10%.
+    Only the average is saved; the pass rate is for the run log.
     """
     scored = [s for s in scorer_scores if isinstance(s.get("score"), (int, float))]
     if not scored:

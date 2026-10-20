@@ -75,10 +75,10 @@ def _rejects_key(provider: str, resp: httpx.Response, forbidden_rejects: bool) -
         return True
     # A 403 can also mean a working key without permission to list models (an OpenAI
     # restricted key, an Anthropic permission_error). Unless the caller counts every 403,
-    # only one whose body blames the key itself does: Gemini's API_KEY_* reasons for a
-    # blocked or leaked key.
+    # only Gemini's does: its key travels in the URL, so a 403 means the key itself is
+    # leaked, blocked or has the API disabled, and every model call would fail too.
     if resp.status_code == 403:
-        return forbidden_rejects or "API_KEY" in resp.text
+        return forbidden_rejects or provider == "gemini"
     # Gemini answers an invalid or expired key with 400 API_KEY_INVALID, not 401.
     return provider == "gemini" and resp.status_code == 400 and "API_KEY_INVALID" in resp.text
 

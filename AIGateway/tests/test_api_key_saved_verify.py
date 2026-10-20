@@ -107,13 +107,19 @@ async def test_saved_key_403_is_not_read_as_a_rejected_key(monkeypatch):
     assert res["data"]["valid"] is True
 
 
-async def test_saved_gemini_key_403_is_a_rejected_key(monkeypatch):
-    # Gemini answers a blocked key (reported as leaked, API disabled) with 403
-    _provider_replies(
-        monkeypatch,
-        403,
+@pytest.mark.parametrize(
+    "body",
+    [
+        '{"error": {"message": "Your API key was reported as leaked. Please use another API key.", '
+        '"status": "PERMISSION_DENIED"}}',
+        '{"error": {"status": "PERMISSION_DENIED", "details": [{"reason": "SERVICE_DISABLED"}]}}',
         '{"error": {"status": "PERMISSION_DENIED", "details": [{"reason": "API_KEY_SERVICE_BLOCKED"}]}}',
-    )
+    ],
+    ids=["leaked", "api-disabled", "blocked"],
+)
+async def test_saved_gemini_key_403_is_a_rejected_key(monkeypatch, body):
+    # Gemini answers a leaked, blocked or API-disabled key with 403
+    _provider_replies(monkeypatch, 403, body)
     _saved_key(monkeypatch, {"id": 6, "provider": "gemini", "encrypted_key": encrypt("AIza-blocked")})
     res = await router.verify_saved_api_key(6, _request())
     assert res["data"]["valid"] is False

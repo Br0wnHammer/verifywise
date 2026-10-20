@@ -449,12 +449,18 @@ export default function NewExperimentModal({
 
   // Load configured API keys and saved models when modal opens. The modal stays mounted
   // between opens, so key checks start afresh each time: a key fixed or revoked in the
-  // meantime is seen as it is now.
+  // meantime is seen as it is now. The reset runs before the load below on the same open.
   useEffect(() => {
     if (!isOpen) return;
-    const generation = ++openGeneration.current;
+    openGeneration.current += 1;
     checkedKeyIds.current = new Set();
     setRejectedKeyIds(new Set());
+  }, [isOpen]);
+
+  // Reloads when orgId arrives late, without checking the same keys again
+  useEffect(() => {
+    if (!isOpen) return;
+    let stale = false;
     (async () => {
       try {
         setLoadingApiKeys(true);
@@ -462,19 +468,20 @@ export default function NewExperimentModal({
           getAllLlmApiKeys(),
           evalModelsService.listModels(orgId || undefined),
         ]);
-        // A slower load from an earlier open must not replace this open's list
-        if (generation !== openGeneration.current) return;
+        // A slower load from an earlier open or orgId must not replace this list
+        if (stale) return;
         setConfiguredApiKeys(keys);
         setSavedModels(models);
+        keysGeneration.current = openGeneration.current;
       } catch {
-        /* ignore: checks run against the list already loaded */
+        /* ignore: no fresh list, so no key checks this open */
       } finally {
-        if (generation === openGeneration.current) {
-          keysGeneration.current = generation;
-          setLoadingApiKeys(false);
-        }
+        if (!stale) setLoadingApiKeys(false);
       }
     })();
+    return () => {
+      stale = true;
+    };
   }, [isOpen, orgId]);
 
   // Check the saved keys of the chosen model and judge providers once per open, so a dead

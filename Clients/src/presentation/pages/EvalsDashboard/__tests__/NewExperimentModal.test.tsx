@@ -275,6 +275,35 @@ describe("NewExperimentModal", () => {
       expect(screen.queryByText(REJECTED_SAVED_KEY_HINT)).not.toBeInTheDocument();
       expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(2);
     });
+
+    it("keeps a refused key and does not check it again when orgId arrives late", async () => {
+      deepEvalMocks.getAllLlmApiKeys.mockResolvedValue([
+        { id: 6, provider: "google", apiKey: "AIza-dead" },
+      ]);
+      deepEvalMocks.verifySavedLlmApiKey.mockResolvedValue({ valid: false });
+      const modal = (orgId: string | null) => (
+        <NewExperimentModal
+          isOpen
+          onClose={vi.fn()}
+          projectId="proj-1"
+          orgId={orgId}
+          onSuccess={vi.fn()}
+          onStarted={vi.fn()}
+          useCase="chatbot"
+          existingExperimentNames={[]}
+        />
+      );
+
+      const { rerender } = renderWithProviders(modal(null));
+      fireEvent.click(await screen.findByText("Gemini"));
+      expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
+
+      rerender(modal("org-1"));
+      await waitFor(() => expect(deepEvalMocks.getAllLlmApiKeys).toHaveBeenCalledTimes(2));
+
+      expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
+      expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("dataset selection (3.3.3)", () => {
