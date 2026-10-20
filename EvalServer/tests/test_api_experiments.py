@@ -320,22 +320,28 @@ def test_validate_model_keyless_providers_stay_valid(client, monkeypatch: pytest
     assert res.json()["valid"] is True
 
 
-def test_run_subprocess_env_drops_provider_keys_and_judge_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_subprocess_env_drops_provider_credentials_and_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keys an earlier run or the operator left in the server env must not reach another org's run."""
     from routers.evaluation_logs import run_subprocess_env
 
     for var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY",
-                "MISTRAL_API_KEY", "OPENROUTER_API_KEY", "HF_API_KEY", "G_EVAL_BASE_URL", "G_EVAL_API_KEY",
-                "G_EVAL_PROVIDER"):
+                "MISTRAL_API_KEY", "OPENROUTER_API_KEY", "HF_API_KEY", "AZURE_API_KEY", "GROQ_API_KEY",
+                "G_EVAL_BASE_URL", "G_EVAL_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE"):
         monkeypatch.setenv(var, "org-a-value")
     monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "gw")
+    monkeypatch.setenv("EVAL_SERVER_INTERNAL_KEY", "es")
+    monkeypatch.setenv("ENCRYPTION_KEY", "enc")
+    monkeypatch.setenv("HF_TOKEN", "hf")
+    monkeypatch.setenv("G_EVAL_TEMPERATURE", "0.2")
     monkeypatch.setenv("DB_HOST", "db")
 
     env = run_subprocess_env()
     assert "org-a-value" not in env.values()
-    assert env["AI_GATEWAY_INTERNAL_KEY"] == "gw"
-    assert env["DB_HOST"] == "db"
-    assert env["PYTHONUNBUFFERED"] == "1"
+    # Service settings and non-secret operator defaults still reach the run
+    for var, value in (("AI_GATEWAY_INTERNAL_KEY", "gw"), ("EVAL_SERVER_INTERNAL_KEY", "es"),
+                       ("ENCRYPTION_KEY", "enc"), ("HF_TOKEN", "hf"), ("G_EVAL_TEMPERATURE", "0.2"),
+                       ("DB_HOST", "db"), ("PYTHONUNBUFFERED", "1")):
+        assert env[var] == value
 
 
 def test_validate_model_auto_detects_provider(
@@ -379,7 +385,44 @@ def test_validate_model_returns_error_when_no_key(
     assert res.status_code == 200
     body = res.json()
     assert body["valid"] is False
-    assert "ANTHROPIC_API_KEY" in (body["error_message"] or "")
+    assert "No saved API key for provider 'anthropic'" in (body["error_message"] or "")
+
+
+@pytest.mark.parametrize("provider", ["OpenAI", "gemini", "Google"])
+def test_validate_model_cloud_provider_case_and_alias_still_need_a_key(
+    client, monkeypatch: pytest.MonkeyPatch, provider
+) -> None:
+    from routers import evaluation_logs as router_module
+
+    monkeypatch.setattr(router_module, "check_db_api_key_available", AsyncMock(return_value=False))
+    monkeypatch.setattr(router_module, "check_db_openrouter_available", AsyncMock(return_value=False))
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "some-model", "provider": provider},
+        headers=_headers(),
+    )
+    assert res.json()["valid"] is False
+
+
+def test_validate_model_failed_key_lookup_does_not_block(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A DB hiccup must not tell users their saved key is missing."""
+    from routers import evaluation_logs as router_module
+
+    monkeypatch.setattr(router_module, "check_db_api_key_available", AsyncMock(return_value=None))
+    monkeypatch.setattr(router_module, "check_db_openrouter_available", AsyncMock(return_value=None))
+    probe = AsyncMock(return_value=("model_not_found", "x"))
+    monkeypatch.setattr(router_module, "probe_model", probe)
+
+    res = client.post(
+        "/deepeval/models/validate",
+        json={"model_name": "gpt-4o", "provider": "openai", "probe": True},
+        headers=_headers(),
+    )
+    body = res.json()
+    assert body["valid"] is True
+    assert body["has_openrouter_fallback"] is False
+    probe.assert_not_awaited()
 
 
 def _saved_key_only(monkeypatch: pytest.MonkeyPatch, probe_result):

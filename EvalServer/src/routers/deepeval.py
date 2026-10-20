@@ -9,7 +9,6 @@ Shared-schema multi-tenancy: Uses organization_id from request.state.
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from pathlib import Path
-import json
 from controllers.deepeval import (
     get_available_deepeval_metrics_controller,
     get_evaluation_dataset_info_controller,

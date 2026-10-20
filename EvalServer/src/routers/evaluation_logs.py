@@ -71,30 +71,28 @@ def detect_provider_from_model(model_name: str) -> Optional[str]:
 
 def provider_needs_key(provider: str) -> bool:
     """False for Ollama, HuggingFace and unknown providers, which run without a key."""
-    return PROVIDER_API_KEY_MAP.get(provider) is not None
+    p = (provider or "").lower()
+    return PROVIDER_API_KEY_MAP.get("google" if p == "gemini" else p) is not None
 
 
-# Provider keys and judge settings a run must take from its own config only.
-# run_evaluation sets them inside the run subprocess from the org's saved keys.
-_RUN_ENV_STRIPPED = {
-    *(v for v in PROVIDER_API_KEY_MAP.values() if v),
-    "GEMINI_API_KEY",
-    "HF_API_KEY",
-}
+# Credentials and endpoints a run must take from its own config only; run_evaluation sets
+# them inside the run subprocess from the org's saved keys. Any *_API_KEY counts, so a
+# provider added later is covered. Non-secret judge defaults (G_EVAL_MODEL, ...) pass.
+_RUN_ENV_STRIPPED = {"G_EVAL_BASE_URL", "G_EVAL_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE"}
 
 
 def run_subprocess_env() -> Dict[str, str]:
-    """The run subprocess environment: the server's, minus any provider key or G_EVAL_*
-    setting, so one org's run never falls back to a key that isn't that org's."""
+    """The run subprocess environment: the server's, minus provider credentials and
+    endpoints, so one org's run never falls back to a key that isn't that org's."""
     env = {
         k: v for k, v in os.environ.items()
-        if k not in _RUN_ENV_STRIPPED and not k.startswith("G_EVAL_")
+        if k not in _RUN_ENV_STRIPPED and not k.endswith("_API_KEY")
     }
     env["PYTHONUNBUFFERED"] = "1"
     return env
 
 
-async def check_db_api_key_available(organization_id: int, provider: str) -> bool:
+async def check_db_api_key_available(organization_id: int, provider: str) -> Optional[bool]:
     """Check if the API key for a provider is stored in AI Gateway key storage."""
     try:
         p = (provider or "").lower()
@@ -120,11 +118,12 @@ async def check_db_api_key_available(organization_id: int, provider: str) -> boo
             row = result.fetchone()
             return row[0] > 0 if row else False
     except Exception as e:
-        print(f"Error checking DB for API key: {e}")
-        return False
+        # None = unknown: a failed lookup must not tell users their saved key is missing
+        print(f"Error checking DB for API key: {type(e).__name__}")
+        return None
 
 
-async def check_db_openrouter_available(organization_id: int) -> bool:
+async def check_db_openrouter_available(organization_id: int) -> Optional[bool]:
     """Check if OpenRouter is configured in the database as a fallback."""
     return await check_db_api_key_available(organization_id, "openrouter")
 
@@ -298,7 +297,7 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
 
     if not provider:
         # Unknown provider - can't validate, assume it's fine
-        has_openrouter = await check_db_openrouter_available(organization_id)
+        has_openrouter = await check_db_openrouter_available(organization_id) is True
         return JSONResponse(content={
             "valid": True,
             "model_name": model_name,
@@ -309,22 +308,22 @@ async def validate_model_api_key(request: Request, payload: ValidateModelRequest
         })
 
     # Only the org's saved keys count: a run never sees keys from the server environment
+    # None (lookup failed) gets the benefit of the doubt, as the probe does for an outage
     has_api_key_db = await check_db_api_key_available(organization_id, provider)
-    has_api_key = not provider_needs_key(provider) or has_api_key_db
+    has_api_key = not provider_needs_key(provider) or has_api_key_db is not False
 
-    has_openrouter = await check_db_openrouter_available(organization_id)
+    has_openrouter = await check_db_openrouter_available(organization_id) is True
 
     # Model is valid if it has its API key OR OpenRouter is available as fallback
     # Note: OpenRouter can proxy to many models but not all (e.g., not ollama/huggingface local)
     is_valid = has_api_key or (has_openrouter and provider in ["openai", "anthropic", "google", "mistral"])
 
-    env_var = PROVIDER_API_KEY_MAP.get(provider)
     error_message = None
     if not is_valid:
-        if env_var:
-            error_message = f"{env_var} is not configured. Please add your API key in settings or enable OpenRouter."
-        else:
-            error_message = f"API key for provider '{provider}' is not configured."
+        error_message = (
+            f"No saved API key for provider '{provider}'. "
+            "Please add your API key in settings or enable OpenRouter."
+        )
 
     # Only a saved key the run would use is probed
     probe_failed = False

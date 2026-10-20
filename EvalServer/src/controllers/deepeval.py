@@ -784,12 +784,18 @@ async def test_deepeval_scorer_controller(
                 detail="Both 'input' and 'output' are required for testing"
             )
         
-        # Run the scorer
+        # Runs in the server process: use this org's saved key, never the server environment
+        from routers.evaluation_logs import _newest_saved_key
+
+        async def org_key(provider: str) -> Optional[str]:
+            return await _newest_saved_key(organization_id, provider)
+
         result = await run_custom_scorer(
             scorer_config=scorer,
             input_text=input_text,
             output_text=output_text,
             expected_text=expected_text,
+            key_resolver=org_key,
         )
         
         return JSONResponse(

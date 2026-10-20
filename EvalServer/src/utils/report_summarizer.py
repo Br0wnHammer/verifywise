@@ -5,7 +5,6 @@ Uses the experiment's judge LLM to generate natural language summaries
 for individual metrics and an overall executive summary.
 """
 
-import os
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -15,18 +14,6 @@ except ImportError:
     OpenAI = None
 
 logger = logging.getLogger("uvicorn")
-
-# Env fallback for a cloud provider's key when the caller passes none
-PROVIDER_ENV_KEYS = {
-    "openai": "OPENAI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "mistral": "MISTRAL_API_KEY",
-    "xai": "XAI_API_KEY",
-    # run_evaluation writes the org's Google key to GOOGLE_API_KEY
-    "google": "GOOGLE_API_KEY",
-    "gemini": "GOOGLE_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-}
 
 from utils.gateway_litellm_client import (
     gateway_chat_completion_sync,
@@ -74,11 +61,11 @@ def _call_llm(
     # Cloud providers run only through the AI Gateway's LiteLLM
     if not gateway_mode_enabled():
         raise RuntimeError(f"Provider '{provider}' runs through the AI Gateway; set AI_GATEWAY_INTERNAL_KEY")
-    key = api_key or os.getenv(PROVIDER_ENV_KEYS.get(p, ""), "")
-    if not key:
+    # Runs in the server process: only the org's key the caller passed, never the environment
+    if not api_key:
         raise RuntimeError(f"No API key for provider '{provider}'")
     return gateway_chat_completion_sync(
-        to_litellm_model(provider, model), messages, key, max_tokens=max_tokens, temperature=0.4
+        to_litellm_model(provider, model), messages, api_key, max_tokens=max_tokens, temperature=0.4
     )
 
 

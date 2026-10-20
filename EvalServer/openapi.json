@@ -40,9 +40,7 @@
     },
     "/deepeval/metrics/available": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Get Available Metrics",
         "description": "Get list of available DeepEval metrics.\n\nReturns:\n{\n    \"metrics\": [\n        {\n            \"name\": \"answer_relevancy\",\n            \"description\": \"Measures if the answer is relevant to the input\",\n            \"requires_context\": false,\n            \"requires_openai_key\": true\n        },\n        ...\n    ]\n}",
         "operationId": "get_available_metrics_deepeval_metrics_available_get",
@@ -60,9 +58,7 @@
     },
     "/deepeval/dataset/info": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Get Dataset Info",
         "description": "Get information about the evaluation dataset.\n\nReturns:\n{\n    \"total_prompts\": 20,\n    \"categories\": [\"coding\", \"mathematics\", \"reasoning\", ...],\n    \"difficulties\": [\"easy\", \"medium\", \"hard\"],\n    \"category_counts\": {\n        \"coding\": 3,\n        \"mathematics\": 3,\n        ...\n    }\n}",
         "operationId": "get_dataset_info_deepeval_dataset_info_get",
@@ -80,9 +76,7 @@
     },
     "/deepeval/datasets/upload": {
       "post": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Upload Dataset",
         "description": "Upload a custom JSON dataset to be used in evaluations.\n\nReturns:\n{\n    \"message\": \"Dataset uploaded successfully\",\n    \"path\": \"data/uploads/{tenant}/{filename}.json\",\n    \"filename\": \"{filename}.json\",\n    \"size\": 12345,\n    \"tenant\": \"default\",\n    \"datasetType\": \"chatbot\",\n    \"turnType\": \"single-turn\"\n}",
         "operationId": "upload_dataset_deepeval_datasets_upload_post",
@@ -120,9 +114,7 @@
     },
     "/deepeval/datasets/list": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "List Datasets",
         "description": "List available built-in datasets grouped by use case.",
         "operationId": "list_datasets_deepeval_datasets_list_get",
@@ -140,9 +132,7 @@
     },
     "/deepeval/datasets/read": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Read Dataset",
         "description": "Read and return the JSON content of a dataset file by relative path.\nExample: /deepeval/datasets/read?path=chatbot/chatbot_basic.json",
         "operationId": "read_dataset_deepeval_datasets_read_get",
@@ -181,9 +171,7 @@
     },
     "/deepeval/datasets/uploads": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "List Uploaded Datasets",
         "description": "List uploaded JSON datasets for the current organization.\nDocker: /app/data/uploads/{organization_id}\nLocal: EvaluationModule/data/uploads/{organization_id}",
         "operationId": "list_uploaded_datasets_deepeval_datasets_uploads_get",
@@ -201,9 +189,7 @@
     },
     "/deepeval/datasets/user": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "List User Datasets",
         "description": "List user-uploaded datasets from DB for the current organization.\nOptionally filter by org_id.",
         "operationId": "list_user_datasets_deepeval_datasets_user_get",
@@ -247,9 +233,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Delete User Datasets",
         "description": "Delete user-uploaded datasets from DB and filesystem for the current organization.\nExpects JSON body with {\"paths\": [\"path1\", \"path2\", ...]}",
         "operationId": "delete_user_datasets_deepeval_datasets_user_delete",
@@ -267,9 +251,7 @@
     },
     "/deepeval/scorers": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "List Scorers Endpoint",
         "description": "List scorer definitions for the current organization (optionally for a single project).",
         "operationId": "list_scorers_endpoint_deepeval_scorers_get",
@@ -313,9 +295,7 @@
         }
       },
       "post": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Create Scorer Endpoint",
         "description": "Create a new scorer definition.",
         "operationId": "create_scorer_endpoint_deepeval_scorers_post",
@@ -353,9 +333,7 @@
     },
     "/deepeval/scorers/{scorer_id}": {
       "put": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Update Scorer Endpoint",
         "description": "Update an existing scorer definition.",
         "operationId": "update_scorer_endpoint_deepeval_scorers__scorer_id__put",
@@ -402,9 +380,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Delete Scorer Endpoint",
         "description": "Delete a scorer definition.",
         "operationId": "delete_scorer_endpoint_deepeval_scorers__scorer_id__delete",
@@ -443,9 +419,7 @@
     },
     "/deepeval/scorers/{scorer_id}/test": {
       "post": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Test Scorer Endpoint",
         "description": "Test a scorer with sample input/output.\n\nExpected payload:\n{\n  \"input\": \"The source text...\",\n  \"output\": \"The model's output...\",\n  \"expected\": \"Optional expected output...\"\n}",
         "operationId": "test_scorer_endpoint_deepeval_scorers__scorer_id__test_post",
@@ -494,9 +468,7 @@
     },
     "/deepeval/models": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "List Models Endpoint",
         "description": "List saved model configurations for the current organization.",
         "operationId": "list_models_endpoint_deepeval_models_get",
@@ -540,9 +512,7 @@
         }
       },
       "post": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Create Model Endpoint",
         "description": "Create a new saved model configuration.",
         "operationId": "create_model_endpoint_deepeval_models_post",
@@ -580,9 +550,7 @@
     },
     "/deepeval/models/{model_id}": {
       "put": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Update Model Endpoint",
         "description": "Update an existing saved model configuration.",
         "operationId": "update_model_endpoint_deepeval_models__model_id__put",
@@ -629,9 +597,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Delete Model Endpoint",
         "description": "Delete a saved model configuration.",
         "operationId": "delete_model_endpoint_deepeval_models__model_id__delete",
@@ -670,9 +636,7 @@
     },
     "/deepeval/models/latest": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Get Latest Model Endpoint",
         "description": "Get the most recently added/updated model configuration.\nUsed for auto-populating experiment forms.",
         "operationId": "get_latest_model_endpoint_deepeval_models_latest_get",
@@ -718,9 +682,7 @@
     },
     "/deepeval/scorers/latest": {
       "get": {
-        "tags": [
-          "DeepEval"
-        ],
+        "tags": ["DeepEval"],
         "summary": "Get Latest Scorer Endpoint",
         "description": "Get the most recently added/updated scorer (judge) configuration.\nUsed for auto-populating experiment forms.",
         "operationId": "get_latest_scorer_endpoint_deepeval_scorers_latest_get",
@@ -766,9 +728,7 @@
     },
     "/deepeval/projects": {
       "get": {
-        "tags": [
-          "DeepEval Projects"
-        ],
+        "tags": ["DeepEval Projects"],
         "summary": "Get All Projects",
         "description": "Get all DeepEval projects for the current organization.",
         "operationId": "get_all_projects_deepeval_projects_get",
@@ -784,9 +744,7 @@
         }
       },
       "post": {
-        "tags": [
-          "DeepEval Projects"
-        ],
+        "tags": ["DeepEval Projects"],
         "summary": "Create Project",
         "description": "Create a new DeepEval project.\n\nRequest body:\n{\n    \"name\": \"Coding Tasks Evaluation\",\n    \"description\": \"Evaluating model performance on coding tasks\",\n    \"useCase\": \"chatbot\"\n}",
         "operationId": "create_project_deepeval_projects_post",
@@ -826,9 +784,7 @@
     },
     "/deepeval/projects/{project_id}": {
       "get": {
-        "tags": [
-          "DeepEval Projects"
-        ],
+        "tags": ["DeepEval Projects"],
         "summary": "Get Project",
         "description": "Get a specific project by ID.",
         "operationId": "get_project_deepeval_projects__project_id__get",
@@ -865,9 +821,7 @@
         }
       },
       "put": {
-        "tags": [
-          "DeepEval Projects"
-        ],
+        "tags": ["DeepEval Projects"],
         "summary": "Update Project",
         "description": "Update an existing project.",
         "operationId": "update_project_deepeval_projects__project_id__put",
@@ -916,9 +870,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "DeepEval Projects"
-        ],
+        "tags": ["DeepEval Projects"],
         "summary": "Delete Project",
         "description": "Delete a project and all its associated experiments.",
         "operationId": "delete_project_deepeval_projects__project_id__delete",
@@ -957,9 +909,7 @@
     },
     "/deepeval/projects/{project_id}/stats": {
       "get": {
-        "tags": [
-          "DeepEval Projects"
-        ],
+        "tags": ["DeepEval Projects"],
         "summary": "Get Project Stats",
         "description": "Get project statistics (number of experiments, avg metrics, etc.).",
         "operationId": "get_project_stats_deepeval_projects__project_id__stats_get",
@@ -998,9 +948,7 @@
     },
     "/deepeval/orgs": {
       "get": {
-        "tags": [
-          "DeepEval Orgs"
-        ],
+        "tags": ["DeepEval Orgs"],
         "summary": "List Orgs",
         "operationId": "list_orgs_deepeval_orgs_get",
         "responses": {
@@ -1015,9 +963,7 @@
         }
       },
       "post": {
-        "tags": [
-          "DeepEval Orgs"
-        ],
+        "tags": ["DeepEval Orgs"],
         "summary": "Create Org",
         "operationId": "create_org_deepeval_orgs_post",
         "requestBody": {
@@ -1056,9 +1002,7 @@
     },
     "/deepeval/orgs/{org_id}/projects": {
       "get": {
-        "tags": [
-          "DeepEval Orgs"
-        ],
+        "tags": ["DeepEval Orgs"],
         "summary": "Org Projects",
         "operationId": "org_projects_deepeval_orgs__org_id__projects_get",
         "parameters": [
@@ -1096,9 +1040,7 @@
     },
     "/deepeval/orgs/{org_id}": {
       "put": {
-        "tags": [
-          "DeepEval Orgs"
-        ],
+        "tags": ["DeepEval Orgs"],
         "summary": "Update Org",
         "description": "Update an organization.",
         "operationId": "update_org_deepeval_orgs__org_id__put",
@@ -1147,9 +1089,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "DeepEval Orgs"
-        ],
+        "tags": ["DeepEval Orgs"],
         "summary": "Delete Org",
         "description": "Delete an organization.",
         "operationId": "delete_org_deepeval_orgs__org_id__delete",
@@ -1188,9 +1128,7 @@
     },
     "/deepeval/arena/compare": {
       "post": {
-        "tags": [
-          "DeepEval Arena"
-        ],
+        "tags": ["DeepEval Arena"],
         "summary": "Create Arena Comparison",
         "description": "Create and run an LLM Arena comparison.\n\nRequest body:\n{\n    \"name\": \"Model Comparison Test\",\n    \"description\": \"Comparing different model versions\",\n    \"contestants\": [\n        {\n            \"name\": \"GPT-4 Turbo\",\n            \"hyperparameters\": {\n                \"model\": \"gpt-4-turbo\",\n                \"temperature\": 0.7\n            },\n            \"testCases\": [\n                {\n                    \"input\": \"What is the capital of France?\",\n                    \"actualOutput\": \"Paris is the capital of France.\"\n                }\n            ]\n        },\n        {\n            \"name\": \"GPT-3.5 Turbo\",\n            \"hyperparameters\": {\n                \"model\": \"gpt-3.5-turbo\",\n                \"temperature\": 0.7\n            },\n            \"testCases\": [\n                {\n                    \"input\": \"What is the capital of France?\",\n                    \"actualOutput\": \"Paris\"\n                }\n            ]\n        }\n    ],\n    \"metric\": {\n        \"name\": \"Helpfulness\",\n        \"criteria\": \"Choose the winner based on which response is more helpful and informative\",\n        \"evaluationParams\": [\"input\", \"actual_output\"]\n    },\n    \"judgeModel\": \"gpt-4o\"  // Model used as judge\n}",
         "operationId": "create_arena_comparison_deepeval_arena_compare_post",
@@ -1230,9 +1168,7 @@
     },
     "/deepeval/arena/comparisons": {
       "get": {
-        "tags": [
-          "DeepEval Arena"
-        ],
+        "tags": ["DeepEval Arena"],
         "summary": "List Arena Comparisons",
         "description": "List all arena comparisons for the current tenant.\n\nReturns:\n{\n    \"comparisons\": [\n        {\n            \"id\": \"arena_20250130_120000\",\n            \"name\": \"Model Comparison Test\",\n            \"status\": \"completed\",\n            \"contestants\": [\"GPT-4 Turbo\", \"GPT-3.5 Turbo\"],\n            \"winner\": \"GPT-4 Turbo\",\n            \"createdAt\": \"2025-01-30T12:00:00\",\n            \"completedAt\": \"2025-01-30T12:05:30\"\n        },\n        ...\n    ]\n}",
         "operationId": "list_arena_comparisons_deepeval_arena_comparisons_get",
@@ -1278,9 +1214,7 @@
     },
     "/deepeval/arena/comparisons/{comparison_id}": {
       "get": {
-        "tags": [
-          "DeepEval Arena"
-        ],
+        "tags": ["DeepEval Arena"],
         "summary": "Get Arena Comparison Status",
         "description": "Get the status of an arena comparison.\n\nReturns:\n{\n    \"id\": \"arena_20250130_120000\",\n    \"status\": \"running\" | \"completed\" | \"failed\",\n    \"progress\": \"3/10 test cases evaluated\",\n    \"createdAt\": \"2025-01-30T12:00:00\",\n    \"updatedAt\": \"2025-01-30T12:01:30\"\n}",
         "operationId": "get_arena_comparison_status_deepeval_arena_comparisons__comparison_id__get",
@@ -1317,9 +1251,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "DeepEval Arena"
-        ],
+        "tags": ["DeepEval Arena"],
         "summary": "Delete Arena Comparison",
         "description": "Delete an arena comparison.\n\nReturns:\n{\n    \"message\": \"Arena comparison deleted successfully\",\n    \"id\": \"arena_20250130_120000\"\n}",
         "operationId": "delete_arena_comparison_deepeval_arena_comparisons__comparison_id__delete",
@@ -1358,9 +1290,7 @@
     },
     "/deepeval/arena/comparisons/{comparison_id}/results": {
       "get": {
-        "tags": [
-          "DeepEval Arena"
-        ],
+        "tags": ["DeepEval Arena"],
         "summary": "Get Arena Comparison Results",
         "description": "Get the results of a completed arena comparison.\n\nReturns:\n{\n    \"id\": \"arena_20250130_120000\",\n    \"name\": \"Model Comparison Test\",\n    \"status\": \"completed\",\n    \"metric\": {\n        \"name\": \"Helpfulness\",\n        \"criteria\": \"Choose the winner based on which response is more helpful\"\n    },\n    \"results\": {\n        \"winner\": \"GPT-4 Turbo\",\n        \"winCounts\": {\n            \"GPT-4 Turbo\": 7,\n            \"GPT-3.5 Turbo\": 3\n        },\n        \"detailedResults\": [\n            {\n                \"testCaseIndex\": 0,\n                \"input\": \"What is the capital of France?\",\n                \"winner\": \"GPT-4 Turbo\",\n                \"reason\": \"More comprehensive and informative response\"\n            },\n            ...\n        ]\n    }\n}",
         "operationId": "get_arena_comparison_results_deepeval_arena_comparisons__comparison_id__results_get",
@@ -1399,9 +1329,7 @@
     },
     "/deepeval/bias-audits/presets": {
       "get": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "List Presets",
         "description": "List all available bias audit preset summaries.",
         "operationId": "list_presets_deepeval_bias_audits_presets_get",
@@ -1419,9 +1347,7 @@
     },
     "/deepeval/bias-audits/presets/{preset_id}": {
       "get": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "Get Preset",
         "description": "Get full details of a single preset.",
         "operationId": "get_preset_deepeval_bias_audits_presets__preset_id__get",
@@ -1460,9 +1386,7 @@
     },
     "/deepeval/bias-audits/run": {
       "post": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "Create Bias Audit",
         "description": "Create and execute a bias audit.\n\nMultipart form: dataset CSV file + config_json string + org_id.\nReturns 202 with auditId for polling.",
         "operationId": "create_bias_audit_deepeval_bias_audits_run_post",
@@ -1500,9 +1424,7 @@
     },
     "/deepeval/bias-audits/{audit_id}/status": {
       "get": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "Get Audit Status",
         "description": "Poll the status of a bias audit.",
         "operationId": "get_audit_status_deepeval_bias_audits__audit_id__status_get",
@@ -1541,9 +1463,7 @@
     },
     "/deepeval/bias-audits/{audit_id}/results": {
       "get": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "Get Audit Results",
         "description": "Get full results of a completed bias audit.",
         "operationId": "get_audit_results_deepeval_bias_audits__audit_id__results_get",
@@ -1582,9 +1502,7 @@
     },
     "/deepeval/bias-audits/{audit_id}": {
       "patch": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "Update Audit",
         "description": "Update the user-editable system name for an audit.",
         "operationId": "update_audit_deepeval_bias_audits__audit_id__patch",
@@ -1631,9 +1549,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "Delete Audit",
         "description": "Delete a bias audit and its results.",
         "operationId": "delete_audit_deepeval_bias_audits__audit_id__delete",
@@ -1672,9 +1588,7 @@
     },
     "/deepeval/bias-audits/{audit_id}/report.pdf": {
       "get": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "Get Audit Report",
         "description": "Download a formal PDF report for a completed bias audit.",
         "operationId": "get_audit_report_deepeval_bias_audits__audit_id__report_pdf_get",
@@ -1713,9 +1627,7 @@
     },
     "/deepeval/bias-audits": {
       "get": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "List Audits",
         "description": "List all bias audits for the organization.",
         "operationId": "list_audits_deepeval_bias_audits_get",
@@ -1777,9 +1689,7 @@
     },
     "/deepeval/bias-audits/parse-headers": {
       "post": {
-        "tags": [
-          "Bias Audits"
-        ],
+        "tags": ["Bias Audits"],
         "summary": "Parse Csv Headers",
         "description": "Parse CSV headers for column mapping UI.",
         "operationId": "parse_csv_headers_deepeval_bias_audits_parse_headers_post",
@@ -2677,10 +2587,7 @@
     },
     "/deepeval/reports/generate": {
       "post": {
-        "tags": [
-          "Reports",
-          "Reports"
-        ],
+        "tags": ["Reports", "Reports"],
         "summary": "Generate Report",
         "description": "Generate a PDF or CSV evaluation report and save it to the database.",
         "operationId": "generate_report_deepeval_reports_generate_post",
@@ -2698,10 +2605,7 @@
     },
     "/deepeval/reports": {
       "get": {
-        "tags": [
-          "Reports",
-          "Reports"
-        ],
+        "tags": ["Reports", "Reports"],
         "summary": "List Reports",
         "description": "List stored reports for the current organization.",
         "operationId": "list_reports_deepeval_reports_get",
@@ -2747,10 +2651,7 @@
     },
     "/deepeval/reports/{report_id}/file": {
       "get": {
-        "tags": [
-          "Reports",
-          "Reports"
-        ],
+        "tags": ["Reports", "Reports"],
         "summary": "Get Report File",
         "description": "Download a stored report file.",
         "operationId": "get_report_file_deepeval_reports__report_id__file_get",
@@ -2789,10 +2690,7 @@
     },
     "/deepeval/reports/{report_id}": {
       "delete": {
-        "tags": [
-          "Reports",
-          "Reports"
-        ],
+        "tags": ["Reports", "Reports"],
         "summary": "Delete Report",
         "description": "Delete a stored report.",
         "operationId": "delete_report_deepeval_reports__report_id__delete",
@@ -2849,11 +2747,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "dataset",
-          "config_json",
-          "org_id"
-        ],
+        "required": ["dataset", "config_json", "org_id"],
         "title": "Body_create_bias_audit_deepeval_bias_audits_run_post"
       },
       "Body_parse_csv_headers_deepeval_bias_audits_parse_headers_post": {
@@ -2865,9 +2759,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "dataset"
-        ],
+        "required": ["dataset"],
         "title": "Body_parse_csv_headers_deepeval_bias_audits_parse_headers_post"
       },
       "Body_upload_dataset_deepeval_datasets_upload_post": {
@@ -2893,10 +2785,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "dataset",
-          "org_id"
-        ],
+        "required": ["dataset", "org_id"],
         "title": "Body_upload_dataset_deepeval_datasets_upload_post"
       },
       "CreateExperimentRequest": {
@@ -2949,11 +2838,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "project_id",
-          "name",
-          "config"
-        ],
+        "required": ["project_id", "name", "config"],
         "title": "CreateExperimentRequest"
       },
       "CreateLogRequest": {
@@ -3109,9 +2994,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "project_id"
-        ],
+        "required": ["project_id"],
         "title": "CreateLogRequest"
       },
       "CreateMetricRequest": {
@@ -3157,12 +3040,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "project_id",
-          "metric_name",
-          "metric_type",
-          "value"
-        ],
+        "required": ["project_id", "metric_name", "metric_type", "value"],
         "title": "CreateMetricRequest"
       },
       "CreateModelRequest": {
@@ -3218,11 +3096,7 @@
         },
         "additionalProperties": true,
         "type": "object",
-        "required": [
-          "orgId",
-          "name",
-          "provider"
-        ],
+        "required": ["orgId", "name", "provider"],
         "title": "CreateModelRequest",
         "description": "Body for ``POST /deepeval/models``."
       },
@@ -3341,10 +3215,7 @@
         },
         "additionalProperties": true,
         "type": "object",
-        "required": [
-          "name",
-          "metricKey"
-        ],
+        "required": ["name", "metricKey"],
         "title": "CreateScorerRequest",
         "description": "Body for ``POST /deepeval/scorers``."
       },
@@ -3387,10 +3258,7 @@
         },
         "additionalProperties": true,
         "type": "object",
-        "required": [
-          "input",
-          "output"
-        ],
+        "required": ["input", "output"],
         "title": "ScorerTestRequest",
         "description": "Body for ``POST /deepeval/scorers/{scorer_id}/test``."
       },
@@ -3402,9 +3270,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "systemName"
-        ],
+        "required": ["systemName"],
         "title": "UpdateAuditNameRequest"
       },
       "UpdateExperimentRequest": {
@@ -3466,9 +3332,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "title": "UpdateExperimentStatusRequest"
       },
       "UpdateModelRequest": {
@@ -3633,9 +3497,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "model_name"
-        ],
+        "required": ["model_name"],
         "title": "ValidateModelRequest"
       },
       "ValidationError": {
@@ -3671,11 +3533,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError"
       }
     }

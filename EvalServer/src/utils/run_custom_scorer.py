@@ -11,7 +11,7 @@ import math
 import re
 import os
 import json
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
 
 from utils.error_detection import redact_secrets
@@ -93,6 +93,7 @@ def get_provider_client(
     provider: str,
     endpoint_url: Optional[str] = None,
     api_key: Optional[str] = None,
+    env_fallback: bool = True,
 ) -> Tuple[Any, str]:
     """
     The client and key for a scorer's judge.
@@ -128,8 +129,14 @@ def get_provider_client(
     if not gateway_mode_enabled():
         raise RuntimeError(f"Provider '{provider}' runs through the AI Gateway; set AI_GATEWAY_INTERNAL_KEY")
     env_var = PROVIDER_CONFIG.get(provider, PROVIDER_CONFIG["openai"])["env_var"]
-    resolved_key = api_key or os.getenv(env_var)
+    # Inside a run the env holds that run's own keys; in the server process it must not be read
+    resolved_key = api_key or (os.getenv(env_var) if env_fallback else None)
     if not resolved_key:
+        if not env_fallback:
+            raise RuntimeError(
+                f"No saved API key for provider '{provider}'. "
+                f"Please save your {provider.upper()} API key in LLM Evals Settings."
+            )
         raise RuntimeError(
             f"No API key found for provider '{provider}' (expected env var: {env_var}). "
             f"Please save your {provider.upper()} API key in LLM Evals Settings."
@@ -283,6 +290,7 @@ async def run_custom_scorer(
     output_text: str,
     expected_text: str = "",
     metadata: Optional[Dict[str, Any]] = None,
+    key_resolver: Optional[Callable[[str], Awaitable[Optional[str]]]] = None,
 ) -> ScorerResult:
     """
     Execute a custom LLM judge scorer.
@@ -298,6 +306,8 @@ async def run_custom_scorer(
         output_text: The model's actual output to evaluate
         expected_text: Optional expected/reference output
         metadata: Optional additional context
+        key_resolver: For callers in the server process: returns the org's saved key for a
+            provider. When given, the server environment is never read for a key.
         
     Returns:
         ScorerResult with label, score, and pass/fail status
@@ -397,7 +407,11 @@ async def run_custom_scorer(
     
     # Get the appropriate client for this provider
     try:
-        client, api_key = get_provider_client(provider, endpoint_url=endpoint_url, api_key=config_api_key)
+        if key_resolver is not None and not config_api_key and provider not in SELF_HOSTED_PROVIDERS:
+            config_api_key = await key_resolver(provider)
+        client, api_key = get_provider_client(
+            provider, endpoint_url=endpoint_url, api_key=config_api_key, env_fallback=key_resolver is None
+        )
         print(f"   ✅ Judge provider ready: {provider}")
     except RuntimeError as e:
         # Stored in the experiment's results, shown to the organization.
