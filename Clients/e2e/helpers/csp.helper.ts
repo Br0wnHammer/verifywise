@@ -87,9 +87,7 @@ export class CspCollector {
    * Reporting API). Requests are acknowledged with 204 so the browser's
    * reporting queue is drained and no app errors occur.
    */
-  async installReportEndpoint(
-    page: import("@playwright/test").Page,
-  ): Promise<void> {
+  async installReportEndpoint(page: import("@playwright/test").Page): Promise<void> {
     await page.route("**/*", async (route) => {
       const request = route.request();
       const contentType = request.headers()["content-type"] ?? "";
@@ -133,14 +131,11 @@ export class CspCollector {
     if (!this.attached) {
       throw new Error("CspCollector.attach(page) must be called first");
     }
-    const inPage = await page.evaluate(
-      () => window.__cspViolations ?? [],
-    );
+    const inPage = await page.evaluate(() => window.__cspViolations ?? []);
     for (const violation of inPage as CspViolation[]) {
       const key = `${violation.violatedDirective}|${violation.blockedUri ?? ""}|${violation.pageUrl}`;
       const already = this.violations.some(
-        (v) =>
-          `${v.violatedDirective}|${v.blockedUri ?? ""}|${v.pageUrl}` === key,
+        (v) => `${v.violatedDirective}|${v.blockedUri ?? ""}|${v.pageUrl}` === key,
       );
       if (!already) this.violations.push(violation);
     }
@@ -149,8 +144,6 @@ export class CspCollector {
 
   /** Distinct violated directives — the unit used by the enforcement policy. */
   violatedDirectives(): string[] {
-    return [
-      ...new Set(this.violations.map((v) => v.violatedDirective.split(" ")[0])),
-    ].sort();
+    return [...new Set(this.violations.map((v) => v.violatedDirective.split(" ")[0]))].sort();
   }
 }
