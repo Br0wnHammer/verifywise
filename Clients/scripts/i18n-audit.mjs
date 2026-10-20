@@ -72,16 +72,24 @@ function loadDict(lang) {
   addPairs(keys, block[2]);
 
   // Area dictionaries that have been moved out of translations.ts.
+  // Static regex, same as the translations.ts block above: select the
+  // requested language after the match instead of building a regex from `lang`.
   if (existsSync(MODULES_DIR)) {
-    const exportRe = new RegExp(`export const ${lang}\\b[^=]*=\\s*\\{([\\s\\S]*?)\\n\\};`);
     for (const name of readdirSync(MODULES_DIR)) {
       if (!name.endsWith(".ts")) continue;
       const moduleText = readFileSync(join(MODULES_DIR, name), "utf8");
-      const exported = moduleText.match(exportRe);
+      const exportRe = /export const (de|fr|es)\b[^=]*=\s*\{([\s\S]*?)\n\};/g;
+      let exported = null;
+      for (const m of moduleText.matchAll(exportRe)) {
+        if (m[1] === lang) {
+          exported = m;
+          break;
+        }
+      }
       if (!exported) {
         throw new Error(`Could not find ${lang} dictionary in i18n/modules/${name}`);
       }
-      addPairs(keys, exported[1]);
+      addPairs(keys, exported[2]);
     }
   }
 
