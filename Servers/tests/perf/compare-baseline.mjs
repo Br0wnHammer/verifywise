@@ -49,7 +49,10 @@ function p95ByEndpoint(summary) {
 const before = p95ByEndpoint(baseline);
 const after = p95ByEndpoint(current);
 
-const rows = ["| Endpoint | Baseline p95 | Current p95 | Δ | Status |", "|----------|-------------:|------------:|---:|:------:|"];
+const rows = [
+  "| Endpoint | Baseline p95 | Current p95 | Δ | Status |",
+  "|----------|-------------:|------------:|---:|:------:|",
+];
 let regressions = 0;
 
 for (const [endpoint, base] of Object.entries(before)) {
@@ -62,7 +65,9 @@ for (const [endpoint, base] of Object.entries(before)) {
     `| ${endpoint} | ${base.toFixed(1)}ms | ${now.toFixed(1)}ms | ${deltaPct >= 0 ? "+" : ""}${deltaPct.toFixed(1)}% | ${regressed ? "⚠️ regression" : "✅"} |`,
   );
   if (regressed) {
-    console.log(`::warning::p95 regression on '${endpoint}': ${base.toFixed(1)}ms -> ${now.toFixed(1)}ms (${deltaPct.toFixed(1)}% > ${REGRESSION_THRESHOLD}%)`);
+    console.log(
+      `::warning::p95 regression on '${endpoint}': ${base.toFixed(1)}ms -> ${now.toFixed(1)}ms (${deltaPct.toFixed(1)}% > ${REGRESSION_THRESHOLD}%)`,
+    );
   }
 }
 
@@ -72,7 +77,10 @@ if (Object.keys(before).length === 0) {
 }
 
 try {
-  appendFileSync(process.env.GITHUB_STEP_SUMMARY || "/dev/null", `\n## k6 p95 vs baseline\n\n${rows.join("\n")}\n`);
+  appendFileSync(
+    process.env.GITHUB_STEP_SUMMARY || "/dev/null",
+    `\n## k6 p95 vs baseline\n\n${rows.join("\n")}\n`,
+  );
 } catch {
   /* summary is best-effort */
 }
