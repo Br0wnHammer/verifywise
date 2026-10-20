@@ -11,9 +11,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import routers.models as models_router
 import routers.tenant_chat as tenant_chat
 
-# Fields the Models page (catalog, cost calculator, comparison) reads from
-# GET /api/ai-gateway/models/catalog — see ModelInfo in
-# Clients/src/presentation/pages/AIGateway/Models/index.tsx.
+# Fields served by GET /api/ai-gateway/models/catalog. The Models page (catalog, cost
+# calculator, comparison) reads most of them — see ModelInfo in
+# Clients/src/presentation/pages/AIGateway/Models/index.tsx. deprecation_date is for the
+# LLM Evals model picker.
 MODEL_INFO_FIELDS = {
     "id",
     "provider",
@@ -46,10 +47,15 @@ FAKE_COST_MAP = {
         "max_output_tokens": 16384,
         "supports_vision": True,
     },
-    "gemini/gemini-2.0-flash": {
+    "gemini/retired-model": {
         "litellm_provider": "gemini",
         "mode": "chat",
-        "deprecation_date": "2026-03-31",
+        "deprecation_date": "2001-02-03",
+    },
+    "gemini/bad-date-model": {
+        "litellm_provider": "gemini",
+        "mode": "chat",
+        "deprecation_date": "2026-6-1",
     },
     "text-embedding-3-small": {
         "litellm_provider": "openai",
@@ -87,11 +93,18 @@ async def test_proxied_catalog_matches_models_page_contract(fake_cost_map):
 
 
 async def test_catalog_carries_the_deprecation_date(fake_cost_map):
-    # LLM Evals hides retired models from its picker using this date
+    # For the LLM Evals model picker; a date that isn't ISO is dropped, not passed on
     response = await tenant_chat.get_model_catalog(MagicMock())
     by_id = {m["id"]: m for m in response["data"]["models"]}
-    assert by_id["gemini/gemini-2.0-flash"]["deprecation_date"] == "2026-03-31"
+    assert by_id["gemini/retired-model"]["deprecation_date"] == "2001-02-03"
+    assert by_id["gemini/bad-date-model"]["deprecation_date"] is None
     assert by_id["gpt-4o"]["deprecation_date"] is None
+
+
+async def test_validate_reports_the_deprecation_date(fake_cost_map, monkeypatch):
+    monkeypatch.setattr(models_router, "validate_model", lambda model: {"mode": "chat"})
+    res = await models_router.validate_model_endpoint(MagicMock(), "gemini/retired-model")
+    assert res["info"]["deprecation_date"] == "2001-02-03"
 
 
 async def test_catalog_skips_pricing_tiers_without_a_mode(fake_cost_map):
@@ -100,7 +113,7 @@ async def test_catalog_skips_pricing_tiers_without_a_mode(fake_cost_map):
 
     assert "fireworks-ai-embedding-up-to-150m" not in ids
     assert "sample_spec" not in ids
-    assert ids == {"gpt-4o", "gemini/gemini-2.0-flash", "text-embedding-3-small"}
+    assert ids == {"gpt-4o", "gemini/retired-model", "gemini/bad-date-model", "text-embedding-3-small"}
 
 
 async def test_catalog_failure_is_an_error_not_an_empty_list(fake_cost_map, monkeypatch):
