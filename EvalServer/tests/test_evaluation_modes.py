@@ -446,8 +446,33 @@ async def test_results_count_attempted_prompts_and_average_task_completion(
     assert result["avg_scores"]["taskCompletion"] == pytest.approx(0.75)
 
 
+def _scorer_error_result(*args, **kwargs):
+    """What run_custom_scorer returns when the judge call fails: it catches, never raises."""
+    from utils.run_custom_scorer import ScorerResult
+
+    return ScorerResult(
+        scorer_id="scorer-llm-1",
+        scorer_name="Helpfulness Judge",
+        label="ERROR",
+        score=0.0,
+        raw_response="Error calling judge model (gemini): 404 model not found",
+        passed=False,
+        error="Error calling judge model (gemini): 404 model not found",
+    )
+
+
+async def _scorer_raises(*args, **kwargs):
+    raise RuntimeError("Error calling judge model (gemini): 404 model not found")
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scorer_side_effect",
+    [_scorer_error_result, _scorer_raises],
+    ids=["error-result", "raises"],
+)
 async def test_scorer_errors_fail_the_run_with_the_error_and_save_no_metric(
+    scorer_side_effect,
     scorer_mode_config: Dict[str, Any],
     mock_db_session: AsyncMock,
     stub_model_runner: MagicMock,
@@ -462,9 +487,7 @@ async def test_scorer_errors_fail_the_run_with_the_error_and_save_no_metric(
 
     _patch_list_scorers(monkeypatch, fake_llm_scorer_rows)
     monkeypatch.setattr(
-        run_eval_module,
-        "run_custom_scorer",
-        AsyncMock(side_effect=RuntimeError("404 model not found")),
+        run_eval_module, "run_custom_scorer", AsyncMock(side_effect=scorer_side_effect)
     )
 
     result = await run_eval_module.run_evaluation(
@@ -476,10 +499,19 @@ async def test_scorer_errors_fail_the_run_with_the_error_and_save_no_metric(
 
     assert result["error"] == (
         "No scores recorded: no metric scored any of the 2 prompts. "
-        "First error: 404 model not found"
+        "First error: Error calling judge model (gemini): 404 model not found"
     )
     quality = [
         c for c in crud_module.create_metric.call_args_list
         if c.kwargs.get("metric_type") == "quality"
     ]
     assert quality == []
+
+
+def test_scorer_summary_leaves_errored_calls_out_of_average_and_pass_rate() -> None:
+    from utils.run_evaluation import _scorer_summary
+
+    calls = [{"score": 1.0, "passed": True}] + [{"score": None, "passed": False}] * 9
+
+    assert _scorer_summary(calls) == (1.0, 1.0)
+    assert _scorer_summary([{"score": None, "passed": False}]) is None

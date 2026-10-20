@@ -72,7 +72,11 @@ import {
   availableModelProviders,
   CLOUD_PROVIDER_IDS,
 } from "./NewExperiment/providerConfig";
-import { canProceedToNextStep, getMissingKeyProviders } from "./NewExperiment/stepValidation";
+import {
+  canProceedToNextStep,
+  getMissingKeyProviders,
+  getScorerJudgeProviders,
+} from "./NewExperiment/stepValidation";
 import DatasetStep from "./NewExperiment/DatasetStep";
 import ModelStep from "./NewExperiment/ModelStep";
 
@@ -147,6 +151,9 @@ export default function NewExperimentModal({
   // Saved keys the provider refused when the wizard checked them; those count as missing
   const [rejectedKeyIds, setRejectedKeyIds] = useState<Set<number>>(new Set());
   const checkedKeyIds = useRef<Set<number>>(new Set());
+  // Bumped on each open; key checks and the key list belong to the open that started them
+  const openGeneration = useRef(0);
+  const keysGeneration = useRef(-1);
 
   // Saved models from the Models page (database)
   const [savedModels, setSavedModels] = useState<SavedModel[]>([]);
@@ -444,9 +451,20 @@ export default function NewExperimentModal({
     setActiveStep((prev) => prev + 1);
   };
 
+  // The modal stays mounted between opens: check keys afresh each time, so a key fixed
+  // or revoked in the meantime is seen as it is now. Declared before the key load so
+  // the load picks up this open's generation.
+  useEffect(() => {
+    if (!isOpen) return;
+    openGeneration.current += 1;
+    checkedKeyIds.current = new Set();
+    setRejectedKeyIds(new Set());
+  }, [isOpen]);
+
   // Load configured API keys and saved models when modal opens
   useEffect(() => {
     if (!isOpen) return;
+    const generation = openGeneration.current;
     (async () => {
       try {
         setLoadingApiKeys(true);
@@ -454,6 +472,7 @@ export default function NewExperimentModal({
           getAllLlmApiKeys(),
           evalModelsService.listModels(orgId || undefined),
         ]);
+        keysGeneration.current = generation;
         setConfiguredApiKeys(keys);
         setSavedModels(models);
       } catch {
@@ -464,19 +483,16 @@ export default function NewExperimentModal({
     })();
   }, [isOpen, orgId]);
 
-  // The modal stays mounted between opens: check keys afresh each time, so a key fixed
-  // or revoked in the meantime is seen as it is now
-  useEffect(() => {
-    if (!isOpen) return;
-    checkedKeyIds.current = new Set();
-    setRejectedKeyIds(new Set());
-  }, [isOpen]);
-
   // Check the saved keys of each chosen provider once per open, so a dead key shows the
   // key field instead of "API key configured" and the run doesn't fail on it later
   useEffect(() => {
-    if (!isOpen) return;
-    const providers = [config.model.accessMethod];
+    // Wait for this open's key list; the previous open's may name deleted keys
+    if (!isOpen || keysGeneration.current !== openGeneration.current) return;
+    const generation = openGeneration.current;
+    const providers: string[] = [
+      config.model.accessMethod,
+      ...getScorerJudgeProviders({ judgeMode, selectedScorerIds, userScorers }),
+    ];
     // The standard judge only runs outside scorer-only mode
     if (judgeMode !== "scorer") providers.push(config.judgeLlm.provider);
     for (const key of configuredApiKeys) {
@@ -485,10 +501,21 @@ export default function NewExperimentModal({
       const keyId = key.id;
       checkedKeyIds.current.add(keyId);
       void verifySavedLlmApiKey(keyId).then(({ valid }) => {
-        if (!valid) setRejectedKeyIds((prev) => new Set(prev).add(keyId));
+        // A reply from an earlier open must not mark a key fixed since then
+        if (!valid && generation === openGeneration.current) {
+          setRejectedKeyIds((prev) => new Set(prev).add(keyId));
+        }
       });
     }
-  }, [isOpen, judgeMode, config.model.accessMethod, config.judgeLlm.provider, configuredApiKeys]);
+  }, [
+    isOpen,
+    judgeMode,
+    selectedScorerIds,
+    userScorers,
+    config.model.accessMethod,
+    config.judgeLlm.provider,
+    configuredApiKeys,
+  ]);
 
   // Reset model selection and apply saved judge preferences on each open
   useEffect(() => {
@@ -1032,12 +1059,15 @@ export default function NewExperimentModal({
     });
   };
 
+  // Saved keys the provider has not refused
+  const usableApiKeys = useMemo(
+    () => configuredApiKeys.filter((k) => k.id === undefined || !rejectedKeyIds.has(k.id)),
+    [configuredApiKeys, rejectedKeyIds],
+  );
+
   // Check if a provider has a configured API key the provider has not refused
-  const hasApiKey = (providerId: string): boolean => {
-    return configuredApiKeys.some(
-      (k) => k.provider === providerId && !(k.id !== undefined && rejectedKeyIds.has(k.id)),
-    );
-  };
+  const hasApiKey = (providerId: string): boolean =>
+    usableApiKeys.some((k) => k.provider === providerId);
 
   // A saved key exists for the provider, but the provider refused it
   const savedKeyRejected = (providerId: string): boolean =>
@@ -2700,9 +2730,9 @@ export default function NewExperimentModal({
         judgeMode,
         selectedScorerIds,
         userScorers,
-        configuredApiKeys,
+        configuredApiKeys: usableApiKeys,
       }),
-    [judgeMode, selectedScorerIds, userScorers, configuredApiKeys],
+    [judgeMode, selectedScorerIds, userScorers, usableApiKeys],
   );
 
   const canProceed = canProceedToNextStep({

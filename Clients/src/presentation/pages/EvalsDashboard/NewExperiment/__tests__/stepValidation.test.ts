@@ -1,6 +1,7 @@
 import {
   canProceedToNextStep,
   getMissingKeyProviders,
+  getScorerJudgeProviders,
   type JudgeLlmConfigForValidation,
   type ModelConfigForValidation,
 } from "../stepValidation";
@@ -48,6 +49,23 @@ describe("stepValidation", () => {
         config: null,
       },
     ];
+
+    it("lists each cloud provider the selected scorers' judges need, once", () => {
+      expect(
+        getScorerJudgeProviders({
+          judgeMode: "both",
+          selectedScorerIds: [],
+          userScorers: [...scorers, { id: "s7", config: { judgeModel: { provider: "openai" } } }],
+        }),
+      ).toEqual(["openai", "anthropic"]);
+      expect(
+        getScorerJudgeProviders({
+          judgeMode: "standard",
+          selectedScorerIds: [],
+          userScorers: scorers,
+        }),
+      ).toEqual([]);
+    });
 
     it("returns [] for standard mode", () => {
       expect(

@@ -2958,8 +2958,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Risikoname schreiben",
     "You can use": "Sie können",
     "Your app": "Ihre App",
-    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, so remove the old one in AI Gateway settings.":
-      "Der Anbieter hat den gespeicherten API-Schlüssel abgelehnt. Geben Sie einen funktionierenden Schlüssel ein. Er wird als neuer Schlüssel gespeichert, entfernen Sie den alten daher in den AI Gateway-Einstellungen.",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "Der Anbieter hat den gespeicherten API-Schlüssel abgelehnt. Geben Sie einen funktionierenden Schlüssel ein. Er wird als neuer Schlüssel gespeichert, und ein Admin kann den alten in den AI Gateway-Einstellungen entfernen.",
     "Your key will be saved securely for future experiments":
       "Ihr Schlüssel wird für zukünftige Experimente sicher gespeichert",
     "Your name": "Ihr Name",
@@ -13644,8 +13644,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Rédiger le nom du risque",
     "You can use": "Vous pouvez utiliser",
     "Your app": "Votre application",
-    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, so remove the old one in AI Gateway settings.":
-      "Le fournisseur a refusé la clé API enregistrée. Saisissez une clé valide. Elle est enregistrée comme nouvelle clé : supprimez donc l'ancienne dans les paramètres d'AI Gateway.",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "Le fournisseur a refusé la clé API enregistrée. Saisissez une clé valide. Elle est enregistrée comme nouvelle clé, et un administrateur peut supprimer l'ancienne dans les paramètres d'AI Gateway.",
     "Your key will be saved securely for future experiments":
       "Votre clé sera enregistrée de manière sécurisée pour de futures expériences",
     "Your name": "Votre nom",
@@ -26846,8 +26846,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Lo que sus barreras de protección detectaron en este periodo",
     "Whose name and role appear on the declaration document":
       "Cuyo nombre y cargo aparecen en el documento de declaración",
-    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, so remove the old one in AI Gateway settings.":
-      "El proveedor rechazó la clave de API guardada. Introduzca una clave válida. Se guarda como una clave nueva, así que elimine la anterior en la configuración de AI Gateway.",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "El proveedor rechazó la clave de API guardada. Introduzca una clave válida. Se guarda como una clave nueva, y un administrador puede eliminar la anterior en la configuración de AI Gateway.",
     "Your key will be saved securely for future experiments":
       "Su clave se guardará de forma segura para futuros experimentos",
     "No AI tools detected yet. Connect a data source to monitor AI tool usage.":

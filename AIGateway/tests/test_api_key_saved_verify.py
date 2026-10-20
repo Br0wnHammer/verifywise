@@ -107,6 +107,14 @@ async def test_saved_key_403_is_not_read_as_a_rejected_key(monkeypatch):
     assert res["data"]["valid"] is True
 
 
+async def test_saved_gemini_key_403_is_a_rejected_key(monkeypatch):
+    # Gemini answers a blocked key (reported as leaked, API disabled) with 403
+    _provider_replies(monkeypatch, 403, '{"error": {"status": "PERMISSION_DENIED"}}')
+    _saved_key(monkeypatch, {"id": 6, "provider": "gemini", "encrypted_key": encrypt("AIza-blocked")})
+    res = await router.verify_saved_api_key(6, _request())
+    assert res["data"]["valid"] is False
+
+
 async def test_saved_key_401_is_a_rejected_key(monkeypatch):
     _provider_replies(monkeypatch, 401)
     _saved_key(monkeypatch, {"id": 3, "provider": "openai", "encrypted_key": encrypt("sk-dead")})

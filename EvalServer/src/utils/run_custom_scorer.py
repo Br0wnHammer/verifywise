@@ -36,6 +36,8 @@ class ScorerResult:
     # and this is the lowest score the scorer can return (0, or below on such a scale).
     threshold: Optional[float] = None
     reason: Optional[str] = None
+    # Set when the judge could not be called; label, score and passed are placeholders then.
+    error: Optional[str] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
@@ -408,6 +410,7 @@ async def run_custom_scorer(
             raw_response=f"Failed to initialize model: {redact_secrets(str(e))}",
             passed=False,
             threshold=pass_line,
+            error=f"Failed to initialize model: {redact_secrets(str(e))}",
         )
     
     try:
@@ -478,6 +481,7 @@ async def run_custom_scorer(
             raw_response=f"Error calling judge model ({provider}): {redact_secrets(str(e))}",
             passed=False,
             threshold=pass_line,
+            error=f"Error calling judge model ({provider}): {redact_secrets(str(e))}",
         )
 
 

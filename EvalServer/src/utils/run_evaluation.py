@@ -11,7 +11,7 @@ import traceback
 import subprocess
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Regex pattern for valid model names (alphanumeric, dash, underscore, colon, slash, dot)
@@ -199,6 +199,16 @@ async def _upsert_judge_scorer(
         print(f"   ✅ Judge scorer upserted for {judge_model}")
     except Exception as e:
         print(f"   ⚠️  Could not upsert judge scorer: {e}")
+
+
+def _scorer_summary(scorer_scores: List[Dict[str, Any]]) -> Optional[Tuple[float, float]]:
+    """Average score and pass rate over the calls that returned a score; None without any."""
+    scored = [s for s in scorer_scores if isinstance(s.get("score"), (int, float))]
+    if not scored:
+        return None
+    avg_score = sum(s["score"] for s in scored) / len(scored)
+    passed_rate = sum(1 for s in scored if s["passed"]) / len(scored)
+    return avg_score, passed_rate
 
 
 async def run_evaluation(
@@ -1140,68 +1150,73 @@ async def run_evaluation(
                             print(f"      Output: {output_text[:80]}...")
                             
                             try:
-                                result: ScorerResult = await run_custom_scorer(
+                                result: Optional[ScorerResult] = await run_custom_scorer(
                                     scorer_config=scorer,
                                     input_text=input_text,
                                     output_text=output_text,
                                     expected_text=expected_text,
                                 )
-                                
-                                scorer_scores.append({
-                                    "test_case_idx": idx,
-                                    "label": result.label,
-                                    "score": result.score,
-                                    "passed": result.passed,
-                                    "raw_response": result.raw_response,
-                                })
-                                
-                                status_icon = "✅" if result.passed else "❌"
-                                print(f"      {status_icon} Result: {result.label} (score={result.score:.2f}, passed={result.passed})")
-                                if result.total_tokens:
-                                    print(f"      📊 Tokens: {result.total_tokens} (prompt={result.prompt_tokens}, completion={result.completion_tokens})")
-                                
-                                # Merge scorer result into test case results
-                                if idx < len(results):
-                                    if "metric_scores" not in results[idx]:
-                                        results[idx]["metric_scores"] = {}
-                                    results[idx]["metric_scores"][scorer_name] = {
-                                        "score": result.score,
-                                        "label": result.label,
-                                        "passed": result.passed,
-                                        # The pass line run_custom_scorer used, so the
-                                        # dashboard colours the average against it.
-                                        "threshold": result.threshold,
-                                        "reason": result.reason if result.reason else (result.raw_response if result.raw_response else ""),
-                                    }
-                                
+                                scorer_error = result.error
                             except Exception as scorer_err:
+                                result = None
                                 scorer_error = redact_secrets(str(scorer_err))
+
+                            if result is None or scorer_error is not None:
+                                # The judge was not reached: no score, rather than a 0.0
                                 print(f"      ❌ Error: {scorer_error}")
                                 scorer_scores.append({
                                     "test_case_idx": idx,
                                     "label": "ERROR",
-                                    "score": 0.0,
+                                    "score": None,
                                     "passed": False,
-                                    "error": True,
                                     "raw_response": scorer_error,
                                 })
-                                # Same shape as a DeepEval metric error, so the sample
-                                # shows it and the no-scores check can report it.
+                                # Same shape as a DeepEval metric error, so the sample shows it
+                                # and the no-scores check can report it. Never replaces a
+                                # built-in metric's entry of the same name.
                                 if idx < len(results):
-                                    results[idx].setdefault("metric_scores", {})[scorer_name] = {
-                                        "score": None,
-                                        "passed": False,
-                                        "error": scorer_error,
-                                    }
-                        
+                                    prompt_scores = results[idx].setdefault("metric_scores", {})
+                                    if scorer_name not in prompt_scores:
+                                        prompt_scores[scorer_name] = {
+                                            "score": None,
+                                            "passed": False,
+                                            "error": scorer_error,
+                                        }
+                                continue
+
+                            scorer_scores.append({
+                                "test_case_idx": idx,
+                                "label": result.label,
+                                "score": result.score,
+                                "passed": result.passed,
+                                "raw_response": result.raw_response,
+                            })
+
+                            status_icon = "✅" if result.passed else "❌"
+                            print(f"      {status_icon} Result: {result.label} (score={result.score:.2f}, passed={result.passed})")
+                            if result.total_tokens:
+                                print(f"      📊 Tokens: {result.total_tokens} (prompt={result.prompt_tokens}, completion={result.completion_tokens})")
+
+                            # Merge scorer result into test case results
+                            if idx < len(results):
+                                if "metric_scores" not in results[idx]:
+                                    results[idx]["metric_scores"] = {}
+                                results[idx]["metric_scores"][scorer_name] = {
+                                    "score": result.score,
+                                    "label": result.label,
+                                    "passed": result.passed,
+                                    # The pass line run_custom_scorer used, so the
+                                    # dashboard colours the average against it.
+                                    "threshold": result.threshold,
+                                    "reason": result.reason if result.reason else (result.raw_response if result.raw_response else ""),
+                                }
+
                         custom_scorer_results[scorer_id] = scorer_scores
                         
-                        # Calculate average score for this scorer (errored calls have no score)
-                        scored = [s for s in scorer_scores if not s.get("error")]
-                        if scored:
-                            avg_score = sum(s["score"] for s in scored) / len(scored)
-                            passed_count = sum(1 for s in scorer_scores if s["passed"])
-                            print(f"\n   📈 Scorer Summary: avg_score={avg_score:.3f}, passed={passed_count}/{len(scorer_scores)}")
+                        summary = _scorer_summary(scorer_scores)
+                        if summary:
+                            avg_score, passed_rate = summary
+                            print(f"\n   📈 Scorer Summary: avg_score={avg_score:.3f}, pass_rate={passed_rate:.1%}")
                 else:
                     print("   ⚪ No enabled LLM scorers found for this project")
                     
@@ -1432,14 +1447,12 @@ async def run_evaluation(
                             metric_key = s.get("metricKey", scorer_id)
                             break
                     
-                    # Calculate average over the calls that returned a score; an errored
-                    # call is not a 0.0, and a scorer with no scores writes no metric.
-                    scored = [s for s in scorer_scores if not s.get("error")]
-                    if not scored:
+                    # A scorer with no scores writes no metric, so a failed run leaves no 0.0
+                    summary = _scorer_summary(scorer_scores)
+                    if not summary:
                         print(f"   ⚠️ {scorer_name} ({metric_key}): no scores, nothing saved")
                         continue
-                    avg_score = sum(s["score"] for s in scored) / len(scored)
-                    passed_rate = sum(1 for s in scorer_scores if s["passed"]) / len(scorer_scores)
+                    avg_score, passed_rate = summary
                     
                     # Store in avg_scores with metricKey (same as DeepEval metrics)
                     avg_scores[metric_key] = avg_score

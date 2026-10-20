@@ -144,9 +144,12 @@ async def verify_saved_api_key(key_id: int, request: Request):
     provider = str(key.get("provider") or "").strip().lower()
     if provider == "google":
         provider = "gemini"
-    # The wizard runs this check on every open: a 403 must not lock out a key
-    # that can call models but cannot list them.
-    return {"data": await _check_provider_key(provider, api_key, forbidden_rejects=False)}
+    # The wizard runs this check on every open. An OpenAI restricted key can call
+    # models but gets 403 listing them, so OpenAI's 403 does not mark the key refused;
+    # elsewhere a 403 means the key is blocked (Gemini PERMISSION_DENIED, for one).
+    return {
+        "data": await _check_provider_key(provider, api_key, forbidden_rejects=provider != "openai")
+    }
 
 
 @router.get("")
