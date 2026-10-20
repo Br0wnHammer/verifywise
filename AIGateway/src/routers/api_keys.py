@@ -75,7 +75,7 @@ def _google_error(resp: httpx.Response) -> tuple[str, list[str]]:
         error = resp.json().get("error") or {}
         reasons = [d.get("reason", "") for d in error.get("details") or [] if isinstance(d, dict)]
         return str(error.get("status") or ""), reasons
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, TypeError):
         return "", []
 
 

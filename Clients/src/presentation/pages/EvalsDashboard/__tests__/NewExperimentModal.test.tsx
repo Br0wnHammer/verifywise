@@ -344,6 +344,44 @@ describe("NewExperimentModal", () => {
       expect(deepEvalMocks.getAllLlmApiKeys).toHaveBeenCalledTimes(1);
       expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(1);
     });
+
+    it("keeps the late orgId's saved models when the open's older list arrives after them", async () => {
+      const savedModel = (id: number, name: string) => ({
+        id,
+        name,
+        provider: "OpenAI",
+        endpointUrl: "",
+        updatedAt: "2025-01-01T00:00:00Z",
+      });
+      let resolveOrgless: (models: unknown[]) => void = () => {};
+      deepEvalMocks.listModels.mockImplementation((org?: string) =>
+        org
+          ? Promise.resolve([savedModel(2, "org-model")])
+          : new Promise((resolve) => {
+              resolveOrgless = resolve;
+            }),
+      );
+      const modal = (orgId: string | null) => (
+        <NewExperimentModal
+          isOpen
+          onClose={vi.fn()}
+          projectId="proj-1"
+          orgId={orgId}
+          onSuccess={vi.fn()}
+          onStarted={vi.fn()}
+          useCase="chatbot"
+          existingExperimentNames={[]}
+        />
+      );
+
+      const { rerender } = renderWithProviders(modal(null));
+      rerender(modal("org-1"));
+      await waitFor(() => expect(deepEvalMocks.listModels).toHaveBeenCalledWith("org-1"));
+      await act(async () => resolveOrgless([savedModel(1, "orgless-model")]));
+
+      expect(await screen.findByText("org-model")).toBeInTheDocument();
+      expect(screen.queryByText("orgless-model")).not.toBeInTheDocument();
+    });
   });
 
   describe("dataset selection (3.3.3)", () => {

@@ -151,7 +151,7 @@ export default function NewExperimentModal({
   const openGeneration = useRef(0);
   const keysGeneration = useRef(-1);
   // orgId the saved models were last loaded for, so a late orgId reloads only the models
-  const modelsOrgId = useRef<string | null | undefined>(undefined);
+  const modelsOrgId = useRef<string | undefined>(undefined);
 
   // Saved models from the Models page (database)
   const [savedModels, setSavedModels] = useState<SavedModel[]>([]);
@@ -457,13 +457,13 @@ export default function NewExperimentModal({
     const generation = ++openGeneration.current;
     checkedKeyIds.current = new Set();
     setRejectedKeyIds(new Set());
-    modelsOrgId.current = orgId;
+    const modelsOrg = orgId || undefined;
+    modelsOrgId.current = modelsOrg;
     (async () => {
       setLoadingApiKeys(true);
-      // listModels never rejects (it returns [] on error), so only the key list can fail
       const [keys, models] = await Promise.allSettled([
         getAllLlmApiKeys(),
-        evalModelsService.listModels(orgId || undefined),
+        evalModelsService.listModels(modelsOrg),
       ]);
       // A slower load from an earlier open must not replace this open's lists
       if (generation !== openGeneration.current) return;
@@ -474,8 +474,10 @@ export default function NewExperimentModal({
         console.warn("Failed to load saved API keys:", keys.reason);
       }
       // A late orgId reloads the models itself; this open's older list must not replace it
-      if (models.status === "fulfilled" && modelsOrgId.current === orgId) {
+      if (models.status === "fulfilled" && modelsOrgId.current === modelsOrg) {
         setSavedModels(models.value);
+      } else if (models.status === "rejected") {
+        console.warn("Failed to load saved models:", models.reason);
       }
       keysGeneration.current = generation;
       setLoadingApiKeys(false);
@@ -486,12 +488,16 @@ export default function NewExperimentModal({
 
   // Saved models depend on orgId, which may arrive after the modal opens
   useEffect(() => {
-    if (!isOpen || orgId === modelsOrgId.current) return;
-    modelsOrgId.current = orgId;
+    const modelsOrg = orgId || undefined;
+    if (!isOpen || modelsOrg === modelsOrgId.current) return;
+    modelsOrgId.current = modelsOrg;
     let stale = false;
-    void evalModelsService.listModels(orgId || undefined).then((models) => {
-      if (!stale) setSavedModels(models);
-    });
+    evalModelsService
+      .listModels(modelsOrg)
+      .then((models) => {
+        if (!stale) setSavedModels(models);
+      })
+      .catch((err) => console.warn("Failed to load saved models:", err));
     return () => {
       stale = true;
     };
