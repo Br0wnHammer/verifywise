@@ -87,7 +87,12 @@ test.describe("Dashboard recent activity navigation", () => {
     // The Recent activity card lives in the executive view; switch when the
     // toggle is available.
     const executiveToggle = page.getByRole("button", { name: /executive/i });
-    if (await executiveToggle.first().isVisible({ timeout: 5_000 }).catch(() => false)) {
+    if (
+      await executiveToggle
+        .first()
+        .isVisible({ timeout: 5_000 })
+        .catch(() => false)
+    ) {
       await executiveToggle.first().click();
       await page.waitForTimeout(1_000);
     }
@@ -114,7 +119,12 @@ test.describe("Dashboard recent activity navigation", () => {
     await dismissWelcomeDialog(page);
 
     const executiveToggle = page.getByRole("button", { name: /executive/i });
-    if (await executiveToggle.first().isVisible({ timeout: 5_000 }).catch(() => false)) {
+    if (
+      await executiveToggle
+        .first()
+        .isVisible({ timeout: 5_000 })
+        .catch(() => false)
+    ) {
       await executiveToggle.first().click();
       await page.waitForTimeout(1_000);
     }
