@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -46,6 +47,41 @@ class GatewayProviderError(RuntimeError):
         self.message = message
         status = status_code if status_code is not None else "-"
         super().__init__(f"{error_type} ({status}): {message}")
+
+
+# One rule for whether a rate limit recovers within a run, used by ModelRunner (retry or
+# not) and EvalServer's error_detection (stop the run or not). Gemini words both its limits
+# as "Quota exceeded ...": per minute adds "per minute. Please retry in 30s" (quotaId
+# "...PerMinute..."), daily says "per day" ("...PerDay..."), and a model the key has no
+# free-tier access to reads "limit: 0". OpenAI's daily cap is "requests per day (RPD)";
+# its used-up quota is "insufficient_quota ... check your plan and billing details".
+_DAILY_LIMIT_WORDS = ("per day", "per_day", "perday")
+_NO_ALLOWANCE = re.compile(r"\blimit:\s*0\b")
+_BILLING_WORDS = ("insufficient", "billing", "credit")
+_PER_MINUTE_WORDS = ("per min", "per_min", "permin")
+_RETRY_HINT = re.compile(r"retry(?: in|delay\W*)\s*(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
+
+
+def retry_hint_seconds(message: str) -> Optional[float]:
+    """Seconds from a "retry in 30s" / "retryDelay": "30s" hint, if the provider sent one."""
+    match = _RETRY_HINT.search(message)
+    return float(match.group(1)) if match else None
+
+
+def rate_limit_recovers(message: str) -> bool:
+    """
+    True when a rate-limit message describes a limit that lifts within a run (per minute,
+    or the provider says when to retry). A daily limit, a zero allowance, a billing or
+    credit limit, or any other quota does not.
+    """
+    text = message.lower()
+    if any(w in text for w in _DAILY_LIMIT_WORDS) or _NO_ALLOWANCE.search(text):
+        return False
+    if any(w in text for w in _BILLING_WORDS):
+        return False
+    if any(w in text for w in _PER_MINUTE_WORDS) or retry_hint_seconds(text) is not None:
+        return True
+    return "quota" not in text
 
 
 def gateway_mode_enabled() -> bool:

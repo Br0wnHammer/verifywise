@@ -256,6 +256,9 @@ export const getMetricAggregates = (
 export const getGatewayModelsForProvider = (provider: string) =>
   evalModelsService.getGatewayModelsForProvider(provider);
 
+export const hasGatewayCatalog = (provider: string) =>
+  evalModelsService.hasGatewayCatalog(provider);
+
 // ==================== MODEL VALIDATION ====================
 
 export const validateModel = (modelName: string, provider?: string, probe = false) =>

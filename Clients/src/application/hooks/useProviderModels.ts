@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getGatewayModelsForProvider } from "../repository/deepEval.repository";
+import { getGatewayModelsForProvider, hasGatewayCatalog } from "../repository/deepEval.repository";
 import { PROVIDERS, type ModelInfo } from "../../presentation/utils/providers";
 
 const PROVIDER_MODELS_KEY = ["provider-models"] as const;
@@ -30,7 +30,8 @@ export function useProviderModels(provider: string) {
       if (models.length === 0) throw new Error(`No catalog models for ${provider}`);
       return models;
     },
-    enabled: !!provider,
+    // A provider the catalog doesn't cover (self-hosted) uses the bundled list only
+    enabled: !!provider && hasGatewayCatalog(provider),
     // The bundled list shows meanwhile; don't hold the loading state through 3 retries.
     retry: 1,
     staleTime: 5 * 60 * 1000,

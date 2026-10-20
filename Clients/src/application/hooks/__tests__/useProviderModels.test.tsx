@@ -8,6 +8,7 @@ import { PROVIDERS } from "../../../presentation/utils/providers";
 
 vi.mock("../../repository/deepEval.repository", () => ({
   getGatewayModelsForProvider: vi.fn(),
+  hasGatewayCatalog: (provider: string) => provider !== "self-hosted",
 }));
 
 const fetchModels = vi.mocked(getGatewayModelsForProvider);
@@ -44,5 +45,15 @@ describe("useProviderModels", () => {
     expect(client.getQueryData(["provider-models", "openai"])).toBeUndefined();
     // One retry, then the bundled list stands
     expect(fetchModels).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not ask the gateway for a provider it has no catalog for", () => {
+    const client = new QueryClient();
+    const { result } = renderHook(() => useProviderModels("self-hosted"), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(fetchModels).not.toHaveBeenCalled();
   });
 });

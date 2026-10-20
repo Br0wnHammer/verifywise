@@ -397,6 +397,10 @@ def test_rate_limit_delay_uses_hint_capped_at_a_minute(message: str, attempt: in
         ("Too many requests", True),
         ("Quota exceeded for metric generate_content_free_tier_requests per day. Please retry in 30s", False),
         ("Quota exceeded for metric generate_content_free_tier_requests", False),
+        ('quotaId: "GenerateRequestsPerMinutePerProjectPerModel"', True),
+        ("Quota exceeded for metric x, limit: 0, model: gemini-2.5-pro. Please retry in 30s", False),
+        ("Rate limit reached on requests per day (RPD): Limit 200. Please try again in 8s", False),
+        ("Insufficient credits. Please retry in 10s", False),
         ("You exceeded your current quota, please check your plan and billing details. insufficient_quota", False),
         ("Your credit balance is too low", False),
     ],
@@ -406,3 +410,21 @@ def test_passing_rate_limit_rule(message: str, passing: bool) -> None:
     from deepeval_engine.model_runner import _is_passing_rate_limit
 
     assert _is_passing_rate_limit(GatewayProviderError("RateLimitError", 429, message)) is passing
+
+
+def test_gateway_retries_stop_at_the_wait_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deepeval_engine.gateway_litellm_client import GatewayProviderError
+
+    runner = _make_runner("google", model_name="gemini-3.8-flash", gateway_mode=True)
+    slept = []
+
+    def limited(*_args, **_kwargs):
+        raise GatewayProviderError("RateLimitError", 429, "Quota exceeded ... per minute. Please retry in 40s")
+
+    monkeypatch.setattr("deepeval_engine.gateway_litellm_client.gateway_completion_sync", limited)
+    monkeypatch.setattr("deepeval_engine.model_runner.time.sleep", slept.append)
+
+    with pytest.raises(GatewayProviderError):
+        runner.generate("hi")
+    # 40 + 40 fits the 90 s budget; a third 40 s wait would not
+    assert slept == [40, 40]

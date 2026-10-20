@@ -166,6 +166,11 @@ class EvalModelsService {
    * passed are left out. Results are cached for 5 minutes. Falls back to [] if
    * AI Gateway is down.
    */
+  /** Whether the gateway catalog lists this provider (self-hosted and others have none). */
+  hasGatewayCatalog(evalProvider: string): boolean {
+    return evalProvider in EVAL_TO_LITELLM;
+  }
+
   async getGatewayModelsForProvider(evalProvider: string): Promise<ModelInfo[]> {
     const litellmProvider = EVAL_TO_LITELLM[evalProvider];
     if (!litellmProvider) return [];

@@ -52,6 +52,24 @@ def test_gemini_per_minute_quota_is_transient_but_daily_quota_is_fatal() -> None
     assert detect_fatal_error(str(daily))[:2] == (True, "quota_exceeded")
 
 
+@pytest.mark.parametrize(
+    "message, code",
+    [
+        # "try again" is a transient pattern; a typed daily limit must still stop the run
+        ("Rate limit reached on requests per day (RPD): Limit 200. Please try again in 8s", "quota_exceeded"),
+        ("Quota exceeded for metric x, limit: 0. Please retry in 30s", "quota_exceeded"),
+        ("You exceeded your current quota: insufficient_quota", "insufficient_credits"),
+    ],
+)
+def test_typed_non_recovering_rate_limits_are_fatal(message: str, code: str) -> None:
+    assert detect_fatal_error(str(GatewayProviderError("RateLimitError", 429, message)))[:2] == (True, code)
+
+
+def test_untyped_text_keeps_the_transient_patterns() -> None:
+    # Only typed rate limits use the rule; plain text still treats "try again" as transient
+    assert detect_fatal_error("Quota exceeded per day, please try again")[0] is False
+
+
 def test_untyped_text_still_uses_the_patterns() -> None:
     assert detect_fatal_error("Incorrect API key provided")[:2] == (True, "invalid_api_key")
     assert detect_fatal_error("Request timeout, please retry")[0] is False

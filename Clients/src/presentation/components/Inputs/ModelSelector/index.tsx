@@ -102,7 +102,7 @@ function ModelSelector({
     onModelChange(selfHostedModel.trim());
     setOpen(false);
   };
-  const { models } = useProviderModels(provider);
+  const { models, isLoading: modelsLoading } = useProviderModels(provider);
   const selectedModel = models.find((m) => m.id === model);
   // A typed ID the list does not have can still be used (OpenRouter serves any model)
   const typedId = searchQuery.trim();
@@ -525,6 +525,14 @@ function ModelSelector({
                   </Box>
                 ) : (
                   <>
+                    {/* The bundled list shows meanwhile; it may still change */}
+                    {modelsLoading && (
+                      <Typography
+                        sx={{ fontSize: 11, color: theme.palette.text.tertiary, pl: 2.5, py: 0.5 }}
+                      >
+                        Updating model list…
+                      </Typography>
+                    )}
                     {canUseTypedId && (
                       <Box
                         onClick={() => handleModelSelect(typedId)}

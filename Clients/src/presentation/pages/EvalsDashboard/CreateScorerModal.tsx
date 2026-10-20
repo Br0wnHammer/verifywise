@@ -492,6 +492,12 @@ export default function CreateScorerModal({
               onApiKeyChange={handleApiKeyChange}
             />
           )}
+          {/* Save stays disabled until a model is chosen; say why */}
+          {!loadingProviders && config.provider && !config.model.trim() && (
+            <Typography sx={{ fontSize: 11, color: palette.text.tertiary, mt: "4px" }}>
+              Choose a judge model to save this scorer
+            </Typography>
+          )}
         </Box>
 
         <Divider sx={{ mb: 3 }} />

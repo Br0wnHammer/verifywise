@@ -3022,6 +3022,9 @@ export const translations: Record<string, Record<string, string>> = {
     "No members have been assigned to the use case":
       "Dem Anwendungsfall wurden keine Mitglieder zugewiesen",
     "No models found": "Keine Modelle gefunden",
+    "Updating model list…": "Modellliste wird aktualisiert…",
+    "Choose a judge model to save this scorer":
+      "Wählen Sie ein Bewertungsmodell, um diesen Scorer zu speichern",
     "No models found. Model preferences are automatically saved when you run an experiment.":
       "Keine Modelle gefunden. Modellpräferenzen werden automatisch gespeichert, wenn Sie ein Experiment ausführen.",
     "No models match your filters.": "Keine Modelle entsprechen Ihren Filtern.",
@@ -13714,6 +13717,9 @@ export const translations: Record<string, Record<string, string>> = {
     "No members have been assigned to the use case":
       "Aucun membre n'a été assigné à ce cas d'usage",
     "No models found": "Aucun modèle trouvé",
+    "Updating model list…": "Mise à jour de la liste des modèles…",
+    "Choose a judge model to save this scorer":
+      "Choisissez un modèle juge pour enregistrer ce scorer",
     "No models found. Model preferences are automatically saved when you run an experiment.":
       "Aucun modèle trouvé. Les préférences de modèles sont automatiquement enregistrées lorsque vous lancez une expérience.",
     "No models match your filters.": "Aucun modèle ne correspond à vos filtres.",
@@ -23576,6 +23582,8 @@ export const translations: Record<string, Record<string, string>> = {
     "No label": "Sin etiqueta",
     "No linked items found.": "No se han encontrado elementos vinculados.",
     "No models found": "No se han encontrado modelos",
+    "Updating model list…": "Actualizando la lista de modelos…",
+    "Choose a judge model to save this scorer": "Elija un modelo juez para guardar este evaluador",
     "No models match your filters.": "Ningún modelo coincide con tus filtros.",
     "No more questions.": "No hay más preguntas.",
     "No policies found": "No se han encontrado políticas",

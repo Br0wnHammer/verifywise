@@ -8,6 +8,8 @@ and should stop the experiment early to avoid wasting time.
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from utils.gateway_litellm_client import rate_limit_recovers
+
 # Fatal error patterns that won't recover - experiment should stop
 # Format: (pattern_to_match, error_code, user_friendly_message)
 FATAL_ERROR_PATTERNS = [
@@ -127,13 +129,7 @@ TRANSIENT_ERROR_PATTERNS = [
     "gateway timeout",
     "overloaded",
     "try again",
-    # Gemini's per-minute 429: "Quota exceeded ... per minute. Please retry in 30s"
-    "per minute",
-    "retry in",
 ]
-# A daily limit does not recover within a run, even when it carries a retry hint,
-# so it skips the transient check. Same rule as deepeval_engine/model_runner.py.
-DAILY_LIMIT_PATTERNS = ["per day", "per_day", "perday"]
 
 # Typed errors from the AI Gateway (LiteLLM's exception class), read before any text pattern.
 # GatewayProviderError reads "<Type> (<status>): <message>", possibly inside a wrapper message.
@@ -157,6 +153,7 @@ TYPED_FATAL_ERRORS = {
         "The budget for this provider has been reached.",
     ),
 }
+_QUOTA_EXCEEDED = next((code, msg) for pattern, code, msg in FATAL_ERROR_PATTERNS if code == "quota_exceeded")
 _TYPED_ERROR = re.compile(r"\b([A-Z]\w*(?:Error|Timeout)) \((\d{3}|-)\): ")
 
 
@@ -183,11 +180,21 @@ def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optiona
 
     error_lower = error_message.lower()
 
-    # First check if it's a transient error (might recover)
-    if not any(pattern in error_lower for pattern in DAILY_LIMIT_PATTERNS):
-        for pattern in TRANSIENT_ERROR_PATTERNS:
+    # A typed rate limit follows the rule ModelRunner retries by, before any text
+    # pattern: Gemini's per-minute "Quota exceeded" recovers, a daily or billing one
+    # does not, whatever "try again" wording it carries.
+    if typed and typed.group(1) == "RateLimitError":
+        if rate_limit_recovers(error_message):
+            return False, None, None
+        for pattern, error_code, user_message in FATAL_ERROR_PATTERNS:
             if pattern in error_lower:
-                return False, None, None
+                return True, error_code, user_message
+        return True, *_QUOTA_EXCEEDED
+
+    # First check if it's a transient error (might recover)
+    for pattern in TRANSIENT_ERROR_PATTERNS:
+        if pattern in error_lower:
+            return False, None, None
 
     # Check for fatal error patterns
     for pattern, error_code, user_message in FATAL_ERROR_PATTERNS:
