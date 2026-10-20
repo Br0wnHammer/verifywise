@@ -43,7 +43,7 @@ function virtualKeyProxyRoutes() {
           // chunked framing and content encoding no longer describe it
           proxyReq.removeHeader("Transfer-Encoding");
           proxyReq.removeHeader("Content-Encoding");
-          proxyReq.setHeader("Content-Length", body.length);
+          proxyReq.setHeader("Content-Length", body.byteLength);
           proxyReq.write(body);
           return;
         }
