@@ -9,6 +9,7 @@
  * @param {(event: ChangeEvent<HTMLInputElement>) => void} props.onChange - The function to call when the radio button state changes.
  * @param {string} props.title - The title to display next to the radio button.
  * @param {string} props.desc - The description to display below the title.
+ * @param {string} props.name - Shared by the options of one group, so the browser treats them as one radio group (one tab stop, arrow keys move the selection).
  *
  * @returns {JSX.Element} The rendered Radio component.
  */
@@ -29,10 +30,13 @@ interface RadioProps {
   title: string;
   desc?: string;
   disabled?: boolean;
+  name?: string;
 }
 
-function Radio({ checked, value, id, size, onChange, title, desc, disabled }: RadioProps) {
+function Radio({ checked, value, id, size, onChange, title, desc, disabled, name }: RadioProps) {
   const theme = useTheme();
+  // aria-labelledby/describedby split on whitespace, so the derived ids must not contain any.
+  const refId = id.replace(/\s+/g, "-");
 
   return (
     <FormControlLabel
@@ -43,14 +47,15 @@ function Radio({ checked, value, id, size, onChange, title, desc, disabled }: Ra
       control={
         <MUIRadio
           id={id}
+          name={name}
           disabled={disabled}
           size={size}
           // Named by the title alone and described by desc, so a screen reader
           // (and getByRole) hears "Inherits from", not the whole paragraph.
           slotProps={{
             input: {
-              "aria-labelledby": `${id}-title`,
-              "aria-describedby": desc ? `${id}-desc` : undefined,
+              "aria-labelledby": `${refId}-title`,
+              "aria-describedby": desc ? `${refId}-desc` : undefined,
             },
           }}
           checkedIcon={<CircleDot size={16} />}
@@ -66,12 +71,12 @@ function Radio({ checked, value, id, size, onChange, title, desc, disabled }: Ra
       onChange={(event) => onChange(event as ChangeEvent<HTMLInputElement>)}
       label={
         <>
-          <Typography id={`${id}-title`} fontSize={13} color="text.tertiary">
+          <Typography id={`${refId}-title`} fontSize={13} color="text.tertiary">
             {title}
           </Typography>
           {desc && (
             <Typography
-              id={`${id}-desc`}
+              id={`${refId}-desc`}
               component="h6"
               mt={theme.spacing(1)}
               color={theme.palette.text.secondary}
@@ -88,9 +93,8 @@ function Radio({ checked, value, id, size, onChange, title, desc, disabled }: Ra
         "p": theme.spacing(2.5),
         "m": theme.spacing(-2.5),
         "borderRadius": theme.shape.borderRadius,
-        "&:hover": {
-          backgroundColor: theme.palette.background.accent,
-        },
+        // A disabled option should not look clickable.
+        "&:hover": disabled ? {} : { backgroundColor: theme.palette.background.accent },
         "& .MuiButtonBase-root": {
           p: 0,
           mr: theme.spacing(6),

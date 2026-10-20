@@ -80,6 +80,7 @@ export default function DismissReasonForm({
           <Radio
             key={value}
             id={`dismiss-reason-${link.id}-${value}`}
+            name={`dismiss-reason-${link.id}`}
             size="small"
             value={value}
             checked={reason === value}

@@ -248,7 +248,8 @@ export default function LinkRiskForm({ riskId, existingLinks, onClose }: LinkRis
         {CHOICES.map(({ value, label, desc }) => (
           <Radio
             key={value}
-            id={`link-risk-relation-${value}`}
+            id={`link-risk-relation-${riskId}-${value}`}
+            name={`link-risk-relation-${riskId}`}
             size="small"
             value={value}
             checked={choice === value}
@@ -268,7 +269,8 @@ export default function LinkRiskForm({ riskId, existingLinks, onClose }: LinkRis
           {PARENT_SOURCES.map(({ value, label, desc }) => (
             <Radio
               key={value}
-              id={`link-risk-parent-${value}`}
+              id={`link-risk-parent-${riskId}-${value}`}
+              name={`link-risk-parent-${riskId}`}
               size="small"
               value={value}
               checked={source === value}
