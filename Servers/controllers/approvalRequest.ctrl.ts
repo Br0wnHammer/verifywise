@@ -19,7 +19,10 @@ import { sequelize } from "../database/db";
 import { QueryTypes } from "sequelize";
 import { STATUS_CODE } from "../utils/statusCode.utils";
 import { logStructured } from "../utils/logger/fileLogger";
-import { ValidationException } from "../domain.layer/exceptions/custom.exception";
+import {
+  ForbiddenException,
+  ValidationException,
+} from "../domain.layer/exceptions/custom.exception";
 import {
   createApprovalRequestQuery,
   getMyApprovalRequestsQuery,
@@ -520,10 +523,19 @@ export async function approveRequest(req: Request, res: Response): Promise<any> 
       );
       return res.status(409).json(STATUS_CODE[409](error.message));
     }
+    if (error instanceof ForbiddenException) {
+      logStructured(
+        "error",
+        `approval forbidden: user ${req.userId} on request ${req.params.id}: ${error.message}`,
+        "approveRequest",
+        "approvalRequest.ctrl.ts",
+      );
+      return res.status(403).json(STATUS_CODE[403](translateError(req, error)));
+    }
     if (error instanceof ValidationException) {
       logStructured(
         "processing",
-        `approval rejected — request no longer pending: ${error.message}`,
+        `approval refused: ${error.message}`,
         "approveRequest",
         "approvalRequest.ctrl.ts",
       );
@@ -645,10 +657,19 @@ export async function rejectRequest(req: Request, res: Response): Promise<any> {
       .json(STATUS_CODE[200]({ message: req.t!("Request rejected successfully") }));
   } catch (error) {
     await transaction.rollback();
+    if (error instanceof ForbiddenException) {
+      logStructured(
+        "error",
+        `rejection forbidden: user ${req.userId} on request ${req.params.id}: ${error.message}`,
+        "rejectRequest",
+        "approvalRequest.ctrl.ts",
+      );
+      return res.status(403).json(STATUS_CODE[403](translateError(req, error)));
+    }
     if (error instanceof ValidationException) {
       logStructured(
         "processing",
-        `rejection rejected — request no longer pending: ${error.message}`,
+        `rejection refused: ${error.message}`,
         "rejectRequest",
         "approvalRequest.ctrl.ts",
       );

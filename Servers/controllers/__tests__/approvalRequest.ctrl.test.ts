@@ -72,6 +72,7 @@ jest.mock("../../advisor/approval/approvalGateway", () => ({
 
 jest.mock("../../domain.layer/exceptions/custom.exception", () => ({
   ValidationException: class ValidationException extends Error {},
+  ForbiddenException: class ForbiddenException extends Error {},
 }));
 
 // Mock BullMQ Queue to prevent Redis connection attempts
@@ -84,7 +85,10 @@ jest.mock("bullmq", () => ({
 }));
 
 import { TransientApprovalError } from "../../advisor/approval/approvalGateway";
-import { ValidationException } from "../../domain.layer/exceptions/custom.exception";
+import {
+  ForbiddenException,
+  ValidationException,
+} from "../../domain.layer/exceptions/custom.exception";
 import {
   notifyApprovalComplete,
   notifyApprovalRequested,
@@ -837,6 +841,37 @@ describe("approvalRequest.ctrl", () => {
       expect(res.status).toHaveBeenCalledWith(409);
     });
 
+    it("returns 403 when the user is not an approver on the current step", async () => {
+      const req = createReq({ params: { id: "1" }, body: { comments: "" } });
+      const res = createRes();
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      mockProcessApprovalQuery.mockRejectedValue(
+        new ForbiddenException("You are not an approver on the current step"),
+      );
+
+      await approveRequest(req as Request, res as Response);
+
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      expect(mockTransaction.commit).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("returns 409 when the approver has already responded", async () => {
+      const req = createReq({ params: { id: "1" }, body: { comments: "" } });
+      const res = createRes();
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      mockProcessApprovalQuery.mockRejectedValue(
+        new ValidationException("You have already responded to this step"),
+      );
+
+      await approveRequest(req as Request, res as Response);
+
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(409);
+    });
+
     it("should return 500 on error", async () => {
       const req = createReq({
         params: { id: "1" },
@@ -965,6 +1000,23 @@ describe("approvalRequest.ctrl", () => {
 
       expect(mockTransaction.rollback).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it("returns 403 and sends no notification when a non-approver rejects", async () => {
+      const req = createReq({ params: { id: "1" }, body: { comments: "No" } });
+      const res = createRes();
+      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      mockProcessApprovalQuery.mockRejectedValue(
+        new ForbiddenException("You are not an approver on the current step"),
+      );
+
+      await rejectRequest(req as Request, res as Response);
+
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      expect(mockTransaction.commit).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(sendInAppNotification).not.toHaveBeenCalled();
     });
   });
 

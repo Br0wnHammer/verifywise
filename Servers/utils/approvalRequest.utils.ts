@@ -11,7 +11,10 @@ import {
   EntityType,
   AUTO_APPROVABLE_RISK_RANKS,
 } from "../domain.layer/enums/approval-workflow.enum";
-import { ValidationException } from "../domain.layer/exceptions/custom.exception";
+import {
+  ForbiddenException,
+  ValidationException,
+} from "../domain.layer/exceptions/custom.exception";
 import { logStructured } from "./logger/fileLogger";
 import { withLegacyHighRiskRole } from "./highRiskRoles.utils";
 import { executeAiAction } from "../advisor/aiActions";
@@ -408,7 +411,10 @@ export const tryAutoApproveRequestQuery = async (
 };
 
 /**
- * Get requests where user is an approver
+ * Get requests waiting on this user's decision: they are an approver on the
+ * current step and have not responded yet. A step that needs every approver
+ * stays pending after this user approves, so without the result filter the
+ * request would stay in their list.
  */
 export const getPendingApprovalsQuery = async (
   userId: number,
@@ -432,6 +438,7 @@ export const getPendingApprovalsQuery = async (
      JOIN approval_request_step_approvals arsa ON ars.id = arsa.request_step_id AND ars.organization_id = arsa.organization_id
      WHERE ar.organization_id = :organizationId
        AND arsa.approver_id = :userId
+       AND arsa.approval_result = :pendingResult
        AND ars.step_number = ar.current_step
        AND ar.status = :status
      ORDER BY ar.created_at DESC`,
@@ -440,6 +447,7 @@ export const getPendingApprovalsQuery = async (
         organizationId,
         userId,
         status: ApprovalRequestStatus.PENDING,
+        pendingResult: ApprovalResult.PENDING,
       },
       type: "SELECT",
       ...(transaction && { transaction }),
@@ -609,9 +617,14 @@ export const processApprovalQuery = async (
   organizationId: number,
   transaction: Transaction,
 ): Promise<NotificationInfo | null> => {
-  // Get current request
+  // Get current request. FOR UPDATE serialises every decision on this request:
+  // without it, two approvers on a requires-all step each lock only their own
+  // vote row, neither sees the other's uncommitted vote, and the step never
+  // completes. A waiting decision re-reads the row after the first commits.
   const [request] = await sequelize.query(
-    `SELECT * FROM approval_requests WHERE organization_id = :organizationId AND id = :requestId`,
+    `SELECT * FROM approval_requests
+     WHERE organization_id = :organizationId AND id = :requestId
+     FOR UPDATE`,
     {
       replacements: { organizationId, requestId },
       mapToModel: true,
@@ -624,8 +637,7 @@ export const processApprovalQuery = async (
     throw new Error("Request not found");
   }
 
-  // Guard against concurrent or repeated decisions (there is no row lock on
-  // this path): only a pending request may be acted on.
+  // Only a pending request may be acted on.
   if ((request as any).status !== ApprovalRequestStatus.PENDING) {
     throw new ValidationException("Request is no longer pending");
   }
@@ -647,6 +659,29 @@ export const processApprovalQuery = async (
 
   if (!requestStep) {
     throw new Error("Request step not found");
+  }
+
+  // Only an assigned approver of the current step may decide, and only once.
+  // Without this, any user in the org could reject a request (the UPDATE
+  // below matches no row but the rejection branch still runs).
+  const [myApproval] = (await sequelize.query(
+    `SELECT approval_result
+     FROM approval_request_step_approvals
+     WHERE organization_id = :organizationId
+       AND request_step_id = :requestStepId
+       AND approver_id = :userId`,
+    {
+      replacements: { organizationId, requestStepId: (requestStep as any).id, userId },
+      type: "SELECT",
+      transaction,
+    },
+  )) as { approval_result: string }[];
+
+  if (!myApproval) {
+    throw new ForbiddenException("You are not an approver on the current step");
+  }
+  if (myApproval.approval_result !== ApprovalResult.PENDING) {
+    throw new ValidationException("You have already responded to this step");
   }
 
   // Update approval record
