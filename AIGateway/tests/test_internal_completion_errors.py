@@ -15,12 +15,13 @@ import litellm  # noqa: E402
 import pytest  # noqa: E402
 
 import routers.completions as completions  # noqa: E402
+from services.llm_service import ProviderCallError  # noqa: E402
 
 pytestmark = pytest.mark.asyncio
 
 
 def _request():
-    return SimpleNamespace(headers={"x-provider-key": "sk-test"})
+    return SimpleNamespace(headers={"x-provider-key": "request-key-0042"})
 
 
 def _body():
@@ -29,7 +30,7 @@ def _body():
 
 def _raises(monkeypatch, exc):
     async def fake(**_kwargs):
-        raise exc
+        raise ProviderCallError(exc) from exc
 
     monkeypatch.setattr(completions, "chat_completion", fake)
 
@@ -71,14 +72,46 @@ async def test_unexpected_error_is_typed_by_class_without_its_text(monkeypatch):
 
 async def test_provider_message_never_carries_a_key(monkeypatch):
     text = (
-        "bad key sk-test for https://generativelanguage.googleapis.com/v1beta/models/x"
+        "bad key request-key-0042 for https://generativelanguage.googleapis.com/v1beta/models/x"
         "?key=AIzaSyA1234567890abcdefghijklmnop&alt=sse; other sk-proj-abcdefghijkl"
     )
     error = await _error(monkeypatch, litellm.AuthenticationError(text, "gemini", "gemini-x"))
-    assert "sk-test" not in error["message"]
+    assert "request-key-0042" not in error["message"]
     assert "AIzaSyA1234567890abcdefghijklmnop" not in error["message"]
     assert "sk-proj-abcdefghijkl" not in error["message"]
-    assert "key=***" in error["message"]
+    assert "[redacted]" in error["message"]
+
+
+async def test_a_short_key_does_not_mangle_the_message(monkeypatch):
+    async def fake(**_kwargs):
+        exc = litellm.NotFoundError("model gpt-latest is not available for testing", "gpt", "openai")
+        raise ProviderCallError(exc) from exc
+
+    monkeypatch.setattr(completions, "chat_completion", fake)
+    request = SimpleNamespace(headers={"x-provider-key": "test"})
+    res = await completions.chat_completions(request, _body())
+    assert "for testing" in json.loads(res.body)["error"]["message"]
+
+
+async def test_a_gateway_bug_after_the_call_is_not_a_provider_error(monkeypatch):
+    async def fake(**_kwargs):
+        raise AttributeError("'NoneType' object has no attribute 'prompt_tokens'")
+
+    monkeypatch.setattr(completions, "chat_completion", fake)
+    with pytest.raises(AttributeError):
+        await completions.chat_completions(_request(), _body())
+
+
+async def test_chat_completion_wraps_only_the_provider_call(monkeypatch):
+    import services.llm_service as llm_service
+
+    async def refuse(**_kwargs):
+        raise litellm.AuthenticationError("bad key", "openai", "gpt-4o")
+
+    monkeypatch.setattr(llm_service.litellm, "acompletion", refuse)
+    with pytest.raises(ProviderCallError) as exc:
+        await llm_service.chat_completion(model="gpt-4o", messages=[], api_key="sk-x")
+    assert isinstance(exc.value.cause, litellm.AuthenticationError)
 
 
 async def test_long_message_is_clipped(monkeypatch):

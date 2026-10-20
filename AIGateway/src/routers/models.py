@@ -136,7 +136,10 @@ async def validate_model_endpoint(request: Request, model: str):
             ),
             "supports_streaming": info.get("supports_native_streaming", True),
             "mode": info.get("mode", "chat"),
-            # get_model_info drops this field; read the cost-map entry itself
-            "deprecation_date": _deprecation_date(litellm.model_cost.get(model) or {}),
+            # get_model_info drops this field; read the cost-map entry it resolved
+            # ("anthropic/claude-x" is stored as "claude-x")
+            "deprecation_date": _deprecation_date(
+                litellm.model_cost.get(info.get("key") or model) or {}
+            ),
         },
     }

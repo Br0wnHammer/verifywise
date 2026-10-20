@@ -107,6 +107,15 @@ async def test_validate_reports_the_deprecation_date(fake_cost_map, monkeypatch)
     assert res["info"]["deprecation_date"] == "2001-02-03"
 
 
+async def test_validate_reads_the_entry_litellm_resolved(fake_cost_map, monkeypatch):
+    # LiteLLM resolves a provider-prefixed id to the entry it is stored under
+    monkeypatch.setattr(
+        models_router, "validate_model", lambda model: {"mode": "chat", "key": "gemini/retired-model"}
+    )
+    res = await models_router.validate_model_endpoint(MagicMock(), "google/retired-model")
+    assert res["info"]["deprecation_date"] == "2001-02-03"
+
+
 async def test_catalog_skips_pricing_tiers_without_a_mode(fake_cost_map):
     response = await tenant_chat.get_model_catalog(MagicMock())
     ids = {m["id"] for m in response["data"]["models"]}

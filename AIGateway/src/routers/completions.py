@@ -1,5 +1,4 @@
 import logging
-import re
 
 import litellm
 from fastapi import APIRouter, Request, HTTPException
@@ -8,35 +7,20 @@ from pydantic import BaseModel
 
 from services.cost_service import estimate_prompt_cost
 from services.llm_service import (
+    ProviderCallError,
     chat_completion,
     embedding,
     stream_chat_completion,
 )
+from utils.redaction import redact_secrets
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 ERROR_MESSAGE_LIMIT = 500
 
-# Key-shaped tokens and key query parameters a provider error may echo (a Gemini request
-# URL carries ?key=...)
-_SECRET_PATTERNS = [
-    re.compile(r"(?i)([?&](?:key|api_key|api-key)=)[^&\s\"']+"),
-    re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_\-]{8,}"),
-    re.compile(r"\bAIza[0-9A-Za-z_\-]{20,}"),
-    re.compile(r"\bxai-[A-Za-z0-9]{8,}"),
-]
 
-
-def _redact(text: str, api_key: str) -> str:
-    if api_key:
-        text = text.replace(api_key, "***")
-    for pattern in _SECRET_PATTERNS:
-        text = pattern.sub(lambda m: (m.group(1) if m.groups() else "") + "***", text)
-    return text
-
-
-def _provider_error(exc: Exception, api_key: str) -> JSONResponse:
+def _provider_error(failure: ProviderCallError, api_key: str) -> JSONResponse:
     """
     A failed provider call as a typed error: LiteLLM's exception class (AuthenticationError,
     NotFoundError, RateLimitError, ...) and the provider's status code.
@@ -45,11 +29,12 @@ def _provider_error(exc: Exception, api_key: str) -> JSONResponse:
     the caller's own session expiring. Only LiteLLM's exceptions pass their message on,
     redacted; anything else gets a generic one.
     """
+    exc = failure.cause
     status = getattr(exc, "status_code", None)
-    logger.warning("Provider call failed: %s (%s)", type(exc).__name__, status)
+    logger.warning("Provider call failed: %s (%s)", type(exc).__name__, status, exc_info=exc)
     # LiteLLM's exceptions don't share one base class (most derive from the openai package's)
     if type(exc).__module__ == litellm.exceptions.__name__:
-        message = _redact(str(exc), api_key)[:ERROR_MESSAGE_LIMIT]
+        message = redact_secrets(str(exc), api_key)[:ERROR_MESSAGE_LIMIT]
     else:
         message = "The provider call failed"
     return JSONResponse(
@@ -135,8 +120,8 @@ async def chat_completions(request: Request, body: CompletionRequest):
             fallback_models=body.fallback_models,
             **kwargs,
         )
-    except Exception as exc:
-        return _provider_error(exc, api_key)
+    except ProviderCallError as failure:
+        return _provider_error(failure, api_key)
 
 
 @router.post("/v1/embeddings")
