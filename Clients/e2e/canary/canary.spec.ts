@@ -19,9 +19,7 @@ import { test, expect } from "../fixtures/auth.fixture";
  */
 
 test.describe("@canary critical journey", () => {
-  test("login → dashboard renders → project list loads @canary", async ({
-    authedPage: page,
-  }) => {
+  test("login → dashboard renders → project list loads @canary", async ({ authedPage: page }) => {
     // --- 1. Auth state: authedPage navigates to "/" and waits for auth ---
     // If the stored session is invalid we land back on /login — fail fast.
     await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
