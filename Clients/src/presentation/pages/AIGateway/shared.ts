@@ -313,13 +313,22 @@ export function useGatewayModels() {
     return () => ctrl.abort();
   }, [load]);
 
-  /** Get Select-compatible items for a given provider (memoized) */
+  /**
+   * Get Select-compatible items for a given provider (memoized).
+   * LiteLLM lists some models with the provider prefix ("gemini/gemini-2.5-flash")
+   * and some without ("gpt-4o"), and a few both ways. The value is always
+   * "<provider>/<model>" exactly once, and each model appears once.
+   */
   const getModelsForProvider = useCallback(
-    (provider: string) =>
-      (modelsByProvider[provider] || []).map((m) => ({
-        _id: `${provider}/${m.id}`,
-        name: m.id,
-      })),
+    (provider: string) => {
+      const prefix = `${provider}/`;
+      const items = new Map<string, { _id: string; name: string }>();
+      for (const m of modelsByProvider[provider] || []) {
+        const name = m.id.startsWith(prefix) ? m.id.slice(prefix.length) : m.id;
+        items.set(name, { _id: `${prefix}${name}`, name });
+      }
+      return [...items.values()].sort((a, b) => a.name.localeCompare(b.name));
+    },
     [modelsByProvider],
   );
 

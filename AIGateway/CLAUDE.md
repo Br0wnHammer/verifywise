@@ -1,6 +1,6 @@
 # AIGateway — LLM Gateway Service
 
-> **Last Updated:** 2026-10-17
+> **Last Updated:** 2026-10-19
 
 ---
 
@@ -91,7 +91,9 @@ cd src && uvicorn app:app --host 0.0.0.0 --port 8100 --reload   # Development
 
 ## Express Proxy
 
-Express backend at `Servers/routes/aiGateway.route.ts` proxies `/api/ai-gateway/*` to `/internal/*` on the gateway (`http://ai_gateway:8100`) with JWT auth forwarding (`x-organization-id`, `x-user-id`, `x-role` headers). `Servers/routes/virtualKeyProxy.route.ts` passes `/v1/*` through unchanged; virtual-key auth happens in the gateway.
+Express backend at `Servers/routes/aiGateway.route.ts` proxies `/api/ai-gateway/*` to `/internal/*` on the gateway (`http://ai_gateway:8100`) with JWT auth forwarding (`x-organization-id`, `x-user-id`, `x-role` headers). `Servers/routes/virtualKeyProxy.route.ts` forwards `/v1/*` to the gateway's `/v1/*`; virtual-key auth happens in the gateway. It is mounted at `/v1`, so it puts the prefix back with `pathRewrite`, and it calls `fixRequestBody` because the app-wide `express.json()` parser has already read the body. Deployments must route `/v1/` to the backend (Ansible nginx template, `Clients/nginx.conf`, both Kubernetes ingresses) with buffering off for streamed responses.
+
+Endpoint models are stored as `<provider>/<model>` with the prefix once. LiteLLM lists many models with the prefix already, so the endpoint form and `utils/endpoint_model.normalize_endpoint_model` (applied on create and update) never add it twice.
 
 ---
 

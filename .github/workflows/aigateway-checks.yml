@@ -110,4 +110,5 @@ jobs:
             tests/test_config_change_notifications.py \
             tests/test_endpoint_role_visibility.py \
             tests/test_invalid_unicode_body.py \
+            tests/test_endpoint_model_prefix.py \
             -v
