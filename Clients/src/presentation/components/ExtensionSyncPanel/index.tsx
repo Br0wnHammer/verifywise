@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
 import { RefreshCw } from "lucide-react";
-import { VWSelect, VWToggle } from "../VWComponents";
+import { VWSelect } from "../VWComponents";
+import Toggle from "../Inputs/Toggle";
 import { CustomizableButton } from "../button/customizable-button";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import {
@@ -151,15 +152,24 @@ export function ExtensionSyncPanel({
   return (
     <Box data-testid={`extension-sync-panel-${extensionKey}`}>
       <Stack spacing="20px">
-        <Box>
-          <VWToggle
+        <Stack direction="row" justifyContent="space-between" alignItems="center" gap="16px">
+          <Box>
+            <Typography sx={{ fontSize: "13px", fontWeight: 500 }} color="text.primary">
+              Enable automatic sync
+            </Typography>
+            {scheduleDescription && (
+              <Typography sx={{ fontSize: "12px" }} color="text.tertiary">
+                {scheduleDescription}
+              </Typography>
+            )}
+          </Box>
+          <Toggle
             checked={sync.schedule.enabled}
             onChange={(event) => sync.setSchedule({ enabled: event.target.checked })}
             disabled={scheduleLocked}
-            label="Enable automatic sync"
-            description={scheduleDescription}
+            ariaLabel="Enable automatic sync"
           />
-        </Box>
+        </Stack>
 
         {sync.schedule.enabled && (
           <Box>
