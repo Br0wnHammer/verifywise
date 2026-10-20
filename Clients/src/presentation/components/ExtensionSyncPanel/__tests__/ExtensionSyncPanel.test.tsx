@@ -73,6 +73,12 @@ describe("ExtensionSyncPanel", () => {
     expect(screen.queryByText("Failing since")).toBeNull();
   });
 
+  it("names the switch by its label and describes it by the schedule description", () => {
+    mockUseExtensionSync.mockReturnValue(hookState());
+    renderPanel({ scheduleDescription: "Runs on the interval below." });
+    expect(toggle()).toHaveAccessibleDescription("Runs on the interval below.");
+  });
+
   it("saves the schedule when the toggle changes", () => {
     const state = hookState();
     mockUseExtensionSync.mockReturnValue(state);

@@ -152,23 +152,40 @@ export function ExtensionSyncPanel({
   return (
     <Box data-testid={`extension-sync-panel-${extensionKey}`}>
       <Stack spacing="20px">
-        <Stack direction="row" justifyContent="space-between" alignItems="center" gap="16px">
+        <Stack direction="row" alignItems="flex-start" gap="12px">
+          <Box sx={{ pt: "1px" }}>
+            <Toggle
+              checked={sync.schedule.enabled}
+              onChange={(event) => sync.setSchedule({ enabled: event.target.checked })}
+              disabled={scheduleLocked}
+              slotProps={{
+                input: {
+                  "aria-labelledby": `${extensionKey}-auto-sync-label`,
+                  "aria-describedby": scheduleDescription
+                    ? `${extensionKey}-auto-sync-description`
+                    : undefined,
+                },
+              }}
+            />
+          </Box>
           <Box>
-            <Typography sx={{ fontSize: "13px", fontWeight: 500 }} color="text.primary">
+            <Typography
+              id={`${extensionKey}-auto-sync-label`}
+              sx={{ fontSize: "13px", fontWeight: 500 }}
+              color="text.primary"
+            >
               Enable automatic sync
             </Typography>
             {scheduleDescription && (
-              <Typography sx={{ fontSize: "12px" }} color="text.tertiary">
+              <Typography
+                id={`${extensionKey}-auto-sync-description`}
+                sx={{ fontSize: "12px" }}
+                color="text.tertiary"
+              >
                 {scheduleDescription}
               </Typography>
             )}
           </Box>
-          <Toggle
-            checked={sync.schedule.enabled}
-            onChange={(event) => sync.setSchedule({ enabled: event.target.checked })}
-            disabled={scheduleLocked}
-            ariaLabel="Enable automatic sync"
-          />
         </Stack>
 
         {sync.schedule.enabled && (
