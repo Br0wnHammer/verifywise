@@ -52,13 +52,16 @@ def _transport(pages, seen, session="sess-1"):
     return httpx.MockTransport(handler)
 
 
+NO_CHANGES = {"added": 0, "removed": 0, "changed": 0, "unchanged": 0}
+
+
 @pytest.fixture
 def recorded(monkeypatch):
     calls = {"store": [], "result": []}
 
     async def store(org_id, server_id, tools):
         calls["store"].append((org_id, server_id, tools))
-        return [{"tool_name": t["name"]} for t in tools]
+        return [{"tool_name": t["name"]} for t in tools], {**NO_CHANGES, "added": len(tools)}
 
     async def record(org_id, server_id, error):
         calls["result"].append((org_id, server_id, error))
@@ -105,12 +108,17 @@ class TestProtocol:
 class TestRunDiscovery:
     async def test_success_records_healthy(self, recorded):
         out = await svc.run_discovery(1, _server(), 10, transport=_transport([[{"name": "a"}, {"name": "b"}]], []))
-        assert out == {"status": "success", "tools_discovered": 2, "error": None}
+        assert out == {
+            "status": "success",
+            "tools_discovered": 2,
+            "changes": {**NO_CHANGES, "added": 2},
+            "error": None,
+        }
         assert recorded["result"] == [(1, 5, None)]
 
     async def test_zero_tools_is_success(self, recorded):
         out = await svc.run_discovery(1, _server(), 10, transport=_transport([[]], []))
-        assert out == {"status": "success", "tools_discovered": 0, "error": None}
+        assert out == {"status": "success", "tools_discovered": 0, "changes": NO_CHANGES, "error": None}
         assert recorded["store"] == [(1, 5, [])]
 
     async def test_budget_exceeded_fails_without_storing(self, recorded):
@@ -134,7 +142,12 @@ class TestRunDiscovery:
 
         monkeypatch.setattr(svc, "store_discovered_tools", boom)
         out = await svc.run_discovery(1, _server(), 10, transport=_transport([[{"name": "a"}]], []))
-        assert out == {"status": "failed", "tools_discovered": 0, "error": "Could not save the discovered tools"}
+        assert out == {
+            "status": "failed",
+            "tools_discovered": 0,
+            "changes": None,
+            "error": "Could not save the discovered tools",
+        }
         assert recorded["result"] == [(1, 5, "Could not save the discovered tools")]
 
     async def test_record_failure_does_not_replace_result(self, monkeypatch):
@@ -147,8 +160,54 @@ class TestRunDiscovery:
         assert out == {
             "status": "failed",
             "tools_discovered": 0,
+            "changes": None,
             "error": "The server rejected the credentials (HTTP 401)",
         }
+
+
+def _row(name, description="d", schema=None, active=True):
+    return {"tool_name": name, "description": description, "input_schema": schema, "is_active": active}
+
+
+class TestDiffDiscoveredTools:
+    def test_first_discovery_counts_everything_as_added(self):
+        out = svc.diff_discovered_tools([], [{"name": "a"}, {"name": "b"}])
+        assert out == {**NO_CHANGES, "added": 2}
+
+    def test_no_changes(self):
+        existing = [_row("a", "d", '{"type": "object"}'), _row("b", None, None)]
+        tools = [
+            {"name": "a", "description": "d", "inputSchema": {"type": "object"}},
+            {"name": "b", "description": "", "inputSchema": {}},
+        ]
+        assert svc.diff_discovered_tools(existing, tools) == {**NO_CHANGES, "unchanged": 2}
+
+    def test_description_and_schema_changes(self):
+        existing = [_row("a", "old"), _row("b", "d", {"type": "object"}), _row("c")]
+        tools = [
+            {"name": "a", "description": "new"},
+            {"name": "b", "description": "d", "inputSchema": {"type": "object", "required": ["q"]}},
+            {"name": "c", "description": "d"},
+        ]
+        assert svc.diff_discovered_tools(existing, tools) == {**NO_CHANGES, "changed": 2, "unchanged": 1}
+
+    def test_removed_counts_only_active_tools(self):
+        existing = [_row("a"), _row("gone"), _row("long_gone", active=False)]
+        out = svc.diff_discovered_tools(existing, [{"name": "a", "description": "d"}])
+        assert out == {**NO_CHANGES, "removed": 1, "unchanged": 1}
+
+    def test_returning_inactive_tool_counts_as_added(self):
+        out = svc.diff_discovered_tools([_row("a", active=False)], [{"name": "a", "description": "d"}])
+        assert out == {**NO_CHANGES, "added": 1}
+
+    def test_empty_list_removes_all_active(self):
+        out = svc.diff_discovered_tools([_row("a"), _row("b")], [])
+        assert out == {**NO_CHANGES, "removed": 2}
+
+    def test_schema_key_order_is_not_a_change(self):
+        existing = [_row("a", "d", '{"b": 1, "a": 2}')]
+        tools = [{"name": "a", "description": "d", "inputSchema": {"a": 2, "b": 1}}]
+        assert svc.diff_discovered_tools(existing, tools) == {**NO_CHANGES, "unchanged": 1}
 
 
 class TestErrorMessages:

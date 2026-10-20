@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Box, Typography, Stack, IconButton, Tooltip } from "@mui/material";
+import { Box, Typography, Stack, IconButton, Tooltip, CircularProgress } from "@mui/material";
+import { useNavigate } from "react-router";
 import {
   CirclePlus,
   Server,
@@ -77,8 +78,35 @@ interface MCPServer {
   created_at: string;
 }
 
+type DiscoveryChanges = { added: number; removed: number; changed: number; unchanged: number };
+
+type Discovery = {
+  status: "success" | "failed" | "skipped";
+  tools_discovered: number;
+  changes?: DiscoveryChanges | null;
+  error: string | null;
+};
+
+const toolsFound = (n: number) =>
+  n === 0 ? "The server offered no tools" : n === 1 ? "One tool found" : `${n} tools found`;
+
+const hasChanges = (c: DiscoveryChanges) => c.added + c.removed + c.changed > 0;
+
+// Starts with a digit, so the DOM translator leaves it alone.
+const changeSummary = (c: DiscoveryChanges) =>
+  [
+    c.added && `${c.added} new`,
+    c.removed && `${c.removed} removed`,
+    c.changed && `${c.changed} changed`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+const toolsCatalogPath = (serverId: number) => `/ai-gateway/mcp/tools?server=${serverId}`;
+
 export default function MCPServersPage() {
   const formatDate = useFormattedDate();
+  const navigate = useNavigate();
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -94,6 +122,7 @@ export default function MCPServersPage() {
     variant: "success" | "warning" | "error";
     title: string;
     body?: string;
+    action?: { label: string; onClick: () => void };
   } | null>(null);
   const [discoveringId, setDiscoveringId] = useState<number | null>(null);
 
@@ -101,9 +130,18 @@ export default function MCPServersPage() {
   // renders as its own text node and the DOM translator can match it.
   // One dismiss timer at a time: an older alert's timer must not close a newer one.
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showAlert = (variant: "success" | "warning" | "error", title: string, body?: string) => {
+  const showAlert = (
+    variant: "success" | "warning" | "error",
+    title: string,
+    body?: string,
+    serverId?: number,
+  ) => {
     if (alertTimer.current) clearTimeout(alertTimer.current);
-    setAlert({ variant, title, body });
+    const action =
+      serverId === undefined
+        ? undefined
+        : { label: "View tools", onClick: () => navigate(toolsCatalogPath(serverId)) };
+    setAlert({ variant, title, body, action });
     alertTimer.current = setTimeout(() => setAlert(null), 6000);
   };
   useEffect(
@@ -113,28 +151,28 @@ export default function MCPServersPage() {
     [],
   );
 
-  type Discovery = {
-    status: "success" | "failed" | "skipped";
-    tools_discovered: number;
-    error: string | null;
-  };
-
-  const toolsFound = (n: number) =>
-    n === 0 ? "The server offered no tools" : n === 1 ? "One tool found" : `${n} tools found`;
-
-  const reportDiscovery = (prefix: string, discovery?: Discovery) => {
+  const reportDiscovery = (prefix: string, serverId: number | undefined, discovery?: Discovery) => {
     if (!discovery || discovery.status === "skipped") {
       showAlert("success", prefix);
     } else if (discovery.status === "success") {
-      showAlert("success", prefix, toolsFound(discovery.tools_discovered));
+      const c = discovery.changes;
+      // A brand-new server has nothing to compare against: report the total.
+      const updated = c && hasChanges(c) && c.removed + c.changed + c.unchanged > 0;
+      showAlert(
+        "success",
+        prefix,
+        updated ? changeSummary(c) : toolsFound(discovery.tools_discovered),
+        discovery.tools_discovered > 0 || updated ? serverId : undefined,
+      );
     } else {
       // The server is saved either way; say so, or the admin may think the save failed.
       showAlert("warning", `${prefix}, but discovery failed`, discovery.error || undefined);
     }
   };
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  // The skeleton is for the first load and retries; later reloads keep the table on screen.
+  const loadData = useCallback(async (showSkeleton = false) => {
+    if (showSkeleton) setLoading(true);
     setLoadError(null);
     try {
       const res = await apiServices.get<Record<string, any>>("/ai-gateway/mcp/servers");
@@ -147,7 +185,7 @@ export default function MCPServersPage() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    loadData(true);
   }, [loadData]);
 
   const isEditing = editingId !== null;
@@ -229,7 +267,11 @@ export default function MCPServersPage() {
       }
       setIsModalOpen(false);
       setForm({ ...EMPTY_FORM });
-      reportDiscovery("Server saved", res?.data?.discovery);
+      reportDiscovery(
+        "Server saved",
+        res?.data?.server?.id ?? editingId ?? undefined,
+        res?.data?.discovery,
+      );
       await loadData();
     } catch (err: any) {
       setFormError(getGatewayErrorText(err, `Failed to ${editingId ? "update" : "create"} server`));
@@ -255,7 +297,16 @@ export default function MCPServersPage() {
       const res = await apiServices.post<Record<string, any>>(
         `/ai-gateway/mcp/servers/${id}/discover`,
       );
-      showAlert("success", toolsFound(res?.data?.tools_discovered ?? 0));
+      const total: number = res?.data?.tools_discovered ?? 0;
+      const changes: DiscoveryChanges | null | undefined = res?.data?.changes;
+      const viewFor = total > 0 || (changes && hasChanges(changes)) ? id : undefined;
+      if (!changes) {
+        showAlert("success", toolsFound(total), undefined, viewFor);
+      } else if (hasChanges(changes)) {
+        showAlert("success", "Tools updated", changeSummary(changes), viewFor);
+      } else {
+        showAlert("success", "No changes", toolsFound(total), viewFor);
+      }
     } catch (err: any) {
       showAlert(
         "error",
@@ -273,7 +324,7 @@ export default function MCPServersPage() {
       const res = await apiServices.patch<Record<string, any>>(`/ai-gateway/mcp/servers/${id}`, {
         is_active: !isActive,
       });
-      if (!isActive) reportDiscovery("Server switched on", res?.data?.discovery);
+      if (!isActive) reportDiscovery("Server switched on", id, res?.data?.discovery);
       await loadData();
     } catch {
       // Silently handle
@@ -311,6 +362,7 @@ export default function MCPServersPage() {
           variant={alert.variant}
           title={alert.title}
           body={alert.body ?? ""}
+          action={alert.action}
           isToast
           onClick={() => setAlert(null)}
         />
@@ -323,7 +375,7 @@ export default function MCPServersPage() {
             variant="outlined"
             text="Retry"
             icon={<RotateCcw size={16} />}
-            onClick={loadData}
+            onClick={() => loadData(true)}
           />
         </EmptyState>
       ) : servers.length === 0 ? (
@@ -381,9 +433,30 @@ export default function MCPServersPage() {
                   />
                 </span>
               </Tooltip>,
-              <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>
-                {srv.tool_count > 0 ? srv.tool_count : "—"}
-              </Typography>,
+              srv.tool_count > 0 ? (
+                <Box
+                  component="button"
+                  type="button"
+                  aria-label="View tools"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(toolsCatalogPath(srv.id));
+                  }}
+                  sx={{
+                    p: 0,
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    color: palette.brand.primary,
+                    textDecoration: "underline",
+                  }}
+                >
+                  {srv.tool_count}
+                </Box>
+              ) : (
+                <Typography sx={{ fontSize: 12, color: palette.text.tertiary }}>—</Typography>
+              ),
               <Box>
                 <Typography sx={{ fontSize: 12, color: palette.text.secondary }}>
                   {srv.url}
@@ -422,8 +495,13 @@ export default function MCPServersPage() {
                       disabled={discoveringId === srv.id}
                       sx={{ p: 0.5 }}
                       aria-label="Discover tools"
+                      aria-busy={discoveringId === srv.id}
                     >
-                      <Search size={14} strokeWidth={1.5} color={palette.text.tertiary} />
+                      {discoveringId === srv.id ? (
+                        <CircularProgress size={14} sx={{ color: palette.text.tertiary }} />
+                      ) : (
+                        <Search size={14} strokeWidth={1.5} color={palette.text.tertiary} />
+                      )}
                     </IconButton>
                   </span>
                 </Tooltip>

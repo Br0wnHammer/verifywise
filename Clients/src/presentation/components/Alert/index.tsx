@@ -57,6 +57,7 @@ const Alert: React.FC<AlertProps> = ({
   isToast,
   hasIcon = true,
   onClick,
+  action,
   sx,
 }: AlertProps): JSX.Element => {
   const theme = useTheme();
@@ -95,6 +96,26 @@ const Alert: React.FC<AlertProps> = ({
       <Stack direction={"column"} gap={"2px"} sx={{ flex: 1 }}>
         {title && <Typography sx={{ fontWeight: 700, color: text }}>{title}</Typography>}
         {body && <AlertBody body={body} textColor={text} />}
+        {action && (
+          <Box
+            component="button"
+            type="button"
+            onClick={action.onClick}
+            sx={{
+              alignSelf: "flex-start",
+              p: 0,
+              border: "none",
+              background: "none",
+              cursor: "pointer",
+              color: text,
+              fontSize: 13,
+              fontWeight: 600,
+              textDecoration: "underline",
+            }}
+          >
+            {action.label}
+          </Box>
+        )}
       </Stack>
       {isToast && (
         <IconButton
