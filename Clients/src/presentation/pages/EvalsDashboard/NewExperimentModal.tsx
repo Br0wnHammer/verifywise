@@ -447,38 +447,42 @@ export default function NewExperimentModal({
     setActiveStep((prev) => prev + 1);
   };
 
-  // Load configured API keys and saved models when modal opens. The modal stays mounted
-  // between opens, so key checks start afresh each time: a key fixed or revoked in the
-  // meantime is seen as it is now. The reset runs before the load below on the same open.
+  // Load configured API keys when the modal opens. The modal stays mounted between opens,
+  // so key checks start afresh each time: a key fixed or revoked in the meantime is seen
+  // as it is now.
   useEffect(() => {
     if (!isOpen) return;
-    openGeneration.current += 1;
+    const generation = ++openGeneration.current;
     checkedKeyIds.current = new Set();
     setRejectedKeyIds(new Set());
-  }, [isOpen]);
-
-  // Reloads when orgId arrives late, without checking the same keys again
-  useEffect(() => {
-    if (!isOpen) return;
-    let stale = false;
     (async () => {
       try {
         setLoadingApiKeys(true);
-        const [keys, models] = await Promise.all([
-          getAllLlmApiKeys(),
-          evalModelsService.listModels(orgId || undefined),
-        ]);
-        // A slower load from an earlier open or orgId must not replace this list
-        if (stale) return;
-        setConfiguredApiKeys(keys);
-        setSavedModels(models);
-        keysGeneration.current = openGeneration.current;
-      } catch {
-        /* ignore: no fresh list, so no key checks this open */
+        const keys = await getAllLlmApiKeys();
+        // A slower load from an earlier open must not replace this open's list
+        if (generation === openGeneration.current) setConfiguredApiKeys(keys);
+      } catch (err) {
+        // Keep checking the last list loaded, so a key refused before is not shown as configured
+        console.warn("Failed to load saved API keys:", err);
       } finally {
-        if (!stale) setLoadingApiKeys(false);
+        if (generation === openGeneration.current) {
+          keysGeneration.current = generation;
+          setLoadingApiKeys(false);
+        }
       }
     })();
+  }, [isOpen]);
+
+  // Saved models depend on orgId, which may arrive after the modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    let stale = false;
+    evalModelsService
+      .listModels(orgId || undefined)
+      .then((models) => {
+        if (!stale) setSavedModels(models);
+      })
+      .catch((err) => console.warn("Failed to load saved models:", err));
     return () => {
       stale = true;
     };

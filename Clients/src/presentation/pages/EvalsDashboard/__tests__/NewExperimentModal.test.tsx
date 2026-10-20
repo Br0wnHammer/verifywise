@@ -276,6 +276,39 @@ describe("NewExperimentModal", () => {
       expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(2);
     });
 
+    it("checks the last loaded keys again when the key list fails to load on reopen", async () => {
+      deepEvalMocks.getAllLlmApiKeys.mockResolvedValue([
+        { id: 6, provider: "google", apiKey: "AIza-dead" },
+      ]);
+      deepEvalMocks.verifySavedLlmApiKey.mockResolvedValue({ valid: false });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const modal = (isOpen: boolean) => (
+        <NewExperimentModal
+          isOpen={isOpen}
+          onClose={vi.fn()}
+          projectId="proj-1"
+          orgId="org-1"
+          onSuccess={vi.fn()}
+          onStarted={vi.fn()}
+          useCase="chatbot"
+          existingExperimentNames={[]}
+        />
+      );
+
+      const { rerender } = renderWithProviders(modal(true));
+      fireEvent.click(await screen.findByText("Gemini"));
+      expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
+
+      deepEvalMocks.getAllLlmApiKeys.mockRejectedValue(new Error("502"));
+      rerender(modal(false));
+      rerender(modal(true));
+      fireEvent.click(await screen.findByText("Gemini"));
+
+      expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
+      expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(2);
+      warn.mockRestore();
+    });
+
     it("keeps a refused key and does not check it again when orgId arrives late", async () => {
       deepEvalMocks.getAllLlmApiKeys.mockResolvedValue([
         { id: 6, provider: "google", apiKey: "AIza-dead" },
@@ -299,9 +332,13 @@ describe("NewExperimentModal", () => {
       expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
 
       rerender(modal("org-1"));
-      await waitFor(() => expect(deepEvalMocks.getAllLlmApiKeys).toHaveBeenCalledTimes(2));
+      // Only the saved models depend on orgId; let that reload settle before asserting
+      await waitFor(() => expect(deepEvalMocks.listModels).toHaveBeenLastCalledWith("org-1"));
+      await act(async () => {});
 
-      expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
+      expect(screen.getByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
+      expect(screen.getByLabelText("API key")).toBeInTheDocument();
+      expect(deepEvalMocks.getAllLlmApiKeys).toHaveBeenCalledTimes(1);
       expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(1);
     });
   });

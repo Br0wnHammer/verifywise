@@ -125,6 +125,14 @@ async def test_saved_gemini_key_403_is_a_rejected_key(monkeypatch, body):
     assert res["data"]["valid"] is False
 
 
+async def test_saved_gemini_key_403_from_a_proxy_is_not_a_rejected_key(monkeypatch):
+    # An egress proxy or firewall in front of Google answers with its own page
+    _provider_replies(monkeypatch, 403, "<html><body>403 Forbidden</body></html>")
+    _saved_key(monkeypatch, {"id": 6, "provider": "gemini", "encrypted_key": encrypt("AIza-ok")})
+    res = await router.verify_saved_api_key(6, _request())
+    assert res["data"]["valid"] is True
+
+
 async def test_saved_key_403_for_permissions_is_not_a_rejected_key(monkeypatch):
     _provider_replies(monkeypatch, 403, '{"type": "error", "error": {"type": "permission_error"}}')
     _saved_key(monkeypatch, {"id": 4, "provider": "anthropic", "encrypted_key": encrypt("sk-ant")})
