@@ -9,9 +9,9 @@ global:
   scrape_interval: 30s
   evaluation_interval: 30s
 
-# Alert rules live next to this file (observability/prometheus/alerts.yml).
-# Paths are relative to the directory containing prometheus.yml — in the
-# compose deployment both files are mounted into /etc/prometheus/.
+# Alert rules live next to this file (`observability/alerts.yml`).
+# Paths are relative to the directory containing prometheus.yml — the
+# compose deployment mounts both files side-by-side into /etc/prometheus/.
 # See observability/prometheus/RULES.md for the required compose volume.
 rule_files:
   - "alerts.yml"

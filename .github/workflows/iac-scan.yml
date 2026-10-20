@@ -146,7 +146,7 @@ jobs:
         run: promtool check config observability/prometheus.yml
 
       - name: promtool check rules (alerts.yml)
-        run: promtool check rules observability/prometheus/alerts.yml
+        run: promtool check rules observability/alerts.yml
 
       # Guarded: the observability pod added this file in this PR; keep the
       # job green on branches where it does not exist yet.

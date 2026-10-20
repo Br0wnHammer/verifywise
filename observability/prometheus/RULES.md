@@ -1,6 +1,6 @@
 # Alert rules wiring
 
-`alerts.yml` lives in this directory next to `../prometheus.yml`, which loads it
+`alerts.yml` lives next to `prometheus.yml` in the parent of this directory, which loads it
 via:
 
 ```yaml
@@ -19,7 +19,7 @@ volume (the config file itself is already mounted):
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       # NEW: alert rules (referenced by rule_files in prometheus.yml)
-      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
 ```
 
@@ -63,6 +63,6 @@ and simply never fire — this is safe.
 
 ## Validation
 
-Locally: `promtool check rules observability/prometheus/alerts.yml`.
+Locally: `promtool check rules observability/alerts.yml`.
 In CI (owned by the CI pod): same command plus `promtool check config
 observability/prometheus.yml`.
