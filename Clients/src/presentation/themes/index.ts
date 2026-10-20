@@ -21,7 +21,7 @@ export {
   teal,
   pink,
   default as grayScale,
-} from "./primitives";
+} from "@design-tokens/primitives";
 export {
   typography,
   fontFamily,

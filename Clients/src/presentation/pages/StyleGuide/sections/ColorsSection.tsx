@@ -12,7 +12,7 @@ import {
   purple,
   teal,
   pink,
-} from "../../../themes/primitives";
+} from "@design-tokens/primitives";
 
 const ColorsSection: React.FC = () => {
   const theme = useTheme();
@@ -53,9 +53,9 @@ const ColorsSection: React.FC = () => {
             maxWidth: 600,
           }}
         >
-          The VerifyWise color system: primitive ramps in{" "}
+          The VerifyWise color system: primitive scales in{" "}
           <Box component="span" sx={{ fontFamily: "monospace", fontSize: 13 }}>
-            themes/primitives.ts
+            shared/design-tokens/primitives.ts
           </Box>
           , semantic tokens in{" "}
           <Box component="span" sx={{ fontFamily: "monospace", fontSize: 13 }}>
@@ -68,9 +68,9 @@ const ColorsSection: React.FC = () => {
       {/* Color primitives */}
       <SpecSection title="Color primitives">
         <Typography sx={{ fontSize: 13, color: theme.palette.text.tertiary, mb: "24px" }}>
-          Source-of-truth ramps from{" "}
+          Source-of-truth scales from{" "}
           <Box component="span" sx={{ fontFamily: "monospace", fontSize: 13 }}>
-            themes/primitives.ts
+            shared/design-tokens/primitives.ts
           </Box>
           . Semantic tokens in palette.ts reference these steps.
         </Typography>
@@ -806,7 +806,7 @@ const ColorsSection: React.FC = () => {
         </Typography>
         <Stack spacing="8px">
           {[
-            "Define hex values only in themes/primitives.ts — use palette.ts semantics in components",
+            "Define hex values only in shared/design-tokens/primitives.ts — use palette.ts semantics in components",
             "Grey primitives power text, border, and background tokens",
             "Green primitives power brand, success, and accent tokens",
             "Red primitives power error and critical risk tokens",

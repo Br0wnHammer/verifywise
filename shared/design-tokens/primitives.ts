@@ -1,11 +1,9 @@
 /**
- * VerifyWise color primitives.
- *
- * Hex literals for color ramps live here only.
- * Semantic tokens in palette.ts derive from these values.
+ * Shared color scales. Hex values live here so the frontend and backend share
+ * one typed module. Screens import the semantic palette, not these scales.
  */
 
-/** Grey ramp: 50 (lightest) → 950 (black) */
+/** Grey scale: 50 (lightest) → 950 (black) */
 export const grey = {
   50: "#FFFFFF",
   100: "#F9FAFB",
@@ -25,7 +23,7 @@ export const grey = {
 
 export type GreyStep = keyof typeof grey;
 
-/** Brand green ramp: 50 (lightest) → 900 (darkest) */
+/** Green scale: 50 (lightest) → 900 (darkest) */
 export const green = {
   50: "#F0FDF4",
   100: "#E6F0EC",
@@ -41,9 +39,7 @@ export const green = {
 
 export type GreenStep = keyof typeof green;
 
-/**
- * Error red ramp (partial): 50 (subtle tint) → 500 (main).
- */
+/** Red scale (partial): 50 (subtle tint) → 500 (main). */
 export const red = {
   50: "#FEF2F2",
   200: "#FFD6D6",
@@ -63,7 +59,7 @@ export const amber = {
 
 export type AmberStep = keyof typeof amber;
 
-/** High risk and accent.orange — orange ramp */
+/** Orange scale */
 export const orange = {
   50: "#FFF4EB",
   100: "#FFE5D0",
@@ -73,7 +69,7 @@ export const orange = {
 
 export type OrangeStep = keyof typeof orange;
 
-/** Info and accent.blue — blue ramp */
+/** Blue scale */
 export const blue = {
   50: "#E3F2FD",
   100: "#BBDEFB",
@@ -82,7 +78,7 @@ export const blue = {
 
 export type BlueStep = keyof typeof blue;
 
-/** Accent indigo ramp */
+/** Indigo scale */
 export const indigo = {
   50: "#E8EAF6",
   100: "#C5CAE9",
@@ -91,7 +87,7 @@ export const indigo = {
 
 export type IndigoStep = keyof typeof indigo;
 
-/** Accent purple ramp */
+/** Purple scale */
 export const purple = {
   50: "#EDE7F6",
   100: "#D1C4E9",
@@ -100,7 +96,7 @@ export const purple = {
 
 export type PurpleStep = keyof typeof purple;
 
-/** Accent teal ramp */
+/** Teal scale */
 export const teal = {
   50: "#E0F2F1",
   100: "#B2DFDB",
@@ -109,7 +105,7 @@ export const teal = {
 
 export type TealStep = keyof typeof teal;
 
-/** Accent pink ramp */
+/** Pink scale */
 export const pink = {
   50: "#FCE4EC",
   100: "#F8BBD0",
@@ -117,5 +113,18 @@ export const pink = {
 } as const;
 
 export type PinkStep = keyof typeof pink;
+
+export const colorScales = {
+  grey,
+  green,
+  red,
+  amber,
+  orange,
+  blue,
+  indigo,
+  purple,
+  teal,
+  pink,
+} as const;
 
 export default grey;
