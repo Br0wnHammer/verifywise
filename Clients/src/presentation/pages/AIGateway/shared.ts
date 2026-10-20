@@ -527,3 +527,9 @@ export async function streamPromptTest(
 
   return { content, tokens, cost, latency: Date.now() - startTime };
 }
+
+/** Navigation state the MCP servers page sends when it opens the tools catalog. */
+export const FROM_MCP_SERVERS = { from: "mcp-servers" } as const;
+
+export const cameFromMcpServers = (state: unknown): boolean =>
+  (state as { from?: unknown } | null)?.from === FROM_MCP_SERVERS.from;
