@@ -110,3 +110,24 @@ def test_update_route_without_model_leaves_it_out(monkeypatch):
     res = client.patch("/endpoints/7", json={"display_name": "Renamed"})
     assert res.status_code == 200, res.text
     assert "model" not in saved["update"]
+
+
+def test_providers_without_stored_keys_are_left_alone():
+    # Same provider set as migration a0017, so the API and the repaired data agree
+    assert normalize_endpoint_model("perplexity", "perplexity/perplexity/new-model") == "perplexity/perplexity/new-model"
+
+
+def test_non_string_model_is_rejected_on_create(monkeypatch):
+    client, saved = _client(monkeypatch)
+    res = client.post("/endpoints", json={
+        "slug": "faq", "display_name": "FAQ", "provider": "openai", "model": ["gpt-4o"],
+    })
+    assert res.status_code == 400
+    assert "create" not in saved
+
+
+def test_non_string_model_is_rejected_on_update(monkeypatch):
+    client, saved = _client(monkeypatch, existing={"id": 7, "provider": "openai", "model": "gpt-4o"})
+    res = client.patch("/endpoints/7", json={"model": 5})
+    assert res.status_code == 400
+    assert "update" not in saved

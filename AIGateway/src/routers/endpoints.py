@@ -28,6 +28,12 @@ def _validate_slug(slug: str) -> None:
         )
 
 
+def _validate_text_fields(body: dict) -> None:
+    for field in ("provider", "model"):
+        if field in body and body[field] is not None and not isinstance(body[field], str):
+            raise HTTPException(status_code=400, detail=f"{field} must be a string")
+
+
 @router.get("")
 async def list_endpoints(request: Request) -> Any:
 
@@ -78,6 +84,7 @@ async def create_endpoint(request: Request) -> Any:
 
     if not body.get("model"):
         raise HTTPException(status_code=400, detail="model is required")
+    _validate_text_fields(body)
 
     body["model"] = normalize_endpoint_model(body["provider"], body["model"])
 
@@ -113,6 +120,7 @@ async def update_endpoint(endpoint_id: int, request: Request) -> Any:
     if not existing:
         raise HTTPException(status_code=404, detail="Endpoint not found")
 
+    _validate_text_fields(body)
     if body.get("model"):
         body["model"] = normalize_endpoint_model(
             body.get("provider") or existing.get("provider"), body["model"]
