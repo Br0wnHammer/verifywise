@@ -415,6 +415,12 @@ describe("MCPServersPage", () => {
     expect(screen.queryByText("Edit server")).not.toBeInTheDocument();
   });
 
+  it("names a single tool in the count link's label", async () => {
+    mockGet.mockResolvedValue({ data: { servers: [makeServer({ id: 3, tool_count: 1 })] } });
+    renderWithProviders(<MCPServersPage />, { route: "/ai-gateway/mcp/servers" });
+    expect(await screen.findByRole("button", { name: "View one tool" })).toBeInTheDocument();
+  });
+
   it("offers no tools link when discovery only removed tools", async () => {
     mockGet.mockResolvedValue({ data: { servers: [makeServer({ id: 3, tool_count: 0 })] } });
     mockPost.mockResolvedValue({

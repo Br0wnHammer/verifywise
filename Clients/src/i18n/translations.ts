@@ -160,6 +160,7 @@ export const translations: Record<string, Record<string, string>> = {
     "{count} removed": "{count} entfernt",
     "{count} changed": "{count} geändert",
     "View {count} tools": "{count} Tools anzeigen",
+    "View one tool": "Ein Tool anzeigen",
     "Discovery failed": "Erkennung fehlgeschlagen",
     "Server saved, but discovery failed":
       "Server gespeichert, aber die Erkennung ist fehlgeschlagen",
@@ -10754,6 +10755,7 @@ export const translations: Record<string, Record<string, string>> = {
     "{count} removed": "{count} supprimé(s)",
     "{count} changed": "{count} modifié(s)",
     "View {count} tools": "Voir les {count} outils",
+    "View one tool": "Voir l'outil",
     "Discovery failed": "Échec de la découverte",
     "Server saved, but discovery failed": "Serveur enregistré, mais la découverte a échoué",
     "Server switched on, but discovery failed": "Serveur activé, mais la découverte a échoué",
@@ -21285,6 +21287,7 @@ export const translations: Record<string, Record<string, string>> = {
     "{count} removed": "{count} eliminada(s)",
     "{count} changed": "{count} modificada(s)",
     "View {count} tools": "Ver las {count} herramientas",
+    "View one tool": "Ver la herramienta",
     "Discovery failed": "Error en la detección",
     "Server saved, but discovery failed": "Servidor guardado, pero la detección falló",
     "Server switched on, but discovery failed": "Servidor activado, pero la detección falló",

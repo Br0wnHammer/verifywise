@@ -188,17 +188,22 @@ export default function MCPServersPage() {
     }
   };
 
+  // Reloads can overlap (two discoveries at once); only the latest one may
+  // write, or an older response could put stale tool counts back on screen.
+  const loadSeq = useRef(0);
+
   // The skeleton is for the first load and retries; later reloads keep the table on screen.
   const loadData = useCallback(async (showSkeleton = false) => {
+    const seq = ++loadSeq.current;
     if (showSkeleton) setLoading(true);
     setLoadError(null);
     try {
       const res = await apiServices.get<Record<string, any>>("/ai-gateway/mcp/servers");
-      setServers(res?.data?.servers || []);
+      if (seq === loadSeq.current) setServers(res?.data?.servers || []);
     } catch {
-      setLoadError("Failed to load MCP servers. Please try again.");
+      if (seq === loadSeq.current) setLoadError("Failed to load MCP servers. Please try again.");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, []);
 
@@ -317,13 +322,19 @@ export default function MCPServersPage() {
       );
       const total: number = res?.data?.tools_discovered ?? 0;
       const changes: DiscoveryChanges | null | undefined = res?.data?.changes;
-      showAlert(
-        "success",
-        changes && !hasChanges(changes) ? "No changes" : "Tools updated",
-        discoveryBody(t, total, changes),
-        // A run that only removed tools leaves nothing to view.
-        total > 0 ? id : undefined,
-      );
+      // A run that only removed tools leaves nothing to view.
+      const viewFor = total > 0 ? id : undefined;
+      if (!changes) {
+        // No change data to go on: report the total only.
+        showAlert("success", toolsFound(t, total), undefined, viewFor);
+      } else {
+        showAlert(
+          "success",
+          hasChanges(changes) ? "Tools updated" : "No changes",
+          discoveryBody(t, total, changes),
+          viewFor,
+        );
+      }
     } catch (err: any) {
       showAlert(
         "error",
@@ -457,7 +468,11 @@ export default function MCPServersPage() {
               </Tooltip>,
               srv.tool_count > 0 ? (
                 <VWLink
-                  ariaLabel={fill(t("View {count} tools"), { count: srv.tool_count })}
+                  ariaLabel={
+                    srv.tool_count === 1
+                      ? t("View one tool")
+                      : fill(t("View {count} tools"), { count: srv.tool_count })
+                  }
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate(toolsCatalogPath(srv.id));

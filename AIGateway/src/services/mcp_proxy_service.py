@@ -310,12 +310,13 @@ async def store_discovered_tools(
     async with get_db() as db:
         # Lock the server row so two discoveries of one server run one after the
         # other; otherwise both diff against the same old rows and report the
-        # same changes.
+        # same changes. NO KEY UPDATE, not UPDATE: inserts into tables with a
+        # foreign key to this row (audit logs) take KEY SHARE and must not wait.
         await db.execute(
             text("""
                 SELECT id FROM ai_gateway_mcp_servers
                 WHERE organization_id = :org_id AND id = :server_id
-                FOR UPDATE
+                FOR NO KEY UPDATE
             """),
             {"org_id": org_id, "server_id": server_id},
         )

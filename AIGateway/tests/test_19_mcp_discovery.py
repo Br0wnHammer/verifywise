@@ -241,7 +241,7 @@ class TestStoreDiscoveredTools:
         get_db, executed = _fake_db([])
         monkeypatch.setattr(svc, "get_db", get_db)
         await svc.store_discovered_tools(1, 5, [{"name": "a"}])
-        assert "FOR UPDATE" in executed[0][0]
+        assert "FOR NO KEY UPDATE" in executed[0][0]
         assert executed[0][1] == {"org_id": 1, "server_id": 5}
 
     async def test_duplicate_names_are_stored_once(self, monkeypatch):
