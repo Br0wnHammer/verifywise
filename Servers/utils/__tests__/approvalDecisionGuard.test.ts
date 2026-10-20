@@ -190,10 +190,17 @@ describe("processApprovalQuery admin override", () => {
       return [];
     });
 
-    await processApprovalQuery(7, 9, ApprovalResult.APPROVED, "approver left", 1, transaction, {
-      stepNumber: 1,
-    }).catch(() => undefined);
+    const result = await processApprovalQuery(
+      7,
+      9,
+      ApprovalResult.APPROVED,
+      "approver left",
+      1,
+      transaction,
+      { stepNumber: 1 },
+    );
 
+    expect(result).toMatchObject({ type: "step_approvers", stepNumber: 2, completedStep: 1 });
     const insert = mockQuery.mock.calls.find((call) =>
       /INSERT INTO approval_request_step_approvals/.test(String(call[0])),
     );
@@ -203,12 +210,50 @@ describe("processApprovalQuery admin override", () => {
       approvalResult: ApprovalResult.APPROVED,
       comments: "approver left",
     });
+    const marker = mockQuery.mock.calls.find((call) => /SET step_details/.test(String(call[0])));
+    expect(JSON.parse(marker![1].replacements.stepDetails)).toEqual({
+      admin_override: true,
+      actor_id: 9,
+      result: ApprovalResult.APPROVED,
+      reason: "approver left",
+    });
     const completeStep = mockQuery.mock.calls.find(
       (call) =>
         /UPDATE approval_request_steps/.test(String(call[0])) &&
         call[1].replacements.status === ApprovalStepStatus.COMPLETED,
     );
     expect(completeStep).toBeDefined();
+  });
+
+  it("keeps a matching vote the admin already cast instead of rewriting it", async () => {
+    queueOverrideRequest();
+    mockQuery.mockResolvedValueOnce([{ approval_result: ApprovalResult.APPROVED }]);
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (/requires_all_approvers/.test(sql)) return [{ requires_all_approvers: true }];
+      if (/COUNT\(\*\)/.test(sql)) return [{ count: "2" }];
+      return [];
+    });
+
+    await processApprovalQuery(7, 9, ApprovalResult.APPROVED, "approver left", 1, transaction, {
+      stepNumber: 1,
+    });
+
+    expect(sqlCalls().some((sql) => /INSERT INTO approval_request_step_approvals/.test(sql))).toBe(
+      false,
+    );
+    expect(sqlCalls().some((sql) => /SET step_details/.test(sql))).toBe(true);
+  });
+
+  it("refuses an override that contradicts a vote the admin already cast", async () => {
+    queueOverrideRequest();
+    mockQuery.mockResolvedValueOnce([{ approval_result: ApprovalResult.APPROVED }]);
+
+    await expect(
+      processApprovalQuery(7, 9, ApprovalResult.REJECTED, "approver left", 1, transaction, {
+        stepNumber: 1,
+      }),
+    ).rejects.toBeInstanceOf(ValidationException);
+    expect(sqlCalls().some((sql) => /^\s*(INSERT|UPDATE)/i.test(sql))).toBe(false);
   });
 });
 

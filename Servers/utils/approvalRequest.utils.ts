@@ -733,26 +733,68 @@ export const processApprovalQuery = async (
     if (Number((request as any).requested_by) === userId) {
       throw new ForbiddenException("You cannot override your own request");
     }
+    // The validator already requires it; kept for callers that bypass it.
     if (!comments?.trim()) {
       throw new ValidationException("An override needs a comment explaining why");
     }
-    // The admin's vote goes on the step like any other, so the timeline shows
-    // who decided and why; an existing row of theirs is replaced.
+    const [myVote] = (await sequelize.query(
+      `SELECT approval_result
+       FROM approval_request_step_approvals
+       WHERE organization_id = :organizationId
+         AND request_step_id = :requestStepId
+         AND approver_id = :userId`,
+      {
+        replacements: { organizationId, requestStepId: (requestStep as any).id, userId },
+        type: "SELECT",
+        transaction,
+      },
+    )) as { approval_result: string }[];
+
+    if (myVote && myVote.approval_result !== ApprovalResult.PENDING) {
+      // A vote already cast stays as cast: an override must not rewrite it.
+      if (myVote.approval_result !== approvalResult) {
+        throw new ValidationException("You have already responded to this step");
+      }
+    } else {
+      // The admin's vote goes on the step like any other, so the timeline
+      // shows who decided and why.
+      await sequelize.query(
+        `INSERT INTO approval_request_step_approvals
+           (organization_id, request_step_id, approver_id, approval_result, comments, approved_at)
+         VALUES (:organizationId, :requestStepId, :userId, :approvalResult, :comments, NOW())
+         ON CONFLICT (request_step_id, approver_id) DO UPDATE
+           SET approval_result = EXCLUDED.approval_result,
+               comments = EXCLUDED.comments,
+               approved_at = EXCLUDED.approved_at`,
+        {
+          replacements: {
+            organizationId,
+            requestStepId: (requestStep as any).id,
+            userId,
+            approvalResult,
+            comments,
+          },
+          transaction,
+        },
+      );
+    }
+
+    // Mark the step itself, so an override can be told apart from a normal
+    // decision and the reason survives even when the vote row was kept.
     await sequelize.query(
-      `INSERT INTO approval_request_step_approvals
-         (organization_id, request_step_id, approver_id, approval_result, comments, approved_at)
-       VALUES (:organizationId, :requestStepId, :userId, :approvalResult, :comments, NOW())
-       ON CONFLICT (request_step_id, approver_id) DO UPDATE
-         SET approval_result = EXCLUDED.approval_result,
-             comments = EXCLUDED.comments,
-             approved_at = EXCLUDED.approved_at`,
+      `UPDATE approval_request_steps
+       SET step_details = COALESCE(step_details, '{}'::jsonb) || CAST(:stepDetails AS jsonb)
+       WHERE organization_id = :organizationId AND id = :requestStepId`,
       {
         replacements: {
           organizationId,
           requestStepId: (requestStep as any).id,
-          userId,
-          approvalResult,
-          comments,
+          stepDetails: JSON.stringify({
+            admin_override: true,
+            actor_id: userId,
+            result: approvalResult,
+            reason: comments.trim(),
+          }),
         },
         transaction,
       },

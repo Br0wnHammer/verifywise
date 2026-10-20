@@ -869,14 +869,14 @@ describe("approvalRequest.ctrl", () => {
         body: { comments: "approver left", override: true, step_number: 2 },
       });
       const res = createRes();
-      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
-      (sequelize.transaction as any).mockResolvedValue(mockTransaction);
+      (sequelize.transaction as any).mockClear();
       mockProcessApprovalQuery.mockReset();
 
       await approveRequest(req as Request, res as Response);
 
       expect(mockProcessApprovalQuery).not.toHaveBeenCalled();
-      expect(mockTransaction.rollback).toHaveBeenCalled();
+      // Refused before a transaction (and its pooled connection) is opened.
+      expect(sequelize.transaction).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(403);
     });
 

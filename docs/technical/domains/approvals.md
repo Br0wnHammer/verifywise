@@ -191,11 +191,11 @@ stays pending for the others.
 
 Approve and reject are checked in `processApprovalQuery`, not by the route:
 
-| Caller                                         | Response |
-| ---------------------------------------------- | -------- |
-| Not an approver on the current step            | 403      |
-| Approver who already voted on this step        | 409      |
-| Request no longer pending                      | 409      |
+| Caller                                  | Response |
+| --------------------------------------- | -------- |
+| Not an approver on the current step     | 403      |
+| Approver who already voted on this step | 409      |
+| Request no longer pending               | 409      |
 
 `processApprovalQuery` locks the `approval_requests` row (`FOR UPDATE`) before
 anything else, so decisions on one request run one at a time. Without the lock,
@@ -207,17 +207,21 @@ step they are not an approver on, e.g. one stuck on an approver who left. The
 override is explicit: the approve/reject body carries `override: true`,
 `step_number` (the step the admin means) and a non-empty `comments` reason.
 
-| Override refused because                         | Response |
-| ------------------------------------------------ | -------- |
-| Role lacks `approvalRequest.admin`               | 403      |
-| The admin made the request                       | 403      |
-| `step_number` is no longer the current step      | 409      |
-| No comment                                       | 409      |
+| Override refused because                          | Response |
+| ------------------------------------------------- | -------- |
+| No comment (checked by the validator)             | 400      |
+| Role lacks `approvalRequest.admin`                | 403      |
+| The admin made the request                        | 403      |
+| `step_number` is no longer the current step       | 409      |
+| The admin already voted the other way on the step | 409      |
 
-The admin's vote is written to the step (replacing a vote of theirs, if any)
-and an approve completes the step whoever is still pending; a reject rejects
-the request as usual. The AI Advisor never overrides. There is no UI for it
-yet.
+The admin's vote is written to the step; a vote they already cast the same
+way is kept as cast, not rewritten. The step's `step_details` gets
+`{ admin_override: true, actor_id, result, reason }`, so an override can be
+told apart from a normal decision. An approve completes the step whoever is
+still pending; a reject rejects the request as usual. The other approvers'
+rows on the step stay "Pending", as they do when one approver completes an
+any-approver step. The AI Advisor never overrides. There is no UI for it yet.
 
 The AI Advisor's approve/reject tools call the same function, so the same
 rules apply to them. They act as the user who confirmed the action and fail

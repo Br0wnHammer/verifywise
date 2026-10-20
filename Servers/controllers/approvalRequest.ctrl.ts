@@ -77,6 +77,24 @@ async function resolveOverride(req: Request): Promise<ApprovalOverride | undefin
 }
 
 /**
+ * Answers a failed resolveOverride. The override is resolved before the
+ * decision's transaction opens, so a refusal holds no pooled connection.
+ */
+function respondOverrideFailure(req: Request, res: Response, error: unknown, fn: string) {
+  if (error instanceof ForbiddenException) {
+    logStructured(
+      "error",
+      `override forbidden: user ${req.userId} on request ${req.params.id}: ${error.message}`,
+      fn,
+      "approvalRequest.ctrl.ts",
+    );
+    return res.status(403).json(STATUS_CODE[403](translateError(req, error)));
+  }
+  logStructured("error", "failed to check override permission", fn, "approvalRequest.ctrl.ts");
+  return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+}
+
+/**
  * Create new approval request
  * @route POST /api/approval-requests
  * @access All authenticated users
@@ -379,6 +397,13 @@ export async function getApprovalRequestById(req: Request, res: Response): Promi
  * @access Approvers only
  */
 export async function approveRequest(req: Request, res: Response): Promise<any> {
+  let override: ApprovalOverride | undefined;
+  try {
+    override = await resolveOverride(req);
+  } catch (error) {
+    return respondOverrideFailure(req, res, error, "approveRequest");
+  }
+
   const transaction = await sequelize.transaction();
 
   logStructured("processing", "approving request", "approveRequest", "approvalRequest.ctrl.ts");
@@ -395,8 +420,6 @@ export async function approveRequest(req: Request, res: Response): Promise<any> 
 
     // id validated by validateApprovalActionBody
     const requestId = parseInt(String(id), 10);
-
-    const override = await resolveOverride(req);
 
     // Process the approval
     const notificationInfo = await processApprovalQuery(
@@ -583,6 +606,13 @@ export async function approveRequest(req: Request, res: Response): Promise<any> 
  * @access Approvers only
  */
 export async function rejectRequest(req: Request, res: Response): Promise<any> {
+  let override: ApprovalOverride | undefined;
+  try {
+    override = await resolveOverride(req);
+  } catch (error) {
+    return respondOverrideFailure(req, res, error, "rejectRequest");
+  }
+
   const transaction = await sequelize.transaction();
 
   logStructured("processing", "rejecting request", "rejectRequest", "approvalRequest.ctrl.ts");
@@ -599,8 +629,6 @@ export async function rejectRequest(req: Request, res: Response): Promise<any> {
 
     // id validated by validateApprovalActionBody
     const requestId = parseInt(String(id), 10);
-
-    const override = await resolveOverride(req);
 
     // Process the rejection
     const notificationInfo = await processApprovalQuery(
