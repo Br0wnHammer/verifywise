@@ -732,6 +732,53 @@ def test_no_scores_message_without_a_recorded_error() -> None:
     assert message == "No scores recorded: no metric scored any of the 1 prompts."
 
 
+def test_every_metric_failed_needs_a_failed_metric() -> None:
+    from utils.error_detection import every_metric_failed
+
+    skipped = {"score": None, "skipped": True, "reason": "No retrieval/context provided"}
+    scored = {"score": 0.0, "passed": True}
+
+    assert every_metric_failed(_judged({"Relevance": GEVAL_404}, {"Relevance": GEVAL_404}))
+    assert not every_metric_failed(_judged({"Relevance": GEVAL_404}, {"Bias": scored}))
+    # Skipped on purpose, or not produced at all, is not a judge failure
+    assert not every_metric_failed(_judged({"Faithfulness": skipped}, {"Faithfulness": skipped}))
+    assert not every_metric_failed(_judged({}, {}))
+    assert every_metric_failed(_judged({"Faithfulness": skipped, "Relevance": GEVAL_404}))
+
+
+@pytest.mark.asyncio
+async def test_run_with_only_skipped_metrics_still_completes(
+    inline_prompts_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _capture_runner_init(monkeypatch)
+    _patch_run_eval_dependencies(monkeypatch)
+
+    from crud import evaluation_logs as crud_module
+    from deepeval_engine import deepeval_evaluator as evaluator_module
+
+    skipped = {"score": None, "skipped": True, "reason": "No retrieval/context provided"}
+    monkeypatch.setattr(
+        evaluator_module.DeepEvalEvaluator,
+        "run_evaluation",
+        lambda self, **kwargs: _judged({"Faithfulness": skipped}, {"Faithfulness": skipped}),
+    )
+
+    from utils.run_evaluation import run_evaluation
+
+    result = await run_evaluation(
+        db=mock_db_session,
+        experiment_id="exp-skipped",
+        config=dict(inline_prompts_config),
+        organization_id=1,
+    )
+
+    assert "error" not in result
+    statuses = [c.kwargs.get("status") for c in crud_module.update_experiment_status.call_args_list]
+    assert "failed" not in statuses
+
+
 @pytest.mark.asyncio
 async def test_run_with_no_scores_fails_and_keeps_its_results(
     inline_prompts_config: Dict[str, Any],

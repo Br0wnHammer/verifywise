@@ -444,3 +444,42 @@ async def test_results_count_attempted_prompts_and_average_task_completion(
     assert result["prompts_attempted"] == 3
     assert result["total_prompts"] == 2
     assert result["avg_scores"]["taskCompletion"] == pytest.approx(0.75)
+
+
+@pytest.mark.asyncio
+async def test_scorer_errors_fail_the_run_with_the_error_and_save_no_metric(
+    scorer_mode_config: Dict[str, Any],
+    mock_db_session: AsyncMock,
+    stub_model_runner: MagicMock,
+    evaluator_mock: MagicMock,
+    patched_crud: Dict[str, Any],
+    fake_llm_scorer_rows: List[Dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scorer judge that fails every call: the run fails with that error, no 0.0 quality rows."""
+    from crud import evaluation_logs as crud_module
+    from utils import run_evaluation as run_eval_module
+
+    _patch_list_scorers(monkeypatch, fake_llm_scorer_rows)
+    monkeypatch.setattr(
+        run_eval_module,
+        "run_custom_scorer",
+        AsyncMock(side_effect=RuntimeError("404 model not found")),
+    )
+
+    result = await run_eval_module.run_evaluation(
+        db=mock_db_session,
+        experiment_id="exp-scorer-dead",
+        config=scorer_mode_config,
+        organization_id=1,
+    )
+
+    assert result["error"] == (
+        "No scores recorded: no metric scored any of the 2 prompts. "
+        "First error: 404 model not found"
+    )
+    quality = [
+        c for c in crud_module.create_metric.call_args_list
+        if c.kwargs.get("metric_type") == "quality"
+    ]
+    assert quality == []

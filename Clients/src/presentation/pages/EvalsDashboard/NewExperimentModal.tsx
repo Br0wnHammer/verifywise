@@ -64,7 +64,7 @@ import {
   type JudgeMode,
   type ProviderType,
   type UserDataset,
-  REJECTED_SAVED_KEY_HINT,
+  apiKeyHelperText,
   WIZARD_STEPS,
 } from "./NewExperiment/newExperimentConfig";
 import {
@@ -464,20 +464,31 @@ export default function NewExperimentModal({
     })();
   }, [isOpen, orgId]);
 
-  // Check the saved key of each chosen provider once, so a dead key shows the key field
-  // instead of "API key configured" and the run doesn't fail on it later
+  // The modal stays mounted between opens: check keys afresh each time, so a key fixed
+  // or revoked in the meantime is seen as it is now
   useEffect(() => {
     if (!isOpen) return;
-    for (const providerId of [config.model.accessMethod, config.judgeLlm.provider]) {
-      const key = configuredApiKeys.find((k) => k.provider === providerId);
-      if (key?.id === undefined || checkedKeyIds.current.has(key.id)) continue;
+    checkedKeyIds.current = new Set();
+    setRejectedKeyIds(new Set());
+  }, [isOpen]);
+
+  // Check the saved keys of each chosen provider once per open, so a dead key shows the
+  // key field instead of "API key configured" and the run doesn't fail on it later
+  useEffect(() => {
+    if (!isOpen) return;
+    const providers = [config.model.accessMethod];
+    // The standard judge only runs outside scorer-only mode
+    if (judgeMode !== "scorer") providers.push(config.judgeLlm.provider);
+    for (const key of configuredApiKeys) {
+      if (!providers.includes(key.provider) || key.id === undefined) continue;
+      if (checkedKeyIds.current.has(key.id)) continue;
       const keyId = key.id;
       checkedKeyIds.current.add(keyId);
       void verifySavedLlmApiKey(keyId).then(({ valid }) => {
         if (!valid) setRejectedKeyIds((prev) => new Set(prev).add(keyId));
       });
     }
-  }, [isOpen, config.model.accessMethod, config.judgeLlm.provider, configuredApiKeys]);
+  }, [isOpen, judgeMode, config.model.accessMethod, config.judgeLlm.provider, configuredApiKeys]);
 
   // Reset model selection and apply saved judge preferences on each open
   useEffect(() => {
@@ -2014,11 +2025,9 @@ export default function NewExperimentModal({
                             }
                             placeholder={`Enter your ${selectedProvider.name} API key`}
                             autoComplete="off"
-                            helperText={
-                              savedKeyRejected(config.judgeLlm.provider)
-                                ? REJECTED_SAVED_KEY_HINT
-                                : "Your key will be saved securely for future experiments"
-                            }
+                            helperText={apiKeyHelperText(
+                              savedKeyRejected(config.judgeLlm.provider),
+                            )}
                           />
                         ))}
                     </Stack>

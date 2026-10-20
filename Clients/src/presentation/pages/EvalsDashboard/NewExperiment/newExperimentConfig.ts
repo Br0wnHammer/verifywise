@@ -35,7 +35,13 @@ export const SCORER_PROVIDERS_WITHOUT_API_KEY = ["self-hosted", "ollama"] as con
 
 /** Key field hint when the provider refused the saved key. Also in i18n/translations.ts. */
 export const REJECTED_SAVED_KEY_HINT =
-  "The provider rejected the saved API key. Enter a new key to replace it.";
+  "The provider rejected the saved API key. Enter a working key. It is saved as a new key, so remove the old one in AI Gateway settings.";
+
+/** Hint under an API key field: why it is back when the saved key was refused. */
+export const apiKeyHelperText = (savedKeyRejected: boolean): string =>
+  savedKeyRejected
+    ? REJECTED_SAVED_KEY_HINT
+    : "Your key will be saved securely for future experiments";
 
 export type TaskType = "chatbot" | "rag" | "agent";
 

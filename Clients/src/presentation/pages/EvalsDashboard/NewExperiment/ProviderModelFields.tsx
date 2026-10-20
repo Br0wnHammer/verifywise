@@ -20,7 +20,7 @@ import type { RefObject } from "react";
 import Field from "../../../components/Inputs/Field";
 import { palette } from "../../../themes/palette";
 import { PROVIDERS, type ModelInfo } from "../../../utils/providers";
-import { REJECTED_SAVED_KEY_HINT, type ProviderType } from "./newExperimentConfig";
+import { apiKeyHelperText, type ProviderType } from "./newExperimentConfig";
 import { OPENROUTER_POPULAR_MODELS } from "./providerConfig";
 
 export interface ProviderModelFieldsProps {
@@ -362,11 +362,7 @@ export default function ProviderModelFields({
               }
               autoComplete="off"
               helperText={
-                providerId === "custom_api"
-                  ? undefined
-                  : savedKeyRejected
-                    ? REJECTED_SAVED_KEY_HINT
-                    : "Your key will be saved securely for future experiments"
+                providerId === "custom_api" ? undefined : apiKeyHelperText(savedKeyRejected)
               }
             />
           ))}

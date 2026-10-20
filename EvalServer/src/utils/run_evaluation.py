@@ -29,7 +29,7 @@ from utils.run_custom_scorer import run_custom_scorer, ScorerResult
 from utils.error_detection import (
     FatalErrorTracker,
     build_no_responses_message,
-    any_metric_scored,
+    every_metric_failed,
     build_no_scores_message,
     detect_fatal_error,
     redact_secrets,
@@ -1175,20 +1175,31 @@ async def run_evaluation(
                                     }
                                 
                             except Exception as scorer_err:
-                                print(f"      ❌ Error: {redact_secrets(str(scorer_err))}")
+                                scorer_error = redact_secrets(str(scorer_err))
+                                print(f"      ❌ Error: {scorer_error}")
                                 scorer_scores.append({
                                     "test_case_idx": idx,
                                     "label": "ERROR",
                                     "score": 0.0,
                                     "passed": False,
-                                    "raw_response": redact_secrets(str(scorer_err)),
+                                    "error": True,
+                                    "raw_response": scorer_error,
                                 })
+                                # Same shape as a DeepEval metric error, so the sample
+                                # shows it and the no-scores check can report it.
+                                if idx < len(results):
+                                    results[idx].setdefault("metric_scores", {})[scorer_name] = {
+                                        "score": None,
+                                        "passed": False,
+                                        "error": scorer_error,
+                                    }
                         
                         custom_scorer_results[scorer_id] = scorer_scores
                         
-                        # Calculate average score for this scorer
-                        if scorer_scores:
-                            avg_score = sum(s["score"] for s in scorer_scores) / len(scorer_scores)
+                        # Calculate average score for this scorer (errored calls have no score)
+                        scored = [s for s in scorer_scores if not s.get("error")]
+                        if scored:
+                            avg_score = sum(s["score"] for s in scored) / len(scored)
                             passed_count = sum(1 for s in scorer_scores if s["passed"])
                             print(f"\n   📈 Scorer Summary: avg_score={avg_score:.3f}, passed={passed_count}/{len(scorer_scores)}")
                 else:
@@ -1421,8 +1432,13 @@ async def run_evaluation(
                             metric_key = s.get("metricKey", scorer_id)
                             break
                     
-                    # Calculate average
-                    avg_score = sum(s["score"] for s in scorer_scores) / len(scorer_scores)
+                    # Calculate average over the calls that returned a score; an errored
+                    # call is not a 0.0, and a scorer with no scores writes no metric.
+                    scored = [s for s in scorer_scores if not s.get("error")]
+                    if not scored:
+                        print(f"   ⚠️ {scorer_name} ({metric_key}): no scores, nothing saved")
+                        continue
+                    avg_score = sum(s["score"] for s in scored) / len(scored)
                     passed_rate = sum(1 for s in scorer_scores if s["passed"]) / len(scorer_scores)
                     
                     # Store in avg_scores with metricKey (same as DeepEval metrics)
@@ -1457,7 +1473,7 @@ async def run_evaluation(
         metrics_requested = (
             evaluation_mode in ("standard", "both") and any(deepeval_metrics_config.values())
         ) or bool(enabled_scorers)
-        if metrics_requested and results and not any_metric_scored(results):
+        if metrics_requested and results and every_metric_failed(results):
             error_msg = build_no_scores_message(results)
             print(f"\n❌ {error_msg}")
             await crud.update_experiment_status(

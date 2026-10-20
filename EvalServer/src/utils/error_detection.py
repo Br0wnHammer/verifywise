@@ -366,14 +366,24 @@ def _metric_error(entry: Any) -> Optional[str]:
     return None
 
 
-def any_metric_scored(results: List[Dict[str, Any]]) -> bool:
-    """True when at least one metric, under any name, has a numeric score."""
-    return any(
-        isinstance(entry, (int, float))
-        or (isinstance(entry, dict) and isinstance(entry.get("score"), (int, float)))
-        for r in results
-        for entry in (r.get("metric_scores") or {}).values()
-    )
+def every_metric_failed(results: List[Dict[str, Any]]) -> bool:
+    """
+    True when no metric, under any name, scored a prompt and at least one tried and failed.
+
+    A metric skipped on purpose (``skipped``: no retrieval context for a RAG metric) is
+    neither: a run of only skipped or absent metrics did not fail.
+    """
+    tried = False
+    for r in results:
+        for entry in (r.get("metric_scores") or {}).values():
+            if isinstance(entry, (int, float)):
+                return False
+            if not isinstance(entry, dict) or entry.get("skipped"):
+                continue
+            if isinstance(entry.get("score"), (int, float)):
+                return False
+            tried = True
+    return tried
 
 
 def build_no_scores_message(results: List[Dict[str, Any]]) -> str:

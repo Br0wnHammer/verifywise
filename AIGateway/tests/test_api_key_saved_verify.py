@@ -97,3 +97,39 @@ async def test_saved_key_check_is_closed_to_read_only_roles(monkeypatch):
         await router.verify_saved_api_key(6, _request(role="Auditor"))
     assert exc.value.status_code == 403
     lookup.assert_not_awaited()
+
+
+async def test_saved_key_403_is_not_read_as_a_rejected_key(monkeypatch):
+    # e.g. an OpenAI restricted key that can call chat but not list models
+    _provider_replies(monkeypatch, 403, '{"error": "insufficient permissions"}')
+    _saved_key(monkeypatch, {"id": 3, "provider": "openai", "encrypted_key": encrypt("sk-restricted")})
+    res = await router.verify_saved_api_key(3, _request())
+    assert res["data"]["valid"] is True
+
+
+async def test_saved_key_401_is_a_rejected_key(monkeypatch):
+    _provider_replies(monkeypatch, 401)
+    _saved_key(monkeypatch, {"id": 3, "provider": "openai", "encrypted_key": encrypt("sk-dead")})
+    res = await router.verify_saved_api_key(3, _request())
+    assert res["data"]["valid"] is False
+
+
+async def test_manual_check_still_reads_403_as_rejected(monkeypatch):
+    _provider_replies(monkeypatch, 403)
+    assert (await router._check_provider_key("openai", "sk-test"))["valid"] is False
+
+
+async def test_saved_key_that_cannot_be_decrypted_is_not_valid(monkeypatch):
+    seen = _provider_replies(monkeypatch, 200)
+    _saved_key(monkeypatch, {"id": 6, "provider": "gemini", "encrypted_key": "not:encrypted:text"})
+    res = await router.verify_saved_api_key(6, _request())
+    assert res == {"data": {"valid": False, "message": "Stored key cannot be read"}}
+    assert seen == []
+
+
+async def test_saved_key_provider_name_is_normalised(monkeypatch):
+    seen = _provider_replies(monkeypatch, 400, GEMINI_BAD_KEY)
+    _saved_key(monkeypatch, {"id": 6, "provider": "Google", "encrypted_key": encrypt("AIza-dead")})
+    res = await router.verify_saved_api_key(6, _request())
+    assert seen and "generativelanguage.googleapis.com" in seen[0]
+    assert res["data"]["valid"] is False

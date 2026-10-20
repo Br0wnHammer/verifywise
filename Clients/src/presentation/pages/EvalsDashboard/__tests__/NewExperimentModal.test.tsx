@@ -12,6 +12,7 @@ import {
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import NewExperimentModal from "../NewExperimentModal";
+import { REJECTED_SAVED_KEY_HINT } from "../NewExperiment/newExperimentConfig";
 
 const DEFAULT_TEMPLATE_PATH = "chatbot/chatbot_basic.json";
 
@@ -233,13 +234,46 @@ describe("NewExperimentModal", () => {
       fireEvent.click(screen.getByText("Gemini"));
 
       expect(await screen.findByLabelText("API key")).toBeInTheDocument();
-      expect(
-        screen.getByText("The provider rejected the saved API key. Enter a new key to replace it."),
-      ).toBeInTheDocument();
+      expect(screen.getByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
       expect(
         screen.queryByText("API key configured — will be saved for future experiments"),
       ).not.toBeInTheDocument();
       expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(1);
+    });
+
+    it("checks the saved key again after the wizard is closed and reopened", async () => {
+      deepEvalMocks.getAllLlmApiKeys.mockResolvedValue([
+        { id: 6, provider: "google", apiKey: "AIza-fixed" },
+      ]);
+      deepEvalMocks.verifySavedLlmApiKey.mockResolvedValue({ valid: false });
+      const modal = (isOpen: boolean) => (
+        <NewExperimentModal
+          isOpen={isOpen}
+          onClose={vi.fn()}
+          projectId="proj-1"
+          orgId="org-1"
+          onSuccess={vi.fn()}
+          onStarted={vi.fn()}
+          useCase="chatbot"
+          existingExperimentNames={[]}
+        />
+      );
+
+      const { rerender } = renderWithProviders(modal(true));
+      fireEvent.click(await screen.findByText("Gemini"));
+      expect(await screen.findByText(REJECTED_SAVED_KEY_HINT)).toBeInTheDocument();
+
+      // The key is fixed in AI Gateway settings (same id) while the wizard is closed
+      deepEvalMocks.verifySavedLlmApiKey.mockResolvedValue({ valid: true });
+      rerender(modal(false));
+      rerender(modal(true));
+      fireEvent.click(await screen.findByText("Gemini"));
+
+      expect(
+        await screen.findByText("API key configured — will be saved for future experiments"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(REJECTED_SAVED_KEY_HINT)).not.toBeInTheDocument();
+      expect(deepEvalMocks.verifySavedLlmApiKey).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -69,15 +69,19 @@ PROVIDER_VERIFY_ENDPOINTS: dict[str, dict] = {
 }
 
 
-def _rejects_key(provider: str, resp: httpx.Response) -> bool:
+def _rejects_key(provider: str, resp: httpx.Response, forbidden_rejects: bool) -> bool:
     """True when the provider refused the key itself."""
-    if resp.status_code in (401, 403):
+    if resp.status_code == 401:
         return True
+    # A 403 can also mean a working key without permission to list models
+    # (e.g. an OpenAI restricted key), so callers decide whether it counts.
+    if resp.status_code == 403:
+        return forbidden_rejects
     # Gemini answers an invalid or expired key with 400 API_KEY_INVALID, not 401.
     return provider == "gemini" and resp.status_code == 400 and "API_KEY_INVALID" in resp.text
 
 
-async def _check_provider_key(provider: str, api_key: str) -> dict:
+async def _check_provider_key(provider: str, api_key: str, forbidden_rejects: bool = True) -> dict:
     """Ask the provider's models endpoint whether it accepts the key."""
     trimmed = api_key.strip()
     config = PROVIDER_VERIFY_ENDPOINTS.get(provider)
@@ -92,7 +96,7 @@ async def _check_provider_key(provider: str, api_key: str) -> dict:
                 headers=config["headers"](trimmed),
             )
 
-        if _rejects_key(provider, resp):
+        if _rejects_key(provider, resp, forbidden_rejects):
             return {"valid": False, "message": "Invalid API key — authentication failed"}
 
         if resp.status_code == 429:
@@ -131,7 +135,18 @@ async def verify_saved_api_key(key_id: int, request: Request):
     if not key.get("encrypted_key"):
         return {"data": {"valid": False, "message": "No key is stored"}}
 
-    return {"data": await _check_provider_key(key["provider"], decrypt(key["encrypted_key"]))}
+    try:
+        api_key = decrypt(key["encrypted_key"])
+    except Exception:
+        logger.warning("Saved provider entry %s could not be decrypted", key_id)
+        return {"data": {"valid": False, "message": "Stored key cannot be read"}}
+
+    provider = str(key.get("provider") or "").strip().lower()
+    if provider == "google":
+        provider = "gemini"
+    # The wizard runs this check on every open: a 403 must not lock out a key
+    # that can call models but cannot list them.
+    return {"data": await _check_provider_key(provider, api_key, forbidden_rejects=False)}
 
 
 @router.get("")
