@@ -28,6 +28,8 @@ export interface ModelPickerProps {
   showPrices?: boolean;
   placeholder?: string;
   disabled?: boolean;
+  /** The catalog is still loading; the list may change */
+  loading?: boolean;
   testId?: string;
 }
 
@@ -52,6 +54,7 @@ export default function ModelPicker({
   showPrices = false,
   placeholder = "Search or type a model ID",
   disabled,
+  loading = false,
   testId,
 }: ModelPickerProps) {
   const theme = useTheme();
@@ -67,6 +70,7 @@ export default function ModelPicker({
       label={label}
       placeholder={placeholder}
       disabled={disabled}
+      loading={loading}
       data-testid={testId ? `model-picker-${testId}` : undefined}
       freeSolo
       options={options}

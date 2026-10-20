@@ -372,12 +372,31 @@ def test_gateway_passing_rate_limit_is_retried_with_backoff(monkeypatch: pytest.
     assert slept == [2, 4]
 
 
+@pytest.mark.parametrize(
+    "message, attempt, delay",
+    [
+        ("Rate limit reached for requests per min", 1, 4),
+        ("Quota exceeded ... per minute. Please retry in 30s", 0, 30),
+        ("Quota exceeded ... per minute. Please retry in 1.5s", 2, 8),
+        ("Quota exceeded ... per minute. Please retry in 300s", 0, 60),
+    ],
+)
+def test_rate_limit_delay_uses_hint_capped_at_a_minute(message: str, attempt: int, delay: float) -> None:
+    from deepeval_engine.gateway_litellm_client import GatewayProviderError
+    from deepeval_engine.model_runner import _rate_limit_delay
+
+    assert _rate_limit_delay(GatewayProviderError("RateLimitError", 429, message), attempt) == delay
+
 
 @pytest.mark.parametrize(
     "message, passing",
     [
         ("Quota exceeded for metric generate_content_free_tier_requests per minute. Please retry in 30s", True),
         ("Rate limit reached for requests per min", True),
+        ('Resource exhausted. "retryDelay": "12s"', True),
+        ("Too many requests", True),
+        ("Quota exceeded for metric generate_content_free_tier_requests per day. Please retry in 30s", False),
+        ("Quota exceeded for metric generate_content_free_tier_requests", False),
         ("You exceeded your current quota, please check your plan and billing details. insufficient_quota", False),
         ("Your credit balance is too low", False),
     ],

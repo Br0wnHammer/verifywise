@@ -539,3 +539,21 @@ def test_validate_model_does_not_probe_a_provider_the_run_gets_no_key_for(
     )
     assert res.json()["probe_failed"] is False
     probe.assert_not_awaited()
+
+
+def test_run_key_providers_match_the_backend_valid_providers() -> None:
+    """The probe runs only for providers Servers injects a saved key for; the lists must not drift."""
+    import re
+    from pathlib import Path
+
+    from routers.evaluation_logs import RUN_KEY_PROVIDERS
+
+    model = (
+        Path(__file__).resolve().parents[2]
+        / "Servers" / "domain.layer" / "models" / "evaluationLlmApiKey" / "evaluationLlmApiKey.model.ts"
+    )
+    if not model.is_file():
+        pytest.skip("Servers source not present")
+    block = re.search(r"export const VALID_PROVIDERS[^=]*=\s*\[(.*?)\]", model.read_text(), re.DOTALL)
+    assert block, "VALID_PROVIDERS not found in evaluationLlmApiKey.model.ts"
+    assert set(re.findall(r"\"([^\"]+)\"", block.group(1))) == RUN_KEY_PROVIDERS

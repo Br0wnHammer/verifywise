@@ -41,6 +41,17 @@ def test_unlisted_type_falls_through_to_the_patterns() -> None:
     assert detect_fatal_error(str(plain))[0] is False
 
 
+def test_gemini_per_minute_quota_is_transient_but_daily_quota_is_fatal() -> None:
+    per_minute = GatewayProviderError(
+        "RateLimitError", 429, "Quota exceeded for metric requests per minute. Please retry in 30s"
+    )
+    assert detect_fatal_error(str(per_minute))[0] is False
+    daily = GatewayProviderError(
+        "RateLimitError", 429, "Quota exceeded for metric requests per day. Please retry in 30s"
+    )
+    assert detect_fatal_error(str(daily))[:2] == (True, "quota_exceeded")
+
+
 def test_untyped_text_still_uses_the_patterns() -> None:
     assert detect_fatal_error("Incorrect API key provided")[:2] == (True, "invalid_api_key")
     assert detect_fatal_error("Request timeout, please retry")[0] is False

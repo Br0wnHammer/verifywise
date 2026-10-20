@@ -142,7 +142,7 @@ export default function ModelsPage({ orgId, openAddModal, onAddModalConsumed }: 
   // Cloud providers (OpenRouter included) pick from the AI Gateway's LiteLLM catalog
   const catalogProvider =
     newModel.accessMethod && PROVIDERS[newModel.accessMethod] ? newModel.accessMethod : "";
-  const { models: availableModels } = useProviderModels(catalogProvider);
+  const { models: availableModels, isLoading: modelsLoading } = useProviderModels(catalogProvider);
 
   // Check if a provider has a configured API key
   const hasApiKey = useCallback(
@@ -562,6 +562,7 @@ export default function ModelsPage({ orgId, openAddModal, onAddModalConsumed }: 
                     value={newModel.modelName}
                     onChange={(modelName) => setNewModel((prev) => ({ ...prev, modelName }))}
                     models={availableModels}
+                    loading={modelsLoading}
                     showPrices
                     placeholder={
                       newModel.accessMethod === "openrouter"

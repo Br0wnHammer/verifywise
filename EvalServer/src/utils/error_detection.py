@@ -127,7 +127,13 @@ TRANSIENT_ERROR_PATTERNS = [
     "gateway timeout",
     "overloaded",
     "try again",
+    # Gemini's per-minute 429: "Quota exceeded ... per minute. Please retry in 30s"
+    "per minute",
+    "retry in",
 ]
+# A daily limit does not recover within a run, even when it carries a retry hint,
+# so it skips the transient check. Same rule as deepeval_engine/model_runner.py.
+DAILY_LIMIT_PATTERNS = ["per day", "per_day", "perday"]
 
 # Typed errors from the AI Gateway (LiteLLM's exception class), read before any text pattern.
 # GatewayProviderError reads "<Type> (<status>): <message>", possibly inside a wrapper message.
@@ -178,9 +184,10 @@ def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optiona
     error_lower = error_message.lower()
 
     # First check if it's a transient error (might recover)
-    for pattern in TRANSIENT_ERROR_PATTERNS:
-        if pattern in error_lower:
-            return False, None, None
+    if not any(pattern in error_lower for pattern in DAILY_LIMIT_PATTERNS):
+        for pattern in TRANSIENT_ERROR_PATTERNS:
+            if pattern in error_lower:
+                return False, None, None
 
     # Check for fatal error patterns
     for pattern, error_code, user_message in FATAL_ERROR_PATTERNS:

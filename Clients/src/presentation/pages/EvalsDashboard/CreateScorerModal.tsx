@@ -18,7 +18,6 @@ import StandardModal from "../../components/Modals/StandardModal";
 import Field from "../../components/Inputs/Field";
 import ModelSelector from "../../components/Inputs/ModelSelector";
 import { CustomizableButton } from "../../components/button/customizable-button";
-import { getModelsForProvider } from "../../utils/providers";
 import {
   getAllLlmApiKeys,
   type LLMApiKey,
@@ -276,13 +275,8 @@ export default function CreateScorerModal({
           // Set default provider to first configured one (only if not already set and not editing)
           setConfig((prev) => {
             if (keys.length > 0 && !prev.provider && !initialConfig) {
-              const firstProvider = keys[0].provider;
-              const models = getModelsForProvider(firstProvider);
-              return {
-                ...prev,
-                provider: firstProvider,
-                model: models.length > 0 ? models[0].id : "",
-              };
+              // No model preselected: the bundled list's first entry may not be served.
+              return { ...prev, provider: keys[0].provider, model: "" };
             }
             return prev;
           });
@@ -307,11 +301,10 @@ export default function CreateScorerModal({
 
   // Handle provider change - reset model when provider changes
   const handleProviderChange = useCallback((providerId: string) => {
-    const models = getModelsForProvider(providerId);
     setConfig((prev) => ({
       ...prev,
       provider: providerId,
-      model: models.length > 0 ? models[0].id : "",
+      model: "",
       ...(providerId !== "self-hosted" ? { endpointUrl: "", apiKey: "" } : {}),
     }));
   }, []);
@@ -403,7 +396,9 @@ export default function CreateScorerModal({
     config.name.trim() &&
     config.slug.trim() &&
     config.messages.length > 0 &&
-    config.choiceScores.some((cs) => cs.label.trim());
+    config.choiceScores.some((cs) => cs.label.trim()) &&
+    // A judge provider needs a model; none is preselected
+    (!config.provider || config.model.trim());
 
   return (
     <StandardModal

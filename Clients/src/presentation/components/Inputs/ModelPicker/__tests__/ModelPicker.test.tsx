@@ -77,3 +77,11 @@ describe("ModelPicker", () => {
     expect(retiringSoon(undefined, today)).toBeUndefined();
   });
 });
+
+describe("ModelPicker loading", () => {
+  it("says the catalog is loading while there are no models yet", async () => {
+    renderWithProviders(<ModelPicker value="" onChange={() => {}} models={[]} loading />);
+    await userEvent.click(screen.getByPlaceholderText("Search or type a model ID"));
+    expect(await screen.findByText(/Loading/)).toBeInTheDocument();
+  });
+});

@@ -5,6 +5,7 @@ Generates responses from language models for evaluation prompts.
 """
 
 import os
+import re
 import time
 from typing import TYPE_CHECKING, Optional, Dict, Any
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -14,17 +15,39 @@ if TYPE_CHECKING:
     from deepeval_engine.gateway_litellm_client import GatewayCompletion, GatewayProviderError
 
 GATEWAY_RATE_LIMIT_RETRIES = 3
-# Not "quota" alone: Gemini words its per-minute 429 as "Quota exceeded ... per minute".
-# OpenAI's used-up quota reads "insufficient_quota ... check your plan and billing details".
-_NON_RECOVERING_LIMIT_WORDS = ("insufficient", "billing", "credit")
+GATEWAY_MAX_RETRY_DELAY_SECONDS = 60
+# Gemini words both its limits as "Quota exceeded ...": the per-minute one adds
+# "per minute. Please retry in 30s", the daily one "per day". OpenAI's used-up quota
+# reads "insufficient_quota ... check your plan and billing details".
+_DAILY_LIMIT_WORDS = ("per day", "per_day", "perday")
+_PER_MINUTE_LIMIT_WORDS = ("per minute", "per min", "per_minute", "perminute")
+_NON_RECOVERING_LIMIT_WORDS = ("quota", "insufficient", "billing", "credit")
+_RETRY_HINT = re.compile(r"retry(?: in|delay\W*)\s*(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
+
+
+def _retry_hint_seconds(message: str) -> Optional[float]:
+    """Seconds from a "retry in 30s" / "retryDelay": "30s" hint, if the provider sent one."""
+    match = _RETRY_HINT.search(message)
+    return float(match.group(1)) if match else None
 
 
 def _is_passing_rate_limit(error: "GatewayProviderError") -> bool:
-    """A per-minute rate limit recovers; a used-up quota or billing limit does not."""
+    """A per-minute rate limit recovers; a daily, used-up or billing limit does not."""
+    if error.error_type != "RateLimitError":
+        return False
     message = error.message.lower()
-    return error.error_type == "RateLimitError" and not any(
-        word in message for word in _NON_RECOVERING_LIMIT_WORDS
-    )
+    if any(word in message for word in _DAILY_LIMIT_WORDS):
+        return False
+    if any(word in message for word in _PER_MINUTE_LIMIT_WORDS) or _retry_hint_seconds(message) is not None:
+        return True
+    return not any(word in message for word in _NON_RECOVERING_LIMIT_WORDS)
+
+
+def _rate_limit_delay(error: "GatewayProviderError", attempt: int) -> float:
+    """Exponential backoff, or the provider's hinted wait when longer; never over a minute."""
+    backoff = 2 * (2 ** attempt)
+    hinted = _retry_hint_seconds(error.message) or 0
+    return min(max(backoff, hinted), GATEWAY_MAX_RETRY_DELAY_SECONDS)
 
 
 class ModelRunner:
@@ -397,7 +420,7 @@ class ModelRunner:
             except GatewayProviderError as e:
                 if not _is_passing_rate_limit(e) or attempt == GATEWAY_RATE_LIMIT_RETRIES:
                     raise
-                delay = 2 * (2 ** attempt)
+                delay = _rate_limit_delay(e, attempt)
                 print(f"⏳ Rate limit hit. Retrying in {delay}s... (attempt {attempt + 1}/{GATEWAY_RATE_LIMIT_RETRIES})")
                 time.sleep(delay)
         self.last_completion = completion
