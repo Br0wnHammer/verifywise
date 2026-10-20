@@ -31,7 +31,13 @@ def _provider_error(failure: ProviderCallError, api_key: str) -> JSONResponse:
     """
     exc = failure.cause
     status = getattr(exc, "status_code", None)
-    logger.warning("Provider call failed: %s (%s)", type(exc).__name__, status, exc_info=exc)
+    # No traceback: the exception text can carry the key; log it redacted instead
+    logger.warning(
+        "Provider call failed: %s (%s): %s",
+        type(exc).__name__,
+        status,
+        redact_secrets(str(exc), api_key)[:ERROR_MESSAGE_LIMIT],
+    )
     # LiteLLM's exceptions don't share one base class (most derive from the openai package's)
     if type(exc).__module__ == litellm.exceptions.__name__:
         message = redact_secrets(str(exc), api_key)[:ERROR_MESSAGE_LIMIT]
