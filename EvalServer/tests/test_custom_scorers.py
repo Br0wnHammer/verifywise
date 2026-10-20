@@ -618,3 +618,28 @@ def test_provider_config_covers_supported_providers() -> None:
 
 def test_google_and_gemini_share_same_env_var() -> None:
     assert PROVIDER_CONFIG["google"]["env_var"] == PROVIDER_CONFIG["gemini"]["env_var"]
+
+
+@pytest.mark.asyncio
+async def test_saved_scorer_gets_its_temperature_tokens_and_top_p(
+    monkeypatch: pytest.MonkeyPatch, gateway_env: str
+) -> None:
+    """The UI saved only top_p under judgeModel.params; temperature and max tokens sit in
+    the camelCase modelParams. All three must reach the gateway call."""
+    seen: Dict[str, Any] = {}
+
+    def fake_gateway_completion(litellm_model, messages, api_key, **kwargs):
+        seen.update(kwargs)
+        return GatewayCompletion(text="PASS")
+
+    monkeypatch.setattr(
+        "utils.run_custom_scorer.get_provider_client",
+        lambda *args, **kwargs: (MagicMock(), "sk-test"),
+    )
+    monkeypatch.setattr("utils.gateway_litellm_client.gateway_completion_sync", fake_gateway_completion)
+
+    row = _scorer_row(judge_model={"name": "gpt-4o-mini", "provider": "openai", "params": {"top_p": 0.4}})
+    row["config"]["modelParams"] = {"temperature": 0.3, "maxTokens": 512, "topP": 1}
+    await run_custom_scorer(scorer_config=row, input_text="Q", output_text="A")
+
+    assert (seen["temperature"], seen["max_tokens"], seen["top_p"]) == (0.3, 512, 0.4)

@@ -29,6 +29,8 @@ def _make_runner(provider: str, model_name: str = "test-model", gateway_mode: bo
     runner.tokenizer = None
     runner._gateway_mode = gateway_mode
     runner._gateway_api_key = "sk-fake" if gateway_mode else None
+    runner.last_completion = None
+    runner.dropped_params = set()
     runner.openai_client = MagicMock()
     runner.anthropic_client = MagicMock()
     runner.google_client = MagicMock()
@@ -401,6 +403,11 @@ def test_rate_limit_delay_uses_hint_capped_at_a_minute(message: str, attempt: in
         ("Quota exceeded for metric x, limit: 0, model: gemini-2.5-pro. Please retry in 30s", False),
         ("Rate limit reached on requests per day (RPD): Limit 200. Please try again in 8s", False),
         ("Insufficient credits. Please retry in 10s", False),
+        (
+            "You exceeded your current quota, please check your plan and billing details. "
+            "Quota exceeded for metric x, limit: 10. Please retry in 43.6s",
+            True,
+        ),
         ("You exceeded your current quota, please check your plan and billing details. insufficient_quota", False),
         ("Your credit balance is too low", False),
     ],
@@ -428,3 +435,20 @@ def test_gateway_retries_stop_at_the_wait_budget(monkeypatch: pytest.MonkeyPatch
         runner.generate("hi")
     # 40 + 40 fits the 90 s budget; a third 40 s wait would not
     assert slept == [40, 40]
+
+
+def test_gateway_forwards_top_p_and_collects_dropped_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deepeval_engine.gateway_litellm_client import GatewayCompletion
+
+    runner = _make_runner("openai", model_name="o3-mini", gateway_mode=True)
+    seen = {}
+
+    def fake(_model, _messages, _key, **kwargs):
+        seen.update(kwargs)
+        return GatewayCompletion(text="ok", dropped_params=["temperature", "top_p"])
+
+    monkeypatch.setattr("deepeval_engine.gateway_litellm_client.gateway_completion_sync", fake)
+
+    assert runner.generate("hi", temperature=0.7, top_p=0.5) == "ok"
+    assert seen["top_p"] == 0.5
+    assert runner.dropped_params == {"temperature", "top_p"}

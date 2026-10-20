@@ -154,6 +154,11 @@ TYPED_FATAL_ERRORS = {
     ),
 }
 _QUOTA_EXCEEDED = next((code, msg) for pattern, code, msg in FATAL_ERROR_PATTERNS if code == "quota_exceeded")
+_INSUFFICIENT_CREDITS = next(
+    (code, msg) for pattern, code, msg in FATAL_ERROR_PATTERNS if code == "insufficient_credits"
+)
+# Untyped text that is a rate limit all the same (direct SDK calls, wrapped messages)
+_RATE_LIMIT_WORDS = ("rate limit", "quota exceeded", "exceeded your current quota", "resource exhausted")
 _TYPED_ERROR = re.compile(r"\b([A-Z]\w*(?:Error|Timeout)) \((\d{3}|-)\): ")
 
 
@@ -180,15 +185,20 @@ def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optiona
 
     error_lower = error_message.lower()
 
-    # A typed rate limit follows the rule ModelRunner retries by, before any text
-    # pattern: Gemini's per-minute "Quota exceeded" recovers, a daily or billing one
-    # does not, whatever "try again" wording it carries.
-    if typed and typed.group(1) == "RateLimitError":
+    # A rate limit follows the rule ModelRunner retries by, before any other pattern:
+    # Gemini's per-minute "Quota exceeded" recovers, a daily or billing one does not,
+    # whatever "try again" wording it carries. Typed, or recognisable from its text.
+    is_rate_limit = (typed and typed.group(1) == "RateLimitError") or any(
+        word in error_lower for word in _RATE_LIMIT_WORDS
+    )
+    if is_rate_limit:
         if rate_limit_recovers(error_message):
             return False, None, None
         for pattern, error_code, user_message in FATAL_ERROR_PATTERNS:
             if pattern in error_lower:
                 return True, error_code, user_message
+        if any(word in error_lower for word in ("credit", "billing")):
+            return True, *_INSUFFICIENT_CREDITS
         return True, *_QUOTA_EXCEEDED
 
     # First check if it's a transient error (might recover)

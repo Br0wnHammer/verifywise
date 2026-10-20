@@ -26,7 +26,7 @@ if not ENCRYPTION_KEY:
 
 PREFERRED_PROVIDERS = ["openai", "anthropic", "google", "mistral", "xai"]
 # Small chat models for the report summary. AIGateway/tests/test_model_catalog_contract.py
-# checks each against the gateway's LiteLLM map (known, chat, not retiring soon).
+# checks each is a chat model in the gateway's pinned LiteLLM map.
 DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-haiku-4-5",

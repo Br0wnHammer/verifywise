@@ -283,6 +283,21 @@ def _parse_threshold(value: Any, scorer_name: str) -> Optional[float]:
     return 0.5
 
 
+
+# The UI's modelParams are camelCase; judgeModel.params and the runner use snake_case
+_PARAM_ALIASES = {"maxTokens": "max_tokens", "topP": "top_p"}
+
+
+def _judge_params(*sources: Any) -> Dict[str, Any]:
+    """Judge sampling params from each source in turn, later ones winning."""
+    params: Dict[str, Any] = {}
+    for source in sources:
+        if isinstance(source, dict):
+            for key, value in source.items():
+                if value is not None:
+                    params[_PARAM_ALIASES.get(key, key)] = value
+    return params
+
 async def run_custom_scorer(
     scorer_config: Dict[str, Any],
     input_text: str,
@@ -330,7 +345,9 @@ async def run_custom_scorer(
         judge_model_config: Dict[str, Any] = {
             "name": raw_judge_model.get("name") or config.get("model"),
             "provider": raw_judge_model.get("provider") or config.get("provider"),
-            "params": raw_judge_model.get("params") or config.get("modelParams") or {},
+            # The UI saved only top_p under judgeModel.params; temperature and max
+            # tokens live in modelParams, so merge both (nested wins)
+            "params": _judge_params(config.get("modelParams"), raw_judge_model.get("params")),
             "endpointUrl": raw_judge_model.get("endpointUrl") or config.get("endpointUrl"),
             "apiKey": raw_judge_model.get("apiKey") or config.get("apiKey"),
         }
@@ -338,7 +355,7 @@ async def run_custom_scorer(
         judge_model_config = {
             "name": raw_judge_model,
             "provider": config.get("provider"),
-            "params": config.get("modelParams") or {},
+            "params": _judge_params(config.get("modelParams")),
             "endpointUrl": config.get("endpointUrl"),
             "apiKey": config.get("apiKey"),
         }
@@ -346,7 +363,7 @@ async def run_custom_scorer(
         judge_model_config = {
             "name": config.get("model"),
             "provider": config.get("provider"),
-            "params": config.get("modelParams") or {},
+            "params": _judge_params(config.get("modelParams")),
             "endpointUrl": config.get("endpointUrl"),
             "apiKey": config.get("apiKey"),
         }
@@ -364,9 +381,10 @@ async def run_custom_scorer(
     provider, endpoint_url, config_api_key = get_provider_from_config(judge_model_config)
     print(f"   🔍 Using provider: {provider} for model: {model_name}")
     
-    # Get temperature and max_tokens from params, with defaults
+    # Get temperature, max_tokens and top_p from params, with defaults
     temperature = model_params.get("temperature", 0.0)
     max_tokens = model_params.get("max_tokens", 256)
+    top_p = model_params.get("top_p")
     
     messages_templates = config.get("messages", [])
     choice_scores = config.get("choiceScores", [])
@@ -427,6 +445,7 @@ async def run_custom_scorer(
                 api_key,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                top_p=top_p,
             )
             raw_response = completion.text.strip()
             # Same token attributes as the OpenAI SDK's usage object, plus LiteLLM's cost

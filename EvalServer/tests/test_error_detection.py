@@ -65,9 +65,29 @@ def test_typed_non_recovering_rate_limits_are_fatal(message: str, code: str) -> 
     assert detect_fatal_error(str(GatewayProviderError("RateLimitError", 429, message)))[:2] == (True, code)
 
 
-def test_untyped_text_keeps_the_transient_patterns() -> None:
-    # Only typed rate limits use the rule; plain text still treats "try again" as transient
-    assert detect_fatal_error("Quota exceeded per day, please try again")[0] is False
+@pytest.mark.parametrize(
+    "message, fatal",
+    [
+        ("Quota exceeded for metric requests per minute. Please retry in 30s", False),
+        ("Quota exceeded per day, please try again", True),
+        ("Rate limit reached on requests per day (RPD). Please try again in 8s", True),
+    ],
+)
+def test_untyped_rate_limits_use_the_same_rule(message: str, fatal: bool) -> None:
+    assert detect_fatal_error(message)[0] is fatal
+
+
+def test_gemini_per_minute_limit_that_mentions_billing_is_transient() -> None:
+    message = (
+        "You exceeded your current quota, please check your plan and billing details. "
+        "Quota exceeded for metric generate_content_free_tier_requests, limit: 10. Please retry in 43.6s"
+    )
+    assert detect_fatal_error(str(GatewayProviderError("RateLimitError", 429, message)))[0] is False
+
+
+def test_non_recovering_credit_limit_reports_credits() -> None:
+    err = GatewayProviderError("RateLimitError", 429, "Your credits are used up")
+    assert detect_fatal_error(str(err))[:2] == (True, "insufficient_credits")
 
 
 def test_untyped_text_still_uses_the_patterns() -> None:

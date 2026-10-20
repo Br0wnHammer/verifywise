@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -31,6 +31,9 @@ class GatewayCompletion:
     completion_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
+    # Sampling settings LiteLLM left out for this model (a reasoning model takes no
+    # temperature), so the run can record that they were not applied
+    dropped_params: List[str] = field(default_factory=list)
 
 
 class GatewayProviderError(RuntimeError):
@@ -55,9 +58,12 @@ class GatewayProviderError(RuntimeError):
 # "...PerMinute..."), daily says "per day" ("...PerDay..."), and a model the key has no
 # free-tier access to reads "limit: 0". OpenAI's daily cap is "requests per day (RPD)";
 # its used-up quota is "insufficient_quota ... check your plan and billing details".
+# Gemini's per-minute 429 also says "check your plan and billing details", so billing
+# wording is only final when nothing says the limit is per minute.
 _DAILY_LIMIT_WORDS = ("per day", "per_day", "perday")
 _NO_ALLOWANCE = re.compile(r"\blimit:\s*0\b")
-_BILLING_WORDS = ("insufficient", "billing", "credit")
+_USED_UP_WORDS = ("insufficient",)
+_BILLING_WORDS = ("billing", "credit")
 _PER_MINUTE_WORDS = ("per min", "per_min", "permin")
 _RETRY_HINT = re.compile(r"retry(?: in|delay\W*)\s*(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
 
@@ -77,11 +83,11 @@ def rate_limit_recovers(message: str) -> bool:
     text = message.lower()
     if any(w in text for w in _DAILY_LIMIT_WORDS) or _NO_ALLOWANCE.search(text):
         return False
-    if any(w in text for w in _BILLING_WORDS):
+    if any(w in text for w in _USED_UP_WORDS):
         return False
     if any(w in text for w in _PER_MINUTE_WORDS) or retry_hint_seconds(text) is not None:
         return True
-    return "quota" not in text
+    return not any(w in text for w in _BILLING_WORDS) and "quota" not in text
 
 
 def gateway_mode_enabled() -> bool:
@@ -168,7 +174,25 @@ def _to_completion(payload: Dict[str, Any]) -> GatewayCompletion:
         completion_tokens=_int_or_none(usage.get("completion_tokens")),
         total_tokens=_int_or_none(usage.get("total_tokens")),
         cost_usd=float(cost) if priced else None,
+        dropped_params=_dropped_params(payload),
     )
+
+
+# (model, setting) pairs already warned about; one line per process, not per prompt
+_WARNED_DROPS: set = set()
+
+
+def _dropped_params(payload: Dict[str, Any]) -> List[str]:
+    dropped = payload.get("dropped_params")
+    if not isinstance(dropped, list):
+        return []
+    names = [d for d in dropped if isinstance(d, str)]
+    model = str(payload.get("model") or "")
+    new = [d for d in names if (model, d) not in _WARNED_DROPS]
+    if new:
+        _WARNED_DROPS.update((model, d) for d in new)
+        logger.warning("Model %s does not take %s; LiteLLM left it out", model, ", ".join(new))
+    return names
 
 
 def _raise_for_error(resp: httpx.Response) -> None:
@@ -190,7 +214,14 @@ def _raise_for_error(resp: httpx.Response) -> None:
     resp.raise_for_status()
 
 
-def _request(litellm_model: str, messages: List[Dict[str, str]], api_key: str, max_tokens: int, temperature: float):
+def _request(
+    litellm_model: str,
+    messages: List[Dict[str, str]],
+    api_key: str,
+    max_tokens: int,
+    temperature: float,
+    top_p: Optional[float] = None,
+):
     if not gateway_mode_enabled():
         raise RuntimeError("AI_GATEWAY_INTERNAL_KEY is not set — cannot use gateway completions")
     url = f"{_gateway_url()}/internal/v1/chat/completions"
@@ -206,6 +237,8 @@ def _request(litellm_model: str, messages: List[Dict[str, str]], api_key: str, m
         "temperature": temperature,
         "stream": False,
     }
+    if top_p is not None:
+        body["top_p"] = top_p
     return url, headers, body
 
 
@@ -216,10 +249,11 @@ def gateway_completion_sync(
     *,
     max_tokens: int = 1024,
     temperature: float = 0.0,
+    top_p: Optional[float] = None,
     timeout: float = 120.0,
 ) -> GatewayCompletion:
     """Synchronous chat completion via AI Gateway, with usage and cost."""
-    url, headers, body = _request(litellm_model, messages, api_key, max_tokens, temperature)
+    url, headers, body = _request(litellm_model, messages, api_key, max_tokens, temperature, top_p)
     with httpx.Client(timeout=timeout) as client:
         resp = client.post(url, headers=headers, json=body)
     _raise_for_error(resp)
@@ -233,10 +267,11 @@ async def gateway_completion_async(
     *,
     max_tokens: int = 1024,
     temperature: float = 0.0,
+    top_p: Optional[float] = None,
     timeout: float = 120.0,
 ) -> GatewayCompletion:
     """Async chat completion via AI Gateway, with usage and cost."""
-    url, headers, body = _request(litellm_model, messages, api_key, max_tokens, temperature)
+    url, headers, body = _request(litellm_model, messages, api_key, max_tokens, temperature, top_p)
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, headers=headers, json=body)
     _raise_for_error(resp)

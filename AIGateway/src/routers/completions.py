@@ -1,6 +1,7 @@
 import logging
 
 import litellm
+from litellm.utils import get_optional_params
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -18,6 +19,28 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 ERROR_MESSAGE_LIMIT = 500
+# Settings LiteLLM may drop for a model (drop_params): reasoning models take neither
+_SAMPLING_PARAMS = ("temperature", "top_p")
+
+
+def _dropped_params(model: str, kwargs: dict) -> list[str]:
+    """
+    The sampling settings LiteLLM leaves out of the provider request for this model, so
+    the caller can record that its setting was not applied. Supported-params lists can't
+    tell (o3-mini "supports" temperature yet drops any value but 1), so this runs the same
+    mapping the call does. Unknown when the mapping itself fails: report nothing.
+    """
+    sent = {k: kwargs[k] for k in _SAMPLING_PARAMS if kwargs.get(k) is not None}
+    if not sent:
+        return []
+    try:
+        model_name, provider, _, _ = litellm.get_llm_provider(model)
+        applied = get_optional_params(
+            model=model_name, custom_llm_provider=provider, drop_params=True, **sent
+        )
+    except Exception:
+        return []
+    return [k for k in sent if k not in applied]
 
 
 def _provider_error(failure: ProviderCallError, api_key: str) -> JSONResponse:
@@ -118,7 +141,7 @@ async def chat_completions(request: Request, body: CompletionRequest):
         )
 
     try:
-        return await chat_completion(
+        result = await chat_completion(
             model=body.model,
             messages=body.messages,
             api_key=api_key,
@@ -128,6 +151,8 @@ async def chat_completions(request: Request, body: CompletionRequest):
         )
     except ProviderCallError as failure:
         return _provider_error(failure, api_key)
+    result["dropped_params"] = _dropped_params(body.model, kwargs)
+    return result
 
 
 @router.post("/v1/embeddings")

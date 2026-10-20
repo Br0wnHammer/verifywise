@@ -126,3 +126,32 @@ async def test_success_is_unchanged(monkeypatch):
     monkeypatch.setattr(completions, "chat_completion", fake)
     res = await completions.chat_completions(_request(), _body())
     assert res["choices"][0]["message"]["content"] == "ok"
+
+
+@pytest.mark.parametrize(
+    "model, dropped",
+    [
+        ("o3-mini", ["temperature", "top_p"]),
+        ("gpt-4o-mini", []),
+        ("gemini/gemini-2.5-flash", []),
+    ],
+)
+async def test_success_reports_settings_the_model_dropped(monkeypatch, model, dropped):
+    async def fake(**_kwargs):
+        return {"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 3}, "cost_usd": 0.0}
+
+    monkeypatch.setattr(completions, "chat_completion", fake)
+    body = completions.CompletionRequest(
+        model=model, messages=[{"role": "user", "content": "hi"}], temperature=0.0, top_p=0.5
+    )
+    res = await completions.chat_completions(_request(), body)
+    assert res["dropped_params"] == dropped
+
+
+async def test_no_sampling_settings_means_nothing_dropped(monkeypatch):
+    async def fake(**_kwargs):
+        return {"choices": [{"message": {"content": "ok"}}]}
+
+    monkeypatch.setattr(completions, "chat_completion", fake)
+    res = await completions.chat_completions(_request(), _body())
+    assert res["dropped_params"] == []

@@ -1515,6 +1515,11 @@ async def run_evaluation(
         }
         if gatekeeper_result is not None:
             experiment_results["gatekeeper"] = gatekeeper_result
+        # Settings the tested model did not take (a reasoning model drops temperature):
+        # the run used the provider's default instead, so say so on the run
+        dropped = sorted(getattr(model_runner, "dropped_params", None) or [])
+        if dropped:
+            experiment_results["dropped_params"] = dropped
 
         # Metrics were asked for but none scored a single prompt (typically the judge
         # failed on every call). A "completed" run with no scores reads as a success,

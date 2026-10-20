@@ -75,6 +75,8 @@ class ModelRunner:
         self._gateway_api_key: Optional[str] = None
         # Usage and cost of the last generate() call, when the gateway reported them
         self.last_completion: Optional["GatewayCompletion"] = None
+        # Sampling settings LiteLLM left out on any call (the run records them)
+        self.dropped_params: set = set()
 
         from deepeval_engine.gateway_litellm_client import gateway_mode_enabled
 
@@ -400,7 +402,8 @@ class ModelRunner:
                     messages,
                     key,
                     max_tokens=max_tokens,
-                    temperature=temperature if top_p is None else temperature,
+                    temperature=temperature,
+                    top_p=top_p,
                 )
                 break
             except GatewayProviderError as e:
@@ -413,6 +416,7 @@ class ModelRunner:
                 print(f"⏳ Rate limit hit. Retrying in {delay}s... (attempt {attempt + 1}/{GATEWAY_RATE_LIMIT_RETRIES})")
                 time.sleep(delay)
         self.last_completion = completion
+        self.dropped_params.update(completion.dropped_params)
         return completion.text
 
     def _generate_anthropic(

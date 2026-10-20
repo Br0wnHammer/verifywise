@@ -143,35 +143,39 @@ async def test_providers_reuse_the_grouped_models(fake_cost_map):
     assert {m["id"] for m in data["models"]["openai"]} >= {"gpt-4o", "text-embedding-3-small"}
 
 
-# LiteLLM prefix the evals gateway client adds per provider (to_litellm_model in
-# EvaluationModule/src/deepeval_engine/gateway_litellm_client.py).
-_EVAL_LITELLM_PREFIX = {"openai": "", "anthropic": "anthropic/", "google": "gemini/", "mistral": "mistral/", "xai": "xai/"}
-_RETIRING_SOON_DAYS = 90
-
-
 def test_eval_report_summary_defaults_are_current_litellm_chat_models():
-    """EvalServer's report-summary DEFAULT_MODELS must be chat models this LiteLLM knows
-    and that are not retiring soon; a dead default silently drops the AI summary."""
+    """EvalServer's report-summary DEFAULT_MODELS must be chat models the pinned LiteLLM
+    knows; an unknown default can't be priced and may not be served.
+
+    Reads LiteLLM's bundled price map, not the live one it fetches at import, so the
+    result depends on the pinned version only. Retirement dates are not checked: LiteLLM
+    records Anthropic's "not sooner than" dates as retirements (claude-haiku-4-5 shows
+    2026-10-15 while Anthropic lists it as active).
+    """
     import ast
-    import datetime
+    import importlib.resources
+    import json
     from pathlib import Path
 
-    import litellm
+    repo = Path(__file__).resolve().parents[2]
+    reports = repo / "EvalServer" / "src" / "controllers" / "reports.py"
+    client = repo / "EvaluationModule" / "src"
+    if not reports.is_file() or not client.is_dir():
+        pytest.skip("EvalServer / EvaluationModule source not present")
+    sys.path.insert(0, str(client))
+    from deepeval_engine.gateway_litellm_client import to_litellm_model
 
-    reports = Path(__file__).resolve().parents[2] / "EvalServer" / "src" / "controllers" / "reports.py"
-    if not reports.is_file():
-        pytest.skip("EvalServer source not present")
     defaults = next(
         ast.literal_eval(node.value)
         for node in ast.parse(reports.read_text()).body
         if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "DEFAULT_MODELS" for t in node.targets)
     )
-    cutoff = datetime.date.today() + datetime.timedelta(days=_RETIRING_SOON_DAYS)
-    assert set(defaults) == set(_EVAL_LITELLM_PREFIX)
+    bundled = json.loads(
+        (importlib.resources.files("litellm") / "model_prices_and_context_window_backup.json").read_text()
+    )
     for provider, model in defaults.items():
-        name = f"{_EVAL_LITELLM_PREFIX[provider]}{model}"
-        # get_model_info drops deprecation_date; read the entry it resolved to
-        entry = litellm.model_cost[litellm.get_model_info(name)["key"]]
+        name = to_litellm_model(provider, model)
+        # OpenAI and Anthropic entries are keyed without the provider prefix
+        entry = bundled.get(name) or bundled.get(name.split("/", 1)[-1])
+        assert entry is not None, f"{name} is not in LiteLLM's price map"
         assert entry.get("mode") == "chat", name
-        retires = entry.get("deprecation_date")
-        assert retires is None or datetime.date.fromisoformat(retires) > cutoff, f"{name} retires {retires}"
