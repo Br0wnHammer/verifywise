@@ -8,8 +8,8 @@ import { test, expect } from "../fixtures/auth.fixture";
  * staging / production via the E2E_BASE_URL env var.
  *
  *   cd Clients
- *   E2E_BASE_URL=https://staging.verifywise.com npx playwright test \
- *     --project=canary --grep @canary
+ *   E2E_BASE_URL=https://<app host> E2E_EMAIL=... E2E_PASSWORD=... \
+ *     npx playwright test --project=canary --grep @canary
  *
  * Journey covered (kept intentionally tiny so it finishes in seconds):
  *   1. Authenticated session is restored from storage state (canary.setup.ts
