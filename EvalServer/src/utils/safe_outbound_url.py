@@ -9,3 +9,5 @@ from deepeval_engine.safe_outbound_url import (  # noqa: E402,F401
     UnsafeOutboundUrlError,
     assert_safe_outbound_url,
 )
+# Clients for those endpoints: no redirects, so a checked host can't bounce the request
+from deepeval_engine.endpoint_client import openai_compatible_client  # noqa: E402,F401

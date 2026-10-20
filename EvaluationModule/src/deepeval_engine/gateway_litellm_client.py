@@ -90,6 +90,12 @@ def rate_limit_recovers(message: str) -> bool:
     return not any(w in text for w in BILLING_WORDS) and "quota" not in text
 
 
+def top_p_to_send(top_p: Optional[float]) -> Optional[float]:
+    """top_p is sent only when it narrows sampling: 1 changes nothing (the scorer UI
+    always saves 1), and some models refuse it beside temperature. None = don't send."""
+    return top_p if top_p is not None and top_p < 1 else None
+
+
 def gateway_mode_enabled() -> bool:
     key = os.getenv("AI_GATEWAY_INTERNAL_KEY", "").strip()
     return bool(key) and key.lower() not in ("changeme", "change-me", "your-secret-key", "secret")
@@ -225,9 +231,8 @@ def _request(
         "temperature": temperature,
         "stream": False,
     }
-    # top_p 1 changes nothing, so it is sent only when it narrows sampling. Anthropic
-    # refuses temperature and top_p together; as the direct SDK path did, top_p wins.
-    if top_p is not None and top_p < 1:
+    # Anthropic refuses temperature and top_p together; as the direct SDK path did, top_p wins
+    if top_p_to_send(top_p) is not None:
         body["top_p"] = top_p
         if litellm_model.startswith("anthropic/"):
             del body["temperature"]

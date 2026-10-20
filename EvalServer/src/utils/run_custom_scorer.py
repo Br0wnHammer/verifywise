@@ -55,12 +55,17 @@ PROVIDER_CONFIG = {
     "anthropic": {"env_var": "ANTHROPIC_API_KEY"},
     "mistral": {"env_var": "MISTRAL_API_KEY"},
     "xai": {"env_var": "XAI_API_KEY"},
-    "google": {"env_var": "GEMINI_API_KEY"},
-    "gemini": {"env_var": "GEMINI_API_KEY"},
+    # run_evaluation writes the org's Google key to GOOGLE_API_KEY
+    "google": {"env_var": "GOOGLE_API_KEY"},
+    "gemini": {"env_var": "GOOGLE_API_KEY"},
     "openrouter": {"env_var": "OPENROUTER_API_KEY"},
     "huggingface": {"env_var": "HF_API_KEY"},
     "self-hosted": {"env_var": None},
+    "ollama": {"env_var": None},
 }
+
+# Providers whose judge is the user's own server, called directly (never the gateway)
+SELF_HOSTED_PROVIDERS = ("self-hosted", "ollama")
 
 def get_provider_from_config(judge_model_config: Any) -> Tuple[str, Optional[str], Optional[str]]:
     """
@@ -98,12 +103,18 @@ def get_provider_client(
     Raises:
         RuntimeError: missing endpoint, missing key, or no AI Gateway for a cloud provider
     """
-    if provider == "self-hosted":
+    if provider in SELF_HOSTED_PROVIDERS:
         if OpenAI is None:
             raise RuntimeError("OpenAI package not installed")
+        if not endpoint_url and provider == "ollama":
+            endpoint_url = "http://localhost:11434"
         if not endpoint_url:
             raise RuntimeError("Self-hosted provider requires 'endpointUrl' in judgeModel config")
-        from utils.safe_outbound_url import UnsafeOutboundUrlError, assert_safe_outbound_url
+        from utils.safe_outbound_url import (
+            UnsafeOutboundUrlError,
+            assert_safe_outbound_url,
+            openai_compatible_client,
+        )
 
         try:
             endpoint_url = assert_safe_outbound_url(endpoint_url)
@@ -114,7 +125,7 @@ def get_provider_client(
         if not base.endswith("/v1"):
             base += "/v1"
         resolved_key = api_key or "not-needed"
-        return OpenAI(api_key=resolved_key, base_url=base), resolved_key
+        return openai_compatible_client(base, resolved_key), resolved_key
 
     from utils.gateway_litellm_client import gateway_mode_enabled
 
@@ -407,9 +418,9 @@ async def run_custom_scorer(
         )
     
     try:
-        from utils.gateway_litellm_client import gateway_completion_sync, to_litellm_model
+        from utils.gateway_litellm_client import gateway_completion_sync, to_litellm_model, top_p_to_send
 
-        if provider != "self-hosted":
+        if provider not in SELF_HOSTED_PROVIDERS:
             litellm_model = to_litellm_model(provider, model_name)
             completion = gateway_completion_sync(
                 litellm_model,
@@ -428,8 +439,7 @@ async def run_custom_scorer(
                 messages=rendered_messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                # Same rule as the gateway client: 1 changes nothing
-                **({"top_p": top_p} if top_p is not None and top_p < 1 else {}),
+                **({"top_p": top_p} if top_p_to_send(top_p) is not None else {}),
             )
 
             raw_response = response.choices[0].message.content.strip()

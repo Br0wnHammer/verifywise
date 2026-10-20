@@ -292,15 +292,15 @@ def test_custom_api_uses_its_own_endpoint_not_the_gateway(monkeypatch: pytest.Mo
     monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "internal-test-key")
     built = {}
 
-    class FakeOpenAI:
-        def __init__(self, api_key, base_url):
-            built.update(api_key=api_key, base_url=base_url)
-            self.chat = MagicMock()
-            self.chat.completions.create.return_value = MagicMock(
-                choices=[MagicMock(message=MagicMock(content=" out "))]
-            )
+    def fake_client(base_url, api_key):
+        built.update(api_key=api_key, base_url=base_url)
+        client = MagicMock()
+        client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=" out "))]
+        )
+        return client
 
-    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    monkeypatch.setattr("deepeval_engine.endpoint_client.openai_compatible_client", fake_client)
     runner = ModelRunner(
         model_name="my-model", provider="custom_api", device="cpu",
         endpoint_url="http://vllm.local:8000/v1/", api_key="k-1",
@@ -356,3 +356,36 @@ def test_outbound_policy_matches_the_gateway_copy() -> None:
     if not gateway.is_file():
         pytest.skip("AIGateway source not present")
     assert here.read_text() == gateway.read_text()
+
+
+def test_endpoint_clients_do_not_follow_redirects() -> None:
+    from deepeval_engine.endpoint_client import ollama_client, openai_compatible_client
+
+    assert openai_compatible_client("http://host:8000/v1")._client.follow_redirects is False
+    assert ollama_client()._client.follow_redirects is False
+
+
+@pytest.mark.parametrize(
+    "entered, base",
+    [("http://host:8000", "http://host:8000/v1"), ("http://host:8000/", "http://host:8000/v1"),
+     ("http://host:8000/openai/v1", "http://host:8000/openai/v1")],
+)
+def test_custom_api_bare_host_gets_v1(monkeypatch: pytest.MonkeyPatch, entered: str, base: str) -> None:
+    from deepeval_engine import endpoint_client
+    from deepeval_engine.model_runner import ModelRunner
+
+    seen = {}
+    monkeypatch.setattr(endpoint_client, "openai_compatible_client", lambda url, key: seen.update(url=url) or MagicMock())
+    ModelRunner(model_name="m", provider="custom_api", device="cpu", endpoint_url=entered)
+    assert seen["url"] == base
+
+
+def test_local_model_loads_in_process_even_with_the_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deepeval_engine.model_runner import ModelRunner
+
+    monkeypatch.setenv("AI_GATEWAY_INTERNAL_KEY", "internal-test-key")
+    loaded = []
+    monkeypatch.setattr(ModelRunner, "_load_huggingface_model", lambda self: loaded.append(self.model_name))
+    runner = ModelRunner(model_name="TinyLlama/TinyLlama-1.1B-Chat-v1.0", provider="local", device="cpu")
+    assert runner._gateway_mode is False
+    assert loaded == ["TinyLlama/TinyLlama-1.1B-Chat-v1.0"]

@@ -429,7 +429,7 @@ async def run_evaluation(
         
         # Map frontend provider names to ModelRunner names
         provider_mapping = {
-            "local": "huggingface",    # Local files treated as HuggingFace models
+            "local": "local",          # Local files load in-process, never via the gateway
             "custom_api": "custom_api",  # The user's OpenAI-compatible endpoint, not the gateway
             "openai": "openai",        # OpenAI API
             "anthropic": "anthropic",  # Anthropic API

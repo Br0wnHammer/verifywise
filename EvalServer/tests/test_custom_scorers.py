@@ -201,8 +201,8 @@ def test_label_to_score(label: str, scores: List[Dict[str, Any]], expected: floa
         ("anthropic", "ANTHROPIC_API_KEY"),
         ("mistral", "MISTRAL_API_KEY"),
         ("xai", "XAI_API_KEY"),
-        ("google", "GEMINI_API_KEY"),
-        ("gemini", "GEMINI_API_KEY"),
+        ("google", "GOOGLE_API_KEY"),
+        ("gemini", "GOOGLE_API_KEY"),
         ("huggingface", "HF_API_KEY"),
         ("openrouter", "OPENROUTER_API_KEY"),
     ],
@@ -682,3 +682,9 @@ async def test_saved_scorer_gets_its_temperature_tokens_and_top_p(
 def test_get_provider_client_self_hosted_refuses_the_metadata_endpoint() -> None:
     with pytest.raises(RuntimeError, match="Self-hosted endpoint refused"):
         get_provider_client("self-hosted", endpoint_url="http://169.254.169.254/v1")
+
+
+def test_get_provider_client_ollama_is_direct_with_the_default_endpoint() -> None:
+    client, key = get_provider_client("ollama")
+    assert str(client.base_url).startswith("http://localhost:11434/v1")
+    assert key == "not-needed"

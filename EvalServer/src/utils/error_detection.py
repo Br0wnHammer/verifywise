@@ -8,7 +8,7 @@ and should stop the experiment early to avoid wasting time.
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from utils.gateway_litellm_client import BILLING_WORDS, rate_limit_recovers
+from utils.gateway_litellm_client import BILLING_WORDS, rate_limit_recovers, retry_hint_seconds
 
 # Fatal error patterns that won't recover - experiment should stop
 # Format: (pattern_to_match, error_code, user_friendly_message)
@@ -195,8 +195,11 @@ def detect_fatal_error(error_message: str) -> Tuple[bool, Optional[str], Optiona
     # A rate limit follows the rule ModelRunner retries by, before any other pattern:
     # Gemini's per-minute "Quota exceeded" recovers, a daily or billing one does not,
     # whatever "try again" wording it carries. Typed, or recognisable from its text.
-    is_rate_limit = (typed and typed.group(1) == "RateLimitError") or any(
-        word in error_lower for word in _RATE_LIMIT_WORDS
+    is_rate_limit = (
+        (typed and typed.group(1) == "RateLimitError")
+        or any(word in error_lower for word in _RATE_LIMIT_WORDS)
+        # An untyped rate limit that says when to retry lifts; without a hint it stays fatal
+        or ("rate limit" in error_lower and retry_hint_seconds(error_lower) is not None)
     )
     if is_rate_limit:
         if rate_limit_recovers(error_message):

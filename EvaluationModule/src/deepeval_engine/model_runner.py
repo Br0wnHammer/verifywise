@@ -6,6 +6,7 @@ Generates responses from language models for evaluation prompts.
 
 import os
 import time
+from urllib.parse import urlsplit
 from typing import TYPE_CHECKING, Optional, Dict, Any
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
@@ -101,7 +102,7 @@ class ModelRunner:
                 )
             self._gateway_mode = True
             print(f"✓ Model runner via AI Gateway (LiteLLM): {model_name} ({self.provider})")
-        elif self.provider == "huggingface":
+        elif self.provider in ("huggingface", "local"):
             self._load_huggingface_model()
         elif self.provider == "custom_api":
             self._setup_custom_api(endpoint_url, api_key)
@@ -151,22 +152,24 @@ class ModelRunner:
         """An OpenAI-compatible server the user runs or names (vLLM, LM Studio, a proxy)."""
         if not endpoint_url:
             raise ValueError("A custom API model needs an endpoint URL")
-        from openai import OpenAI
-
+        from deepeval_engine.endpoint_client import openai_compatible_client
         from deepeval_engine.safe_outbound_url import assert_safe_outbound_url
 
         # The endpoint is user-entered: same outbound policy as the gateway and Express
         # (private hosts allowed for on-prem; metadata, wildcard and non-http refused)
         base_url = assert_safe_outbound_url(endpoint_url).rstrip("/")
-        # Self-hosted servers often take no key, but the client requires one
-        self.custom_client = OpenAI(api_key=api_key or "not-needed", base_url=base_url)
+        # A bare host gets the OpenAI-compatible path, as self-hosted judges and scorers do
+        if urlsplit(base_url).path in ("", "/"):
+            base_url += "/v1"
+        self.custom_client = openai_compatible_client(base_url, api_key)
         print(f"✓ Custom API configured: {endpoint_url}")
 
     def _setup_ollama(self):
         """Setup Ollama."""
         try:
-            import ollama
-            self.ollama_client = ollama
+            from deepeval_engine.endpoint_client import ollama_client
+
+            self.ollama_client = ollama_client()
             print(f"✓ Ollama configured")
         except ImportError:
             raise ImportError("ollama package not installed. Install with: pip install ollama")
@@ -193,7 +196,7 @@ class ModelRunner:
         self.last_completion = None
         if getattr(self, "_gateway_mode", False):
             return self._generate_gateway(prompt, max_tokens, temperature, top_p)
-        if self.provider == "huggingface":
+        if self.provider in ("huggingface", "local"):
             return self._generate_huggingface(prompt, max_tokens, temperature, top_p)
         elif self.provider == "custom_api":
             return self._generate_custom_api(prompt, max_tokens, temperature, top_p)
@@ -242,7 +245,9 @@ class ModelRunner:
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        if top_p is not None:
+        from deepeval_engine.gateway_litellm_client import top_p_to_send
+
+        if top_p_to_send(top_p) is not None:
             params["top_p"] = top_p
         response = self.custom_client.chat.completions.create(**params)
         content = response.choices[0].message.content if response.choices else None

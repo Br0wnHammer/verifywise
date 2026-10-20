@@ -218,7 +218,7 @@ def get_judge_llm(provider: str, model_name: str):
         model_name: The model identifier
         
     Returns:
-        Either a model name string (OpenAI) or CustomDeepEvalLLM instance
+        A CustomDeepEvalLLM (gateway, or a self-hosted endpoint via judge_runner)
     """
     return CustomDeepEvalLLM(model_name=model_name, provider=provider.lower())
 

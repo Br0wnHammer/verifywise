@@ -22,8 +22,9 @@ PROVIDER_ENV_KEYS = {
     "anthropic": "ANTHROPIC_API_KEY",
     "mistral": "MISTRAL_API_KEY",
     "xai": "XAI_API_KEY",
-    "google": "GEMINI_API_KEY",
-    "gemini": "GEMINI_API_KEY",
+    # run_evaluation writes the org's Google key to GOOGLE_API_KEY
+    "google": "GOOGLE_API_KEY",
+    "gemini": "GOOGLE_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
 }
 
@@ -43,12 +44,12 @@ def _self_hosted_client(api_key: Optional[str] = None, endpoint_url: Optional[st
     """An OpenAI-compatible client for a self-hosted or Ollama server."""
     if OpenAI is None:
         raise RuntimeError("openai package not installed")
-    from utils.safe_outbound_url import assert_safe_outbound_url
+    from utils.safe_outbound_url import assert_safe_outbound_url, openai_compatible_client
 
     base = assert_safe_outbound_url(endpoint_url or "http://localhost:11434").rstrip("/")
     if not base.endswith("/v1"):
         base += "/v1"
-    return OpenAI(api_key=api_key or "not-needed", base_url=base)
+    return openai_compatible_client(base, api_key)
 
 
 def _call_llm(

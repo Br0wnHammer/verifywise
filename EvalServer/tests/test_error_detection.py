@@ -74,6 +74,8 @@ def test_typed_non_recovering_rate_limits_are_fatal(message: str, code: str) -> 
         ("429 RESOURCE_EXHAUSTED: quota for requests per day. Please retry in 30s", True),
         # Nothing retries an untyped plain rate limit, so it stays fatal
         ("Rate limit exceeded", True),
+        # ...unless the endpoint says when to retry
+        ("Rate limit exceeded, please retry in 20s", False),
     ],
 )
 def test_untyped_rate_limits_use_the_same_rule(message: str, fatal: bool) -> None:

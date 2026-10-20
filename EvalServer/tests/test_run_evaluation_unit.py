@@ -73,7 +73,7 @@ def _patch_run_eval_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     "config_provider,expected_runner",
     [
-        ("local", "huggingface"),
+        ("local", "local"),
         ("custom_api", "custom_api"),
         ("openai", "openai"),
         ("anthropic", "anthropic"),
