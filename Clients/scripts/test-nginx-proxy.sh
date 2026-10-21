@@ -175,9 +175,12 @@ HOST="$PREFIX-host"
 docker run -d --name "$HOST" -e HOST_CONF="$HOST_CONF" "$BASE_IMAGE" sh -c \
   'printf "%s" "$HOST_CONF" > /etc/nginx/conf.d/default.conf && mkdir -p /var/www/verifywise && echo maintenance > /var/www/verifywise/upgrade.html && exec nginx -g "daemon off;"' >/dev/null
 wait_for_nginx "$HOST"
-HOST_STUBS='server { listen 3000; default_type text/plain;
+# Both loopback families: inside a container "localhost" also resolves to ::1,
+# and the template proxies to localhost, so an IPv4-only stub makes nginx try
+# [::1] first and fail. A real host resolves localhost to 127.0.0.1 only.
+HOST_STUBS='server { listen 3000; listen [::]:3000; default_type text/plain;
   location / { return 200 "backend $request_uri conn=$http_connection xff=$http_x_forwarded_for"; } }
-server { listen 8080; default_type text/plain; location / { return 200 "frontend $request_uri"; } }'
+server { listen 8080; listen [::]:8080; default_type text/plain; location / { return 200 "frontend $request_uri"; } }'
 docker run -d --name "$PREFIX-host-stubs" --network "container:$HOST" \
   -e STUB_CONF="$HOST_STUBS" "$BASE_IMAGE" \
   sh -c 'printf "%s" "$STUB_CONF" > /etc/nginx/conf.d/default.conf && exec nginx -g "daemon off;"' >/dev/null
