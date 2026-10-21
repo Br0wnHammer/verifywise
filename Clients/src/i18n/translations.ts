@@ -10643,8 +10643,8 @@ export const translations: Record<string, Record<string, string>> = {
     "90 days": "90 Tage",
     "180 days": "180 Tage",
     "Failed to create the config file.": "Die Konfigurationsdatei konnte nicht erstellt werden.",
-    "Downloading revokes the token issued here last time. Any copy of the previous file — on another machine, or in another project — stops working immediately.":
-      "Beim Herunterladen wird das zuletzt hier ausgestellte Token widerrufen. Jede Kopie der vorherigen Datei, auf einem anderen Rechner oder in einem anderen Projekt, funktioniert sofort nicht mehr.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Beim Herunterladen wird das zuletzt hier ausgestellte Token widerrufen. Alles, was mit der vorherigen Datei eingerichtet wurde, auf diesem oder einem anderen Rechner, funktioniert sofort nicht mehr.",
   },
 
   fr: {
@@ -21203,8 +21203,8 @@ export const translations: Record<string, Record<string, string>> = {
     "90 days": "90 jours",
     "180 days": "180 jours",
     "Failed to create the config file.": "Impossible de créer le fichier de configuration.",
-    "Downloading revokes the token issued here last time. Any copy of the previous file — on another machine, or in another project — stops working immediately.":
-      "Le téléchargement révoque le jeton émis ici la dernière fois. Toute copie du fichier précédent, sur une autre machine ou dans un autre projet, cesse immédiatement de fonctionner.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Le téléchargement révoque le jeton émis ici la dernière fois. Tout ce qui a été configuré avec le fichier précédent, sur cette machine ou une autre, cesse immédiatement de fonctionner.",
   },
   es: {
     // Jira incidents extension
@@ -31678,7 +31678,7 @@ export const translations: Record<string, Record<string, string>> = {
     "90 days": "90 días",
     "180 days": "180 días",
     "Failed to create the config file.": "No se pudo crear el archivo de configuración.",
-    "Downloading revokes the token issued here last time. Any copy of the previous file — on another machine, or in another project — stops working immediately.":
-      "Al descargarlo se revoca el token emitido aquí la última vez. Cualquier copia del archivo anterior, en otro equipo o en otro proyecto, deja de funcionar de inmediato.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Al descargarlo se revoca el token emitido aquí la última vez. Todo lo que se configuró con el archivo anterior, en este equipo o en otro, deja de funcionar de inmediato.",
   },
 };

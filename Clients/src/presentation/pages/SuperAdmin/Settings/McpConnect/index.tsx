@@ -160,7 +160,9 @@ const McpConnect: React.FC = () => {
   const endpoint = `${window.location.origin}/api/mcp`;
   const command = `claude mcp add --transport http ${SERVER_NAME} ${endpoint} --header "Authorization: Bearer ${TOKEN_PLACEHOLDER}"`;
   // $(cat ...) keeps the token out of shell history: only this literal is recorded.
-  const addFileCommand = `claude mcp add-json ${SERVER_NAME} --scope user "$(cat ${CONFIG_FILENAME})"`;
+  // add-json refuses an existing name, so the old entry is removed first; that
+  // makes the same command work for a first setup and after a token rotation.
+  const addFileCommand = `claude mcp remove ${SERVER_NAME} -s user 2>/dev/null; claude mcp add-json ${SERVER_NAME} --scope user "$(cat ${CONFIG_FILENAME})"`;
 
   const [expiryDays, setExpiryDays] = useState<number>(90);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -296,12 +298,12 @@ const McpConnect: React.FC = () => {
             <Box component="span" sx={{ fontFamily: "monospace" }}>
               {CONFIG_FILENAME}
             </Box>{" "}
-            file, already pointed at this deployment. The token is shown nowhere else, so keep the
-            file safe — anyone who has it can administer every organization here.
+            file, already pointed at this deployment. The token is shown nowhere else. Anyone who
+            has the file can administer every organization here, so delete it once it is added.
           </Typography>
           <Alert
             variant="info"
-            body="Downloading revokes the token issued here last time. Any copy of the previous file — on another machine, or in another project — stops working immediately."
+            body="Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately."
             isToast={false}
             sx={{ position: "static" }}
           />
@@ -363,8 +365,11 @@ const McpConnect: React.FC = () => {
         </Step>
 
         <Typography sx={{ fontSize: 12, color: theme.palette.text.tertiary }}>
-          To administer more than one deployment, repeat this on each and give them different names,
-          for example{" "}
+          To administer more than one deployment, repeat this on each and change{" "}
+          <Box component="span" sx={{ fontFamily: "monospace" }}>
+            {SERVER_NAME}
+          </Box>{" "}
+          in both places in the command to a different name per deployment, for example{" "}
           <Box component="span" sx={{ fontFamily: "monospace" }}>
             verifywise-test
           </Box>{" "}
