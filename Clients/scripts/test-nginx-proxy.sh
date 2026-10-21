@@ -174,7 +174,11 @@ check "the host template has no unfilled Jinja variables" "false" \
 HOST="$PREFIX-host"
 docker run -d --name "$HOST" -e HOST_CONF="$HOST_CONF" "$BASE_IMAGE" sh -c \
   'printf "%s" "$HOST_CONF" > /etc/nginx/conf.d/default.conf && mkdir -p /var/www/verifywise && echo maintenance > /var/www/verifywise/upgrade.html && exec nginx -g "daemon off;"' >/dev/null
-wait_for_nginx "$HOST"
+# /upgrade.html is an internal location, so nginx answers it itself (404) and no
+# upstream is touched. A failed connect here would mark that upstream dead for
+# fail_timeout (10s), and every check inside that window would get the
+# maintenance page instead of the proxied response.
+wait_for_nginx "$HOST" http://localhost/upgrade.html
 # Both loopback families: inside a container "localhost" also resolves to ::1,
 # and the template proxies to localhost, so an IPv4-only stub makes nginx try
 # [::1] first and fail. A real host resolves localhost to 127.0.0.1 only.
@@ -185,6 +189,7 @@ docker run -d --name "$PREFIX-host-stubs" --network "container:$HOST" \
   -e STUB_CONF="$HOST_STUBS" "$BASE_IMAGE" \
   sh -c 'printf "%s" "$STUB_CONF" > /etc/nginx/conf.d/default.conf && exec nginx -g "daemon off;"' >/dev/null
 wait_for_nginx "$PREFIX-host-stubs" http://localhost:3000/
+wait_for_nginx "$PREFIX-host-stubs" http://localhost:8080/
 
 check "host: /api reaches the backend with forwarded headers and Connection close" \
   "200 backend /api/users conn=close xff=127.0.0.1" "$(request "$HOST" http://localhost/api/users)"
