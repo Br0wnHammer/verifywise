@@ -30,7 +30,7 @@ fail() {  # $1 = stderr message
 
 [ -n "${VW_GATEWAY_URL:-}" ] || fail "VW_GATEWAY_URL not set"
 # A URL copied from the address bar ends in "/"; "//v1/..." would miss the route
-VW_GATEWAY_URL="${VW_GATEWAY_URL%/}"
+while [ "${VW_GATEWAY_URL%/}" != "$VW_GATEWAY_URL" ]; do VW_GATEWAY_URL="${VW_GATEWAY_URL%/}"; done
 [ -n "${VW_AGENT_KEY:-}" ]   || fail "VW_AGENT_KEY not set"
 command -v jq   >/dev/null 2>&1 || fail "jq not found"
 command -v curl >/dev/null 2>&1 || fail "curl not found"

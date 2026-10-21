@@ -136,8 +136,9 @@ sudo nano /etc/nginx/sites-available/verifywise
 ```
 
 ```nginx
-# "Connection: upgrade" only for WebSocket requests
-map $http_upgrade $connection_upgrade {
+# "Connection: upgrade" only for WebSocket requests (the vw_ prefix avoids a
+# clash with a $connection_upgrade map another site may define)
+map $http_upgrade $vw_connection_upgrade {
     default upgrade;
     ''      close;
 }
@@ -177,7 +178,7 @@ server {
     }
 
     # Backend API
-    location ^~ /api {
+    location ^~ /api/ {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -185,14 +186,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_connect_timeout 5s;
+        proxy_read_timeout 120s;
 
         # WebSocket support (if needed)
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Connection $vw_connection_upgrade;
+
+        # JSON errors, not nginx's HTML pages
+        error_page 502 503 = @api_unavailable;
+        error_page 504 = @api_timeout;
     }
 
     # AI Gateway API for virtual keys (OpenAI-compatible, base URL https://<host>/v1)
-    location ^~ /v1 {
+    location ^~ /v1/ {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_connect_timeout 5s;
@@ -204,6 +210,44 @@ server {
         proxy_buffering off;
         proxy_read_timeout 300s;
         client_max_body_size 10m;
+
+        # JSON errors, not nginx's HTML pages
+        error_page 413 = @v1_too_large;
+        error_page 502 503 = @v1_unavailable;
+        error_page 504 = @v1_timeout;
+    }
+
+    # A 504 with no connect time means the backend never accepted the
+    # connection: report it as unavailable, not as a slow request
+    location @api_unavailable {
+        default_type application/json;
+        return 503 '{"message":"VerifyWise is unavailable, please retry shortly"}';
+    }
+
+    location @api_timeout {
+        default_type application/json;
+        if ($upstream_connect_time ~ "^-(, -)*$") {
+            return 503 '{"message":"VerifyWise is unavailable, please retry shortly"}';
+        }
+        return 504 '{"message":"VerifyWise did not respond in time"}';
+    }
+
+    location @v1_too_large {
+        default_type application/json;
+        return 413 '{"detail":"Request body is larger than 10 MB"}';
+    }
+
+    location @v1_unavailable {
+        default_type application/json;
+        return 503 '{"detail":"VerifyWise is unavailable, please retry shortly"}';
+    }
+
+    location @v1_timeout {
+        default_type application/json;
+        if ($upstream_connect_time ~ "^-(, -)*$") {
+            return 503 '{"detail":"VerifyWise is unavailable, please retry shortly"}';
+        }
+        return 504 '{"detail":"The AI Gateway request timed out"}';
     }
 }
 ```
@@ -238,9 +282,11 @@ something without an obvious error:
   buffered.
 - **The TLS server sends `Strict-Transport-Security`.** The frontend container
   leaves HSTS to this proxy.
-- **`/api` and `/v1` do not use an HTML error page.** The app and SDKs expect
-  JSON. The Ansible template (`ansible/templates/verifywise-nginx.conf.j2`)
-  shows JSON error responses for both.
+- **`/api` and `/v1` return JSON errors, not an HTML error page.** API
+  clients (SDKs, MCP clients, webhook senders) parse JSON. A server-level
+  `error_page ... /upgrade.html` applies to them too unless the location sets
+  its own, as in the sample above and the Ansible template
+  (`ansible/templates/verifywise-nginx.conf.j2`).
 
 **Enable and test:**
 

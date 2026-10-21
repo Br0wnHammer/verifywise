@@ -2,8 +2,10 @@
 
 # Send "Connection: upgrade" only when the client asked for an upgrade
 # (WebSocket); ordinary requests close as usual. This file is included in
-# nginx's http block, where map is allowed.
-map $http_upgrade $connection_upgrade {
+# nginx's http block, where map is allowed. The vw_ prefix keeps it clear of
+# the common $connection_upgrade map other sites define (a duplicate fails
+# nginx -t).
+map $http_upgrade $vw_connection_upgrade {
     default upgrade;
     ''      close;
 }
@@ -30,7 +32,8 @@ server {
     ssl_prefer_server_ciphers off;
 
     # Maintenance page for browser pages. /api and /v1 set their own JSON
-    # errors below: the app and SDK clients expect JSON, not HTML.
+    # errors below: API clients (SDKs, MCP clients, webhook senders) parse
+    # JSON, not HTML.
     error_page 502 503 504 /upgrade.html;
 
     location = /upgrade.html {
@@ -42,7 +45,7 @@ server {
         proxy_pass http://localhost:{{ frontend_port }};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Connection $vw_connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -50,14 +53,13 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
-    # ^~ /api also matches /api itself, which "location /api/" sent to the
-    # frontend. Every client must get through: MCP clients, webhooks and
-    # ingestion send no browser Referer, so do not gate on it.
-    location ^~ /api {
+    # Every client must get through: MCP clients, webhooks and ingestion send
+    # no browser Referer, so do not gate on it.
+    location ^~ /api/ {
         proxy_pass http://localhost:{{ backend_port }};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Connection $vw_connection_upgrade;
         proxy_set_header Host $host;
         # The backend trusts one proxy hop and rate-limits by client IP:
         # without these every user shares the proxy's address
@@ -67,6 +69,8 @@ server {
         proxy_cache_bypass $http_upgrade;
         # A down backend fails fast instead of after nginx's default 60s
         proxy_connect_timeout 5s;
+        # Same as the app's request timeout (customAxios, 120s)
+        proxy_read_timeout 120s;
         error_page 502 503 = @api_unavailable;
         error_page 504 = @api_timeout;
     }
@@ -87,7 +91,7 @@ server {
 
     # OpenAI-compatible AI Gateway API used with virtual keys
     # (base URL https://<host>/v1). The backend forwards it to the gateway.
-    location ^~ /v1 {
+    location ^~ /v1/ {
         proxy_pass http://localhost:{{ backend_port }};
         proxy_http_version 1.1;
         proxy_connect_timeout 5s;
