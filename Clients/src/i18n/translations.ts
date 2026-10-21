@@ -10626,6 +10626,25 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence graded": "Mit",
     "counts as low quality. Files with no AI analysis are not counted as adequate.":
       "bewertete Nachweise gelten als von geringer Qualität. Dateien ohne KI-Analyse zählen nicht als ausreichend.",
+    // Super admin MCP connect
+    "Connect Claude Code to this deployment": "Claude Code mit dieser Bereitstellung verbinden",
+    "Download the config file": "Konfigurationsdatei herunterladen",
+    "Token expires in": "Token läuft ab in",
+    "Config file downloaded": "Konfigurationsdatei heruntergeladen",
+    "Add it to Claude Code": "Zu Claude Code hinzufügen",
+    "Check it worked": "Prüfen, ob es funktioniert hat",
+    "What the file contains": "Was die Datei enthält",
+    "Tools it adds": "Hinzugefügte Tools",
+    "Download config file": "Konfigurationsdatei herunterladen",
+    "Preparing...": "Wird vorbereitet...",
+    "7 days": "7 Tage",
+    "30 days": "30 Tage",
+    "60 days": "60 Tage",
+    "90 days": "90 Tage",
+    "180 days": "180 Tage",
+    "Failed to create the config file.": "Die Konfigurationsdatei konnte nicht erstellt werden.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Beim Herunterladen wird das zuletzt hier ausgestellte Token widerrufen. Alles, was mit der vorherigen Datei eingerichtet wurde, auf diesem oder einem anderen Rechner, funktioniert sofort nicht mehr.",
   },
 
   fr: {
@@ -21167,6 +21186,25 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence graded": "Les preuves notées",
     "counts as low quality. Files with no AI analysis are not counted as adequate.":
       "sont considérées comme de faible qualité. Les fichiers sans analyse IA ne comptent pas comme suffisants.",
+    // Super admin MCP connect
+    "Connect Claude Code to this deployment": "Connecter Claude Code à ce déploiement",
+    "Download the config file": "Télécharger le fichier de configuration",
+    "Token expires in": "Le jeton expire dans",
+    "Config file downloaded": "Fichier de configuration téléchargé",
+    "Add it to Claude Code": "L'ajouter à Claude Code",
+    "Check it worked": "Vérifier que cela fonctionne",
+    "What the file contains": "Contenu du fichier",
+    "Tools it adds": "Outils ajoutés",
+    "Download config file": "Télécharger le fichier de configuration",
+    "Preparing...": "Préparation...",
+    "7 days": "7 jours",
+    "30 days": "30 jours",
+    "60 days": "60 jours",
+    "90 days": "90 jours",
+    "180 days": "180 jours",
+    "Failed to create the config file.": "Impossible de créer le fichier de configuration.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Le téléchargement révoque le jeton émis ici la dernière fois. Tout ce qui a été configuré avec le fichier précédent, sur cette machine ou une autre, cesse immédiatement de fonctionner.",
   },
   es: {
     // Jira incidents extension
@@ -31623,5 +31661,24 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence graded": "La evidencia calificada",
     "counts as low quality. Files with no AI analysis are not counted as adequate.":
       "se considera de baja calidad. Los archivos sin análisis de IA no cuentan como suficientes.",
+    // Super admin MCP connect
+    "Connect Claude Code to this deployment": "Conectar Claude Code a esta implementación",
+    "Download the config file": "Descargar el archivo de configuración",
+    "Token expires in": "El token caduca en",
+    "Config file downloaded": "Archivo de configuración descargado",
+    "Add it to Claude Code": "Añadirlo a Claude Code",
+    "Check it worked": "Comprobar que funcionó",
+    "What the file contains": "Qué contiene el archivo",
+    "Tools it adds": "Herramientas que añade",
+    "Download config file": "Descargar el archivo de configuración",
+    "Preparing...": "Preparando...",
+    "7 days": "7 días",
+    "30 days": "30 días",
+    "60 days": "60 días",
+    "90 days": "90 días",
+    "180 days": "180 días",
+    "Failed to create the config file.": "No se pudo crear el archivo de configuración.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Al descargarlo se revoca el token emitido aquí la última vez. Todo lo que se configuró con el archivo anterior, en este equipo o en otro, deja de funcionar de inmediato.",
   },
 };
