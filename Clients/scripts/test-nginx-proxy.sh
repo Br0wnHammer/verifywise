@@ -60,7 +60,9 @@ wait_for_nginx() {
 docker build --quiet --target web -t "$IMAGE" -f Clients/Dockerfile . >/dev/null
 docker network create "$NET" >/dev/null
 
-STUB_CONF='server { listen 3000; location / { default_type text/plain; return 200 "backend $request_method $request_uri"; } }'
+STUB_CONF='server { listen 3000; default_type text/plain;
+  location /api/client-ip { return 200 "xff $http_x_forwarded_for"; }
+  location / { return 200 "backend $request_method $request_uri"; } }'
 docker run -d --name "$PREFIX-backend" --network "$NET" --network-alias backend \
   -e STUB_CONF="$STUB_CONF" "$BASE_IMAGE" \
   sh -c 'printf "%s" "$STUB_CONF" > /etc/nginx/conf.d/default.conf && exec nginx -g "daemon off;"' >/dev/null
@@ -79,6 +81,12 @@ check "a /v1 path ending in .js is proxied, not served as a static file" \
   "200 backend GET /v1/files/app.js" "$(request "$WEB" http://localhost/v1/files/app.js)"
 check "GET /api keeps its prefix and query string" \
   "200 backend GET /api/users?page=2" "$(request "$WEB" 'http://localhost/api/users?page=2')"
+
+# The backend trusts one hop and reads the last X-Forwarded-For entry as the
+# client. Behind a host proxy that must still be the client, not the proxy.
+XFF=$(request "$WEB" -H 'X-Forwarded-For: 198.51.100.9, 203.0.113.7' http://localhost/api/client-ip)
+check "the client from the host proxy's X-Forwarded-For stays the last entry" \
+  "203.0.113.7" "${XFF##*, }"
 
 ROOT=$(request "$WEB" http://localhost/)
 check "/ is served by the frontend itself" "200 false" \
