@@ -140,6 +140,14 @@ docker stop "$PREFIX-backend" >/dev/null
 check "a stopped backend gives the JSON 503" \
   "$UNAVAILABLE" "$(request "$WEB" http://localhost/v1/models)"
 
+# A non-routable address usually drops the connection silently, as a stopped
+# container's cached address does on Linux, so the connect times out. Where
+# the network refuses it instead, this takes the 502 path and still passes;
+# the stopped-backend check above covers the timeout on Linux CI.
+start_web "$PREFIX-web-blackhole" -e VW_BACKEND_URL=http://10.255.255.1:3000
+check "a backend that never accepts the connection gives the JSON 503" \
+  "$UNAVAILABLE" "$(request "$PREFIX-web-blackhole" http://localhost/v1/models)"
+
 start_web "$PREFIX-web-unresolved" -e VW_BACKEND_URL=http://no-such-backend:3000
 check "nginx starts when the backend name does not resolve" "200" \
   "$(request "$PREFIX-web-unresolved" http://localhost/ | head -c 3)"
