@@ -364,13 +364,26 @@ export function slugify(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+/**
+ * Base URL users put in front of /v1 in their own code. An explicit backend URL
+ * wins (local development points at the backend on :3000). Otherwise it is the
+ * page's own origin, port included: deployments serve /v1 on the same host and
+ * port as the app, and the backend port itself is not reachable from outside.
+ */
+export function resolveGatewayUrl(
+  env: { VITE_APP_API_URL?: string; VITE_APP_API_BASE_URL?: string },
+  origin: string | undefined,
+): string {
+  const apiUrl = env.VITE_APP_API_URL || env.VITE_APP_API_BASE_URL;
+  if (apiUrl) return apiUrl.replace(/\/+$/, "").replace(/\/api$/, "");
+  return origin || "https://your-verifywise-host";
+}
+
 /** Gateway base URL for code examples */
-export const GATEWAY_URL = (() => {
-  const apiUrl = (import.meta as any)?.env?.VITE_APP_API_URL as string | undefined;
-  if (apiUrl) return apiUrl.replace(/\/api\/?$/, "");
-  if (typeof window !== "undefined") return window.location.origin.replace(/:\d+$/, ":3000");
-  return "https://your-verifywise-host";
-})();
+export const GATEWAY_URL = resolveGatewayUrl(
+  (import.meta as any)?.env ?? {},
+  typeof window !== "undefined" ? window.location.origin : undefined,
+);
 
 /** Color constants for code blocks and warning banners */
 export const CODE_BLOCK_BG = "#1E1E1E";
