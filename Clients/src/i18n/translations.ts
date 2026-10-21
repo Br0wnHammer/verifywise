@@ -9717,6 +9717,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Die Gruppierung läuft noch. Öffnen Sie diesen Tab erneut, um neue Vorschläge zu sehen.",
     "Scanning {count} risks. Links will appear as the scan completes.":
       "{count} Risiken werden gescannt. Verknüpfungen erscheinen, sobald der Scan abgeschlossen ist.",
+    "Scanning {count} risk. Links will appear as the scan completes.":
+      "{count} Risiko wird gescannt. Verknüpfungen erscheinen, sobald der Scan abgeschlossen ist.",
+    "Related risks": "Verwandte Risiken",
+    "How is this risk connected?": "Wie ist dieses Risiko verbunden?",
+    "Where is the parent risk?": "Wo befindet sich das übergeordnete Risiko?",
+    "The two risks are connected, but neither depends on the other.":
+      "Die beiden Risiken sind verbunden, aber keines hängt vom anderen ab.",
+    "This risk is part of a broader parent risk. When the parent's level changes, this risk is flagged for review.":
+      "Dieses Risiko ist Teil eines übergeordneten Risikos. Ändert sich dessen Stufe, wird dieses Risiko zur Prüfung markiert.",
+    "The other risk becomes a child of this one and is flagged when this risk's level changes.":
+      "Das andere Risiko wird diesem untergeordnet und markiert, wenn sich die Stufe dieses Risikos ändert.",
+    "Another risk in the risk register.": "Ein anderes Risiko im Risikoregister.",
+    "A risk recorded on a model.": "Ein Risiko, das zu einem Modell erfasst ist.",
+    "A risk recorded on a vendor.": "Ein Risiko, das zu einem Anbieter erfasst ist.",
+    "Grouping {count} cluster of related risks. Suggestions appear here as they finish.":
+      "{count} Cluster verwandter Risiken wird gruppiert. Vorschläge erscheinen hier, sobald sie fertig sind.",
+    "{count} cluster was too large to group in one pass.":
+      "{count} Cluster war zu groß, um ihn in einem Durchgang zu gruppieren.",
+    "Link this risk to others it is connected to. VerifyWise also suggests links from what risks have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion to keep it, or dismiss it.":
+      "Verknüpfen Sie dieses Risiko mit anderen, mit denen es zusammenhängt. VerifyWise schlägt außerdem Verknüpfungen anhand von Gemeinsamkeiten vor, etwa Kategorie, Kontrollen, Lebenszyklusphase oder Projekt. Bestätigen Sie einen Vorschlag, um ihn zu behalten, oder verwerfen Sie ihn.",
+    "Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm.":
+      "Schlägt mit KI über- und untergeordnete Verknüpfungen zwischen bereits verwandten Risiken vor. Die Vorschläge erscheinen in dieser Liste zur Bestätigung.",
     "Grouping {count} clusters of related risks. Suggestions appear here as they finish.":
       "{count} Cluster verwandter Risiken werden gruppiert. Vorschläge erscheinen hier, sobald sie fertig sind.",
     "{count} clusters were too large to group in one pass.":
@@ -9747,6 +9769,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Verwandte Anbieterrisiken erscheinen, sobald Anbieterrisiken gespeichert werden oder ein Administrator einen Scan ausführt.",
     "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
       "{count} Anbieterrisiken werden gescannt. Verwandte Anbieterrisiken erscheinen hier, sobald der Scan abgeschlossen ist.",
+    "Scanning {count} vendor risk. Related vendor risks appear here as the scan completes.":
+      "{count} Anbieterrisiko wird gescannt. Verwandte Anbieterrisiken erscheinen hier, sobald der Scan abgeschlossen ist.",
     "Scan finished. No related vendor risks found.":
       "Scan abgeschlossen. Keine verwandten Anbieterrisiken gefunden.",
     "Search vendor risks": "Anbieterrisiken suchen",
@@ -20281,6 +20305,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Regroupement en cours. Rouvrez cet onglet pour voir les nouvelles suggestions.",
     "Scanning {count} risks. Links will appear as the scan completes.":
       "Analyse de {count} risques en cours. Les liens apparaîtront à la fin de l'analyse.",
+    "Scanning {count} risk. Links will appear as the scan completes.":
+      "Analyse de {count} risque en cours. Les liens apparaîtront à la fin de l'analyse.",
+    "Related risks": "Risques connexes",
+    "How is this risk connected?": "Comment ce risque est-il lié ?",
+    "Where is the parent risk?": "Où se trouve le risque parent ?",
+    "The two risks are connected, but neither depends on the other.":
+      "Les deux risques sont liés, mais aucun ne dépend de l'autre.",
+    "This risk is part of a broader parent risk. When the parent's level changes, this risk is flagged for review.":
+      "Ce risque fait partie d'un risque parent plus large. Quand le niveau du parent change, ce risque est signalé pour révision.",
+    "The other risk becomes a child of this one and is flagged when this risk's level changes.":
+      "L'autre risque devient un enfant de celui-ci et est signalé quand le niveau de ce risque change.",
+    "Another risk in the risk register.": "Un autre risque du registre des risques.",
+    "A risk recorded on a model.": "Un risque enregistré sur un modèle.",
+    "A risk recorded on a vendor.": "Un risque enregistré sur un fournisseur.",
+    "Grouping {count} cluster of related risks. Suggestions appear here as they finish.":
+      "Regroupement de {count} groupe de risques connexes. Les suggestions apparaîtront ici au fur et à mesure.",
+    "{count} cluster was too large to group in one pass.":
+      "{count} groupe était trop volumineux pour être regroupé en une seule passe.",
+    "Link this risk to others it is connected to. VerifyWise also suggests links from what risks have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion to keep it, or dismiss it.":
+      "Liez ce risque aux autres risques avec lesquels il est en relation. VerifyWise suggère aussi des liens à partir de ce que les risques ont en commun, comme la catégorie, les contrôles, la phase du cycle de vie ou le projet. Confirmez une suggestion pour la garder, ou ignorez-la.",
+    "Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm.":
+      "Utilise l'IA pour proposer des liens parent-enfant entre des risques déjà liés. Les suggestions apparaissent dans cette liste pour que vous les confirmiez.",
     "Grouping {count} clusters of related risks. Suggestions appear here as they finish.":
       "Regroupement de {count} groupes de risques connexes. Les suggestions apparaîtront ici au fur et à mesure.",
     "{count} clusters were too large to group in one pass.":
@@ -20311,6 +20357,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Les risques fournisseurs connexes apparaissent à l'enregistrement des risques fournisseurs, ou après une analyse lancée par un administrateur.",
     "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
       "Analyse de {count} risques fournisseurs en cours. Les risques fournisseurs connexes apparaîtront ici à la fin de l'analyse.",
+    "Scanning {count} vendor risk. Related vendor risks appear here as the scan completes.":
+      "Analyse de {count} risque fournisseur en cours. Les risques fournisseurs connexes apparaîtront ici à la fin de l'analyse.",
     "Scan finished. No related vendor risks found.":
       "Analyse terminée. Aucun risque fournisseur connexe trouvé.",
     "Search vendor risks": "Rechercher des risques fournisseurs",
@@ -30758,6 +30806,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Aún se está agrupando. Vuelve a abrir esta pestaña para ver nuevas sugerencias.",
     "Scanning {count} risks. Links will appear as the scan completes.":
       "Analizando {count} riesgos. Los vínculos aparecerán cuando termine el análisis.",
+    "Scanning {count} risk. Links will appear as the scan completes.":
+      "Analizando {count} riesgo. Los vínculos aparecerán cuando termine el análisis.",
+    "Related risks": "Riesgos relacionados",
+    "How is this risk connected?": "¿Cómo está conectado este riesgo?",
+    "Where is the parent risk?": "¿Dónde está el riesgo principal?",
+    "The two risks are connected, but neither depends on the other.":
+      "Los dos riesgos están conectados, pero ninguno depende del otro.",
+    "This risk is part of a broader parent risk. When the parent's level changes, this risk is flagged for review.":
+      "Este riesgo forma parte de un riesgo principal más amplio. Cuando cambia el nivel del principal, este riesgo se marca para revisión.",
+    "The other risk becomes a child of this one and is flagged when this risk's level changes.":
+      "El otro riesgo pasa a depender de este y se marca cuando cambia el nivel de este riesgo.",
+    "Another risk in the risk register.": "Otro riesgo del registro de riesgos.",
+    "A risk recorded on a model.": "Un riesgo registrado en un modelo.",
+    "A risk recorded on a vendor.": "Un riesgo registrado en un proveedor.",
+    "Grouping {count} cluster of related risks. Suggestions appear here as they finish.":
+      "Agrupando {count} grupo de riesgos relacionados. Las sugerencias aparecerán aquí a medida que terminen.",
+    "{count} cluster was too large to group in one pass.":
+      "{count} grupo era demasiado grande para agruparse en una sola pasada.",
+    "Link this risk to others it is connected to. VerifyWise also suggests links from what risks have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion to keep it, or dismiss it.":
+      "Vincule este riesgo con otros con los que está conectado. VerifyWise también sugiere vínculos según lo que los riesgos tienen en común, como la categoría, los controles, la fase del ciclo de vida o el proyecto. Confirme una sugerencia para conservarla o descártela.",
+    "Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm.":
+      "Usa IA para proponer vínculos principal-secundario entre riesgos ya relacionados. Las sugerencias aparecen en esta lista para que las confirme.",
     "Grouping {count} clusters of related risks. Suggestions appear here as they finish.":
       "Agrupando {count} grupos de riesgos relacionados. Las sugerencias aparecerán aquí a medida que terminen.",
     "{count} clusters were too large to group in one pass.":
@@ -30788,6 +30858,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Los riesgos de proveedor relacionados aparecen al guardar los riesgos de proveedor, o después de que un administrador ejecute un análisis.",
     "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
       "Analizando {count} riesgos de proveedor. Los riesgos de proveedor relacionados aparecerán aquí cuando termine el análisis.",
+    "Scanning {count} vendor risk. Related vendor risks appear here as the scan completes.":
+      "Analizando {count} riesgo de proveedor. Los riesgos de proveedor relacionados aparecerán aquí cuando termine el análisis.",
     "Scan finished. No related vendor risks found.":
       "Análisis finalizado. No se encontraron riesgos de proveedor relacionados.",
     "Search vendor risks": "Buscar riesgos de proveedor",
