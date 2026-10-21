@@ -79,6 +79,20 @@ describe("ExtensionSyncPanel", () => {
     expect(toggle()).toHaveAccessibleDescription("Runs on the interval below.");
   });
 
+  it("leaves the switch undescribed when there is no schedule description", () => {
+    mockUseExtensionSync.mockReturnValue(hookState());
+    renderPanel();
+    expect(toggle()).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("saves the schedule when the label is clicked", () => {
+    const state = hookState();
+    mockUseExtensionSync.mockReturnValue(state);
+    renderPanel();
+    fireEvent.click(screen.getByText("Enable automatic sync"));
+    expect(state.setSchedule).toHaveBeenCalledWith({ enabled: true });
+  });
+
   it("saves the schedule when the toggle changes", () => {
     const state = hookState();
     mockUseExtensionSync.mockReturnValue(state);
