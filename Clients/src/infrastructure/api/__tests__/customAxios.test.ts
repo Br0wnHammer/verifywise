@@ -245,6 +245,23 @@ describe("customAxios", () => {
       expect(callback).not.toHaveBeenCalled();
     });
 
+    it.each(["/modelInventory", "/vendors", "/policies", "/tasks?page=1", "/training"])(
+      "does not show a toast for list GET %s because the page renders an inline error",
+      async (url) => {
+        const callback = vi.fn();
+        setShowAlertCallback(callback);
+
+        const error = {
+          config: { url, method: "get" },
+          response: { status: 500, data: { message: "Server error" } },
+          message: "Internal Server Error",
+        };
+
+        await expect(rejected(error)).rejects.toEqual(error);
+        expect(callback).not.toHaveBeenCalled();
+      },
+    );
+
     it("still toasts the same incident 409 when the request did not opt out", async () => {
       const callback = vi.fn();
       setShowAlertCallback(callback);

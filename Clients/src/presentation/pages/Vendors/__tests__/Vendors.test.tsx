@@ -1,4 +1,8 @@
+import { screen } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
+
+let mockVendorsLoading = false;
+let mockVendorsError: Error | null = null;
 
 // Mock hooks used by Vendors page
 vi.mock("../../../../application/hooks/useUsers", () => ({
@@ -8,7 +12,8 @@ vi.mock("../../../../application/hooks/useUsers", () => ({
 vi.mock("../../../../application/hooks/useVendors", () => ({
   useVendors: () => ({
     data: [],
-    isLoading: false,
+    isLoading: mockVendorsLoading,
+    error: mockVendorsError,
     refetch: vi.fn(),
   }),
   useDeleteVendor: () => ({ mutateAsync: vi.fn() }),
@@ -141,6 +146,8 @@ import Vendors from "../index";
 describe("Vendors", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockVendorsLoading = false;
+    mockVendorsError = null;
   });
 
   it("renders without crashing", () => {
@@ -148,5 +155,22 @@ describe("Vendors", () => {
       route: "/vendors",
     });
     expect(container).toBeTruthy();
+  });
+
+  it("shows the standardized loading state", () => {
+    mockVendorsLoading = true;
+    renderWithProviders(<Vendors />, { route: "/vendors" });
+
+    expect(screen.getByRole("status", { name: "Loading vendors" })).toBeInTheDocument();
+  });
+
+  it("shows the standardized error alert when vendors fail to load", () => {
+    mockVendorsError = new Error("network error");
+    renderWithProviders(<Vendors />, { route: "/vendors" });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Failed to load vendors. Please try again later.",
+    );
+    expect(screen.queryByTestId("vendor-table")).not.toBeInTheDocument();
   });
 });

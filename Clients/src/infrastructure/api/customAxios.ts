@@ -124,6 +124,21 @@ const getEnvelopeErrorMessage = (data: ApiErrorEnvelope): string | undefined => 
 // page shows an inline alert). Skip the global toast for these so users don't
 // see duplicate notifications.
 const ENDPOINTS_WITH_CUSTOM_ERROR_UI = ["/users/login"];
+const LIST_ENDPOINTS_WITH_CUSTOM_ERROR_UI = [
+  "/modelInventory",
+  "/vendors",
+  "/policies",
+  "/tasks",
+  "/training",
+];
+
+const hasCustomErrorUI = (method: string | undefined, url: string): boolean => {
+  if (ENDPOINTS_WITH_CUSTOM_ERROR_UI.some((path) => url.includes(path))) return true;
+  if (method?.toLowerCase() !== "get") return false;
+
+  const requestPath = url.split("?")[0].replace(/\/+$/, "");
+  return LIST_ENDPOINTS_WITH_CUSTOM_ERROR_UI.some((path) => requestPath.endsWith(path));
+};
 
 // Endpoints authorized by the token in an emailed link (invitation, password
 // reset), which the page sends itself, not by the session token.
@@ -178,7 +193,7 @@ const showGlobalErrorAlert = (error: AxiosError) => {
   }
 
   const requestUrl = error.config?.url ?? "";
-  if (ENDPOINTS_WITH_CUSTOM_ERROR_UI.some((path) => requestUrl.includes(path))) return;
+  if (hasCustomErrorUI(error.config?.method, requestUrl)) return;
 
   const status = error.response?.status;
   const isServerError = status != null && status >= 500;

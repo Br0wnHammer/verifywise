@@ -53,6 +53,7 @@ import { useVendorExposure, VENDOR_INSIGHTS_KEY } from "../../../application/hoo
 import type { HeatMapCellRef } from "../../types/interfaces/i.risk";
 import VendorRiskInsights from "./VendorRiskInsights";
 import { matchesHeatCell } from "./VendorRiskInsights/HeatMapSection";
+import ListStateWrapper from "../../components/ListStateWrapper";
 
 // Constants
 const REDIRECT_DELAY_MS = 2000;
@@ -162,6 +163,7 @@ const Vendors = () => {
   const {
     data: vendors = [],
     isLoading: isVendorsLoading,
+    error: vendorsError,
     refetch: refetchVendors,
   } = useVendors({
     projectId: selectedProjectId,
@@ -1266,9 +1268,22 @@ const Vendors = () => {
         )}
 
         <TabPanel value="1" sx={tabPanelStyle}>
-          {isVendorsLoading ? (
-            <CustomizableSkeleton variant="rectangular" width="100%" height={400} />
-          ) : (
+          <ListStateWrapper
+            items={filteredVendors}
+            isLoading={isVendorsLoading}
+            loadingLabel="Loading vendors"
+            errorMessage={vendorsError ? "Failed to load vendors. Please try again later." : null}
+            emptyState={
+              <TableWithPlaceholder
+                vendors={[]}
+                users={users}
+                onDelete={handleDeleteVendor}
+                onEdit={handleEditVendor}
+                vendorRisks={vendorRisks}
+                visibleColumns={vendorVisibleColumns}
+              />
+            }
+          >
             <GroupedTableView
               groupedData={groupedVendors}
               ungroupedData={filteredVendors}
@@ -1284,7 +1299,7 @@ const Vendors = () => {
                 />
               )}
             />
-          )}
+          </ListStateWrapper>
         </TabPanel>
         <TabPanel value="2" sx={tabPanelStyle}>
           {loadingVendorRisks ? (

@@ -20,8 +20,13 @@ vi.mock("../../../../application/hooks/useUsers", () => ({
 
 let mockPolicies: PolicyManagerModel[] = [];
 let mockPoliciesLoading = false;
+let mockPoliciesError: Error | null = null;
 vi.mock("../../../../application/hooks/usePolicies", () => ({
-  usePolicies: () => ({ data: mockPolicies, isLoading: mockPoliciesLoading }),
+  usePolicies: () => ({
+    data: mockPolicies,
+    isLoading: mockPoliciesLoading,
+    error: mockPoliciesError,
+  }),
   policyQueryKeys: {
     all: ["policies"],
     lists: () => ["policies", "list"],
@@ -145,6 +150,7 @@ describe("PolicyManager", () => {
       buildPolicy({ id: 2, title: "Data Governance Policy", status: "Approved" }),
     ];
     mockPoliciesLoading = false;
+    mockPoliciesError = null;
     mockGetPolicyFolders.mockResolvedValue([]);
     mockGetPolicyIdsInFolder.mockResolvedValue([]);
     mockUpdatePolicyFolders.mockResolvedValue(undefined);
@@ -160,7 +166,19 @@ describe("PolicyManager", () => {
   it("shows a loading skeleton while policies are loading", () => {
     mockPoliciesLoading = true;
     renderWithProviders(<PolicyManager tags={[]} />, { route: "/policies" });
+    expect(screen.getByRole("status", { name: "Loading policies" })).toBeInTheDocument();
     expect(screen.queryByTestId("policy-table")).not.toBeInTheDocument();
+  });
+
+  it("shows a standardized error alert when policies fail to load", () => {
+    mockPolicies = [];
+    mockPoliciesError = new Error("network error");
+    renderWithProviders(<PolicyManager tags={[]} />, { route: "/policies" });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Failed to load policies. Please try again later.",
+    );
+    expect(screen.queryByText(/No policies yet/)).not.toBeInTheDocument();
   });
 
   it("shows an empty state when there are no policies", () => {

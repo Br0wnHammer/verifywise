@@ -51,10 +51,10 @@ import { useFilterBy } from "../../../application/hooks/useFilterBy";
 import { useColumnVisibility, ColumnConfig } from "../../../application/hooks/useColumnVisibility";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import Alert from "../../components/Alert";
-import CustomizableSkeleton from "../../components/Skeletons";
 import TabBar from "../../components/TabBar";
 import DeadlineView from "./DeadlineView";
 import { toggleLabelStyle, toggleContainerStyle } from "./style";
+import ListStateWrapper from "../../components/ListStateWrapper";
 import {
   TASK_PRIORITY_OPTIONS,
   PRIORITY_DISPLAY_MAP,
@@ -887,25 +887,15 @@ const Tasks: React.FC = () => {
 
       {/* Content Area */}
       <Box>
-        {isLoading && (
-          <Stack spacing={2}>
-            <CustomizableSkeleton variant="rectangular" width="100%" height={400} />
-          </Stack>
-        )}
-
-        {error && (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-            <Typography color="error">{error}</Typography>
-          </Box>
-        )}
-
-        {!isLoading && !error && activeTab === "list" && (
-          <GroupedTableView
-            groupedData={groupedTasks}
-            ungroupedData={filteredTasks}
-            renderTable={(data, options) => (
+        <ListStateWrapper
+          items={filteredTasks}
+          isLoading={isLoading}
+          loadingLabel="Loading tasks"
+          errorMessage={error}
+          emptyState={
+            activeTab === "list" ? (
               <TasksTable
-                tasks={data}
+                tasks={[]}
                 users={users}
                 onArchive={handleArchiveTask}
                 onEdit={handleEditTask}
@@ -927,55 +917,121 @@ const Tasks: React.FC = () => {
                 })}
                 isUpdateDisabled={isCreatingDisabled}
                 onRowClick={handleEditTask}
-                hidePagination={options?.hidePagination}
                 onRestore={handleRestoreTask}
                 onHardDelete={handleHardDeleteTask}
                 flashRowId={flashRowId}
                 visibleColumns={visibleColumns}
                 canRunBulkActions={!isCreatingDisabled}
-                onBulkActionSuccess={(action, count) => {
-                  setAlert({
-                    variant: "success",
-                    title:
-                      action === "mark_complete"
-                        ? `${count} task${count === 1 ? "" : "s"} marked complete`
-                        : `Categories updated on ${count} task${count === 1 ? "" : "s"}`,
-                  });
-                  setTimeout(() => setAlert(null), 4000);
-                }}
               />
-            )}
-          />
-        )}
+            ) : (
+              <DeadlineView
+                tasks={[]}
+                users={users}
+                onArchive={handleArchiveTask}
+                onEdit={handleEditTask}
+                onStatusChange={handleTaskStatusChange}
+                statusOptions={TASK_STATUS_OPTIONS.map((status) => {
+                  const displayStatus = STATUS_DISPLAY_MAP[status as TaskStatus] || status;
+                  return displayStatus;
+                })}
+                onPriorityChange={handleTaskPriorityChange}
+                priorityOptions={TASK_PRIORITY_OPTIONS.map((priority) => {
+                  const displayPriority =
+                    PRIORITY_DISPLAY_MAP[priority as TaskPriority] || priority;
+                  return {
+                    value: priority,
+                    label: displayPriority,
+                    icon: Flag,
+                    color: PRIORITY_COLOR_MAP[priority as TaskPriority],
+                  };
+                })}
+                isUpdateDisabled={isCreatingDisabled}
+                onRowClick={handleEditTask}
+                onRestore={handleRestoreTask}
+                onHardDelete={handleHardDeleteTask}
+                flashRowId={flashRowId}
+              />
+            )
+          }
+        >
+          {activeTab === "list" && (
+            <GroupedTableView
+              groupedData={groupedTasks}
+              ungroupedData={filteredTasks}
+              renderTable={(data, options) => (
+                <TasksTable
+                  tasks={data}
+                  users={users}
+                  onArchive={handleArchiveTask}
+                  onEdit={handleEditTask}
+                  onStatusChange={handleTaskStatusChange}
+                  statusOptions={TASK_STATUS_OPTIONS.map((status) => {
+                    const displayStatus = STATUS_DISPLAY_MAP[status as TaskStatus] || status;
+                    return displayStatus;
+                  })}
+                  onPriorityChange={handleTaskPriorityChange}
+                  priorityOptions={TASK_PRIORITY_OPTIONS.map((priority) => {
+                    const displayPriority =
+                      PRIORITY_DISPLAY_MAP[priority as TaskPriority] || priority;
+                    return {
+                      value: priority,
+                      label: displayPriority,
+                      icon: Flag,
+                      color: PRIORITY_COLOR_MAP[priority as TaskPriority],
+                    };
+                  })}
+                  isUpdateDisabled={isCreatingDisabled}
+                  onRowClick={handleEditTask}
+                  hidePagination={options?.hidePagination}
+                  onRestore={handleRestoreTask}
+                  onHardDelete={handleHardDeleteTask}
+                  flashRowId={flashRowId}
+                  visibleColumns={visibleColumns}
+                  canRunBulkActions={!isCreatingDisabled}
+                  onBulkActionSuccess={(action, count) => {
+                    setAlert({
+                      variant: "success",
+                      title:
+                        action === "mark_complete"
+                          ? `${count} task${count === 1 ? "" : "s"} marked complete`
+                          : `Categories updated on ${count} task${count === 1 ? "" : "s"}`,
+                    });
+                    setTimeout(() => setAlert(null), 4000);
+                  }}
+                />
+              )}
+            />
+          )}
 
-        {!isLoading && !error && activeTab === "deadline" && (
-          <DeadlineView
-            tasks={filteredTasks}
-            users={users}
-            onArchive={handleArchiveTask}
-            onEdit={handleEditTask}
-            onStatusChange={handleTaskStatusChange}
-            statusOptions={TASK_STATUS_OPTIONS.map((status) => {
-              const displayStatus = STATUS_DISPLAY_MAP[status as TaskStatus] || status;
-              return displayStatus;
-            })}
-            onPriorityChange={handleTaskPriorityChange}
-            priorityOptions={TASK_PRIORITY_OPTIONS.map((priority) => {
-              const displayPriority = PRIORITY_DISPLAY_MAP[priority as TaskPriority] || priority;
-              return {
-                value: priority,
-                label: displayPriority,
-                icon: Flag,
-                color: PRIORITY_COLOR_MAP[priority as TaskPriority],
-              };
-            })}
-            isUpdateDisabled={isCreatingDisabled}
-            onRowClick={handleEditTask}
-            onRestore={handleRestoreTask}
-            onHardDelete={handleHardDeleteTask}
-            flashRowId={flashRowId}
-          />
-        )}
+          {activeTab === "deadline" && (
+            <DeadlineView
+              tasks={filteredTasks}
+              users={users}
+              onArchive={handleArchiveTask}
+              onEdit={handleEditTask}
+              onStatusChange={handleTaskStatusChange}
+              statusOptions={TASK_STATUS_OPTIONS.map((status) => {
+                const displayStatus = STATUS_DISPLAY_MAP[status as TaskStatus] || status;
+                return displayStatus;
+              })}
+              onPriorityChange={handleTaskPriorityChange}
+              priorityOptions={TASK_PRIORITY_OPTIONS.map((priority) => {
+                const displayPriority = PRIORITY_DISPLAY_MAP[priority as TaskPriority] || priority;
+                return {
+                  value: priority,
+                  label: displayPriority,
+                  icon: Flag,
+                  color: PRIORITY_COLOR_MAP[priority as TaskPriority],
+                };
+              })}
+              isUpdateDisabled={isCreatingDisabled}
+              onRowClick={handleEditTask}
+              onRestore={handleRestoreTask}
+              onHardDelete={handleHardDeleteTask}
+              flashRowId={flashRowId}
+            />
+          )}
+        </ListStateWrapper>
       </Box>
 
       {/* Create Task Modal */}

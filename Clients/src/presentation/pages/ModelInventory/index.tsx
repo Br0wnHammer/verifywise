@@ -80,6 +80,7 @@ import { useColumnVisibility, ColumnConfig } from "../../../application/hooks/us
 import { palette } from "../../themes/palette";
 
 import Alert from "../../components/Alert";
+import ListStateWrapper from "../../components/ListStateWrapper";
 
 // Constants
 const REDIRECT_DELAY_MS = 2000;
@@ -153,6 +154,7 @@ const ModelInventory: React.FC = () => {
   const hasProcessedUrlParam = useRef(false);
   const [modelInventoryData, setModelInventoryData] = useState<IModelInventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [modelInventoryError, setModelInventoryError] = useState<string | null>(null);
   const [isNewModelInventoryModalOpen, setIsNewModelInventoryModalOpen] = useState(false);
   // Note: Lifecycle config is managed by the Model Lifecycle extension (pages/Extensions/model-lifecycle)
 
@@ -848,6 +850,7 @@ const ModelInventory: React.FC = () => {
     if (showLoading) {
       setIsLoading(true);
     }
+    setModelInventoryError(null);
     try {
       const response = await getAllEntities({ routeUrl: "/modelInventory" });
       if (response?.data) {
@@ -863,11 +866,7 @@ const ModelInventory: React.FC = () => {
         type: "error",
         message: `Failed to fetch model inventory data: ${error}`,
       });
-      setAlert({
-        variant: "error",
-        body: "Failed to load model inventory data. Please try again later.",
-      });
-      setShowAlert(true);
+      setModelInventoryError("Failed to load model inventory data. Please try again later.");
     } finally {
       if (showLoading) {
         setIsLoading(false);
@@ -2337,26 +2336,48 @@ const ModelInventory: React.FC = () => {
               </Stack>
             </Stack>
 
-            <GroupedTableView
-              groupedData={groupedModelInventory}
-              ungroupedData={filteredData}
-              renderTable={(data, options) => (
+            <ListStateWrapper
+              items={filteredData}
+              isLoading={isLoading}
+              loadingLabel="Loading model inventory"
+              errorMessage={modelInventoryError}
+              emptyState={
                 <ModelInventoryTable
                   key={tableKey}
-                  data={data}
-                  isLoading={isLoading}
+                  data={[]}
+                  isLoading={false}
                   onEdit={handleEditModelInventory}
                   onDelete={handleDeleteModelInventory}
                   onCheckModelHasRisks={handleCheckModelHasRisks}
                   onViewDetails={handleViewModelDetails}
                   deletingId={deletingId}
-                  hidePagination={options?.hidePagination}
                   modelRisks={modelRisksData}
                   flashRowId={flashRowId}
                   visibleColumns={modelVisibleColumns}
                 />
-              )}
-            />
+              }
+            >
+              <GroupedTableView
+                groupedData={groupedModelInventory}
+                ungroupedData={filteredData}
+                renderTable={(data, options) => (
+                  <ModelInventoryTable
+                    key={tableKey}
+                    data={data}
+                    isLoading={false}
+                    onEdit={handleEditModelInventory}
+                    onDelete={handleDeleteModelInventory}
+                    onCheckModelHasRisks={handleCheckModelHasRisks}
+                    onViewDetails={handleViewModelDetails}
+                    deletingId={deletingId}
+                    hidePagination={options?.hidePagination}
+                    modelRisks={modelRisksData}
+                    flashRowId={flashRowId}
+                    visibleColumns={modelVisibleColumns}
+                  />
+                )}
+              />
+            </ListStateWrapper>
           </>
         )}
 
