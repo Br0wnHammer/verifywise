@@ -178,14 +178,10 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-
-        # WebSocket support (if needed)
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
     }
 
     # AI Gateway API for virtual keys (OpenAI-compatible, base URL https://<host>/v1)
-    location /v1/ {
+    location /v1 {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

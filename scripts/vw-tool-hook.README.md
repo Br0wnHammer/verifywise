@@ -17,7 +17,8 @@ events timeline, viewable in the Activity drawer.
 3. Set env vars (e.g. in your shell profile):
 
    ```bash
-   export VW_GATEWAY_URL=http://localhost:8100   # your gateway URL
+   export VW_GATEWAY_URL=https://your-verifywise-host   # the URL you open VerifyWise at
+   # local development without Docker: VW_GATEWAY_URL=http://localhost:8100
    export VW_AGENT_KEY=sk-mcp-...
    # optional:
    export VW_FAIL_MODE=open   # open (default) | closed

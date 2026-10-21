@@ -7,7 +7,9 @@
 # best-effort; always exits 0 — result capture must never block.
 #
 # Env:
-#   VW_GATEWAY_URL  (required)  e.g. http://localhost:8100
+#   VW_GATEWAY_URL  (required)  the URL you open VerifyWise at, e.g.
+#                               https://your-verifywise-host; local development
+#                               without Docker: http://localhost:8100
 #   VW_AGENT_KEY    (required)  sk-mcp-...
 #   VW_FAIL_MODE          (optional)  open | closed   (default: open)
 #   VW_TIMEOUT            (optional)  seconds          (default: 3)
