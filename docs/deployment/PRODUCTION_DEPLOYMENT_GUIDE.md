@@ -200,6 +200,12 @@ server {
 }
 ```
 
+If your proxy sends `/api` or `/v1` to the frontend instead (for example a single
+`location /`), the frontend container forwards them to the backend at
+`VW_BACKEND_URL`. The image default is `http://backend:3000`, and
+`docker-compose.yml` sets it from `BACKEND_PORT`. Set it on the frontend service
+if your backend has another name or port.
+
 **Enable and test:**
 
 ```bash
@@ -224,6 +230,10 @@ curl -I https://your-domain.com/api/users
 
 # Check frontend loads
 curl -I https://your-domain.com
+
+# Check the AI Gateway API is routed: expect 401 {"detail":"Virtual key not found"}.
+# A 503 or an HTML page means /v1 does not reach the backend.
+curl -s -w " %{http_code}\n" https://your-domain.com/v1/models -H "Authorization: Bearer sk-vw-invalid"
 
 # View logs for any errors
 docker compose logs -f --tail=100

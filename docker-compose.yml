@@ -61,6 +61,10 @@ services:
       - backend
     image: ghcr.io/verifywise-ai/verifywise-frontend:latest
     pull_policy: always
+    environment:
+      # Where the frontend's nginx proxies /api and /v1 (used when a host
+      # proxy sends everything to the frontend)
+      - VW_BACKEND_URL=http://backend:$BACKEND_PORT
     restart: unless-stopped
   worker:
     depends_on:
