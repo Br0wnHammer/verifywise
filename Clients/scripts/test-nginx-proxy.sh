@@ -8,6 +8,10 @@
 # v2.6.2 they pointed at the container's own localhost, so every /v1 call
 # returned 503 on a deployment like that.
 #
+# It also renders the Ansible host nginx template
+# (ansible/templates/verifywise-nginx.conf.j2) and checks its routing,
+# headers and error responses, so the two configs cannot drift unnoticed.
+#
 # Usage, from the repository root: Clients/scripts/test-nginx-proxy.sh
 set -euo pipefail
 
@@ -136,9 +140,12 @@ for bad in http://backend:3000/api http://backend: backend:3000 'http://backend:
 done
 
 UNAVAILABLE='503 {"detail":"VerifyWise is unavailable, please retry shortly"}'
+API_UNAVAILABLE='503 {"message":"VerifyWise is unavailable, please retry shortly"}'
 docker stop "$PREFIX-backend" >/dev/null
 check "a stopped backend gives the JSON 503" \
   "$UNAVAILABLE" "$(request "$WEB" http://localhost/v1/models)"
+check "a stopped backend gives /api the app's JSON 503" \
+  "$API_UNAVAILABLE" "$(request "$WEB" http://localhost/api/users)"
 
 # A non-routable address usually drops the connection silently, as a stopped
 # container's cached address does on Linux, so the connect times out. Where
@@ -147,12 +154,51 @@ check "a stopped backend gives the JSON 503" \
 start_web "$PREFIX-web-blackhole" -e VW_BACKEND_URL=http://10.255.255.1:3000
 check "a backend that never accepts the connection gives the JSON 503" \
   "$UNAVAILABLE" "$(request "$PREFIX-web-blackhole" http://localhost/v1/models)"
+check "/api to a backend that never accepts the connection gives the JSON 503" \
+  "$API_UNAVAILABLE" "$(request "$PREFIX-web-blackhole" http://localhost/api/users)"
 
 start_web "$PREFIX-web-unresolved" -e VW_BACKEND_URL=http://no-such-backend:3000
 check "nginx starts when the backend name does not resolve" "200" \
   "$(request "$PREFIX-web-unresolved" http://localhost/ | head -c 3)"
 check "an unresolvable backend gives the JSON 503" \
   "$UNAVAILABLE" "$(request "$PREFIX-web-unresolved" http://localhost/v1/models)"
+
+# The Ansible host nginx template, rendered with sample values. It proxies to
+# localhost, so stub frontend (8080) and backend (3000) servers run in its
+# network namespace.
+HOST_CONF=$(sed -e 's/{{ server_name_value }}/localhost/' \
+  -e 's/{{ frontend_port }}/8080/' -e 's/{{ backend_port }}/3000/' \
+  ansible/templates/verifywise-nginx.conf.j2)
+check "the host template has no unfilled Jinja variables" "false" \
+  "$([[ "$HOST_CONF" == *'{{'* ]] && echo true || echo false)"
+HOST="$PREFIX-host"
+docker run -d --name "$HOST" -e HOST_CONF="$HOST_CONF" "$BASE_IMAGE" sh -c \
+  'printf "%s" "$HOST_CONF" > /etc/nginx/conf.d/default.conf && mkdir -p /var/www/verifywise && echo maintenance > /var/www/verifywise/upgrade.html && exec nginx -g "daemon off;"' >/dev/null
+wait_for_nginx "$HOST"
+HOST_STUBS='server { listen 3000; default_type text/plain;
+  location / { return 200 "backend $request_uri conn=$http_connection xff=$http_x_forwarded_for"; } }
+server { listen 8080; default_type text/plain; location / { return 200 "frontend $request_uri"; } }'
+docker run -d --name "$PREFIX-host-stubs" --network "container:$HOST" \
+  -e STUB_CONF="$HOST_STUBS" "$BASE_IMAGE" \
+  sh -c 'printf "%s" "$STUB_CONF" > /etc/nginx/conf.d/default.conf && exec nginx -g "daemon off;"' >/dev/null
+wait_for_nginx "$PREFIX-host-stubs" http://localhost:3000/
+
+check "host: /api reaches the backend with forwarded headers and Connection close" \
+  "200 backend /api/users conn=close xff=127.0.0.1" "$(request "$HOST" http://localhost/api/users)"
+check "host: Connection upgrade only when the client asks for it" \
+  "200 backend /api/ws conn=upgrade xff=127.0.0.1" \
+  "$(request "$HOST" -H 'Upgrade: websocket' http://localhost/api/ws)"
+check "host: /v1 reaches the backend" \
+  "200 backend /v1/models conn= xff=127.0.0.1" "$(request "$HOST" http://localhost/v1/models)"
+check "host: a path that only starts with api goes to the frontend" \
+  "200 frontend /apidocs" "$(request "$HOST" http://localhost/apidocs)"
+docker stop "$PREFIX-host-stubs" >/dev/null
+check "host: /api with the backend down gives the app's JSON 503" \
+  "$API_UNAVAILABLE" "$(request "$HOST" http://localhost/api/users)"
+check "host: /v1 with the backend down gives the JSON 503" \
+  "$UNAVAILABLE" "$(request "$HOST" http://localhost/v1/models)"
+check "host: pages keep the maintenance page" \
+  "502 maintenance" "$(request "$HOST" http://localhost/)"
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "$FAILURES check(s) failed"

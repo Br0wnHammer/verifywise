@@ -18,7 +18,7 @@ events timeline, viewable in the Activity drawer.
 
    ```bash
    export VW_GATEWAY_URL=https://your-verifywise-host   # the URL you open VerifyWise at
-   # local development without Docker: VW_GATEWAY_URL=http://localhost:8100
+   # Local development: the Vite dev server does not forward /v1, so use the backend, e.g. http://localhost:3000
    export VW_AGENT_KEY=sk-mcp-...
    # optional:
    export VW_FAIL_MODE=open   # open (default) | closed

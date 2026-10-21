@@ -10,11 +10,13 @@ on:
     branches: ['master', 'develop']
     paths:
       - 'Clients/**'
+      - 'ansible/templates/verifywise-nginx.conf.j2'
       - '.github/workflows/frontend-checks.yml'
   push:
     branches: ['master', 'develop']
     paths:
       - 'Clients/**'
+      - 'ansible/templates/verifywise-nginx.conf.j2'
       - '.github/workflows/frontend-checks.yml'
 
 jobs:
