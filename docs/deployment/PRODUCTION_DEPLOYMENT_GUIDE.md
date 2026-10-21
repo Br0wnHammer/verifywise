@@ -136,6 +136,12 @@ sudo nano /etc/nginx/sites-available/verifywise
 ```
 
 ```nginx
+# "Connection: upgrade" only for WebSocket requests
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 server {
     listen 80;
     server_name your-domain.com;
@@ -171,23 +177,25 @@ server {
     }
 
     # Backend API
-    location /api {
+    location ^~ /api {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
 
         # WebSocket support (if needed)
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
     }
 
     # AI Gateway API for virtual keys (OpenAI-compatible, base URL https://<host>/v1)
-    location /v1/ {
+    location ^~ /v1 {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
+        proxy_connect_timeout 5s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -214,6 +222,25 @@ to private networks because the frontend port is only bound to `127.0.0.1`. If
 you publish the frontend port yourself, set it to your proxy's address only.
 Without it, every client behind your proxy shares the proxy's address for the
 backend's rate limits.
+
+If you edit the proxy config by hand, check these, because each one breaks
+something without an obvious error:
+
+- **No Referer or browser-only checks on `/api` or `/v1`.** MCP clients
+  (`/api/mcp`), webhooks (`/api/webhooks`), shadow AI ingestion
+  (`/api/v1/shadow-ai`) and SDKs send no browser `Referer`, and a header the
+  client sets is no access control.
+- **`/api` and `/v1` both send `X-Forwarded-For`, `X-Real-IP` and
+  `X-Forwarded-Proto`.** The backend trusts one proxy hop and rate-limits login
+  and password reset by client IP. Without these headers every user shares
+  one limit, and audit records show the proxy's address.
+- **`/v1` sets `proxy_http_version 1.1`**, or streamed model responses are
+  buffered.
+- **The TLS server sends `Strict-Transport-Security`.** The frontend container
+  leaves HSTS to this proxy.
+- **`/api` and `/v1` do not use an HTML error page.** The app and SDKs expect
+  JSON. The Ansible template (`ansible/templates/verifywise-nginx.conf.j2`)
+  shows JSON error responses for both.
 
 **Enable and test:**
 

@@ -136,9 +136,12 @@ for bad in http://backend:3000/api http://backend: backend:3000 'http://backend:
 done
 
 UNAVAILABLE='503 {"detail":"VerifyWise is unavailable, please retry shortly"}'
+API_UNAVAILABLE='503 {"message":"VerifyWise is unavailable, please retry shortly"}'
 docker stop "$PREFIX-backend" >/dev/null
 check "a stopped backend gives the JSON 503" \
   "$UNAVAILABLE" "$(request "$WEB" http://localhost/v1/models)"
+check "a stopped backend gives /api the app's JSON 503" \
+  "$API_UNAVAILABLE" "$(request "$WEB" http://localhost/api/users)"
 
 # A non-routable address usually drops the connection silently, as a stopped
 # container's cached address does on Linux, so the connect times out. Where
@@ -147,6 +150,8 @@ check "a stopped backend gives the JSON 503" \
 start_web "$PREFIX-web-blackhole" -e VW_BACKEND_URL=http://10.255.255.1:3000
 check "a backend that never accepts the connection gives the JSON 503" \
   "$UNAVAILABLE" "$(request "$PREFIX-web-blackhole" http://localhost/v1/models)"
+check "/api to a backend that never accepts the connection gives the JSON 503" \
+  "$API_UNAVAILABLE" "$(request "$PREFIX-web-blackhole" http://localhost/api/users)"
 
 start_web "$PREFIX-web-unresolved" -e VW_BACKEND_URL=http://no-such-backend:3000
 check "nginx starts when the backend name does not resolve" "200" \
