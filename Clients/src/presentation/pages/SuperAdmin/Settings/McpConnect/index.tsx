@@ -12,20 +12,20 @@ import {
 
 const SERVER_NAME = "verifywise";
 const TOKEN_PLACEHOLDER = "<your-api-token>";
-const CONFIG_FILENAME = ".mcp.json";
+// Deliberately not ".mcp.json": that is Claude Code's project config, which
+// teams commit, and this file holds a token that administers every
+// organization. The file is a single server entry for `claude mcp add-json`,
+// which stores it in the user's own Claude Code config, outside any repository.
+const CONFIG_FILENAME = "verifywise-mcp.json";
 /** Tokens this tab issues are named with this prefix, so it can clean up its own. */
 const TOKEN_NAME_PREFIX = "Claude Code MCP";
 
 /** Shown in the reference panel so the operator knows what they are saving. */
 const FILE_PREVIEW = `{
-  "mcpServers": {
-    "verifywise": {
-      "type": "http",
-      "url": "<this deployment>/api/mcp",
-      "headers": {
-        "Authorization": "Bearer <token>"
-      }
-    }
+  "type": "http",
+  "url": "<this deployment>/api/mcp",
+  "headers": {
+    "Authorization": "Bearer <token>"
   }
 }`;
 
@@ -159,6 +159,8 @@ const McpConnect: React.FC = () => {
   const theme = useTheme();
   const endpoint = `${window.location.origin}/api/mcp`;
   const command = `claude mcp add --transport http ${SERVER_NAME} ${endpoint} --header "Authorization: Bearer ${TOKEN_PLACEHOLDER}"`;
+  // $(cat ...) keeps the token out of shell history: only this literal is recorded.
+  const addFileCommand = `claude mcp add-json ${SERVER_NAME} --scope user "$(cat ${CONFIG_FILENAME})"`;
 
   const [expiryDays, setExpiryDays] = useState<number>(90);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -230,13 +232,9 @@ const McpConnect: React.FC = () => {
       }
 
       const config = {
-        mcpServers: {
-          [SERVER_NAME]: {
-            type: "http",
-            url: endpoint,
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        },
+        type: "http",
+        url: endpoint,
+        headers: { Authorization: `Bearer ${token}` },
       };
 
       const blob = new Blob([`${JSON.stringify(config, null, 2)}\n`], {
@@ -337,13 +335,11 @@ const McpConnect: React.FC = () => {
 
         <Step number={2} title="Add it to Claude Code">
           <Typography sx={{ fontSize: 12, color: theme.palette.text.secondary }}>
-            Save the file as{" "}
-            <Box component="span" sx={{ fontFamily: "monospace" }}>
-              {CONFIG_FILENAME}
-            </Box>{" "}
-            in the root of any project where you want VerifyWise available. Claude Code picks it up
-            on start and asks you to approve the server the first time.
+            Run this in the folder you downloaded the file to. It adds VerifyWise to Claude Code for
+            your user account, so it works in every project and the token stays out of project files
+            that might be committed. Then delete the file.
           </Typography>
+          <Snippet value={addFileCommand} label="add command" testId="mcp-add-file-command" />
           <Typography sx={{ fontSize: 12, color: theme.palette.text.secondary }}>
             Prefer a command, or using a client other than Claude Code? Create a token on the API
             keys tab and run this instead:
