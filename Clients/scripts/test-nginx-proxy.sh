@@ -80,7 +80,8 @@ docker run -d --name "$PREFIX-backend" --network "$NET" --network-alias backend 
 wait_for_nginx "$PREFIX-backend" http://localhost:3000/
 
 WEB="$PREFIX-web"
-start_web "$WEB"
+# Trusts the test's own curl, which connects from 127.0.0.1 like a host proxy
+start_web "$WEB" -e VW_TRUSTED_PROXIES=127.0.0.0/8
 
 check "GET /v1/models reaches the backend with the /v1 prefix" \
   "200 backend GET /v1/models" "$(request "$WEB" http://localhost/v1/models)"
@@ -114,8 +115,8 @@ check "the rendered config has no unfilled template variables" "false" \
 check "nginx's own variables survive rendering" "true" \
   "$([[ "$RENDERED" == *'proxy_set_header Host $host;'* ]] && echo true || echo false)"
 
-start_web "$PREFIX-web-untrusted" -e VW_TRUSTED_PROXIES=
-check "with VW_TRUSTED_PROXIES empty, X-Forwarded-For is not believed" \
+start_web "$PREFIX-web-untrusted"
+check "by default (no VW_TRUSTED_PROXIES), X-Forwarded-For is not believed" \
   "200 xff 203.0.113.7, 127.0.0.1" \
   "$(request "$PREFIX-web-untrusted" -H 'X-Forwarded-For: 203.0.113.7' http://localhost/api/client-ip)"
 
@@ -123,7 +124,7 @@ start_web "$PREFIX-web-slash" -e VW_BACKEND_URL=http://backend:3000/
 check "a trailing slash in VW_BACKEND_URL is dropped" \
   "200 backend GET /v1/models" "$(request "$PREFIX-web-slash" http://localhost/v1/models)"
 
-for bad in http://backend:3000/api http://backend: backend:3000; do
+for bad in http://backend:3000/api http://backend: backend:3000 'http://backend:3000?x=1'; do
   name="$PREFIX-web-bad-$(echo "$bad" | tr -c 'a-z0-9' '-')"
   docker run -d --name "$name" --network "$NET" -e VW_BACKEND_URL="$bad" "$IMAGE" >/dev/null
   for _ in $(seq 1 15); do

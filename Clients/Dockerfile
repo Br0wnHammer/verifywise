@@ -60,12 +60,10 @@ RUN apk upgrade --no-cache
 # no path. docker-compose sets it from BACKEND_PORT; Kubernetes sets the
 # backend Service's full DNS name (nginx's resolver does not use search domains).
 # VW_TRUSTED_PROXIES: proxies whose X-Forwarded-For gives the client address
-# (space-separated addresses or CIDRs). The default trusts private networks,
-# where a host proxy or ingress normally sits. Narrow it to your proxy's
-# address if untrusted clients can reach this container from a private
-# address, or set it empty to turn it off.
+# (space-separated addresses or CIDRs). Empty by default, so no forwarded
+# address is believed; docker-compose.yml sets it for its host-proxy setup.
 ENV VW_BACKEND_URL=http://backend:3000 \
-    VW_TRUSTED_PROXIES="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 fc00::/7 ::1" \
+    VW_TRUSTED_PROXIES="" \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     NGINX_ENVSUBST_FILTER="^(VW_BACKEND_URL|NGINX_LOCAL_RESOLVERS)"
 COPY --chmod=755 Clients/docker-entrypoint.d/18-verifywise.envsh /docker-entrypoint.d/

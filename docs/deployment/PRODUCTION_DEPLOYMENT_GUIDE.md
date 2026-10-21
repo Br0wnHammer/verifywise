@@ -208,9 +208,12 @@ if your backend has another name or port. Give scheme, host and port only, with
 no path: the container refuses to start otherwise.
 
 The frontend takes the client address from your proxy's `X-Forwarded-For` when
-the request comes from an address in `VW_TRUSTED_PROXIES` (default: private
-networks). If untrusted clients can reach the frontend container from a private
-address, set it to your proxy's address only.
+the request comes from an address in `VW_TRUSTED_PROXIES` (space-separated
+addresses or CIDRs). The image leaves it empty, and `docker-compose.yml` sets it
+to private networks because the frontend port is only bound to `127.0.0.1`. If
+you publish the frontend port yourself, set it to your proxy's address only.
+Without it, every client behind your proxy shares the proxy's address for the
+backend's rate limits.
 
 **Enable and test:**
 

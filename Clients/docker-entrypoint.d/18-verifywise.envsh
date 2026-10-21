@@ -22,8 +22,8 @@ case "$vw_backend_url" in
     ;;
 esac
 case "$vw_backend_hostport" in
-  "" | */* | *: | :*)
-    entrypoint_log "18-verifywise.envsh: ERROR: VW_BACKEND_URL must be scheme://host[:port] with no path (got '${VW_BACKEND_URL:-}')"
+  "" | */* | *: | :* | *\?* | *#*)
+    entrypoint_log "18-verifywise.envsh: ERROR: VW_BACKEND_URL must be scheme://host[:port] with no path or query (got '${VW_BACKEND_URL:-}')"
     exit 1
     ;;
 esac
@@ -31,9 +31,11 @@ export VW_BACKEND_URL="$vw_backend_url"
 
 vw_realip_conf=/etc/nginx/conf.d/00-vw-realip.conf
 : >"$vw_realip_conf"
+set -f # split on spaces only; a "*" must not expand to file names
 for vw_proxy in ${VW_TRUSTED_PROXIES:-}; do
   echo "set_real_ip_from $vw_proxy;" >>"$vw_realip_conf"
 done
+set +f
 if [ -s "$vw_realip_conf" ]; then
   echo "real_ip_header X-Forwarded-For;" >>"$vw_realip_conf"
 fi
