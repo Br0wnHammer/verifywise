@@ -241,7 +241,14 @@ export default function LinkRiskForm({ riskId, existingLinks, onClose }: LinkRis
 
   return (
     <Stack spacing="16px" sx={{ py: "8px" }}>
-      <Stack spacing="8px" role="radiogroup" aria-labelledby={`link-risk-relation-${riskId}`}>
+      {/* useFlexGap: Stack's margin spacing would reset each Radio's -5px
+          margin, which offsets its hover padding. */}
+      <Stack
+        spacing="16px"
+        useFlexGap
+        role="radiogroup"
+        aria-labelledby={`link-risk-relation-${riskId}`}
+      >
         <Typography id={`link-risk-relation-${riskId}`} sx={groupLabelSx}>
           How is this risk connected?
         </Typography>
@@ -262,7 +269,12 @@ export default function LinkRiskForm({ riskId, existingLinks, onClose }: LinkRis
       </Stack>
 
       {choice === "inherits_from" && (
-        <Stack spacing="8px" role="radiogroup" aria-labelledby={`link-risk-parent-${riskId}`}>
+        <Stack
+          spacing="16px"
+          useFlexGap
+          role="radiogroup"
+          aria-labelledby={`link-risk-parent-${riskId}`}
+        >
           <Typography id={`link-risk-parent-${riskId}`} sx={groupLabelSx}>
             Where is the parent risk?
           </Typography>

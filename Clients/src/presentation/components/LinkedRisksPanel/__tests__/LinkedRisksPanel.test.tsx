@@ -408,6 +408,33 @@ describe("LinkedRisksPanel link form", () => {
     expect(screen.getByRole("radio", { name: "Relates to" })).toBeInTheDocument();
   });
 
+  // Removing the button would slide "Suggest hierarchy" under the pointer, so
+  // it stays, disabled, and focus moves into the form and back again.
+  it("keeps Link a risk in place while the form is open and returns focus on Cancel", async () => {
+    mockIsAdmin.mockReturnValue(true);
+    mockUseRiskLinks.mockReturnValue(queryResult([]));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <ThemeProvider theme={light}>
+        <QueryClientProvider client={client}>
+          <LinkedRisksPanel riskId={42} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    );
+
+    const opener = screen.getByRole("button", { name: "Link a risk" });
+    await userEvent.click(opener);
+
+    expect(opener).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
+    expect(screen.getByRole("radio", { name: "Relates to" })).toHaveFocus();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(opener).toBeEnabled();
+    expect(opener).toHaveFocus();
+  });
+
   // The form's exclusions are defined over suggested + confirmed. With the
   // dismissed view open the panel holds dismissed rows instead, so passing them
   // down would invert the rule and hide exactly the partners §6.4 keeps

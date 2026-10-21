@@ -77,7 +77,10 @@ function Radio({ checked, value, id, size, onChange, title, desc, disabled, name
           {desc && (
             <Typography
               id={`${refId}-desc`}
-              component="h6"
+              // Inside a <label>, so phrasing content: a heading here would put
+              // every option's description in the page's heading outline.
+              component="span"
+              display="block"
               mt={theme.spacing(1)}
               color={theme.palette.text.secondary}
             >

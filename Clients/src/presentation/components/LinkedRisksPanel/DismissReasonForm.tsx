@@ -69,8 +69,11 @@ export default function DismissReasonForm({
         Named after the risk: several of these can be on screen at once in a
         long list, and "Other" alone is not a distinguishable label.
       */}
+      {/* useFlexGap: Stack's margin spacing would reset each Radio's -5px
+          margin, which offsets its hover padding. */}
       <Stack
-        spacing="8px"
+        spacing="16px"
+        useFlexGap
         role="radiogroup"
         aria-label={fill(t("Why are you dismissing {name}?"), {
           name: link.relatedRisk.name ?? fill(t("risk {id}"), { id: link.relatedRisk.id }),
