@@ -204,7 +204,13 @@ If your proxy sends `/api` or `/v1` to the frontend instead (for example a singl
 `location /`), the frontend container forwards them to the backend at
 `VW_BACKEND_URL`. The image default is `http://backend:3000`, and
 `docker-compose.yml` sets it from `BACKEND_PORT`. Set it on the frontend service
-if your backend has another name or port.
+if your backend has another name or port. Give scheme, host and port only, with
+no path: the container refuses to start otherwise.
+
+The frontend takes the client address from your proxy's `X-Forwarded-For` when
+the request comes from an address in `VW_TRUSTED_PROXIES` (default: private
+networks). If untrusted clients can reach the frontend container from a private
+address, set it to your proxy's address only.
 
 **Enable and test:**
 

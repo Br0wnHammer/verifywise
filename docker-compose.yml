@@ -64,7 +64,7 @@ services:
     environment:
       # Where the frontend's nginx proxies /api and /v1 (used when a host
       # proxy sends everything to the frontend)
-      - VW_BACKEND_URL=http://backend:$BACKEND_PORT
+      - VW_BACKEND_URL=http://backend:${BACKEND_PORT:?BACKEND_PORT must be set in the env file before starting}
     restart: unless-stopped
   worker:
     depends_on:
