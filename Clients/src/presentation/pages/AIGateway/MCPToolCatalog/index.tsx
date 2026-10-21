@@ -302,7 +302,9 @@ export default function MCPToolCatalogPage() {
         fromMcpServers ? (
           <CustomizableButton
             text="Back to MCP servers"
-            onClick={() => navigate("/ai-gateway/mcp/servers")}
+            // The servers page is the previous history entry (filter changes
+            // replace), so go back rather than push a new entry.
+            onClick={() => navigate(-1)}
             variant="text"
             startIcon={<ArrowLeft size={16} />}
             testId="mcp-tools-back"

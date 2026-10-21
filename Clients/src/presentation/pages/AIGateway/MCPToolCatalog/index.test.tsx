@@ -148,21 +148,29 @@ describe("MCPToolCatalogPage", () => {
 
     await waitFor(() => expect(screen.getByText("search_docs")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("mcp-tools-back"));
-    expect(mockNavigate).toHaveBeenCalledWith("/ai-gateway/mcp/servers");
+    expect(mockNavigate).toHaveBeenCalledWith(-1);
   });
 
   it("keeps the back link when the server filter changes", async () => {
-    mockLoad([makeTool()]);
+    mockLoad(
+      [
+        makeTool({ id: 1, tool_name: "search_docs" }),
+        makeTool({ id: 2, server_id: 20, server_name: "Other Server", tool_name: "solo_tool" }),
+      ],
+      [...defaultServers, { id: 20, name: "Other Server" }],
+    );
     renderWithProviders(<MCPToolCatalogPage />, {
       route: "/ai-gateway/mcp/tools?server=10",
       routeState: { from: "mcp-servers" },
     });
 
     await waitFor(() => expect(screen.getByText("search_docs")).toBeInTheDocument());
+    expect(screen.queryByText("solo_tool")).not.toBeInTheDocument();
     fireEvent.mouseDown(screen.getByRole("combobox", { name: "Filter by server" }));
     fireEvent.click(screen.getByRole("option", { name: "All servers" }));
 
-    await waitFor(() => expect(screen.getByTestId("mcp-tools-back")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("solo_tool")).toBeInTheDocument());
+    expect(screen.getByTestId("mcp-tools-back")).toBeInTheDocument();
   });
 
   it("shows no back link when not opened from the MCP servers page", async () => {
