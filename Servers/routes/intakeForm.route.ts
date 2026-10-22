@@ -20,6 +20,7 @@ import {
   getSubmissionStats,
   approveSubmission,
   rejectSubmission,
+  escalateSubmission,
   getSubmissionPreview,
   overrideSubmissionRisk,
   retrySubmissionAssessment,
@@ -115,6 +116,12 @@ router.post(
   authenticateJWT,
   authorize("intakeForm.edit"),
   rejectSubmission,
+);
+router.post(
+  "/submissions/:id/escalate",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  escalateSubmission,
 );
 
 // ============================================================================

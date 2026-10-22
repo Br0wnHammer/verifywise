@@ -16,6 +16,7 @@ import {
   IRiskOverride,
   ISuggestedRisksBlock,
   ISubmissionRouting,
+  IDecisionRecord,
 } from "../domain.layer/interfaces/i.intakeSubmission";
 import { getRoleById } from "./roleMap";
 import { roleInfoHasPermission } from "./rolePermissions.utils";
@@ -1278,6 +1279,25 @@ export const updateSubmissionRoutingQuery = async (
     },
   );
   return result[1] > 0;
+};
+
+/** Store what was in force when the submission was approved or rejected. */
+export const setDecisionRecordQuery = async (
+  id: number,
+  record: IDecisionRecord,
+  organizationId: number,
+  transaction: Transaction,
+): Promise<void> => {
+  await sequelize.query(
+    `UPDATE intake_submissions
+    SET decision_record = :record, updated_at = NOW()
+    WHERE organization_id = :organizationId AND id = :id`,
+    {
+      replacements: { organizationId, id, record: JSON.stringify(record) },
+      type: QueryTypes.UPDATE,
+      transaction,
+    },
+  );
 };
 
 /**
