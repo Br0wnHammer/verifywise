@@ -324,6 +324,16 @@ describe("updateSuggestedRisk", () => {
     expect(r.body.data).toBe("This suggestion changed. Reload and try again.");
   });
 
+  it("409 'only pending' when it was decided between the read and the write", async () => {
+    intake.updateSuggestedRiskItemQuery.mockResolvedValue(null);
+    intake.getSubmissionByIdQuery
+      .mockResolvedValueOnce(submission())
+      .mockResolvedValueOnce(submission({ status: "approved" }));
+    const r = await call(ctrl.updateSuggestedRisk, patchReq({ state: "dismissed" }));
+    expect(r.status).toBe(409);
+    expect(r.body.data).toBe("Only pending submissions can be changed");
+  });
+
   it("400 with its own message for a bad suggestion id", async () => {
     const r = await call(
       ctrl.updateSuggestedRisk,

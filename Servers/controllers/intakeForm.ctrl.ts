@@ -90,6 +90,7 @@ import { toId } from "../utils/validations/validation.utils";
 import { isEmail } from "../utils/validations/email.utils";
 import {
   isAssessmentV2,
+  type IIntakeSubmission,
   type IRiskAssessmentV2,
 } from "../domain.layer/interfaces/i.intakeSubmission";
 import { ModelRiskCategory } from "../domain.layer/enums/model-risk-category.enum";
@@ -340,17 +341,66 @@ function startIntakeAssessment(params: {
 }
 
 /**
- * The rule minimum under the current questionnaire: the submission's stored
- * EU AI Act run re-scored. Null when it has no run (step off, or a model).
+ * The EU AI Act level under the current questionnaire: the submission's stored
+ * run re-scored. Null when it has no run (step off, or a model).
  */
+async function currentRulesLevel(
+  submissionId: number,
+  organizationId: number,
+  transaction?: Transaction,
+): Promise<ClassificationLevel | null> {
+  const run = await getLatestRunForSubmissionQuery(submissionId, organizationId, transaction);
+  const rescored = run ? rescoreStoredRun(run) : null;
+  return (rescored?.result.level ?? null) as ClassificationLevel | null;
+}
+
+/** The rule minimum under the current questionnaire. */
 async function currentRuleMinimum(
   submissionId: number,
   organizationId: number,
   transaction?: Transaction,
 ): Promise<number | null> {
-  const run = await getLatestRunForSubmissionQuery(submissionId, organizationId, transaction);
-  const rescored = run ? rescoreStoredRun(run) : null;
-  return ruleMinimumFor(rescored?.result.level ?? null);
+  return ruleMinimumFor(await currentRulesLevel(submissionId, organizationId, transaction));
+}
+
+/**
+ * On approve or reject, inside the decision's transaction: the job's writes
+ * are ignored once a submission is decided, so a stage still running is
+ * closed here (the score keeps the rule minimum, suggestions are marked
+ * failed). With `refloor`, a finished score is also re-floored under `level`.
+ */
+async function settleAssessmentOnDecision(
+  submission: IIntakeSubmission,
+  level: ClassificationLevel | null,
+  organizationId: number,
+  transaction: Transaction,
+  opts: { refloor: boolean },
+): Promise<void> {
+  const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
+  if (assessment && (opts.refloor || assessment.status === "pending")) {
+    const settled: IRiskAssessmentV2 =
+      assessment.status === "pending"
+        ? { ...assessment, status: "ai_failed", error: "Decided before AI scoring finished" }
+        : assessment;
+    await updateSubmissionAssessmentV2Query(
+      submission.id,
+      recomputeAssessmentForLevel(settled, level),
+      organizationId,
+      transaction,
+    );
+  }
+  if (submission.suggestedRisks?.status === "pending") {
+    await updateSubmissionSuggestionsQuery(
+      submission.id,
+      {
+        ...submission.suggestedRisks,
+        status: "ai_failed",
+        error: "Decided before risk suggestions finished",
+      },
+      organizationId,
+      transaction,
+    );
+  }
 }
 
 /**
@@ -1400,6 +1450,7 @@ export async function getSubmissionByEntity(req: Request, res: Response) {
               band: submission.riskAssessment.tier,
             }
           : null,
+        riskOverrideTier: submission.riskOverride?.tier ?? null,
         fields,
       }),
     );
@@ -1595,11 +1646,14 @@ export async function updateSuggestedRisk(req: Request, res: Response) {
       req.organizationId!,
     );
     if (!item) {
-      // Decided, or changed by someone else (e.g. its plan cleared) between
-      // the read and the atomic write.
-      return res
-        .status(409)
-        .json(STATUS_CODE[409](req.t!("This suggestion changed. Reload and try again.")));
+      // Decided, or changed by someone else (e.g. its plan cleared), between
+      // the read and the atomic write. Say which.
+      const latest = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+      const message =
+        latest && latest.status !== IntakeSubmissionStatus.PENDING
+          ? "Only pending submissions can be changed"
+          : "This suggestion changed. Reload and try again.";
+      return res.status(409).json(STATUS_CODE[409](req.t!(message)));
     }
 
     return res.status(200).json(STATUS_CODE[200](item));
@@ -1778,36 +1832,13 @@ export async function approveSubmission(req: Request, res: Response) {
     }
 
     // An AI-scored submission's score is re-floored under the level it is
-    // approved at, which a reviewer may have changed. The job's writes are
-    // ignored once the submission is decided, so a stage still running is
-    // closed here: the score keeps the rule minimum, suggestions are marked
-    // failed. Risk_tier keeps an override's band (see the query).
+    // approved at, which a reviewer may have changed; running stages are
+    // closed. Risk_tier keeps an override's band (see the query).
     const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
     const approvedLevel = (classification?.finalLevel ?? null) as ClassificationLevel | null;
-    if (assessment) {
-      const settled: IRiskAssessmentV2 =
-        assessment.status === "pending"
-          ? { ...assessment, status: "ai_failed", error: "Approved before AI scoring finished" }
-          : assessment;
-      await updateSubmissionAssessmentV2Query(
-        submissionId,
-        recomputeAssessmentForLevel(settled, approvedLevel),
-        req.organizationId!,
-        transaction,
-      );
-    }
-    if (submission.suggestedRisks?.status === "pending") {
-      await updateSubmissionSuggestionsQuery(
-        submissionId,
-        {
-          ...submission.suggestedRisks,
-          status: "ai_failed",
-          error: "Approved before risk suggestions finished",
-        },
-        req.organizationId!,
-        transaction,
-      );
-    }
+    await settleAssessmentOnDecision(submission, approvedLevel, req.organizationId!, transaction, {
+      refloor: true,
+    });
 
     // The band override, from this request or saved earlier through
     // PATCH /risk-override: on an AI-scored submission neither may sit below
@@ -2051,6 +2082,18 @@ export async function rejectSubmission(req: Request, res: Response) {
     const formPublicId = form?.publicId;
     const tenantSlug = await getTenantSlugById(req.organizationId!);
     const formSlug = form?.slug || "";
+
+    // Close any assessment stage still running; the job's later writes are
+    // ignored once the submission is decided.
+    const runningScore =
+      isAssessmentV2(submission.riskAssessment) && submission.riskAssessment.status === "pending";
+    await settleAssessmentOnDecision(
+      submission,
+      runningScore ? await currentRulesLevel(submissionId, req.organizationId!, transaction) : null,
+      req.organizationId!,
+      transaction,
+      { refloor: false },
+    );
 
     const updatedSubmission = await rejectSubmissionQuery(
       submissionId,

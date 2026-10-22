@@ -102,6 +102,7 @@ describe("IntakeSubmissionCard", () => {
       data: {
         ...baseSubmission,
         riskTier: "Critical",
+        riskOverrideTier: "Critical",
         riskScore: { finalScore: 40, rulesOnly: false, band: "Medium" },
       },
       isLoading: false,

@@ -253,6 +253,22 @@ describe("runIntakeAssessment", () => {
     expect(h.deps.sendNotification).toHaveBeenCalledTimes(1);
   });
 
+  it("a setup failure after the classification loaded keeps the rule minimum", async () => {
+    const h = harness(submission(), {
+      getModel: jest.fn(async () => {
+        throw new Error("key can't be decrypted");
+      }),
+    });
+    await runIntakeAssessment(job({ notify: false }), h.deps);
+    expect(finalAssessment(h)).toMatchObject({
+      status: "ai_failed",
+      classificationLevel: "High risk",
+      finalScore: 70,
+      rulesOnly: true,
+      notRuleChecked: false,
+    });
+  });
+
   it("a thrown scoring stage keeps the rule minimum as the score", async () => {
     const h = harness(submission(), {
       getModel: jest.fn(async () => ({ fake: true }) as any),
@@ -376,6 +392,13 @@ describe("sendIntakeNotificationOnce", () => {
         generatedAt: "y",
       },
     });
+
+  it("sends nothing for a submission already decided", async () => {
+    const h = harness({ ...settled(), status: IntakeSubmissionStatus.APPROVED } as never);
+    await sendIntakeNotificationOnce(ORG, 11, "en", { capReached: true }, h.deps);
+    expect(h.deps.claimNotification).not.toHaveBeenCalled();
+    expect(h.deps.sendNotification).not.toHaveBeenCalled();
+  });
 
   it("a second call after the claim is taken sends nothing", async () => {
     const h = harness(settled());

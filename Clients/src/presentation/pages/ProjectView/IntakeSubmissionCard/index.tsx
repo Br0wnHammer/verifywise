@@ -112,12 +112,11 @@ export default function IntakeSubmissionCard({ projectId }: IntakeSubmissionCard
               </>
             )}
             {/* A reviewer's band override, shown apart so number and band agree */}
-            {submission.riskTier &&
-              submission.riskScore.band &&
-              submission.riskTier !== submission.riskScore.band && (
+            {submission.riskOverrideTier &&
+              submission.riskOverrideTier !== submission.riskScore.band && (
                 <>
                   {" "}
-                  &middot; <span>band set to</span> <span>{submission.riskTier}</span>
+                  &middot; <span>band set to</span> <span>{submission.riskOverrideTier}</span>
                 </>
               )}
           </>

@@ -38,6 +38,7 @@ import type { UseCaseInput } from "../riskSuggestions/riskSuggestions.service";
 import { ClassificationContext, runAiScoring } from "./aiScoring";
 import { AssessmentStage, enqueueIntakeAssessment, IntakeAssessmentJobData } from "./enqueue";
 import { generateIntakeSuggestions } from "./intakeSuggestions";
+import { recomputeAssessmentForLevel } from "./approvalRisks";
 import { bandFor, combineScore, ruleMinimumFor } from "./scoreMath";
 import { buildScoringAnswers } from "./scoringInput";
 
@@ -115,22 +116,10 @@ function failedAssessment(
   error: string,
   now: Date,
 ): IRiskAssessmentV2 {
-  const ruleMinimum = ruleMinimumFor(classification?.level ?? null);
-  const combined = combineScore({ ruleMinimum, aiMedian: null });
-  return {
-    ...pendingAssessment(startedAt),
-    status: "ai_failed",
-    notRuleChecked: classification === null,
-    classificationLevel: classification?.level ?? null,
-    ruleMinimum,
-    finalScore: combined.finalScore,
-    source: combined.source,
-    rulesOnly: combined.rulesOnly,
-    overallScore: combined.finalScore,
-    tier: combined.finalScore === null ? null : bandFor(combined.finalScore),
-    scoredAt: now.toISOString(),
-    error,
-  };
+  return recomputeAssessmentForLevel(
+    { ...pendingAssessment(startedAt), status: "ai_failed", scoredAt: now.toISOString(), error },
+    classification?.level ?? null,
+  );
 }
 
 function pendingSuggestions(startedAt: string): ISuggestedRisksBlock {
@@ -328,10 +317,13 @@ export async function runIntakeAssessment(
       organizationId,
     );
 
-  // Loading the key, the classification or the answers can fail too; record
-  // it on the stages so they don't sit at "pending" until a retry.
+  // Loading the classification, the key or the answers can fail too; record
+  // it on the stages so they don't sit at "pending" until a retry. The
+  // classification loads first so a later failure still keeps the floor.
+  let classification: ClassificationContext | null = null;
   let ctx: StageContext;
   try {
+    classification = await d.getClassification(submission, organizationId);
     let model: Model | null = null;
     let modelError: string | undefined;
     if (form.llmKeyId) {
@@ -343,7 +335,7 @@ export async function runIntakeAssessment(
       submissionId,
       submission,
       form,
-      classification: await d.getClassification(submission, organizationId),
+      classification,
       answers: buildScoringAnswers(submission.data as Record<string, unknown>, form.schema),
       model,
       modelError,
@@ -352,17 +344,18 @@ export async function runIntakeAssessment(
     logger.error(
       `Intake assessment setup failed for submission ${submissionId}: ${errorMessage(error)}`,
     );
-    await Promise.all([
-      wants("scoring") ? failScoring(null, error) : undefined,
+    await settleAll([
+      wants("scoring") ? failScoring(classification, error) : undefined,
       wants("suggestions") ? failSuggestions(error) : undefined,
     ]);
-    await notifyIfSettled(data, deps, d);
+    await notifyWhenSettled(data, deps);
     return;
   }
 
   // The stages are independent and run side by side: one failing is recorded
-  // and the other still completes.
-  await Promise.all([
+  // and the other still completes. Both settle before the job ends, so a
+  // BullMQ retry never overlaps a stage still running.
+  await settleAll([
     wants("scoring")
       ? runScoringStage(ctx, startedAt, d).catch((error) => {
           logger.error(
@@ -381,29 +374,29 @@ export async function runIntakeAssessment(
       : undefined,
   ]);
 
-  await notifyIfSettled(data, deps, d);
+  await notifyWhenSettled(data, deps);
 }
 
-/** The email, once both stages have settled, when the job was asked to send it. */
-async function notifyIfSettled(
+/** Waits for every promise, then rethrows the first failure, if any. */
+async function settleAll(promises: Array<Promise<unknown> | undefined>): Promise<void> {
+  const results = await Promise.allSettled(promises);
+  const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failed) throw failed.reason;
+}
+
+/** The email, when the job was asked to send it and both stages have settled. */
+async function notifyWhenSettled(
   data: IntakeAssessmentJobData,
   deps: Partial<AssessmentDeps> | undefined,
-  d: AssessmentDeps,
 ): Promise<void> {
-  const { organizationId, submissionId } = data;
-
-  if (data.notify) {
-    const latest = await d.getSubmission(submissionId, organizationId);
-    if (latest && !hasPendingStage(latest)) {
-      await sendIntakeNotificationOnce(
-        organizationId,
-        submissionId,
-        data.lang,
-        { capReached: false, adminFallback: data.adminFallback },
-        deps,
-      );
-    }
-  }
+  if (!data.notify) return;
+  await sendIntakeNotificationOnce(
+    data.organizationId,
+    data.submissionId,
+    data.lang,
+    { capReached: false, adminFallback: data.adminFallback, onlyWhenSettled: true },
+    deps,
+  );
 }
 
 /** A stage not yet stored as v2, or stored but still running. */
@@ -439,12 +432,14 @@ export async function sendIntakeNotificationOnce(
   organizationId: number,
   submissionId: number,
   lang: string | undefined,
-  opts: { capReached: boolean; adminFallback?: boolean },
+  opts: { capReached: boolean; adminFallback?: boolean; onlyWhenSettled?: boolean },
   deps?: Partial<AssessmentDeps>,
 ): Promise<void> {
   const d = withDefaults(deps);
   const submission = await d.getSubmission(submissionId, organizationId);
-  if (!submission) return;
+  // A decided submission needs no "awaiting review" email.
+  if (!submission || submission.status !== IntakeSubmissionStatus.PENDING) return;
+  if (opts.onlyWhenSettled && hasPendingStage(submission)) return;
   const form = await d.getForm(submission.formId, organizationId);
   if (!form) return;
 

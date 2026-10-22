@@ -214,6 +214,23 @@ describe("approveSubmission with suggested risks", () => {
     expect(intake.approveSubmissionQuery).not.toHaveBeenCalled();
   });
 
+  it("rejecting closes a stage still running", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(
+      submission({
+        riskAssessment: v2({ status: "pending", ai: null, finalScore: null }),
+        suggestedRisks: { status: "pending", items: [], droppedCount: 0 },
+      }),
+    );
+    const r = res();
+    await ctrl.rejectSubmission({ ...request(), body: { rejectionReason: "Not now" } } as any, r);
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(intake.updateSubmissionAssessmentV2Query.mock.calls[0][1]).toMatchObject({
+      status: "ai_failed",
+      finalScore: 70,
+    });
+    expect(intake.updateSubmissionSuggestionsQuery.mock.calls[0][1].status).toBe("ai_failed");
+  });
+
   it("rejecting creates no risks", async () => {
     const r = res();
     await ctrl.rejectSubmission({ ...request(), body: { rejectionReason: "No" } } as any, r);

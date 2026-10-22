@@ -25,6 +25,8 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    "No risk score was recorded for this submission.":
+      "Für diese Einreichung wurde kein Risikowert erfasst.",
     "set to": "gesetzt auf",
     "band set to": "Stufe gesetzt auf",
     // AI intake assessment
@@ -10756,6 +10758,8 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    "No risk score was recorded for this submission.":
+      "Aucun score de risque n'a été enregistré pour cette soumission.",
     "set to": "fixé à",
     "band set to": "niveau fixé à",
     // AI intake assessment
@@ -21423,6 +21427,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Le téléchargement révoque le jeton émis ici la dernière fois. Tout ce qui a été configuré avec le fichier précédent, sur cette machine ou une autre, cesse immédiatement de fonctionner.",
   },
   es: {
+    "No risk score was recorded for this submission.":
+      "No se registró ninguna puntuación de riesgo para este envío.",
     "set to": "fijado en",
     "band set to": "banda fijada en",
     // AI intake assessment

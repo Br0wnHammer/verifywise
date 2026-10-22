@@ -376,6 +376,14 @@ function SubmissionPreviewModal({
           riskOverride: response.data.riskOverride ?? null,
         });
         setEuAiActLevel(response.data.euAiActClassification?.current.level ?? "");
+        // A band override saved earlier opens in the override panel, so a
+        // conflict with the rule minimum shows before approving.
+        const storedOverride = response.data.riskOverride;
+        if (storedOverride?.tier) {
+          setOverrideExpanded(true);
+          setOverrideTier(storedOverride.tier);
+          setOverrideJustification(storedOverride.justification ?? "");
+        }
         setEditedEntityData({ ...(entityPreview || {}) });
       } catch {
         if (cancelled) return;
@@ -661,7 +669,12 @@ function SubmissionPreviewModal({
               </Typography>
             </Box>
 
-            {assessmentV2 || !previewData?.riskAssessment ? (
+            {!assessmentV2 && !previewData?.riskAssessment && !isPending ? (
+              // Decided before any assessment was stored: nothing will run now.
+              <Typography sx={{ fontSize: "13px", color: theme.palette.text.tertiary }}>
+                No risk score was recorded for this submission.
+              </Typography>
+            ) : assessmentV2 || !previewData?.riskAssessment ? (
               <ScoreSection
                 assessment={assessmentV2}
                 selectedLevel={selectedLevel}

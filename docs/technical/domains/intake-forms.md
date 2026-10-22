@@ -62,7 +62,7 @@ Per-suggestion writes are single atomic `UPDATE`s on the matching array element 
 Both public submit handlers call `startIntakeAssessment` after the transaction commits. It is not awaited, so a slow queue never delays the submitter.
 
 - `intake_assessment` runs the requested stages (`scoring`, `suggestions`) side by side. Each stage writes `pending` first, then its result. A failure in one stage, or in loading the key, classification or answers, is recorded as `ai_failed` and the other stage still runs. Its job id is `intake-assessment:{org}:{submission}-{stages}`: BullMQ rejects a custom id containing `:` unless it has exactly 3 parts.
-- `intake_notify_cap` fires 2 minutes later. The new-submission email goes out once, when both stages settle or at the cap, whichever comes first. `claimSubmissionNotificationQuery` makes it one email. A cap that fires mid-run sends a "still running" note in place of numbers.
+- `intake_notify_cap` fires 2 minutes later. The new-submission email goes out once, when both stages settle or at the cap, whichever comes first. `claimSubmissionNotificationQuery` makes it one email. A cap that fires mid-run sends a "still running" note in place of numbers. A submission already approved or rejected gets no email.
 - If the job can't be queued, the handler emails reviewers at once without results, after claiming the notification.
 - Forms opened through the legacy `/{tenantSlug}/{formSlug}` route email org admins when the form has no recipients (`adminFallback`). The public-id route skips them, as before.
 - On worker start, `backfillIntakeAssessments` queues the stages each pending submission still needs: legacy rows, missing blocks and stages pending for over 10 minutes. It never re-runs a settled stage and never emails.
@@ -85,7 +85,7 @@ Inside the existing approval transaction:
 
 1. A v2 assessment is re-floored under the level being approved (the reviewer may have changed it) with `recomputeAssessmentForLevel`. A stage still running is closed: scoring keeps the rule minimum (`ai_failed`, "Approved before AI scoring finished") and pending suggestions are marked `ai_failed`.
 2. A band override below that level's minimum is refused with 400, whether it comes with the request or was saved earlier through `PATCH /risk-override`. The stored override is built from whitelisted fields.
-3. Each accepted suggestion becomes a risk on the new entity. Use cases go through `createRiskService` (owner = approver, deadline = suggestion deadline or approval + 90 days, "Not Started", default category "Strategic risk"). Models go through `createNewModelRiskQuery` (owner = approver id as a string, status "Open"). Any failure rolls the whole approval back. Rejecting creates nothing.
+3. Each accepted suggestion becomes a risk on the new entity. Use cases go through `createRiskService` (owner = approver, deadline = suggestion deadline or approval + 90 days, "Not Started", default category "Strategic risk"). Models go through `createNewModelRiskQuery` (owner = approver id as a string, status "Open"). Any failure rolls the whole approval back. Rejecting creates nothing, but closes running stages the same way as step 1 (`settleAssessmentOnDecision`), so a rejected submission never shows "Scoring…".
 
 ## Release
 
