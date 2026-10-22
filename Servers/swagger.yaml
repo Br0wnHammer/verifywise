@@ -24293,8 +24293,145 @@ paths:
       responses:
         '200':
           description: Success
+        '400':
+          description: 'Invalid band, or a band below the rule minimum (AI-scored submissions)'
         '401':
           description: Unauthorized
+        '500':
+          description: 'Internal server error'
+  '/intake/submissions/{id}/assessment/retry':
+    post:
+      tags:
+        - 'Intake Forms'
+      summary: 'Retry Failed Or Stalled Assessment Stages'
+      description: 'Queues the scoring and/or suggested-risk stages that failed or have been pending for over 10 minutes. Finished stages are never re-run. Pending submissions only.'
+      operationId: retrySubmissionAssessment
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '202':
+          description: 'Queued; body lists the stages'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: 'Submission not found'
+        '409':
+          description: 'Submission not pending, or nothing to retry'
+        '500':
+          description: 'Internal server error'
+  '/intake/submissions/{id}/suggested-risks/accept-all':
+    post:
+      tags:
+        - 'Intake Forms'
+      summary: 'Accept All Suggested Risks'
+      description: 'Moves every suggested risk still in "suggested" to "accepted". Dismissed ones stay dismissed; ones without a mitigation plan are skipped. Returns { accepted, skipped }.'
+      operationId: acceptAllSuggestedRisks
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Success
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: 'Submission not found'
+        '409':
+          description: 'Submission not pending'
+        '500':
+          description: 'Internal server error'
+  '/intake/submissions/{id}/suggested-risks/{suggestionId}':
+    patch:
+      tags:
+        - 'Intake Forms'
+      summary: 'Update A Suggested Risk'
+      description: 'Edits, accepts, dismisses or restores one suggested risk on a pending submission. Accepting requires a mitigation plan.'
+      operationId: updateSuggestedRisk
+      security:
+        -
+          bearerAuth: []
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        -
+          name: suggestionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                state:
+                  type: string
+                  enum: [suggested, accepted, dismissed]
+                name:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 1000
+                likelihood:
+                  type: string
+                  enum: [Rare, Unlikely, Possible, Likely, 'Almost Certain']
+                severity:
+                  type: string
+                  enum: [Negligible, Minor, Moderate, Major, Catastrophic]
+                mitigationPlan:
+                  type: string
+                  maxLength: 1000
+                implementationStrategy:
+                  type: string
+                  maxLength: 1000
+                deadline:
+                  type: string
+                  format: date
+                  nullable: true
+                modelRiskCategory:
+                  type: string
+                  enum: [Performance, 'Bias & Fairness', Security, 'Data Quality', Compliance]
+                modelRiskLevel:
+                  type: string
+                  enum: [Low, Medium, High, Critical]
+      responses:
+        '200':
+          description: 'The updated suggestion'
+        '400':
+          description: 'Invalid field, nothing to update, or accepting without a mitigation plan'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: 'Submission or suggestion not found'
+        '409':
+          description: 'Submission not pending'
         '500':
           description: 'Internal server error'
   '/intake/forms/{id}/submissions':

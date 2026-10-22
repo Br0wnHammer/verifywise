@@ -21,8 +21,12 @@ import {
   checkRateLimitQuery,
   getTenantHashBySlug,
   getTenantSlugById,
-  updateSubmissionRiskQuery,
   updateSubmissionRiskOverrideQuery,
+  claimSubmissionNotificationQuery,
+  updateSuggestedRiskItemQuery,
+  setAllSuggestionStatesQuery,
+  updateSubmissionAssessmentV2Query,
+  updateSubmissionSuggestionsQuery,
   getTenantByPublicId,
   getSubmissionByEntityQuery,
 } from "../utils/intakeForm.utils";
@@ -42,12 +46,12 @@ import {
   validateIntakeFormSchemaLabels,
   validateIntakeFormSchemaLogic,
   resolveEuAiActRiskStep,
+  defaultEuAiActRiskStepEnabled,
 } from "../utils/intakeFormSchema.validation";
 import {
   getQuestionnaire,
   CURRENT_QUESTIONNAIRE_VERSION,
   prepareIntakeRiskStep,
-  scoreClassification,
   validateAnswers,
   type Answers,
   type ClassificationResult,
@@ -71,20 +75,44 @@ import {
   sendSubmissionApprovedEmail,
   sendSubmissionRejectedEmail,
 } from "../services/intakeFormEmail.service";
-import { calculateSubmissionRisk } from "../services/intakeRiskScoring.service";
+import { enqueueIntakeAssessment } from "../services/intakeScoring/enqueue";
 import { cleanSubmission, isEmptyAnswer, parseFormula } from "../services/intakeFormLogic";
 import { generateSuggestedQuestions, generateFieldGuidance } from "../services/intakeLLM.service";
 import { getCompanyLogoQuery } from "../utils/aiTrustCentre.utils";
 
 import { translateError } from "../utils/i18n.utils";
+import { highRiskRolesFromEntityData, sameHighRiskRoles } from "../utils/highRiskRoles.utils";
 import {
-  HIGH_RISK_ROLE_MAPPING,
-  highRiskRolesFromEntityData,
-  resolveMappedHighRiskRoles,
-  sameHighRiskRoles,
-} from "../utils/highRiskRoles.utils";
+  buildEntityDataFromSubmission,
+  rescoreStoredRun,
+} from "../utils/intakeSubmissionData.utils";
 import { toId } from "../utils/validations/validation.utils";
 import { isEmail } from "../utils/validations/email.utils";
+import {
+  isAssessmentV2,
+  type IIntakeSubmission,
+  type IRiskAssessmentV2,
+} from "../domain.layer/interfaces/i.intakeSubmission";
+import { ModelRiskCategory } from "../domain.layer/enums/model-risk-category.enum";
+import { ModelRiskLevel } from "../domain.layer/enums/model-risk-level.enum";
+import {
+  asBand,
+  isBandAllowed,
+  ruleMinimumFor,
+  SCORE_BANDS,
+  type ClassificationLevel,
+  type ScoreBand,
+} from "../services/intakeScoring/scoreMath";
+import {
+  buildModelRiskFromSuggestion,
+  buildUseCaseRiskFromSuggestion,
+  recomputeAssessmentForLevel,
+} from "../services/intakeScoring/approvalRisks";
+import { createRiskService } from "../services/risk.service";
+import { createNewModelRiskQuery } from "../utils/modelRisk.utils";
+import { LIKELIHOODS, SEVERITIES } from "../services/intakeScoring/riskMappers";
+import type { IntakeSuggestedRisk } from "../services/intakeScoring/intakeSuggestions";
+import { selectRetryStages } from "../services/intakeScoring/retry";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
 
@@ -198,40 +226,6 @@ async function handleLlmKeyRequest(
 // EU AI ACT RISK STEP HELPERS
 // ============================================================================
 
-/**
- * Scores a stored classification run again under its own questionnaire version.
- * Returns null when the version is unknown to this server or the stored answers
- * no longer validate against it (e.g. an option was removed), so callers treat
- * it as no run. The run is handed back with its questionnaire and result so a
- * caller branches on this one value; its answers are the validated ones, so
- * answers to questions now hidden are neither scored nor copied.
- */
-function rescoreStoredRun<
-  R extends { id?: number; questionnaireVersion: number; answers: Answers },
->(run: R): { run: R; questionnaire: Questionnaire; result: ClassificationResult } | null {
-  const questionnaire = getQuestionnaire(run.questionnaireVersion);
-  if (!questionnaire) return null;
-  const { errors, answers } = validateAnswers(questionnaire, run.answers);
-  if (errors.length > 0) {
-    logger.warn(
-      `EU AI Act classification run ${run.id} no longer validates; treating it as no run: ${errors.join("; ")}`,
-    );
-    return null;
-  }
-  try {
-    return {
-      run: { ...run, answers },
-      questionnaire,
-      result: scoreClassification(run.questionnaireVersion, answers),
-    };
-  } catch (error) {
-    logger.warn(
-      `EU AI Act classification run ${run.id} could not be re-scored; treating it as no run: ${(error as Error).message}`,
-    );
-    return null;
-  }
-}
-
 /** Stores the scored EU AI Act answers of a public submission as its classification run. */
 async function persistIntakeRiskRun(
   submissionId: number,
@@ -289,6 +283,232 @@ async function buildPublicRiskStep(
     euAiActRiskStep: { questionnaire },
     previousRiskAnswers,
   };
+}
+
+/**
+ * Queue a new public submission's AI assessment. The job emails the reviewers
+ * once results are in, or after two minutes. If it cannot be queued, they are
+ * emailed now without results, so a submission is never silent; the claim
+ * keeps it to one email even if part of the job did get queued. Not awaited by
+ * the handlers: a slow or unavailable queue never delays the submitter.
+ */
+function startIntakeAssessment(params: {
+  organizationId: number;
+  submissionId: number;
+  lang?: string;
+  recipientIds: number[];
+  /** Email the organization's admins when the form has no recipients. */
+  adminFallback: boolean;
+  formId: number;
+  formName: string;
+  submitterName: string;
+  submitterEmail: string;
+  entityType: IntakeEntityType;
+}): Promise<void> {
+  const { organizationId, submissionId, lang, recipientIds, adminFallback } = params;
+  return enqueueIntakeAssessment({
+    organizationId,
+    submissionId,
+    stages: ["scoring", "suggestions"],
+    notify: true,
+    lang,
+    adminFallback,
+  }).catch(async (error) => {
+    logger.error(
+      `Could not queue the assessment for submission ${submissionId}; emailing reviewers now:`,
+      error,
+    );
+    if (recipientIds.length === 0 && !adminFallback) {
+      logger.warn(
+        `No recipients configured for form ${params.formId}, skipping admin notification`,
+      );
+      return;
+    }
+    try {
+      if (!(await claimSubmissionNotificationQuery(submissionId, organizationId))) return;
+      await sendNewSubmissionAdminNotification(
+        recipientIds.length > 0 ? recipientIds : organizationId,
+        params.formName,
+        params.submitterName,
+        params.submitterEmail,
+        submissionId,
+        params.entityType,
+        lang,
+      );
+    } catch (err) {
+      logger.error("Failed to send admin notification:", err);
+    }
+  });
+}
+
+/**
+ * The EU AI Act level under the current questionnaire: the submission's stored
+ * run re-scored. Null when it has no run (step off, or a model).
+ */
+async function currentRulesLevel(
+  submissionId: number,
+  organizationId: number,
+  transaction?: Transaction,
+): Promise<ClassificationLevel | null> {
+  const run = await getLatestRunForSubmissionQuery(submissionId, organizationId, transaction);
+  const rescored = run ? rescoreStoredRun(run) : null;
+  return (rescored?.result.level ?? null) as ClassificationLevel | null;
+}
+
+/** The rule minimum under the current questionnaire. */
+async function currentRuleMinimum(
+  submissionId: number,
+  organizationId: number,
+  transaction?: Transaction,
+): Promise<number | null> {
+  return ruleMinimumFor(await currentRulesLevel(submissionId, organizationId, transaction));
+}
+
+/**
+ * On approve or reject, inside the decision's transaction: the job's writes
+ * are ignored once a submission is decided, so a stage still running is
+ * closed here (the score keeps the rule minimum, suggestions are marked
+ * failed). With `refloor`, a finished score is also re-floored under `level`.
+ */
+async function settleAssessmentOnDecision(
+  submission: IIntakeSubmission,
+  level: ClassificationLevel | null,
+  organizationId: number,
+  transaction: Transaction,
+  opts: { refloor: boolean },
+): Promise<void> {
+  const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
+  if (assessment && (opts.refloor || assessment.status === "pending")) {
+    const settled: IRiskAssessmentV2 =
+      assessment.status === "pending"
+        ? { ...assessment, status: "ai_failed", error: "Decided before AI scoring finished" }
+        : assessment;
+    await updateSubmissionAssessmentV2Query(
+      submission.id,
+      recomputeAssessmentForLevel(settled, level),
+      organizationId,
+      transaction,
+    );
+  }
+  if (submission.suggestedRisks?.status === "pending") {
+    await updateSubmissionSuggestionsQuery(
+      submission.id,
+      {
+        ...submission.suggestedRisks,
+        status: "ai_failed",
+        error: "Decided before risk suggestions finished",
+      },
+      organizationId,
+      transaction,
+    );
+  }
+}
+
+/**
+ * Null when `tier` is a score band at or above the band of `ruleMinimum`;
+ * otherwise the (translated) reason it is refused. The risk override and
+ * approve, the two places a reviewer sets a band, both go through this.
+ */
+function bandFloorError(req: Request, tier: unknown, ruleMinimum: number | null): string | null {
+  if (!SCORE_BANDS.some((b) => b.band === tier)) {
+    return req.t!("Invalid risk band");
+  }
+  if (!isBandAllowed(tier as ScoreBand, ruleMinimum)) {
+    return req.t!("The band can't be lower than the rule minimum allows");
+  }
+  return null;
+}
+
+/** A v2 score, or none yet: either way the reviewer sets a score band. */
+function usesScoreBands(submission: IIntakeSubmission): boolean {
+  return !submission.riskAssessment || isAssessmentV2(submission.riskAssessment);
+}
+
+/** bandFloorError against the rule minimum under the current rules. */
+async function checkBandAgainstFloor(
+  req: Request,
+  tier: unknown,
+  submissionId: number,
+): Promise<string | null> {
+  return bandFloorError(req, tier, await currentRuleMinimum(submissionId, req.organizationId!));
+}
+
+// ============================================================================
+// SUGGESTED RISK EDIT VALIDATION
+// ============================================================================
+
+const SUGGESTION_STATES: IntakeSuggestedRisk["state"][] = ["suggested", "accepted", "dismissed"];
+const SUGGESTION_TEXT_FIELDS = ["description", "mitigationPlan", "implementationStrategy"] as const;
+const MODEL_RISK_CATEGORIES = Object.values(ModelRiskCategory) as string[];
+const MODEL_RISK_LEVELS = Object.values(ModelRiskLevel) as string[];
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The reviewer-editable part of a suggested risk, validated. Only these keys
+ * are read from the body, so ids, sources and audit stamps can't be patched.
+ * Returns the field that failed when the body is invalid.
+ */
+export function parseSuggestionPatch(
+  body: Record<string, unknown>,
+  today: string,
+): { patch: Partial<IntakeSuggestedRisk> } | { invalid: string } {
+  const patch: Partial<IntakeSuggestedRisk> = {};
+
+  if (body.state !== undefined) {
+    if (!SUGGESTION_STATES.includes(body.state as IntakeSuggestedRisk["state"])) {
+      return { invalid: "state" };
+    }
+    patch.state = body.state as IntakeSuggestedRisk["state"];
+  }
+  if (body.name !== undefined) {
+    if (typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 200) {
+      return { invalid: "name" };
+    }
+    patch.name = body.name.trim();
+  }
+  for (const field of SUGGESTION_TEXT_FIELDS) {
+    const value = body[field];
+    if (value === undefined) continue;
+    if (typeof value !== "string" || value.trim().length > 1000) return { invalid: field };
+    patch[field] = value.trim();
+  }
+  if (body.likelihood !== undefined) {
+    if (!LIKELIHOODS.includes(body.likelihood as IntakeSuggestedRisk["likelihood"])) {
+      return { invalid: "likelihood" };
+    }
+    patch.likelihood = body.likelihood as IntakeSuggestedRisk["likelihood"];
+  }
+  if (body.severity !== undefined) {
+    if (!SEVERITIES.includes(body.severity as IntakeSuggestedRisk["severity"])) {
+      return { invalid: "severity" };
+    }
+    patch.severity = body.severity as IntakeSuggestedRisk["severity"];
+  }
+  if (body.deadline !== undefined) {
+    const d = body.deadline;
+    const valid =
+      d === null ||
+      (typeof d === "string" &&
+        ISO_DATE.test(d) &&
+        !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) &&
+        new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d &&
+        d >= today);
+    if (!valid) return { invalid: "deadline" };
+    patch.deadline = d as string | null;
+  }
+  if (body.modelRiskCategory !== undefined) {
+    if (!MODEL_RISK_CATEGORIES.includes(body.modelRiskCategory as string)) {
+      return { invalid: "modelRiskCategory" };
+    }
+    patch.modelRiskCategory = body.modelRiskCategory as ModelRiskCategory;
+  }
+  if (body.modelRiskLevel !== undefined) {
+    if (!MODEL_RISK_LEVELS.includes(body.modelRiskLevel as string)) {
+      return { invalid: "modelRiskLevel" };
+    }
+    patch.modelRiskLevel = body.modelRiskLevel as ModelRiskLevel;
+  }
+  return { patch };
 }
 
 // ============================================================================
@@ -466,34 +686,6 @@ function prepareSubmissionData(
 // ENTITY DATA MAPPING (fixes hardcoded mapper bug)
 // ============================================================================
 
-/**
- * Build entity data from submission using entityFieldMapping from schema fields.
- * This replaces the old mapSubmissionToProject / mapSubmissionToModelInventory
- * which used hardcoded keys like `data["project.project_title"]`.
- */
-function buildEntityDataFromSubmission(
-  submissionData: Record<string, unknown>,
-  formSchema: IIntakeFormSchema,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const field of formSchema.fields) {
-    if (!field.entityFieldMapping || submissionData[field.id] === undefined) continue;
-    if (field.entityFieldMapping === HIGH_RISK_ROLE_MAPPING) {
-      // A select stores option values; match each option by label or value.
-      // Options that name no role are kept by label for the review dialog.
-      const { roles, unmatched } = resolveMappedHighRiskRoles(
-        submissionData[field.id],
-        field.options,
-      );
-      result.high_risk_roles = roles;
-      result.high_risk_roles_unmatched = unmatched;
-      continue;
-    }
-    result[field.entityFieldMapping] = submissionData[field.id];
-  }
-  return result;
-}
-
 // ============================================================================
 // INTAKE FORM CONTROLLERS (Admin - Authenticated)
 // ============================================================================
@@ -636,7 +828,10 @@ export async function createIntakeForm(req: Request, res: Response) {
 
     const riskStep = resolveEuAiActRiskStep({
       entityType: entityType,
-      enabled: Boolean(euAiActRiskStepEnabled),
+      enabled:
+        euAiActRiskStepEnabled == null
+          ? defaultEuAiActRiskStepEnabled(entityType, schema)
+          : Boolean(euAiActRiskStepEnabled),
       schema: schema,
     });
     if (riskStep.errors.length > 0) {
@@ -1152,6 +1347,8 @@ export async function getSubmissionPreview(req: Request, res: Response) {
         }
       : null;
 
+    const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
+
     return res.status(200).json(
       STATUS_CODE[200]({
         submission,
@@ -1167,6 +1364,12 @@ export async function getSubmissionPreview(req: Request, res: Response) {
         riskOverride: submission.riskOverride,
         entityPreview: entityData,
         euAiActClassification,
+        assessment,
+        suggestedRisks: submission.suggestedRisks,
+        // The floor under the current rules; it differs from assessedLevel's
+        // when the questionnaire changed after scoring.
+        ruleMinimumPreview: ruleMinimumFor(rescored?.result.level ?? null),
+        assessedLevel: assessment?.classificationLevel ?? null,
       }),
     );
   } catch (error) {
@@ -1243,6 +1446,17 @@ export async function getSubmissionByEntity(req: Request, res: Response) {
         submittedAt: submission.createdAt,
         reviewedAt: submission.reviewedAt,
         riskTier: submission.riskTier,
+        // The AI-scored (v2) number behind riskTier, so the use case page can
+        // show "64 (High)" rather than a bare band.
+        riskScore: isAssessmentV2(submission.riskAssessment)
+          ? {
+              finalScore: submission.riskAssessment.finalScore,
+              rulesOnly: submission.riskAssessment.rulesOnly,
+              // the score's own band; riskTier holds an override's band if set
+              band: submission.riskAssessment.tier,
+            }
+          : null,
+        riskOverrideTier: submission.riskOverride?.tier ?? null,
         fields,
       }),
     );
@@ -1270,7 +1484,9 @@ export async function overrideSubmissionRisk(req: Request, res: Response) {
   }
 
   try {
-    const { tier, dimensionOverrides, justification } = req.body;
+    const { dimensionOverrides, justification } = req.body;
+    // A pre-v2 tier name is stored as its band, so every override is a band.
+    const tier = asBand(req.body.tier);
 
     if (!tier || !justification) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Tier and justification are required")));
@@ -1280,10 +1496,23 @@ export async function overrideSubmissionRisk(req: Request, res: Response) {
     if (!submission) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
     }
+    if (submission.status !== IntakeSubmissionStatus.PENDING) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("Only pending submissions can be changed")));
+    }
+
+    // A v2 score has bands, not dimensions, and a floor no reviewer goes below.
+    // A submission not scored yet will be scored as v2.
+    const isV2 = usesScoreBands(submission);
+    if (isV2) {
+      const floorError = await checkBandAgainstFloor(req, tier, submissionId);
+      if (floorError) return res.status(400).json(STATUS_CODE[400](floorError));
+    }
 
     const override = {
       tier,
-      dimensionOverrides: dimensionOverrides || {},
+      dimensionOverrides: isV2 ? {} : dimensionOverrides || {},
       justification,
       overriddenBy: req.userId!,
       overriddenAt: new Date().toISOString(),
@@ -1305,6 +1534,203 @@ export async function overrideSubmissionRisk(req: Request, res: Response) {
       .json(STATUS_CODE[200]({ message: req.t!("Risk override applied"), override }));
   } catch (error) {
     logger.error("Error in overrideSubmissionRisk:", error);
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Re-run the assessment stages that failed or were lost (pending for over 10
+ * minutes). Finished stages are never re-run. No email.
+ * POST /intake/submissions/:id/assessment/retry
+ */
+export async function retrySubmissionAssessment(req: Request, res: Response) {
+  const submissionId = parseId(req.params.id);
+  if (isNaN(submissionId)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid submission ID")));
+  }
+
+  try {
+    const submission = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+    if (!submission) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
+    }
+    if (submission.status !== IntakeSubmissionStatus.PENDING) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("Only pending submissions can be changed")));
+    }
+
+    const stages = selectRetryStages(
+      submission.riskAssessment,
+      submission.suggestedRisks,
+      new Date(),
+    );
+    if (stages.length === 0) {
+      return res.status(409).json(STATUS_CODE[409](req.t!("Nothing to retry")));
+    }
+
+    await enqueueIntakeAssessment({
+      organizationId: req.organizationId!,
+      submissionId,
+      stages,
+      notify: false,
+      lang: req.lang,
+    });
+
+    await logSuccess({
+      eventType: "Update",
+      description: `assessment retry queued for submission ${submissionId}: ${stages.join(", ")}`,
+      functionName: "retrySubmissionAssessment",
+      fileName: "intakeForm.ctrl.ts",
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+
+    return res.status(202).json(STATUS_CODE[202]({ stages }));
+  } catch (error) {
+    logger.error("Error in retrySubmissionAssessment:", error);
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Edit, accept, dismiss or restore one suggested risk.
+ * PATCH /intake/submissions/:id/suggested-risks/:suggestionId
+ */
+export async function updateSuggestedRisk(req: Request, res: Response) {
+  const submissionId = parseId(req.params.id);
+  const suggestionId = paramStr(req.params.suggestionId);
+  if (isNaN(submissionId)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid submission ID")));
+  }
+  if (!suggestionId || suggestionId.length > 100) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid suggestion ID")));
+  }
+
+  const parsed = parseSuggestionPatch(
+    (req.body ?? {}) as Record<string, unknown>,
+    new Date().toISOString().slice(0, 10),
+  );
+  if ("invalid" in parsed) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400](req.t!("Invalid value for {field}", { field: parsed.invalid })));
+  }
+  const { state, ...content } = parsed.patch;
+  if (state === undefined && Object.keys(content).length === 0) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Nothing to update")));
+  }
+
+  try {
+    const submission = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+    if (!submission) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
+    }
+    if (submission.status !== IntakeSubmissionStatus.PENDING) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("Only pending submissions can be changed")));
+    }
+    const current = submission.suggestedRisks?.items.find((i) => i.id === suggestionId);
+    if (!current) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Suggested risk not found")));
+    }
+    // The risk register requires a mitigation plan, so nothing is accepted
+    // without one, and an accepted risk can't have its plan cleared.
+    const resultingState = state ?? current.state;
+    if (
+      resultingState === "accepted" &&
+      !(content.mitigationPlan ?? current.mitigationPlan)?.trim()
+    ) {
+      return res
+        .status(400)
+        .json(STATUS_CODE[400](req.t!("Add a mitigation plan before accepting this risk")));
+    }
+
+    const now = new Date().toISOString();
+    const patch: Partial<IntakeSuggestedRisk> = {
+      ...content,
+      ...(Object.keys(content).length > 0 ? { editedBy: req.userId!, editedAt: now } : {}),
+      ...(state !== undefined ? { state, decidedBy: req.userId!, decidedAt: now } : {}),
+    };
+    const item = await updateSuggestedRiskItemQuery(
+      submissionId,
+      suggestionId,
+      patch,
+      req.organizationId!,
+    );
+    if (!item) {
+      // Decided, or changed by someone else (e.g. its plan cleared), between
+      // the read and the atomic write. Say which.
+      const latest = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+      const message =
+        latest && latest.status !== IntakeSubmissionStatus.PENDING
+          ? "Only pending submissions can be changed"
+          : "This suggestion changed. Reload and try again.";
+      return res.status(409).json(STATUS_CODE[409](req.t!(message)));
+    }
+
+    return res.status(200).json(STATUS_CODE[200](item));
+  } catch (error) {
+    logger.error("Error in updateSuggestedRisk:", error);
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Accept every suggestion still in "suggested". Dismissed ones stay dismissed;
+ * ones without a mitigation plan are skipped and counted.
+ * POST /intake/submissions/:id/suggested-risks/accept-all
+ */
+export async function acceptAllSuggestedRisks(req: Request, res: Response) {
+  const submissionId = parseId(req.params.id);
+  if (isNaN(submissionId)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid submission ID")));
+  }
+
+  try {
+    const submission = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+    if (!submission) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
+    }
+    if (submission.status !== IntakeSubmissionStatus.PENDING) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("Only pending submissions can be changed")));
+    }
+
+    const suggested = (submission.suggestedRisks?.items ?? []).filter(
+      (i) => i.state === "suggested",
+    ).length;
+    const accepted = await setAllSuggestionStatesQuery(
+      submissionId,
+      "suggested",
+      "accepted",
+      req.userId!,
+      req.organizationId!,
+      { requireMitigationPlan: true },
+    );
+    // The items as stored, so the client shows the server's states. A
+    // submission decided meanwhile accepted nothing, which is not "skipped".
+    const after = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+    if (!after) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
+    }
+    if (after.status !== IntakeSubmissionStatus.PENDING) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("Only pending submissions can be changed")));
+    }
+
+    return res.status(200).json(
+      STATUS_CODE[200]({
+        accepted,
+        skipped: Math.max(0, suggested - accepted),
+        items: after.suggestedRisks?.items ?? [],
+      }),
+    );
+  } catch (error) {
+    logger.error("Error in acceptAllSuggestedRisks:", error);
     return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
@@ -1434,15 +1860,47 @@ export async function approveSubmission(req: Request, res: Response) {
       };
     }
 
-    // Apply risk override if provided
-    if (riskOverride && riskOverride.tier && riskOverride.justification) {
+    // An AI-scored submission's score is re-floored under the level it is
+    // approved at, which a reviewer may have changed; running stages are
+    // closed. Risk_tier keeps an override's band (see the query).
+    const approvedLevel = (classification?.finalLevel ?? null) as ClassificationLevel | null;
+    await settleAssessmentOnDecision(submission, approvedLevel, req.organizationId!, transaction, {
+      refloor: true,
+    });
+
+    // The band override, from this request or saved earlier through
+    // PATCH /risk-override: on an AI-scored (or not yet scored) submission
+    // neither may sit below the approved level's rule minimum.
+    // A pre-v2 tier name counts as its band and is stored as it, on every
+    // submission, as PATCH /risk-override stores it.
+    const requestOverride = riskOverride && riskOverride.tier && riskOverride.justification;
+    const storedOverride = submission.riskOverride;
+    const bandToCheck = asBand(requestOverride ? riskOverride.tier : storedOverride?.tier);
+    const bandsApply = usesScoreBands(submission);
+    if (bandsApply && bandToCheck) {
+      const floorError = bandFloorError(req, bandToCheck, ruleMinimumFor(approvedLevel));
+      if (floorError) {
+        await transaction.rollback();
+        return res.status(400).json(STATUS_CODE[400](floorError));
+      }
+    }
+    if (requestOverride) {
       await updateSubmissionRiskOverrideQuery(
         submissionId,
         {
-          ...riskOverride,
+          tier: bandToCheck,
+          dimensionOverrides: bandsApply ? {} : riskOverride.dimensionOverrides || {},
+          justification: riskOverride.justification,
           overriddenBy: req.userId!,
           overriddenAt: new Date().toISOString(),
         },
+        req.organizationId!,
+        transaction,
+      );
+    } else if (storedOverride?.tier && bandToCheck !== storedOverride.tier) {
+      await updateSubmissionRiskOverrideQuery(
+        submissionId,
+        { ...storedOverride, tier: bandToCheck },
         req.organizationId!,
         transaction,
       );
@@ -1544,6 +2002,27 @@ export async function approveSubmission(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Unsupported entity type")));
     }
 
+    // The suggested risks reviewers accepted become real risks on the new
+    // entity, in this transaction: any failure rolls the approval back. The
+    // submission row is locked above, so no suggestion changes underneath.
+    const approval = { approverId: req.userId!, approvedAt: new Date(), submissionId };
+    for (const s of submission.suggestedRisks?.items ?? []) {
+      if (s.state !== "accepted") continue;
+      if (submission.entityType === IntakeEntityType.MODEL) {
+        await createNewModelRiskQuery(
+          buildModelRiskFromSuggestion(s, { ...approval, modelId: entityId }),
+          req.organizationId!,
+          transaction,
+        );
+      } else {
+        await createRiskService(
+          buildUseCaseRiskFromSuggestion(s, { ...approval, useCaseId: entityId }),
+          { userId: req.userId!, organizationId: req.organizationId! },
+          transaction,
+        );
+      }
+    }
+
     const updatedSubmission = await approveSubmissionQuery(
       submissionId,
       entityId,
@@ -1642,6 +2121,18 @@ export async function rejectSubmission(req: Request, res: Response) {
     const formPublicId = form?.publicId;
     const tenantSlug = await getTenantSlugById(req.organizationId!);
     const formSlug = form?.slug || "";
+
+    // Close any assessment stage still running; the job's later writes are
+    // ignored once the submission is decided.
+    const runningScore =
+      isAssessmentV2(submission.riskAssessment) && submission.riskAssessment.status === "pending";
+    await settleAssessmentOnDecision(
+      submission,
+      runningScore ? await currentRulesLevel(submissionId, req.organizationId!, transaction) : null,
+      req.organizationId!,
+      transaction,
+      { refloor: false },
+    );
 
     const updatedSubmission = await rejectSubmissionQuery(
       submissionId,
@@ -2101,34 +2592,19 @@ export async function submitPublicFormByPublicId(req: Request, res: Response) {
 
       // Get full form with recipients to send notifications
       const fullForm = await getIntakeFormByIdQuery(form.id, tenantInfo.orgId);
-      const recipientIds = (fullForm?.recipients as number[]) || [];
 
-      if (recipientIds.length > 0) {
-        sendNewSubmissionAdminNotification(
-          recipientIds,
-          form.name,
-          submissionName,
-          resolvedEmail || "No email provided",
-          submission.id,
-          form.entityType,
-          req.lang,
-        ).catch((err) => logger.error("Failed to send admin notification:", err));
-      } else {
-        logger.warn(`No recipients configured for form ${form.id}, skipping admin notification`);
-      }
-
-      // Trigger async risk scoring
-      if (fullForm) {
-        calculateSubmissionRisk(
-          cleanedData,
-          fullForm.schema,
-          fullForm.riskTierSystem || "eu_ai_act",
-          fullForm.llmKeyId,
-          tenantInfo.orgId,
-        )
-          .then((result) => updateSubmissionRiskQuery(submission.id, result, tenantInfo.orgId))
-          .catch((err) => logger.error("Risk scoring failed:", err));
-      }
+      void startIntakeAssessment({
+        organizationId: tenantInfo.orgId,
+        submissionId: submission.id!,
+        lang: req.lang,
+        recipientIds: (fullForm?.recipients as number[]) || [],
+        adminFallback: false,
+        formId: form.id,
+        formName: form.name,
+        submitterName: submissionName,
+        submitterEmail: resolvedEmail || "No email provided",
+        entityType: form.entityType,
+      });
 
       return res.status(201).json(
         STATUS_CODE[201]({
@@ -2454,45 +2930,21 @@ export async function submitPublicForm(req: Request, res: Response) {
         ).catch((err) => logger.error("Failed to send submission received email:", err));
       }
 
-      // Use per-form recipients
+      // Use per-form recipients; this route falls back to org admins without them
       const fullForm = await getIntakeFormByIdQuery(form.id, tenantInfo.id);
-      const recipientIds = (fullForm?.recipients as number[]) || [];
 
-      if (recipientIds.length > 0) {
-        sendNewSubmissionAdminNotification(
-          recipientIds,
-          form.name,
-          submissionName,
-          resolvedEmail || "No email provided",
-          submission.id,
-          form.entityType,
-          req.lang,
-        ).catch((err) => logger.error("Failed to send admin notification:", err));
-      } else {
-        // Fallback to org admins
-        sendNewSubmissionAdminNotification(
-          tenantInfo.id,
-          form.name,
-          submissionName,
-          resolvedEmail || "No email provided",
-          submission.id,
-          form.entityType,
-          req.lang,
-        ).catch((err) => logger.error("Failed to send admin notification:", err));
-      }
-
-      // Trigger async risk scoring
-      if (fullForm) {
-        calculateSubmissionRisk(
-          cleanedData,
-          fullForm.schema,
-          fullForm.riskTierSystem || "eu_ai_act",
-          fullForm.llmKeyId,
-          tenantInfo.id,
-        )
-          .then((result) => updateSubmissionRiskQuery(submission.id, result, tenantInfo.id))
-          .catch((err) => logger.error("Risk scoring failed:", err));
-      }
+      void startIntakeAssessment({
+        organizationId: tenantInfo.id,
+        submissionId: submission.id!,
+        lang: req.lang,
+        recipientIds: (fullForm?.recipients as number[]) || [],
+        adminFallback: true,
+        formId: form.id,
+        formName: form.name,
+        submitterName: submissionName,
+        submitterEmail: resolvedEmail || "No email provided",
+        entityType: form.entityType,
+      });
 
       return res.status(201).json(
         STATUS_CODE[201]({

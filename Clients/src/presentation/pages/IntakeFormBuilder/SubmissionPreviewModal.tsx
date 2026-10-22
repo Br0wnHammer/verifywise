@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Box,
   Typography,
@@ -19,9 +19,28 @@ import {
   getSubmissionPreview,
   approveSubmission,
   rejectSubmission,
+  retrySubmissionAssessment,
   RiskAssessment,
+  RiskAssessmentV2,
+  RiskOverride,
+  SuggestedRisksBlock,
   FormSchema,
 } from "../../../application/repository/intakeForm.repository";
+import useUsers from "../../../application/hooks/useUsers";
+import { isAssessmentV2 } from "../../../application/utils/intakeScoring/isAssessmentV2";
+import {
+  asBand,
+  bandOfTier,
+  isBandAllowed,
+  lowestAllowedBand,
+  ruleMinimumFor,
+  SCORE_BANDS,
+  type ClassificationLevel,
+  type ScoreBand,
+} from "../../../application/utils/intakeScoring/scoreMath";
+import ScoreSection from "./assessment/ScoreSection";
+import SuggestedRisksSection from "./assessment/SuggestedRisksSection";
+import { isRetryable } from "./assessment/scoreView";
 import useFormattedDate from "../../../application/hooks/useFormattedDate";
 import { formatAnswer } from "../../../application/utils/intakeAnswerFormat";
 import { isEmptyAnswer, sortFields } from "../../../application/utils/intakeFormLogic";
@@ -58,7 +77,7 @@ interface SubmissionPreviewModalProps {
 }
 
 interface PreviewData {
-  riskAssessment: RiskAssessment | null;
+  riskAssessment: RiskAssessment | RiskAssessmentV2 | null;
   entityPreview: Record<string, unknown>;
   formSchema: FormSchema;
   formName: string;
@@ -66,7 +85,17 @@ interface PreviewData {
   submissionStatus: string;
   euAiActClassification: EuAiActClassificationData | null;
   submissionData: Record<string, unknown>;
+  assessment: RiskAssessmentV2 | null;
+  suggestedRisks: SuggestedRisksBlock | null;
+  assessedLevel: ClassificationLevel | null;
+  riskOverride: RiskOverride | null;
 }
+
+/** How often, and for how long, the modal re-reads a running assessment. */
+const POLL_INTERVAL_MS = 5000;
+// A little past the 10 minutes after which a stuck stage can be retried, so
+// Retry appears while the modal stays open.
+const POLL_LIMIT_MS = 11 * 60 * 1000;
 
 // ============================================================================
 // Helpers
@@ -198,6 +227,11 @@ interface OverrideSectionProps {
   overrideJustification: string;
   onTierChange: (tier: string) => void;
   onJustificationChange: (value: string) => void;
+  /**
+   * Set for AI-scored (v2) submissions: the score bands, with those below the
+   * band of this rule minimum disabled. Undefined keeps the v1 tier list.
+   */
+  bandFloor?: { ruleMinimum: number | null };
 }
 
 function OverrideSection({
@@ -205,23 +239,39 @@ function OverrideSection({
   overrideJustification,
   onTierChange,
   onJustificationChange,
+  bandFloor,
 }: OverrideSectionProps) {
-  const tierItems = [
-    { _id: "Low", name: "Low / Minimal" },
-    { _id: "Medium", name: "Medium / Limited" },
-    { _id: "High", name: "High" },
-    { _id: "Critical", name: "Critical / Unacceptable" },
-  ];
+  const theme = useTheme();
+  const tierItems = bandFloor
+    ? SCORE_BANDS.map(({ band }) => ({
+        _id: band,
+        name: band,
+        disabled: !isBandAllowed(band, bandFloor.ruleMinimum),
+      }))
+    : [
+        { _id: "Low", name: "Low / Minimal" },
+        { _id: "Medium", name: "Medium / Limited" },
+        { _id: "High", name: "High" },
+        { _id: "Critical", name: "Critical / Unacceptable" },
+      ];
+  const floorApplies = !!bandFloor && lowestAllowedBand(bandFloor.ruleMinimum) !== "Low";
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: "16px", pt: 1 }}>
-      <Select
-        id="override-tier"
-        label="Override tier"
-        value={overrideTier}
-        onChange={(e) => onTierChange(String(e.target.value))}
-        items={tierItems}
-      />
+      <Box sx={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        <Select
+          id="override-tier"
+          label={bandFloor ? "Override band" : "Override tier"}
+          value={overrideTier}
+          onChange={(e) => onTierChange(String(e.target.value))}
+          items={tierItems}
+        />
+        {floorApplies && (
+          <Typography sx={{ fontSize: "12px", color: theme.palette.text.tertiary }}>
+            Can't be lower than the rule minimum allows
+          </Typography>
+        )}
+      </Box>
       <Box>
         <Field
           id="override-justification"
@@ -254,6 +304,7 @@ function SubmissionPreviewModal({
 }: SubmissionPreviewModalProps) {
   const theme = useTheme();
   const formatDate = useFormattedDate();
+  const { users } = useUsers();
   // Fetch state
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -281,6 +332,16 @@ function SubmissionPreviewModal({
   const [rejectReason, setRejectReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
 
+  // Stage start times seen at Retry: polling runs until one changes (the job
+  // started), then follows the stage status.
+  const [retryMarker, setRetryMarker] = useState<string | null>(null);
+
+  // The submission on screen, so a late refresh for another one is dropped.
+  const openIdRef = useRef(submissionId);
+  useEffect(() => {
+    openIdRef.current = submissionId;
+  }, [submissionId]);
+
   // Fetch preview when submissionId changes
   useEffect(() => {
     if (!isOpen || submissionId === null) {
@@ -305,6 +366,7 @@ function SubmissionPreviewModal({
       setShowOtherAnswers(false);
       setRejectReason("");
       setIsRejecting(false);
+      setRetryMarker(null);
 
       try {
         const response = await getSubmissionPreview(submissionId as number, controller.signal);
@@ -321,8 +383,21 @@ function SubmissionPreviewModal({
           submissionStatus: sub?.status ?? "pending",
           euAiActClassification: response.data.euAiActClassification ?? null,
           submissionData: sub?.data ?? {},
+          assessment: response.data.assessment ?? null,
+          suggestedRisks: response.data.suggestedRisks ?? null,
+          assessedLevel: response.data.assessedLevel ?? null,
+          riskOverride: response.data.riskOverride ?? null,
         });
         setEuAiActLevel(response.data.euAiActClassification?.current.level ?? "");
+        // A band override saved earlier opens in the override panel, so a
+        // conflict with the rule minimum shows before approving.
+        // A pre-v2 tier opens as the band covering the same scores.
+        const storedOverride = response.data.riskOverride;
+        if (storedOverride?.tier) {
+          setOverrideExpanded(true);
+          setOverrideTier(bandOfTier(storedOverride.tier) ?? "High");
+          setOverrideJustification(storedOverride.justification ?? "");
+        }
         setEditedEntityData({ ...(entityPreview || {}) });
       } catch {
         if (cancelled) return;
@@ -339,6 +414,64 @@ function SubmissionPreviewModal({
       controller.abort();
     };
   }, [isOpen, submissionId]);
+
+  // Re-read only the AI assessment parts, so the reviewer's edits stay. Once
+  // suggestions are complete only the reviewer's own (server-confirmed)
+  // actions change them, so a poll read before an action can't undo it.
+  const refreshAssessment = useCallback(async () => {
+    if (submissionId === null) return;
+    const response = await getSubmissionPreview(submissionId);
+    if (openIdRef.current !== submissionId) return;
+    setPreviewData((prev) =>
+      prev
+        ? {
+            ...prev,
+            riskAssessment: response.data.riskAssessment,
+            assessment: response.data.assessment ?? null,
+            suggestedRisks:
+              prev.suggestedRisks?.status === "complete"
+                ? prev.suggestedRisks
+                : (response.data.suggestedRisks ?? null),
+            assessedLevel: response.data.assessedLevel ?? null,
+          }
+        : prev,
+    );
+  }, [submissionId]);
+
+  // While a stage runs, or a retried job hasn't started yet, poll every 5 s
+  // for up to 11 minutes.
+  const stageStamp = `${previewData?.assessment?.stageStartedAt ?? ""}|${
+    previewData?.suggestedRisks?.stageStartedAt ?? ""
+  }`;
+  const stageRunning =
+    previewData?.assessment?.status === "pending" ||
+    previewData?.suggestedRisks?.status === "pending" ||
+    retryMarker === stageStamp;
+  useEffect(() => {
+    if (!isOpen || !stageRunning) return;
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - startedAt > POLL_LIMIT_MS) {
+        clearInterval(timer);
+        return;
+      }
+      refreshAssessment().catch(() => undefined);
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [isOpen, stageRunning, refreshAssessment]);
+
+  async function handleRetry() {
+    if (submissionId === null) return;
+    try {
+      await retrySubmissionAssessment(submissionId);
+      setRetryMarker(stageStamp);
+      await refreshAssessment();
+    } catch (err) {
+      setApproveError(
+        serverErrorMessage(err) ?? "Couldn't retry the assessment. Please try again.",
+      );
+    }
+  }
 
   // Handle entity field edits
   function handleFieldChange(fieldKey: string, value: string) {
@@ -378,10 +511,16 @@ function SubmissionPreviewModal({
         confirmedEntityData: editedEntityData,
       };
 
-      if (overrideExpanded && overrideTier) {
+      // A saved override sent back unchanged would credit it to the approver.
+      const saved = previewData?.riskOverride;
+      const overrideUnchanged =
+        !!saved &&
+        asBand(saved.tier) === effectiveOverrideTier &&
+        (saved.justification ?? "") === overrideJustification;
+      if (overrideExpanded && effectiveOverrideTier && !overrideUnchanged) {
         payload.riskOverride = {
-          tier: overrideTier,
-          justification: overrideJustification || `Manual override to ${overrideTier}`,
+          tier: effectiveOverrideTier,
+          justification: overrideJustification || `Manual override to ${effectiveOverrideTier}`,
         };
       }
 
@@ -464,6 +603,43 @@ function SubmissionPreviewModal({
   // Render
   const isPending = previewData?.submissionStatus === "pending";
 
+  // AI-scored (v2) submissions: the score follows the level the reviewer has
+  // selected, and so does the lowest band an override may set.
+  const isModel = previewData?.entityType === "model";
+  const assessmentV2 = previewData?.assessment ?? null;
+  const selectedLevel = (
+    !isModel && euAiActLevel ? euAiActLevel : null
+  ) as ClassificationLevel | null;
+  // A submission not scored yet is scored as v2, so the server holds the
+  // override to the floor already.
+  const bandsApply = !!previewData && (!previewData.riskAssessment || !!assessmentV2);
+  const bandFloor = bandsApply ? { ruleMinimum: ruleMinimumFor(selectedLevel) } : undefined;
+  const effectiveOverrideTier =
+    bandFloor && !isBandAllowed(overrideTier as ScoreBand, bandFloor.ruleMinimum)
+      ? lowestAllowedBand(bandFloor.ruleMinimum)
+      : overrideTier;
+  // No stored assessment (or no suggestions block) means the job never ran,
+  // e.g. the queue was down at submit; the server retries those too.
+  const neverQueued =
+    !previewData?.riskAssessment || (!!assessmentV2 && !previewData?.suggestedRisks);
+  const retryAvailable =
+    isPending &&
+    (isRetryable(assessmentV2) || isRetryable(previewData?.suggestedRisks ?? null) || neverQueued);
+  const questionLabels = Object.fromEntries(
+    (previewData?.formSchema?.fields ?? []).map((f) => [f.id, f.label]),
+  );
+  const storedOverride = previewData?.riskOverride ?? null;
+  const overrider = storedOverride
+    ? users.find((u) => u.id === storedOverride.overriddenBy)
+    : undefined;
+  const overrideView = storedOverride
+    ? {
+        tier: asBand(storedOverride.tier),
+        justification: storedOverride.justification,
+        byName: overrider ? `${overrider.name} ${overrider.surname ?? ""}`.trim() : null,
+      }
+    : null;
+
   // ============================================================================
 
   return (
@@ -528,7 +704,35 @@ function SubmissionPreviewModal({
               </Typography>
             </Box>
 
-            <RiskSection riskAssessment={previewData?.riskAssessment ?? null} />
+            {!assessmentV2 && !previewData?.riskAssessment && !isPending ? (
+              // Decided before any assessment was stored: nothing will run now.
+              <Typography sx={{ fontSize: "13px", color: theme.palette.text.tertiary }}>
+                No risk score was recorded for this submission.
+              </Typography>
+            ) : assessmentV2 || !previewData?.riskAssessment ? (
+              <ScoreSection
+                assessment={assessmentV2}
+                selectedLevel={selectedLevel}
+                rulesLevel={
+                  isModel ? null : ((euAiAct?.current.level ?? null) as ClassificationLevel | null)
+                }
+                assessedLevel={previewData?.assessedLevel ?? null}
+                levelReasons={euAiAct?.current.reasons ?? []}
+                isModel={isModel}
+                questionLabels={questionLabels}
+                override={overrideView}
+                onRetry={handleRetry}
+                retryAvailable={retryAvailable}
+              />
+            ) : (
+              <RiskSection
+                riskAssessment={
+                  isAssessmentV2(previewData?.riskAssessment)
+                    ? null
+                    : (previewData?.riskAssessment ?? null)
+                }
+              />
+            )}
 
             {/* Override toggle — only for pending submissions */}
             {isPending && (
@@ -563,10 +767,11 @@ function SubmissionPreviewModal({
                 <Collapse in={overrideExpanded} timeout="auto" unmountOnExit>
                   <Box sx={{ mt: 2 }}>
                     <OverrideSection
-                      overrideTier={overrideTier}
+                      overrideTier={effectiveOverrideTier}
                       overrideJustification={overrideJustification}
                       onTierChange={setOverrideTier}
                       onJustificationChange={setOverrideJustification}
+                      bandFloor={bandFloor}
                     />
                   </Box>
                 </Collapse>
@@ -583,6 +788,40 @@ function SubmissionPreviewModal({
               justification={euAiActJustification}
               onJustificationChange={setEuAiActJustification}
             />
+          )}
+
+          {submissionId !== null && (assessmentV2 || previewData?.suggestedRisks) && (
+            <Box
+              sx={{
+                border: `1px solid ${theme.palette.border.dark}`,
+                borderRadius: "4px",
+                p: "20px",
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: theme.palette.text.primary,
+                  mb: "12px",
+                }}
+              >
+                Suggested risks
+              </Typography>
+              <SuggestedRisksSection
+                submissionId={submissionId}
+                block={previewData?.suggestedRisks ?? null}
+                isModel={isModel}
+                readOnly={!isPending}
+                onChange={(update) =>
+                  setPreviewData((prev) =>
+                    prev?.suggestedRisks
+                      ? { ...prev, suggestedRisks: update(prev.suggestedRisks) }
+                      : prev,
+                  )
+                }
+              />
+            </Box>
           )}
 
           {/* ------------------------------------------------------------------ */}

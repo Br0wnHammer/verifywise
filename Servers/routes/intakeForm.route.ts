@@ -21,6 +21,9 @@ import {
   rejectSubmission,
   getSubmissionPreview,
   overrideSubmissionRisk,
+  retrySubmissionAssessment,
+  updateSuggestedRisk,
+  acceptAllSuggestedRisks,
   getSubmissionByEntity,
   // LLM feature controllers (admin)
   getLLMSuggestedQuestions,
@@ -71,6 +74,25 @@ router.patch(
   authenticateJWT,
   authorize("intakeForm.edit"),
   overrideSubmissionRisk,
+);
+router.post(
+  "/submissions/:id/assessment/retry",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  retrySubmissionAssessment,
+);
+// accept-all is registered before :suggestionId so it is not read as an id
+router.post(
+  "/submissions/:id/suggested-risks/accept-all",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  acceptAllSuggestedRisks,
+);
+router.patch(
+  "/submissions/:id/suggested-risks/:suggestionId",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  updateSuggestedRisk,
 );
 router.get("/forms/:id/submissions", authenticateJWT, getFormSubmissions);
 router.post(

@@ -15,6 +15,7 @@ import type {
   FormDesignSettings,
 } from "../../presentation/pages/IntakeFormBuilder/types";
 import type { Visibility } from "../utils/intakeFormLogic";
+import type { ClassificationLevel, ScoreBand, ScoreSource } from "../utils/intakeScoring/scoreMath";
 
 // Re-export enums for convenience
 export { IntakeFormStatus, IntakeEntityType, IntakeSubmissionStatus };
@@ -141,6 +142,96 @@ export interface RiskAssessment {
   scoredAt: string;
 }
 
+/** A stage of the AI assessment (scoring, suggestions). */
+export type StageStatus = "pending" | "complete" | "ai_not_configured" | "ai_failed";
+
+/** A reason the AI gave, with the answer it quoted. */
+export interface AiReason {
+  text: string;
+  questionId: string;
+  excerpt: string;
+}
+
+/** The rule-floored, AI-assisted score (risk_assessment version 2). */
+export interface RiskAssessmentV2 {
+  version: 2;
+  status: StageStatus;
+  notRuleChecked: boolean;
+  classificationLevel: ClassificationLevel | null;
+  ruleMinimum: number | null;
+  ai: {
+    runs: number[];
+    failedRuns: number;
+    validRuns: number;
+    median: number | null;
+    min: number | null;
+    max: number | null;
+    reasons: AiReason[];
+  } | null;
+  finalScore: number | null;
+  source: ScoreSource | null;
+  rulesOnly: boolean;
+  overallScore: number | null;
+  tier: ScoreBand | null;
+  stageStartedAt: string;
+  scoredAt: string | null;
+  error?: string;
+}
+
+export type SuggestionLikelihood = "Rare" | "Unlikely" | "Possible" | "Likely" | "Almost Certain";
+export type SuggestionSeverity = "Negligible" | "Minor" | "Moderate" | "Major" | "Catastrophic";
+export type SuggestionState = "suggested" | "accepted" | "dismissed";
+
+/** A risk suggested for a submission; becomes a real risk only on approve. */
+export interface IntakeSuggestedRisk {
+  id: string;
+  source: "mit" | "ibm" | "ai";
+  name: string;
+  description: string;
+  categories: string[];
+  lifecyclePhase?: string;
+  likelihood: SuggestionLikelihood;
+  severity: SuggestionSeverity;
+  impact: string;
+  mitigationPlan: string;
+  implementationStrategy: string;
+  /** ISO date; null means approval + 90 days. */
+  deadline: string | null;
+  modelRiskCategory?: string;
+  modelRiskLevel?: string;
+  state: SuggestionState;
+  editedBy?: number;
+  editedAt?: string;
+  decidedBy?: number;
+  decidedAt?: string;
+}
+
+export interface SuggestedRisksBlock {
+  status: StageStatus;
+  items: IntakeSuggestedRisk[];
+  droppedCount: number;
+  stageStartedAt: string;
+  generatedAt: string | null;
+  error?: string;
+}
+
+/** The fields a reviewer may change on a suggestion. */
+export type SuggestedRiskPatch = Partial<
+  Pick<
+    IntakeSuggestedRisk,
+    | "state"
+    | "name"
+    | "description"
+    | "likelihood"
+    | "severity"
+    | "mitigationPlan"
+    | "implementationStrategy"
+    | "deadline"
+    | "modelRiskCategory"
+    | "modelRiskLevel"
+  >
+>;
+
 /**
  * Risk override data
  */
@@ -173,9 +264,10 @@ export interface IntakeSubmission {
   originalSubmissionId?: number | null;
   resubmissionCount: number;
   ipAddress?: string;
-  riskAssessment?: RiskAssessment | null;
+  riskAssessment?: RiskAssessment | RiskAssessmentV2 | null;
   riskTier?: string | null;
   riskOverride?: RiskOverride | null;
+  suggestedRisks?: SuggestedRisksBlock | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -330,48 +422,78 @@ export async function getPendingSubmissions(
   };
 }
 
+/** What the review modal loads for one submission. */
+export interface SubmissionPreview {
+  submission: IntakeSubmission;
+  /** v1 keyword score or v2 AI score, as stored. */
+  riskAssessment: RiskAssessment | RiskAssessmentV2 | null;
+  entityPreview: Record<string, unknown>;
+  form: {
+    id: number;
+    name: string;
+    entityType: string;
+    schema: FormSchema;
+    riskTierSystem?: string;
+  };
+  riskTier?: string | null;
+  riskOverride?: RiskOverride | null;
+  euAiActClassification?: EuAiActClassificationPreview | null;
+  /** The v2 assessment, or null for v1 / none. */
+  assessment?: RiskAssessmentV2 | null;
+  suggestedRisks?: SuggestedRisksBlock | null;
+  /** The rule minimum under the current rules. */
+  ruleMinimumPreview?: number | null;
+  /** The level the AI was given when the score was computed. */
+  assessedLevel?: ClassificationLevel | null;
+}
+
 /**
  * Get submission preview (risk assessment + entity preview) for approval flow
  */
 export async function getSubmissionPreview(
   submissionId: number,
   signal?: AbortSignal,
-): Promise<{
-  data: {
-    submission: IntakeSubmission;
-    riskAssessment: RiskAssessment | null;
-    entityPreview: Record<string, unknown>;
-    form: {
-      id: number;
-      name: string;
-      entityType: string;
-      schema: FormSchema;
-      riskTierSystem?: string;
-    };
-    riskTier?: string | null;
-    riskOverride?: RiskOverride | null;
-    euAiActClassification?: EuAiActClassificationPreview | null;
-  };
-}> {
+): Promise<{ data: SubmissionPreview }> {
   const response = await apiServices.get(`${BASE_URL}/submissions/${submissionId}/preview`, {
     signal,
   });
+  return response.data as { data: SubmissionPreview };
+}
+
+/** Re-run the assessment stages that failed or stalled. */
+export async function retrySubmissionAssessment(
+  submissionId: number,
+): Promise<{ data: { stages: string[] } }> {
+  const response = await apiServices.post(
+    `${BASE_URL}/submissions/${submissionId}/assessment/retry`,
+    {},
+  );
+  return response.data as { data: { stages: string[] } };
+}
+
+/** Edit, accept, dismiss or restore one suggested risk. Returns the updated item. */
+export async function updateSuggestedRisk(
+  submissionId: number,
+  suggestionId: string,
+  patch: SuggestedRiskPatch,
+): Promise<{ data: IntakeSuggestedRisk }> {
+  const response = await apiServices.patch(
+    `${BASE_URL}/submissions/${submissionId}/suggested-risks/${encodeURIComponent(suggestionId)}`,
+    patch,
+  );
+  return response.data as { data: IntakeSuggestedRisk };
+}
+
+/** Accept every suggestion still in "suggested" that has a mitigation plan. */
+export async function acceptAllSuggestedRisks(
+  submissionId: number,
+): Promise<{ data: { accepted: number; skipped: number; items: IntakeSuggestedRisk[] } }> {
+  const response = await apiServices.post(
+    `${BASE_URL}/submissions/${submissionId}/suggested-risks/accept-all`,
+    {},
+  );
   return response.data as {
-    data: {
-      submission: IntakeSubmission;
-      riskAssessment: RiskAssessment | null;
-      entityPreview: Record<string, unknown>;
-      form: {
-        id: number;
-        name: string;
-        entityType: string;
-        schema: FormSchema;
-        riskTierSystem?: string;
-      };
-      riskTier?: string | null;
-      riskOverride?: RiskOverride | null;
-      euAiActClassification?: EuAiActClassificationPreview | null;
-    };
+    data: { accepted: number; skipped: number; items: IntakeSuggestedRisk[] };
   };
 }
 
@@ -444,6 +566,11 @@ export interface EntityIntakeSubmission {
   submittedAt: string;
   reviewedAt: string | null;
   riskTier: string | null;
+  /** Set for AI-scored (v2) submissions; null for older ones. */
+  /** riskTier is the override's band when a reviewer set one; band is the score's own. */
+  riskScore?: { finalScore: number | null; rulesOnly: boolean; band?: string | null } | null;
+  /** A reviewer's band override, if any. */
+  riskOverrideTier?: string | null;
   fields: IntakeSubmissionField[];
 }
 

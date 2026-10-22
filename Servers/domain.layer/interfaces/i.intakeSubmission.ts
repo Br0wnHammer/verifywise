@@ -1,5 +1,12 @@
 import { IntakeSubmissionStatus } from "../enums/intake-submission-status.enum";
 import { IntakeEntityType } from "../enums/intake-entity-type.enum";
+import type {
+  ClassificationLevel,
+  ScoreBand,
+  ScoreSource,
+} from "../../services/intakeScoring/scoreMath";
+import type { AiReason } from "../../services/intakeScoring/aiScoring";
+import type { IntakeSuggestedRisk } from "../../services/intakeScoring/intakeSuggestions";
 
 /**
  * Submission data stored as JSONB
@@ -19,14 +26,72 @@ export interface IRiskDimension {
 }
 
 /**
- * Risk assessment result stored on submission
+ * Legacy (dimension-based) risk assessment stored on submission
  */
-export interface IRiskAssessment {
+export interface IRiskAssessmentV1 {
   dimensions: IRiskDimension[];
   overallScore: number;
   tier: string;
   tierSystem: string;
   llmEnhanced: boolean;
+}
+
+/** Progress of one background stage (scoring or suggestions). */
+export type StageStatus = "pending" | "complete" | "ai_not_configured" | "ai_failed";
+
+/**
+ * AI-assisted risk assessment (version 2): final score is
+ * max(rule minimum, AI median).
+ */
+export interface IRiskAssessmentV2 {
+  version: 2;
+  status: StageStatus;
+  notRuleChecked: boolean;
+  classificationLevel: ClassificationLevel | null;
+  ruleMinimum: number | null;
+  ai: {
+    runs: number[];
+    failedRuns: number;
+    validRuns: number;
+    median: number | null;
+    min: number | null;
+    max: number | null;
+    reasons: AiReason[];
+  } | null;
+  finalScore: number | null;
+  source: ScoreSource | null;
+  rulesOnly: boolean;
+  /** Equals finalScore; keeps list and stats code working. */
+  overallScore: number | null;
+  /** Equals bandFor(finalScore). */
+  tier: ScoreBand | null;
+  stageStartedAt: string;
+  scoredAt: string | null;
+  error?: string;
+}
+
+export type IRiskAssessment = IRiskAssessmentV1 | IRiskAssessmentV2;
+
+export function isAssessmentV2(
+  assessment: IRiskAssessment | null,
+): assessment is IRiskAssessmentV2 {
+  return (
+    assessment !== null &&
+    typeof assessment === "object" &&
+    (assessment as { version?: unknown }).version === 2
+  );
+}
+
+/**
+ * Suggested risks block stored on submission (suggested_risks JSONB)
+ */
+export interface ISuggestedRisksBlock {
+  status: StageStatus;
+  items: IntakeSuggestedRisk[];
+  droppedCount: number;
+  stageStartedAt: string;
+  generatedAt: string | null;
+  error?: string;
 }
 
 /**
@@ -61,6 +126,8 @@ export interface IIntakeSubmission {
   riskAssessment: IRiskAssessment | null;
   riskTier: string | null;
   riskOverride: IRiskOverride | null;
+  suggestedRisks: ISuggestedRisksBlock | null;
+  notificationSentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
