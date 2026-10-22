@@ -122,8 +122,20 @@ function SuggestedRisksSection({
     try {
       const response = await acceptAllSuggestedRisks(submissionId);
       // The items as the server stored them.
-      onChange((latest) => ({ ...latest, items: response.data.items }));
+      // The items as the server stored them; the server accepts exactly the
+      // suggested ones with a mitigation plan, which is the fallback.
+      const stored = response.data.items;
+      onChange((latest) => ({
+        ...latest,
+        items:
+          stored ??
+          latest.items.map((i) =>
+            i.state === "suggested" && hasMitigation(i) ? { ...i, state: "accepted" } : i,
+          ),
+      }));
       setSkippedNote(response.data.skipped);
+      // Accepting may settle a risk whose own save had failed.
+      setError(null);
     } catch {
       setErrorKey(ACCEPT_ALL);
       setError("Couldn't accept the suggestions. Please try again.");
@@ -144,7 +156,7 @@ function SuggestedRisksSection({
             variant="outlined"
             size="small"
             text="Accept all"
-            isDisabled={!canAcceptAll || acceptingAll}
+            isDisabled={!canAcceptAll || acceptingAll || busyIds.size > 0}
             loading={acceptingAll}
             onClick={acceptAll}
             testId="suggested-risks-accept-all"
@@ -153,7 +165,9 @@ function SuggestedRisksSection({
       </Box>
 
       {current.items.map((risk) => {
-        const busy = busyIds.has(risk.id);
+        // Accept all and single-risk saves never overlap: one would overwrite
+        // the other's result.
+        const busy = busyIds.has(risk.id) || acceptingAll;
         return (
           <Box
             key={risk.id}

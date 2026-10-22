@@ -137,6 +137,20 @@ describe("SuggestedRisksSection", () => {
     expect(screen.getByText("Couldn't save the change. Please try again.")).toBeInTheDocument();
   });
 
+  it("accept all waits while a single risk is saving", async () => {
+    let resolveA: (v: { data: IntakeSuggestedRisk }) => void = () => undefined;
+    vi.mocked(updateSuggestedRisk).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveA = resolve)),
+    );
+    render(block([item(), item({ id: "b" })]));
+    fireEvent.click(screen.getByTestId("suggested-risk-a-dismiss"));
+    expect(screen.getByTestId("suggested-risks-accept-all")).toBeDisabled();
+    resolveA({ data: item({ state: "dismissed" }) });
+    await waitFor(() =>
+      expect(screen.getByTestId("suggested-risks-accept-all")).not.toBeDisabled(),
+    );
+  });
+
   it("can't accept a suggestion without a mitigation plan", () => {
     render(block([item({ mitigationPlan: "" })]));
     expect(

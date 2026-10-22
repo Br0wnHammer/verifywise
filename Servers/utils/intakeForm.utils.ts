@@ -847,11 +847,13 @@ export const claimSubmissionNotificationQuery = async (
  * pre-v2 (legacy / never queued); suggestions when the block is missing. Either
  * is also needed when it has been "pending" for over 10 minutes (the job was
  * lost). A completed or failed stage is never listed, so a backfill cannot
- * regenerate it or wipe reviewer decisions on suggestions. needsNotification:
- * the new-submission email has not been claimed although the submission is
- * over 10 minutes old (past the 2-minute cap, so its job or cap was lost) and
- * its form has recipients. A live job keeps its own email and language, and a
- * form without recipients, which never claims, is not listed again and again.
+ * regenerate it or wipe reviewer decisions on suggestions. emailUnclaimed:
+ * the new-submission email has not been claimed and the form has recipients,
+ * so a re-run sends it (the cap job's id keeps it to one). needsNotification:
+ * also over 10 minutes old (past the 2-minute cap, so the job or cap was
+ * lost), for a direct send when no stage needs re-running; a live job keeps
+ * its own email and language. A form without recipients, which never claims,
+ * is not listed again and again.
  */
 export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
   Array<{
@@ -859,16 +861,17 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
     organizationId: number;
     needsScoring: boolean;
     needsSuggestions: boolean;
+    emailUnclaimed: boolean;
     needsNotification: boolean;
   }>
 > => {
   const rows = await sequelize.query(
-    `SELECT id, "organizationId", "needsScoring", "needsSuggestions", "needsNotification"
+    `SELECT id, "organizationId", "needsScoring", "needsSuggestions", "emailUnclaimed",
+      ("emailUnclaimed" AND created_at < NOW() - interval '10 minutes') AS "needsNotification"
     FROM (
-      SELECT id, organization_id AS "organizationId",
+      SELECT id, organization_id AS "organizationId", created_at,
         (
           notification_sent_at IS NULL
-          AND created_at < NOW() - interval '10 minutes'
           AND EXISTS (
             SELECT 1 FROM intake_forms f
             WHERE f.id = intake_submissions.form_id
@@ -876,7 +879,7 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
               AND jsonb_typeof(f.recipients) = 'array'
               AND f.recipients <> '[]'::jsonb
           )
-        ) AS "needsNotification",
+        ) AS "emailUnclaimed",
         COALESCE(
           risk_assessment IS NULL
           OR risk_assessment->>'version' IS NULL
@@ -897,7 +900,8 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
       FROM intake_submissions
       WHERE status = :status
     ) s
-    WHERE "needsScoring" OR "needsSuggestions" OR "needsNotification"
+    WHERE "needsScoring" OR "needsSuggestions"
+      OR ("emailUnclaimed" AND created_at < NOW() - interval '10 minutes')
     ORDER BY id`,
     {
       replacements: { status: IntakeSubmissionStatus.PENDING },
@@ -910,6 +914,7 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
     organizationId: number;
     needsScoring: boolean;
     needsSuggestions: boolean;
+    emailUnclaimed: boolean;
     needsNotification: boolean;
   }>;
 };

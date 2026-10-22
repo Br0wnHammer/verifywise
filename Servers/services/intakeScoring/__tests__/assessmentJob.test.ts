@@ -469,6 +469,7 @@ describe("backfillIntakeAssessments", () => {
           needsScoring: true,
           needsSuggestions: true,
           needsNotification: true,
+          emailUnclaimed: true,
         },
         {
           id: 3,
@@ -476,6 +477,7 @@ describe("backfillIntakeAssessments", () => {
           needsScoring: false,
           needsSuggestions: true,
           needsNotification: false,
+          emailUnclaimed: false,
         },
         {
           id: 5,
@@ -483,6 +485,7 @@ describe("backfillIntakeAssessments", () => {
           needsScoring: true,
           needsSuggestions: false,
           needsNotification: false,
+          emailUnclaimed: false,
         },
       ]),
       enqueue,
@@ -518,6 +521,7 @@ describe("backfillIntakeAssessments", () => {
           needsScoring: false,
           needsSuggestions: false,
           needsNotification: true,
+          emailUnclaimed: true,
         },
       ]),
       enqueue,
@@ -526,6 +530,24 @@ describe("backfillIntakeAssessments", () => {
     expect(enqueue).not.toHaveBeenCalled();
     expect(h.deps.claimNotification).toHaveBeenCalledWith(11, ORG);
     expect(h.deps.sendNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("a lost job under 10 minutes old is re-run with its email", async () => {
+    const enqueue = jest.fn(async () => undefined);
+    await backfillIntakeAssessments({
+      listNeedingAssessment: jest.fn(async () => [
+        {
+          id: 1,
+          organizationId: 2,
+          needsScoring: true,
+          needsSuggestions: false,
+          needsNotification: false,
+          emailUnclaimed: true,
+        },
+      ]),
+      enqueue,
+    });
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ notify: true }));
   });
 
   it("keeps going when one row fails to queue", async () => {
@@ -541,6 +563,7 @@ describe("backfillIntakeAssessments", () => {
           needsScoring: true,
           needsSuggestions: false,
           needsNotification: false,
+          emailUnclaimed: false,
         },
         {
           id: 3,
@@ -548,6 +571,7 @@ describe("backfillIntakeAssessments", () => {
           needsScoring: true,
           needsSuggestions: false,
           needsNotification: false,
+          emailUnclaimed: false,
         },
       ]),
       enqueue,

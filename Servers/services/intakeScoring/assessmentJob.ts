@@ -509,7 +509,7 @@ export async function backfillIntakeAssessments(deps?: Partial<AssessmentDeps>):
         organizationId: row.organizationId,
         submissionId: row.id,
         stages,
-        notify: row.needsNotification,
+        notify: row.emailUnclaimed,
       });
       queued += 1;
     } catch (error) {

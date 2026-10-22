@@ -1710,14 +1710,16 @@ export async function acceptAllSuggestedRisks(req: Request, res: Response) {
       req.organizationId!,
       { requireMitigationPlan: true },
     );
-    // The items as stored, so the client shows the server's states.
+    // The items as stored, so the client shows the server's states; left out
+    // if the re-read finds none, and the client keeps its own.
     const after = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+    const items = after?.suggestedRisks?.items;
 
     return res.status(200).json(
       STATUS_CODE[200]({
         accepted,
         skipped: Math.max(0, suggested - accepted),
-        items: after?.suggestedRisks?.items ?? [],
+        ...(items ? { items } : {}),
       }),
     );
   } catch (error) {
@@ -1887,7 +1889,7 @@ export async function approveSubmission(req: Request, res: Response) {
         req.organizationId!,
         transaction,
       );
-    } else if (storedOverride?.tier && bandToCheck !== storedOverride.tier) {
+    } else if (bandsApply && storedOverride?.tier && bandToCheck !== storedOverride.tier) {
       await updateSubmissionRiskOverrideQuery(
         submissionId,
         { ...storedOverride, tier: bandToCheck },
