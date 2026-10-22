@@ -37,6 +37,7 @@ const FORM_SELECT_COLUMNS = `
   suggested_questions_enabled as "suggestedQuestionsEnabled",
   eu_ai_act_risk_step_enabled as "euAiActRiskStepEnabled",
   design_settings as "designSettings",
+  routing,
   created_by as "createdBy",
   created_at as "createdAt", updated_at as "updatedAt"
 `;
@@ -51,6 +52,7 @@ const SUBMISSION_SELECT_COLUMNS = `
   risk_assessment as "riskAssessment", risk_tier as "riskTier",
   risk_override as "riskOverride",
   suggested_risks as "suggestedRisks",
+  routing, decision_record as "decisionRecord",
   notification_sent_at as "notificationSentAt",
   created_at as "createdAt", updated_at as "updatedAt"
 `;
@@ -184,11 +186,11 @@ export const createIntakeFormQuery = async (
     `INSERT INTO intake_forms
       (organization_id, name, description, slug, entity_type, schema, submit_button_text, status,
        ttl_expires_at, public_id, recipients, risk_tier_system, risk_assessment_config,
-       llm_key_id, suggested_questions_enabled, eu_ai_act_risk_step_enabled, design_settings, created_by, created_at, updated_at)
+       llm_key_id, suggested_questions_enabled, eu_ai_act_risk_step_enabled, design_settings, routing, created_by, created_at, updated_at)
     VALUES
       (:organizationId, :name, :description, :slug, :entityType, :schema, :submitButtonText, :status,
        :ttlExpiresAt, :publicId, :recipients, :riskTierSystem, :riskAssessmentConfig,
-       :llmKeyId, :suggestedQuestionsEnabled, :euAiActRiskStepEnabled, :designSettings, :createdBy, NOW(), NOW())
+       :llmKeyId, :suggestedQuestionsEnabled, :euAiActRiskStepEnabled, :designSettings, :routing, :createdBy, NOW(), NOW())
     RETURNING ${FORM_SELECT_COLUMNS}`,
     {
       replacements: {
@@ -211,6 +213,7 @@ export const createIntakeFormQuery = async (
         suggestedQuestionsEnabled: data.suggestedQuestionsEnabled || false,
         euAiActRiskStepEnabled: data.euAiActRiskStepEnabled || false,
         designSettings: data.designSettings ? JSON.stringify(data.designSettings) : null,
+        routing: data.routing ? JSON.stringify(data.routing) : null,
         createdBy: data.createdBy,
       },
       type: QueryTypes.SELECT,
@@ -293,6 +296,10 @@ export const updateIntakeFormQuery = async (
   if (data.designSettings !== undefined) {
     updates.push("design_settings = :designSettings");
     replacements.designSettings = data.designSettings ? JSON.stringify(data.designSettings) : null;
+  }
+  if (data.routing !== undefined) {
+    updates.push("routing = :routing");
+    replacements.routing = data.routing ? JSON.stringify(data.routing) : null;
   }
 
   if (updates.length === 0) {
@@ -438,6 +445,7 @@ export const getPendingSubmissionsQuery = async (
       s.risk_assessment as "riskAssessment", s.risk_tier as "riskTier",
       s.risk_override as "riskOverride",
       s.suggested_risks as "suggestedRisks",
+      s.routing, s.decision_record as "decisionRecord",
       s.notification_sent_at as "notificationSentAt",
       s.created_at as "createdAt", s.updated_at as "updatedAt",
       f.name as "formName", f.entity_type as "formEntityType"
@@ -1006,6 +1014,7 @@ export const getSubmissionByEntityQuery = async (
       s.risk_assessment as "riskAssessment", s.risk_tier as "riskTier",
       s.risk_override as "riskOverride",
       s.suggested_risks as "suggestedRisks",
+      s.routing, s.decision_record as "decisionRecord",
       s.notification_sent_at as "notificationSentAt",
       s.created_at as "createdAt", s.updated_at as "updatedAt",
       f.name as "formName",
@@ -1058,6 +1067,8 @@ export const getSubmissionByEntityQuery = async (
       riskTier: row.riskTier,
       riskOverride: row.riskOverride,
       suggestedRisks: row.suggestedRisks,
+      routing: row.routing,
+      decisionRecord: row.decisionRecord,
       notificationSentAt: row.notificationSentAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
