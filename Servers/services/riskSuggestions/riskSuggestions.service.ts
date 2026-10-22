@@ -57,6 +57,8 @@ export interface UseCaseInput {
   name: string;
   purpose?: string;
   technology?: string;
+  /** Untrusted extra text (e.g. intake answers); fenced as data in the prompt. */
+  context?: string;
 }
 
 export interface MatchedCatalogRisk {
