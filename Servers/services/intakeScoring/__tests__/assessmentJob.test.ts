@@ -342,6 +342,18 @@ describe("runIntakeAssessment", () => {
     expect(routeSubmission).not.toHaveBeenCalled();
   });
 
+  it("routes after a setup failure too, since scoring settled as failed", async () => {
+    const routeSubmission = jest.fn(async () => null);
+    const h = harness(submission(), {
+      routeSubmission: routeSubmission as any,
+      getClassification: jest.fn(async () => {
+        throw new Error("db down");
+      }),
+    });
+    await runIntakeAssessment(job({ notify: false }), h.deps);
+    expect(routeSubmission).toHaveBeenCalledTimes(1);
+  });
+
   it("logs a routing error and still finishes the job", async () => {
     const routeSubmission = jest.fn(async () => {
       throw new Error("route down");

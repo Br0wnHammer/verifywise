@@ -8,7 +8,7 @@ jest.mock("../rolePermissions.utils", () => ({ roleInfoHasPermission: jest.fn<an
 const { sequelize } = require("../../database/db");
 const { getRoleById } = require("../roleMap");
 const { roleInfoHasPermission } = require("../rolePermissions.utils");
-const { getEligibleReviewersQuery, getEligibleReviewerIdsQuery } =
+const { getEligibleReviewersQuery, getEligibleReviewerIdsQuery, updateSubmissionRoutingQuery } =
   require("../intakeForm.utils") as typeof import("../intakeForm.utils");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -62,5 +62,41 @@ describe("getEligibleReviewersQuery", () => {
     sequelize.query.mockResolvedValue([user(1, 1)]);
     expect(await getEligibleReviewerIdsQuery(5, [1, 2])).toEqual([1]);
     expect(sequelize.query.mock.calls[0][0]).toContain("id = ANY");
+  });
+});
+
+describe("updateSubmissionRoutingQuery", () => {
+  const routing = {
+    lane: "senior",
+    reason: "override_raised",
+    score: 51,
+    threshold: 50,
+    closeCallMargin: 0,
+    routedAt: "x",
+  } as any;
+
+  it("adds no routing condition without an expected value", async () => {
+    sequelize.query.mockResolvedValue([undefined, 1]);
+    expect(await updateSubmissionRoutingQuery(3, routing, 5)).toBe(true);
+    const [sql, opts] = sequelize.query.mock.calls[0];
+    expect(sql).not.toContain("IS NOT DISTINCT FROM");
+    expect(opts.replacements).not.toHaveProperty("expected");
+  });
+
+  it("guards on the expected routing and reports a lost race as false", async () => {
+    sequelize.query.mockResolvedValue([undefined, 0]);
+    const expected = { ...routing, lane: "standard" };
+    expect(await updateSubmissionRoutingQuery(3, routing, 5, undefined, expected)).toBe(false);
+    const [sql, opts] = sequelize.query.mock.calls[0];
+    expect(sql).toContain("routing IS NOT DISTINCT FROM CAST(:expected AS jsonb)");
+    expect(opts.replacements.expected).toBe(JSON.stringify(expected));
+  });
+
+  it("treats a null expected value as 'no routing yet'", async () => {
+    sequelize.query.mockResolvedValue([undefined, 1]);
+    await updateSubmissionRoutingQuery(3, routing, 5, undefined, null);
+    const [sql, opts] = sequelize.query.mock.calls[0];
+    expect(sql).toContain("IS NOT DISTINCT FROM");
+    expect(opts.replacements.expected).toBeNull();
   });
 });
