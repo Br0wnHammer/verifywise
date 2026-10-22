@@ -39,7 +39,9 @@ export interface IntakeSuggestedRisk {
   likelihood: Likelihood;
   severity: Severity;
   impact: string;
+  /** The risk register requires one; "" only when the model omitted it. */
   mitigationPlan: string;
+  implementationStrategy: string;
   /** ISO date; null means approval + 90 days. */
   deadline: string | null;
   /** Set for MODEL submissions. */
@@ -113,10 +115,11 @@ export async function generateIntakeSuggestions(params: {
         ...(m.ai_lifecycle_phase ? { lifecyclePhase: m.ai_lifecycle_phase } : {}),
         likelihood: likelihoodFromCatalog(m.source, m.likelihood),
         severity: severityFromCatalog(m.source, m.severity),
-        // Catalog entries carry no impact or mitigation text; the model's
-        // reason for the match is the only entry-specific note we have.
-        impact: m.reason,
-        mitigationPlan: "",
+        // Catalog entries carry no impact text of their own; the model drafts
+        // one for this use case, and its match reason stands in if it didn't.
+        impact: m.impact || m.reason,
+        mitigationPlan: m.mitigation_plan,
+        implementationStrategy: m.implementation_strategy,
         deadline: null,
         state: "suggested",
       }),
@@ -133,6 +136,7 @@ export async function generateIntakeSuggestions(params: {
         severity: severityFromScale(s.severity),
         impact: s.impact,
         mitigationPlan: s.mitigation_plan,
+        implementationStrategy: s.implementation_strategy,
         deadline: null,
         state: "suggested",
       }),

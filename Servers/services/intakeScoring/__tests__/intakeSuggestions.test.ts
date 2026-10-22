@@ -10,7 +10,7 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
 }));
 
 import { generateIntakeSuggestions, MAX_SUGGESTIONS } from "../intakeSuggestions";
-import { weightedRiskScore } from "../riskMappers";
+import { likelihoodFromCatalog, severityFromCatalog, weightedRiskScore } from "../riskMappers";
 import { IntakeEntityType } from "../../../domain.layer/enums/intake-entity-type.enum";
 import { MIT_RISK_CATALOG } from "../../../structures/risk-catalogs/mit";
 import { IBM_RISK_CATALOG } from "../../../structures/risk-catalogs/ibm";
@@ -23,9 +23,24 @@ const ANSWERS: ScoringAnswer[] = [
   { questionId: "q2", label: "Data", text: "CVs and cover letters" },
 ];
 
+const drafts = {
+  impact: "Qualified applicants are rejected.",
+  mitigation_plan: "Audit rankings for bias each quarter.",
+  implementation_strategy: "HR analytics runs the audit and reports to the DPO.",
+};
 const matched = [
-  ...MIT_RISK_CATALOG.slice(0, 3).map((e) => ({ source: "mit", id: e.id, reason: "relevant" })),
-  ...IBM_RISK_CATALOG.slice(0, 3).map((e) => ({ source: "ibm", id: e.id, reason: "relevant" })),
+  ...MIT_RISK_CATALOG.slice(0, 3).map((e) => ({
+    source: "mit",
+    id: e.id,
+    reason: "relevant",
+    ...drafts,
+  })),
+  ...IBM_RISK_CATALOG.slice(0, 3).map((e) => ({
+    source: "ibm",
+    id: e.id,
+    reason: "relevant",
+    ...drafts,
+  })),
 ];
 const suggested = Array.from({ length: 8 }, (_, i) => ({
   risk_name: `Risk ${i}`,
@@ -36,6 +51,7 @@ const suggested = Array.from({ length: 8 }, (_, i) => ({
   severity: ((i + 2) % 5) + 1,
   impact: "impact",
   mitigation_plan: "plan",
+  implementation_strategy: "strategy",
 }));
 const gen = () => jest.fn(async () => ({ object: { matched, suggested } }) as any);
 
@@ -85,6 +101,34 @@ describe("generateIntakeSuggestions", () => {
   });
 
   it("maps catalog and AI items onto register enums", async () => {
+    const entry = MIT_RISK_CATALOG[0];
+    const { items } = await generateIntakeSuggestions({
+      model: MODEL,
+      entityType: IntakeEntityType.USE_CASE,
+      useCase: USE_CASE,
+      answers: ANSWERS,
+      classification: null,
+      generateImpl: jest.fn(async () => ({
+        object: {
+          matched: [{ source: "mit", id: entry.id, reason: "relevant", ...drafts }],
+          suggested: suggested.slice(0, 2),
+        },
+      })) as any,
+    });
+    const mit = items.find((i) => i.source === "mit");
+    expect(mit).toBeDefined();
+    expect(mit!.name).toBe(entry.summary);
+    expect(mit!.likelihood).toBe(likelihoodFromCatalog("mit", entry.likelihood));
+    expect(mit!.severity).toBe(severityFromCatalog("mit", entry.riskSeverity));
+    const ai = items.filter((i) => i.source === "ai");
+    expect(ai.length).toBeGreaterThan(0);
+    for (const i of ai) {
+      expect(["Rare", "Unlikely", "Possible", "Likely", "Almost Certain"]).toContain(i.likelihood);
+      expect(["Negligible", "Minor", "Moderate", "Major", "Catastrophic"]).toContain(i.severity);
+    }
+  });
+
+  it("carries drafted impact, mitigation and implementation strategy on every item", async () => {
     const { items } = await generateIntakeSuggestions({
       model: MODEL,
       entityType: IntakeEntityType.USE_CASE,
@@ -93,23 +137,38 @@ describe("generateIntakeSuggestions", () => {
       classification: null,
       generateImpl: gen(),
     });
-    const mit = items.find((i) => i.source === "mit");
-    if (mit) {
-      const entry = MIT_RISK_CATALOG.find((e) => e.summary === mit.name)!;
-      expect(mit.likelihood.toLowerCase()).toBe(
-        ["rare", "unlikely", "possible", "likely", "almost certain"].includes(
-          entry.likelihood.toLowerCase(),
-        )
-          ? entry.likelihood.toLowerCase()
-          : "possible",
-      );
+    for (const i of items) {
+      expect(i.mitigationPlan).not.toBe("");
+      expect(i.implementationStrategy).not.toBe("");
     }
-    const ai = items.filter((i) => i.source === "ai");
-    expect(ai.length).toBeGreaterThan(0);
-    for (const i of ai) {
-      expect(["Rare", "Unlikely", "Possible", "Likely", "Almost Certain"]).toContain(i.likelihood);
-      expect(["Negligible", "Minor", "Moderate", "Major", "Catastrophic"]).toContain(i.severity);
+    const catalog = items.filter((i) => i.source !== "ai");
+    expect(catalog.length).toBeGreaterThan(0);
+    for (const i of catalog) {
+      expect(i.impact).toBe(drafts.impact);
+      expect(i.mitigationPlan).toBe(drafts.mitigation_plan);
+      expect(i.implementationStrategy).toBe(drafts.implementation_strategy);
     }
+  });
+
+  it("falls back without failing when the model omits the drafts", async () => {
+    const { items } = await generateIntakeSuggestions({
+      model: MODEL,
+      entityType: IntakeEntityType.USE_CASE,
+      useCase: USE_CASE,
+      answers: ANSWERS,
+      classification: null,
+      generateImpl: jest.fn(async () => ({
+        object: {
+          matched: [{ source: "mit", id: MIT_RISK_CATALOG[0].id, reason: "relevant" }],
+          suggested: [{ ...suggested[0], implementation_strategy: undefined }],
+        },
+      })) as any,
+    });
+    const mit = items.find((i) => i.source === "mit")!;
+    expect(mit.impact).toBe("relevant");
+    expect(mit.mitigationPlan).toBe("");
+    expect(mit.implementationStrategy).toBe("");
+    expect(items.find((i) => i.source === "ai")!.implementationStrategy).toBe("");
   });
 
   it("sets model risk category and level for MODEL submissions", async () => {

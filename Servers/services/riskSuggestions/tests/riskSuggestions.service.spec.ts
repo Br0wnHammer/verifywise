@@ -19,6 +19,7 @@ import {
   RiskSuggestionError,
   suggestRisksForUseCase,
 } from "../riskSuggestions.service";
+import { buildRiskSuggestionSystemPrompt } from "../prompts";
 import { riskSuggestionOutputSchema } from "../schema";
 import { MIT_RISK_CATALOG } from "../../../structures/risk-catalogs/mit";
 import { IBM_RISK_CATALOG } from "../../../structures/risk-catalogs/ibm";
@@ -61,6 +62,7 @@ const validOutput = () => ({
       severity: 4,
       impact: "Customers hold the organization to quotes it never approved.",
       mitigation_plan: "Route pricing content through a validated lookup before sending.",
+      implementation_strategy: "Sales operations owns the lookup and reviews it monthly.",
     },
   ],
 });
@@ -89,6 +91,38 @@ describe("suggestRisksForUseCase", () => {
     expect(mitMatch.likelihood).toBe(mitEntry.likelihood);
     expect(mitMatch.reason).toBe("A public-facing assistant can cause societal-scale harm.");
     expect(mitMatch.ai_lifecycle_phase).toBe("Deployment & integration");
+  });
+
+  it("keeps sanitized drafts on matches and suggestions, empty when omitted", async () => {
+    const output = validOutput();
+    Object.assign(output.matched[0], {
+      impact: "Harmful answers\nreach the public.",
+      mitigation_plan: "Add an output safety filter.",
+      implementation_strategy: "The platform team ships the filter before launch.",
+    });
+    output.suggested[0].implementation_strategy = "Finance owns the price lookup.";
+    const result = await suggestRisksForUseCase({
+      model: FAKE_MODEL,
+      useCase: USE_CASE,
+      existingRiskNames: [],
+      generateImpl: genReturning(output),
+    });
+
+    expect(result.matched[0].impact).toBe("Harmful answers reach the public.");
+    expect(result.matched[0].mitigation_plan).toBe("Add an output safety filter.");
+    expect(result.matched[0].implementation_strategy).toBe(
+      "The platform team ships the filter before launch.",
+    );
+    expect(result.matched[1].impact).toBe("");
+    expect(result.matched[1].mitigation_plan).toBe("");
+    expect(result.matched[1].implementation_strategy).toBe("");
+    expect(result.suggested[0].implementation_strategy).toBe("Finance owns the price lookup.");
+  });
+
+  it("asks the model for drafts on every match and suggestion", () => {
+    const system = buildRiskSuggestionSystemPrompt();
+    expect(system).toContain("impact, a");
+    expect(system).toContain("mitigation_plan and an implementation_strategy");
   });
 
   it("normalizes IBM catalog categories onto the project risk enum", async () => {
