@@ -909,5 +909,6 @@
   "A note of 1 to 2000 characters is required when something was missed": "Eine Notiz mit 1 bis 2000 Zeichen ist erforderlich, wenn etwas übersehen wurde",
   "A note can be at most 2000 characters": "Eine Notiz darf höchstens 2000 Zeichen lang sein",
   "A note of 1 to 2000 characters is required": "Eine Notiz mit 1 bis 2000 Zeichen ist erforderlich",
-  "This second review changed. Reload and try again.": "Diese Zweitprüfung wurde geändert. Laden Sie neu und versuchen Sie es erneut."
+  "This second review changed. Reload and try again.": "Diese Zweitprüfung wurde geändert. Laden Sie neu und versuchen Sie es erneut.",
+  "Weeks must be 4, 8 or 12": "Der Zeitraum muss 4, 8 oder 12 Wochen betragen"
 }

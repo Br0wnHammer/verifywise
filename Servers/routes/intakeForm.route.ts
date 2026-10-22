@@ -18,6 +18,7 @@ import {
   getFormSubmissions,
   getSubmissionById,
   getSubmissionStats,
+  getIntakeOversight,
   approveSubmission,
   rejectSubmission,
   escalateSubmission,
@@ -76,6 +77,7 @@ router.post(
 );
 
 // Submissions
+router.get("/oversight", authenticateJWT, authorize("intakeForm.edit"), getIntakeOversight);
 router.get("/submissions", authenticateJWT, getPendingSubmissions);
 router.get("/submissions/stats", authenticateJWT, getSubmissionStats);
 router.get("/submissions/by-entity/:entityType/:entityId", authenticateJWT, getSubmissionByEntity);

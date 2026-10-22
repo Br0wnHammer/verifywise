@@ -130,6 +130,7 @@ import {
   laneOnRecord,
 } from "../services/intakeRouting/decisionGate";
 import { raiseForOverride, rerouteFormPending } from "../services/intakeRouting/routingService";
+import { getIntakeOversightQuery, OVERSIGHT_WEEKS } from "../services/intakeRouting/oversight";
 import type { IFormRouting } from "../domain.layer/interfaces/i.intakeForm";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
@@ -1450,6 +1451,54 @@ export async function getSubmissionStats(req: Request, res: Response) {
       eventType: "Read",
       description: "failed to retrieve submission stats",
       functionName: "getSubmissionStats",
+      fileName: "intakeForm.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Oversight figures for the intake page: lanes, decision times, reviewers,
+ * second reviews and what needs attention over the last 4, 8 or 12 weeks.
+ */
+export async function getIntakeOversight(req: Request, res: Response) {
+  const weeksParam = req.query.weeks;
+  const weeks = weeksParam === undefined ? 8 : toId(weeksParam);
+  if (!OVERSIGHT_WEEKS.includes(weeks)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Weeks must be 4, 8 or 12")));
+  }
+  const formIdParam = req.query.formId;
+  const hasFormId = formIdParam !== undefined && formIdParam !== "";
+  const formId = hasFormId ? toId(formIdParam) : undefined;
+  if (hasFormId && (formId === undefined || isNaN(formId) || formId <= 0)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid form ID")));
+  }
+
+  logProcessing({
+    description: "fetching intake oversight figures",
+    functionName: "getIntakeOversight",
+    fileName: "intakeForm.ctrl.ts",
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+
+  try {
+    if (formId !== undefined) {
+      const form = await getIntakeFormByIdQuery(formId, req.organizationId!);
+      if (!form) {
+        return res.status(404).json(STATUS_CODE[404](req.t!("Form not found")));
+      }
+    }
+    const oversight = await getIntakeOversightQuery(req.organizationId!, weeks, formId);
+    return res.status(200).json(STATUS_CODE[200](oversight));
+  } catch (error) {
+    await logFailure({
+      eventType: "Read",
+      description: "failed to retrieve intake oversight figures",
+      functionName: "getIntakeOversight",
       fileName: "intakeForm.ctrl.ts",
       error: error as Error,
       userId: req.userId!,

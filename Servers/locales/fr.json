@@ -909,5 +909,6 @@
   "A note of 1 to 2000 characters is required when something was missed": "Une note de 1 à 2000 caractères est requise lorsqu'un élément a été manqué",
   "A note can be at most 2000 characters": "Une note peut compter au plus 2000 caractères",
   "A note of 1 to 2000 characters is required": "Une note de 1 à 2000 caractères est requise",
-  "This second review changed. Reload and try again.": "Cette seconde revue a changé. Rechargez et réessayez."
+  "This second review changed. Reload and try again.": "Cette seconde revue a changé. Rechargez et réessayez.",
+  "Weeks must be 4, 8 or 12": "La période doit être de 4, 8 ou 12 semaines"
 }

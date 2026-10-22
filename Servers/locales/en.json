@@ -909,5 +909,6 @@
   "A note of 1 to 2000 characters is required when something was missed": "A note of 1 to 2000 characters is required when something was missed",
   "A note can be at most 2000 characters": "A note can be at most 2000 characters",
   "A note of 1 to 2000 characters is required": "A note of 1 to 2000 characters is required",
-  "This second review changed. Reload and try again.": "This second review changed. Reload and try again."
+  "This second review changed. Reload and try again.": "This second review changed. Reload and try again.",
+  "Weeks must be 4, 8 or 12": "Weeks must be 4, 8 or 12"
 }
