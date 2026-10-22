@@ -1386,6 +1386,14 @@ export async function getSubmissionByEntity(req: Request, res: Response) {
         submittedAt: submission.createdAt,
         reviewedAt: submission.reviewedAt,
         riskTier: submission.riskTier,
+        // The AI-scored (v2) number behind riskTier, so the use case page can
+        // show "64 (High)" rather than a bare band.
+        riskScore: isAssessmentV2(submission.riskAssessment)
+          ? {
+              finalScore: submission.riskAssessment.finalScore,
+              rulesOnly: submission.riskAssessment.rulesOnly,
+            }
+          : null,
         fields,
       }),
     );

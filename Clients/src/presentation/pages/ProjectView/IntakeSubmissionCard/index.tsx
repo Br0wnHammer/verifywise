@@ -97,7 +97,23 @@ export default function IntakeSubmissionCard({ projectId }: IntakeSubmissionCard
         {(submission.submitterName || submission.submitterEmail) && (
           <> &middot; {submission.submitterName || submission.submitterEmail}</>
         )}
-        {submission.riskTier && <> &middot; Risk: {submission.riskTier}</>}
+        {submission.riskScore && submission.riskScore.finalScore !== null ? (
+          <>
+            {" "}
+            &middot; <span>Risk score:</span>{" "}
+            {submission.riskScore.rulesOnly ? (
+              <>
+                <span>at least</span> {submission.riskScore.finalScore} <span>(rules only)</span>
+              </>
+            ) : (
+              <>
+                {submission.riskScore.finalScore} (<span>{submission.riskTier}</span>)
+              </>
+            )}
+          </>
+        ) : (
+          !submission.riskScore && submission.riskTier && <> &middot; Risk: {submission.riskTier}</>
+        )}
       </Typography>
 
       {/* Mapped fields — always visible */}

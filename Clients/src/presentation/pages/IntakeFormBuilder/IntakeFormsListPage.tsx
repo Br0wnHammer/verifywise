@@ -50,6 +50,7 @@ import {
   IntakeEntityType,
 } from "../../../application/repository/intakeForm.repository";
 import { SubmissionPreviewModal } from "./SubmissionPreviewModal";
+import RiskTierChip from "./assessment/RiskTierChip";
 import { CustomizableButton } from "../../components/button/customizable-button";
 import StandardModal from "../../components/Modals/StandardModal";
 import Chip from "../../components/Chip";
@@ -85,21 +86,6 @@ const ENTITY_LABELS: Record<string, string> = {
   [IntakeEntityType.MODEL]: "Model inventory",
   [IntakeEntityType.USE_CASE]: "Use case",
 };
-
-// ============================================================================
-// Risk tier chip
-// ============================================================================
-
-function RiskTierChip({ submission }: { submission: IntakeSubmission }) {
-  const theme = useTheme();
-  if (!submission.riskTier && !submission.riskAssessment) {
-    return <CircularProgress size={14} sx={{ color: theme.palette.text.accent }} />;
-  }
-  const tier = (submission.riskTier || submission.riskAssessment?.tier || "").toLowerCase();
-  if (!tier) return <Chip label="Pending" />;
-  const label = tier.charAt(0).toUpperCase() + tier.slice(1);
-  return <Chip label={label} />;
-}
 
 // ============================================================================
 // Table header cell style
