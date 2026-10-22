@@ -15,7 +15,10 @@ import {
   IRiskAssessmentV2,
   IRiskOverride,
   ISuggestedRisksBlock,
+  ISubmissionRouting,
 } from "../domain.layer/interfaces/i.intakeSubmission";
+import { getRoleById } from "./roleMap";
+import { roleInfoHasPermission } from "./rolePermissions.utils";
 import { IntakeFormStatus } from "../domain.layer/enums/intake-form-status.enum";
 import { IntakeSubmissionStatus } from "../domain.layer/enums/intake-submission-status.enum";
 import type {
@@ -1200,6 +1203,74 @@ export async function getTenantHashBySlug(
   const orgId = (result[0] as any).id;
   return { id: orgId, hash: "" };
 }
+
+/**
+ * Users of the organisation whose role holds intakeForm.edit (built-in or
+ * custom role). Pass `ids` to narrow to those users.
+ */
+export async function getEligibleReviewersQuery(
+  organizationId: number,
+  ids?: number[],
+): Promise<Array<{ id: number; name: string; surname: string; email: string }>> {
+  if (ids && ids.length === 0) return [];
+
+  const users = (await sequelize.query(
+    `SELECT id, name, surname, email, role_id
+    FROM users
+    WHERE organization_id = :organizationId${ids ? " AND id = ANY(ARRAY[:ids]::INTEGER[])" : ""}
+    ORDER BY name, surname, id`,
+    {
+      replacements: { organizationId, ids: ids ?? [] },
+      type: QueryTypes.SELECT,
+    },
+  )) as Array<{ id: number; name: string; surname: string; email: string; role_id: number }>;
+
+  const allowedByRole = new Map<number, boolean>();
+  for (const roleId of new Set(users.map((u) => u.role_id))) {
+    const role = await getRoleById(roleId);
+    allowedByRole.set(
+      roleId,
+      role ? await roleInfoHasPermission(organizationId, role, "intakeForm.edit") : false,
+    );
+  }
+
+  return users
+    .filter((u) => allowedByRole.get(u.role_id))
+    .map(({ id, name, surname, email }) => ({ id, name, surname, email }));
+}
+
+export async function getEligibleReviewerIdsQuery(
+  organizationId: number,
+  ids?: number[],
+): Promise<number[]> {
+  return (await getEligibleReviewersQuery(organizationId, ids)).map((u) => u.id);
+}
+
+/**
+ * Store the lane decision on a pending submission; a decided one is left alone.
+ */
+export const updateSubmissionRoutingQuery = async (
+  id: number,
+  routing: ISubmissionRouting | null,
+  organizationId: number,
+  transaction?: Transaction,
+): Promise<void> => {
+  await sequelize.query(
+    `UPDATE intake_submissions
+    SET routing = :routing, updated_at = NOW()
+    WHERE organization_id = :organizationId AND id = :id AND status = :pending`,
+    {
+      replacements: {
+        organizationId,
+        id,
+        routing: routing ? JSON.stringify(routing) : null,
+        pending: IntakeSubmissionStatus.PENDING,
+      },
+      type: QueryTypes.UPDATE,
+      transaction,
+    },
+  );
+};
 
 /**
  * Get users by IDs (for per-form recipients)

@@ -29,6 +29,8 @@ import {
   updateSubmissionSuggestionsQuery,
   getTenantByPublicId,
   getSubmissionByEntityQuery,
+  getEligibleReviewersQuery,
+  getEligibleReviewerIdsQuery,
 } from "../utils/intakeForm.utils";
 import { createNewModelInventoryQuery } from "../utils/modelInventory.utils";
 import { createNewProjectQuery } from "../utils/project.utils";
@@ -113,6 +115,9 @@ import { createNewModelRiskQuery } from "../utils/modelRisk.utils";
 import { LIKELIHOODS, SEVERITIES } from "../services/intakeScoring/riskMappers";
 import type { IntakeSuggestedRisk } from "../services/intakeScoring/intakeSuggestions";
 import { selectRetryStages } from "../services/intakeScoring/retry";
+import { validateRoutingSettings } from "../services/intakeRouting/routingRules";
+import { rerouteFormPending } from "../services/intakeRouting/routingService";
+import type { IFormRouting } from "../domain.layer/interfaces/i.intakeForm";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
 
@@ -758,6 +763,49 @@ export async function getIntakeFormById(req: Request, res: Response) {
   }
 }
 
+const INELIGIBLE_REVIEWERS_MESSAGE = "Reviewers must be users who can review intake submissions";
+
+/**
+ * Validate the routing block of a form body. `value` is undefined when the
+ * body leaves routing alone and null when it clears it.
+ */
+async function resolveFormRouting(
+  raw: unknown,
+  organizationId: number,
+): Promise<{ value: IFormRouting | null | undefined } | { error: string }> {
+  if (raw === undefined || raw === null) return { value: raw };
+  const parsed = validateRoutingSettings(raw);
+  if (!parsed.ok) return { error: parsed.error };
+
+  const ids = [
+    ...new Set([...parsed.value.seniorReviewerIds, ...parsed.value.standardReviewerIds]),
+  ];
+  const eligible = new Set(await getEligibleReviewerIdsQuery(organizationId, ids));
+  if (ids.some((id) => !eligible.has(id))) return { error: INELIGIBLE_REVIEWERS_MESSAGE };
+  return { value: parsed.value };
+}
+
+/**
+ * Users who can be picked as reviewers in a form's routing settings
+ */
+export async function getEligibleReviewers(req: Request, res: Response) {
+  try {
+    const reviewers = await getEligibleReviewersQuery(req.organizationId!);
+    return res.status(200).json(reviewers);
+  } catch (error) {
+    await logFailure({
+      eventType: "Read",
+      description: "failed to list eligible intake reviewers",
+      functionName: "getEligibleReviewers",
+      fileName: "intakeForm.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
 /**
  * Create new intake form
  */
@@ -845,6 +893,12 @@ export async function createIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](llmKey.error));
     }
 
+    const routing = await resolveFormRouting(req.body.routing, req.organizationId!);
+    if ("error" in routing) {
+      await transaction.rollback();
+      return res.status(400).json(STATUS_CODE[400](routing.error));
+    }
+
     const form = await createIntakeFormQuery(
       {
         name,
@@ -862,6 +916,7 @@ export async function createIntakeForm(req: Request, res: Response) {
         suggestedQuestionsEnabled,
         euAiActRiskStepEnabled: riskStep.enabled,
         designSettings,
+        routing: routing.value,
         createdBy: req.userId!,
       },
       req.organizationId!,
@@ -995,6 +1050,12 @@ export async function updateIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](llmKey.error));
     }
 
+    const routing = await resolveFormRouting(req.body.routing, req.organizationId!);
+    if ("error" in routing) {
+      await transaction.rollback();
+      return res.status(400).json(STATUS_CODE[400](routing.error));
+    }
+
     const form = await updateIntakeFormQuery(
       formId,
       {
@@ -1013,6 +1074,7 @@ export async function updateIntakeForm(req: Request, res: Response) {
         suggestedQuestionsEnabled,
         euAiActRiskStepEnabled: riskStep.enabled,
         designSettings,
+        routing: routing.value,
       },
       req.organizationId!,
       transaction,
@@ -1028,6 +1090,23 @@ export async function updateIntakeForm(req: Request, res: Response) {
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
+
+    // The save is committed; a failed re-route must not turn it into a 500.
+    if (form && routing.value) {
+      try {
+        await rerouteFormPending(form, req.organizationId!);
+      } catch (error) {
+        await logFailure({
+          eventType: "Update",
+          description: `failed to re-route pending submissions of intake form: ${formId}`,
+          functionName: "updateIntakeForm",
+          fileName: "intakeForm.ctrl.ts",
+          error: error as Error,
+          userId: req.userId!,
+          organizationId: req.organizationId!,
+        });
+      }
+    }
 
     return res.status(200).json(STATUS_CODE[200](form));
   } catch (error) {

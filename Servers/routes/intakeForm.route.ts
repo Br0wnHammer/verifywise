@@ -12,6 +12,7 @@ import {
   deleteIntakeForm,
   archiveIntakeForm,
   previewForm,
+  getEligibleReviewers,
   // Submission controllers (admin)
   getPendingSubmissions,
   getFormSubmissions,
@@ -48,6 +49,14 @@ router.patch("/forms/:id", authenticateJWT, authorize("intakeForm.edit"), update
 router.delete("/forms/:id", authenticateJWT, authorize("intakeForm.edit"), deleteIntakeForm);
 router.post("/forms/:id/archive", authenticateJWT, authorize("intakeForm.edit"), archiveIntakeForm);
 router.get("/forms/:id/preview", authenticateJWT, previewForm);
+
+// Routing settings — reviewers a form can route to
+router.get(
+  "/routing/eligible-reviewers",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  getEligibleReviewers,
+);
 
 // LLM features — Admin & Editor
 router.post(
