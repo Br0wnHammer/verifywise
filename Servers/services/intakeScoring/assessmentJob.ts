@@ -13,6 +13,7 @@ import {
   IIntakeSubmission,
   IRiskAssessmentV2,
   ISuggestedRisksBlock,
+  RoutingReason,
 } from "../../domain.layer/interfaces/i.intakeSubmission";
 import { getLatestRunForSubmissionQuery } from "../../utils/euAiActClassification.utils";
 import { translate } from "../../utils/i18n.utils";
@@ -451,6 +452,47 @@ export function scoreTextFor(assessment: IRiskAssessmentV2 | null, lang?: string
   });
 }
 
+const SENIOR_LANE_TEXT: Record<RoutingReason, string> = {
+  prohibited: "Senior review: prohibited practice",
+  no_score: "Senior review: no usable score",
+  close_call: "Senior review: close call",
+  at_or_above_threshold: "Senior review: score at or above the threshold",
+  below_threshold: "Senior review: score below the threshold",
+  override_raised: "Senior review: a reviewer raised the band",
+  escalated: "Senior review: sent by a reviewer",
+};
+
+/**
+ * Who gets the new-submission email and the lane line it shows. With routing
+ * on, the form's recipients plus the assigned lane's reviewers (both lanes
+ * while no lane is stored yet); with routing off, the recipients alone.
+ */
+function notificationAudience(
+  form: IIntakeForm,
+  submission: IIntakeSubmission,
+  lang: string | undefined,
+): { recipients: number[]; laneText?: string } {
+  const base = form.recipients ?? [];
+  const cfg = form.routing;
+  if (!cfg?.enabled) return { recipients: base };
+  const lane = submission.routing?.lane;
+  const reviewers =
+    lane === "senior"
+      ? cfg.seniorReviewerIds
+      : lane === "standard"
+        ? cfg.standardReviewerIds
+        : [...cfg.seniorReviewerIds, ...cfg.standardReviewerIds];
+  const laneText = !lane
+    ? "Not routed yet: scoring is still running"
+    : lane === "senior"
+      ? SENIOR_LANE_TEXT[submission.routing!.reason]
+      : "Standard review";
+  return {
+    recipients: [...new Set([...base, ...reviewers])],
+    laneText: translate(lang, laneText),
+  };
+}
+
 /**
  * Send the new-submission email unless it has gone already. Called when both
  * stages settle and again by the 2-minute cap job; the atomic claim makes the
@@ -472,7 +514,7 @@ export async function sendIntakeNotificationOnce(
   const form = await d.getForm(submission.formId, organizationId);
   if (!form) return;
 
-  const recipients = form.recipients ?? [];
+  const { recipients, laneText } = notificationAudience(form, submission, lang);
   if (recipients.length === 0 && !opts.adminFallback) {
     logger.warn(`No recipients configured for form ${form.id}, skipping admin notification`);
     return;
@@ -496,6 +538,7 @@ export async function sendIntakeNotificationOnce(
     form.entityType,
     lang,
     results,
+    laneText,
   );
 }
 

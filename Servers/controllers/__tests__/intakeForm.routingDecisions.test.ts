@@ -41,6 +41,7 @@ jest.mock("../../services/intakeFormEmail.service", () => ({
   sendNewSubmissionAdminNotification: jest.fn(),
   sendSubmissionApprovedEmail: jest.fn<any>().mockResolvedValue(undefined),
   sendSubmissionRejectedEmail: jest.fn<any>().mockResolvedValue(undefined),
+  sendSecondReviewRequestEmail: jest.fn<any>().mockResolvedValue(undefined),
 }));
 jest.mock("../../services/intakeScoring/enqueue", () => ({ enqueueIntakeAssessment: jest.fn() }));
 jest.mock("../../services/intakeLLM.service", () => ({
@@ -78,6 +79,7 @@ jest.mock("../../database/db", () => ({
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ctrl = require("../intakeForm.ctrl") as typeof import("../intakeForm.ctrl");
 const intake = require("../../utils/intakeForm.utils");
+const emails = require("../../services/intakeFormEmail.service");
 const runs = require("../../utils/euAiActClassification.utils");
 const data = require("../../utils/intakeSubmissionData.utils");
 const projects = require("../../utils/project.utils");
@@ -389,6 +391,17 @@ describe("approve: second review", () => {
     expect(intake.updateSubmissionRoutingQuery.mock.invocationCallOrder[0]).toBeLessThan(
       intake.approveSubmissionQuery.mock.invocationCallOrder[0],
     );
+    expect(emails.sendSecondReviewRequestEmail).toHaveBeenCalledWith(ORG, 11, [SENIOR], "en");
+    expect(emails.sendSecondReviewRequestEmail.mock.invocationCallOrder[0]).toBeGreaterThan(
+      tx.commit.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("a failing second-review email doesn't fail the approval", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue(form(routingCfg({ secondReviewRate: 100 })));
+    emails.sendSecondReviewRequestEmail.mockRejectedValueOnce(new Error("smtp down"));
+    const r = await approve(STANDARD);
+    expect(r.status).toBe(200);
   });
 
   it("a senior reviewer's standard-lane approval is never picked", async () => {
@@ -396,12 +409,14 @@ describe("approve: second review", () => {
     const r = await approve(SENIOR);
     expect(r.status).toBe(200);
     expect(intake.updateSubmissionRoutingQuery).not.toHaveBeenCalled();
+    expect(emails.sendSecondReviewRequestEmail).not.toHaveBeenCalled();
   });
 
   it("rate 0 never picks", async () => {
     const r = await approve(STANDARD);
     expect(r.status).toBe(200);
     expect(intake.updateSubmissionRoutingQuery).not.toHaveBeenCalled();
+    expect(emails.sendSecondReviewRequestEmail).not.toHaveBeenCalled();
   });
 
   it("409 and rollback when the routing changed underneath", async () => {
@@ -412,6 +427,7 @@ describe("approve: second review", () => {
     expect(tx.rollback).toHaveBeenCalled();
     expect(tx.commit).not.toHaveBeenCalled();
     expect(intake.approveSubmissionQuery).not.toHaveBeenCalled();
+    expect(emails.sendSecondReviewRequestEmail).not.toHaveBeenCalled();
   });
 });
 

@@ -496,6 +496,64 @@ describe("sendIntakeNotificationOnce", () => {
   });
 });
 
+describe("sendIntakeNotificationOnce: lanes", () => {
+  const cfg = {
+    enabled: true,
+    seniorReviewerIds: [1, 9],
+    standardReviewerIds: [2],
+    threshold: 50,
+    closeCallMargin: 10,
+    secondReviewRate: 10,
+  };
+  const lane = (l: "senior" | "standard", reason: string) =>
+    ({
+      lane: l,
+      reason,
+      score: 52,
+      threshold: 50,
+      closeCallMargin: 10,
+      routedAt: "x",
+    }) as any;
+  const send = async (formOverrides: object, routing: unknown) => {
+    const h = harness({ ...settled(), routing } as never, {
+      getForm: jest.fn(async () => form({ recipients: [1], ...formOverrides })),
+    });
+    await sendIntakeNotificationOnce(ORG, 11, "en", { capReached: false }, h.deps);
+    return (h.deps.sendNotification as jest.Mock).mock.calls[0];
+  };
+
+  it("a senior-lane submission also goes to the senior reviewers, once each", async () => {
+    const call = await send({ routing: cfg }, lane("senior", "close_call"));
+    expect(call[0]).toEqual([1, 9]);
+    expect(call[8]).toBe("Senior review: close call");
+  });
+
+  it("a standard-lane submission goes to the standard reviewers", async () => {
+    const call = await send({ routing: cfg }, lane("standard", "below_threshold"));
+    expect(call[0]).toEqual([1, 2]);
+    expect(call[8]).toBe("Standard review");
+  });
+
+  it("no lane yet goes to both lanes and says it isn't routed", async () => {
+    const call = await send({ routing: cfg }, null);
+    expect(call[0]).toEqual([1, 9, 2]);
+    expect(call[8]).toBe("Not routed yet: scoring is still running");
+  });
+
+  it("routing off or disabled notifies the form recipients only, with no lane line", async () => {
+    for (const routing of [null, { ...cfg, enabled: false }]) {
+      const call = await send({ routing }, lane("senior", "close_call"));
+      expect(call[0]).toEqual([1]);
+      expect(call[8]).toBeUndefined();
+    }
+  });
+
+  it("a form with no recipients still emails the lane's reviewers", async () => {
+    const call = await send({ recipients: [], routing: cfg }, lane("standard", "below_threshold"));
+    expect(call[0]).toEqual([2]);
+  });
+});
+
 describe("scoreTextFor", () => {
   const base = { finalScore: 64, rulesOnly: false } as IRiskAssessmentV2;
   it("words each case", () => {

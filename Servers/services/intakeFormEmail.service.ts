@@ -4,7 +4,11 @@ import { IntakeEntityType } from "../domain.layer/enums/intake-entity-type.enum"
 import { sequelize } from "../database/db";
 import { QueryTypes } from "sequelize";
 import logger from "../utils/logger/fileLogger";
-import { getUsersByIds } from "../utils/intakeForm.utils";
+import {
+  getIntakeFormByIdQuery,
+  getSubmissionByIdQuery,
+  getUsersByIds,
+} from "../utils/intakeForm.utils";
 import { translate } from "../utils/i18n.utils";
 import { escapeHtml } from "../utils/sanitization.utils";
 
@@ -156,7 +160,8 @@ export function renderIntakeResultsHtml(
 /**
  * Send notification email to designated recipients (or org admins as fallback)
  * Accepts either an array of user IDs or an organization ID for fallback.
- * `results` adds the initial assessment; without it the email is unchanged.
+ * `results` adds the initial assessment; `laneText` (already worded) adds the
+ * review lane line. Without them the email is unchanged.
  */
 export async function sendNewSubmissionAdminNotification(
   recipientsOrOrgId: number[] | number,
@@ -167,6 +172,7 @@ export async function sendNewSubmissionAdminNotification(
   entityType: IntakeEntityType,
   lang?: string,
   results?: IntakeNotificationResults,
+  laneText?: string,
 ): Promise<void> {
   try {
     let recipients: Array<{ id: number; name: string; email: string }>;
@@ -189,6 +195,11 @@ export async function sendNewSubmissionAdminNotification(
 
     const subject = translate(lang, "New submission pending review: {formName}", { formName });
     const resultsHtml = renderIntakeResultsHtml(results, lang);
+    const laneHtml = laneText
+      ? `<p class="box-subtitle" style="margin-top: 6px;"><strong>${escapeHtml(
+          translate(lang, "Review lane:"),
+        )}</strong> ${escapeHtml(laneText)}</p>`
+      : "";
     for (const recipient of recipients) {
       try {
         await sendEmail(recipient.email, subject, EMAIL_TEMPLATES.INTAKE_NEW_SUBMISSION_ADMIN, {
@@ -199,6 +210,7 @@ export async function sendNewSubmissionAdminNotification(
           submissionId: String(submissionId),
           entityType: entityTypeDisplay,
           reviewLink,
+          laneHtml,
           resultsHtml,
         });
       } catch (error) {
@@ -274,5 +286,51 @@ export async function sendSubmissionRejectedEmail(
     );
   } catch (error) {
     logger.error("Failed to send submission rejected email:", error);
+  }
+}
+
+/**
+ * Ask the form's senior reviewers for a second review of an approval that was
+ * picked for sampling. Never throws: a failed email is logged.
+ */
+export async function sendSecondReviewRequestEmail(
+  organizationId: number,
+  submissionId: number,
+  seniorReviewerIds: number[],
+  lang?: string,
+): Promise<void> {
+  try {
+    const submission = await getSubmissionByIdQuery(submissionId, organizationId);
+    if (!submission) return;
+    const form = await getIntakeFormByIdQuery(submission.formId, organizationId);
+    const formName = form?.name || "Unknown Form";
+    const approvers = submission.reviewedBy ? await getUsersByIds([submission.reviewedBy]) : [];
+    const approverName = approvers[0]?.name || approvers[0]?.email || "A reviewer";
+    const recipients = await getUsersByIds(seniorReviewerIds);
+    if (recipients.length === 0) {
+      logger.warn(`No senior reviewers found for submission #${submissionId} second review`);
+      return;
+    }
+
+    const reviewLink = buildFrontendUrl(`/intake-forms`);
+    const subject = translate(lang, "Second review requested: {formName}", { formName });
+    for (const recipient of recipients) {
+      try {
+        await sendEmail(recipient.email, subject, EMAIL_TEMPLATES.INTAKE_SECOND_REVIEW, {
+          reviewerName: recipient.name || recipient.email.split("@")[0],
+          formName,
+          submissionId: String(submissionId),
+          entityType: getEntityTypeDisplayName(submission.entityType),
+          approverName,
+          reviewLink,
+        });
+      } catch (error) {
+        logger.error(`Failed to send second review request to ${recipient.email}:`, error);
+      }
+    }
+
+    logger.info(`Second review request emails sent for submission #${submissionId}`);
+  } catch (error) {
+    logger.error("Failed to send second review request emails:", error);
   }
 }

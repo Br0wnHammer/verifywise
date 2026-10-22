@@ -33,6 +33,7 @@ import {
   getEligibleReviewerIdsQuery,
   setDecisionRecordQuery,
   updateSubmissionRoutingQuery,
+  updateSecondReviewQuery,
 } from "../utils/intakeForm.utils";
 import { createNewModelInventoryQuery } from "../utils/modelInventory.utils";
 import { createNewProjectQuery } from "../utils/project.utils";
@@ -78,6 +79,7 @@ import {
   sendNewSubmissionAdminNotification,
   sendSubmissionApprovedEmail,
   sendSubmissionRejectedEmail,
+  sendSecondReviewRequestEmail,
 } from "../services/intakeFormEmail.service";
 import { enqueueIntakeAssessment } from "../services/intakeScoring/enqueue";
 import { cleanSubmission, isEmptyAnswer, parseFormula } from "../services/intakeFormLogic";
@@ -2328,7 +2330,13 @@ export async function approveSubmission(req: Request, res: Response) {
       organizationId: req.organizationId!,
     });
     await logIfOutsideLane(req, submissionId, decision.lane, routingCfg, "approveSubmission");
-    if (pickedForSecondReview) {
+    if (pickedForSecondReview && routingCfg) {
+      sendSecondReviewRequestEmail(
+        req.organizationId!,
+        submissionId,
+        routingCfg.seniorReviewerIds,
+        req.lang,
+      ).catch((err) => logger.error("Failed to send second review request email:", err));
       await logSuccess({
         eventType: "Update",
         description: `submission ${submissionId} picked for second review`,
@@ -3419,4 +3427,173 @@ export async function getCaptcha(_req: Request, res: Response) {
   const token = createSignedToken({ answer, timestamp: Date.now() });
 
   return res.status(200).json(STATUS_CODE[200]({ question, token }));
+}
+
+const SECOND_REVIEW_NOTE_MAX = 2000;
+
+/**
+ * Load an approved submission with an open or missed second review and check
+ * the caller may act on it: a senior reviewer of the form or an Admin, never
+ * the person who approved it. Sends the error response and returns null when
+ * not; the caller still checks the review's state.
+ */
+async function loadSecondReview(req: Request, res: Response, submissionId: number) {
+  const submission = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+  if (!submission) {
+    res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
+    return null;
+  }
+  const form = await getIntakeFormByIdQuery(submission.formId, req.organizationId!);
+  const isSenior = form?.routing?.seniorReviewerIds.includes(req.userId!) ?? false;
+  if (!isSenior && !isAdminRequest(req)) {
+    res
+      .status(403)
+      .json(STATUS_CODE[403](req.t!("Only a senior reviewer of this form can do a second review")));
+    return null;
+  }
+  if (submission.reviewedBy === req.userId) {
+    res.status(403).json(STATUS_CODE[403](req.t!("You can't second-review your own approval")));
+    return null;
+  }
+  return submission;
+}
+
+function secondReviewConflict(req: Request, res: Response) {
+  return res
+    .status(409)
+    .json(STATUS_CODE[409](req.t!("This second review changed. Reload and try again.")));
+}
+
+/** The trimmed note ("" when blank), or null when it is not a string or is too long. */
+function parseSecondReviewNote(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const note = raw.trim();
+  return note.length <= SECOND_REVIEW_NOTE_MAX ? note : null;
+}
+
+/**
+ * A senior reviewer records the outcome of a sampled second review.
+ * Changes nothing about the approval itself.
+ * POST /intake/submissions/:id/second-review
+ */
+export async function recordSecondReview(req: Request, res: Response) {
+  const submissionId = parseId(req.params.id);
+  if (isNaN(submissionId)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid submission ID")));
+  }
+  const outcome = req.body?.outcome;
+  if (outcome !== "agreed" && outcome !== "missed") {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Outcome must be agreed or missed")));
+  }
+  const rawNote = req.body?.note;
+  const note = rawNote === undefined || rawNote === null ? "" : parseSecondReviewNote(rawNote);
+  if (note === null || (outcome === "missed" && note === "")) {
+    return res
+      .status(400)
+      .json(
+        STATUS_CODE[400](
+          outcome === "missed"
+            ? req.t!("A note of 1 to 2000 characters is required when something was missed")
+            : req.t!("A note can be at most 2000 characters"),
+        ),
+      );
+  }
+
+  try {
+    const submission = await loadSecondReview(req, res, submissionId);
+    if (!submission) return;
+    if (submission.routing?.secondReview?.status !== "open") {
+      return secondReviewConflict(req, res);
+    }
+
+    const routing = await updateSecondReviewQuery(
+      submissionId,
+      req.organizationId!,
+      { status: "open" },
+      {
+        status: outcome,
+        reviewedBy: req.userId!,
+        reviewedAt: new Date().toISOString(),
+        ...(note ? { note } : {}),
+      },
+    );
+    if (!routing) return secondReviewConflict(req, res);
+
+    await logSuccess({
+      eventType: "Update",
+      description: `submission ${submissionId} second review: ${outcome}`,
+      functionName: "recordSecondReview",
+      fileName: "intakeForm.ctrl.ts",
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(200).json(STATUS_CODE[200](routing));
+  } catch (error) {
+    await logFailure({
+      eventType: "Update",
+      description: `failed to record second review: ${submissionId}`,
+      functionName: "recordSecondReview",
+      fileName: "intakeForm.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Close a missed second review once the follow-up is done. Changes nothing
+ * about the approval or the entity it created.
+ * POST /intake/submissions/:id/second-review/resolve
+ */
+export async function resolveSecondReviewMiss(req: Request, res: Response) {
+  const submissionId = parseId(req.params.id);
+  if (isNaN(submissionId)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid submission ID")));
+  }
+  const note = parseSecondReviewNote(req.body?.note);
+  if (!note) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400](req.t!("A note of 1 to 2000 characters is required")));
+  }
+
+  try {
+    const submission = await loadSecondReview(req, res, submissionId);
+    if (!submission) return;
+    const current = submission.routing?.secondReview;
+    if (current?.status !== "missed" || current.resolvedAt) {
+      return secondReviewConflict(req, res);
+    }
+
+    const routing = await updateSecondReviewQuery(
+      submissionId,
+      req.organizationId!,
+      { status: "missed", unresolved: true },
+      { resolvedBy: req.userId!, resolvedAt: new Date().toISOString(), resolutionNote: note },
+    );
+    if (!routing) return secondReviewConflict(req, res);
+
+    await logSuccess({
+      eventType: "Update",
+      description: `submission ${submissionId} missed second review resolved`,
+      functionName: "resolveSecondReviewMiss",
+      fileName: "intakeForm.ctrl.ts",
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(200).json(STATUS_CODE[200](routing));
+  } catch (error) {
+    await logFailure({
+      eventType: "Update",
+      description: `failed to resolve second review: ${submissionId}`,
+      functionName: "resolveSecondReviewMiss",
+      fileName: "intakeForm.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
 }

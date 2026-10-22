@@ -15,6 +15,7 @@ import {
   IRiskAssessmentV2,
   IRiskOverride,
   ISuggestedRisksBlock,
+  ISecondReview,
   ISubmissionRouting,
   IDecisionRecord,
 } from "../domain.layer/interfaces/i.intakeSubmission";
@@ -1279,6 +1280,40 @@ export const updateSubmissionRoutingQuery = async (
     },
   );
   return result[1] > 0;
+};
+
+/**
+ * Merge `patch` into an approved submission's second review, only while the
+ * review is still in the expected state (`unresolved`: no resolution stored
+ * yet). One statement, so two reviewers can't both win. Returns the new
+ * routing, or null when the state had moved on.
+ */
+export const updateSecondReviewQuery = async (
+  id: number,
+  organizationId: number,
+  expected: { status: "open" | "missed"; unresolved?: boolean },
+  patch: Partial<ISecondReview>,
+): Promise<ISubmissionRouting | null> => {
+  const rows = (await sequelize.query(
+    `UPDATE intake_submissions
+    SET routing = jsonb_set(routing, '{secondReview}', (routing->'secondReview') || CAST(:patch AS jsonb)),
+        updated_at = NOW()
+    WHERE organization_id = :organizationId AND id = :id AND status = :approved
+      AND routing->'secondReview'->>'status' = :expectedStatus
+      ${expected.unresolved ? "AND routing->'secondReview'->>'resolvedAt' IS NULL" : ""}
+    RETURNING routing`,
+    {
+      replacements: {
+        organizationId,
+        id,
+        approved: IntakeSubmissionStatus.APPROVED,
+        expectedStatus: expected.status,
+        patch: JSON.stringify(patch),
+      },
+      type: QueryTypes.SELECT,
+    },
+  )) as Array<{ routing: ISubmissionRouting }>;
+  return rows[0]?.routing ?? null;
 };
 
 /** Store what was in force when the submission was approved or rejected. */

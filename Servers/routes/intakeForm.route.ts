@@ -21,6 +21,8 @@ import {
   approveSubmission,
   rejectSubmission,
   escalateSubmission,
+  recordSecondReview,
+  resolveSecondReviewMiss,
   getSubmissionPreview,
   overrideSubmissionRisk,
   retrySubmissionAssessment,
@@ -122,6 +124,18 @@ router.post(
   authenticateJWT,
   authorize("intakeForm.edit"),
   escalateSubmission,
+);
+router.post(
+  "/submissions/:id/second-review",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  recordSecondReview,
+);
+router.post(
+  "/submissions/:id/second-review/resolve",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  resolveSecondReviewMiss,
 );
 
 // ============================================================================
