@@ -19,6 +19,7 @@ import { getLatestRunForSubmissionQuery } from "../../utils/euAiActClassificatio
 import { translate } from "../../utils/i18n.utils";
 import {
   claimSubmissionNotificationQuery,
+  getEligibleReviewerIdsQuery,
   getIntakeFormByIdQuery,
   getSubmissionByIdQuery,
   getSubmissionsNeedingAssessmentQuery,
@@ -61,6 +62,7 @@ export interface AssessmentDeps {
   saveAssessment: typeof updateSubmissionAssessmentV2Query;
   saveSuggestions: typeof updateSubmissionSuggestionsQuery;
   claimNotification: typeof claimSubmissionNotificationQuery;
+  getEligibleIds: typeof getEligibleReviewerIdsQuery;
   sendNotification: typeof sendNewSubmissionAdminNotification;
   listNeedingAssessment: typeof getSubmissionsNeedingAssessmentQuery;
   enqueue: typeof enqueueIntakeAssessment;
@@ -80,6 +82,7 @@ const defaultDeps: AssessmentDeps = {
   saveAssessment: updateSubmissionAssessmentV2Query,
   saveSuggestions: updateSubmissionSuggestionsQuery,
   claimNotification: claimSubmissionNotificationQuery,
+  getEligibleIds: getEligibleReviewerIdsQuery,
   sendNotification: sendNewSubmissionAdminNotification,
   listNeedingAssessment: getSubmissionsNeedingAssessmentQuery,
   enqueue: enqueueIntakeAssessment,
@@ -467,21 +470,26 @@ const SENIOR_LANE_TEXT: Record<RoutingReason, string> = {
  * on, the form's recipients plus the assigned lane's reviewers (both lanes
  * while no lane is stored yet); with routing off, the recipients alone.
  */
-function notificationAudience(
+async function notificationAudience(
   form: IIntakeForm,
   submission: IIntakeSubmission,
   lang: string | undefined,
-): { recipients: number[]; laneText?: string } {
+  organizationId: number,
+  d: AssessmentDeps,
+): Promise<{ recipients: number[]; laneText?: string }> {
   const base = form.recipients ?? [];
   const cfg = form.routing;
   if (!cfg?.enabled) return { recipients: base };
   const lane = submission.routing?.lane;
-  const reviewers =
+  const laneIds =
     lane === "senior"
       ? cfg.seniorReviewerIds
       : lane === "standard"
         ? cfg.standardReviewerIds
         : [...cfg.seniorReviewerIds, ...cfg.standardReviewerIds];
+  // Saved ids can go stale (user deleted, role lost intakeForm.edit); the
+  // form's own recipients are left as configured.
+  const reviewers = await d.getEligibleIds(organizationId, laneIds);
   const laneText = !lane
     ? "Not routed yet: scoring is still running"
     : lane === "senior"
@@ -514,7 +522,13 @@ export async function sendIntakeNotificationOnce(
   const form = await d.getForm(submission.formId, organizationId);
   if (!form) return;
 
-  const { recipients, laneText } = notificationAudience(form, submission, lang);
+  const { recipients, laneText } = await notificationAudience(
+    form,
+    submission,
+    lang,
+    organizationId,
+    d,
+  );
   if (recipients.length === 0 && !opts.adminFallback) {
     logger.warn(`No recipients configured for form ${form.id}, skipping admin notification`);
     return;

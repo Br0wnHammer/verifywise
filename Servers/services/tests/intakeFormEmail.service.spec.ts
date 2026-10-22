@@ -28,6 +28,7 @@ jest.mock("../../constants/emailTemplates", () => ({
 
 jest.mock("../../utils/intakeForm.utils", () => ({
   getUsersByIds: jest.fn(),
+  getEligibleReviewerIdsQuery: jest.fn(),
   getSubmissionByIdQuery: jest.fn(),
   getIntakeFormByIdQuery: jest.fn(),
 }));
@@ -47,6 +48,7 @@ import {
 } from "../intakeFormEmail.service";
 import { sendEmail } from "../emailService";
 import {
+  getEligibleReviewerIdsQuery,
   getIntakeFormByIdQuery,
   getSubmissionByIdQuery,
   getUsersByIds,
@@ -363,6 +365,7 @@ describe("intakeFormEmail.service", () => {
           { id: 9, name: "", email: "bo@test.com" },
         ]);
       mockSendEmail.mockResolvedValue(undefined);
+      (getEligibleReviewerIdsQuery as jest.Mock).mockResolvedValue([1, 9]);
 
       await sendSecondReviewRequestEmail(7, 11, [1, 9], "en");
 
@@ -382,6 +385,39 @@ describe("intakeFormEmail.service", () => {
         }),
       );
       expect(mockSendEmail.mock.calls[1][3]).toMatchObject({ reviewerName: "bo" });
+    });
+
+    it("only looks up and emails eligible senior reviewers", async () => {
+      (getSubmissionByIdQuery as jest.Mock).mockResolvedValue({
+        formId: 3,
+        reviewedBy: null,
+        entityType: IntakeEntityType.MODEL,
+      });
+      (getIntakeFormByIdQuery as jest.Mock).mockResolvedValue({ name: "AI intake" });
+      (getEligibleReviewerIdsQuery as jest.Mock).mockResolvedValue([1]);
+      mockGetUsersByIds.mockResolvedValue([{ id: 1, name: "Ann", email: "ann@test.com" }]);
+      mockSendEmail.mockResolvedValue(undefined);
+
+      await sendSecondReviewRequestEmail(7, 11, [1, 5], "en");
+
+      expect(getEligibleReviewerIdsQuery).toHaveBeenCalledWith(7, [1, 5]);
+      expect(mockGetUsersByIds).toHaveBeenLastCalledWith([1]);
+      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it("sends nothing when no senior reviewer is eligible", async () => {
+      (getSubmissionByIdQuery as jest.Mock).mockResolvedValue({
+        formId: 3,
+        reviewedBy: null,
+        entityType: IntakeEntityType.MODEL,
+      });
+      (getIntakeFormByIdQuery as jest.Mock).mockResolvedValue({ name: "AI intake" });
+      (getEligibleReviewerIdsQuery as jest.Mock).mockResolvedValue([]);
+      mockGetUsersByIds.mockResolvedValue([]);
+
+      await sendSecondReviewRequestEmail(7, 11, [5], "en");
+
+      expect(mockSendEmail).not.toHaveBeenCalled();
     });
 
     it("never throws when the lookup fails", async () => {

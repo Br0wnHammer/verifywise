@@ -113,6 +113,7 @@ function harness(
       state.submission = { ...state.submission, suggestedRisks: b };
     }),
     claimNotification: jest.fn(async () => claims.shift() ?? false),
+    getEligibleIds: jest.fn(async (_org: number, ids?: number[]) => ids ?? []),
     sendNotification: jest.fn(async () => undefined),
     generateImpl: fakeLlm(64),
     now: () => NOW,
@@ -546,6 +547,16 @@ describe("sendIntakeNotificationOnce: lanes", () => {
       expect(call[0]).toEqual([1]);
       expect(call[8]).toBeUndefined();
     }
+  });
+
+  it("drops stale or ineligible lane ids but keeps the form recipients", async () => {
+    const h = harness({ ...settled(), routing: lane("senior", "close_call") } as never, {
+      getForm: jest.fn(async () => form({ recipients: [1, 77], routing: cfg })),
+      getEligibleIds: jest.fn(async () => [9]),
+    });
+    await sendIntakeNotificationOnce(ORG, 11, "en", { capReached: false }, h.deps);
+    expect(h.deps.getEligibleIds).toHaveBeenCalledWith(ORG, [1, 9]);
+    expect((h.deps.sendNotification as jest.Mock).mock.calls[0][0]).toEqual([1, 77, 9]);
   });
 
   it("a form with no recipients still emails the lane's reviewers", async () => {

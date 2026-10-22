@@ -5,6 +5,7 @@ import { sequelize } from "../database/db";
 import { QueryTypes } from "sequelize";
 import logger from "../utils/logger/fileLogger";
 import {
+  getEligibleReviewerIdsQuery,
   getIntakeFormByIdQuery,
   getSubmissionByIdQuery,
   getUsersByIds,
@@ -306,9 +307,10 @@ export async function sendSecondReviewRequestEmail(
     const formName = form?.name || "Unknown Form";
     const approvers = submission.reviewedBy ? await getUsersByIds([submission.reviewedBy]) : [];
     const approverName = approvers[0]?.name || approvers[0]?.email || "A reviewer";
-    const recipients = await getUsersByIds(seniorReviewerIds);
+    const eligibleIds = await getEligibleReviewerIdsQuery(organizationId, seniorReviewerIds);
+    const recipients = await getUsersByIds(eligibleIds);
     if (recipients.length === 0) {
-      logger.warn(`No senior reviewers found for submission #${submissionId} second review`);
+      logger.warn(`No eligible senior reviewers for submission #${submissionId} second review`);
       return;
     }
 
