@@ -1248,28 +1248,36 @@ export async function getEligibleReviewerIdsQuery(
 
 /**
  * Store the lane decision on a pending submission; a decided one is left alone.
+ * With `expected` (null meaning "no routing yet") the write only lands while the
+ * stored routing is still that value, so a concurrent escalation is not
+ * overwritten. Returns whether a row was updated.
  */
 export const updateSubmissionRoutingQuery = async (
   id: number,
   routing: ISubmissionRouting | null,
   organizationId: number,
   transaction?: Transaction,
-): Promise<void> => {
-  await sequelize.query(
+  expected?: ISubmissionRouting | null,
+): Promise<boolean> => {
+  const guarded = expected !== undefined;
+  const result = await sequelize.query(
     `UPDATE intake_submissions
     SET routing = :routing, updated_at = NOW()
-    WHERE organization_id = :organizationId AND id = :id AND status = :pending`,
+    WHERE organization_id = :organizationId AND id = :id AND status = :pending
+      ${guarded ? "AND routing IS NOT DISTINCT FROM CAST(:expected AS jsonb)" : ""}`,
     {
       replacements: {
         organizationId,
         id,
         routing: routing ? JSON.stringify(routing) : null,
         pending: IntakeSubmissionStatus.PENDING,
+        ...(guarded ? { expected: expected ? JSON.stringify(expected) : null } : {}),
       },
       type: QueryTypes.UPDATE,
       transaction,
     },
   );
+  return result[1] > 0;
 };
 
 /**

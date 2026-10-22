@@ -313,6 +313,44 @@ describe("runIntakeAssessment", () => {
     await run;
   });
 
+  it("routes once from the re-read submission after scoring settles", async () => {
+    const routeSubmission = jest.fn(async () => null);
+    const h = harness(submission(), { routeSubmission: routeSubmission as any });
+    await runIntakeAssessment(job({ notify: false }), h.deps);
+    expect(routeSubmission).toHaveBeenCalledTimes(1);
+    const [routed, routedForm, org] = routeSubmission.mock.calls[0] as any[];
+    expect(routed.riskAssessment).toMatchObject({ version: 2, status: "complete" });
+    expect(routedForm.id).toBe(5);
+    expect(org).toBe(ORG);
+  });
+
+  it("routes after a failed scoring stage as well", async () => {
+    const routeSubmission = jest.fn(async () => null);
+    const h = harness(submission(), {
+      routeSubmission: routeSubmission as any,
+      generateImpl: fakeLlm(64, { failScoring: true }),
+    });
+    await runIntakeAssessment(job({ notify: false }), h.deps);
+    expect(routeSubmission).toHaveBeenCalledTimes(1);
+    expect((routeSubmission.mock.calls[0] as any[])[0].riskAssessment.status).toBe("ai_failed");
+  });
+
+  it("a suggestions-only job does not route", async () => {
+    const routeSubmission = jest.fn(async () => null);
+    const h = harness(submission(), { routeSubmission: routeSubmission as any });
+    await runIntakeAssessment(job({ stages: ["suggestions"], notify: false }), h.deps);
+    expect(routeSubmission).not.toHaveBeenCalled();
+  });
+
+  it("logs a routing error and still finishes the job", async () => {
+    const routeSubmission = jest.fn(async () => {
+      throw new Error("route down");
+    });
+    const h = harness(submission(), { routeSubmission: routeSubmission as any });
+    await expect(runIntakeAssessment(job({ notify: false }), h.deps)).resolves.toBeUndefined();
+    expect(finalBlock(h).status).toBe("complete");
+  });
+
   it("scoring-only runs never touch suggestions", async () => {
     const block: ISuggestedRisksBlock = {
       status: "complete",

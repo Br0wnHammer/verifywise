@@ -1,7 +1,7 @@
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 
 jest.mock("../../../utils/intakeForm.utils", () => ({
-  updateSubmissionRoutingQuery: jest.fn<any>().mockResolvedValue(undefined),
+  updateSubmissionRoutingQuery: jest.fn<any>().mockResolvedValue(true),
   getSubmissionsByFormIdQuery: jest.fn<any>(),
 }));
 jest.mock("../../../utils/logger/logHelper", () => ({
@@ -9,7 +9,7 @@ jest.mock("../../../utils/logger/logHelper", () => ({
 }));
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { routeSubmission, rerouteFormPending } =
+const { routeSubmission, rerouteFormPending, raiseForOverride } =
   require("../routingService") as typeof import("../routingService");
 const intake = require("../../../utils/intakeForm.utils");
 const { logSuccess } = require("../../../utils/logger/logHelper");
@@ -84,7 +84,13 @@ describe("routeSubmission", () => {
       closeCallMargin: 10,
       routedAt: NOW.toISOString(),
     });
-    expect(intake.updateSubmissionRoutingQuery).toHaveBeenCalledWith(9, routing, 5, undefined);
+    expect(intake.updateSubmissionRoutingQuery).toHaveBeenCalledWith(
+      9,
+      routing,
+      5,
+      undefined,
+      null,
+    );
     expect(logSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
         description: "routed submission 9 to senior: at_or_above_threshold",
@@ -139,5 +145,52 @@ describe("rerouteFormPending", () => {
     expect(await rerouteFormPending(form(), 5)).toBe(1);
     expect(intake.getSubmissionsByFormIdQuery).toHaveBeenCalledWith(3, 5, "pending", 200, 0);
     expect(intake.updateSubmissionRoutingQuery).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("lost race", () => {
+  it("routeSubmission returns null and logs nothing when the guarded write lands on no row", async () => {
+    intake.updateSubmissionRoutingQuery.mockResolvedValueOnce(false);
+    expect(await routeSubmission(sub(), form(), 5)).toBeNull();
+    expect(logSuccess).not.toHaveBeenCalled();
+  });
+
+  it("passes the routing it read as the expected value", async () => {
+    const read = { lane: "standard", reason: "below_threshold", score: 10 };
+    await routeSubmission(sub({ routing: read }), form(), 5);
+    expect(intake.updateSubmissionRoutingQuery.mock.calls[0][4]).toBe(read);
+  });
+
+  it("raiseForOverride returns null and logs nothing when the guarded write lands on no row", async () => {
+    intake.updateSubmissionRoutingQuery.mockResolvedValueOnce(false);
+    const standard = sub({ routing: { lane: "standard", reason: "below_threshold", score: 10 } });
+    expect(await raiseForOverride(standard, form(), "Critical", 5)).toBeNull();
+    expect(logSuccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("raiseForOverride", () => {
+  const standard = (over: any = {}) =>
+    sub({ routing: { lane: "standard", reason: "below_threshold", score: 10 }, ...over });
+
+  it("raises a standard lane to senior with reason override_raised", async () => {
+    const routing = await raiseForOverride(standard(), form(), "Critical", 5, { now: NOW });
+    expect(routing).toMatchObject({ lane: "senior", reason: "override_raised", score: 76 });
+    expect(logSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("raises an unrouted submission too", async () => {
+    expect(await raiseForOverride(sub(), form(), "High", 5)).toMatchObject({ lane: "senior" });
+  });
+
+  it("does not lower, re-write or touch escalated, off, below-threshold or decided ones", async () => {
+    const senior = sub({ routing: { lane: "senior", reason: "close_call", score: 52 } });
+    expect(await raiseForOverride(senior, form(), "Low", 5)).toBeNull();
+    expect(await raiseForOverride(standard(), form(), "Low", 5)).toBeNull();
+    expect(
+      await raiseForOverride(standard(), form({ ...ROUTING, enabled: false }), "High", 5),
+    ).toBeNull();
+    expect(await raiseForOverride(standard({ status: "approved" }), form(), "High", 5)).toBeNull();
+    expect(intake.updateSubmissionRoutingQuery).not.toHaveBeenCalled();
   });
 });

@@ -35,6 +35,7 @@ import {
   sendNewSubmissionAdminNotification,
 } from "../intakeFormEmail.service";
 import type { UseCaseInput } from "../riskSuggestions/riskSuggestions.service";
+import { routeSubmission } from "../intakeRouting/routingService";
 import { ClassificationContext, runAiScoring } from "./aiScoring";
 import { AssessmentStage, enqueueIntakeAssessment, IntakeAssessmentJobData } from "./enqueue";
 import { generateIntakeSuggestions } from "./intakeSuggestions";
@@ -62,6 +63,7 @@ export interface AssessmentDeps {
   sendNotification: typeof sendNewSubmissionAdminNotification;
   listNeedingAssessment: typeof getSubmissionsNeedingAssessmentQuery;
   enqueue: typeof enqueueIntakeAssessment;
+  routeSubmission: typeof routeSubmission;
   generateImpl?: GenerateObjectImpl;
   now: () => Date;
 }
@@ -80,6 +82,7 @@ const defaultDeps: AssessmentDeps = {
   sendNotification: sendNewSubmissionAdminNotification,
   listNeedingAssessment: getSubmissionsNeedingAssessmentQuery,
   enqueue: enqueueIntakeAssessment,
+  routeSubmission,
   now: () => new Date(),
 };
 
@@ -345,7 +348,11 @@ export async function runIntakeAssessment(
       `Intake assessment setup failed for submission ${submissionId}: ${errorMessage(error)}`,
     );
     await settleAll([
-      wants("scoring") ? failScoring(classification, error) : undefined,
+      wants("scoring")
+        ? failScoring(classification, error).then(() =>
+            routeSettled(d, submissionId, organizationId),
+          )
+        : undefined,
       wants("suggestions") ? failSuggestions(error) : undefined,
     ]);
     await notifyWhenSettled(data, deps);
@@ -357,12 +364,14 @@ export async function runIntakeAssessment(
   // BullMQ retry never overlaps a stage still running.
   await settleAll([
     wants("scoring")
-      ? runScoringStage(ctx, startedAt, d).catch((error) => {
-          logger.error(
-            `Intake scoring failed for submission ${submissionId}: ${errorMessage(error)}`,
-          );
-          return failScoring(ctx.classification, error);
-        })
+      ? runScoringStage(ctx, startedAt, d)
+          .catch((error) => {
+            logger.error(
+              `Intake scoring failed for submission ${submissionId}: ${errorMessage(error)}`,
+            );
+            return failScoring(ctx.classification, error);
+          })
+          .then(() => routeSettled(d, submissionId, organizationId))
       : undefined,
     wants("suggestions")
       ? runSuggestionsStage(ctx, startedAt, d).catch((error) => {
@@ -375,6 +384,26 @@ export async function runIntakeAssessment(
   ]);
 
   await notifyWhenSettled(data, deps);
+}
+
+/**
+ * Route the submission from its stored, settled score. A routing failure is
+ * logged and never fails the job: the lane can be set by the next re-route.
+ */
+async function routeSettled(
+  d: AssessmentDeps,
+  submissionId: number,
+  organizationId: number,
+): Promise<void> {
+  try {
+    const submission = await d.getSubmission(submissionId, organizationId);
+    if (!submission) return;
+    const form = await d.getForm(submission.formId, organizationId);
+    if (!form) return;
+    await d.routeSubmission(submission, form, organizationId);
+  } catch (error) {
+    logger.error(`Intake routing failed for submission ${submissionId}: ${errorMessage(error)}`);
+  }
 }
 
 /** Waits for every promise, then rethrows the first failure, if any. */

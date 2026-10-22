@@ -116,7 +116,7 @@ import { LIKELIHOODS, SEVERITIES } from "../services/intakeScoring/riskMappers";
 import type { IntakeSuggestedRisk } from "../services/intakeScoring/intakeSuggestions";
 import { selectRetryStages } from "../services/intakeScoring/retry";
 import { validateRoutingSettings } from "../services/intakeRouting/routingRules";
-import { rerouteFormPending } from "../services/intakeRouting/routingService";
+import { raiseForOverride, rerouteFormPending } from "../services/intakeRouting/routingService";
 import type { IFormRouting } from "../domain.layer/interfaces/i.intakeForm";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
@@ -1607,6 +1607,14 @@ export async function overrideSubmissionRisk(req: Request, res: Response) {
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
+
+    // The override is saved; a failure to raise the lane must not undo that.
+    try {
+      const form = await getIntakeFormByIdQuery(submission.formId, req.organizationId!);
+      if (form) await raiseForOverride(submission, form, tier, req.organizationId!);
+    } catch (error) {
+      logger.error(`Error raising the lane after override of submission ${submissionId}:`, error);
+    }
 
     return res
       .status(200)
