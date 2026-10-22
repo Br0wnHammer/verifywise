@@ -459,13 +459,31 @@ describe("scoreTextFor", () => {
 });
 
 describe("backfillIntakeAssessments", () => {
-  it("queues only the stages each row needs, without email", async () => {
+  it("queues only the stages each row needs, emailing only when it never went", async () => {
     const enqueue = jest.fn(async () => undefined);
     const queued = await backfillIntakeAssessments({
       listNeedingAssessment: jest.fn(async () => [
-        { id: 1, organizationId: 2, needsScoring: true, needsSuggestions: true },
-        { id: 3, organizationId: 4, needsScoring: false, needsSuggestions: true },
-        { id: 5, organizationId: 6, needsScoring: true, needsSuggestions: false },
+        {
+          id: 1,
+          organizationId: 2,
+          needsScoring: true,
+          needsSuggestions: true,
+          needsNotification: true,
+        },
+        {
+          id: 3,
+          organizationId: 4,
+          needsScoring: false,
+          needsSuggestions: true,
+          needsNotification: false,
+        },
+        {
+          id: 5,
+          organizationId: 6,
+          needsScoring: true,
+          needsSuggestions: false,
+          needsNotification: false,
+        },
       ]),
       enqueue,
     });
@@ -474,7 +492,7 @@ describe("backfillIntakeAssessments", () => {
       organizationId: 2,
       submissionId: 1,
       stages: ["scoring", "suggestions"],
-      notify: false,
+      notify: true,
     });
     expect(enqueue).toHaveBeenNthCalledWith(2, {
       organizationId: 4,
@@ -497,8 +515,20 @@ describe("backfillIntakeAssessments", () => {
       .mockResolvedValueOnce(undefined);
     const queued = await backfillIntakeAssessments({
       listNeedingAssessment: jest.fn(async () => [
-        { id: 1, organizationId: 2, needsScoring: true, needsSuggestions: false },
-        { id: 3, organizationId: 4, needsScoring: true, needsSuggestions: false },
+        {
+          id: 1,
+          organizationId: 2,
+          needsScoring: true,
+          needsSuggestions: false,
+          needsNotification: false,
+        },
+        {
+          id: 3,
+          organizationId: 4,
+          needsScoring: true,
+          needsSuggestions: false,
+          needsNotification: false,
+        },
       ]),
       enqueue,
     });

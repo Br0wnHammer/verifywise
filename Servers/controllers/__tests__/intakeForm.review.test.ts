@@ -414,6 +414,23 @@ describe("overrideSubmissionRisk", () => {
     expect(r.status).toBe(200);
   });
 
+  it("409 for a submission that is not pending", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(submission({ status: "approved" }));
+    const r = await call(ctrl.overrideSubmissionRisk, overrideReq({ tier: "Critical" }));
+    expect(r.status).toBe(409);
+    expect(intake.updateSubmissionRiskOverrideQuery).not.toHaveBeenCalled();
+  });
+
+  it("checks bands and the floor before the first score is stored", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(submission({ riskAssessment: null }));
+    const legacy = await call(ctrl.overrideSubmissionRisk, overrideReq({ tier: "Unacceptable" }));
+    expect(legacy.status).toBe(400);
+    expect(legacy.body.data).toBe("Invalid risk band");
+    const low = await call(ctrl.overrideSubmissionRisk, overrideReq({ tier: "Low" }));
+    expect(low.status).toBe(400);
+    expect(intake.updateSubmissionRiskOverrideQuery).not.toHaveBeenCalled();
+  });
+
   it("keeps the old behaviour for a v1 assessment", async () => {
     intake.getSubmissionByIdQuery.mockResolvedValue(
       submission({ riskAssessment: { overallScore: 20, tier: "Minimal" } }),

@@ -45,7 +45,7 @@ const render = (
   props: {
     isModel?: boolean;
     readOnly?: boolean;
-    onChange?: (b: SuggestedRisksBlock) => void;
+    onChange?: (update: (b: SuggestedRisksBlock) => SuggestedRisksBlock) => void;
   } = {},
 ) =>
   renderWithProviders(
@@ -86,9 +86,26 @@ describe("SuggestedRisksSection", () => {
     await waitFor(() =>
       expect(updateSuggestedRisk).toHaveBeenCalledWith(11, "a", { state: "accepted" }),
     );
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ items: [expect.objectContaining({ state: "accepted" })] }),
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const next = onChange.mock.calls[0][0](block([item()])) as SuggestedRisksBlock;
+    expect(next.items).toEqual([expect.objectContaining({ state: "accepted" })]);
+  });
+
+  it("applies overlapping accepts to the latest block, so neither undoes the other", async () => {
+    vi.mocked(updateSuggestedRisk).mockImplementation(async (_id, riskId) => ({
+      data: item({ id: riskId, state: "accepted" }),
+    }));
+    const onChange = vi.fn();
+    const initial = block([item(), item({ id: "b" })]);
+    render(initial, { onChange });
+    fireEvent.click(screen.getByTestId("suggested-risk-a-accept"));
+    fireEvent.click(screen.getByTestId("suggested-risk-b-accept"));
+    await waitFor(() => expect(onChange).toHaveBeenCalledTimes(2));
+    const latest = onChange.mock.calls.reduce(
+      (b: SuggestedRisksBlock, [update]) => update(b),
+      initial,
     );
+    expect(latest.items.map((i) => i.state)).toEqual(["accepted", "accepted"]);
   });
 
   it("can't accept a suggestion without a mitigation plan", () => {
@@ -105,7 +122,10 @@ describe("SuggestedRisksSection", () => {
     render(block([item(), item({ id: "b", mitigationPlan: "" })]), { onChange });
     fireEvent.click(screen.getByTestId("suggested-risks-accept-all"));
     await waitFor(() => expect(acceptAllSuggestedRisks).toHaveBeenCalledWith(11));
-    const next = onChange.mock.calls[0][0] as SuggestedRisksBlock;
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const next = onChange.mock.calls[0][0](
+      block([item(), item({ id: "b", mitigationPlan: "" })]),
+    ) as SuggestedRisksBlock;
     expect(next.items.map((i) => i.state)).toEqual(["accepted", "suggested"]);
     expect(
       await screen.findByText("not accepted: they need a mitigation plan first"),
@@ -152,6 +172,19 @@ describe("SuggestedRisksSection", () => {
     failed.unmount();
     render(block([], { status: "pending" }));
     expect(screen.getByText("Suggesting risks…")).toBeInTheDocument();
+  });
+
+  it("says a missing block never started, instead of spinning", () => {
+    const { unmount } = render(null);
+    expect(
+      screen.getByText(
+        "Risk suggestions haven't started. Use Retry in the score section to start them.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Suggesting risks…")).toBeNull();
+    unmount();
+    render(null, { readOnly: true });
+    expect(screen.getByText("No risks were suggested for this submission.")).toBeInTheDocument();
   });
 
   it("read-only hides every action", () => {

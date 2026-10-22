@@ -17,7 +17,8 @@ export interface SuggestedRisksSectionProps {
   isModel: boolean;
   /** True once the submission is approved or rejected. */
   readOnly: boolean;
-  onChange(block: SuggestedRisksBlock): void;
+  /** Applied to the latest block, so actions that overlap don't undo each other. */
+  onChange(update: (block: SuggestedRisksBlock) => SuggestedRisksBlock): void;
 }
 
 const hasMitigation = (r: IntakeSuggestedRisk) => r.mitigationPlan.trim().length > 0;
@@ -39,7 +40,17 @@ function SuggestedRisksSection({
 
   const muted = { fontSize: "13px", color: theme.palette.text.tertiary } as const;
 
-  if (!block || block.status === "pending") {
+  // No block: the suggestions stage never started (Retry starts it).
+  if (!block) {
+    return (
+      <Typography sx={muted}>
+        {readOnly
+          ? "No risks were suggested for this submission."
+          : "Risk suggestions haven't started. Use Retry in the score section to start them."}
+      </Typography>
+    );
+  }
+  if (block.status === "pending") {
     return (
       <Box sx={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <CircularProgress size={14} sx={{ color: theme.palette.text.tertiary }} />
@@ -71,7 +82,10 @@ function SuggestedRisksSection({
   const canAcceptAll = current.items.some((i) => i.state === "suggested" && hasMitigation(i));
 
   function replaceItem(item: IntakeSuggestedRisk) {
-    onChange({ ...current, items: current.items.map((i) => (i.id === item.id ? item : i)) });
+    onChange((latest) => ({
+      ...latest,
+      items: latest.items.map((i) => (i.id === item.id ? item : i)),
+    }));
   }
 
   async function act(risk: IntakeSuggestedRisk, patch: SuggestedRiskPatch) {
@@ -94,12 +108,12 @@ function SuggestedRisksSection({
     try {
       const response = await acceptAllSuggestedRisks(submissionId);
       // The server accepts exactly these: suggested, with a mitigation plan.
-      onChange({
-        ...current,
-        items: current.items.map((i) =>
+      onChange((latest) => ({
+        ...latest,
+        items: latest.items.map((i) =>
           i.state === "suggested" && hasMitigation(i) ? { ...i, state: "accepted" } : i,
         ),
-      });
+      }));
       setSkippedNote(response.data.skipped);
     } catch {
       setError("Couldn't accept the suggestions. Please try again.");

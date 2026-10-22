@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Box,
   Typography,
@@ -29,6 +29,7 @@ import {
 import useUsers from "../../../application/hooks/useUsers";
 import { isAssessmentV2 } from "../../../application/utils/intakeScoring/isAssessmentV2";
 import {
+  bandOfTier,
   isBandAllowed,
   lowestAllowedBand,
   ruleMinimumFor,
@@ -330,6 +331,16 @@ function SubmissionPreviewModal({
   const [rejectReason, setRejectReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
 
+  // Stage start times seen at Retry: polling runs until one changes (the job
+  // started), then follows the stage status.
+  const [retryMarker, setRetryMarker] = useState<string | null>(null);
+
+  // The submission on screen, so a late refresh for another one is dropped.
+  const openIdRef = useRef(submissionId);
+  useEffect(() => {
+    openIdRef.current = submissionId;
+  }, [submissionId]);
+
   // Fetch preview when submissionId changes
   useEffect(() => {
     if (!isOpen || submissionId === null) {
@@ -354,6 +365,7 @@ function SubmissionPreviewModal({
       setShowOtherAnswers(false);
       setRejectReason("");
       setIsRejecting(false);
+      setRetryMarker(null);
 
       try {
         const response = await getSubmissionPreview(submissionId as number, controller.signal);
@@ -378,10 +390,11 @@ function SubmissionPreviewModal({
         setEuAiActLevel(response.data.euAiActClassification?.current.level ?? "");
         // A band override saved earlier opens in the override panel, so a
         // conflict with the rule minimum shows before approving.
+        // A pre-v2 tier opens as the band covering the same scores.
         const storedOverride = response.data.riskOverride;
         if (storedOverride?.tier) {
           setOverrideExpanded(true);
-          setOverrideTier(storedOverride.tier);
+          setOverrideTier(bandOfTier(storedOverride.tier) ?? "High");
           setOverrideJustification(storedOverride.justification ?? "");
         }
         setEditedEntityData({ ...(entityPreview || {}) });
@@ -405,6 +418,7 @@ function SubmissionPreviewModal({
   const refreshAssessment = useCallback(async () => {
     if (submissionId === null) return;
     const response = await getSubmissionPreview(submissionId);
+    if (openIdRef.current !== submissionId) return;
     setPreviewData((prev) =>
       prev
         ? {
@@ -418,10 +432,15 @@ function SubmissionPreviewModal({
     );
   }, [submissionId]);
 
-  // While a stage runs, poll every 5 s for up to 5 minutes.
+  // While a stage runs, or a retried job hasn't started yet, poll every 5 s
+  // for up to 11 minutes.
+  const stageStamp = `${previewData?.assessment?.stageStartedAt ?? ""}|${
+    previewData?.suggestedRisks?.stageStartedAt ?? ""
+  }`;
   const stageRunning =
     previewData?.assessment?.status === "pending" ||
-    previewData?.suggestedRisks?.status === "pending";
+    previewData?.suggestedRisks?.status === "pending" ||
+    retryMarker === stageStamp;
   useEffect(() => {
     if (!isOpen || !stageRunning) return;
     const startedAt = Date.now();
@@ -439,6 +458,7 @@ function SubmissionPreviewModal({
     if (submissionId === null) return;
     try {
       await retrySubmissionAssessment(submissionId);
+      setRetryMarker(stageStamp);
       await refreshAssessment();
     } catch (err) {
       setApproveError(
@@ -485,7 +505,13 @@ function SubmissionPreviewModal({
         confirmedEntityData: editedEntityData,
       };
 
-      if (overrideExpanded && effectiveOverrideTier) {
+      // A saved override sent back unchanged would credit it to the approver.
+      const saved = previewData?.riskOverride;
+      const overrideUnchanged =
+        !!saved &&
+        bandOfTier(saved.tier) === effectiveOverrideTier &&
+        (saved.justification ?? "") === overrideJustification;
+      if (overrideExpanded && effectiveOverrideTier && !overrideUnchanged) {
         payload.riskOverride = {
           tier: effectiveOverrideTier,
           justification: overrideJustification || `Manual override to ${effectiveOverrideTier}`,
@@ -778,8 +804,12 @@ function SubmissionPreviewModal({
                 block={previewData?.suggestedRisks ?? null}
                 isModel={isModel}
                 readOnly={!isPending}
-                onChange={(block) =>
-                  setPreviewData((prev) => (prev ? { ...prev, suggestedRisks: block } : prev))
+                onChange={(update) =>
+                  setPreviewData((prev) =>
+                    prev?.suggestedRisks
+                      ? { ...prev, suggestedRisks: update(prev.suggestedRisks) }
+                      : prev,
+                  )
                 }
               />
             </Box>

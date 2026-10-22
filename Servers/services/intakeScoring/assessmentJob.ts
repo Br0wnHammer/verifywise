@@ -472,8 +472,10 @@ export async function sendIntakeNotificationOnce(
 
 /**
  * Queue the stages each pending submission still needs: legacy submissions
- * and jobs lost while pending. Never re-runs a settled stage, never emails.
- * Returns how many submissions were queued.
+ * and jobs lost while pending. Never re-runs a settled stage. A lost job's
+ * email goes out with the re-run (the route's admin fallback is not known
+ * here, so a form without recipients stays silent). Returns how many
+ * submissions were queued.
  */
 export async function backfillIntakeAssessments(deps?: Partial<AssessmentDeps>): Promise<number> {
   const d = withDefaults(deps);
@@ -490,7 +492,7 @@ export async function backfillIntakeAssessments(deps?: Partial<AssessmentDeps>):
         organizationId: row.organizationId,
         submissionId: row.id,
         stages,
-        notify: false,
+        notify: row.needsNotification,
       });
       queued += 1;
     } catch (error) {

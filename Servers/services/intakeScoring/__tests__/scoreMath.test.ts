@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   bandFor,
+  bandOfTier,
   combineScore,
   isBandAllowed,
   lowestAllowedBand,
@@ -66,5 +67,17 @@ describe("band floor", () => {
     expect(isBandAllowed("Low", null)).toBe(true);
     expect(lowestAllowedBand(30)).toBe("Medium");
     expect(lowestAllowedBand(null)).toBe("Low");
+  });
+});
+
+describe("bandOfTier", () => {
+  it("keeps bands and maps pre-v2 tiers to the band with the same scores", () => {
+    expect(bandOfTier("High")).toBe("High");
+    expect(bandOfTier("Minimal")).toBe("Low");
+    expect(bandOfTier("Limited")).toBe("Medium");
+    expect(bandOfTier("Unacceptable")).toBe("Critical");
+    expect(bandOfTier("Extreme")).toBeNull();
+    expect(bandOfTier("toString")).toBeNull();
+    expect(bandOfTier(undefined)).toBeNull();
   });
 });

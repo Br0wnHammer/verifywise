@@ -5,8 +5,8 @@
  *
  * suggested_risks holds the suggested-risks block (status, items, counts) as
  * JSONB; notification_sent_at is the one-time claim for the "needs review"
- * email. Existing submissions keep notification_sent_at NULL: the backfill
- * never emails, so that is safe.
+ * email. Existing submissions were emailed at submit, so they are marked as
+ * sent: the backfill emails a pending submission whose claim is still NULL.
  *
  * New intake forms default to the EU AI Act risk step on. Existing forms are
  * not changed.
@@ -20,6 +20,11 @@ module.exports = {
         ALTER TABLE verifywise.intake_submissions
           ADD COLUMN IF NOT EXISTS suggested_risks JSONB NULL,
           ADD COLUMN IF NOT EXISTS notification_sent_at TIMESTAMPTZ NULL;
+      `);
+      await run(`
+        UPDATE verifywise.intake_submissions
+          SET notification_sent_at = created_at
+          WHERE notification_sent_at IS NULL;
       `);
       await run(`
         ALTER TABLE verifywise.intake_forms

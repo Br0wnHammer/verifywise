@@ -418,6 +418,11 @@ function bandFloorError(req: Request, tier: unknown, ruleMinimum: number | null)
   return null;
 }
 
+/** A v2 score, or none yet: either way the reviewer sets a score band. */
+function usesScoreBands(submission: IIntakeSubmission): boolean {
+  return !submission.riskAssessment || isAssessmentV2(submission.riskAssessment);
+}
+
 /** bandFloorError against the rule minimum under the current rules. */
 async function checkBandAgainstFloor(
   req: Request,
@@ -1488,9 +1493,15 @@ export async function overrideSubmissionRisk(req: Request, res: Response) {
     if (!submission) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
     }
+    if (submission.status !== IntakeSubmissionStatus.PENDING) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("Only pending submissions can be changed")));
+    }
 
     // A v2 score has bands, not dimensions, and a floor no reviewer goes below.
-    const isV2 = isAssessmentV2(submission.riskAssessment);
+    // A submission not scored yet will be scored as v2.
+    const isV2 = usesScoreBands(submission);
     if (isV2) {
       const floorError = await checkBandAgainstFloor(req, tier, submissionId);
       if (floorError) return res.status(400).json(STATUS_CODE[400](floorError));
@@ -1834,18 +1845,18 @@ export async function approveSubmission(req: Request, res: Response) {
     // An AI-scored submission's score is re-floored under the level it is
     // approved at, which a reviewer may have changed; running stages are
     // closed. Risk_tier keeps an override's band (see the query).
-    const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
     const approvedLevel = (classification?.finalLevel ?? null) as ClassificationLevel | null;
     await settleAssessmentOnDecision(submission, approvedLevel, req.organizationId!, transaction, {
       refloor: true,
     });
 
     // The band override, from this request or saved earlier through
-    // PATCH /risk-override: on an AI-scored submission neither may sit below
-    // the approved level's rule minimum.
+    // PATCH /risk-override: on an AI-scored (or not yet scored) submission
+    // neither may sit below the approved level's rule minimum.
     const requestOverride = riskOverride && riskOverride.tier && riskOverride.justification;
     const bandToCheck = requestOverride ? riskOverride.tier : submission.riskOverride?.tier;
-    if (assessment && bandToCheck) {
+    const bandsApply = usesScoreBands(submission);
+    if (bandsApply && bandToCheck) {
       const floorError = bandFloorError(req, bandToCheck, ruleMinimumFor(approvedLevel));
       if (floorError) {
         await transaction.rollback();
@@ -1857,7 +1868,7 @@ export async function approveSubmission(req: Request, res: Response) {
         submissionId,
         {
           tier: riskOverride.tier,
-          dimensionOverrides: assessment ? {} : riskOverride.dimensionOverrides || {},
+          dimensionOverrides: bandsApply ? {} : riskOverride.dimensionOverrides || {},
           justification: riskOverride.justification,
           overriddenBy: req.userId!,
           overriddenAt: new Date().toISOString(),

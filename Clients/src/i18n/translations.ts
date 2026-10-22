@@ -71,6 +71,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Die KI-Bewertung ist für dieses Formular nicht eingerichtet, daher werden keine Risiken vorgeschlagen.",
     "Risk suggestions failed. Use Retry in the score section to try again.":
       "Die Risikovorschläge sind fehlgeschlagen. Nutzen Sie „Erneut versuchen“ im Bewertungsbereich.",
+    "Risk suggestions haven't started. Use Retry in the score section to start them.":
+      "Die Risikovorschläge wurden noch nicht gestartet. Nutzen Sie „Erneut versuchen“ im Bewertungsbereich, um sie zu starten.",
     "No risks were suggested for this submission.":
       "Für diese Einreichung wurden keine Risiken vorgeschlagen.",
     "accepted": "angenommen",
@@ -10804,6 +10806,8 @@ export const translations: Record<string, Record<string, string>> = {
       "L'évaluation par IA n'est pas configurée pour ce formulaire, aucun risque n'est donc suggéré.",
     "Risk suggestions failed. Use Retry in the score section to try again.":
       "Les suggestions de risques ont échoué. Utilisez « Réessayer » dans la section du score.",
+    "Risk suggestions haven't started. Use Retry in the score section to start them.":
+      "Les suggestions de risques n'ont pas démarré. Utilisez « Réessayer » dans la section du score pour les lancer.",
     "No risks were suggested for this submission.":
       "Aucun risque n'a été suggéré pour cette soumission.",
     "accepted": "acceptés",
@@ -21473,6 +21477,8 @@ export const translations: Record<string, Record<string, string>> = {
       "La puntuación con IA no está configurada para este formulario, así que no se sugieren riesgos.",
     "Risk suggestions failed. Use Retry in the score section to try again.":
       "Las sugerencias de riesgos fallaron. Usa «Reintentar» en la sección de puntuación.",
+    "Risk suggestions haven't started. Use Retry in the score section to start them.":
+      "Las sugerencias de riesgos no se han iniciado. Usa «Reintentar» en la sección de puntuación para iniciarlas.",
     "No risks were suggested for this submission.": "No se sugirieron riesgos para este envío.",
     "accepted": "aceptados",
     "dismissed": "descartados",

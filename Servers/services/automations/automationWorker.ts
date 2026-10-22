@@ -1,6 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { REDIS_URL } from "../../database/redis";
 import sendEmail from "./actions/sendEmail";
+import logger from "../../utils/logger/fileLogger";
 import { getAllOrganizationsQuery } from "../../utils/organization.utils";
 import { getAllVendorsQuery } from "../../utils/vendor.utils";
 import { sequelize } from "../../database/db";
@@ -900,9 +901,9 @@ export const createAutomationWorker = () => {
   void (async () => {
     try {
       const queued = await backfillIntakeAssessments();
-      console.log(`Intake assessment backfill: ${queued} submission(s) queued`);
+      logger.info(`Intake assessment backfill: ${queued} submission(s) queued`);
     } catch (error) {
-      console.error("Intake assessment backfill failed:", error);
+      logger.error("Intake assessment backfill failed:", error);
     }
   })();
 

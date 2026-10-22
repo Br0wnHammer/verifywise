@@ -22,6 +22,22 @@ export const SCORE_BANDS: ReadonlyArray<{ band: ScoreBand; min: number; max: num
   { band: "Critical", min: 76, max: 100 },
 ];
 
+// Pre-v2 tiers cover the same score ranges as the bands.
+export const LEGACY_TIER_BANDS: Readonly<Record<string, ScoreBand>> = {
+  Minimal: "Low",
+  Limited: "Medium",
+  Unacceptable: "Critical",
+};
+
+/** A band as is, a pre-v2 tier as its band, anything else as null. */
+export function bandOfTier(tier: unknown): ScoreBand | null {
+  if (typeof tier !== "string") return null;
+  if (SCORE_BANDS.some((b) => b.band === tier)) return tier as ScoreBand;
+  return Object.prototype.hasOwnProperty.call(LEGACY_TIER_BANDS, tier)
+    ? LEGACY_TIER_BANDS[tier]
+    : null;
+}
+
 export function ruleMinimumFor(level: ClassificationLevel | null): number | null {
   return level === null ? null : RULE_MINIMUMS[level];
 }
