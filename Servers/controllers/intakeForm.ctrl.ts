@@ -42,6 +42,7 @@ import {
   validateIntakeFormSchemaLabels,
   validateIntakeFormSchemaLogic,
   resolveEuAiActRiskStep,
+  defaultEuAiActRiskStepEnabled,
 } from "../utils/intakeFormSchema.validation";
 import {
   getQuestionnaire,
@@ -636,7 +637,10 @@ export async function createIntakeForm(req: Request, res: Response) {
 
     const riskStep = resolveEuAiActRiskStep({
       entityType: entityType,
-      enabled: Boolean(euAiActRiskStepEnabled),
+      enabled:
+        euAiActRiskStepEnabled == null
+          ? defaultEuAiActRiskStepEnabled(entityType, schema)
+          : Boolean(euAiActRiskStepEnabled),
       schema: schema,
     });
     if (riskStep.errors.length > 0) {

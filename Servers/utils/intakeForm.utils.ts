@@ -12,10 +12,16 @@ import {
   ICreateIntakeSubmissionInput,
   IIntakeSubmissionStats,
   IRiskAssessment,
+  IRiskAssessmentV2,
   IRiskOverride,
+  ISuggestedRisksBlock,
 } from "../domain.layer/interfaces/i.intakeSubmission";
 import { IntakeFormStatus } from "../domain.layer/enums/intake-form-status.enum";
 import { IntakeSubmissionStatus } from "../domain.layer/enums/intake-submission-status.enum";
+import type {
+  IntakeSuggestedRisk,
+  SuggestionState,
+} from "../services/intakeScoring/intakeSuggestions";
 
 // ============================================================================
 // COLUMN LISTS (DRY)
@@ -44,6 +50,8 @@ const SUBMISSION_SELECT_COLUMNS = `
   resubmission_count as "resubmissionCount", ip_address as "ipAddress",
   risk_assessment as "riskAssessment", risk_tier as "riskTier",
   risk_override as "riskOverride",
+  suggested_risks as "suggestedRisks",
+  notification_sent_at as "notificationSentAt",
   created_at as "createdAt", updated_at as "updatedAt"
 `;
 
@@ -429,6 +437,8 @@ export const getPendingSubmissionsQuery = async (
       s.resubmission_count as "resubmissionCount", s.ip_address as "ipAddress",
       s.risk_assessment as "riskAssessment", s.risk_tier as "riskTier",
       s.risk_override as "riskOverride",
+      s.suggested_risks as "suggestedRisks",
+      s.notification_sent_at as "notificationSentAt",
       s.created_at as "createdAt", s.updated_at as "updatedAt",
       f.name as "formName", f.entity_type as "formEntityType"
     FROM intake_submissions s
@@ -623,6 +633,221 @@ export const updateSubmissionRiskQuery = async (
 };
 
 /**
+ * Store a v2 assessment; risk_tier mirrors the band (assessment.tier)
+ */
+export const updateSubmissionAssessmentV2Query = async (
+  id: number,
+  assessment: IRiskAssessmentV2,
+  organizationId: number,
+  transaction?: Transaction,
+): Promise<void> => {
+  await sequelize.query(
+    `UPDATE intake_submissions
+    SET risk_assessment = :riskAssessment, risk_tier = :riskTier, updated_at = NOW()
+    WHERE organization_id = :organizationId AND id = :id`,
+    {
+      replacements: {
+        organizationId,
+        id,
+        riskAssessment: JSON.stringify(assessment),
+        riskTier: assessment.tier,
+      },
+      type: QueryTypes.UPDATE,
+      transaction,
+    },
+  );
+};
+
+/**
+ * Replace the whole suggested-risks block (stage start / completion / failure)
+ */
+export const updateSubmissionSuggestionsQuery = async (
+  id: number,
+  block: ISuggestedRisksBlock,
+  organizationId: number,
+  transaction?: Transaction,
+): Promise<void> => {
+  await sequelize.query(
+    `UPDATE intake_submissions
+    SET suggested_risks = :suggestedRisks, updated_at = NOW()
+    WHERE organization_id = :organizationId AND id = :id`,
+    {
+      replacements: {
+        organizationId,
+        id,
+        suggestedRisks: JSON.stringify(block),
+      },
+      type: QueryTypes.UPDATE,
+      transaction,
+    },
+  );
+};
+
+/**
+ * Merge a patch into one suggested risk, atomically. A single UPDATE finds the
+ * element by id inside the row, so two reviewers acting on different (or the
+ * same) suggestions at once cannot overwrite each other's change with a stale
+ * copy of the block. Returns the updated item, or null if it was not found.
+ */
+export const updateSuggestedRiskItemQuery = async (
+  id: number,
+  suggestionId: string,
+  patch: Partial<IntakeSuggestedRisk>,
+  organizationId: number,
+): Promise<IntakeSuggestedRisk | null> => {
+  const rows = (await sequelize.query(
+    `UPDATE intake_submissions s
+    SET suggested_risks = jsonb_set(
+          s.suggested_risks,
+          ARRAY['items', (
+            SELECT (e.ord - 1)::text
+            FROM jsonb_array_elements(s.suggested_risks->'items') WITH ORDINALITY AS e(item, ord)
+            WHERE e.item->>'id' = :suggestionId
+            LIMIT 1
+          )],
+          (
+            SELECT e.item || :patch::jsonb
+            FROM jsonb_array_elements(s.suggested_risks->'items') WITH ORDINALITY AS e(item, ord)
+            WHERE e.item->>'id' = :suggestionId
+            LIMIT 1
+          )
+        ),
+        updated_at = NOW()
+    WHERE s.organization_id = :organizationId AND s.id = :id
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(s.suggested_risks->'items') AS e(item)
+        WHERE e.item->>'id' = :suggestionId
+      )
+    RETURNING (
+      SELECT e.item
+      FROM jsonb_array_elements(s.suggested_risks->'items') AS e(item)
+      WHERE e.item->>'id' = :suggestionId
+      LIMIT 1
+    ) AS item`,
+    {
+      replacements: {
+        organizationId,
+        id,
+        suggestionId,
+        patch: JSON.stringify(patch),
+      },
+      type: QueryTypes.SELECT,
+    },
+  )) as Array<{ item: IntakeSuggestedRisk }>;
+
+  return rows.length > 0 ? rows[0].item : null;
+};
+
+/**
+ * Move every suggestion in state `from` to state `to` (bulk accept / dismiss),
+ * in one statement. Returns how many items changed.
+ */
+export const setAllSuggestionStatesQuery = async (
+  id: number,
+  from: SuggestionState,
+  to: SuggestionState,
+  userId: number,
+  organizationId: number,
+): Promise<number> => {
+  const rows = (await sequelize.query(
+    `WITH target AS (
+      SELECT id,
+        (SELECT COUNT(*) FROM jsonb_array_elements(suggested_risks->'items') AS e(item)
+          WHERE e.item->>'state' = :from) AS n
+      FROM intake_submissions
+      WHERE organization_id = :organizationId AND id = :id AND suggested_risks IS NOT NULL
+      FOR UPDATE
+    )
+    UPDATE intake_submissions s
+    SET suggested_risks = jsonb_set(
+          s.suggested_risks,
+          '{items}',
+          (
+            SELECT COALESCE(jsonb_agg(
+              CASE WHEN e.item->>'state' = :from
+                THEN e.item || jsonb_build_object(
+                  'state', CAST(:to AS text),
+                  'decidedBy', CAST(:userId AS integer),
+                  'decidedAt', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                )
+                ELSE e.item
+              END
+              ORDER BY e.ord
+            ), '[]'::jsonb)
+            FROM jsonb_array_elements(s.suggested_risks->'items') WITH ORDINALITY AS e(item, ord)
+          )
+        ),
+        updated_at = NOW()
+    FROM target t
+    WHERE s.organization_id = :organizationId AND s.id = t.id
+    RETURNING t.n AS count`,
+    {
+      replacements: { organizationId, id, from, to, userId },
+      type: QueryTypes.SELECT,
+    },
+  )) as Array<{ count: string | number }>;
+
+  return rows.length > 0 ? Number(rows[0].count) : 0;
+};
+
+/**
+ * Claim the one-time "needs review" notification for a submission. True only
+ * for the caller that actually flipped notification_sent_at from NULL.
+ */
+export const claimSubmissionNotificationQuery = async (
+  id: number,
+  organizationId: number,
+): Promise<boolean> => {
+  const rows = await sequelize.query(
+    `UPDATE intake_submissions
+    SET notification_sent_at = NOW()
+    WHERE organization_id = :organizationId AND id = :id AND notification_sent_at IS NULL
+    RETURNING id`,
+    {
+      replacements: { organizationId, id },
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  return rows.length > 0;
+};
+
+/**
+ * Pending submissions whose assessment is missing (legacy / never queued) or
+ * whose scoring or suggestion stage has been "pending" for over 10 minutes
+ * (the job was lost). Used by the worker-start backfill, across organizations.
+ */
+export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
+  Array<{ id: number; organizationId: number }>
+> => {
+  const rows = await sequelize.query(
+    `SELECT id, organization_id AS "organizationId"
+    FROM intake_submissions
+    WHERE status = :status
+      AND (
+        risk_assessment IS NULL
+        OR risk_assessment->>'version' IS NULL
+        OR (
+          risk_assessment->>'status' = 'pending'
+          AND (risk_assessment->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes'
+        )
+        OR (
+          suggested_risks->>'status' = 'pending'
+          AND (suggested_risks->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes'
+        )
+      )
+    ORDER BY id`,
+    {
+      replacements: { status: IntakeSubmissionStatus.PENDING },
+      type: QueryTypes.SELECT,
+    },
+  );
+
+  return rows as Array<{ id: number; organizationId: number }>;
+};
+
+/**
  * Update submission risk override
  */
 export const updateSubmissionRiskOverrideQuery = async (
@@ -708,6 +933,8 @@ export const getSubmissionByEntityQuery = async (
       s.resubmission_count as "resubmissionCount", s.ip_address as "ipAddress",
       s.risk_assessment as "riskAssessment", s.risk_tier as "riskTier",
       s.risk_override as "riskOverride",
+      s.suggested_risks as "suggestedRisks",
+      s.notification_sent_at as "notificationSentAt",
       s.created_at as "createdAt", s.updated_at as "updatedAt",
       f.name as "formName",
       f.schema as "formSchema"
@@ -758,6 +985,8 @@ export const getSubmissionByEntityQuery = async (
       riskAssessment: row.riskAssessment,
       riskTier: row.riskTier,
       riskOverride: row.riskOverride,
+      suggestedRisks: row.suggestedRisks,
+      notificationSentAt: row.notificationSentAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     } as IIntakeSubmission,
