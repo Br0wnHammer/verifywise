@@ -346,7 +346,7 @@ describe("updateSuggestedRisk", () => {
 
 describe("acceptAllSuggestedRisks", () => {
   it("accepts suggested items with a mitigation plan and reports the rest", async () => {
-    intake.getSubmissionByIdQuery.mockResolvedValue(
+    intake.getSubmissionByIdQuery.mockResolvedValueOnce(
       submission({
         suggestedRisks: block([
           item({ id: "a" }),
@@ -355,10 +355,15 @@ describe("acceptAllSuggestedRisks", () => {
         ]),
       }),
     );
+    const stored = [item({ id: "a", state: "accepted" })];
+    intake.getSubmissionByIdQuery.mockResolvedValueOnce(
+      submission({ suggestedRisks: block(stored) }),
+    );
     intake.setAllSuggestionStatesQuery.mockResolvedValue(1);
     const r = await call(ctrl.acceptAllSuggestedRisks, req());
     expect(r.status).toBe(200);
-    expect(r.body.data).toEqual({ accepted: 1, skipped: 1 });
+    // The items come back as stored, for the client to show.
+    expect(r.body.data).toEqual({ accepted: 1, skipped: 1, items: stored });
     expect(intake.setAllSuggestionStatesQuery).toHaveBeenCalledWith(
       11,
       "suggested",

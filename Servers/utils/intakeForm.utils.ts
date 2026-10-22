@@ -842,12 +842,16 @@ export const claimSubmissionNotificationQuery = async (
 
 /**
  * Pending submissions with a stage to (re)run or an email still to send,
- * across organizations, for the worker-start backfill. Scoring is needed when the assessment is missing or
+ * across organizations, for the worker-start backfill. Scoring is needed when
+ * the assessment is missing or
  * pre-v2 (legacy / never queued); suggestions when the block is missing. Either
  * is also needed when it has been "pending" for over 10 minutes (the job was
  * lost). A completed or failed stage is never listed, so a backfill cannot
  * regenerate it or wipe reviewer decisions on suggestions. needsNotification:
- * the new-submission email has not been claimed (the job or its cap was lost).
+ * the new-submission email has not been claimed although the submission is
+ * over 10 minutes old (past the 2-minute cap, so its job or cap was lost) and
+ * its form has recipients. A live job keeps its own email and language, and a
+ * form without recipients, which never claims, is not listed again and again.
  */
 export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
   Array<{
@@ -862,7 +866,17 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
     `SELECT id, "organizationId", "needsScoring", "needsSuggestions", "needsNotification"
     FROM (
       SELECT id, organization_id AS "organizationId",
-        notification_sent_at IS NULL AS "needsNotification",
+        (
+          notification_sent_at IS NULL
+          AND created_at < NOW() - interval '10 minutes'
+          AND EXISTS (
+            SELECT 1 FROM intake_forms f
+            WHERE f.id = intake_submissions.form_id
+              AND f.organization_id = intake_submissions.organization_id
+              AND jsonb_typeof(f.recipients) = 'array'
+              AND f.recipients <> '[]'::jsonb
+          )
+        ) AS "needsNotification",
         COALESCE(
           risk_assessment IS NULL
           OR risk_assessment->>'version' IS NULL

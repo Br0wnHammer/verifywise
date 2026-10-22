@@ -65,7 +65,7 @@ Both public submit handlers call `startIntakeAssessment` after the transaction c
 - `intake_notify_cap` fires 2 minutes later. The new-submission email goes out once, when both stages settle or at the cap, whichever comes first. `claimSubmissionNotificationQuery` makes it one email. A cap that fires mid-run sends a "still running" note in place of numbers. A submission already approved or rejected gets no email.
 - If the job can't be queued, the handler emails reviewers at once without results, after claiming the notification.
 - Forms opened through the legacy `/{tenantSlug}/{formSlug}` route email org admins when the form has no recipients (`adminFallback`). The public-id route skips them, as before.
-- On worker start, `backfillIntakeAssessments` queues the stages each pending submission still needs: legacy rows, missing blocks and stages pending for over 10 minutes. It never re-runs a settled stage. A submission whose email never went (`notification_sent_at` is NULL, so its job or cap was lost) is queued with `notify: true`, or emailed at once when both stages have settled. The submitter's language and the route's `adminFallback` aren't stored, so that email uses the default language and a form without recipients stays silent.
+- On worker start, `backfillIntakeAssessments` queues the stages each pending submission still needs: legacy rows, missing blocks and stages pending for over 10 minutes. It never re-runs a settled stage. A submission whose email never went (`notification_sent_at` is NULL, so its job or cap was lost) is queued with `notify: true`, or emailed at once when both stages have settled. Only submissions over 10 minutes old on forms with recipients count, so a live job keeps its own email and language, and a form without recipients (which never claims) isn't listed on every start. The submitter's language and the route's `adminFallback` aren't stored, so that email uses the default language and a form without recipients stays silent.
 
 ## Review endpoints
 
@@ -89,7 +89,7 @@ Inside the existing approval transaction:
 
 ## Release
 
-The migration adds `suggested_risks` and `notification_sent_at` and sets the default of `intake_forms.eu_ai_act_risk_step_enabled` to `true`. Existing forms keep their setting. A second migration, `20261022090000-intake-ai-assessment-data`, marks existing submissions as notified (`notification_sent_at = created_at`), because the old code emailed at submit. It also moves a pending submission's override saved under the pre-v2 tiers to the band covering the same scores (Minimal → Low, Limited → Medium, Unacceptable → Critical), in `risk_override.tier` and `risk_tier`. Decided submissions keep their history. Pending submissions are then scored by the worker-start backfill, with no email.
+The migration adds `suggested_risks` and `notification_sent_at` and sets the default of `intake_forms.eu_ai_act_risk_step_enabled` to `true`. Existing forms keep their setting. A second migration, `20261022001648-intake-ai-assessment-data`, marks existing submissions as notified (`notification_sent_at = created_at`), because the old code emailed at submit. It also moves a pending submission's override saved under the pre-v2 tiers to the band covering the same scores (Minimal → Low, Limited → Medium, Unacceptable → Critical), in `risk_override.tier` and `risk_tier`. Decided submissions keep their history. Pending submissions are then scored by the worker-start backfill, with no email.
 
 ## Tests
 

@@ -22,6 +22,7 @@ export interface SuggestedRisksSectionProps {
 }
 
 const hasMitigation = (r: IntakeSuggestedRisk) => r.mitigationPlan.trim().length > 0;
+const ACCEPT_ALL = "accept-all";
 
 /** The risks suggested for a submission, each to accept, dismiss or edit before approval. */
 function SuggestedRisksSection({
@@ -36,7 +37,10 @@ function SuggestedRisksSection({
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [acceptingAll, setAcceptingAll] = useState(false);
+  // The last failure and what it was for (a risk id, or ACCEPT_ALL); another
+  // action starting or succeeding leaves it showing.
   const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
   const [skippedNote, setSkippedNote] = useState<number>(0);
 
   const muted = { fontSize: "13px", color: theme.palette.text.tertiary } as const;
@@ -89,14 +93,19 @@ function SuggestedRisksSection({
     }));
   }
 
+  const clearErrorFor = (key: string) => {
+    if (errorKey === key) setError(null);
+  };
+
   async function act(risk: IntakeSuggestedRisk, patch: SuggestedRiskPatch) {
     setBusyIds((prev) => new Set(prev).add(risk.id));
-    setError(null);
+    clearErrorFor(risk.id);
     try {
       const response = await updateSuggestedRisk(submissionId, risk.id, patch);
       replaceItem(response.data);
       setEditingId((prev) => (prev === risk.id ? null : prev));
     } catch {
+      setErrorKey(risk.id);
       setError("Couldn't save the change. Please try again.");
     } finally {
       setBusyIds((prev) => {
@@ -109,18 +118,14 @@ function SuggestedRisksSection({
 
   async function acceptAll() {
     setAcceptingAll(true);
-    setError(null);
+    clearErrorFor(ACCEPT_ALL);
     try {
       const response = await acceptAllSuggestedRisks(submissionId);
-      // The server accepts exactly these: suggested, with a mitigation plan.
-      onChange((latest) => ({
-        ...latest,
-        items: latest.items.map((i) =>
-          i.state === "suggested" && hasMitigation(i) ? { ...i, state: "accepted" } : i,
-        ),
-      }));
+      // The items as the server stored them.
+      onChange((latest) => ({ ...latest, items: response.data.items }));
       setSkippedNote(response.data.skipped);
     } catch {
+      setErrorKey(ACCEPT_ALL);
       setError("Couldn't accept the suggestions. Please try again.");
     } finally {
       setAcceptingAll(false);

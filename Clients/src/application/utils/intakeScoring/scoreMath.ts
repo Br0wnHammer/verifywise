@@ -37,6 +37,11 @@ export function bandOfTier(tier: unknown): ScoreBand | null {
     : null;
 }
 
+/** bandOfTier, keeping a value it doesn't recognise as is (for validation). */
+export function asBand<T>(tier: T): ScoreBand | T {
+  return bandOfTier(tier) ?? tier;
+}
+
 export function ruleMinimumFor(level: ClassificationLevel | null): number | null {
   return level === null ? null : RULE_MINIMUMS[level];
 }

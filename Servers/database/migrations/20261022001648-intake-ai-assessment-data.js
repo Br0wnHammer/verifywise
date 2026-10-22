@@ -6,7 +6,9 @@
  *
  * 1. Existing submissions were emailed at submit, so their notification
  *    claim is marked as sent. The worker-start backfill emails a pending
- *    submission whose claim is still NULL (its job was lost).
+ *    submission whose claim is still NULL (its job was lost). The code before
+ *    this release never queued intake jobs, so nothing is in flight when the
+ *    two intake migrations run together.
  * 2. A pending submission's band override saved under the pre-v2 tiers moves
  *    to the band covering the same scores (Minimal -> Low, Limited -> Medium,
  *    Unacceptable -> Critical), in risk_override and risk_tier. The backfill

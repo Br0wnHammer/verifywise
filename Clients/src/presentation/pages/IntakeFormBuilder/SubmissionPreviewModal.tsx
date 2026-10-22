@@ -29,6 +29,7 @@ import {
 import useUsers from "../../../application/hooks/useUsers";
 import { isAssessmentV2 } from "../../../application/utils/intakeScoring/isAssessmentV2";
 import {
+  asBand,
   bandOfTier,
   isBandAllowed,
   lowestAllowedBand,
@@ -514,7 +515,7 @@ function SubmissionPreviewModal({
       const saved = previewData?.riskOverride;
       const overrideUnchanged =
         !!saved &&
-        bandOfTier(saved.tier) === effectiveOverrideTier &&
+        asBand(saved.tier) === effectiveOverrideTier &&
         (saved.justification ?? "") === overrideJustification;
       if (overrideExpanded && effectiveOverrideTier && !overrideUnchanged) {
         payload.riskOverride = {
@@ -633,7 +634,7 @@ function SubmissionPreviewModal({
     : undefined;
   const overrideView = storedOverride
     ? {
-        tier: bandOfTier(storedOverride.tier) ?? storedOverride.tier,
+        tier: asBand(storedOverride.tier),
         justification: storedOverride.justification,
         byName: overrider ? `${overrider.name} ${overrider.surname ?? ""}`.trim() : null,
       }

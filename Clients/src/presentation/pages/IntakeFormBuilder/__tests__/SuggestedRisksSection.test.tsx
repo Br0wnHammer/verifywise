@@ -122,6 +122,21 @@ describe("SuggestedRisksSection", () => {
     expect(screen.getByTestId("suggestion-b-save")).toBeInTheDocument();
   });
 
+  it("one risk's error stays when another risk is acted on", async () => {
+    vi.mocked(updateSuggestedRisk)
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ data: item({ id: "b", state: "dismissed" }) });
+    render(block([item(), item({ id: "b" })]));
+    fireEvent.click(screen.getByTestId("suggested-risk-a-accept"));
+    expect(
+      await screen.findByText("Couldn't save the change. Please try again."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("suggested-risk-b-dismiss"));
+    await waitFor(() => expect(updateSuggestedRisk).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("suggested-risk-b-dismiss")).not.toBeDisabled());
+    expect(screen.getByText("Couldn't save the change. Please try again.")).toBeInTheDocument();
+  });
+
   it("can't accept a suggestion without a mitigation plan", () => {
     render(block([item({ mitigationPlan: "" })]));
     expect(
@@ -130,8 +145,14 @@ describe("SuggestedRisksSection", () => {
     expect(screen.getByTestId("suggested-risk-a-accept")).toBeDisabled();
   });
 
-  it("accept all calls the endpoint and accepts the ones with a plan", async () => {
-    vi.mocked(acceptAllSuggestedRisks).mockResolvedValue({ data: { accepted: 1, skipped: 1 } });
+  it("accept all calls the endpoint and shows the items as the server stored them", async () => {
+    vi.mocked(acceptAllSuggestedRisks).mockResolvedValue({
+      data: {
+        accepted: 1,
+        skipped: 1,
+        items: [item({ state: "accepted" }), item({ id: "b", mitigationPlan: "" })],
+      },
+    });
     const onChange = vi.fn();
     render(block([item(), item({ id: "b", mitigationPlan: "" })]), { onChange });
     fireEvent.click(screen.getByTestId("suggested-risks-accept-all"));

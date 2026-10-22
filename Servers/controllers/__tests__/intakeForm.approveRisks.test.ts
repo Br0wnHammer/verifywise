@@ -285,6 +285,19 @@ describe("approveSubmission holds the floor", () => {
     expect(intake.updateSubmissionRiskOverrideQuery).not.toHaveBeenCalled();
   });
 
+  it("a saved pre-v2 tier passes as its band and is stored as it", async () => {
+    const saved = { tier: "Unacceptable", justification: "earlier", overriddenBy: 3 };
+    intake.getSubmissionByIdQuery.mockResolvedValue(submission({ riskOverride: saved }));
+    const r = await approve();
+    expect(r.status).toBe(200);
+    expect(intake.updateSubmissionRiskOverrideQuery).toHaveBeenCalledWith(
+      11,
+      { ...saved, tier: "Critical" },
+      ORG,
+      tx,
+    );
+  });
+
   it("saves an allowed override from whitelisted fields only", async () => {
     const r = await approve({
       riskOverride: {

@@ -5,8 +5,9 @@
  *
  * suggested_risks holds the suggested-risks block (status, items, counts) as
  * JSONB; notification_sent_at is the one-time claim for the "needs review"
- * email. Existing submissions keep notification_sent_at NULL: the backfill
- * never emails, so that is safe.
+ * email. Existing submissions are marked as sent by the data migration that
+ * follows (intake-ai-assessment-data), which the worker-start backfill relies
+ * on: it emails a pending submission whose claim is still NULL.
  *
  * New intake forms default to the EU AI Act risk step on. Existing forms are
  * not changed.

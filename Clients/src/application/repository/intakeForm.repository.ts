@@ -487,12 +487,14 @@ export async function updateSuggestedRisk(
 /** Accept every suggestion still in "suggested" that has a mitigation plan. */
 export async function acceptAllSuggestedRisks(
   submissionId: number,
-): Promise<{ data: { accepted: number; skipped: number } }> {
+): Promise<{ data: { accepted: number; skipped: number; items: IntakeSuggestedRisk[] } }> {
   const response = await apiServices.post(
     `${BASE_URL}/submissions/${submissionId}/suggested-risks/accept-all`,
     {},
   );
-  return response.data as { data: { accepted: number; skipped: number } };
+  return response.data as {
+    data: { accepted: number; skipped: number; items: IntakeSuggestedRisk[] };
+  };
 }
 
 /**

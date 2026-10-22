@@ -96,7 +96,7 @@ import {
 import { ModelRiskCategory } from "../domain.layer/enums/model-risk-category.enum";
 import { ModelRiskLevel } from "../domain.layer/enums/model-risk-level.enum";
 import {
-  bandOfTier,
+  asBand,
   isBandAllowed,
   ruleMinimumFor,
   SCORE_BANDS,
@@ -1486,7 +1486,7 @@ export async function overrideSubmissionRisk(req: Request, res: Response) {
   try {
     const { dimensionOverrides, justification } = req.body;
     // A pre-v2 tier name is stored as its band, so every override is a band.
-    const tier = bandOfTier(req.body.tier) ?? req.body.tier;
+    const tier = asBand(req.body.tier);
 
     if (!tier || !justification) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Tier and justification are required")));
@@ -1710,10 +1710,16 @@ export async function acceptAllSuggestedRisks(req: Request, res: Response) {
       req.organizationId!,
       { requireMitigationPlan: true },
     );
+    // The items as stored, so the client shows the server's states.
+    const after = await getSubmissionByIdQuery(submissionId, req.organizationId!);
 
-    return res
-      .status(200)
-      .json(STATUS_CODE[200]({ accepted, skipped: Math.max(0, suggested - accepted) }));
+    return res.status(200).json(
+      STATUS_CODE[200]({
+        accepted,
+        skipped: Math.max(0, suggested - accepted),
+        items: after?.suggestedRisks?.items ?? [],
+      }),
+    );
   } catch (error) {
     logger.error("Error in acceptAllSuggestedRisks:", error);
     return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
@@ -1856,13 +1862,10 @@ export async function approveSubmission(req: Request, res: Response) {
     // The band override, from this request or saved earlier through
     // PATCH /risk-override: on an AI-scored (or not yet scored) submission
     // neither may sit below the approved level's rule minimum.
-    // A pre-v2 tier name counts as its band.
+    // A pre-v2 tier name counts as its band, and a saved one is stored as it.
     const requestOverride = riskOverride && riskOverride.tier && riskOverride.justification;
-    const requestTier = requestOverride
-      ? (bandOfTier(riskOverride.tier) ?? riskOverride.tier)
-      : null;
-    const storedTier = submission.riskOverride?.tier;
-    const bandToCheck = requestTier ?? bandOfTier(storedTier) ?? storedTier;
+    const storedOverride = submission.riskOverride;
+    const bandToCheck = asBand(requestOverride ? riskOverride.tier : storedOverride?.tier);
     const bandsApply = usesScoreBands(submission);
     if (bandsApply && bandToCheck) {
       const floorError = bandFloorError(req, bandToCheck, ruleMinimumFor(approvedLevel));
@@ -1875,12 +1878,19 @@ export async function approveSubmission(req: Request, res: Response) {
       await updateSubmissionRiskOverrideQuery(
         submissionId,
         {
-          tier: requestTier,
+          tier: bandToCheck,
           dimensionOverrides: bandsApply ? {} : riskOverride.dimensionOverrides || {},
           justification: riskOverride.justification,
           overriddenBy: req.userId!,
           overriddenAt: new Date().toISOString(),
         },
+        req.organizationId!,
+        transaction,
+      );
+    } else if (storedOverride?.tier && bandToCheck !== storedOverride.tier) {
+      await updateSubmissionRiskOverrideQuery(
+        submissionId,
+        { ...storedOverride, tier: bandToCheck },
         req.organizationId!,
         transaction,
       );
