@@ -43,6 +43,12 @@ import { suggestDirectionForComponent } from "../riskLinks/direction/direction.s
 import { runFileExpirySweepAllOrgs } from "./actions/fileExpirySweep";
 import { aiGatewayRequest } from "../../utils/aiGatewayInternal.utils";
 import { handleExtensionSyncJob, isExtensionSyncJob } from "../../extensions/sync-engine/jobs";
+import {
+  backfillIntakeAssessments,
+  runIntakeAssessment,
+  sendIntakeNotificationOnce,
+} from "../intakeScoring/assessmentJob";
+import type { IntakeAssessmentJobData } from "../intakeScoring/enqueue";
 
 // AI Gateway budget/risk/cleanup jobs call the gateway's internal API. These
 // can run for a while, so they get a longer timeout than request-path calls.
@@ -729,6 +735,19 @@ export const createAutomationWorker = () => {
             riskIds: number[];
           };
           await suggestDirectionForComponent(organizationId, riskIds);
+        } else if (name === "intake_assessment") {
+          await runIntakeAssessment(job.data as IntakeAssessmentJobData);
+        } else if (name === "intake_notify_cap") {
+          const { organizationId, submissionId, lang, adminFallback } = job.data as {
+            organizationId: number;
+            submissionId: number;
+            lang?: string;
+            adminFallback?: boolean;
+          };
+          await sendIntakeNotificationOnce(organizationId, submissionId, lang, {
+            capReached: true,
+            adminFallback,
+          });
         } else if (name === "file_expiry_sweep") {
           await runFileExpirySweepAllOrgs();
         } else if (name === "mcp_audit_cleanup") {
@@ -875,5 +894,17 @@ export const createAutomationWorker = () => {
   automationWorker.on("failed", (job, err) => {
     console.error(`Job ${job?.id} of type ${job?.name} has failed with error: ${err.message}`);
   });
+
+  // Once per worker start: queue intake assessments that never ran or were
+  // lost while pending (Redis flushed, worker down).
+  void (async () => {
+    try {
+      const queued = await backfillIntakeAssessments();
+      console.log(`Intake assessment backfill: ${queued} submission(s) queued`);
+    } catch (error) {
+      console.error("Intake assessment backfill failed:", error);
+    }
+  })();
+
   return automationWorker;
 };

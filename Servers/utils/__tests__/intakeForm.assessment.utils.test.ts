@@ -196,6 +196,16 @@ describe("getSubmissionsNeedingAssessmentQuery", () => {
     expect(optsOf().replacements).toEqual({ status: "pending" });
     expect(rows).toEqual([{ id: 1, organizationId: 2 }]);
   });
+
+  it("reports which stage each row needs and lists a missing suggestion block", async () => {
+    mockQuery.mockResolvedValue([] as any);
+    await getSubmissionsNeedingAssessmentQuery();
+    const sql = sqlOf();
+    expect(sql).toContain('AS "needsScoring"');
+    expect(sql).toContain('AS "needsSuggestions"');
+    expect(sql).toContain("suggested_risks IS NULL");
+    expect(sql).toContain('WHERE "needsScoring" OR "needsSuggestions"');
+  });
 });
 
 describe("submission row mapping", () => {

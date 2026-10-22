@@ -814,29 +814,41 @@ export const claimSubmissionNotificationQuery = async (
 };
 
 /**
- * Pending submissions whose assessment is missing (legacy / never queued) or
- * whose scoring or suggestion stage has been "pending" for over 10 minutes
- * (the job was lost). Used by the worker-start backfill, across organizations.
+ * Pending submissions with a stage to (re)run, across organizations, for the
+ * worker-start backfill. Scoring is needed when the assessment is missing or
+ * pre-v2 (legacy / never queued); suggestions when the block is missing. Either
+ * is also needed when it has been "pending" for over 10 minutes (the job was
+ * lost). A completed or failed stage is never listed, so a backfill cannot
+ * regenerate it or wipe reviewer decisions on suggestions.
  */
 export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
-  Array<{ id: number; organizationId: number }>
+  Array<{ id: number; organizationId: number; needsScoring: boolean; needsSuggestions: boolean }>
 > => {
   const rows = await sequelize.query(
-    `SELECT id, organization_id AS "organizationId"
-    FROM intake_submissions
-    WHERE status = :status
-      AND (
-        risk_assessment IS NULL
-        OR risk_assessment->>'version' IS NULL
-        OR (
-          risk_assessment->>'status' = 'pending'
-          AND (risk_assessment->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes'
-        )
-        OR (
-          suggested_risks->>'status' = 'pending'
-          AND (suggested_risks->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes'
-        )
-      )
+    `SELECT id, "organizationId", "needsScoring", "needsSuggestions"
+    FROM (
+      SELECT id, organization_id AS "organizationId",
+        COALESCE(
+          risk_assessment IS NULL
+          OR risk_assessment->>'version' IS NULL
+          OR (
+            risk_assessment->>'status' = 'pending'
+            AND (risk_assessment->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes'
+          ),
+          false
+        ) AS "needsScoring",
+        COALESCE(
+          suggested_risks IS NULL
+          OR (
+            suggested_risks->>'status' = 'pending'
+            AND (suggested_risks->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes'
+          ),
+          false
+        ) AS "needsSuggestions"
+      FROM intake_submissions
+      WHERE status = :status
+    ) s
+    WHERE "needsScoring" OR "needsSuggestions"
     ORDER BY id`,
     {
       replacements: { status: IntakeSubmissionStatus.PENDING },
@@ -844,7 +856,12 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
     },
   );
 
-  return rows as Array<{ id: number; organizationId: number }>;
+  return rows as Array<{
+    id: number;
+    organizationId: number;
+    needsScoring: boolean;
+    needsSuggestions: boolean;
+  }>;
 };
 
 /**
