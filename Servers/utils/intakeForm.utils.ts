@@ -6,6 +6,7 @@ import {
   ICreateIntakeFormInput,
   IUpdateIntakeFormInput,
   IPublicIntakeForm,
+  IFormRouting,
 } from "../domain.layer/interfaces/i.intakeForm";
 import {
   IIntakeSubmission,
@@ -437,7 +438,7 @@ export const getSubmissionsByFormIdQuery = async (
 export const getPendingSubmissionsQuery = async (
   organizationId: number,
   status?: IntakeSubmissionStatus,
-): Promise<IIntakeSubmission[]> => {
+): Promise<Array<IIntakeSubmission & { formRouting: IFormRouting | null }>> => {
   const statusFilter = status ? "AND s.status = :status" : "";
   const submissions = await sequelize.query(
     `SELECT
@@ -453,7 +454,8 @@ export const getPendingSubmissionsQuery = async (
       s.routing, s.decision_record as "decisionRecord",
       s.notification_sent_at as "notificationSentAt",
       s.created_at as "createdAt", s.updated_at as "updatedAt",
-      f.name as "formName", f.entity_type as "formEntityType"
+      f.name as "formName", f.entity_type as "formEntityType",
+      f.routing as "formRouting"
     FROM intake_submissions s
     JOIN intake_forms f ON s.organization_id = f.organization_id AND s.form_id = f.id
     WHERE s.organization_id = :organizationId
@@ -466,7 +468,7 @@ export const getPendingSubmissionsQuery = async (
     },
   );
 
-  return submissions as IIntakeSubmission[];
+  return submissions as Array<IIntakeSubmission & { formRouting: IFormRouting | null }>;
 };
 
 /**

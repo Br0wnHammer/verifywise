@@ -122,7 +122,11 @@ import { createNewModelRiskQuery } from "../utils/modelRisk.utils";
 import { LIKELIHOODS, SEVERITIES } from "../services/intakeScoring/riskMappers";
 import type { IntakeSuggestedRisk } from "../services/intakeScoring/intakeSuggestions";
 import { selectRetryStages } from "../services/intakeScoring/retry";
-import { canDecideLane, validateRoutingSettings } from "../services/intakeRouting/routingRules";
+import {
+  canDecideLane,
+  laneReviewerIdsFor,
+  validateRoutingSettings,
+} from "../services/intakeRouting/routingRules";
 import {
   buildDecisionRecord,
   laneAtDecision,
@@ -1341,7 +1345,12 @@ export async function getPendingSubmissions(req: Request, res: Response) {
 
   try {
     const status = req.query.status as IntakeSubmissionStatus | undefined;
-    const submissions = await getPendingSubmissionsQuery(req.organizationId!, status);
+    const rows = await getPendingSubmissionsQuery(req.organizationId!, status);
+    // The list shows who can decide each row's stored lane, not the form's whole routing.
+    const submissions = rows.map(({ formRouting, ...row }) => ({
+      ...row,
+      laneReviewerIds: laneReviewerIdsFor(row.routing?.lane ?? null, formRouting ?? null),
+    }));
     return res.status(200).json(STATUS_CODE[200](submissions));
   } catch (error) {
     await logFailure({
@@ -1569,12 +1578,7 @@ export async function getSubmissionPreview(req: Request, res: Response) {
       bandInForce: usesScoreBands(submission) && isScoreBand(previewBand) ? previewBand : null,
     });
     const canDecide = canDecideLane(lane, req.userId!, isAdminRequest(req), routingCfg);
-    const laneReviewerIds =
-      routingCfg && lane === "senior"
-        ? routingCfg.seniorReviewerIds
-        : routingCfg && lane === "standard"
-          ? [...new Set([...routingCfg.standardReviewerIds, ...routingCfg.seniorReviewerIds])]
-          : [];
+    const laneReviewerIds = laneReviewerIdsFor(lane, routingCfg);
     const laneReviewers =
       laneReviewerIds.length > 0
         ? (await getEligibleReviewersQuery(req.organizationId!, laneReviewerIds)).map((u) => ({

@@ -16,6 +16,7 @@ jest.mock("../../utils/intakeForm.utils", () => ({
   setDecisionRecordQuery: jest.fn<any>().mockResolvedValue(undefined),
   updateSubmissionRoutingQuery: jest.fn<any>().mockResolvedValue(true),
   getEligibleReviewersQuery: jest.fn<any>().mockResolvedValue([]),
+  getPendingSubmissionsQuery: jest.fn(),
 }));
 jest.mock("../../utils/euAiActClassification.utils", () => ({
   insertClassificationRunQuery: jest.fn<any>().mockResolvedValue({ id: 4 }),
@@ -556,6 +557,28 @@ describe("getSubmissionPreview: lane", () => {
       isSeniorReviewer: false,
     });
     expect(intake.getEligibleReviewersQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("getPendingSubmissions: lane reviewers", () => {
+  const list = () => call(ctrl.getPendingSubmissions, { ...request(SENIOR), query: {} });
+
+  it("returns the routing and the assigned lane's reviewer ids, not the form's settings", async () => {
+    intake.getPendingSubmissionsQuery.mockResolvedValue([
+      { id: 1, routing: SENIOR_LANE, formRouting: routingCfg() },
+      { id: 2, routing: STANDARD_LANE, formRouting: routingCfg() },
+      { id: 3, routing: null, formRouting: routingCfg() },
+      { id: 4, routing: null, formRouting: null },
+    ]);
+    const r = await list();
+    expect(r.status).toBe(200);
+    expect(intake.getPendingSubmissionsQuery).toHaveBeenCalledWith(ORG, undefined);
+    expect(r.body.data).toEqual([
+      { id: 1, routing: SENIOR_LANE, laneReviewerIds: [SENIOR] },
+      { id: 2, routing: STANDARD_LANE, laneReviewerIds: [STANDARD, SENIOR] },
+      { id: 3, routing: null, laneReviewerIds: [] },
+      { id: 4, routing: null, laneReviewerIds: [] },
+    ]);
   });
 });
 

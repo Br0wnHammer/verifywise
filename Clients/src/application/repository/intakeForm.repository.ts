@@ -272,6 +272,10 @@ export interface IntakeSubmission {
   riskTier?: string | null;
   riskOverride?: RiskOverride | null;
   suggestedRisks?: SuggestedRisksBlock | null;
+  /** The lane decision, null until the submission is routed. */
+  routing?: SubmissionRouting | null;
+  /** Ids of the assigned lane's reviewers, from the list endpoint. */
+  laneReviewerIds?: number[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -451,6 +455,12 @@ export interface SubmissionPreview {
   ruleMinimumPreview?: number | null;
   /** The level the AI was given when the score was computed. */
   assessedLevel?: ClassificationLevel | null;
+  routing?: SubmissionRouting | null;
+  canDecide?: boolean;
+  decideBlockedReason?: string | null;
+  /** Reviewers of the assigned lane. */
+  laneReviewers?: Array<{ id: number; name: string }>;
+  isSeniorReviewer?: boolean;
 }
 
 /**

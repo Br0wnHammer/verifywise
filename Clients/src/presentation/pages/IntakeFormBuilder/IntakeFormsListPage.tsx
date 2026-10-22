@@ -51,6 +51,9 @@ import {
 } from "../../../application/repository/intakeForm.repository";
 import { SubmissionPreviewModal } from "./SubmissionPreviewModal";
 import RiskTierChip from "./assessment/RiskTierChip";
+import { LaneChip } from "./routing/LaneSection";
+import { LANE_FILTER_ITEMS, matchesLaneFilter, type LaneFilter } from "./routing/laneFilter";
+import { useAuth } from "../../../application/hooks/useAuth";
 import { CustomizableButton } from "../../components/button/customizable-button";
 import StandardModal from "../../components/Modals/StandardModal";
 import Chip from "../../components/Chip";
@@ -112,6 +115,7 @@ export function IntakeFormsListPage() {
   const location = useLocation();
   const theme = useTheme();
   const formatDate = useFormattedDate();
+  const { userId } = useAuth();
 
   // Main tab derived from URL path
   const mainTab = location.pathname.includes("/intake-forms/submissions") ? "submissions" : "forms";
@@ -150,6 +154,7 @@ export function IntakeFormsListPage() {
   const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
   const [submissionsSearch, setSubmissionsSearch] = useState("");
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState<string>("all");
+  const [laneFilter, setLaneFilter] = useState<LaneFilter>("all");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<number | null>(null);
 
@@ -240,9 +245,10 @@ export function IntakeFormsListPage() {
   // Filter submissions by search
   const filteredSubmissions = submissions.filter(
     (s) =>
-      !submissionsSearch ||
-      (s.submitterName || "").toLowerCase().includes(submissionsSearch.toLowerCase()) ||
-      (s.submitterEmail || "").toLowerCase().includes(submissionsSearch.toLowerCase()),
+      matchesLaneFilter(s, laneFilter, userId) &&
+      (!submissionsSearch ||
+        (s.submitterName || "").toLowerCase().includes(submissionsSearch.toLowerCase()) ||
+        (s.submitterEmail || "").toLowerCase().includes(submissionsSearch.toLowerCase())),
   );
 
   // ============================================================================
@@ -583,19 +589,28 @@ export function IntakeFormsListPage() {
             alignItems="center"
             sx={{ mb: "8px" }}
           >
-            <Select
-              id="submission-status-filter"
-              value={submissionStatusFilter}
-              onChange={(e) => setSubmissionStatusFilter(e.target.value as string)}
-              items={[
-                { _id: "all", name: "All submissions" },
-                { _id: "pending", name: "Pending" },
-                { _id: "approved", name: "Approved" },
-                { _id: "rejected", name: "Rejected" },
-                { _id: "superseded", name: "Superseded" },
-              ]}
-              sx={{ width: 180, backgroundColor: theme.palette.background.main }}
-            />
+            <Stack direction="row" gap="8px">
+              <Select
+                id="submission-status-filter"
+                value={submissionStatusFilter}
+                onChange={(e) => setSubmissionStatusFilter(e.target.value as string)}
+                items={[
+                  { _id: "all", name: "All submissions" },
+                  { _id: "pending", name: "Pending" },
+                  { _id: "approved", name: "Approved" },
+                  { _id: "rejected", name: "Rejected" },
+                  { _id: "superseded", name: "Superseded" },
+                ]}
+                sx={{ width: 180, backgroundColor: theme.palette.background.main }}
+              />
+              <Select
+                id="submission-lane-filter"
+                value={laneFilter}
+                onChange={(e) => setLaneFilter(e.target.value as LaneFilter)}
+                items={LANE_FILTER_ITEMS}
+                sx={{ width: 160, backgroundColor: theme.palette.background.main }}
+              />
+            </Stack>
             <SearchBox
               placeholder="Search submissions..."
               value={submissionsSearch}
@@ -628,6 +643,7 @@ export function IntakeFormsListPage() {
                     <TableCell sx={singleTheme.tableStyles.primary.header.cell}>
                       Risk tier
                     </TableCell>
+                    <TableCell sx={singleTheme.tableStyles.primary.header.cell}>Lane</TableCell>
                     <TableCell sx={singleTheme.tableStyles.primary.header.cell}>
                       Submitted
                     </TableCell>
@@ -687,6 +703,9 @@ export function IntakeFormsListPage() {
                         </TableCell>
                         <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
                           <RiskTierChip submission={submission} />
+                        </TableCell>
+                        <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
+                          <LaneChip routing={submission.routing} />
                         </TableCell>
                         <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
                           <Typography sx={{ fontSize: "13px", color: theme.palette.text.accent }}>
