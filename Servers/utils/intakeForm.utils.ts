@@ -22,7 +22,6 @@ import type {
   IntakeSuggestedRisk,
   SuggestionState,
 } from "../services/intakeScoring/intakeSuggestions";
-import { LEGACY_TIER_BANDS } from "../services/intakeScoring/scoreMath";
 
 // ============================================================================
 // COLUMN LISTS (DRY)
@@ -635,9 +634,7 @@ export const updateSubmissionRiskQuery = async (
 
 /**
  * Store a v2 assessment on a pending submission. risk_tier mirrors the band
- * (assessment.tier) unless a reviewer override set it. An override saved
- * under the pre-v2 tiers moves to the band covering the same scores, so the
- * floor checks and the review modal read it as a band. A job that finishes
+ * (assessment.tier) unless a reviewer override set it. A job that finishes
  * after approve or reject changes nothing.
  */
 export const updateSubmissionAssessmentV2Query = async (
@@ -649,18 +646,7 @@ export const updateSubmissionAssessmentV2Query = async (
   await sequelize.query(
     `UPDATE intake_submissions
     SET risk_assessment = :riskAssessment,
-        risk_override = CASE
-          WHEN CAST(:legacyBands AS jsonb) -> (risk_override->>'tier') IS NOT NULL
-          THEN jsonb_set(
-            risk_override, '{tier}', CAST(:legacyBands AS jsonb) -> (risk_override->>'tier')
-          )
-          ELSE risk_override
-        END,
-        risk_tier = COALESCE(
-          CAST(:legacyBands AS jsonb) ->> (risk_override->>'tier'),
-          risk_override->>'tier',
-          :riskTier
-        ),
+        risk_tier = COALESCE(risk_override->>'tier', :riskTier),
         updated_at = NOW()
     WHERE organization_id = :organizationId AND id = :id AND status = :pending`,
     {
@@ -669,7 +655,6 @@ export const updateSubmissionAssessmentV2Query = async (
         id,
         riskAssessment: JSON.stringify(assessment),
         riskTier: assessment.tier,
-        legacyBands: JSON.stringify(LEGACY_TIER_BANDS),
         pending: IntakeSubmissionStatus.PENDING,
       },
       type: QueryTypes.UPDATE,
@@ -856,13 +841,13 @@ export const claimSubmissionNotificationQuery = async (
 };
 
 /**
- * Pending submissions with a stage to (re)run, across organizations, for the
- * worker-start backfill. Scoring is needed when the assessment is missing or
+ * Pending submissions with a stage to (re)run or an email still to send,
+ * across organizations, for the worker-start backfill. Scoring is needed when the assessment is missing or
  * pre-v2 (legacy / never queued); suggestions when the block is missing. Either
  * is also needed when it has been "pending" for over 10 minutes (the job was
  * lost). A completed or failed stage is never listed, so a backfill cannot
  * regenerate it or wipe reviewer decisions on suggestions. needsNotification:
- * the new-submission email has not gone (the job and its cap were lost).
+ * the new-submission email has not been claimed (the job or its cap was lost).
  */
 export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
   Array<{
@@ -898,7 +883,7 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
       FROM intake_submissions
       WHERE status = :status
     ) s
-    WHERE "needsScoring" OR "needsSuggestions"
+    WHERE "needsScoring" OR "needsSuggestions" OR "needsNotification"
     ORDER BY id`,
     {
       replacements: { status: IntakeSubmissionStatus.PENDING },

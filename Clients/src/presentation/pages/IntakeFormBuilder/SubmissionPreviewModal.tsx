@@ -414,7 +414,9 @@ function SubmissionPreviewModal({
     };
   }, [isOpen, submissionId]);
 
-  // Re-read only the AI assessment parts, so the reviewer's edits stay.
+  // Re-read only the AI assessment parts, so the reviewer's edits stay. Once
+  // suggestions are complete only the reviewer's own (server-confirmed)
+  // actions change them, so a poll read before an action can't undo it.
   const refreshAssessment = useCallback(async () => {
     if (submissionId === null) return;
     const response = await getSubmissionPreview(submissionId);
@@ -425,7 +427,10 @@ function SubmissionPreviewModal({
             ...prev,
             riskAssessment: response.data.riskAssessment,
             assessment: response.data.assessment ?? null,
-            suggestedRisks: response.data.suggestedRisks ?? null,
+            suggestedRisks:
+              prev.suggestedRisks?.status === "complete"
+                ? prev.suggestedRisks
+                : (response.data.suggestedRisks ?? null),
             assessedLevel: response.data.assessedLevel ?? null,
           }
         : prev,
@@ -604,7 +609,10 @@ function SubmissionPreviewModal({
   const selectedLevel = (
     !isModel && euAiActLevel ? euAiActLevel : null
   ) as ClassificationLevel | null;
-  const bandFloor = assessmentV2 ? { ruleMinimum: ruleMinimumFor(selectedLevel) } : undefined;
+  // A submission not scored yet is scored as v2, so the server holds the
+  // override to the floor already.
+  const bandsApply = !!previewData && (!previewData.riskAssessment || !!assessmentV2);
+  const bandFloor = bandsApply ? { ruleMinimum: ruleMinimumFor(selectedLevel) } : undefined;
   const effectiveOverrideTier =
     bandFloor && !isBandAllowed(overrideTier as ScoreBand, bandFloor.ruleMinimum)
       ? lowestAllowedBand(bandFloor.ruleMinimum)
@@ -625,7 +633,7 @@ function SubmissionPreviewModal({
     : undefined;
   const overrideView = storedOverride
     ? {
-        tier: storedOverride.tier,
+        tier: bandOfTier(storedOverride.tier) ?? storedOverride.tier,
         justification: storedOverride.justification,
         byName: overrider ? `${overrider.name} ${overrider.surname ?? ""}`.trim() : null,
       }

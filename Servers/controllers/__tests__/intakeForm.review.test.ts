@@ -423,15 +423,23 @@ describe("overrideSubmissionRisk", () => {
 
   it("checks bands and the floor before the first score is stored", async () => {
     intake.getSubmissionByIdQuery.mockResolvedValue(submission({ riskAssessment: null }));
-    const legacy = await call(ctrl.overrideSubmissionRisk, overrideReq({ tier: "Unacceptable" }));
-    expect(legacy.status).toBe(400);
-    expect(legacy.body.data).toBe("Invalid risk band");
+    const bad = await call(ctrl.overrideSubmissionRisk, overrideReq({ tier: "Extreme" }));
+    expect(bad.status).toBe(400);
+    expect(bad.body.data).toBe("Invalid risk band");
     const low = await call(ctrl.overrideSubmissionRisk, overrideReq({ tier: "Low" }));
     expect(low.status).toBe(400);
     expect(intake.updateSubmissionRiskOverrideQuery).not.toHaveBeenCalled();
   });
 
-  it("keeps the old behaviour for a v1 assessment", async () => {
+  it("stores a pre-v2 tier name as its band", async () => {
+    const r = await call(ctrl.overrideSubmissionRisk, overrideReq({ tier: "Unacceptable" }));
+    expect(r.status).toBe(200);
+    expect(intake.updateSubmissionRiskOverrideQuery.mock.calls[0][1]).toMatchObject({
+      tier: "Critical",
+    });
+  });
+
+  it("keeps dimension overrides for a v1 assessment, storing the tier as its band", async () => {
     intake.getSubmissionByIdQuery.mockResolvedValue(
       submission({ riskAssessment: { overallScore: 20, tier: "Minimal" } }),
     );
@@ -441,7 +449,7 @@ describe("overrideSubmissionRisk", () => {
     );
     expect(r.status).toBe(200);
     expect(intake.updateSubmissionRiskOverrideQuery.mock.calls[0][1]).toMatchObject({
-      tier: "Minimal",
+      tier: "Low",
       dimensionOverrides: { bias: 3 },
     });
   });

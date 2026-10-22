@@ -472,10 +472,11 @@ export async function sendIntakeNotificationOnce(
 
 /**
  * Queue the stages each pending submission still needs: legacy submissions
- * and jobs lost while pending. Never re-runs a settled stage. A lost job's
- * email goes out with the re-run (the route's admin fallback is not known
- * here, so a form without recipients stays silent). Returns how many
- * submissions were queued.
+ * and jobs lost while pending. Never re-runs a settled stage. A lost email
+ * goes out with the re-run, or at once when both stages have settled. The
+ * submitter's language and the route's admin fallback are not stored, so it
+ * is in the default language and a form without recipients stays silent.
+ * Returns how many submissions were queued.
  */
 export async function backfillIntakeAssessments(deps?: Partial<AssessmentDeps>): Promise<number> {
   const d = withDefaults(deps);
@@ -486,7 +487,23 @@ export async function backfillIntakeAssessments(deps?: Partial<AssessmentDeps>):
       ...(row.needsScoring ? (["scoring"] as const) : []),
       ...(row.needsSuggestions ? (["suggestions"] as const) : []),
     ];
-    if (stages.length === 0) continue;
+    if (stages.length === 0) {
+      if (!row.needsNotification) continue;
+      try {
+        await sendIntakeNotificationOnce(
+          row.organizationId,
+          row.id,
+          undefined,
+          { capReached: false, onlyWhenSettled: true },
+          deps,
+        );
+      } catch (error) {
+        logger.error(
+          `Intake backfill could not email submission ${row.id}: ${errorMessage(error)}`,
+        );
+      }
+      continue;
+    }
     try {
       await d.enqueue({
         organizationId: row.organizationId,

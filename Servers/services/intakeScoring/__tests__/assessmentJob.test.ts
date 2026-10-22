@@ -366,33 +366,33 @@ describe("runIntakeAssessment", () => {
   });
 });
 
-describe("sendIntakeNotificationOnce", () => {
-  const settled = () =>
-    submission({
-      riskAssessment: {
-        version: 2,
-        status: "complete",
-        notRuleChecked: false,
-        classificationLevel: "High risk",
-        ruleMinimum: 70,
-        ai: null,
-        finalScore: 70,
-        source: "rule_minimum",
-        rulesOnly: false,
-        overallScore: 70,
-        tier: "High",
-        stageStartedAt: "x",
-        scoredAt: "y",
-      },
-      suggestedRisks: {
-        status: "complete",
-        items: [],
-        droppedCount: 0,
-        stageStartedAt: "x",
-        generatedAt: "y",
-      },
-    });
+const settled = () =>
+  submission({
+    riskAssessment: {
+      version: 2,
+      status: "complete",
+      notRuleChecked: false,
+      classificationLevel: "High risk",
+      ruleMinimum: 70,
+      ai: null,
+      finalScore: 70,
+      source: "rule_minimum",
+      rulesOnly: false,
+      overallScore: 70,
+      tier: "High",
+      stageStartedAt: "x",
+      scoredAt: "y",
+    },
+    suggestedRisks: {
+      status: "complete",
+      items: [],
+      droppedCount: 0,
+      stageStartedAt: "x",
+      generatedAt: "y",
+    },
+  });
 
+describe("sendIntakeNotificationOnce", () => {
   it("sends nothing for a submission already decided", async () => {
     const h = harness({ ...settled(), status: IntakeSubmissionStatus.APPROVED } as never);
     await sendIntakeNotificationOnce(ORG, 11, "en", { capReached: true }, h.deps);
@@ -506,6 +506,26 @@ describe("backfillIntakeAssessments", () => {
       stages: ["scoring"],
       notify: false,
     });
+  });
+
+  it("emails a settled submission whose email never went, without queueing", async () => {
+    const enqueue = jest.fn(async () => undefined);
+    const h = harness(settled(), {
+      listNeedingAssessment: jest.fn(async () => [
+        {
+          id: 11,
+          organizationId: ORG,
+          needsScoring: false,
+          needsSuggestions: false,
+          needsNotification: true,
+        },
+      ]),
+      enqueue,
+    });
+    expect(await backfillIntakeAssessments(h.deps)).toBe(0);
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(h.deps.claimNotification).toHaveBeenCalledWith(11, ORG);
+    expect(h.deps.sendNotification).toHaveBeenCalledTimes(1);
   });
 
   it("keeps going when one row fails to queue", async () => {

@@ -32,7 +32,8 @@ function SuggestedRisksSection({
   onChange,
 }: SuggestedRisksSectionProps) {
   const theme = useTheme();
-  const [busyId, setBusyId] = useState<string | null>(null);
+  // Several risks can be saving at once.
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [acceptingAll, setAcceptingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,16 +90,20 @@ function SuggestedRisksSection({
   }
 
   async function act(risk: IntakeSuggestedRisk, patch: SuggestedRiskPatch) {
-    setBusyId(risk.id);
+    setBusyIds((prev) => new Set(prev).add(risk.id));
     setError(null);
     try {
       const response = await updateSuggestedRisk(submissionId, risk.id, patch);
       replaceItem(response.data);
-      setEditingId(null);
+      setEditingId((prev) => (prev === risk.id ? null : prev));
     } catch {
       setError("Couldn't save the change. Please try again.");
     } finally {
-      setBusyId(null);
+      setBusyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(risk.id);
+        return next;
+      });
     }
   }
 
@@ -143,7 +148,7 @@ function SuggestedRisksSection({
       </Box>
 
       {current.items.map((risk) => {
-        const busy = busyId === risk.id;
+        const busy = busyIds.has(risk.id);
         return (
           <Box
             key={risk.id}

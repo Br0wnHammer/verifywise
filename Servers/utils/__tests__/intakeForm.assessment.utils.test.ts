@@ -76,23 +76,15 @@ describe("updateSubmissionAssessmentV2Query", () => {
     mockQuery.mockResolvedValue([[], 1] as any);
     await updateSubmissionAssessmentV2Query(5, assessment, 9);
     expect(sqlOf()).toContain("risk_assessment = :riskAssessment");
-    // a reviewer override keeps its band (a pre-v2 tier moves to its band);
-    // only pending submissions change
-    const sql = sqlOf().replace(/\s+/g, " ");
-    expect(sql).toContain(
-      "risk_tier = COALESCE( CAST(:legacyBands AS jsonb) ->> (risk_override->>'tier'), risk_override->>'tier', :riskTier )",
-    );
-    expect(sql).toContain(
-      "jsonb_set( risk_override, '{tier}', CAST(:legacyBands AS jsonb) -> (risk_override->>'tier') )",
-    );
-    expect(sql).toContain("status = :pending");
-    expect(sql).toContain("organization_id = :organizationId");
+    // a reviewer override keeps its band; only pending submissions change
+    expect(sqlOf()).toContain("risk_tier = COALESCE(risk_override->>'tier', :riskTier)");
+    expect(sqlOf()).toContain("status = :pending");
+    expect(sqlOf()).toContain("organization_id = :organizationId");
     expect(optsOf().replacements).toEqual({
       id: 5,
       organizationId: 9,
       riskAssessment: JSON.stringify(assessment),
       riskTier: "High",
-      legacyBands: JSON.stringify({ Minimal: "Low", Limited: "Medium", Unacceptable: "Critical" }),
       pending: "pending",
     });
   });

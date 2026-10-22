@@ -108,6 +108,20 @@ describe("SuggestedRisksSection", () => {
     expect(latest.items.map((i) => i.state)).toEqual(["accepted", "accepted"]);
   });
 
+  it("one risk's save finishing leaves another risk's editor open", async () => {
+    let resolveA: (v: { data: IntakeSuggestedRisk }) => void = () => undefined;
+    vi.mocked(updateSuggestedRisk).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveA = resolve)),
+    );
+    render(block([item(), item({ id: "b" })]));
+    fireEvent.click(screen.getByTestId("suggested-risk-a-accept"));
+    fireEvent.click(screen.getByTestId("suggested-risk-b-edit"));
+    expect(screen.getByTestId("suggestion-b-save")).toBeInTheDocument();
+    resolveA({ data: item({ state: "accepted" }) });
+    await waitFor(() => expect(screen.getByTestId("suggested-risk-a-accept")).not.toBeDisabled());
+    expect(screen.getByTestId("suggestion-b-save")).toBeInTheDocument();
+  });
+
   it("can't accept a suggestion without a mitigation plan", () => {
     render(block([item({ mitigationPlan: "" })]));
     expect(

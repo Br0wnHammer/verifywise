@@ -96,6 +96,7 @@ import {
 import { ModelRiskCategory } from "../domain.layer/enums/model-risk-category.enum";
 import { ModelRiskLevel } from "../domain.layer/enums/model-risk-level.enum";
 import {
+  bandOfTier,
   isBandAllowed,
   ruleMinimumFor,
   SCORE_BANDS,
@@ -1483,7 +1484,9 @@ export async function overrideSubmissionRisk(req: Request, res: Response) {
   }
 
   try {
-    const { tier, dimensionOverrides, justification } = req.body;
+    const { dimensionOverrides, justification } = req.body;
+    // A pre-v2 tier name is stored as its band, so every override is a band.
+    const tier = bandOfTier(req.body.tier) ?? req.body.tier;
 
     if (!tier || !justification) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Tier and justification are required")));
@@ -1853,8 +1856,13 @@ export async function approveSubmission(req: Request, res: Response) {
     // The band override, from this request or saved earlier through
     // PATCH /risk-override: on an AI-scored (or not yet scored) submission
     // neither may sit below the approved level's rule minimum.
+    // A pre-v2 tier name counts as its band.
     const requestOverride = riskOverride && riskOverride.tier && riskOverride.justification;
-    const bandToCheck = requestOverride ? riskOverride.tier : submission.riskOverride?.tier;
+    const requestTier = requestOverride
+      ? (bandOfTier(riskOverride.tier) ?? riskOverride.tier)
+      : null;
+    const storedTier = submission.riskOverride?.tier;
+    const bandToCheck = requestTier ?? bandOfTier(storedTier) ?? storedTier;
     const bandsApply = usesScoreBands(submission);
     if (bandsApply && bandToCheck) {
       const floorError = bandFloorError(req, bandToCheck, ruleMinimumFor(approvedLevel));
@@ -1867,7 +1875,7 @@ export async function approveSubmission(req: Request, res: Response) {
       await updateSubmissionRiskOverrideQuery(
         submissionId,
         {
-          tier: riskOverride.tier,
+          tier: requestTier,
           dimensionOverrides: bandsApply ? {} : riskOverride.dimensionOverrides || {},
           justification: riskOverride.justification,
           overriddenBy: req.userId!,
