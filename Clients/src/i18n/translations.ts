@@ -25,6 +25,28 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    "Route by risk score": "Nach Risikobewertung weiterleiten",
+    "Send submissions to senior or standard reviewers based on their risk score.":
+      "Einreichungen anhand ihrer Risikobewertung an leitende oder Standard-Prüfer weiterleiten.",
+    "Senior reviewers": "Leitende Prüfer",
+    "Standard reviewers": "Standard-Prüfer",
+    "Select senior reviewers": "Leitende Prüfer auswählen",
+    "Select standard reviewers": "Standard-Prüfer auswählen",
+    "Pick at least one senior reviewer": "Wählen Sie mindestens einen leitenden Prüfer",
+    "Pick at least one standard reviewer": "Wählen Sie mindestens einen Standard-Prüfer",
+    "Close-call margin": "Spanne für Grenzfälle",
+    "Second review share %": "Anteil der Zweitprüfungen in %",
+    "Risk score that separates the lanes": "Risikobewertung, die die Bereiche trennt",
+    "Points either side of the threshold": "Punkte auf beiden Seiten des Schwellenwerts",
+    "Share of standard decisions checked again":
+      "Anteil der Standardentscheidungen, die erneut geprüft werden",
+    "Use a number from 1 to 99": "Verwenden Sie eine Zahl von 1 bis 99",
+    "Use a number from 0 to 25": "Verwenden Sie eine Zahl von 0 bis 25",
+    "Use a number from 0 to 100": "Verwenden Sie eine Zahl von 0 bis 100",
+    "Fix the routing settings before saving":
+      "Korrigieren Sie die Weiterleitungseinstellungen vor dem Speichern",
+    "Fix the routing settings before publishing":
+      "Korrigieren Sie die Weiterleitungseinstellungen vor dem Veröffentlichen",
     "No risk score was recorded for this submission.":
       "Für diese Einreichung wurde kein Risikowert erfasst.",
     "set to": "gesetzt auf",
@@ -10760,6 +10782,27 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    "Route by risk score": "Acheminer selon le score de risque",
+    "Send submissions to senior or standard reviewers based on their risk score.":
+      "Envoyer les soumissions aux réviseurs seniors ou standard selon leur score de risque.",
+    "Senior reviewers": "Réviseurs seniors",
+    "Standard reviewers": "Réviseurs standard",
+    "Select senior reviewers": "Sélectionner les réviseurs seniors",
+    "Select standard reviewers": "Sélectionner les réviseurs standard",
+    "Pick at least one senior reviewer": "Choisissez au moins un réviseur senior",
+    "Pick at least one standard reviewer": "Choisissez au moins un réviseur standard",
+    "Close-call margin": "Marge des cas limites",
+    "Second review share %": "Part des secondes révisions en %",
+    "Risk score that separates the lanes": "Score de risque qui sépare les filières",
+    "Points either side of the threshold": "Points de part et d'autre du seuil",
+    "Share of standard decisions checked again": "Part des décisions standard revérifiées",
+    "Use a number from 1 to 99": "Utilisez un nombre de 1 à 99",
+    "Use a number from 0 to 25": "Utilisez un nombre de 0 à 25",
+    "Use a number from 0 to 100": "Utilisez un nombre de 0 à 100",
+    "Fix the routing settings before saving":
+      "Corrigez les paramètres d'acheminement avant d'enregistrer",
+    "Fix the routing settings before publishing":
+      "Corrigez les paramètres d'acheminement avant de publier",
     "No risk score was recorded for this submission.":
       "Aucun score de risque n'a été enregistré pour cette soumission.",
     "set to": "fixé à",
@@ -21431,6 +21474,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Le téléchargement révoque le jeton émis ici la dernière fois. Tout ce qui a été configuré avec le fichier précédent, sur cette machine ou une autre, cesse immédiatement de fonctionner.",
   },
   es: {
+    "Route by risk score": "Enrutar según la puntuación de riesgo",
+    "Send submissions to senior or standard reviewers based on their risk score.":
+      "Enviar los envíos a revisores sénior o estándar según su puntuación de riesgo.",
+    "Senior reviewers": "Revisores sénior",
+    "Standard reviewers": "Revisores estándar",
+    "Select senior reviewers": "Seleccionar revisores sénior",
+    "Select standard reviewers": "Seleccionar revisores estándar",
+    "Pick at least one senior reviewer": "Elija al menos un revisor sénior",
+    "Pick at least one standard reviewer": "Elija al menos un revisor estándar",
+    "Close-call margin": "Margen de casos límite",
+    "Second review share %": "Porcentaje de segundas revisiones",
+    "Risk score that separates the lanes": "Puntuación de riesgo que separa los carriles",
+    "Points either side of the threshold": "Puntos a cada lado del umbral",
+    "Share of standard decisions checked again":
+      "Porcentaje de decisiones estándar que se revisan de nuevo",
+    "Use a number from 1 to 99": "Use un número del 1 al 99",
+    "Use a number from 0 to 25": "Use un número del 0 al 25",
+    "Use a number from 0 to 100": "Use un número del 0 al 100",
+    "Fix the routing settings before saving":
+      "Corrija la configuración de enrutamiento antes de guardar",
+    "Fix the routing settings before publishing":
+      "Corrija la configuración de enrutamiento antes de publicar",
     "No risk score was recorded for this submission.":
       "No se registró ninguna puntuación de riesgo para este envío.",
     "set to": "fijado en",

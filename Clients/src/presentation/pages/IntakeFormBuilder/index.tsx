@@ -30,6 +30,7 @@ import {
   getIntakeForm,
   createIntakeForm,
   updateIntakeForm,
+  getEligibleReviewers,
   IntakeFormStatus,
   IntakeEntityType,
 } from "../../../application/repository/intakeForm.repository";
@@ -45,6 +46,7 @@ import {
 import { FormCanvas, FormCanvasHandle } from "./FormCanvas";
 import { FieldEditor } from "./FieldEditor";
 import { DesignPanel } from "./DesignPanel";
+import RoutingSettingsSection, { getRoutingErrors } from "./routing/RoutingSettingsSection";
 import CustomizableMultiSelect from "../../components/Inputs/Select/Multi";
 import {
   FormField,
@@ -119,6 +121,9 @@ export function IntakeFormBuilder() {
   const [orgUsers, setOrgUsers] = useState<
     Array<{ id: number; name: string; surname?: string; email: string }>
   >([]);
+  const [routingReviewers, setRoutingReviewers] = useState<
+    Array<{ _id: number; name: string; email: string }>
+  >([]);
   const [fieldToDelete, setFieldToDelete] = useState<string | null>(null);
   const [deleteFieldModalOpen, setDeleteFieldModalOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{
@@ -176,6 +181,21 @@ export function IntakeFormBuilder() {
         const users = res.data?.data || res.data || [];
         setOrgUsers(Array.isArray(users) ? users : []);
       })
+      .catch(() => {});
+  }, []);
+
+  // Load the users a form can route to (once)
+  useEffect(() => {
+    getEligibleReviewers()
+      .then((users) =>
+        setRoutingReviewers(
+          (Array.isArray(users) ? users : []).map((u) => ({
+            _id: u.id,
+            name: [u.name, u.surname].filter(Boolean).join(" "),
+            email: u.email,
+          })),
+        ),
+      )
       .catch(() => {});
   }, []);
 
@@ -317,6 +337,14 @@ export function IntakeFormBuilder() {
       });
       return null;
     }
+    if (Object.keys(getRoutingErrors(form.routing ?? null)).length > 0) {
+      setSnackbar({
+        open: true,
+        message: "Fix the routing settings before saving",
+        severity: "error",
+      });
+      return null;
+    }
     // A draft may be saved with unfinished logic; a live form may not.
     const isLive = form.status === IntakeFormStatus.ACTIVE;
     if (logicErrors.length > 0 && isLive) {
@@ -383,6 +411,14 @@ export function IntakeFormBuilder() {
       setSnackbar({
         open: true,
         message: "Fix the highlighted fields before publishing",
+        severity: "error",
+      });
+      return;
+    }
+    if (Object.keys(getRoutingErrors(form.routing ?? null)).length > 0) {
+      setSnackbar({
+        open: true,
+        message: "Fix the routing settings before publishing",
         severity: "error",
       });
       return;
@@ -1177,6 +1213,12 @@ export function IntakeFormBuilder() {
                             Submission responses will be emailed to selected recipients
                           </Typography>
                         </Box>
+
+                        <RoutingSettingsSection
+                          value={form.routing ?? null}
+                          onChange={(routing) => updateForm({ routing })}
+                          reviewers={routingReviewers}
+                        />
 
                         <Box>
                           <Typography
