@@ -109,7 +109,7 @@ export function canDecideLane(
 
 /** Ids of the users who can decide a submission in a lane: senior reviewers sit in both. */
 export function laneReviewerIdsFor(lane: ReviewLane | null, cfg: IFormRouting | null): number[] {
-  if (!cfg || lane === null) return [];
+  if (!cfg?.enabled || lane === null) return [];
   if (lane === "senior") return cfg.seniorReviewerIds;
   return [...new Set([...cfg.standardReviewerIds, ...cfg.seniorReviewerIds])];
 }

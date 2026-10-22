@@ -276,6 +276,8 @@ export interface IntakeSubmission {
   routing?: SubmissionRouting | null;
   /** Ids of the assigned lane's reviewers, from the list endpoint. */
   laneReviewerIds?: number[];
+  /** Whether the submission's form routes by risk score. */
+  routingEnabled?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -456,6 +458,7 @@ export interface SubmissionPreview {
   /** The level the AI was given when the score was computed. */
   assessedLevel?: ClassificationLevel | null;
   routing?: SubmissionRouting | null;
+  routingEnabled?: boolean;
   canDecide?: boolean;
   decideBlockedReason?: string | null;
   /** Reviewers of the assigned lane. */

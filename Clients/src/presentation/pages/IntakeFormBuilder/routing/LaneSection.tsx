@@ -12,10 +12,13 @@ const REASON_MAX = 1000;
 
 interface LaneChipProps {
   routing: SubmissionRouting | null | undefined;
+  /** False when the form doesn't route by risk score; a stored lane is then only a record. */
+  routingEnabled?: boolean;
 }
 
 /** The lane a submission sits in. */
-export const LaneChip = ({ routing }: LaneChipProps) => {
+export const LaneChip = ({ routing, routingEnabled = true }: LaneChipProps) => {
+  if (!routingEnabled) return <Chip label="Routing off" uppercase={false} />;
   if (!routing) return <Chip label="Not routed yet" uppercase={false} />;
   return routing.lane === "senior" ? (
     <Chip label="Senior review" uppercase={false} backgroundColor="#fef3c7" textColor="#92400e" />

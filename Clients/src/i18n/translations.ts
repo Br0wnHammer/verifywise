@@ -25,6 +25,11 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    "Routing off": "Weiterleitung aus",
+    "Failed to send to senior review. Please try again.":
+      "Übergabe an die leitende Prüfung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+    "Failed to save the second review. Please try again.":
+      "Die Zweitprüfung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
     "Within": "Innerhalb von",
     "points of the threshold": "Punkten um den Schwellenwert",
     "Prohibited practice": "Verbotene Praktik",
@@ -10821,6 +10826,11 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    "Routing off": "Acheminement désactivé",
+    "Failed to send to senior review. Please try again.":
+      "Échec de l'envoi à la revue senior. Veuillez réessayer.",
+    "Failed to save the second review. Please try again.":
+      "Échec de l'enregistrement de la seconde revue. Veuillez réessayer.",
     "Within": "À moins de",
     "points of the threshold": "points du seuil",
     "Prohibited practice": "Pratique interdite",
@@ -21552,6 +21562,11 @@ export const translations: Record<string, Record<string, string>> = {
       "Le téléchargement révoque le jeton émis ici la dernière fois. Tout ce qui a été configuré avec le fichier précédent, sur cette machine ou une autre, cesse immédiatement de fonctionner.",
   },
   es: {
+    "Routing off": "Enrutamiento desactivado",
+    "Failed to send to senior review. Please try again.":
+      "No se pudo enviar a revisión sénior. Inténtelo de nuevo.",
+    "Failed to save the second review. Please try again.":
+      "No se pudo guardar la segunda revisión. Inténtelo de nuevo.",
     "Within": "A menos de",
     "points of the threshold": "puntos del umbral",
     "Prohibited practice": "Práctica prohibida",

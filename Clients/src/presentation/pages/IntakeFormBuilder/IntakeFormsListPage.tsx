@@ -705,7 +705,10 @@ export function IntakeFormsListPage() {
                           <RiskTierChip submission={submission} />
                         </TableCell>
                         <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
-                          <LaneChip routing={submission.routing} />
+                          <LaneChip
+                            routing={submission.routing}
+                            routingEnabled={submission.routingEnabled}
+                          />
                         </TableCell>
                         <TableCell sx={singleTheme.tableStyles.primary.body.cell}>
                           <Typography sx={{ fontSize: "13px", color: theme.palette.text.accent }}>

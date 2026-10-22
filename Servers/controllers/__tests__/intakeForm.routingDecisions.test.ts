@@ -547,6 +547,12 @@ describe("getSubmissionPreview: lane", () => {
     });
   });
 
+  it("reports whether routing is on", async () => {
+    expect((await preview(SENIOR)).body.data.routingEnabled).toBe(true);
+    intake.getIntakeFormByIdQuery.mockResolvedValue(form(routingCfg({ enabled: false })));
+    expect((await preview(SENIOR)).body.data.routingEnabled).toBe(false);
+  });
+
   it("routing off: anyone can decide, no reviewer lookup", async () => {
     intake.getIntakeFormByIdQuery.mockResolvedValue(form(null));
     const r = await preview(OTHER);
@@ -574,10 +580,25 @@ describe("getPendingSubmissions: lane reviewers", () => {
     expect(r.status).toBe(200);
     expect(intake.getPendingSubmissionsQuery).toHaveBeenCalledWith(ORG, undefined);
     expect(r.body.data).toEqual([
-      { id: 1, routing: SENIOR_LANE, laneReviewerIds: [SENIOR] },
-      { id: 2, routing: STANDARD_LANE, laneReviewerIds: [STANDARD, SENIOR] },
-      { id: 3, routing: null, laneReviewerIds: [] },
-      { id: 4, routing: null, laneReviewerIds: [] },
+      { id: 1, routing: SENIOR_LANE, routingEnabled: true, laneReviewerIds: [SENIOR] },
+      {
+        id: 2,
+        routing: STANDARD_LANE,
+        routingEnabled: true,
+        laneReviewerIds: [STANDARD, SENIOR],
+      },
+      { id: 3, routing: null, routingEnabled: true, laneReviewerIds: [] },
+      { id: 4, routing: null, routingEnabled: false, laneReviewerIds: [] },
+    ]);
+  });
+
+  it("a disabled form keeps its stored lane but has no lane reviewers", async () => {
+    intake.getPendingSubmissionsQuery.mockResolvedValue([
+      { id: 5, routing: STANDARD_LANE, formRouting: routingCfg({ enabled: false }) },
+    ]);
+    const r = await list();
+    expect(r.body.data).toEqual([
+      { id: 5, routing: STANDARD_LANE, routingEnabled: false, laneReviewerIds: [] },
     ]);
   });
 });

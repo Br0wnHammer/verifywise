@@ -85,6 +85,7 @@ interface PreviewData {
   assessedLevel: ClassificationLevel | null;
   riskOverride: RiskOverride | null;
   routing: SubmissionRouting | null;
+  routingEnabled: boolean;
   canDecide: boolean;
   decideBlockedReason: string | null;
   laneReviewers: Array<{ id: number; name: string }>;
@@ -390,6 +391,7 @@ function SubmissionPreviewModal({
           assessedLevel: response.data.assessedLevel ?? null,
           riskOverride: response.data.riskOverride ?? null,
           routing: response.data.routing ?? null,
+          routingEnabled: response.data.routingEnabled ?? false,
           canDecide: response.data.canDecide ?? true,
           decideBlockedReason: response.data.decideBlockedReason ?? null,
           laneReviewers: response.data.laneReviewers ?? [],
@@ -611,16 +613,18 @@ function SubmissionPreviewModal({
   // Render
   const isPending = previewData?.submissionStatus === "pending";
 
-  // Lane and second review. A form with routing off has no stored lane and no
-  // lane reviewers, so the lane section stays out of its way.
+  // Lane and second review. A form with routing off keeps any stored lane as a
+  // record only, so the lane section and Send to senior review stay hidden.
   const isAdmin = userRoleName === "Admin";
   const canDecide = previewData?.canDecide ?? true;
   const lane = previewData?.routing ?? null;
   const laneReviewers = previewData?.laneReviewers ?? [];
-  const showLane = !!lane || laneReviewers.length > 0;
+  const routingEnabled = previewData?.routingEnabled ?? false;
+  const showLane = routingEnabled;
   // Mirrors the server: pending and in the standard lane, for the form's reviewers or an Admin.
   const canEscalate =
     isPending &&
+    routingEnabled &&
     lane?.lane === "standard" &&
     (isAdmin || (userId !== null && laneReviewers.some((r) => r.id === userId)));
   const canSecondReview =

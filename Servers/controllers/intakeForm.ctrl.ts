@@ -1349,6 +1349,7 @@ export async function getPendingSubmissions(req: Request, res: Response) {
     // The list shows who can decide each row's stored lane, not the form's whole routing.
     const submissions = rows.map(({ formRouting, ...row }) => ({
       ...row,
+      routingEnabled: formRouting?.enabled ?? false,
       laneReviewerIds: laneReviewerIdsFor(row.routing?.lane ?? null, formRouting ?? null),
     }));
     return res.status(200).json(STATUS_CODE[200](submissions));
@@ -1614,6 +1615,7 @@ export async function getSubmissionPreview(req: Request, res: Response) {
         ruleMinimumPreview: ruleMinimumFor(rescored?.result.level ?? null),
         assessedLevel: assessment?.classificationLevel ?? null,
         routing: submission.routing ?? null,
+        routingEnabled: routingCfg?.enabled ?? false,
         canDecide,
         decideBlockedReason,
         laneReviewers,

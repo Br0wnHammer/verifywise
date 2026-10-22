@@ -11,6 +11,7 @@ export const LANE_FILTER_ITEMS: Array<{ _id: LaneFilter; name: string }> = [
 ];
 
 interface LaneRow {
+  routingEnabled?: boolean;
   routing?: SubmissionRouting | null;
   laneReviewerIds?: number[];
 }
@@ -21,9 +22,10 @@ export function matchesLaneFilter(
   filter: LaneFilter,
   userId: number | null,
 ): boolean {
+  if (filter === "all") return true;
+  // Rows of routing-off forms keep a stored lane as a record only.
+  if (!row.routingEnabled) return false;
   switch (filter) {
-    case "all":
-      return true;
     case "senior":
     case "standard":
       return row.routing?.lane === filter;

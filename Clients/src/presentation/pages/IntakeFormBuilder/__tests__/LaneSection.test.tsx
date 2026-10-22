@@ -1,6 +1,6 @@
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
-import LaneSection from "../routing/LaneSection";
+import LaneSection, { LaneChip } from "../routing/LaneSection";
 import { escalateSubmission } from "../../../../application/repository/intakeForm.repository";
 import type { SubmissionRouting } from "../types";
 
@@ -43,6 +43,12 @@ describe("LaneSection", () => {
     second.unmount();
     renderLane({ routing: null });
     expect(screen.getByText("Not routed yet")).toBeInTheDocument();
+  });
+
+  it("shows Routing off instead of a lane when the form doesn't route", () => {
+    renderWithProviders(<LaneChip routing={routing()} routingEnabled={false} />);
+    expect(screen.getByText("Routing off")).toBeInTheDocument();
+    expect(screen.queryByText("Standard review")).not.toBeInTheDocument();
   });
 
   it.each([
