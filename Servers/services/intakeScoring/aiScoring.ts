@@ -8,7 +8,7 @@ import logger from "../../utils/logger/fileLogger";
 import { median } from "./scoreMath";
 import type { ClassificationLevel } from "./scoreMath";
 import type { ScoringAnswer } from "./scoringInput";
-import { buildScoringSystemPrompt, buildScoringUserPrompt } from "./prompts";
+import { buildScoringSystemPrompt, buildScoringUserPrompt, newDelimiterNonce } from "./prompts";
 
 export interface AiReason {
   text: string;
@@ -79,8 +79,9 @@ export async function runAiScoring(params: {
   generateImpl?: GenerateObjectImpl;
 }): Promise<AiScoringResult> {
   const { model, answers, classification, generateImpl } = params;
-  const system = buildScoringSystemPrompt();
-  const prompt = buildScoringUserPrompt(answers, classification);
+  const nonce = newDelimiterNonce();
+  const system = buildScoringSystemPrompt(nonce);
+  const prompt = buildScoringUserPrompt(answers, classification, nonce);
 
   const settled = await Promise.allSettled(
     Array.from({ length: AI_SCORING_RUNS }, () =>
