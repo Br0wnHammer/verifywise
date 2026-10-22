@@ -21,8 +21,8 @@ import {
   checkRateLimitQuery,
   getTenantHashBySlug,
   getTenantSlugById,
-  updateSubmissionRiskQuery,
   updateSubmissionRiskOverrideQuery,
+  claimSubmissionNotificationQuery,
   getTenantByPublicId,
   getSubmissionByEntityQuery,
 } from "../utils/intakeForm.utils";
@@ -71,7 +71,7 @@ import {
   sendSubmissionApprovedEmail,
   sendSubmissionRejectedEmail,
 } from "../services/intakeFormEmail.service";
-import { calculateSubmissionRisk } from "../services/intakeRiskScoring.service";
+import { enqueueIntakeAssessment } from "../services/intakeScoring/enqueue";
 import { cleanSubmission, isEmptyAnswer, parseFormula } from "../services/intakeFormLogic";
 import { generateSuggestedQuestions, generateFieldGuidance } from "../services/intakeLLM.service";
 import { getCompanyLogoQuery } from "../utils/aiTrustCentre.utils";
@@ -254,6 +254,62 @@ async function buildPublicRiskStep(
     euAiActRiskStep: { questionnaire },
     previousRiskAnswers,
   };
+}
+
+/**
+ * Queue a new public submission's AI assessment. The job emails the reviewers
+ * once results are in, or after two minutes. If it cannot be queued, they are
+ * emailed now without results, so a submission is never silent; the claim
+ * keeps it to one email even if part of the job did get queued. Not awaited by
+ * the handlers: a slow or unavailable queue never delays the submitter.
+ */
+function startIntakeAssessment(params: {
+  organizationId: number;
+  submissionId: number;
+  lang?: string;
+  recipientIds: number[];
+  /** Email the organization's admins when the form has no recipients. */
+  adminFallback: boolean;
+  formId: number;
+  formName: string;
+  submitterName: string;
+  submitterEmail: string;
+  entityType: IntakeEntityType;
+}): Promise<void> {
+  const { organizationId, submissionId, lang, recipientIds, adminFallback } = params;
+  return enqueueIntakeAssessment({
+    organizationId,
+    submissionId,
+    stages: ["scoring", "suggestions"],
+    notify: true,
+    lang,
+    adminFallback,
+  }).catch(async (error) => {
+    logger.error(
+      `Could not queue the assessment for submission ${submissionId}; emailing reviewers now:`,
+      error,
+    );
+    if (recipientIds.length === 0 && !adminFallback) {
+      logger.warn(
+        `No recipients configured for form ${params.formId}, skipping admin notification`,
+      );
+      return;
+    }
+    try {
+      if (!(await claimSubmissionNotificationQuery(submissionId, organizationId))) return;
+      await sendNewSubmissionAdminNotification(
+        recipientIds.length > 0 ? recipientIds : organizationId,
+        params.formName,
+        params.submitterName,
+        params.submitterEmail,
+        submissionId,
+        params.entityType,
+        lang,
+      );
+    } catch (err) {
+      logger.error("Failed to send admin notification:", err);
+    }
+  });
 }
 
 // ============================================================================
@@ -2041,34 +2097,19 @@ export async function submitPublicFormByPublicId(req: Request, res: Response) {
 
       // Get full form with recipients to send notifications
       const fullForm = await getIntakeFormByIdQuery(form.id, tenantInfo.orgId);
-      const recipientIds = (fullForm?.recipients as number[]) || [];
 
-      if (recipientIds.length > 0) {
-        sendNewSubmissionAdminNotification(
-          recipientIds,
-          form.name,
-          submissionName,
-          resolvedEmail || "No email provided",
-          submission.id,
-          form.entityType,
-          req.lang,
-        ).catch((err) => logger.error("Failed to send admin notification:", err));
-      } else {
-        logger.warn(`No recipients configured for form ${form.id}, skipping admin notification`);
-      }
-
-      // Trigger async risk scoring
-      if (fullForm) {
-        calculateSubmissionRisk(
-          cleanedData,
-          fullForm.schema,
-          fullForm.riskTierSystem || "eu_ai_act",
-          fullForm.llmKeyId,
-          tenantInfo.orgId,
-        )
-          .then((result) => updateSubmissionRiskQuery(submission.id, result, tenantInfo.orgId))
-          .catch((err) => logger.error("Risk scoring failed:", err));
-      }
+      void startIntakeAssessment({
+        organizationId: tenantInfo.orgId,
+        submissionId: submission.id!,
+        lang: req.lang,
+        recipientIds: (fullForm?.recipients as number[]) || [],
+        adminFallback: false,
+        formId: form.id,
+        formName: form.name,
+        submitterName: submissionName,
+        submitterEmail: resolvedEmail || "No email provided",
+        entityType: form.entityType,
+      });
 
       return res.status(201).json(
         STATUS_CODE[201]({
@@ -2394,45 +2435,21 @@ export async function submitPublicForm(req: Request, res: Response) {
         ).catch((err) => logger.error("Failed to send submission received email:", err));
       }
 
-      // Use per-form recipients
+      // Use per-form recipients; this route falls back to org admins without them
       const fullForm = await getIntakeFormByIdQuery(form.id, tenantInfo.id);
-      const recipientIds = (fullForm?.recipients as number[]) || [];
 
-      if (recipientIds.length > 0) {
-        sendNewSubmissionAdminNotification(
-          recipientIds,
-          form.name,
-          submissionName,
-          resolvedEmail || "No email provided",
-          submission.id,
-          form.entityType,
-          req.lang,
-        ).catch((err) => logger.error("Failed to send admin notification:", err));
-      } else {
-        // Fallback to org admins
-        sendNewSubmissionAdminNotification(
-          tenantInfo.id,
-          form.name,
-          submissionName,
-          resolvedEmail || "No email provided",
-          submission.id,
-          form.entityType,
-          req.lang,
-        ).catch((err) => logger.error("Failed to send admin notification:", err));
-      }
-
-      // Trigger async risk scoring
-      if (fullForm) {
-        calculateSubmissionRisk(
-          cleanedData,
-          fullForm.schema,
-          fullForm.riskTierSystem || "eu_ai_act",
-          fullForm.llmKeyId,
-          tenantInfo.id,
-        )
-          .then((result) => updateSubmissionRiskQuery(submission.id, result, tenantInfo.id))
-          .catch((err) => logger.error("Risk scoring failed:", err));
-      }
+      void startIntakeAssessment({
+        organizationId: tenantInfo.id,
+        submissionId: submission.id!,
+        lang: req.lang,
+        recipientIds: (fullForm?.recipients as number[]) || [],
+        adminFallback: true,
+        formId: form.id,
+        formName: form.name,
+        submitterName: submissionName,
+        submitterEmail: resolvedEmail || "No email provided",
+        entityType: form.entityType,
+      });
 
       return res.status(201).json(
         STATUS_CODE[201]({

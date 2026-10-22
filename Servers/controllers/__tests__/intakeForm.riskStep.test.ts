@@ -36,8 +36,8 @@ jest.mock("../../services/intakeFormEmail.service", () => ({
   sendSubmissionApprovedEmail: jest.fn<any>().mockResolvedValue(undefined),
   sendSubmissionRejectedEmail: jest.fn<any>().mockResolvedValue(undefined),
 }));
-jest.mock("../../services/intakeRiskScoring.service", () => ({
-  calculateSubmissionRisk: jest.fn<any>().mockResolvedValue({}),
+jest.mock("../../services/intakeScoring/enqueue", () => ({
+  enqueueIntakeAssessment: jest.fn<any>().mockResolvedValue(undefined),
 }));
 jest.mock("../../services/intakeLLM.service", () => ({
   generateSuggestedQuestions: jest.fn(),
