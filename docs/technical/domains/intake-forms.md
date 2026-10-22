@@ -76,7 +76,7 @@ All new writes use `authorize("intakeForm.edit")`.
 | `GET /intake/submissions/:id/preview` | Adds `assessment`, `suggestedRisks`, `ruleMinimumPreview` (current rules) and `assessedLevel` (stored) |
 | `POST /intake/submissions/:id/assessment/retry` | 202 with the stages queued. Only failed stages, stages never stored, or stages pending over 10 minutes. 409 when nothing qualifies |
 | `PATCH /intake/submissions/:id/suggested-risks/:suggestionId` | Edit, accept, dismiss or restore one suggestion. Whitelisted fields only. Accepting needs a mitigation plan |
-| `POST /intake/submissions/:id/suggested-risks/accept-all` | Accepts open suggestions that have a mitigation plan. Returns `{ accepted, skipped }` |
+| `POST /intake/submissions/:id/suggested-risks/accept-all` | Accepts open suggestions that have a mitigation plan. Returns `{ accepted, skipped, items }`, with items as stored. 409 when the submission isn't pending, including one decided during the call |
 | `PATCH /intake/submissions/:id/risk-override` | Pending submissions only (409 otherwise). A pre-v2 tier name is stored as its band (`bandOfTier`). For v2, or a submission not scored yet, the tier must be a band at or above the band of the current rule minimum |
 
 ## Approval

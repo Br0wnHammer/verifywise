@@ -298,16 +298,22 @@ describe("approveSubmission holds the floor", () => {
     );
   });
 
-  it("a v1-scored submission's saved override is left as is", async () => {
+  it("a v1-scored submission's saved pre-v2 tier is stored as its band too", async () => {
+    const saved = { tier: "Unacceptable", justification: "earlier", overriddenBy: 3 };
     intake.getSubmissionByIdQuery.mockResolvedValue(
       submission({
         riskAssessment: { overallScore: 90, tier: "Unacceptable" },
-        riskOverride: { tier: "Unacceptable", justification: "earlier", overriddenBy: 3 },
+        riskOverride: saved,
       }),
     );
     const r = await approve();
     expect(r.status).toBe(200);
-    expect(intake.updateSubmissionRiskOverrideQuery).not.toHaveBeenCalled();
+    expect(intake.updateSubmissionRiskOverrideQuery).toHaveBeenCalledWith(
+      11,
+      { ...saved, tier: "Critical" },
+      ORG,
+      tx,
+    );
   });
 
   it("saves an allowed override from whitelisted fields only", async () => {

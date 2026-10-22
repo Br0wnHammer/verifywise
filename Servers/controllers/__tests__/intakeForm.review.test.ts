@@ -378,6 +378,17 @@ describe("acceptAllSuggestedRisks", () => {
     intake.getSubmissionByIdQuery.mockResolvedValue(submission({ status: "rejected" }));
     expect((await call(ctrl.acceptAllSuggestedRisks, req())).status).toBe(409);
   });
+
+  it("409, not 'skipped', when the submission was decided during the accept", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValueOnce(
+      submission({ suggestedRisks: block([item({ id: "a" })]) }),
+    );
+    intake.getSubmissionByIdQuery.mockResolvedValueOnce(submission({ status: "approved" }));
+    intake.setAllSuggestionStatesQuery.mockResolvedValue(0);
+    const r = await call(ctrl.acceptAllSuggestedRisks, req());
+    expect(r.status).toBe(409);
+    expect(r.body.data).toBe("Only pending submissions can be changed");
+  });
 });
 
 describe("overrideSubmissionRisk", () => {

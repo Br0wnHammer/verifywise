@@ -122,20 +122,9 @@ function SuggestedRisksSection({
     try {
       const response = await acceptAllSuggestedRisks(submissionId);
       // The items as the server stored them.
-      // The items as the server stored them; the server accepts exactly the
-      // suggested ones with a mitigation plan, which is the fallback.
       const stored = response.data.items;
-      onChange((latest) => ({
-        ...latest,
-        items:
-          stored ??
-          latest.items.map((i) =>
-            i.state === "suggested" && hasMitigation(i) ? { ...i, state: "accepted" } : i,
-          ),
-      }));
+      onChange((latest) => ({ ...latest, items: stored }));
       setSkippedNote(response.data.skipped);
-      // Accepting may settle a risk whose own save had failed.
-      setError(null);
     } catch {
       setErrorKey(ACCEPT_ALL);
       setError("Couldn't accept the suggestions. Please try again.");

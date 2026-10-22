@@ -181,6 +181,24 @@ describe("SuggestedRisksSection", () => {
     ).toBeInTheDocument();
   });
 
+  it("a successful accept all leaves another risk's failed save showing", async () => {
+    vi.mocked(updateSuggestedRisk).mockRejectedValueOnce(new Error("boom"));
+    vi.mocked(acceptAllSuggestedRisks).mockResolvedValue({
+      data: { accepted: 1, skipped: 0, items: [item(), item({ id: "b", state: "accepted" })] },
+    });
+    render(block([item(), item({ id: "b" })]));
+    fireEvent.click(screen.getByTestId("suggested-risk-a-dismiss"));
+    expect(
+      await screen.findByText("Couldn't save the change. Please try again."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("suggested-risks-accept-all"));
+    await waitFor(() => expect(acceptAllSuggestedRisks).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByTestId("suggested-risks-accept-all")).not.toBeDisabled(),
+    );
+    expect(screen.getByText("Couldn't save the change. Please try again.")).toBeInTheDocument();
+  });
+
   it("edit saves only the changed fields", async () => {
     vi.mocked(updateSuggestedRisk).mockResolvedValue({ data: item({ name: "Unfair ranking" }) });
     render(block([item()]));

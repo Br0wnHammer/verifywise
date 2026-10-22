@@ -1710,16 +1710,23 @@ export async function acceptAllSuggestedRisks(req: Request, res: Response) {
       req.organizationId!,
       { requireMitigationPlan: true },
     );
-    // The items as stored, so the client shows the server's states; left out
-    // if the re-read finds none, and the client keeps its own.
+    // The items as stored, so the client shows the server's states. A
+    // submission decided meanwhile accepted nothing, which is not "skipped".
     const after = await getSubmissionByIdQuery(submissionId, req.organizationId!);
-    const items = after?.suggestedRisks?.items;
+    if (!after) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
+    }
+    if (after.status !== IntakeSubmissionStatus.PENDING) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("Only pending submissions can be changed")));
+    }
 
     return res.status(200).json(
       STATUS_CODE[200]({
         accepted,
         skipped: Math.max(0, suggested - accepted),
-        ...(items ? { items } : {}),
+        items: after.suggestedRisks?.items ?? [],
       }),
     );
   } catch (error) {
@@ -1864,7 +1871,8 @@ export async function approveSubmission(req: Request, res: Response) {
     // The band override, from this request or saved earlier through
     // PATCH /risk-override: on an AI-scored (or not yet scored) submission
     // neither may sit below the approved level's rule minimum.
-    // A pre-v2 tier name counts as its band, and a saved one is stored as it.
+    // A pre-v2 tier name counts as its band and is stored as it, on every
+    // submission, as PATCH /risk-override stores it.
     const requestOverride = riskOverride && riskOverride.tier && riskOverride.justification;
     const storedOverride = submission.riskOverride;
     const bandToCheck = asBand(requestOverride ? riskOverride.tier : storedOverride?.tier);
@@ -1889,7 +1897,7 @@ export async function approveSubmission(req: Request, res: Response) {
         req.organizationId!,
         transaction,
       );
-    } else if (bandsApply && storedOverride?.tier && bandToCheck !== storedOverride.tier) {
+    } else if (storedOverride?.tier && bandToCheck !== storedOverride.tier) {
       await updateSubmissionRiskOverrideQuery(
         submissionId,
         { ...storedOverride, tier: bandToCheck },
