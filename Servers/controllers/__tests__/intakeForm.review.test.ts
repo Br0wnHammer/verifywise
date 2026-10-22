@@ -277,6 +277,15 @@ describe("updateSuggestedRisk", () => {
     expect(r.body.data).toBe("Add a mitigation plan before accepting this risk");
   });
 
+  it("400 when clearing the mitigation plan of an accepted risk", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(
+      submission({ suggestedRisks: block([item({ state: "accepted" })]) }),
+    );
+    const r = await call(ctrl.updateSuggestedRisk, patchReq({ mitigationPlan: "  " }));
+    expect(r.status).toBe(400);
+    expect(intake.updateSuggestedRiskItemQuery).not.toHaveBeenCalled();
+  });
+
   it("accepting with a new mitigation plan in the same request is fine", async () => {
     intake.getSubmissionByIdQuery.mockResolvedValue(
       submission({ suggestedRisks: block([item({ mitigationPlan: "" })]) }),

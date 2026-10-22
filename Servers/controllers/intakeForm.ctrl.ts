@@ -25,6 +25,7 @@ import {
   claimSubmissionNotificationQuery,
   updateSuggestedRiskItemQuery,
   setAllSuggestionStatesQuery,
+  updateSubmissionAssessmentV2Query,
   getTenantByPublicId,
   getSubmissionByEntityQuery,
 } from "../utils/intakeForm.utils";
@@ -93,8 +94,16 @@ import {
   isBandAllowed,
   ruleMinimumFor,
   SCORE_BANDS,
+  type ClassificationLevel,
   type ScoreBand,
 } from "../services/intakeScoring/scoreMath";
+import {
+  buildModelRiskFromSuggestion,
+  buildUseCaseRiskFromSuggestion,
+  recomputeAssessmentForLevel,
+} from "../services/intakeScoring/approvalRisks";
+import { createRiskService } from "../services/risk.service";
+import { createNewModelRiskQuery } from "../utils/modelRisk.utils";
 import { LIKELIHOODS, SEVERITIES } from "../services/intakeScoring/riskMappers";
 import type { IntakeSuggestedRisk } from "../services/intakeScoring/intakeSuggestions";
 import { selectRetryStages } from "../services/intakeScoring/retry";
@@ -341,24 +350,27 @@ async function currentRuleMinimum(
 }
 
 /**
- * Null when `tier` is a score band at or above the band of the current rule
- * minimum; otherwise the (translated) reason it is refused. Used by the risk
- * override and by approve, the two places a reviewer sets a band.
+ * Null when `tier` is a score band at or above the band of `ruleMinimum`;
+ * otherwise the (translated) reason it is refused. The risk override and
+ * approve, the two places a reviewer sets a band, both go through this.
  */
-async function checkBandAgainstFloor(
-  req: Request,
-  tier: unknown,
-  submissionId: number,
-  transaction?: Transaction,
-): Promise<string | null> {
+function bandFloorError(req: Request, tier: unknown, ruleMinimum: number | null): string | null {
   if (!SCORE_BANDS.some((b) => b.band === tier)) {
     return req.t!("Invalid risk band");
   }
-  const ruleMinimum = await currentRuleMinimum(submissionId, req.organizationId!, transaction);
   if (!isBandAllowed(tier as ScoreBand, ruleMinimum)) {
     return req.t!("The band can't be lower than the rule minimum allows");
   }
   return null;
+}
+
+/** bandFloorError against the rule minimum under the current rules. */
+async function checkBandAgainstFloor(
+  req: Request,
+  tier: unknown,
+  submissionId: number,
+): Promise<string | null> {
+  return bandFloorError(req, tier, await currentRuleMinimum(submissionId, req.organizationId!));
 }
 
 // ============================================================================
@@ -1541,8 +1553,13 @@ export async function updateSuggestedRisk(req: Request, res: Response) {
     if (!current) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Suggested risk not found")));
     }
-    // The risk register requires a mitigation plan, so nothing is accepted without one.
-    if (state === "accepted" && !(content.mitigationPlan ?? current.mitigationPlan)?.trim()) {
+    // The risk register requires a mitigation plan, so nothing is accepted
+    // without one, and an accepted risk can't have its plan cleared.
+    const resultingState = state ?? current.state;
+    if (
+      resultingState === "accepted" &&
+      !(content.mitigationPlan ?? current.mitigationPlan)?.trim()
+    ) {
       return res
         .status(400)
         .json(STATUS_CODE[400](req.t!("Add a mitigation plan before accepting this risk")));
@@ -1742,12 +1759,36 @@ export async function approveSubmission(req: Request, res: Response) {
       };
     }
 
-    // Apply risk override if provided
+    // An AI-scored submission's score is re-floored under the level it is
+    // approved at, which a reviewer may have changed. A stage still running is
+    // left alone; its result lands when the job finishes.
+    const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
+    const approvedLevel = (classification?.finalLevel ?? null) as ClassificationLevel | null;
+    if (assessment && assessment.status !== "pending") {
+      await updateSubmissionAssessmentV2Query(
+        submissionId,
+        recomputeAssessmentForLevel(assessment, approvedLevel),
+        req.organizationId!,
+        transaction,
+      );
+    }
+
+    // Apply risk override if provided. On an AI-scored submission the band
+    // can't go below the approved level's rule minimum.
     if (riskOverride && riskOverride.tier && riskOverride.justification) {
+      if (assessment) {
+        const floorError = bandFloorError(req, riskOverride.tier, ruleMinimumFor(approvedLevel));
+        if (floorError) {
+          await transaction.rollback();
+          return res.status(400).json(STATUS_CODE[400](floorError));
+        }
+      }
       await updateSubmissionRiskOverrideQuery(
         submissionId,
         {
-          ...riskOverride,
+          tier: riskOverride.tier,
+          dimensionOverrides: assessment ? {} : riskOverride.dimensionOverrides || {},
+          justification: riskOverride.justification,
           overriddenBy: req.userId!,
           overriddenAt: new Date().toISOString(),
         },
@@ -1850,6 +1891,27 @@ export async function approveSubmission(req: Request, res: Response) {
     } else {
       await transaction.rollback();
       return res.status(400).json(STATUS_CODE[400](req.t!("Unsupported entity type")));
+    }
+
+    // The suggested risks reviewers accepted become real risks on the new
+    // entity, in this transaction: any failure rolls the approval back. The
+    // submission row is locked above, so no suggestion changes underneath.
+    const approval = { approverId: req.userId!, approvedAt: new Date(), submissionId };
+    for (const s of submission.suggestedRisks?.items ?? []) {
+      if (s.state !== "accepted") continue;
+      if (submission.entityType === IntakeEntityType.MODEL) {
+        await createNewModelRiskQuery(
+          buildModelRiskFromSuggestion(s, { ...approval, modelId: entityId }),
+          req.organizationId!,
+          transaction,
+        );
+      } else {
+        await createRiskService(
+          buildUseCaseRiskFromSuggestion(s, { ...approval, useCaseId: entityId }),
+          { userId: req.userId!, organizationId: req.organizationId! },
+          transaction,
+        );
+      }
     }
 
     const updatedSubmission = await approveSubmissionQuery(
