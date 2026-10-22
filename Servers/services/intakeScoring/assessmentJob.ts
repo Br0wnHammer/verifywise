@@ -108,6 +108,31 @@ function pendingAssessment(startedAt: string): IRiskAssessmentV2 {
   };
 }
 
+/** A scoring stage that ended without an AI score: the rule minimum alone. */
+function failedAssessment(
+  startedAt: string,
+  classification: ClassificationContext | null,
+  error: string,
+  now: Date,
+): IRiskAssessmentV2 {
+  const ruleMinimum = ruleMinimumFor(classification?.level ?? null);
+  const combined = combineScore({ ruleMinimum, aiMedian: null });
+  return {
+    ...pendingAssessment(startedAt),
+    status: "ai_failed",
+    notRuleChecked: classification === null,
+    classificationLevel: classification?.level ?? null,
+    ruleMinimum,
+    finalScore: combined.finalScore,
+    source: combined.source,
+    rulesOnly: combined.rulesOnly,
+    overallScore: combined.finalScore,
+    tier: combined.finalScore === null ? null : bandFor(combined.finalScore),
+    scoredAt: now.toISOString(),
+    error,
+  };
+}
+
 function pendingSuggestions(startedAt: string): ISuggestedRisksBlock {
   return {
     status: "pending",
@@ -290,58 +315,82 @@ export async function runIntakeAssessment(
     await d.saveSuggestions(submissionId, pendingSuggestions(startedAt), organizationId);
   }
 
-  let model: Model | null = null;
-  let modelError: string | undefined;
-  if (form.llmKeyId) {
-    model = await d.getModel(form.llmKeyId, organizationId);
-    if (!model) modelError = "The form's LLM key no longer exists";
+  const failScoring = (classification: ClassificationContext | null, error: unknown) =>
+    d.saveAssessment(
+      submissionId,
+      failedAssessment(startedAt, classification, errorMessage(error), d.now()),
+      organizationId,
+    );
+  const failSuggestions = (error: unknown) =>
+    d.saveSuggestions(
+      submissionId,
+      { ...pendingSuggestions(startedAt), status: "ai_failed", error: errorMessage(error) },
+      organizationId,
+    );
+
+  // Loading the key, the classification or the answers can fail too; record
+  // it on the stages so they don't sit at "pending" until a retry.
+  let ctx: StageContext;
+  try {
+    let model: Model | null = null;
+    let modelError: string | undefined;
+    if (form.llmKeyId) {
+      model = await d.getModel(form.llmKeyId, organizationId);
+      if (!model) modelError = "The form's LLM key no longer exists";
+    }
+    ctx = {
+      organizationId,
+      submissionId,
+      submission,
+      form,
+      classification: await d.getClassification(submission, organizationId),
+      answers: buildScoringAnswers(submission.data as Record<string, unknown>, form.schema),
+      model,
+      modelError,
+    };
+  } catch (error) {
+    logger.error(
+      `Intake assessment setup failed for submission ${submissionId}: ${errorMessage(error)}`,
+    );
+    await Promise.all([
+      wants("scoring") ? failScoring(null, error) : undefined,
+      wants("suggestions") ? failSuggestions(error) : undefined,
+    ]);
+    await notifyIfSettled(data, deps, d);
+    return;
   }
 
-  const ctx: StageContext = {
-    organizationId,
-    submissionId,
-    submission,
-    form,
-    classification: await d.getClassification(submission, organizationId),
-    answers: buildScoringAnswers(submission.data as Record<string, unknown>, form.schema),
-    model,
-    modelError,
-  };
+  // The stages are independent and run side by side: one failing is recorded
+  // and the other still completes.
+  await Promise.all([
+    wants("scoring")
+      ? runScoringStage(ctx, startedAt, d).catch((error) => {
+          logger.error(
+            `Intake scoring failed for submission ${submissionId}: ${errorMessage(error)}`,
+          );
+          return failScoring(ctx.classification, error);
+        })
+      : undefined,
+    wants("suggestions")
+      ? runSuggestionsStage(ctx, startedAt, d).catch((error) => {
+          logger.error(
+            `Intake risk suggestions failed for submission ${submissionId}: ${errorMessage(error)}`,
+          );
+          return failSuggestions(error);
+        })
+      : undefined,
+  ]);
 
-  // The stages are independent: one failing is recorded and the other still runs.
-  if (wants("scoring")) {
-    try {
-      await runScoringStage(ctx, startedAt, d);
-    } catch (error) {
-      logger.error(`Intake scoring failed for submission ${submissionId}: ${errorMessage(error)}`);
-      await d.saveAssessment(
-        submissionId,
-        {
-          ...pendingAssessment(startedAt),
-          status: "ai_failed",
-          notRuleChecked: ctx.classification === null,
-          classificationLevel: ctx.classification?.level ?? null,
-          ruleMinimum: ruleMinimumFor(ctx.classification?.level ?? null),
-          error: errorMessage(error),
-        },
-        organizationId,
-      );
-    }
-  }
-  if (wants("suggestions")) {
-    try {
-      await runSuggestionsStage(ctx, startedAt, d);
-    } catch (error) {
-      logger.error(
-        `Intake risk suggestions failed for submission ${submissionId}: ${errorMessage(error)}`,
-      );
-      await d.saveSuggestions(
-        submissionId,
-        { ...pendingSuggestions(startedAt), status: "ai_failed", error: errorMessage(error) },
-        organizationId,
-      );
-    }
-  }
+  await notifyIfSettled(data, deps, d);
+}
+
+/** The email, once both stages have settled, when the job was asked to send it. */
+async function notifyIfSettled(
+  data: IntakeAssessmentJobData,
+  deps: Partial<AssessmentDeps> | undefined,
+  d: AssessmentDeps,
+): Promise<void> {
+  const { organizationId, submissionId } = data;
 
   if (data.notify) {
     const latest = await d.getSubmission(submissionId, organizationId);

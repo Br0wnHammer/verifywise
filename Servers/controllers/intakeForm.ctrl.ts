@@ -26,6 +26,7 @@ import {
   updateSuggestedRiskItemQuery,
   setAllSuggestionStatesQuery,
   updateSubmissionAssessmentV2Query,
+  updateSubmissionSuggestionsQuery,
   getTenantByPublicId,
   getSubmissionByEntityQuery,
 } from "../utils/intakeForm.utils";
@@ -87,7 +88,10 @@ import {
 } from "../utils/intakeSubmissionData.utils";
 import { toId } from "../utils/validations/validation.utils";
 import { isEmail } from "../utils/validations/email.utils";
-import { isAssessmentV2 } from "../domain.layer/interfaces/i.intakeSubmission";
+import {
+  isAssessmentV2,
+  type IRiskAssessmentV2,
+} from "../domain.layer/interfaces/i.intakeSubmission";
 import { ModelRiskCategory } from "../domain.layer/enums/model-risk-category.enum";
 import { ModelRiskLevel } from "../domain.layer/enums/model-risk-level.enum";
 import {
@@ -1392,6 +1396,8 @@ export async function getSubmissionByEntity(req: Request, res: Response) {
           ? {
               finalScore: submission.riskAssessment.finalScore,
               rulesOnly: submission.riskAssessment.rulesOnly,
+              // the score's own band; riskTier holds an override's band if set
+              band: submission.riskAssessment.tier,
             }
           : null,
         fields,
@@ -1529,8 +1535,11 @@ export async function retrySubmissionAssessment(req: Request, res: Response) {
 export async function updateSuggestedRisk(req: Request, res: Response) {
   const submissionId = parseId(req.params.id);
   const suggestionId = paramStr(req.params.suggestionId);
-  if (isNaN(submissionId) || !suggestionId || suggestionId.length > 100) {
+  if (isNaN(submissionId)) {
     return res.status(400).json(STATUS_CODE[400](req.t!("Invalid submission ID")));
+  }
+  if (!suggestionId || suggestionId.length > 100) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid suggestion ID")));
   }
 
   const parsed = parseSuggestionPatch(
@@ -1586,10 +1595,11 @@ export async function updateSuggestedRisk(req: Request, res: Response) {
       req.organizationId!,
     );
     if (!item) {
-      // Approved, rejected or the suggestion vanished between the read and the write.
+      // Decided, or changed by someone else (e.g. its plan cleared) between
+      // the read and the atomic write.
       return res
         .status(409)
-        .json(STATUS_CODE[409](req.t!("Only pending submissions can be changed")));
+        .json(STATUS_CODE[409](req.t!("This suggestion changed. Reload and try again.")));
     }
 
     return res.status(200).json(STATUS_CODE[200](item));
@@ -1768,29 +1778,50 @@ export async function approveSubmission(req: Request, res: Response) {
     }
 
     // An AI-scored submission's score is re-floored under the level it is
-    // approved at, which a reviewer may have changed. A stage still running is
-    // left alone; its result lands when the job finishes.
+    // approved at, which a reviewer may have changed. The job's writes are
+    // ignored once the submission is decided, so a stage still running is
+    // closed here: the score keeps the rule minimum, suggestions are marked
+    // failed. Risk_tier keeps an override's band (see the query).
     const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
     const approvedLevel = (classification?.finalLevel ?? null) as ClassificationLevel | null;
-    if (assessment && assessment.status !== "pending") {
+    if (assessment) {
+      const settled: IRiskAssessmentV2 =
+        assessment.status === "pending"
+          ? { ...assessment, status: "ai_failed", error: "Approved before AI scoring finished" }
+          : assessment;
       await updateSubmissionAssessmentV2Query(
         submissionId,
-        recomputeAssessmentForLevel(assessment, approvedLevel),
+        recomputeAssessmentForLevel(settled, approvedLevel),
+        req.organizationId!,
+        transaction,
+      );
+    }
+    if (submission.suggestedRisks?.status === "pending") {
+      await updateSubmissionSuggestionsQuery(
+        submissionId,
+        {
+          ...submission.suggestedRisks,
+          status: "ai_failed",
+          error: "Approved before risk suggestions finished",
+        },
         req.organizationId!,
         transaction,
       );
     }
 
-    // Apply risk override if provided. On an AI-scored submission the band
-    // can't go below the approved level's rule minimum.
-    if (riskOverride && riskOverride.tier && riskOverride.justification) {
-      if (assessment) {
-        const floorError = bandFloorError(req, riskOverride.tier, ruleMinimumFor(approvedLevel));
-        if (floorError) {
-          await transaction.rollback();
-          return res.status(400).json(STATUS_CODE[400](floorError));
-        }
+    // The band override, from this request or saved earlier through
+    // PATCH /risk-override: on an AI-scored submission neither may sit below
+    // the approved level's rule minimum.
+    const requestOverride = riskOverride && riskOverride.tier && riskOverride.justification;
+    const bandToCheck = requestOverride ? riskOverride.tier : submission.riskOverride?.tier;
+    if (assessment && bandToCheck) {
+      const floorError = bandFloorError(req, bandToCheck, ruleMinimumFor(approvedLevel));
+      if (floorError) {
+        await transaction.rollback();
+        return res.status(400).json(STATUS_CODE[400](floorError));
       }
+    }
+    if (requestOverride) {
       await updateSubmissionRiskOverrideQuery(
         submissionId,
         {

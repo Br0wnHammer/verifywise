@@ -42,6 +42,36 @@ describe("RiskTierChip", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("shows a spinner while the v2 score is pending", () => {
+    renderWithProviders(
+      <RiskTierChip
+        submission={submission({ riskAssessment: { ...v2(null), status: "pending" } as never })}
+      />,
+    );
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+  });
+
+  it("shows the score's own band and the override apart", () => {
+    renderWithProviders(
+      <RiskTierChip
+        submission={submission({
+          riskAssessment: { ...v2(40), tier: "Medium" } as never,
+          riskTier: "Critical",
+          riskOverride: {
+            tier: "Critical",
+            justification: "j",
+            overriddenBy: 1,
+            overriddenAt: "x",
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("40")).toBeInTheDocument();
+    expect(screen.getByText("Medium")).toBeInTheDocument();
+    expect(screen.getByText("set to")).toBeInTheDocument();
+    expect(screen.getByText("Critical")).toBeInTheDocument();
+  });
+
   it("keeps the v1 tier chip", () => {
     renderWithProviders(
       <RiskTierChip

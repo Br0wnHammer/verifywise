@@ -633,7 +633,9 @@ export const updateSubmissionRiskQuery = async (
 };
 
 /**
- * Store a v2 assessment; risk_tier mirrors the band (assessment.tier)
+ * Store a v2 assessment on a pending submission. risk_tier mirrors the band
+ * (assessment.tier) unless a reviewer override set it. A job that finishes
+ * after approve or reject changes nothing.
  */
 export const updateSubmissionAssessmentV2Query = async (
   id: number,
@@ -643,14 +645,17 @@ export const updateSubmissionAssessmentV2Query = async (
 ): Promise<void> => {
   await sequelize.query(
     `UPDATE intake_submissions
-    SET risk_assessment = :riskAssessment, risk_tier = :riskTier, updated_at = NOW()
-    WHERE organization_id = :organizationId AND id = :id`,
+    SET risk_assessment = :riskAssessment,
+        risk_tier = COALESCE(risk_override->>'tier', :riskTier),
+        updated_at = NOW()
+    WHERE organization_id = :organizationId AND id = :id AND status = :pending`,
     {
       replacements: {
         organizationId,
         id,
         riskAssessment: JSON.stringify(assessment),
         riskTier: assessment.tier,
+        pending: IntakeSubmissionStatus.PENDING,
       },
       type: QueryTypes.UPDATE,
       transaction,
@@ -660,6 +665,7 @@ export const updateSubmissionAssessmentV2Query = async (
 
 /**
  * Replace the whole suggested-risks block (stage start / completion / failure)
+ * on a pending submission; a job that finishes after a decision changes nothing.
  */
 export const updateSubmissionSuggestionsQuery = async (
   id: number,
@@ -670,12 +676,13 @@ export const updateSubmissionSuggestionsQuery = async (
   await sequelize.query(
     `UPDATE intake_submissions
     SET suggested_risks = :suggestedRisks, updated_at = NOW()
-    WHERE organization_id = :organizationId AND id = :id`,
+    WHERE organization_id = :organizationId AND id = :id AND status = :pending`,
     {
       replacements: {
         organizationId,
         id,
         suggestedRisks: JSON.stringify(block),
+        pending: IntakeSubmissionStatus.PENDING,
       },
       type: QueryTypes.UPDATE,
       transaction,
@@ -718,6 +725,11 @@ export const updateSuggestedRiskItemQuery = async (
         SELECT 1
         FROM jsonb_array_elements(s.suggested_risks->'items') AS e(item)
         WHERE e.item->>'id' = :suggestionId
+          -- an accepted risk always keeps a mitigation plan (the register requires one)
+          AND (
+            COALESCE((e.item || :patch::jsonb)->>'state', '') <> 'accepted'
+            OR btrim(COALESCE((e.item || :patch::jsonb)->>'mitigationPlan', '')) <> ''
+          )
       )
     RETURNING (
       SELECT e.item

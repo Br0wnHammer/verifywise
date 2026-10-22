@@ -24,7 +24,7 @@ describe("enqueueIntakeAssessment", () => {
       "intake_assessment",
       expect.objectContaining({ submissionId: 11, stages: ["scoring", "suggestions"] }),
       {
-        jobId: "intake-assessment:7:11:scoring+suggestions",
+        jobId: "intake-assessment:7:11-scoring+suggestions",
         attempts: 2,
         backoff: { type: "exponential", delay: 5000 },
         removeOnComplete: true,
@@ -53,6 +53,19 @@ describe("enqueueIntakeAssessment", () => {
       notify: false,
     });
     expect(add).toHaveBeenCalledTimes(1);
-    expect(add.mock.calls[0][2].jobId).toBe("intake-assessment:7:11:scoring");
+    expect(add.mock.calls[0][2].jobId).toBe("intake-assessment:7:11-scoring");
+  });
+
+  it("uses job ids BullMQ accepts (a ':' id must have exactly 3 parts)", async () => {
+    await enqueueIntakeAssessment({
+      organizationId: 7,
+      submissionId: 11,
+      stages: ["scoring", "suggestions"],
+      notify: true,
+    });
+    for (const call of add.mock.calls) {
+      const jobId: string = call[2].jobId;
+      expect(jobId.includes(":") ? jobId.split(":").length : 3).toBe(3);
+    }
   });
 });

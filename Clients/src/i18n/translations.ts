@@ -25,6 +25,8 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    "set to": "gesetzt auf",
+    "band set to": "Stufe gesetzt auf",
     // AI intake assessment
     "Scoring…": "Bewertung läuft…",
     "No score yet": "Noch keine Bewertung",
@@ -10754,6 +10756,8 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    "set to": "fixé à",
+    "band set to": "niveau fixé à",
     // AI intake assessment
     "Scoring…": "Évaluation en cours…",
     "No score yet": "Pas encore de score",
@@ -21419,6 +21423,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Le téléchargement révoque le jeton émis ici la dernière fois. Tout ce qui a été configuré avec le fichier précédent, sur cette machine ou une autre, cesse immédiatement de fonctionner.",
   },
   es: {
+    "set to": "fijado en",
+    "band set to": "banda fijada en",
     // AI intake assessment
     "Scoring…": "Calculando la puntuación…",
     "No score yet": "Aún no hay puntuación",

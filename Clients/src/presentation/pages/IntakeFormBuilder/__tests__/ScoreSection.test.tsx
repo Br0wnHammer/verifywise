@@ -112,6 +112,14 @@ describe("ScoreSection", () => {
     await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
   });
 
+  it("offers Retry when the job never ran", async () => {
+    const onRetry = vi.fn().mockResolvedValue(undefined);
+    render({ assessment: null, retryAvailable: true, onRetry });
+    expect(screen.getByText("Scoring…")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("intake-score-retry"));
+    await waitFor(() => expect(onRetry).toHaveBeenCalledTimes(1));
+  });
+
   it("hides Retry when nothing can be retried", () => {
     render({ assessment: assessment({ status: "ai_failed" }) });
     expect(screen.queryByTestId("intake-score-retry")).toBeNull();

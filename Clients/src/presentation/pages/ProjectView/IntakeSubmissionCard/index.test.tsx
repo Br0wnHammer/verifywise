@@ -97,6 +97,21 @@ describe("IntakeSubmissionCard", () => {
     expect(screen.queryByText(/Risk: High/)).toBeNull();
   });
 
+  it("shows an override band apart from the score's own band", () => {
+    mockUseEntityIntakeSubmission.mockReturnValue({
+      data: {
+        ...baseSubmission,
+        riskTier: "Critical",
+        riskScore: { finalScore: 40, rulesOnly: false, band: "Medium" },
+      },
+      isLoading: false,
+    });
+    renderWithProviders(<IntakeSubmissionCard projectId={1} />);
+    expect(screen.getByText("Medium")).toBeInTheDocument();
+    expect(screen.getByText("band set to")).toBeInTheDocument();
+    expect(screen.getByText("Critical")).toBeInTheDocument();
+  });
+
   it("shows a rules-only score as at least N (rules only)", () => {
     mockUseEntityIntakeSubmission.mockReturnValue({
       data: { ...baseSubmission, riskScore: { finalScore: 70, rulesOnly: true } },

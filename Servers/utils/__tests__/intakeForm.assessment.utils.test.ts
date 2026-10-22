@@ -76,13 +76,16 @@ describe("updateSubmissionAssessmentV2Query", () => {
     mockQuery.mockResolvedValue([[], 1] as any);
     await updateSubmissionAssessmentV2Query(5, assessment, 9);
     expect(sqlOf()).toContain("risk_assessment = :riskAssessment");
-    expect(sqlOf()).toContain("risk_tier = :riskTier");
+    // a reviewer override keeps its band; only pending submissions change
+    expect(sqlOf()).toContain("risk_tier = COALESCE(risk_override->>'tier', :riskTier)");
+    expect(sqlOf()).toContain("status = :pending");
     expect(sqlOf()).toContain("organization_id = :organizationId");
     expect(optsOf().replacements).toEqual({
       id: 5,
       organizationId: 9,
       riskAssessment: JSON.stringify(assessment),
       riskTier: "High",
+      pending: "pending",
     });
   });
 });
@@ -100,6 +103,7 @@ describe("updateSubmissionSuggestionsQuery", () => {
     await updateSubmissionSuggestionsQuery(5, block, 9);
     expect(sqlOf()).toContain("suggested_risks = :suggestedRisks");
     expect(sqlOf()).toContain("organization_id = :organizationId");
+    expect(sqlOf()).toContain("status = :pending");
     expect(optsOf().replacements.suggestedRisks).toBe(JSON.stringify(block));
     expect(optsOf().replacements.organizationId).toBe(9);
   });
@@ -124,6 +128,8 @@ describe("updateSuggestedRiskItemQuery", () => {
     expect(sql).toContain("|| :patch::jsonb");
     expect(sql).toContain("RETURNING");
     expect(sql).toContain("s.status = :pending");
+    // accepting can't leave an item without a mitigation plan, even in a race
+    expect(sql).toContain("(e.item || :patch::jsonb)->>'mitigationPlan'");
     expect(optsOf().replacements).toEqual({
       id: 5,
       organizationId: 9,

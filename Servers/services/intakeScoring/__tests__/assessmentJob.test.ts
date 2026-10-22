@@ -240,6 +240,63 @@ describe("runIntakeAssessment", () => {
     expect(finalBlock(h).error).toBeDefined();
   });
 
+  it("records a setup failure on both stages instead of leaving them pending", async () => {
+    const h = harness(submission(), {
+      getClassification: jest.fn(async () => {
+        throw new Error("db down");
+      }),
+    });
+    await runIntakeAssessment(job(), h.deps);
+    expect(finalAssessment(h)).toMatchObject({ status: "ai_failed", error: "db down" });
+    expect(finalBlock(h)).toMatchObject({ status: "ai_failed", error: "db down" });
+    // both settled, so the email still goes out once
+    expect(h.deps.sendNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("a thrown scoring stage keeps the rule minimum as the score", async () => {
+    const h = harness(submission(), {
+      getModel: jest.fn(async () => ({ fake: true }) as any),
+      generateImpl: jest.fn(async (args: { system: string }) => {
+        if (args.system.includes("risk analyst")) {
+          return { object: { matched: [], suggested: [] } } as any;
+        }
+        return { object: { score: 64, reasons: [] } } as any;
+      }) as any,
+      saveAssessment: jest.fn(async (_id, a) => {
+        if (a.status === "complete") throw new Error("write failed");
+        h.assessments.push(a);
+      }),
+    });
+    await runIntakeAssessment(job({ notify: false }), h.deps);
+    expect(finalAssessment(h)).toMatchObject({
+      status: "ai_failed",
+      finalScore: 70,
+      rulesOnly: true,
+      tier: "High",
+    });
+  });
+
+  it("runs the two stages side by side", async () => {
+    const started: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const h = harness(submission(), {
+      generateImpl: jest.fn(async (args: { system: string }) => {
+        const kind = args.system.includes("risk analyst") ? "suggestions" : "scoring";
+        if (!started.includes(kind)) started.push(kind);
+        await gate;
+        return kind === "suggestions"
+          ? ({ object: { matched: [], suggested: [] } } as any)
+          : ({ object: { score: 64, reasons: [] } } as any);
+      }) as any,
+    });
+    const run = runIntakeAssessment(job({ notify: false }), h.deps);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(started.sort()).toEqual(["scoring", "suggestions"]);
+    release();
+    await run;
+  });
+
   it("scoring-only runs never touch suggestions", async () => {
     const block: ISuggestedRisksBlock = {
       status: "complete",

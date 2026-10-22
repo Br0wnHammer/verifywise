@@ -565,7 +565,8 @@ export interface EntityIntakeSubmission {
   reviewedAt: string | null;
   riskTier: string | null;
   /** Set for AI-scored (v2) submissions; null for older ones. */
-  riskScore?: { finalScore: number | null; rulesOnly: boolean } | null;
+  /** riskTier is the override's band when a reviewer set one; band is the score's own. */
+  riskScore?: { finalScore: number | null; rulesOnly: boolean; band?: string | null } | null;
   fields: IntakeSubmissionField[];
 }
 

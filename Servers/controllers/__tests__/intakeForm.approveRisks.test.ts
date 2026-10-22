@@ -12,6 +12,7 @@ jest.mock("../../utils/intakeForm.utils", () => ({
   getTenantSlugById: jest.fn<any>().mockResolvedValue("t"),
   updateSubmissionRiskOverrideQuery: jest.fn<any>().mockResolvedValue(undefined),
   updateSubmissionAssessmentV2Query: jest.fn<any>().mockResolvedValue(undefined),
+  updateSubmissionSuggestionsQuery: jest.fn<any>().mockResolvedValue(undefined),
 }));
 jest.mock("../../utils/euAiActClassification.utils", () => ({
   insertClassificationRunQuery: jest.fn<any>().mockResolvedValue({ id: 4 }),
@@ -221,17 +222,21 @@ describe("approveSubmission with suggested risks", () => {
     expect(createNewModelRiskQuery).not.toHaveBeenCalled();
   });
 
-  it("approves with no risks while the assessment is still running", async () => {
+  it("approving while the assessment runs closes both stages, rules-only", async () => {
     intake.getSubmissionByIdQuery.mockResolvedValue(
       submission({
-        riskAssessment: v2({ status: "pending" }),
+        riskAssessment: v2({ status: "pending", ai: null, finalScore: null }),
         suggestedRisks: { status: "pending", items: [], droppedCount: 0 },
       }),
     );
     const r = await approve();
     expect(r.status).toBe(200);
     expect(createRiskService).not.toHaveBeenCalled();
-    expect(intake.updateSubmissionAssessmentV2Query).not.toHaveBeenCalled();
+    const saved = intake.updateSubmissionAssessmentV2Query.mock.calls[0][1];
+    expect(saved).toMatchObject({ status: "ai_failed", finalScore: 70, rulesOnly: true });
+    const block = intake.updateSubmissionSuggestionsQuery.mock.calls[0][1];
+    expect(block.status).toBe("ai_failed");
+    expect(intake.updateSubmissionSuggestionsQuery.mock.calls[0][3]).toBe(tx);
   });
 });
 
@@ -242,6 +247,25 @@ describe("approveSubmission holds the floor", () => {
     expect(r.body.data).toBe("The band can't be lower than the rule minimum allows");
     expect(tx.rollback).toHaveBeenCalled();
     expect(createRiskService).not.toHaveBeenCalled();
+  });
+
+  it("400 when an override saved earlier sits below the approved level's minimum", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(
+      submission({ riskOverride: { tier: "Low", justification: "earlier", overriddenBy: 3 } }),
+    );
+    const r = await approve();
+    expect(r.status).toBe(400);
+    expect(r.body.data).toBe("The band can't be lower than the rule minimum allows");
+    expect(tx.rollback).toHaveBeenCalled();
+  });
+
+  it("an override saved earlier at or above the minimum is kept", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(
+      submission({ riskOverride: { tier: "Critical", justification: "earlier", overriddenBy: 3 } }),
+    );
+    const r = await approve();
+    expect(r.status).toBe(200);
+    expect(intake.updateSubmissionRiskOverrideQuery).not.toHaveBeenCalled();
   });
 
   it("saves an allowed override from whitelisted fields only", async () => {

@@ -875,5 +875,7 @@
   "Suggested risk not found": "Risque suggéré introuvable",
   "Add a mitigation plan before accepting this risk": "Ajoutez un plan d'atténuation avant d'accepter ce risque",
   "Invalid value for {field}": "Valeur non valide pour {field}",
-  "Nothing to update": "Rien à mettre à jour"
+  "Nothing to update": "Rien à mettre à jour",
+  "Invalid suggestion ID": "Identifiant de suggestion non valide",
+  "This suggestion changed. Reload and try again.": "Cette suggestion a changé. Rechargez et réessayez."
 }

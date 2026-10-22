@@ -5,28 +5,44 @@ import { isAssessmentV2 } from "../../../../application/utils/intakeScoring/isAs
 
 /**
  * A submission's risk in the submissions list. AI-scored (v2): the number next
- * to its band ("64 High"), "≥70" when it is the rule minimum alone, nothing
- * without a score. Older (v1) scores keep their tier chip.
+ * to its own band ("64 High"), "≥70" when it is the rule minimum alone, a
+ * spinner while scoring runs, nothing without a score. A reviewer's band
+ * override follows as "set to Critical", so number and band never disagree.
+ * Older (v1) scores keep their tier chip.
  */
 function RiskTierChip({ submission }: { submission: IntakeSubmission }) {
   const theme = useTheme();
   const assessment = submission.riskAssessment;
 
   if (isAssessmentV2(assessment)) {
-    if (assessment.finalScore === null) return null;
-    if (assessment.rulesOnly) {
-      return (
-        <Typography sx={{ fontSize: "13px", color: theme.palette.text.primary }}>
-          ≥{assessment.finalScore}
-        </Typography>
-      );
+    if (assessment.status === "pending") {
+      return <CircularProgress size={14} sx={{ color: theme.palette.text.accent }} />;
     }
+    if (assessment.finalScore === null) return null;
+    const override = submission.riskOverride?.tier;
+    const overrideNote =
+      override && override !== assessment.tier ? (
+        <Typography sx={{ fontSize: "12px", color: theme.palette.text.tertiary }}>
+          <span>set to</span> <span>{override}</span>
+        </Typography>
+      ) : null;
     return (
       <Box sx={{ display: "flex", alignItems: "center", gap: "6px" }}>
-        <Typography sx={{ fontSize: "13px", fontWeight: 600, color: theme.palette.text.primary }}>
-          {assessment.finalScore}
-        </Typography>
-        <Chip label={submission.riskTier || assessment.tier || ""} />
+        {assessment.rulesOnly ? (
+          <Typography sx={{ fontSize: "13px", color: theme.palette.text.primary }}>
+            ≥{assessment.finalScore}
+          </Typography>
+        ) : (
+          <>
+            <Typography
+              sx={{ fontSize: "13px", fontWeight: 600, color: theme.palette.text.primary }}
+            >
+              {assessment.finalScore}
+            </Typography>
+            <Chip label={assessment.tier ?? ""} />
+          </>
+        )}
+        {overrideNote}
       </Box>
     );
   }

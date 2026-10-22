@@ -91,7 +91,9 @@ interface PreviewData {
 
 /** How often, and for how long, the modal re-reads a running assessment. */
 const POLL_INTERVAL_MS = 5000;
-const POLL_LIMIT_MS = 5 * 60 * 1000;
+// A little past the 10 minutes after which a stuck stage can be retried, so
+// Retry appears while the modal stays open.
+const POLL_LIMIT_MS = 11 * 60 * 1000;
 
 // ============================================================================
 // Helpers
@@ -573,8 +575,13 @@ function SubmissionPreviewModal({
     bandFloor && !isBandAllowed(overrideTier as ScoreBand, bandFloor.ruleMinimum)
       ? lowestAllowedBand(bandFloor.ruleMinimum)
       : overrideTier;
+  // No stored assessment (or no suggestions block) means the job never ran,
+  // e.g. the queue was down at submit; the server retries those too.
+  const neverQueued =
+    !previewData?.riskAssessment || (!!assessmentV2 && !previewData?.suggestedRisks);
   const retryAvailable =
-    isPending && (isRetryable(assessmentV2) || isRetryable(previewData?.suggestedRisks ?? null));
+    isPending &&
+    (isRetryable(assessmentV2) || isRetryable(previewData?.suggestedRisks ?? null) || neverQueued);
   const questionLabels = Object.fromEntries(
     (previewData?.formSchema?.fields ?? []).map((f) => [f.id, f.label]),
   );
@@ -654,7 +661,7 @@ function SubmissionPreviewModal({
               </Typography>
             </Box>
 
-            {assessmentV2 ? (
+            {assessmentV2 || !previewData?.riskAssessment ? (
               <ScoreSection
                 assessment={assessmentV2}
                 selectedLevel={selectedLevel}

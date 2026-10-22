@@ -317,10 +317,20 @@ describe("updateSuggestedRisk", () => {
     expect(intake.updateSuggestedRiskItemQuery).not.toHaveBeenCalled();
   });
 
-  it("409 when it stopped being pending between the read and the write", async () => {
+  it("409 when it changed between the read and the atomic write", async () => {
     intake.updateSuggestedRiskItemQuery.mockResolvedValue(null);
     const r = await call(ctrl.updateSuggestedRisk, patchReq({ state: "dismissed" }));
     expect(r.status).toBe(409);
+    expect(r.body.data).toBe("This suggestion changed. Reload and try again.");
+  });
+
+  it("400 with its own message for a bad suggestion id", async () => {
+    const r = await call(
+      ctrl.updateSuggestedRisk,
+      patchReq({ state: "dismissed" }, "x".repeat(101)),
+    );
+    expect(r.status).toBe(400);
+    expect(r.body.data).toBe("Invalid suggestion ID");
   });
 });
 

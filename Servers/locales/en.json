@@ -875,5 +875,7 @@
   "Suggested risk not found": "Suggested risk not found",
   "Add a mitigation plan before accepting this risk": "Add a mitigation plan before accepting this risk",
   "Invalid value for {field}": "Invalid value for {field}",
-  "Nothing to update": "Nothing to update"
+  "Nothing to update": "Nothing to update",
+  "Invalid suggestion ID": "Invalid suggestion ID",
+  "This suggestion changed. Reload and try again.": "This suggestion changed. Reload and try again."
 }

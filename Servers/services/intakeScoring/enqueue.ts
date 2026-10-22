@@ -25,7 +25,8 @@ export const NOTIFY_CAP_MS = 120_000;
 export async function enqueueIntakeAssessment(data: IntakeAssessmentJobData): Promise<void> {
   const { organizationId, submissionId, stages, lang, adminFallback } = data;
   await automationQueue.add("intake_assessment", data, {
-    jobId: `intake-assessment:${organizationId}:${submissionId}:${stages.join("+")}`,
+    // BullMQ rejects a custom id with ":" unless it has exactly 3 ":"-parts.
+    jobId: `intake-assessment:${organizationId}:${submissionId}-${stages.join("+")}`,
     attempts: 2,
     backoff: { type: "exponential", delay: 5000 },
     removeOnComplete: true,
