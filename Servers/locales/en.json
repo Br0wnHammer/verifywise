@@ -867,5 +867,13 @@
   "High risk": "High risk",
   "Limited risk": "Limited risk",
   "Minimal risk": "Minimal risk",
-  "Out of scope": "Out of scope"
+  "Out of scope": "Out of scope",
+  "Invalid risk band": "Invalid risk band",
+  "The band can't be lower than the rule minimum allows": "The band can't be lower than the rule minimum allows",
+  "Only pending submissions can be changed": "Only pending submissions can be changed",
+  "Nothing to retry": "Nothing to retry",
+  "Suggested risk not found": "Suggested risk not found",
+  "Add a mitigation plan before accepting this risk": "Add a mitigation plan before accepting this risk",
+  "Invalid value for {field}": "Invalid value for {field}",
+  "Nothing to update": "Nothing to update"
 }

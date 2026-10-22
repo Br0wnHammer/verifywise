@@ -867,5 +867,13 @@
   "High risk": "Risque élevé",
   "Limited risk": "Risque limité",
   "Minimal risk": "Risque minimal",
-  "Out of scope": "Hors du champ d'application"
+  "Out of scope": "Hors du champ d'application",
+  "Invalid risk band": "Niveau de risque non valide",
+  "The band can't be lower than the rule minimum allows": "Le niveau ne peut pas être inférieur à ce que permet le minimum des règles",
+  "Only pending submissions can be changed": "Seules les soumissions en attente peuvent être modifiées",
+  "Nothing to retry": "Rien à relancer",
+  "Suggested risk not found": "Risque suggéré introuvable",
+  "Add a mitigation plan before accepting this risk": "Ajoutez un plan d'atténuation avant d'accepter ce risque",
+  "Invalid value for {field}": "Valeur non valide pour {field}",
+  "Nothing to update": "Rien à mettre à jour"
 }

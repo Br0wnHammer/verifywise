@@ -713,7 +713,7 @@ export const updateSuggestedRiskItemQuery = async (
           )
         ),
         updated_at = NOW()
-    WHERE s.organization_id = :organizationId AND s.id = :id
+    WHERE s.organization_id = :organizationId AND s.id = :id AND s.status = :pending
       AND EXISTS (
         SELECT 1
         FROM jsonb_array_elements(s.suggested_risks->'items') AS e(item)
@@ -731,6 +731,7 @@ export const updateSuggestedRiskItemQuery = async (
         id,
         suggestionId,
         patch: JSON.stringify(patch),
+        pending: IntakeSubmissionStatus.PENDING,
       },
       type: QueryTypes.SELECT,
     },
@@ -741,7 +742,9 @@ export const updateSuggestedRiskItemQuery = async (
 
 /**
  * Move every suggestion in state `from` to state `to` (bulk accept / dismiss),
- * in one statement. Returns how many items changed.
+ * in one statement, on a pending submission only. With
+ * `requireMitigationPlan`, items whose mitigation plan is blank are left as
+ * they are (the risk register requires one). Returns how many items changed.
  */
 export const setAllSuggestionStatesQuery = async (
   id: number,
@@ -749,14 +752,19 @@ export const setAllSuggestionStatesQuery = async (
   to: SuggestionState,
   userId: number,
   organizationId: number,
+  opts: { requireMitigationPlan?: boolean } = {},
 ): Promise<number> => {
+  const matches = opts.requireMitigationPlan
+    ? `e.item->>'state' = :from AND btrim(COALESCE(e.item->>'mitigationPlan', '')) <> ''`
+    : `e.item->>'state' = :from`;
   const rows = (await sequelize.query(
     `WITH target AS (
       SELECT id,
         (SELECT COUNT(*) FROM jsonb_array_elements(suggested_risks->'items') AS e(item)
-          WHERE e.item->>'state' = :from) AS n
+          WHERE ${matches}) AS n
       FROM intake_submissions
       WHERE organization_id = :organizationId AND id = :id AND suggested_risks IS NOT NULL
+        AND status = :pending
       FOR UPDATE
     )
     UPDATE intake_submissions s
@@ -765,7 +773,7 @@ export const setAllSuggestionStatesQuery = async (
           '{items}',
           (
             SELECT COALESCE(jsonb_agg(
-              CASE WHEN e.item->>'state' = :from
+              CASE WHEN ${matches}
                 THEN e.item || jsonb_build_object(
                   'state', CAST(:to AS text),
                   'decidedBy', CAST(:userId AS integer),
@@ -783,7 +791,14 @@ export const setAllSuggestionStatesQuery = async (
     WHERE s.organization_id = :organizationId AND s.id = t.id
     RETURNING t.n AS count`,
     {
-      replacements: { organizationId, id, from, to, userId },
+      replacements: {
+        organizationId,
+        id,
+        from,
+        to,
+        userId,
+        pending: IntakeSubmissionStatus.PENDING,
+      },
       type: QueryTypes.SELECT,
     },
   )) as Array<{ count: string | number }>;

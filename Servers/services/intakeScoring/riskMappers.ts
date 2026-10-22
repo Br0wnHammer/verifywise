@@ -14,8 +14,14 @@ import {
 export type Likelihood = "Rare" | "Unlikely" | "Possible" | "Likely" | "Almost Certain";
 export type Severity = "Negligible" | "Minor" | "Moderate" | "Major" | "Catastrophic";
 
-const LIKELIHOODS: Likelihood[] = ["Rare", "Unlikely", "Possible", "Likely", "Almost Certain"];
-const SEVERITIES: Severity[] = ["Negligible", "Minor", "Moderate", "Major", "Catastrophic"];
+export const LIKELIHOODS: Likelihood[] = [
+  "Rare",
+  "Unlikely",
+  "Possible",
+  "Likely",
+  "Almost Certain",
+];
+export const SEVERITIES: Severity[] = ["Negligible", "Minor", "Moderate", "Major", "Catastrophic"];
 
 const clampIndex = (n: number): number => Math.min(5, Math.max(1, Math.round(n))) - 1;
 

@@ -123,11 +123,13 @@ describe("updateSuggestedRiskItemQuery", () => {
     expect(sql).toContain("organization_id = :organizationId");
     expect(sql).toContain("|| :patch::jsonb");
     expect(sql).toContain("RETURNING");
+    expect(sql).toContain("s.status = :pending");
     expect(optsOf().replacements).toEqual({
       id: 5,
       organizationId: 9,
       suggestionId: "s1",
       patch: JSON.stringify({ state: "accepted", decidedBy: 3 }),
+      pending: "pending",
     });
     expect(item).toEqual({ id: "s1", state: "accepted" });
   });
@@ -145,14 +147,31 @@ describe("setAllSuggestionStatesQuery", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
     expect(sqlOf()).toContain("organization_id = :organizationId");
     expect(sqlOf()).toContain("FOR UPDATE");
+    expect(sqlOf()).toContain("status = :pending");
+    expect(sqlOf()).toContain("CASE WHEN e.item->>'state' = :from");
+    expect(sqlOf()).toContain("ORDER BY e.ord");
+    expect(sqlOf()).toContain("'decidedBy', CAST(:userId AS integer)");
+    expect(sqlOf()).not.toContain("mitigationPlan");
     expect(optsOf().replacements).toEqual({
       id: 5,
       organizationId: 9,
       from: "suggested",
       to: "dismissed",
       userId: 3,
+      pending: "pending",
     });
     expect(n).toBe(4);
+  });
+
+  it("can leave items without a mitigation plan unchanged", async () => {
+    mockQuery.mockResolvedValue([{ count: 2 }] as any);
+    await setAllSuggestionStatesQuery(5, "suggested", "accepted", 3, 9, {
+      requireMitigationPlan: true,
+    });
+    const sql = sqlOf();
+    const condition = "btrim(COALESCE(e.item->>'mitigationPlan', '')) <> ''";
+    // both in the count and in the CASE that changes the item
+    expect(sql.split(condition).length - 1).toBe(2);
   });
 
   it("returns 0 when the submission has no suggestions", async () => {
