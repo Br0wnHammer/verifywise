@@ -25,6 +25,11 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    "Scores of": "Bewertungen ab",
+    "or more, prohibited practices and scores within":
+      "oder mehr, verbotene Praktiken und Bewertungen innerhalb von",
+    "points of": "Punkten um",
+    "go to senior reviewers.": "gehen an leitende Prüfer.",
     "Route by risk score": "Nach Risikobewertung weiterleiten",
     "Send submissions to senior or standard reviewers based on their risk score.":
       "Einreichungen anhand ihrer Risikobewertung an leitende oder Standard-Prüfer weiterleiten.",
@@ -10782,6 +10787,11 @@ export const translations: Record<string, Record<string, string>> = {
   },
 
   fr: {
+    "Scores of": "Les scores de",
+    "or more, prohibited practices and scores within":
+      "ou plus, les pratiques interdites et les scores à moins de",
+    "points of": "points de",
+    "go to senior reviewers.": "vont aux réviseurs seniors.",
     "Route by risk score": "Acheminer selon le score de risque",
     "Send submissions to senior or standard reviewers based on their risk score.":
       "Envoyer les soumissions aux réviseurs seniors ou standard selon leur score de risque.",
@@ -21474,6 +21484,11 @@ export const translations: Record<string, Record<string, string>> = {
       "Le téléchargement révoque le jeton émis ici la dernière fois. Tout ce qui a été configuré avec le fichier précédent, sur cette machine ou une autre, cesse immédiatement de fonctionner.",
   },
   es: {
+    "Scores of": "Las puntuaciones de",
+    "or more, prohibited practices and scores within":
+      "o más, las prácticas prohibidas y las puntuaciones a menos de",
+    "points of": "puntos de",
+    "go to senior reviewers.": "pasan a los revisores sénior.",
     "Route by risk score": "Enrutar según la puntuación de riesgo",
     "Send submissions to senior or standard reviewers based on their risk score.":
       "Enviar los envíos a revisores sénior o estándar según su puntuación de riesgo.",

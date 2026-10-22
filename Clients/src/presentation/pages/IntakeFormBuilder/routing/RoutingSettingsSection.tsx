@@ -49,18 +49,20 @@ export interface RoutingErrors {
 /** Inline errors for the settings; empty while routing is off. */
 export function getRoutingErrors(value: FormRouting | null): RoutingErrors {
   const errors: RoutingErrors = {};
-  if (!value?.enabled) return errors;
-  if (value.seniorReviewerIds.length === 0) {
-    errors.seniorReviewerIds = "Pick at least one senior reviewer";
-  }
-  if (value.standardReviewerIds.length === 0) {
-    errors.standardReviewerIds = "Pick at least one standard reviewer";
-  }
+  if (!value) return errors;
+  // The server checks the numbers whether or not routing is on.
   for (const key of Object.keys(RANGES) as NumberKey[]) {
     const n = value[key];
     if (!Number.isInteger(n) || n < RANGES[key].min || n > RANGES[key].max) {
       errors[key] = NUMBER_ERROR(key);
     }
+  }
+  if (!value.enabled) return errors;
+  if (value.seniorReviewerIds.length === 0) {
+    errors.seniorReviewerIds = "Pick at least one senior reviewer";
+  }
+  if (value.standardReviewerIds.length === 0) {
+    errors.standardReviewerIds = "Pick at least one standard reviewer";
   }
   return errors;
 }
@@ -104,6 +106,21 @@ const RoutingSettingsSection = ({ value, onChange, reviewers }: RoutingSettingsS
       update({ [key]: (Array.isArray(val) ? val : [val]).map(Number) });
     };
 
+  // Turning routing off drops any number the server would reject back to its default.
+  const onToggle = () => {
+    if (enabled) {
+      const errs = getRoutingErrors(current);
+      const reset: Partial<FormRouting> = {};
+      for (const key of Object.keys(RANGES) as NumberKey[]) {
+        if (errs[key]) reset[key] = DEFAULT_ROUTING[key];
+      }
+      setDrafts({});
+      update({ ...reset, enabled: false });
+    } else {
+      update({ enabled: true });
+    }
+  };
+
   const onNumber = (key: NumberKey, text: string) => {
     setDrafts((prev) => ({ ...prev, [key]: text }));
     update({ [key]: text.trim() === "" ? NaN : Number(text) });
@@ -116,7 +133,7 @@ const RoutingSettingsSection = ({ value, onChange, reviewers }: RoutingSettingsS
     >
       <Box
         sx={{ display: "flex", alignItems: "flex-start", gap: "4px", cursor: "pointer" }}
-        onClick={() => update({ enabled: !enabled })}
+        onClick={() => onToggle()}
       >
         <Checkbox
           id="route-by-risk-score"
@@ -185,7 +202,9 @@ const RoutingSettingsSection = ({ value, onChange, reviewers }: RoutingSettingsS
             data-testid="routing-helper"
             sx={{ fontSize: "11px", color: theme.palette.text.accent }}
           >
-            {`Scores of ${current.threshold} or more, prohibited practices and scores within ${current.closeCallMargin} points of ${current.threshold} go to senior reviewers.`}
+            <span>Scores of</span> {current.threshold}{" "}
+            <span>or more, prohibited practices and scores within</span> {current.closeCallMargin}{" "}
+            <span>points of</span> {current.threshold} <span>go to senior reviewers.</span>
           </Typography>
         </>
       )}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { screen, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
-import RoutingSettingsSection from "../routing/RoutingSettingsSection";
+import RoutingSettingsSection, { getRoutingErrors } from "../routing/RoutingSettingsSection";
 import type { FormRouting } from "../types";
 
 const reviewers = [
@@ -9,8 +9,11 @@ const reviewers = [
   { _id: 2, name: "Grace Hopper", email: "grace@example.com" },
 ];
 
+let latest: FormRouting | null = null;
+
 const Harness = ({ initial = null }: { initial?: FormRouting | null }) => {
   const [value, setValue] = useState<FormRouting | null>(initial);
+  latest = value;
   return <RoutingSettingsSection value={value} onChange={setValue} reviewers={reviewers} />;
 };
 
@@ -76,5 +79,29 @@ describe("RoutingSettingsSection", () => {
     renderWithProviders(<Harness initial={on()} />);
     expect(screen.queryByText(/Use a number from/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Pick at least one/)).not.toBeInTheDocument();
+  });
+
+  it("resets a cleared number to its default when routing is turned off", () => {
+    renderWithProviders(<Harness initial={on()} />);
+    fireEvent.change(screen.getByLabelText("Threshold"), { target: { value: "" } });
+    expect(screen.getByText("Use a number from 1 to 99")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Route by risk score"));
+    expect(latest?.enabled).toBe(false);
+    expect(latest?.threshold).toBe(50);
+    expect(getRoutingErrors(latest)).toEqual({});
+  });
+
+  it("reports out-of-range numbers even while routing is off, so a save is blocked", () => {
+    expect(getRoutingErrors(on({ enabled: false, threshold: 0 }))).toEqual({
+      threshold: "Use a number from 1 to 99",
+    });
+    expect(getRoutingErrors(on({ enabled: false, seniorReviewerIds: [] }))).toEqual({});
+  });
+
+  it("renders the helper line as separate text fragments", () => {
+    renderWithProviders(<Harness initial={on()} />);
+    expect(screen.getByText("Scores of")).toBeInTheDocument();
+    expect(screen.getByText("points of")).toBeInTheDocument();
+    expect(screen.getByText("go to senior reviewers.")).toBeInTheDocument();
   });
 });
