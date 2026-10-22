@@ -440,7 +440,7 @@ Behaviour: list with source label ("From the risk catalog" / "AI-suggested"), na
   - `cd Servers && npm run build && npm run test && npm run format-check`
   - `cd Clients && npm run typecheck && npm run i18n:audit:strict && npm run format-check && npm run build && npx vitest run`
   - Semgrep PR gate locally with the CI-pinned version and `--baseline-commit origin/develop`
-  - `git diff origin/develop --name-only | xargs grep -il "validmind\|yields"` → no output
+  - competitor-name grep over `git diff origin/develop --name-only` (pattern kept in local memory, not in the repo) → no output
 - [ ] **Step 4: Commit** `docs(intake): document AI intake scoring and suggested risks` and push the branch (background).
 
 ---

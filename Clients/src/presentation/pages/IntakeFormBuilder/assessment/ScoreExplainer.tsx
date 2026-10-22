@@ -156,7 +156,7 @@ function ScoreExplainer({
                   <Box key={`${r.questionId}-${r.text}`}>
                     <Typography sx={body}>{r.text}</Typography>
                     <Typography sx={{ fontSize: "12px", color: theme.palette.text.tertiary }}>
-                      “{r.excerpt}” — {questionLabels[r.questionId] ?? r.questionId}
+                      "{r.excerpt}" ({questionLabels[r.questionId] ?? r.questionId})
                     </Typography>
                   </Box>
                 ))}

@@ -158,7 +158,7 @@ function ScoreSection({
                 {r.text}
               </Typography>
               <Typography sx={{ fontSize: "12px", color: theme.palette.text.tertiary }}>
-                “{r.excerpt}” — {questionLabels[r.questionId] ?? r.questionId}
+                "{r.excerpt}" ({questionLabels[r.questionId] ?? r.questionId})
               </Typography>
             </Box>
           ))}

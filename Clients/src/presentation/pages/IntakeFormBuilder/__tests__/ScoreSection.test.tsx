@@ -54,7 +54,7 @@ describe("ScoreSection", () => {
       screen.getByText("The rule minimum set this score. The AI scored it lower."),
     ).toBeInTheDocument();
     expect(screen.getByText("Screens job applicants")).toBeInTheDocument();
-    expect(screen.getByText("“job applicants” — Purpose")).toBeInTheDocument();
+    expect(screen.getByText('"job applicants" (Purpose)')).toBeInTheDocument();
   });
 
   it("says when the AI median set the score", () => {
