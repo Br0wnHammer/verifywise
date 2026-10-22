@@ -63,7 +63,7 @@ This is part 1 of 3. The user set the order:
 | Who can act | `intakeForm.edit` (`config/rolePermissions.config.ts:189`), Admin and Editor | Approve, reject and risk override all use it. Reviewer and Auditor roles cannot approve intake today |
 | Field risk-dimension tag | `FieldEditor.tsx:644` "Risk dimension" select per field, `riskAssessmentConfig` on the form | Only feeds the keyword score |
 | Tier names | `TIER_THRESHOLDS` (`intakeRiskScoring.service.ts:237`) | Only `eu_ai_act` exists. Every other tier system (the column default is `generic`) falls back to it, so **every form** gets Minimal / Limited / High / Unacceptable today. The modal legend already says Low 0–25, Medium 26–50, High 51–75, Critical 76–100 |
-| Translations | `SubmissionPreviewModal.tsx` | Has no `t()` calls. The modal is English-only today |
+| Translations | `Clients/src/i18n/domTranslator.ts`, `translations.ts` | The client translates rendered English text through the dictionary, with no `t()` calls. The modal's existing strings are already in de/fr/es. `npm run i18n:audit` reported 0 gaps on 2026-10-21. An earlier draft of this doc said the modal was English-only; that was wrong |
 | Reviewer UI | `Clients/src/presentation/pages/IntakeFormBuilder/SubmissionPreviewModal.tsx` (815 lines) | Modal only, no per-submission page. Preview data from `getSubmissionPreview` (`ctrl` ~1110) |
 | Risk suggestions | `Servers/services/riskSuggestions/riskSuggestions.service.ts:233` `suggestRisksForUseCase({name, purpose?, technology?})` | Returns catalog `matched[]` + AI `suggested[]`. `likelihood`/`severity` are ints 1–5. The HTTP endpoint needs an existing project, so call the service directly |
 | Use-case risk create | `Servers/utils/risk.utils.ts:654` `createRiskQuery(risk & {projects:[id]}, orgId, tx)` | Table `risks`, link via `projects_risks`. Required: `risk_owner` (user id), `deadline`, enums below |
@@ -218,7 +218,7 @@ On release, queue every `pending` submission, across all organisations, for the 
 
 ### 8. Translations
 
-**Translate the whole review window** (user): the existing `SubmissionPreviewModal` strings plus every new section, the explainer, the suggestions list, the status notes, the form-builder notices and the email additions. All go into de/fr/es in `i18n/translations.ts`. Server-side email strings follow the existing email i18n pattern (`req.lang`).
+**The whole review window is translated** (user). The existing strings already are. Every new string (sections, explainer, suggestions list, status notes, form-builder notices) gets de/fr/es entries in `Clients/src/i18n/translations.ts`, and `npm run i18n:audit:strict` must stay at 0. Text built from parts (for example "AI scores ranged 62–71") must render as separate translatable text nodes, or as whole sentences in the dictionary, because the DOM translator matches exact strings. The email additions follow the existing server email i18n. The job has no request, so the submit handler passes its `req.lang` into the job data.
 
 ## Constraints
 
