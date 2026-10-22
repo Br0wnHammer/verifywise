@@ -1,5 +1,10 @@
 import { describe, it, expect } from "@jest/globals";
-import { buildDecisionRecord, laneAtDecision, pickSecondReview } from "../decisionGate";
+import {
+  buildDecisionRecord,
+  laneAtDecision,
+  laneOnRecord,
+  pickSecondReview,
+} from "../decisionGate";
 import type { IFormRouting } from "../../../domain.layer/interfaces/i.intakeForm";
 import type {
   IRiskAssessmentV2,
@@ -72,13 +77,64 @@ describe("laneAtDecision", () => {
     });
   });
 
-  it("is null when routing is off or the submission has no lane yet", () => {
+  it("is null only when routing is off", () => {
     expect(laneAtDecision(stored(), { ...CFG, enabled: false }, effective())).toEqual({
       lane: null,
       reason: null,
     });
-    expect(laneAtDecision(stored(), null, effective())).toEqual({ lane: null, reason: null });
+    expect(laneAtDecision(null, null, effective({ level: "Prohibited" }))).toEqual({
+      lane: null,
+      reason: null,
+    });
+  });
+
+  it("with no lane stored, routes on the effective values", () => {
     expect(laneAtDecision(null, CFG, effective({ level: "Prohibited" }))).toEqual({
+      lane: "senior",
+      reason: "prohibited",
+    });
+    expect(laneAtDecision(null, CFG, effective({ bandInForce: "Critical" }))).toEqual({
+      lane: "senior",
+      reason: "at_or_above_threshold",
+    });
+    expect(laneAtDecision(null, CFG, effective())).toEqual({
+      lane: "standard",
+      reason: "below_threshold",
+    });
+  });
+
+  it("a score still running counts as no score", () => {
+    expect(
+      laneAtDecision(null, CFG, effective({ finalScore: 20, scoringStatus: "pending" })),
+    ).toEqual({ lane: "senior", reason: "no_score" });
+    expect(laneAtDecision(null, CFG, effective({ finalScore: null }))).toEqual({
+      lane: "senior",
+      reason: "no_score",
+    });
+  });
+});
+
+describe("laneOnRecord", () => {
+  it("keeps a stored lane without re-checking it", () => {
+    expect(laneOnRecord(stored(), CFG, effective({ level: "Prohibited" }))).toEqual({
+      lane: "standard",
+      reason: "below_threshold",
+    });
+  });
+
+  it("with no lane stored, routes on the current values", () => {
+    expect(laneOnRecord(null, CFG, effective({ scoringStatus: "pending" }))).toEqual({
+      lane: "senior",
+      reason: "no_score",
+    });
+    expect(laneOnRecord(null, CFG, effective())).toEqual({
+      lane: "standard",
+      reason: "below_threshold",
+    });
+  });
+
+  it("is null when routing is off", () => {
+    expect(laneOnRecord(stored(), { ...CFG, enabled: false }, effective())).toEqual({
       lane: null,
       reason: null,
     });

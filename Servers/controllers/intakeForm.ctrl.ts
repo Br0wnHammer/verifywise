@@ -125,6 +125,7 @@ import {
   buildDecisionRecord,
   laneAtDecision,
   pickSecondReview,
+  laneOnRecord,
 } from "../services/intakeRouting/decisionGate";
 import { raiseForOverride, rerouteFormPending } from "../services/intakeRouting/routingService";
 import type { IFormRouting } from "../domain.layer/interfaces/i.intakeForm";
@@ -482,6 +483,22 @@ function routingReasonText(req: Request, reason: RoutingReason | null): string {
  * An Admin may decide in any lane; when the lane alone would not have let them,
  * that is logged.
  */
+/**
+ * The EU AI Act level the approved entity will carry: the stored run's level
+ * (after a reviewer's change) when there is one, else the mapped level of a
+ * use case. Models carry none.
+ */
+function entityLevel(
+  entityType: IntakeEntityType,
+  runLevel: string | null,
+  entityData: Record<string, unknown>,
+): string | null {
+  if (runLevel !== null) return runLevel;
+  const mapped = entityData.ai_risk_classification;
+  if (entityType !== IntakeEntityType.USE_CASE || typeof mapped !== "string") return null;
+  return mapToAiRiskClassification(mapped) || null;
+}
+
 async function logIfOutsideLane(
   req: Request,
   submissionId: number,
@@ -1490,10 +1507,16 @@ export async function getSubmissionPreview(req: Request, res: Response) {
 
     const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
 
-    // Who may decide, by the stored lane; approve re-checks it on what the
-    // decision would make true.
+    // Who may decide, by the stored lane (or, with none yet, the current
+    // values); approve re-checks it on what the decision would make true.
     const routingCfg = form.routing ?? null;
-    const lane = routingCfg?.enabled ? (submission.routing?.lane ?? null) : null;
+    const previewBand = asBand(submission.riskOverride?.tier);
+    const { lane } = laneOnRecord(submission.routing ?? null, routingCfg, {
+      level: entityLevel(submission.entityType, rescored?.result.level ?? null, entityData),
+      finalScore: assessment?.finalScore ?? null,
+      scoringStatus: assessment?.status ?? null,
+      bandInForce: usesScoreBands(submission) && isScoreBand(previewBand) ? previewBand : null,
+    });
     const canDecide = canDecideLane(lane, req.userId!, isAdminRequest(req), routingCfg);
     const laneReviewerIds =
       routingCfg && lane === "senior"
@@ -2093,8 +2116,10 @@ export async function approveSubmission(req: Request, res: Response) {
     // band that routes to senior review.
     const routingCfg = form.routing ?? null;
     const storedRouting = submission.routing ?? null;
+    // Without a scorable run, the level is the one the entity gets.
+    const decidedLevel = entityLevel(submission.entityType, approvedLevel, entityData);
     const decision = laneAtDecision(storedRouting, routingCfg, {
-      level: approvedLevel,
+      level: decidedLevel,
       finalScore: settledAssessment?.finalScore ?? null,
       scoringStatus: settledAssessment?.status ?? null,
       bandInForce: bandsApply && isScoreBand(bandToCheck) ? bandToCheck : null,
@@ -2120,7 +2145,7 @@ export async function approveSubmission(req: Request, res: Response) {
     await setDecisionRecordQuery(
       submissionId,
       buildDecisionRecord({
-        level: approvedLevel,
+        level: decidedLevel,
         assessment: settledAssessment,
         override: overrideInForce,
         lane: decision.lane,
@@ -2383,16 +2408,6 @@ export async function rejectSubmission(req: Request, res: Response) {
     const tenantSlug = await getTenantSlugById(req.organizationId!);
     const formSlug = form?.slug || "";
 
-    // Rejecting creates nothing, so only the stored lane is checked.
-    const routingCfg = form?.routing ?? null;
-    const lane = routingCfg?.enabled ? (submission.routing?.lane ?? null) : null;
-    if (!canDecideLane(lane, req.userId!, isAdminRequest(req), routingCfg)) {
-      await transaction.rollback();
-      return res
-        .status(403)
-        .json(STATUS_CODE[403](req.t!("This submission is assigned to senior reviewers")));
-    }
-
     // Close any assessment stage still running; the job's later writes are
     // ignored once the submission is decided.
     const level = await currentRulesLevel(submissionId, req.organizationId!, transaction);
@@ -2404,6 +2419,29 @@ export async function rejectSubmission(req: Request, res: Response) {
       { refloor: false },
     );
     const storedOverride = submission.riskOverride;
+
+    // Rejecting creates nothing, so a stored lane is not re-checked; without
+    // one, the lane comes from the current values.
+    const routingCfg = form?.routing ?? null;
+    const storedBand = asBand(storedOverride?.tier);
+    const { lane } = laneOnRecord(submission.routing ?? null, routingCfg, {
+      level,
+      finalScore: settledAssessment?.finalScore ?? null,
+      scoringStatus: settledAssessment?.status ?? null,
+      bandInForce: usesScoreBands(submission) && isScoreBand(storedBand) ? storedBand : null,
+    });
+    if (!canDecideLane(lane, req.userId!, isAdminRequest(req), routingCfg)) {
+      await transaction.rollback();
+      return res
+        .status(403)
+        .json(
+          STATUS_CODE[403](
+            lane === "senior"
+              ? req.t!("This submission is assigned to senior reviewers")
+              : req.t!("This submission is assigned to the form's reviewers"),
+          ),
+        );
+    }
     await setDecisionRecordQuery(
       submissionId,
       buildDecisionRecord({

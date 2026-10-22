@@ -262,10 +262,114 @@ describe("approve: who may decide", () => {
     const r = await approve(OTHER, PROHIBITED);
     expect(r.status).toBe(200);
   });
+});
 
-  it("no lane yet: any reviewer may approve", async () => {
-    intake.getSubmissionByIdQuery.mockResolvedValue(submission({ routing: null }));
+describe("routing on, no lane stored yet", () => {
+  const PENDING_SCORE = v2({ status: "pending", ai: null, finalScore: null, tier: null });
+  const unrouted = (overrides: object = {}) => submission({ routing: null, ...overrides });
+
+  it("scoring still running: a standard reviewer can't approve", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(unrouted({ riskAssessment: PENDING_SCORE }));
+    const r = await approve(STANDARD);
+    expect(r.status).toBe(403);
+    expect(r.body.data).toBe("A senior reviewer has to decide this: no usable score");
+    expect(intake.approveSubmissionQuery).not.toHaveBeenCalled();
+  });
+
+  it("scoring still running: a senior reviewer can approve", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(unrouted({ riskAssessment: PENDING_SCORE }));
+    const r = await approve(SENIOR);
+    expect(r.status).toBe(200);
+    expect(intake.setDecisionRecordQuery.mock.calls[0][1].lane).toBe("senior");
+  });
+
+  it("scoring still running: a standard reviewer can't reject", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(unrouted({ riskAssessment: PENDING_SCORE }));
+    const r = await reject(STANDARD);
+    expect(r.status).toBe(403);
+    expect(r.body.data).toBe("This submission is assigned to senior reviewers");
+    expect(tx.rollback).toHaveBeenCalled();
+    expect(intake.rejectSubmissionQuery).not.toHaveBeenCalled();
+  });
+
+  it("scoring still running: a senior reviewer can reject", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(unrouted({ riskAssessment: PENDING_SCORE }));
+    const r = await reject(SENIOR);
+    expect(r.status).toBe(200);
+  });
+
+  it("scoring still running: the preview blocks a standard reviewer", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(unrouted({ riskAssessment: PENDING_SCORE }));
+    intake.getEligibleReviewersQuery.mockResolvedValue([
+      { id: SENIOR, name: "Sam", surname: "Senior", email: "s@x" },
+    ]);
+    const r = await call(ctrl.getSubmissionPreview, request(STANDARD));
+    expect(r.body.data).toMatchObject({
+      routing: null,
+      canDecide: false,
+      decideBlockedReason: "This submission is assigned to senior reviewers",
+      laneReviewers: [{ id: SENIOR, name: "Sam Senior" }],
+    });
+  });
+
+  it("a low settled score: a standard reviewer can approve and reject", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(unrouted());
+    expect((await approve(STANDARD)).status).toBe(200);
+    expect(intake.setDecisionRecordQuery.mock.calls[0][1].lane).toBe("standard");
+    expect((await reject(STANDARD)).status).toBe(200);
+    const preview = await call(ctrl.getSubmissionPreview, request(STANDARD));
+    expect(preview.body.data.canDecide).toBe(true);
+  });
+
+  it("a Prohibited level set in the dialog still needs a senior reviewer", async () => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(unrouted());
     const r = await approve(STANDARD, PROHIBITED);
+    expect(r.status).toBe(403);
+  });
+
+  it("routing off: anyone may decide while scoring runs", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue(form(routingCfg({ enabled: false })));
+    intake.getSubmissionByIdQuery.mockResolvedValue(unrouted({ riskAssessment: PENDING_SCORE }));
+    expect((await approve(OTHER)).status).toBe(200);
+    expect((await reject(OTHER)).status).toBe(200);
+  });
+});
+
+describe("approve: a use case without a stored EU AI Act run", () => {
+  const prohibitedEntity = {
+    confirmedEntityData: { project_title: "P", ai_risk_classification: "Prohibited" },
+  };
+  beforeEach(() => {
+    runs.getLatestRunForSubmissionQuery.mockResolvedValue(null);
+  });
+
+  it("a standard reviewer can't create it at Prohibited on the standard lane", async () => {
+    const r = await approve(STANDARD, prohibitedEntity);
+    expect(r.status).toBe(403);
+    expect(r.body.data).toBe("A senior reviewer has to decide this: prohibited practice");
+    expect(projects.createNewProjectQuery).not.toHaveBeenCalled();
+  });
+
+  it("the form's own option value counts too", async () => {
+    const r = await approve(STANDARD, {
+      confirmedEntityData: { project_title: "P", ai_risk_classification: "unacceptable" },
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it("a senior reviewer can, and the record carries the level", async () => {
+    const r = await approve(SENIOR, prohibitedEntity);
+    expect(r.status).toBe(200);
+    expect(intake.setDecisionRecordQuery.mock.calls[0][1]).toMatchObject({
+      level: "Prohibited",
+      lane: "senior",
+    });
+  });
+
+  it("a lower mapped level stays standard", async () => {
+    const r = await approve(STANDARD, {
+      confirmedEntityData: { project_title: "P", ai_risk_classification: "Minimal risk" },
+    });
     expect(r.status).toBe(200);
   });
 });
