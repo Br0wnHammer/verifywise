@@ -367,7 +367,7 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Review routing is off by default. Turn it on in the form settings to send each scored submission to a **senior** or **standard** review lane. With routing off, anyone who can edit intake forms can decide every submission.',
+      text: 'Review routing is off by default. Only Admins can change review routing; other roles see the settings read-only. Turn it on in the form settings to send each scored submission to a **senior** or **standard** review lane. With routing off, anyone who can edit intake forms can decide every submission.',
     },
     {
       type: 'bullet-list',

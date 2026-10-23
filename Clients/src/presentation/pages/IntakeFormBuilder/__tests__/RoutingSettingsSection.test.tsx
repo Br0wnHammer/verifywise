@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { vi } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import RoutingSettingsSection, { getRoutingErrors } from "../routing/RoutingSettingsSection";
@@ -8,6 +9,11 @@ const reviewers = [
   { _id: 1, name: "Ada Lovelace", email: "ada@example.com" },
   { _id: 2, name: "Grace Hopper", email: "grace@example.com" },
 ];
+
+let mockRole = "Admin";
+vi.mock("../../../../application/hooks/useAuth", () => ({
+  useAuth: () => ({ userRoleName: mockRole }),
+}));
 
 let latest: FormRouting | null = null;
 
@@ -38,6 +44,28 @@ const on = (patch: Partial<FormRouting> = {}): FormRouting => ({
   closeCallMargin: 10,
   secondReviewRate: 10,
   ...patch,
+});
+
+describe("RoutingSettingsSection for a non-Admin", () => {
+  afterEach(() => {
+    mockRole = "Admin";
+  });
+
+  it("shows the settings read-only with a helper line", () => {
+    mockRole = "Editor";
+    renderWithProviders(<Harness initial={on()} />);
+    expect(screen.getByText("Only an Admin can change review routing.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Threshold")).toBeDisabled();
+    expect(screen.getByLabelText("Close-call margin")).toBeDisabled();
+    expect(document.querySelectorAll(".vw-multi-select .Mui-disabled").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("Route by risk score"));
+    expect(latest?.enabled).toBe(true);
+  });
+
+  it("hides the helper line for an Admin", () => {
+    renderWithProviders(<Harness initial={on()} />);
+    expect(screen.queryByText("Only an Admin can change review routing.")).not.toBeInTheDocument();
+  });
 });
 
 describe("RoutingSettingsSection stale reviewers", () => {

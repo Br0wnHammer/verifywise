@@ -124,6 +124,7 @@ import type { IntakeSuggestedRisk } from "../services/intakeScoring/intakeSugges
 import { selectRetryStages } from "../services/intakeScoring/retry";
 import {
   canDecideLane,
+  DEFAULT_ROUTING,
   laneReviewerIdsFor,
   validateRoutingSettings,
 } from "../services/intakeRouting/routingRules";
@@ -856,6 +857,61 @@ const EMPTY_LANE_MESSAGE =
 const sameIds = (a: number[], b: number[]) =>
   a.length === b.length && a.every((id) => b.includes(id));
 
+const ROUTING_FORBIDDEN_MESSAGE = "Only an Admin can change review routing";
+
+/**
+ * Whether saving `next` changes the stored routing. Compared by value: id
+ * order does not matter, and a missing stored block is routing off with the
+ * default numbers. Null clears the block, which is a change only when one
+ * is stored.
+ */
+function routingChanged(next: IFormRouting | null, stored: IFormRouting | null | undefined) {
+  if (next === null) return !!stored;
+  const before: IFormRouting = stored ?? {
+    enabled: false,
+    seniorReviewerIds: [],
+    standardReviewerIds: [],
+    ...DEFAULT_ROUTING,
+  };
+  return (
+    before.enabled !== next.enabled ||
+    !sameIds(before.seniorReviewerIds, next.seniorReviewerIds) ||
+    !sameIds(before.standardReviewerIds, next.standardReviewerIds) ||
+    before.threshold !== next.threshold ||
+    before.closeCallMargin !== next.closeCallMargin ||
+    before.secondReviewRate !== next.secondReviewRate
+  );
+}
+
+/** Audit trail for a routing change: user ids and numbers only. */
+async function logRoutingChange(
+  req: Request,
+  formId: number | undefined,
+  before: IFormRouting | null | undefined,
+  after: IFormRouting | null,
+  functionName: string,
+) {
+  const brief = (r: IFormRouting | null | undefined) =>
+    r
+      ? {
+          enabled: r.enabled,
+          seniorReviewerIds: r.seniorReviewerIds,
+          standardReviewerIds: r.standardReviewerIds,
+          threshold: r.threshold,
+          closeCallMargin: r.closeCallMargin,
+          secondReviewRate: r.secondReviewRate,
+        }
+      : null;
+  await logSuccess({
+    eventType: "Update",
+    description: `review routing changed on intake form ${formId}: before ${JSON.stringify(brief(before))}, after ${JSON.stringify(brief(after))}`,
+    functionName,
+    fileName: "intakeForm.ctrl.ts",
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+}
+
 /**
  * Validate the routing block of a form body. `raw` is undefined when the
  * body leaves routing alone and null when it clears it.
@@ -873,11 +929,21 @@ async function resolveFormRouting(
   organizationId: number,
   stored: IFormRouting | null | undefined,
   t: (key: string, vars?: Record<string, string | number>) => string,
-): Promise<{ value: IFormRouting | null | undefined } | { error: string }> {
-  if (raw === undefined || raw === null) return { value: raw };
+  isAdmin: boolean,
+): Promise<
+  { value: IFormRouting | null | undefined; changed: boolean } | { error: string; status?: number }
+> {
+  if (raw === undefined) return { value: raw, changed: false };
+  if (raw === null) {
+    const changed = routingChanged(null, stored);
+    if (changed && !isAdmin) return { error: t(ROUTING_FORBIDDEN_MESSAGE), status: 403 };
+    return { value: raw, changed };
+  }
   const parsed = validateRoutingSettings(raw);
   if (!parsed.ok) return { error: t(parsed.i18nKey, parsed.i18nVars) };
   const next = parsed.value;
+  const changed = routingChanged(next, stored);
+  if (changed && !isAdmin) return { error: t(ROUTING_FORBIDDEN_MESSAGE), status: 403 };
 
   const ids = [...new Set([...next.seniorReviewerIds, ...next.standardReviewerIds])];
   const storedIds = new Set([
@@ -901,7 +967,7 @@ async function resolveFormRouting(
     );
     if (emptyLane) return { error: t(EMPTY_LANE_MESSAGE) };
   }
-  return { value: next };
+  return { value: next, changed };
 }
 
 /**
@@ -1012,10 +1078,22 @@ export async function createIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](llmKey.error));
     }
 
-    const routing = await resolveFormRouting(req.body.routing, req.organizationId!, null, req.t!);
+    const routing = await resolveFormRouting(
+      req.body.routing,
+      req.organizationId!,
+      null,
+      req.t!,
+      isAdminRequest(req),
+    );
     if ("error" in routing) {
       await transaction.rollback();
-      return res.status(400).json(STATUS_CODE[400](routing.error));
+      return res
+        .status(routing.status ?? 400)
+        .json(
+          routing.status === 403
+            ? STATUS_CODE[403](routing.error)
+            : STATUS_CODE[400](routing.error),
+        );
     }
 
     const form = await createIntakeFormQuery(
@@ -1043,6 +1121,10 @@ export async function createIntakeForm(req: Request, res: Response) {
     );
 
     await transaction.commit();
+
+    if (routing.changed) {
+      await logRoutingChange(req, form.id, null, routing.value ?? null, "createIntakeForm");
+    }
 
     await logSuccess({
       eventType: "Create",
@@ -1174,10 +1256,17 @@ export async function updateIntakeForm(req: Request, res: Response) {
       req.organizationId!,
       existingForm.routing,
       req.t!,
+      isAdminRequest(req),
     );
     if ("error" in routing) {
       await transaction.rollback();
-      return res.status(400).json(STATUS_CODE[400](routing.error));
+      return res
+        .status(routing.status ?? 400)
+        .json(
+          routing.status === 403
+            ? STATUS_CODE[403](routing.error)
+            : STATUS_CODE[400](routing.error),
+        );
     }
 
     const form = await updateIntakeFormQuery(
@@ -1205,6 +1294,16 @@ export async function updateIntakeForm(req: Request, res: Response) {
     );
 
     await transaction.commit();
+
+    if (routing.changed) {
+      await logRoutingChange(
+        req,
+        formId,
+        existingForm.routing,
+        routing.value ?? null,
+        "updateIntakeForm",
+      );
+    }
 
     await logSuccess({
       eventType: "Update",

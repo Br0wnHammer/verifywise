@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Box, Typography, useTheme } from "@mui/material";
+import { useAuth } from "../../../../application/hooks/useAuth";
 import Checkbox from "../../../components/Inputs/Checkbox";
 import Field from "../../../components/Inputs/Field";
 import CustomizableMultiSelect from "../../../components/Inputs/Select/Multi";
@@ -90,6 +91,9 @@ const RoutingSettingsSection = ({
   reviewersLoaded = true,
 }: RoutingSettingsSectionProps) => {
   const theme = useTheme();
+  // The server only lets an Admin change routing
+  const { userRoleName } = useAuth();
+  const canEdit = userRoleName === "Admin";
   // Text being typed, so a field can be emptied without snapping back to a number.
   const [drafts, setDrafts] = useState<Partial<Record<NumberKey, string>>>({});
 
@@ -150,8 +154,13 @@ const RoutingSettingsSection = ({
       sx={{ display: "flex", flexDirection: "column", gap: "12px" }}
     >
       <Box
-        sx={{ display: "flex", alignItems: "flex-start", gap: "4px", cursor: "pointer" }}
-        onClick={() => onToggle()}
+        sx={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "4px",
+          cursor: canEdit ? "pointer" : "default",
+        }}
+        onClick={() => canEdit && onToggle()}
       >
         <Checkbox
           id="route-by-risk-score"
@@ -160,6 +169,7 @@ const RoutingSettingsSection = ({
           onChange={() => {}}
           size="small"
           label=""
+          isDisabled={!canEdit}
           sx={{ p: 0, mt: "1px", flexShrink: 0 }}
         />
         <Box>
@@ -174,6 +184,15 @@ const RoutingSettingsSection = ({
         </Box>
       </Box>
 
+      {!canEdit && (
+        <Typography
+          data-testid="routing-admin-only"
+          sx={{ fontSize: "11px", color: theme.palette.text.accent }}
+        >
+          Only an Admin can change review routing.
+        </Typography>
+      )}
+
       {enabled && (
         <>
           <Box>
@@ -185,6 +204,7 @@ const RoutingSettingsSection = ({
               placeholder="Select senior reviewers"
               error={errors.seniorReviewerIds}
               sx={selectSx}
+              disabled={!canEdit}
             />
           </Box>
           <Box>
@@ -196,6 +216,7 @@ const RoutingSettingsSection = ({
               placeholder="Select standard reviewers"
               error={errors.standardReviewerIds}
               sx={selectSx}
+              disabled={!canEdit}
             />
           </Box>
 
@@ -212,6 +233,7 @@ const RoutingSettingsSection = ({
                 max={RANGES[key].max}
                 error={errors[key]}
                 helperText={hint}
+                disabled={!canEdit}
               />
             ))}
           </Box>

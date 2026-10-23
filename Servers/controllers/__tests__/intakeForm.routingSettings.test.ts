@@ -44,6 +44,7 @@ jest.mock("../../utils/statusCode.utils", () => ({
     200: (d: any) => ({ message: "OK", data: d }),
     201: (d: any) => ({ message: "Created", data: d }),
     400: (d: any) => ({ message: "Bad Request", data: d }),
+    403: (d: any) => ({ message: "Forbidden", data: d }),
     404: (d: any) => ({ message: "Not Found", data: d }),
     500: (d: any) => ({ message: "Internal Server Error", data: d }),
   },
@@ -58,10 +59,12 @@ jest.mock("../../database/db", () => ({
 const ctrl = require("../intakeForm.ctrl") as typeof import("../intakeForm.ctrl");
 const intake = require("../../utils/intakeForm.utils");
 const { rerouteFormPending } = require("../../services/intakeRouting/routingService");
+const { logSuccess } = require("../../utils/logger/logHelper");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 const req = (overrides: any = {}) => ({
   userId: 7,
+  role: "Admin",
   organizationId: 5,
   headers: {},
   t: (k: string, vars?: Record<string, string | number>) =>
@@ -213,6 +216,104 @@ describe("updateIntakeForm routing settings", () => {
     expect(intake.updateIntakeFormQuery.mock.calls[0][1].routing).toBeUndefined();
     expect(intake.getEligibleReviewerIdsQuery).not.toHaveBeenCalled();
     expect(rerouteFormPending).not.toHaveBeenCalled();
+  });
+});
+
+describe("who may change routing", () => {
+  const editor = (body: any) => req({ role: "Editor", body }) as any;
+  const stored = () =>
+    intake.getIntakeFormByIdQuery.mockResolvedValue({ ...EXISTING, routing: ROUTING });
+
+  it("lets an Editor save with the same routing in a different order", async () => {
+    stored();
+    const r = res();
+    await ctrl.updateIntakeForm(
+      editor({
+        name: "X",
+        routing: { ...ROUTING, seniorReviewerIds: [1], standardReviewerIds: [2] },
+      }),
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(logSuccess).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringContaining("routing changed") }),
+    );
+  });
+
+  it("lets an Editor save an id list in another order", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({
+      ...EXISTING,
+      routing: { ...ROUTING, seniorReviewerIds: [1, 3] },
+    });
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([1, 2, 3]);
+    const r = res();
+    await ctrl.updateIntakeForm(editor({ routing: { ...ROUTING, seniorReviewerIds: [3, 1] } }), r);
+    expect(r.status).toHaveBeenCalledWith(200);
+  });
+
+  it.each([
+    ["ids", { seniorReviewerIds: [1, 2] }],
+    ["the flag", { enabled: false }],
+    ["the threshold", { threshold: 60 }],
+    ["the margin", { closeCallMargin: 5 }],
+    ["the second review share", { secondReviewRate: 20 }],
+    ["clearing", null],
+  ])("refuses an Editor changing %s", async (_n, patch) => {
+    stored();
+    const r = res();
+    await ctrl.updateIntakeForm(
+      editor({ routing: patch === null ? null : { ...ROUTING, ...patch } }),
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(403);
+    expect(r.json).toHaveBeenCalledWith(
+      expect.objectContaining({ data: "Only an Admin can change review routing" }),
+    );
+    expect(intake.updateIntakeFormQuery).not.toHaveBeenCalled();
+  });
+
+  it("logs the before and after of an Admin change", async () => {
+    stored();
+    const r = res();
+    await ctrl.updateIntakeForm(
+      req({ body: { routing: { ...ROUTING, threshold: 60 } } }) as any,
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(200);
+    const call = logSuccess.mock.calls.find((c: any) =>
+      c[0].description.includes("routing changed"),
+    );
+    expect(call[0].description).toContain('"threshold":50');
+    expect(call[0].description).toContain('"threshold":60');
+    expect(call[0].description).toContain('"seniorReviewerIds":[1]');
+    expect(call[0].userId).toBe(7);
+  });
+
+  it("refuses an Editor creating a form with routing on, but allows routing off or absent", async () => {
+    const make = (routing?: any) =>
+      ctrl.createIntakeForm(
+        req({
+          role: "Editor",
+          params: {},
+          body: { name: "F", entityType: "use_case", routing },
+        }) as any,
+        res(),
+      );
+    const r = res();
+    await ctrl.createIntakeForm(
+      req({
+        role: "Editor",
+        params: {},
+        body: { name: "F", entityType: "use_case", routing: ROUTING },
+      }) as any,
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(403);
+    expect(intake.createIntakeFormQuery).not.toHaveBeenCalled();
+    intake.createIntakeFormQuery.mockResolvedValue({ id: 3 });
+    await make(undefined);
+    await make({ ...ROUTING, enabled: false, seniorReviewerIds: [], standardReviewerIds: [] });
+    expect(intake.createIntakeFormQuery).toHaveBeenCalledTimes(2);
   });
 });
 

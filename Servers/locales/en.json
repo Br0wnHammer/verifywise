@@ -918,5 +918,6 @@
   "{name} must be an array": "{name} must be an array",
   "{name} must contain positive integer user ids": "{name} must contain positive integer user ids",
   "{key} must be a whole number from {min} to {max}": "{key} must be a whole number from {min} to {max}",
-  "seniorReviewerIds and standardReviewerIds must each have at least one reviewer": "seniorReviewerIds and standardReviewerIds must each have at least one reviewer"
+  "seniorReviewerIds and standardReviewerIds must each have at least one reviewer": "seniorReviewerIds and standardReviewerIds must each have at least one reviewer",
+  "Only an Admin can change review routing": "Only an Admin can change review routing"
 }
