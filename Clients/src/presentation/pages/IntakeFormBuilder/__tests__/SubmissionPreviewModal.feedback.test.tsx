@@ -25,9 +25,7 @@ function mockPreview() {
         entityType: "use_case",
         schema: {
           version: "1.0",
-          fields: [
-            { id: "f1", label: "Title", type: "text", entityFieldMapping: "project_title" },
-          ],
+          fields: [{ id: "f1", label: "Title", type: "text", entityFieldMapping: "project_title" }],
         },
       },
       euAiActClassification: null,
