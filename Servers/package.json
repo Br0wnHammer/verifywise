@@ -48,7 +48,7 @@
   "license": "ISC",
   "description": "",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.23.4"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.81",
