@@ -152,6 +152,14 @@ export function IntakeFormsListPage() {
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState<string>("all");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<number | null>(null);
+  const [flashSubmissionId, setFlashSubmissionId] = useState<number | null>(null);
+
+  // Green row flash after a successful review, consistent with other tables
+  const FLASH_DURATION_MS = 3000;
+  const flashSubmissionRow = useCallback((submissionId: number) => {
+    setFlashSubmissionId(submissionId);
+    setTimeout(() => setFlashSubmissionId(null), FLASH_DURATION_MS);
+  }, []);
 
   // ============================================================================
   // Data loading
@@ -653,6 +661,10 @@ export function IntakeFormsListPage() {
                         }}
                         sx={{
                           ...singleTheme.tableStyles.primary.body.row,
+                          backgroundColor:
+                            flashSubmissionId === submission.id
+                              ? singleTheme.flashColors.background
+                              : undefined,
                           cursor: submission.status === "superseded" ? "default" : "pointer",
                           ...(submission.status === "superseded" && { opacity: 0.5 }),
                         }}
@@ -913,7 +925,14 @@ export function IntakeFormsListPage() {
         }}
         submissionId={selectedSubmissionId}
         onApproved={() => {
+          if (selectedSubmissionId !== null) flashSubmissionRow(selectedSubmissionId);
           loadSubmissions();
+          setSnackbar({ open: true, message: "Submission approved", severity: "success" });
+        }}
+        onRejected={() => {
+          if (selectedSubmissionId !== null) flashSubmissionRow(selectedSubmissionId);
+          loadSubmissions();
+          setSnackbar({ open: true, message: "Submission rejected", severity: "success" });
         }}
       />
 
