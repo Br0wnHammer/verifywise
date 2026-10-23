@@ -8,6 +8,7 @@ jest.mock("../../utils/intakeForm.utils", () => ({
   getIntakeFormByIdQuery: jest.fn(),
   getSubmissionByIdQuery: jest.fn(),
   approveSubmissionQuery: jest.fn(),
+  setDecisionRecordQuery: jest.fn<any>().mockResolvedValue(undefined),
   rejectSubmissionQuery: jest.fn(),
   getTenantSlugById: jest.fn<any>().mockResolvedValue("t"),
   updateSubmissionRiskOverrideQuery: jest.fn<any>().mockResolvedValue(undefined),

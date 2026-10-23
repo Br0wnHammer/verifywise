@@ -8,6 +8,7 @@ jest.mock("../../utils/intakeForm.utils", () => ({
   getIntakeFormByIdQuery: jest.fn(),
   getSubmissionByIdQuery: jest.fn(),
   updateSubmissionRiskOverrideQuery: jest.fn<any>().mockResolvedValue(undefined),
+  updateSubmissionRoutingQuery: jest.fn<any>().mockResolvedValue(true),
   updateSuggestedRiskItemQuery: jest.fn(),
   setAllSuggestionStatesQuery: jest.fn(),
   claimSubmissionNotificationQuery: jest.fn(),
@@ -468,6 +469,77 @@ describe("overrideSubmissionRisk", () => {
       tier: "Low",
       dimensionOverrides: { bias: 3 },
     });
+  });
+});
+
+describe("overrideSubmissionRisk lane", () => {
+  const routingCfg = {
+    enabled: true,
+    seniorReviewerIds: [1],
+    standardReviewerIds: [2],
+    threshold: 50,
+    closeCallMargin: 0,
+    secondReviewRate: 10,
+  };
+  const standardRouting = {
+    lane: "standard",
+    reason: "below_threshold",
+    score: 30,
+    threshold: 50,
+    closeCallMargin: 0,
+    routedAt: "x",
+  };
+  const withRouting = (routing: object | null, cfg: object | null = routingCfg) => {
+    intake.getSubmissionByIdQuery.mockResolvedValue(
+      submission({ routing, riskAssessment: v2({ classificationLevel: "Limited risk" }) }),
+    );
+    intake.getIntakeFormByIdQuery.mockResolvedValue({ id: 1, routing: cfg });
+    data.rescoreStoredRun.mockReturnValue({
+      run: {},
+      questionnaire: {},
+      result: { level: "Minimal risk", role: null, roles: [], reasons: [], obligations: [] },
+    });
+  };
+  const overrideReq = (tier: string) => req({ body: { justification: "why", tier } });
+
+  it("raises a standard-lane submission to senior when the band reaches the threshold", async () => {
+    withRouting(standardRouting);
+    const r = await call(ctrl.overrideSubmissionRisk, overrideReq("High"));
+    expect(r.status).toBe(200);
+    expect(intake.updateSubmissionRoutingQuery).toHaveBeenCalledWith(
+      11,
+      expect.objectContaining({ lane: "senior", reason: "override_raised", score: 51 }),
+      ORG,
+      undefined,
+      standardRouting,
+    );
+  });
+
+  it("leaves the lane alone for a band below the threshold", async () => {
+    withRouting(standardRouting);
+    await call(ctrl.overrideSubmissionRisk, overrideReq("Low"));
+    expect(intake.updateSubmissionRoutingQuery).not.toHaveBeenCalled();
+  });
+
+  it("never lowers a senior submission", async () => {
+    withRouting({ ...standardRouting, lane: "senior", reason: "close_call" });
+    await call(ctrl.overrideSubmissionRisk, overrideReq("Low"));
+    expect(intake.updateSubmissionRoutingQuery).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when routing is off", async () => {
+    withRouting(standardRouting, { ...routingCfg, enabled: false });
+    const r = await call(ctrl.overrideSubmissionRisk, overrideReq("High"));
+    expect(r.status).toBe(200);
+    expect(intake.updateSubmissionRoutingQuery).not.toHaveBeenCalled();
+  });
+
+  it("still answers 200 when raising the lane fails", async () => {
+    withRouting(standardRouting);
+    intake.updateSubmissionRoutingQuery.mockRejectedValueOnce(new Error("db down"));
+    const r = await call(ctrl.overrideSubmissionRisk, overrideReq("High"));
+    expect(r.status).toBe(200);
+    expect(intake.updateSubmissionRiskOverrideQuery).toHaveBeenCalled();
   });
 });
 

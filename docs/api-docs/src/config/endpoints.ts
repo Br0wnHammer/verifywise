@@ -5831,9 +5831,14 @@ export const intakeFormEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/intake/forms',
     summary: "Create Intake Form",
+    description: "The optional routing block turns on review routing for the form. Form responses carry the saved routing block.",
     requiresAuth: true,
+    requestBody: {
+      "routing": "object (optional, nullable)",
+    },
     responses: [
       { status: 201, description: "Created successfully" },
+      { status: 400, description: "Invalid routing settings, or a reviewer who cannot review intake submissions" },
       { status: 401, description: "Unauthorized" },
       { status: 500, description: "Internal server error" },
     ],
@@ -5858,12 +5863,17 @@ export const intakeFormEndpoints: Endpoint[] = [
     method: 'PATCH',
     path: '/intake/forms/{id}',
     summary: "Update Intake Form",
+    description: "Saving a routing block routes the form's pending submissions again. Form responses carry the saved routing block.",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
     ],
+    requestBody: {
+      "routing": "object (optional, nullable)",
+    },
     responses: [
       { status: 200, description: "Success" },
+      { status: 400, description: "Invalid routing settings, or a reviewer who cannot review intake submissions" },
       { status: 401, description: "Unauthorized" },
       { status: 500, description: "Internal server error" },
     ],
@@ -5915,6 +5925,20 @@ export const intakeFormEndpoints: Endpoint[] = [
     tag: "Intake Forms",
   },
   {
+    method: 'GET',
+    path: '/intake/routing/eligible-reviewers',
+    summary: "Get Eligible Reviewers",
+    description: "Users of the organization whose role can edit intake forms, as id, name, surname and email. Used to fill the reviewer pickers in the routing settings.",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Intake Forms",
+  },
+  {
     method: 'POST',
     path: '/intake/forms/suggested-questions',
     summary: "Get L L M Suggested Questions",
@@ -5940,8 +5964,29 @@ export const intakeFormEndpoints: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/intake/oversight',
+    summary: "Get Intake Oversight",
+    description: "Routing and review figures for the last 4, 8 or 12 weeks (weeks start Monday, UTC): totals by lane, weekly buckets, median hours to decision, redlines, second reviews, per-reviewer decisions, band kept, suggested risks accepted and up to 20 needs-attention rows. An empty period returns zero counts and null medians.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'weeks', in: 'query', type: 'integer', required: false, description: "The weeks" },
+      { name: 'formId', in: 'query', type: 'integer', required: false, description: "Limit the figures to one form of the organization" },
+    ],
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 400, description: "weeks is not 4, 8 or 12, or formId is invalid" },
+      { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Forbidden" },
+      { status: 404, description: "Form not found in this organization" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Intake Forms",
+  },
+  {
+    method: 'GET',
     path: '/intake/submissions',
     summary: "Get Pending Submissions",
+    description: "Each row also carries routing (lane, reason, score, threshold, closeCallMargin, routedAt, and escalation or secondReview when set), routingEnabled and laneReviewerIds (user ids who can decide the stored lane).",
     requiresAuth: true,
     responses: [
       { status: 200, description: "Success" },
@@ -5997,6 +6042,7 @@ export const intakeFormEndpoints: Endpoint[] = [
     method: 'GET',
     path: '/intake/submissions/{id}/preview',
     summary: "Get Submission Preview",
+    description: "Also returns routing, routingEnabled, canDecide, decideBlockedReason, laneReviewers (id and name of the users who can decide) and isSeniorReviewer for the caller.",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -6114,6 +6160,7 @@ export const intakeFormEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/intake/submissions/{id}/approve',
     summary: "Approve Submission",
+    description: "With routing on, only a reviewer of the lane the approval would make true, or an Admin, can approve (403 otherwise). A standard-lane approval by a non-senior reviewer may be picked for a second review.",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -6121,6 +6168,7 @@ export const intakeFormEndpoints: Endpoint[] = [
     responses: [
       { status: 201, description: "Created successfully" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Routing is on and the caller may not decide this lane" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Intake Forms",
@@ -6129,6 +6177,7 @@ export const intakeFormEndpoints: Endpoint[] = [
     method: 'POST',
     path: '/intake/submissions/{id}/reject',
     summary: "Reject Submission",
+    description: "With routing on, only a reviewer of the stored lane, or an Admin, can reject (403 otherwise).",
     requiresAuth: true,
     parameters: [
       { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
@@ -6136,6 +6185,77 @@ export const intakeFormEndpoints: Endpoint[] = [
     responses: [
       { status: 201, description: "Created successfully" },
       { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Routing is on and the caller may not decide this lane" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Intake Forms",
+  },
+  {
+    method: 'POST',
+    path: '/intake/submissions/{id}/escalate',
+    summary: "Send Submission To Senior Review",
+    description: "Moves a pending standard-lane submission to the senior lane with reason escalated. Re-routing leaves it there. Allowed for an Admin or a reviewer listed on the form. Returns the new routing.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    requestBody: {
+      "reason": "string (required)",
+    },
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 400, description: "Invalid id, or the reason is missing or longer than 1000 characters" },
+      { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Caller is not an Admin or a reviewer of the form" },
+      { status: 404, description: "Submission or form not found" },
+      { status: 409, description: "Not pending, routing is off, not in the standard lane, or the submission changed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Intake Forms",
+  },
+  {
+    method: 'POST',
+    path: '/intake/submissions/{id}/second-review',
+    summary: "Record Second Review",
+    description: "Closes an open second review as agreed or missed. Allowed for a senior reviewer of the form or an Admin, never for the person who approved the submission. Does not change the approval or the entity it created. Returns the new routing.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    requestBody: {
+      "outcome": "agreed | missed (required)",
+      "note": "string (optional)",
+    },
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 400, description: "Invalid id or outcome, a missed outcome without a note, or a note over 2000 characters" },
+      { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Caller is not a senior reviewer of the form or an Admin, or approved the submission" },
+      { status: 404, description: "Submission not found" },
+      { status: 409, description: "The second review is not open, or it changed" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Intake Forms",
+  },
+  {
+    method: 'POST',
+    path: '/intake/submissions/{id}/second-review/resolve',
+    summary: "Resolve Missed Second Review",
+    description: "Closes a missed second review once the follow-up is done. Same caller rules as recording a second review. Returns the new routing.",
+    requiresAuth: true,
+    parameters: [
+      { name: 'id', in: 'path', type: 'integer', required: true, description: "The id" },
+    ],
+    requestBody: {
+      "note": "string (required)",
+    },
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 400, description: "Invalid id, or the note is missing or longer than 2000 characters" },
+      { status: 401, description: "Unauthorized" },
+      { status: 403, description: "Caller is not a senior reviewer of the form or an Admin, or approved the submission" },
+      { status: 404, description: "Submission not found" },
+      { status: 409, description: "The review is not missed, is already resolved, or changed" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Intake Forms",
