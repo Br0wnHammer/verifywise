@@ -497,10 +497,6 @@ function routingReasonText(req: Request, reason: RoutingReason | null): string {
 }
 
 /**
- * An Admin may decide in any lane; when the lane alone would not have let them,
- * that is logged.
- */
-/**
  * The EU AI Act level the approved entity will carry: the stored run's level
  * (after a reviewer's change) when there is one, else the mapped level of a
  * use case. Models carry none.
@@ -516,6 +512,10 @@ function entityLevel(
   return mapToAiRiskClassification(mapped) || null;
 }
 
+/**
+ * An Admin may decide in any lane; when the lane alone would not have let them,
+ * that is logged.
+ */
 async function logIfOutsideLane(
   req: Request,
   submissionId: number,
@@ -979,6 +979,15 @@ async function resolveFormRouting(
   return { value: next, changed };
 }
 
+/** The 403 (not allowed to change routing) or 400 (invalid settings) for a refused routing block. */
+function sendRoutingError(res: Response, routing: { error: string; status?: number }) {
+  return res
+    .status(routing.status ?? 400)
+    .json(
+      routing.status === 403 ? STATUS_CODE[403](routing.error) : STATUS_CODE[400](routing.error),
+    );
+}
+
 /**
  * Users who can be picked as reviewers in a form's routing settings
  */
@@ -1096,13 +1105,7 @@ export async function createIntakeForm(req: Request, res: Response) {
     );
     if ("error" in routing) {
       await transaction.rollback();
-      return res
-        .status(routing.status ?? 400)
-        .json(
-          routing.status === 403
-            ? STATUS_CODE[403](routing.error)
-            : STATUS_CODE[400](routing.error),
-        );
+      return sendRoutingError(res, routing);
     }
 
     const form = await createIntakeFormQuery(
@@ -1269,13 +1272,7 @@ export async function updateIntakeForm(req: Request, res: Response) {
     );
     if ("error" in routing) {
       await transaction.rollback();
-      return res
-        .status(routing.status ?? 400)
-        .json(
-          routing.status === 403
-            ? STATUS_CODE[403](routing.error)
-            : STATUS_CODE[400](routing.error),
-        );
+      return sendRoutingError(res, routing);
     }
 
     const form = await updateIntakeFormQuery(
@@ -1324,7 +1321,8 @@ export async function updateIntakeForm(req: Request, res: Response) {
     });
 
     // The save is committed; a failed re-route must not turn it into a 500.
-    if (form && routing.value) {
+    // Switching routing off needs no pass: routeSubmission writes nothing then.
+    if (form && routing.changed && routing.value?.enabled) {
       try {
         await rerouteFormPending(form, req.organizationId!);
       } catch (error) {

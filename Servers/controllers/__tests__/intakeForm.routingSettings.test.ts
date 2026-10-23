@@ -202,6 +202,25 @@ describe("updateIntakeForm routing settings", () => {
     expect(rerouteFormPending).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 5);
   });
 
+  it("does not re-route when the saved routing is unchanged", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({ ...EXISTING, routing: ROUTING });
+    const r = res();
+    await ctrl.updateIntakeForm(req({ body: { name: "X", routing: ROUTING } }) as any, r);
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(rerouteFormPending).not.toHaveBeenCalled();
+  });
+
+  it("does not re-route when routing is switched off", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({ ...EXISTING, routing: ROUTING });
+    const r = res();
+    await ctrl.updateIntakeForm(
+      req({ body: { routing: { ...ROUTING, enabled: false } } }) as any,
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(rerouteFormPending).not.toHaveBeenCalled();
+  });
+
   it("still answers 200 when the re-route fails after the save", async () => {
     rerouteFormPending.mockRejectedValueOnce(new Error("boom"));
     const r = res();
