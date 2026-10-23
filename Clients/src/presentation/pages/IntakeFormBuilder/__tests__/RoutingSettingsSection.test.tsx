@@ -11,10 +11,23 @@ const reviewers = [
 
 let latest: FormRouting | null = null;
 
-const Harness = ({ initial = null }: { initial?: FormRouting | null }) => {
+const Harness = ({
+  initial = null,
+  loaded = true,
+}: {
+  initial?: FormRouting | null;
+  loaded?: boolean;
+}) => {
   const [value, setValue] = useState<FormRouting | null>(initial);
   latest = value;
-  return <RoutingSettingsSection value={value} onChange={setValue} reviewers={reviewers} />;
+  return (
+    <RoutingSettingsSection
+      value={value}
+      onChange={setValue}
+      reviewers={reviewers}
+      reviewersLoaded={loaded}
+    />
+  );
 };
 
 const on = (patch: Partial<FormRouting> = {}): FormRouting => ({
@@ -25,6 +38,23 @@ const on = (patch: Partial<FormRouting> = {}): FormRouting => ({
   closeCallMargin: 10,
   secondReviewRate: 10,
   ...patch,
+});
+
+describe("RoutingSettingsSection stale reviewers", () => {
+  it("shows a saved reviewer who is not eligible as a removable Former user", () => {
+    renderWithProviders(<Harness initial={on({ seniorReviewerIds: [1, 9] })} />);
+    expect(screen.getByText("Former user")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByText("Former user").closest(".MuiChip-root")!.querySelector("svg")!,
+    );
+    expect(latest?.seniorReviewerIds).toEqual([1]);
+  });
+
+  it("leaves the value alone and marks nothing when the reviewer list did not load", () => {
+    renderWithProviders(<Harness initial={on({ seniorReviewerIds: [1, 9] })} loaded={false} />);
+    expect(screen.queryByText("Former user")).not.toBeInTheDocument();
+    expect(latest?.seniorReviewerIds).toEqual([1, 9]);
+  });
 });
 
 describe("RoutingSettingsSection", () => {

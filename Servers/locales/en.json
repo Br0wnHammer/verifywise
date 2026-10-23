@@ -910,5 +910,13 @@
   "A note can be at most 2000 characters": "A note can be at most 2000 characters",
   "A note of 1 to 2000 characters is required": "A note of 1 to 2000 characters is required",
   "This second review changed. Reload and try again.": "This second review changed. Reload and try again.",
-  "Weeks must be 4, 8 or 12": "Weeks must be 4, 8 or 12"
+  "Weeks must be 4, 8 or 12": "Weeks must be 4, 8 or 12",
+  "Reviewers must be users who can review intake submissions": "Reviewers must be users who can review intake submissions",
+  "Each reviewer list needs at least one user who can currently review intake submissions": "Each reviewer list needs at least one user who can currently review intake submissions",
+  "routing must be an object": "routing must be an object",
+  "enabled must be a boolean": "enabled must be a boolean",
+  "{name} must be an array": "{name} must be an array",
+  "{name} must contain positive integer user ids": "{name} must contain positive integer user ids",
+  "{key} must be a whole number from {min} to {max}": "{key} must be a whole number from {min} to {max}",
+  "seniorReviewerIds and standardReviewerIds must each have at least one reviewer": "seniorReviewerIds and standardReviewerIds must each have at least one reviewer"
 }

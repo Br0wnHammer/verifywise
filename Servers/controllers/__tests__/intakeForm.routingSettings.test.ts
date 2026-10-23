@@ -64,7 +64,8 @@ const req = (overrides: any = {}) => ({
   userId: 7,
   organizationId: 5,
   headers: {},
-  t: (k: string) => k,
+  t: (k: string, vars?: Record<string, string | number>) =>
+    k.replace(/\{(\w+)\}/g, (_, n) => String(vars?.[n] ?? `{${n}}`)),
   params: { id: "1" },
   body: {},
   ...overrides,
@@ -112,6 +113,68 @@ describe("updateIntakeForm routing settings", () => {
     );
     expect(intake.getEligibleReviewerIdsQuery).toHaveBeenCalledWith(5, [1, 2]);
     expect(intake.updateIntakeFormQuery).not.toHaveBeenCalled();
+  });
+
+  it("keeps a stored reviewer who is no longer eligible when the body keeps them", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({ ...EXISTING, routing: ROUTING });
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([1]);
+    const r = res();
+    await ctrl.updateIntakeForm(req({ body: { routing: ROUTING } }) as any, r);
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(intake.updateIntakeFormQuery).toHaveBeenCalled();
+  });
+
+  it("refuses a newly added ineligible reviewer even when others are stored", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({ ...EXISTING, routing: ROUTING });
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([1, 2]);
+    const r = res();
+    await ctrl.updateIntakeForm(
+      req({ body: { routing: { ...ROUTING, standardReviewerIds: [2, 9] } } }) as any,
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(400);
+    expect(r.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: "Reviewers must be users who can review intake submissions",
+      }),
+    );
+  });
+
+  it("refuses to change an enabled lane to one with nobody eligible", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({ ...EXISTING, routing: ROUTING });
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([1]);
+    const r = res();
+    await ctrl.updateIntakeForm(
+      req({
+        body: { routing: { ...ROUTING, seniorReviewerIds: [1], standardReviewerIds: [] } },
+      }) as any,
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(400);
+  });
+
+  it("refuses to turn routing on when a lane has nobody eligible", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({
+      ...EXISTING,
+      routing: { ...ROUTING, enabled: false },
+    });
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([1]);
+    const r = res();
+    await ctrl.updateIntakeForm(req({ body: { routing: ROUTING } }) as any, r);
+    expect(r.status).toHaveBeenCalledWith(400);
+    expect(r.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: "Each reviewer list needs at least one user who can currently review intake submissions",
+      }),
+    );
+  });
+
+  it("lets an untouched enabled form with an emptied lane save", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({ ...EXISTING, routing: ROUTING });
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([1]);
+    const r = res();
+    await ctrl.updateIntakeForm(req({ body: { name: "X", routing: ROUTING } }) as any, r);
+    expect(r.status).toHaveBeenCalledWith(200);
   });
 
   it("returns the validator message for an invalid threshold", async () => {

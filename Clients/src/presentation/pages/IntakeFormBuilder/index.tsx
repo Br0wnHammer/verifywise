@@ -124,6 +124,7 @@ export function IntakeFormBuilder() {
   const [routingReviewers, setRoutingReviewers] = useState<
     Array<{ _id: number; name: string; email: string }>
   >([]);
+  const [routingReviewersLoaded, setRoutingReviewersLoaded] = useState(false);
   const [fieldToDelete, setFieldToDelete] = useState<string | null>(null);
   const [deleteFieldModalOpen, setDeleteFieldModalOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{
@@ -187,15 +188,16 @@ export function IntakeFormBuilder() {
   // Load the users a form can route to (once)
   useEffect(() => {
     getEligibleReviewers()
-      .then((users) =>
+      .then((users) => {
         setRoutingReviewers(
           (Array.isArray(users) ? users : []).map((u) => ({
             _id: u.id,
             name: [u.name, u.surname].filter(Boolean).join(" "),
             email: u.email,
           })),
-        ),
-      )
+        );
+        setRoutingReviewersLoaded(true);
+      })
       .catch(() => {});
   }, []);
 
@@ -1218,6 +1220,7 @@ export function IntakeFormBuilder() {
                           value={form.routing ?? null}
                           onChange={(routing) => updateForm({ routing })}
                           reviewers={routingReviewers}
+                          reviewersLoaded={routingReviewersLoaded}
                         />
 
                         <Box>

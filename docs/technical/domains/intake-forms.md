@@ -117,7 +117,7 @@ Form settings (`routing` in the body of `POST /intake/forms` and `PATCH /intake/
 | `closeCallMargin` | whole number, 0 to 25 | 10 |
 | `secondReviewRate` | whole number, 0 to 100, a percent | 10 |
 
-Omitting `routing` leaves it alone and sending `null` clears it. Every listed id must belong to a user of the organization whose role has `intakeForm.edit` (`getEligibleReviewerIdsQuery`), otherwise the save is refused with 400. After a save that sets routing, `rerouteFormPending` routes the form's pending submissions again. A failure there is logged and does not fail the save.
+Omitting `routing` leaves it alone and sending `null` clears it. On create every listed id must belong to a user of the organization whose role has `intakeForm.edit` (`getEligibleReviewerIdsQuery`). On update only ids newly added compared with the stored lists must; ids already stored may stay. Otherwise the save is refused with 400. When enabled, a changed list needs at least one currently eligible reviewer. After a save that sets routing, `rerouteFormPending` routes the form's pending submissions again. A failure there is logged and does not fail the save.
 
 ### Lane rules
 
@@ -139,11 +139,13 @@ Two more reasons are set outside `laneFor`: `override_raised` and `escalated`.
 
 ### Who may decide
 
-`canDecideLane`: with routing off, or no lane yet, any user with `intakeForm.edit`. With routing on, an Admin can always decide, a senior reviewer can decide in either lane, and a standard reviewer only in the standard lane.
+`canDecideLane`: with routing off, any user with `intakeForm.edit` can decide. With routing on, a submission with no lane stored yet is not open to everyone: its lane is computed from the current values, and an unscored or still-pending score counts as senior (reason `no_score`), so standard reviewers are refused until scoring settles. With routing on, an Admin can always decide, a senior reviewer can decide in either lane, and a standard reviewer only in the standard lane.
 
 Approve checks the lane the approval would make true (`laneAtDecision`): the stored lane, raised to senior when the level and score after the reviewer's changes route there. It never lowers a stored lane. A standard reviewer who sets a Prohibited level or a band that routes to senior gets 403. Reject uses the stored lane (`laneOnRecord`). When an Admin decides in a lane the lists would not have let them into, the controller logs it (`logIfOutsideLane`).
 
-A reviewer who is deleted, or who loses `intakeForm.edit`, stays in the form's lists. Admins can still decide, the form shows as "No active reviewer" in the Oversight tab, and saving the form with the stale id is refused with 400.
+A reviewer who is deleted, or who loses `intakeForm.edit`, stays in the form's lists. Admins can still decide and the form shows as "No active reviewer" in the Oversight tab when a lane has nobody left. A save may keep a stored id that is no longer eligible, because it grants nothing (`authorize("intakeForm.edit")` still gates every decision); the builder lists such ids as "Former user" so they can be removed. Only ids added by the request must be eligible. When routing is on, a list that changed in the request (or every list, when routing is being switched on) must contain at least one currently eligible reviewer, else 400; an untouched form with an emptied lane can still save other edits.
+
+Second-review actions by senior reviewers keep working after routing is turned off: `loadSecondReview` checks the stored senior list, not `routing.enabled`.
 
 ### Decision record
 
@@ -172,7 +174,7 @@ Neither endpoint changes the approval or the entity it created. Writes are guard
 | `reviewers` | Per decision maker: decisions, decisions that changed the band, median hours. `check` is true at 10 or more decisions with a known band outcome and none changed |
 | `bandKept` | Decisions where the band in force equalled the computed band, out of decisions with a known outcome, and the same for the senior lane. Legacy assessments with no computed band compare the override with the stored tier, and are skipped when there is no tier |
 | `suggestions` | Accepted suggested risks over suggested ones, for decided submissions whose suggestion stage completed |
-| `needsAttention` | At most 20 rows, newest first: an open second review older than 3 days, a missed review not yet resolved, a pending Prohibited submission, a pending submission older than 7 days, and routed forms whose senior or standard list has no eligible reviewer left |
+| `needsAttention` | At most 20 rows. Forms with no eligible reviewer in a lane come first so they are never pushed out by the cap; the rest are newest first: an open second review older than 3 days, a missed review not yet resolved, a pending Prohibited submission, a pending submission older than 7 days, and routed forms whose senior or standard list has no eligible reviewer left |
 
 An empty period returns zero counts and null medians, and the client shows a rate only when its denominator is above zero. `weeks` outside 4, 8 and 12 is a 400, and a `formId` from another organization is a 404.
 

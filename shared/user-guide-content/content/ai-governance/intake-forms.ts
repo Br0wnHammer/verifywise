@@ -393,7 +393,7 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Saving the form routes its pending submissions again with the new settings. A reviewer who is removed from your organization or loses the right to edit intake forms stays in the list until you change it. Admins can still decide, and the Oversight tab flags the form under **No active reviewer**.',
+      text: 'Saving the form routes its pending submissions again with the new settings. A reviewer who is removed from your organization or loses the right to edit intake forms stays in the list, shown as **Former user**, until you remove them. You can still save the form with them in the list, but you cannot add someone who cannot review, and a list you change needs at least one person who can currently review. Admins can still decide, and the Oversight tab flags the form under **No active reviewer**.',
     },
     {
       type: 'heading',
@@ -826,7 +826,7 @@ export const intakeFormsContent: ArticleContent = {
         { text: '**Second reviews**: how many were missed out of those completed, and how many are still open.' },
         { text: '**Reviewers**: decisions, how often each reviewer changed the score band, and median time. A **Check** flag appears for a reviewer with at least 10 decisions who never changed a band. It is a prompt to look, not a finding.' },
         { text: '**Band kept**: the share of decisions where the band stayed as computed, overall and in the senior lane. **Suggested risks accepted** is the share of suggestions reviewers accepted.' },
-        { text: '**Needs attention**: up to 20 items. A second review open for more than 3 days, a missed second review not yet resolved, a pending Prohibited submission, a submission pending for more than 7 days, and a form with no active reviewer in a lane.' },
+        { text: '**Needs attention**: up to 20 items. A second review open for more than 3 days, a missed second review not yet resolved, a pending Prohibited submission, a submission pending for more than 7 days, and a form with no active reviewer in a lane. Forms with no active reviewer are listed first.' },
       ],
     },
     {

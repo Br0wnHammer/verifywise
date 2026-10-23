@@ -21,9 +21,9 @@ export const LaneChip = ({ routing, routingEnabled = true }: LaneChipProps) => {
   if (!routingEnabled) return <Chip label="Routing off" uppercase={false} />;
   if (!routing) return <Chip label="Not routed yet" uppercase={false} />;
   return routing.lane === "senior" ? (
-    <Chip label="Senior review" uppercase={false} backgroundColor="#fef3c7" textColor="#92400e" />
+    <Chip label="Senior review" uppercase={false} variant="warning" />
   ) : (
-    <Chip label="Standard review" uppercase={false} backgroundColor="#e6f4ea" textColor="#13715B" />
+    <Chip label="Standard review" uppercase={false} variant="success" />
   );
 };
 

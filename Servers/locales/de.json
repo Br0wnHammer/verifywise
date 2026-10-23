@@ -910,5 +910,13 @@
   "A note can be at most 2000 characters": "Eine Notiz darf höchstens 2000 Zeichen lang sein",
   "A note of 1 to 2000 characters is required": "Eine Notiz mit 1 bis 2000 Zeichen ist erforderlich",
   "This second review changed. Reload and try again.": "Diese Zweitprüfung wurde geändert. Laden Sie neu und versuchen Sie es erneut.",
-  "Weeks must be 4, 8 or 12": "Der Zeitraum muss 4, 8 oder 12 Wochen betragen"
+  "Weeks must be 4, 8 or 12": "Der Zeitraum muss 4, 8 oder 12 Wochen betragen",
+  "Reviewers must be users who can review intake submissions": "Prüfer müssen Benutzer sein, die Einreichungen prüfen dürfen",
+  "Each reviewer list needs at least one user who can currently review intake submissions": "Jede Prüferliste braucht mindestens einen Benutzer, der Einreichungen derzeit prüfen darf",
+  "routing must be an object": "routing muss ein Objekt sein",
+  "enabled must be a boolean": "enabled muss ein boolescher Wert sein",
+  "{name} must be an array": "{name} muss ein Array sein",
+  "{name} must contain positive integer user ids": "{name} muss positive ganzzahlige Benutzer-IDs enthalten",
+  "{key} must be a whole number from {min} to {max}": "{key} muss eine ganze Zahl von {min} bis {max} sein",
+  "seniorReviewerIds and standardReviewerIds must each have at least one reviewer": "seniorReviewerIds und standardReviewerIds müssen jeweils mindestens einen Prüfer enthalten"
 }

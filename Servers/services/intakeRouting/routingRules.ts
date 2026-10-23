@@ -39,13 +39,32 @@ const RANGES = {
   secondReviewRate: { min: 0, max: 100 },
 } as const;
 
-function parseIds(raw: unknown, name: string): number[] | string {
+export type RoutingValidationFailure = {
+  ok: false;
+  /** English message, kept for logs and tests */
+  error: string;
+  /** Locale key and placeholders for req.t */
+  i18nKey: string;
+  i18nVars?: Record<string, string | number>;
+};
+
+const fail = (
+  i18nKey: string,
+  i18nVars?: Record<string, string | number>,
+): RoutingValidationFailure => ({
+  ok: false,
+  i18nKey,
+  i18nVars,
+  error: i18nKey.replace(/\{(\w+)\}/g, (_, k) => String(i18nVars?.[k] ?? `{${k}}`)),
+});
+
+function parseIds(raw: unknown, name: string): number[] | RoutingValidationFailure {
   if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw)) return `${name} must be an array`;
+  if (!Array.isArray(raw)) return fail("{name} must be an array", { name });
   const ids: number[] = [];
   for (const v of raw) {
     if (!Number.isSafeInteger(v) || (v as number) <= 0) {
-      return `${name} must contain positive integer user ids`;
+      return fail("{name} must contain positive integer user ids", { name });
     }
     if (!ids.includes(v as number)) ids.push(v as number);
   }
@@ -54,35 +73,32 @@ function parseIds(raw: unknown, name: string): number[] | string {
 
 export function validateRoutingSettings(
   raw: unknown,
-): { ok: true; value: IFormRouting } | { ok: false; error: string } {
+): { ok: true; value: IFormRouting } | RoutingValidationFailure {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    return { ok: false, error: "routing must be an object" };
+    return fail("routing must be an object");
   }
   const body = raw as Record<string, unknown>;
   if (typeof body.enabled !== "boolean") {
-    return { ok: false, error: "enabled must be a boolean" };
+    return fail("enabled must be a boolean");
   }
 
   const senior = parseIds(body.seniorReviewerIds, "seniorReviewerIds");
-  if (typeof senior === "string") return { ok: false, error: senior };
+  if (!Array.isArray(senior)) return senior;
   const standard = parseIds(body.standardReviewerIds, "standardReviewerIds");
-  if (typeof standard === "string") return { ok: false, error: standard };
+  if (!Array.isArray(standard)) return standard;
 
   const numbers = {} as Record<keyof typeof RANGES, number>;
   for (const key of Object.keys(RANGES) as Array<keyof typeof RANGES>) {
     const value = body[key] === undefined ? DEFAULT_ROUTING[key] : body[key];
     const { min, max } = RANGES[key];
     if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
-      return { ok: false, error: `${key} must be a whole number from ${min} to ${max}` };
+      return fail("{key} must be a whole number from {min} to {max}", { key, min, max });
     }
     numbers[key] = value as number;
   }
 
   if (body.enabled && (senior.length === 0 || standard.length === 0)) {
-    return {
-      ok: false,
-      error: "seniorReviewerIds and standardReviewerIds must each have at least one reviewer",
-    };
+    return fail("seniorReviewerIds and standardReviewerIds must each have at least one reviewer");
   }
 
   return {

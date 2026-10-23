@@ -910,5 +910,13 @@
   "A note can be at most 2000 characters": "Une note peut compter au plus 2000 caractères",
   "A note of 1 to 2000 characters is required": "Une note de 1 à 2000 caractères est requise",
   "This second review changed. Reload and try again.": "Cette seconde revue a changé. Rechargez et réessayez.",
-  "Weeks must be 4, 8 or 12": "La période doit être de 4, 8 ou 12 semaines"
+  "Weeks must be 4, 8 or 12": "La période doit être de 4, 8 ou 12 semaines",
+  "Reviewers must be users who can review intake submissions": "Les relecteurs doivent être des utilisateurs autorisés à examiner les soumissions",
+  "Each reviewer list needs at least one user who can currently review intake submissions": "Chaque liste de relecteurs doit contenir au moins un utilisateur actuellement autorisé à examiner les soumissions",
+  "routing must be an object": "routing doit être un objet",
+  "enabled must be a boolean": "enabled doit être un booléen",
+  "{name} must be an array": "{name} doit être un tableau",
+  "{name} must contain positive integer user ids": "{name} doit contenir des identifiants d'utilisateur entiers positifs",
+  "{key} must be a whole number from {min} to {max}": "{key} doit être un nombre entier de {min} à {max}",
+  "seniorReviewerIds and standardReviewerIds must each have at least one reviewer": "seniorReviewerIds et standardReviewerIds doivent chacun contenir au moins un relecteur"
 }

@@ -300,7 +300,7 @@ export function aggregateOversight(input: {
   const reviewers = [...perReviewer.entries()]
     .map(([userId, e]) => ({
       userId,
-      name: reviewerNames.get(userId) ?? "",
+      name: reviewerNames.get(userId) || `User ${userId}`,
       decisions: e.decisions,
       bandChanged: e.changed,
       medianDecisionHours: median(e.hours),
@@ -308,7 +308,11 @@ export function aggregateOversight(input: {
     }))
     .sort((a, b) => b.decisions - a.decisions || a.userId - b.userId);
 
-  attention.sort((a, b) => ms(b.at) - ms(a.at));
+  // Empty lanes first (they block every submission of a form), then newest first
+  attention.sort((a, b) => {
+    const empty = Number(b.kind === "lane_empty") - Number(a.kind === "lane_empty");
+    return empty || ms(b.at) - ms(a.at);
+  });
 
   return {
     weeks,

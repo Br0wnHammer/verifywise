@@ -143,6 +143,11 @@ describe("aggregateOversight", () => {
     expect(out.medianDecisionHours.all).toBe(5);
   });
 
+  it("labels a reviewer who left the organisation by id", () => {
+    const out = run([decided(3, { reviewed_by: 99 })]);
+    expect(out.reviewers[0]).toMatchObject({ userId: 99, name: "User 99" });
+  });
+
   it("counts a superseded row with a review as a decision, and one without as a submission only", () => {
     const out = run([
       decided(3, { status: "superseded", decision_record: null, tier: "Low" }),
@@ -286,6 +291,17 @@ describe("aggregateOversight", () => {
         formId: 9,
         title: "Vendor intake",
       });
+    });
+
+    it("keeps an old empty-lane form in the list when pending items fill the cap", () => {
+      const rows = Array.from({ length: 25 }, (_, i) =>
+        row({ created_at: new Date(Date.parse("2026-09-01T00:00:00Z") + i * HOUR).toISOString() }),
+      );
+      const out = run(rows, {
+        emptyLaneForms: [{ id: 9, name: "Vendor intake", at: "2026-01-01T00:00:00Z" }],
+      });
+      expect(out.needsAttention).toHaveLength(20);
+      expect(out.needsAttention[0]).toMatchObject({ kind: "lane_empty", formId: 9 });
     });
   });
 });

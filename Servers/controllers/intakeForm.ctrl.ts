@@ -850,25 +850,58 @@ export async function getIntakeFormById(req: Request, res: Response) {
 }
 
 const INELIGIBLE_REVIEWERS_MESSAGE = "Reviewers must be users who can review intake submissions";
+const EMPTY_LANE_MESSAGE =
+  "Each reviewer list needs at least one user who can currently review intake submissions";
+
+const sameIds = (a: number[], b: number[]) =>
+  a.length === b.length && a.every((id) => b.includes(id));
 
 /**
- * Validate the routing block of a form body. `value` is undefined when the
+ * Validate the routing block of a form body. `raw` is undefined when the
  * body leaves routing alone and null when it clears it.
+ *
+ * `stored` is the form's current routing (null on create). A reviewer who
+ * has since lost the right to review stays in the stored lists and can
+ * still be kept on a save, because the editor cannot always show or remove
+ * them; only ids added by this request must be eligible. A list that
+ * changed, or any list when routing is being switched on, must keep at
+ * least one currently eligible reviewer so a lane is never left with
+ * nobody who can act.
  */
 async function resolveFormRouting(
   raw: unknown,
   organizationId: number,
+  stored: IFormRouting | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string,
 ): Promise<{ value: IFormRouting | null | undefined } | { error: string }> {
   if (raw === undefined || raw === null) return { value: raw };
   const parsed = validateRoutingSettings(raw);
-  if (!parsed.ok) return { error: parsed.error };
+  if (!parsed.ok) return { error: t(parsed.i18nKey, parsed.i18nVars) };
+  const next = parsed.value;
 
-  const ids = [
-    ...new Set([...parsed.value.seniorReviewerIds, ...parsed.value.standardReviewerIds]),
-  ];
+  const ids = [...new Set([...next.seniorReviewerIds, ...next.standardReviewerIds])];
+  const storedIds = new Set([
+    ...(stored?.seniorReviewerIds ?? []),
+    ...(stored?.standardReviewerIds ?? []),
+  ]);
   const eligible = new Set(await getEligibleReviewerIdsQuery(organizationId, ids));
-  if (ids.some((id) => !eligible.has(id))) return { error: INELIGIBLE_REVIEWERS_MESSAGE };
-  return { value: parsed.value };
+  if (ids.some((id) => !storedIds.has(id) && !eligible.has(id))) {
+    return { error: t(INELIGIBLE_REVIEWERS_MESSAGE) };
+  }
+
+  if (next.enabled) {
+    const turnedOn = !stored?.enabled;
+    const lanes: Array<[number[], number[] | undefined]> = [
+      [next.seniorReviewerIds, stored?.seniorReviewerIds],
+      [next.standardReviewerIds, stored?.standardReviewerIds],
+    ];
+    const emptyLane = lanes.some(
+      ([list, before]) =>
+        (turnedOn || !before || !sameIds(list, before)) && !list.some((id) => eligible.has(id)),
+    );
+    if (emptyLane) return { error: t(EMPTY_LANE_MESSAGE) };
+  }
+  return { value: next };
 }
 
 /**
@@ -979,7 +1012,7 @@ export async function createIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](llmKey.error));
     }
 
-    const routing = await resolveFormRouting(req.body.routing, req.organizationId!);
+    const routing = await resolveFormRouting(req.body.routing, req.organizationId!, null, req.t!);
     if ("error" in routing) {
       await transaction.rollback();
       return res.status(400).json(STATUS_CODE[400](routing.error));
@@ -1136,7 +1169,12 @@ export async function updateIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](llmKey.error));
     }
 
-    const routing = await resolveFormRouting(req.body.routing, req.organizationId!);
+    const routing = await resolveFormRouting(
+      req.body.routing,
+      req.organizationId!,
+      existingForm.routing,
+      req.t!,
+    );
     if ("error" in routing) {
       await transaction.rollback();
       return res.status(400).json(STATUS_CODE[400](routing.error));

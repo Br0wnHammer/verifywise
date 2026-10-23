@@ -15,6 +15,8 @@ interface RoutingSettingsSectionProps {
   value: FormRouting | null;
   onChange: (next: FormRouting) => void;
   reviewers: RoutingReviewer[];
+  /** False while the reviewer list is loading or failed to load: nothing is marked as former then */
+  reviewersLoaded?: boolean;
 }
 
 type NumberKey = "threshold" | "closeCallMargin" | "secondReviewRate";
@@ -81,7 +83,12 @@ const NUMBER_FIELDS: Array<{ key: NumberKey; label: string; hint: string }> = [
   },
 ];
 
-const RoutingSettingsSection = ({ value, onChange, reviewers }: RoutingSettingsSectionProps) => {
+const RoutingSettingsSection = ({
+  value,
+  onChange,
+  reviewers,
+  reviewersLoaded = true,
+}: RoutingSettingsSectionProps) => {
   const theme = useTheme();
   // Text being typed, so a field can be emptied without snapping back to a number.
   const [drafts, setDrafts] = useState<Partial<Record<NumberKey, string>>>({});
@@ -89,6 +96,17 @@ const RoutingSettingsSection = ({ value, onChange, reviewers }: RoutingSettingsS
   const enabled = value?.enabled ?? false;
   const current = value ?? DEFAULT_ROUTING;
   const errors = getRoutingErrors(value);
+
+  // Saved reviewers who can no longer review stay in the lists. Show them so
+  // they can be removed; the server accepts a save that keeps them.
+  const itemsFor = (ids: number[]): RoutingReviewer[] => {
+    if (!reviewersLoaded) return reviewers;
+    const known = new Set(reviewers.map((r) => r._id));
+    const former = ids
+      .filter((id) => !known.has(id))
+      .map((id) => ({ _id: id, name: "Former user", email: "" }));
+    return [...reviewers, ...former];
+  };
 
   const update = (patch: Partial<FormRouting>) => onChange({ ...current, ...patch });
 
@@ -163,7 +181,7 @@ const RoutingSettingsSection = ({ value, onChange, reviewers }: RoutingSettingsS
               label="Senior reviewers"
               value={current.seniorReviewerIds}
               onChange={onIds("seniorReviewerIds")}
-              items={reviewers}
+              items={itemsFor(current.seniorReviewerIds)}
               placeholder="Select senior reviewers"
               error={errors.seniorReviewerIds}
               sx={selectSx}
@@ -174,7 +192,7 @@ const RoutingSettingsSection = ({ value, onChange, reviewers }: RoutingSettingsS
               label="Standard reviewers"
               value={current.standardReviewerIds}
               onChange={onIds("standardReviewerIds")}
-              items={reviewers}
+              items={itemsFor(current.standardReviewerIds)}
               placeholder="Select standard reviewers"
               error={errors.standardReviewerIds}
               sx={selectSx}
