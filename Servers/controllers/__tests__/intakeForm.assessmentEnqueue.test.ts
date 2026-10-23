@@ -15,6 +15,7 @@ jest.mock("../../utils/intakeForm.utils", () => ({
   createSubmissionQuery: jest.fn(),
   getSubmissionByIdQuery: jest.fn(),
   claimSubmissionNotificationQuery: jest.fn(),
+  getEligibleReviewerIdsQuery: jest.fn(),
 }));
 jest.mock("../../utils/euAiActClassification.utils", () => ({
   insertClassificationRunQuery: jest.fn(),
@@ -51,6 +52,7 @@ jest.mock("../../utils/logger/logHelper", () => ({
 }));
 jest.mock("../../utils/i18n.utils", () => ({
   translateError: jest.fn((_, err) => (err as Error).message),
+  translate: jest.fn((_: unknown, text: string) => text),
 }));
 jest.mock("../../utils/statusCode.utils", () => ({
   STATUS_CODE: {
@@ -119,16 +121,17 @@ const submit = async (route: keyof typeof ROUTES) => {
     r,
   );
   // let the un-awaited enqueue and its fallback settle
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  for (let i = 0; i < 4; i += 1) await new Promise((resolve) => setImmediate(resolve));
   return r;
 };
 
 describe("public submit queues the assessment", () => {
   let recipients: number[];
+  let routing: any;
   beforeEach(() => {
     jest.clearAllMocks();
     recipients = [3];
+    routing = null;
     intake.getTenantByPublicId.mockResolvedValue({ orgId: 5 });
     intake.getTenantHashBySlug.mockResolvedValue({ id: 5 });
     intake.checkRateLimitQuery.mockResolvedValue(true);
@@ -138,6 +141,7 @@ describe("public submit queues the assessment", () => {
       ...FORM,
       schema: { version: "1.0", fields: [] },
       recipients,
+      routing,
       llmKeyId: 2,
     }));
     intake.createSubmissionQuery.mockResolvedValue({ id: 99 });
@@ -177,6 +181,15 @@ describe("public submit queues the assessment", () => {
       expect(args[7]).toBeUndefined(); // no results
     },
   );
+
+  it("fallback also emails the eligible routing lane reviewers", async () => {
+    enqueueIntakeAssessment.mockRejectedValue(new Error("redis down"));
+    routing = { enabled: true, seniorReviewerIds: [7, 8], standardReviewerIds: [9] };
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([7, 9]);
+    await submit("byId");
+    expect(intake.getEligibleReviewerIdsQuery).toHaveBeenCalledWith(5, [7, 8, 9]);
+    expect(emails.sendNewSubmissionAdminNotification.mock.calls[0][0]).toEqual([3, 7, 9]);
+  });
 
   it("does not send the fallback email when it was already claimed", async () => {
     enqueueIntakeAssessment.mockRejectedValue(new Error("redis down"));

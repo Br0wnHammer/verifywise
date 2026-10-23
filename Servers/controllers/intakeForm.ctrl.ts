@@ -82,6 +82,7 @@ import {
   sendSecondReviewRequestEmail,
 } from "../services/intakeFormEmail.service";
 import { enqueueIntakeAssessment } from "../services/intakeScoring/enqueue";
+import { notificationAudience } from "../services/intakeScoring/assessmentJob";
 import { cleanSubmission, isEmptyAnswer, parseFormula } from "../services/intakeFormLogic";
 import { generateSuggestedQuestions, generateFieldGuidance } from "../services/intakeLLM.service";
 import { getCompanyLogoQuery } from "../utils/aiTrustCentre.utils";
@@ -136,7 +137,7 @@ import {
 } from "../services/intakeRouting/decisionGate";
 import { raiseForOverride, rerouteFormPending } from "../services/intakeRouting/routingService";
 import { getIntakeOversightQuery, OVERSIGHT_WEEKS } from "../services/intakeRouting/oversight";
-import type { IFormRouting } from "../domain.layer/interfaces/i.intakeForm";
+import type { IFormRouting, IIntakeForm } from "../domain.layer/interfaces/i.intakeForm";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
 
@@ -320,7 +321,8 @@ function startIntakeAssessment(params: {
   organizationId: number;
   submissionId: number;
   lang?: string;
-  recipientIds: number[];
+  /** The form as saved; its recipients and routing lanes decide who is emailed. */
+  form: IIntakeForm | null;
   /** Email the organization's admins when the form has no recipients. */
   adminFallback: boolean;
   formId: number;
@@ -329,7 +331,7 @@ function startIntakeAssessment(params: {
   submitterEmail: string;
   entityType: IntakeEntityType;
 }): Promise<void> {
-  const { organizationId, submissionId, lang, recipientIds, adminFallback } = params;
+  const { organizationId, submissionId, lang, form, adminFallback } = params;
   return enqueueIntakeAssessment({
     organizationId,
     submissionId,
@@ -342,22 +344,29 @@ function startIntakeAssessment(params: {
       `Could not queue the assessment for submission ${submissionId}; emailing reviewers now:`,
       error,
     );
-    if (recipientIds.length === 0 && !adminFallback) {
-      logger.warn(
-        `No recipients configured for form ${params.formId}, skipping admin notification`,
-      );
-      return;
-    }
     try {
+      // Same audience as the job's email: recipients plus the lane reviewers
+      // (no lane is stored yet, so both lanes while routing is on).
+      const { recipients, laneText } = form
+        ? await notificationAudience(form, { routing: null }, lang, organizationId)
+        : { recipients: [] as number[], laneText: undefined };
+      if (recipients.length === 0 && !adminFallback) {
+        logger.warn(
+          `No recipients configured for form ${params.formId}, skipping admin notification`,
+        );
+        return;
+      }
       if (!(await claimSubmissionNotificationQuery(submissionId, organizationId))) return;
       await sendNewSubmissionAdminNotification(
-        recipientIds.length > 0 ? recipientIds : organizationId,
+        recipients.length > 0 ? recipients : organizationId,
         params.formName,
         params.submitterName,
         params.submitterEmail,
         submissionId,
         params.entityType,
         lang,
+        undefined,
+        laneText,
       );
     } catch (err) {
       logger.error("Failed to send admin notification:", err);
@@ -3244,7 +3253,7 @@ export async function submitPublicFormByPublicId(req: Request, res: Response) {
         organizationId: tenantInfo.orgId,
         submissionId: submission.id!,
         lang: req.lang,
-        recipientIds: (fullForm?.recipients as number[]) || [],
+        form: fullForm,
         adminFallback: false,
         formId: form.id,
         formName: form.name,
@@ -3584,7 +3593,7 @@ export async function submitPublicForm(req: Request, res: Response) {
         organizationId: tenantInfo.id,
         submissionId: submission.id!,
         lang: req.lang,
-        recipientIds: (fullForm?.recipients as number[]) || [],
+        form: fullForm,
         adminFallback: true,
         formId: form.id,
         formName: form.name,

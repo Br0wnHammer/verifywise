@@ -470,12 +470,12 @@ const SENIOR_LANE_TEXT: Record<RoutingReason, string> = {
  * on, the form's recipients plus the assigned lane's reviewers (both lanes
  * while no lane is stored yet); with routing off, the recipients alone.
  */
-async function notificationAudience(
+export async function notificationAudience(
   form: IIntakeForm,
-  submission: IIntakeSubmission,
+  submission: Pick<IIntakeSubmission, "routing">,
   lang: string | undefined,
   organizationId: number,
-  d: AssessmentDeps,
+  d: AssessmentDeps = defaultDeps,
 ): Promise<{ recipients: number[]; laneText?: string }> {
   const base = form.recipients ?? [];
   const cfg = form.routing;
