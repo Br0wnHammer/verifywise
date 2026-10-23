@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { vi } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
@@ -25,7 +25,9 @@ const Harness = ({
   loaded?: boolean;
 }) => {
   const [value, setValue] = useState<FormRouting | null>(initial);
-  latest = value;
+  useEffect(() => {
+    latest = value;
+  }, [value]);
   return (
     <RoutingSettingsSection
       value={value}
