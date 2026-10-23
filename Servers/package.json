@@ -13,7 +13,7 @@
     "test": "npm run test:unit",
     "test:watch": "jest --watch",
     "test:integration": "node --max-old-space-size=8192 node_modules/jest/bin/jest.js --config jest.config.js --globalSetup=\"<rootDir>/tests/integration/globalSetup.js\" --testMatch=\"**/tests/integration/**/*.test.ts\" --runInBand",
-    "build:tokens": "tsc -p ../shared/design-tokens/tsconfig.json",
+    "build:tokens": "tsc -p ../shared/design-tokens/tsconfig.json --outDir tools/design-tokens",
     "prebuild": "npm run build:tokens",
     "build": "tsc",
     "start": "npm run migrate-db && node dist/index.js",

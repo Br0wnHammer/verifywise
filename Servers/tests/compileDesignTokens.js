@@ -8,7 +8,7 @@ const { execSync } = require("node:child_process");
 const path = require("node:path");
 
 function compileDesignTokens() {
-  execSync("npx tsc -p ../shared/design-tokens/tsconfig.json", {
+  execSync("npx tsc -p ../shared/design-tokens/tsconfig.json --outDir tools/design-tokens", {
     cwd: path.join(__dirname, ".."),
     stdio: "inherit",
   });
