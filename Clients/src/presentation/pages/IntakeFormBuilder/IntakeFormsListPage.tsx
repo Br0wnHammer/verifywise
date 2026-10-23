@@ -163,6 +163,7 @@ export function IntakeFormsListPage() {
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState<string>("all");
   const [laneFilter, setLaneFilter] = useState<LaneFilter>("all");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [oversightRefresh, setOversightRefresh] = useState(0);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<number | null>(null);
 
   // ============================================================================
@@ -599,6 +600,7 @@ export function IntakeFormsListPage() {
       {mainTab === "oversight" && (
         <OversightTab
           forms={forms}
+          refreshKey={oversightRefresh}
           onOpenSubmission={(id) => {
             setSelectedSubmissionId(id);
             setPreviewOpen(true);
@@ -963,6 +965,7 @@ export function IntakeFormsListPage() {
         submissionId={selectedSubmissionId}
         onApproved={() => {
           loadSubmissions();
+          setOversightRefresh((n) => n + 1);
         }}
       />
 

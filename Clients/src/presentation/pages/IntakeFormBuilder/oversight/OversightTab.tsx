@@ -70,6 +70,8 @@ interface OversightTabProps {
   forms: IntakeForm[];
   onOpenSubmission: (submissionId: number) => void;
   onOpenForm: (formId: number) => void;
+  /** Change to reload the figures, for example after a decision in the review modal. */
+  refreshKey?: number;
 }
 
 /** Median hours shown as days; the unit is a static fragment so it can be translated. */
@@ -97,7 +99,12 @@ const Rate = ({ part, whole }: { part: number; whole: number }) => {
 const weekLabel = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 
-export function OversightTab({ forms, onOpenSubmission, onOpenForm }: OversightTabProps) {
+export function OversightTab({
+  forms,
+  onOpenSubmission,
+  onOpenForm,
+  refreshKey = 0,
+}: OversightTabProps) {
   const theme = useTheme();
   const formatDate = useFormattedDate();
   const [weeks, setWeeks] = useState<Weeks>(8);
@@ -122,7 +129,7 @@ export function OversightTab({ forms, onOpenSubmission, onOpenForm }: OversightT
         setIsLoading(false);
       });
     return () => controller.abort();
-  }, [weeks, formId]);
+  }, [weeks, formId, refreshKey]);
 
   const cardSx = {
     background: theme.palette.background.paper,
@@ -379,7 +386,7 @@ export function OversightTab({ forms, onOpenSubmission, onOpenForm }: OversightT
       {filters}
       {hasError && <Alert severity="error">Failed to load the oversight figures.</Alert>}
       {isLoading && !data && (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+        <Box sx={{ display: "flex", justifyContent: "center", py: "64px" }}>
           <CircularProgress sx={{ color: theme.palette.primary.main }} />
         </Box>
       )}
