@@ -13,11 +13,13 @@ import {
   IIntakeSubmission,
   IRiskAssessmentV2,
   ISuggestedRisksBlock,
+  RoutingReason,
 } from "../../domain.layer/interfaces/i.intakeSubmission";
 import { getLatestRunForSubmissionQuery } from "../../utils/euAiActClassification.utils";
 import { translate } from "../../utils/i18n.utils";
 import {
   claimSubmissionNotificationQuery,
+  getEligibleReviewerIdsQuery,
   getIntakeFormByIdQuery,
   getSubmissionByIdQuery,
   getSubmissionsNeedingAssessmentQuery,
@@ -35,6 +37,7 @@ import {
   sendNewSubmissionAdminNotification,
 } from "../intakeFormEmail.service";
 import type { UseCaseInput } from "../riskSuggestions/riskSuggestions.service";
+import { routeSubmission } from "../intakeRouting/routingService";
 import { ClassificationContext, runAiScoring } from "./aiScoring";
 import { AssessmentStage, enqueueIntakeAssessment, IntakeAssessmentJobData } from "./enqueue";
 import { generateIntakeSuggestions } from "./intakeSuggestions";
@@ -59,9 +62,11 @@ export interface AssessmentDeps {
   saveAssessment: typeof updateSubmissionAssessmentV2Query;
   saveSuggestions: typeof updateSubmissionSuggestionsQuery;
   claimNotification: typeof claimSubmissionNotificationQuery;
+  getEligibleIds: typeof getEligibleReviewerIdsQuery;
   sendNotification: typeof sendNewSubmissionAdminNotification;
   listNeedingAssessment: typeof getSubmissionsNeedingAssessmentQuery;
   enqueue: typeof enqueueIntakeAssessment;
+  routeSubmission: typeof routeSubmission;
   generateImpl?: GenerateObjectImpl;
   now: () => Date;
 }
@@ -77,9 +82,11 @@ const defaultDeps: AssessmentDeps = {
   saveAssessment: updateSubmissionAssessmentV2Query,
   saveSuggestions: updateSubmissionSuggestionsQuery,
   claimNotification: claimSubmissionNotificationQuery,
+  getEligibleIds: getEligibleReviewerIdsQuery,
   sendNotification: sendNewSubmissionAdminNotification,
   listNeedingAssessment: getSubmissionsNeedingAssessmentQuery,
   enqueue: enqueueIntakeAssessment,
+  routeSubmission,
   now: () => new Date(),
 };
 
@@ -345,7 +352,11 @@ export async function runIntakeAssessment(
       `Intake assessment setup failed for submission ${submissionId}: ${errorMessage(error)}`,
     );
     await settleAll([
-      wants("scoring") ? failScoring(classification, error) : undefined,
+      wants("scoring")
+        ? failScoring(classification, error).then(() =>
+            routeSettled(d, submissionId, organizationId),
+          )
+        : undefined,
       wants("suggestions") ? failSuggestions(error) : undefined,
     ]);
     await notifyWhenSettled(data, deps);
@@ -357,12 +368,14 @@ export async function runIntakeAssessment(
   // BullMQ retry never overlaps a stage still running.
   await settleAll([
     wants("scoring")
-      ? runScoringStage(ctx, startedAt, d).catch((error) => {
-          logger.error(
-            `Intake scoring failed for submission ${submissionId}: ${errorMessage(error)}`,
-          );
-          return failScoring(ctx.classification, error);
-        })
+      ? runScoringStage(ctx, startedAt, d)
+          .catch((error) => {
+            logger.error(
+              `Intake scoring failed for submission ${submissionId}: ${errorMessage(error)}`,
+            );
+            return failScoring(ctx.classification, error);
+          })
+          .then(() => routeSettled(d, submissionId, organizationId))
       : undefined,
     wants("suggestions")
       ? runSuggestionsStage(ctx, startedAt, d).catch((error) => {
@@ -375,6 +388,26 @@ export async function runIntakeAssessment(
   ]);
 
   await notifyWhenSettled(data, deps);
+}
+
+/**
+ * Route the submission from its stored, settled score. A routing failure is
+ * logged and never fails the job: the lane can be set by the next re-route.
+ */
+async function routeSettled(
+  d: AssessmentDeps,
+  submissionId: number,
+  organizationId: number,
+): Promise<void> {
+  try {
+    const submission = await d.getSubmission(submissionId, organizationId);
+    if (!submission) return;
+    const form = await d.getForm(submission.formId, organizationId);
+    if (!form) return;
+    await d.routeSubmission(submission, form, organizationId);
+  } catch (error) {
+    logger.error(`Intake routing failed for submission ${submissionId}: ${errorMessage(error)}`);
+  }
 }
 
 /** Waits for every promise, then rethrows the first failure, if any. */
@@ -422,6 +455,52 @@ export function scoreTextFor(assessment: IRiskAssessmentV2 | null, lang?: string
   });
 }
 
+const SENIOR_LANE_TEXT: Record<RoutingReason, string> = {
+  prohibited: "Senior review: prohibited practice",
+  no_score: "Senior review: no usable score",
+  close_call: "Senior review: close call",
+  at_or_above_threshold: "Senior review: score at or above the threshold",
+  below_threshold: "Senior review: score below the threshold",
+  override_raised: "Senior review: a reviewer raised the band",
+  escalated: "Senior review: sent by a reviewer",
+};
+
+/**
+ * Who gets the new-submission email and the lane line it shows. With routing
+ * on, the form's recipients plus the assigned lane's reviewers (both lanes
+ * while no lane is stored yet); with routing off, the recipients alone.
+ */
+export async function notificationAudience(
+  form: IIntakeForm,
+  submission: Pick<IIntakeSubmission, "routing">,
+  lang: string | undefined,
+  organizationId: number,
+  d: AssessmentDeps = defaultDeps,
+): Promise<{ recipients: number[]; laneText?: string }> {
+  const base = form.recipients ?? [];
+  const cfg = form.routing;
+  if (!cfg?.enabled) return { recipients: base };
+  const lane = submission.routing?.lane;
+  const laneIds =
+    lane === "senior"
+      ? cfg.seniorReviewerIds
+      : lane === "standard"
+        ? cfg.standardReviewerIds
+        : [...cfg.seniorReviewerIds, ...cfg.standardReviewerIds];
+  // Saved ids can go stale (user deleted, role lost intakeForm.edit); the
+  // form's own recipients are left as configured.
+  const reviewers = await d.getEligibleIds(organizationId, laneIds);
+  const laneText = !lane
+    ? "Not routed yet: scoring is still running"
+    : lane === "senior"
+      ? SENIOR_LANE_TEXT[submission.routing!.reason]
+      : "Standard review";
+  return {
+    recipients: [...new Set([...base, ...reviewers])],
+    laneText: translate(lang, laneText),
+  };
+}
+
 /**
  * Send the new-submission email unless it has gone already. Called when both
  * stages settle and again by the 2-minute cap job; the atomic claim makes the
@@ -443,7 +522,13 @@ export async function sendIntakeNotificationOnce(
   const form = await d.getForm(submission.formId, organizationId);
   if (!form) return;
 
-  const recipients = form.recipients ?? [];
+  const { recipients, laneText } = await notificationAudience(
+    form,
+    submission,
+    lang,
+    organizationId,
+    d,
+  );
   if (recipients.length === 0 && !opts.adminFallback) {
     logger.warn(`No recipients configured for form ${form.id}, skipping admin notification`);
     return;
@@ -467,6 +552,7 @@ export async function sendIntakeNotificationOnce(
     form.entityType,
     lang,
     results,
+    laneText,
   );
 }
 

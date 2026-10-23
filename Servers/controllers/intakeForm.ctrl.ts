@@ -29,6 +29,11 @@ import {
   updateSubmissionSuggestionsQuery,
   getTenantByPublicId,
   getSubmissionByEntityQuery,
+  getEligibleReviewersQuery,
+  getEligibleReviewerIdsQuery,
+  setDecisionRecordQuery,
+  updateSubmissionRoutingQuery,
+  updateSecondReviewQuery,
 } from "../utils/intakeForm.utils";
 import { createNewModelInventoryQuery } from "../utils/modelInventory.utils";
 import { createNewProjectQuery } from "../utils/project.utils";
@@ -74,8 +79,10 @@ import {
   sendNewSubmissionAdminNotification,
   sendSubmissionApprovedEmail,
   sendSubmissionRejectedEmail,
+  sendSecondReviewRequestEmail,
 } from "../services/intakeFormEmail.service";
 import { enqueueIntakeAssessment } from "../services/intakeScoring/enqueue";
+import { notificationAudience } from "../services/intakeScoring/assessmentJob";
 import { cleanSubmission, isEmptyAnswer, parseFormula } from "../services/intakeFormLogic";
 import { generateSuggestedQuestions, generateFieldGuidance } from "../services/intakeLLM.service";
 import { getCompanyLogoQuery } from "../utils/aiTrustCentre.utils";
@@ -92,6 +99,9 @@ import {
   isAssessmentV2,
   type IIntakeSubmission,
   type IRiskAssessmentV2,
+  type ISubmissionRouting,
+  type ReviewLane,
+  type RoutingReason,
 } from "../domain.layer/interfaces/i.intakeSubmission";
 import { ModelRiskCategory } from "../domain.layer/enums/model-risk-category.enum";
 import { ModelRiskLevel } from "../domain.layer/enums/model-risk-level.enum";
@@ -113,6 +123,21 @@ import { createNewModelRiskQuery } from "../utils/modelRisk.utils";
 import { LIKELIHOODS, SEVERITIES } from "../services/intakeScoring/riskMappers";
 import type { IntakeSuggestedRisk } from "../services/intakeScoring/intakeSuggestions";
 import { selectRetryStages } from "../services/intakeScoring/retry";
+import {
+  canDecideLane,
+  DEFAULT_ROUTING,
+  laneReviewerIdsFor,
+  validateRoutingSettings,
+} from "../services/intakeRouting/routingRules";
+import {
+  buildDecisionRecord,
+  laneAtDecision,
+  pickSecondReview,
+  laneOnRecord,
+} from "../services/intakeRouting/decisionGate";
+import { raiseForOverride, rerouteFormPending } from "../services/intakeRouting/routingService";
+import { getIntakeOversightQuery, OVERSIGHT_WEEKS } from "../services/intakeRouting/oversight";
+import type { IFormRouting, IIntakeForm } from "../domain.layer/interfaces/i.intakeForm";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
 
@@ -296,7 +321,8 @@ function startIntakeAssessment(params: {
   organizationId: number;
   submissionId: number;
   lang?: string;
-  recipientIds: number[];
+  /** The form as saved; its recipients and routing lanes decide who is emailed. */
+  form: IIntakeForm | null;
   /** Email the organization's admins when the form has no recipients. */
   adminFallback: boolean;
   formId: number;
@@ -305,7 +331,7 @@ function startIntakeAssessment(params: {
   submitterEmail: string;
   entityType: IntakeEntityType;
 }): Promise<void> {
-  const { organizationId, submissionId, lang, recipientIds, adminFallback } = params;
+  const { organizationId, submissionId, lang, form, adminFallback } = params;
   return enqueueIntakeAssessment({
     organizationId,
     submissionId,
@@ -318,22 +344,41 @@ function startIntakeAssessment(params: {
       `Could not queue the assessment for submission ${submissionId}; emailing reviewers now:`,
       error,
     );
-    if (recipientIds.length === 0 && !adminFallback) {
-      logger.warn(
-        `No recipients configured for form ${params.formId}, skipping admin notification`,
-      );
-      return;
-    }
     try {
+      // Same audience as the job's email: recipients plus the lane reviewers
+      // (no lane is stored yet, so both lanes while routing is on). If that
+      // lookup fails, still email the form's recipients.
+      let recipients: number[] = form?.recipients ?? [];
+      let laneText: string | undefined;
+      if (form) {
+        try {
+          ({ recipients, laneText } = await notificationAudience(
+            form,
+            { routing: null },
+            lang,
+            organizationId,
+          ));
+        } catch (err) {
+          logger.error(`Could not resolve reviewers for submission ${submissionId}:`, err);
+        }
+      }
+      if (recipients.length === 0 && !adminFallback) {
+        logger.warn(
+          `No recipients configured for form ${params.formId}, skipping admin notification`,
+        );
+        return;
+      }
       if (!(await claimSubmissionNotificationQuery(submissionId, organizationId))) return;
       await sendNewSubmissionAdminNotification(
-        recipientIds.length > 0 ? recipientIds : organizationId,
+        recipients.length > 0 ? recipients : organizationId,
         params.formName,
         params.submitterName,
         params.submitterEmail,
         submissionId,
         params.entityType,
         lang,
+        undefined,
+        laneText,
       );
     } catch (err) {
       logger.error("Failed to send admin notification:", err);
@@ -369,6 +414,7 @@ async function currentRuleMinimum(
  * are ignored once a submission is decided, so a stage still running is
  * closed here (the score keeps the rule minimum, suggestions are marked
  * failed). With `refloor`, a finished score is also re-floored under `level`.
+ * Returns the AI-assisted assessment as it now stands (null when there is none).
  */
 async function settleAssessmentOnDecision(
   submission: IIntakeSubmission,
@@ -376,19 +422,15 @@ async function settleAssessmentOnDecision(
   organizationId: number,
   transaction: Transaction,
   opts: { refloor: boolean },
-): Promise<void> {
-  const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
+): Promise<IRiskAssessmentV2 | null> {
+  let assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
   if (assessment && (opts.refloor || assessment.status === "pending")) {
     const settled: IRiskAssessmentV2 =
       assessment.status === "pending"
         ? { ...assessment, status: "ai_failed", error: "Decided before AI scoring finished" }
         : assessment;
-    await updateSubmissionAssessmentV2Query(
-      submission.id,
-      recomputeAssessmentForLevel(settled, level),
-      organizationId,
-      transaction,
-    );
+    assessment = recomputeAssessmentForLevel(settled, level);
+    await updateSubmissionAssessmentV2Query(submission.id, assessment, organizationId, transaction);
   }
   if (submission.suggestedRisks?.status === "pending") {
     await updateSubmissionSuggestionsQuery(
@@ -402,6 +444,7 @@ async function settleAssessmentOnDecision(
       transaction,
     );
   }
+  return assessment;
 }
 
 /**
@@ -410,13 +453,17 @@ async function settleAssessmentOnDecision(
  * approve, the two places a reviewer sets a band, both go through this.
  */
 function bandFloorError(req: Request, tier: unknown, ruleMinimum: number | null): string | null {
-  if (!SCORE_BANDS.some((b) => b.band === tier)) {
+  if (!isScoreBand(tier)) {
     return req.t!("Invalid risk band");
   }
-  if (!isBandAllowed(tier as ScoreBand, ruleMinimum)) {
+  if (!isBandAllowed(tier, ruleMinimum)) {
     return req.t!("The band can't be lower than the rule minimum allows");
   }
   return null;
+}
+
+function isScoreBand(tier: unknown): tier is ScoreBand {
+  return SCORE_BANDS.some((b) => b.band === tier);
 }
 
 /** A v2 score, or none yet: either way the reviewer sets a score band. */
@@ -431,6 +478,72 @@ async function checkBandAgainstFloor(
   submissionId: number,
 ): Promise<string | null> {
   return bandFloorError(req, tier, await currentRuleMinimum(submissionId, req.organizationId!));
+}
+
+// ============================================================================
+// REVIEW LANES
+// ============================================================================
+
+function isAdminRequest(req: Request): boolean {
+  return req.role === "Admin";
+}
+
+/** Why a submission sits in its lane, as words for an error message. */
+function routingReasonText(req: Request, reason: RoutingReason | null): string {
+  switch (reason) {
+    case "prohibited":
+      return req.t!("prohibited practice");
+    case "no_score":
+      return req.t!("no usable score");
+    case "close_call":
+      return req.t!("the score is close to the threshold");
+    case "at_or_above_threshold":
+      return req.t!("the score is at or above the threshold");
+    case "override_raised":
+      return req.t!("a reviewer raised the band");
+    case "escalated":
+      return req.t!("a reviewer sent it to senior review");
+    default:
+      return req.t!("the score is below the threshold");
+  }
+}
+
+/**
+ * The EU AI Act level the approved entity will carry: the stored run's level
+ * (after a reviewer's change) when there is one, else the mapped level of a
+ * use case. Models carry none.
+ */
+function entityLevel(
+  entityType: IntakeEntityType,
+  runLevel: string | null,
+  entityData: Record<string, unknown>,
+): string | null {
+  if (runLevel !== null) return runLevel;
+  const mapped = entityData.ai_risk_classification;
+  if (entityType !== IntakeEntityType.USE_CASE || typeof mapped !== "string") return null;
+  return mapToAiRiskClassification(mapped) || null;
+}
+
+/**
+ * An Admin may decide in any lane; when the lane alone would not have let them,
+ * that is logged.
+ */
+async function logIfOutsideLane(
+  req: Request,
+  submissionId: number,
+  lane: ReviewLane | null,
+  cfg: IFormRouting | null,
+  functionName: string,
+): Promise<void> {
+  if (!isAdminRequest(req) || canDecideLane(lane, req.userId!, false, cfg)) return;
+  await logSuccess({
+    eventType: "Update",
+    description: `submission ${submissionId} decided outside their lane by an Admin (${lane} review)`,
+    functionName,
+    fileName: "intakeForm.ctrl.ts",
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
 }
 
 // ============================================================================
@@ -758,6 +871,156 @@ export async function getIntakeFormById(req: Request, res: Response) {
   }
 }
 
+const INELIGIBLE_REVIEWERS_MESSAGE = "Reviewers must be users who can review intake submissions";
+const EMPTY_LANE_MESSAGE =
+  "Each reviewer list needs at least one user who can currently review intake submissions";
+
+const sameIds = (a: number[], b: number[]) =>
+  a.length === b.length && a.every((id) => b.includes(id));
+
+const ROUTING_FORBIDDEN_MESSAGE = "Only an Admin can change review routing";
+
+/**
+ * Whether saving `next` changes the stored routing. Compared by value: id
+ * order does not matter, and a missing stored block is routing off with the
+ * default numbers. Null clears the block, which is a change only when one
+ * is stored.
+ */
+function routingChanged(next: IFormRouting | null, stored: IFormRouting | null | undefined) {
+  if (next === null) return !!stored;
+  const before: IFormRouting = stored ?? {
+    enabled: false,
+    seniorReviewerIds: [],
+    standardReviewerIds: [],
+    ...DEFAULT_ROUTING,
+  };
+  return (
+    before.enabled !== next.enabled ||
+    !sameIds(before.seniorReviewerIds, next.seniorReviewerIds) ||
+    !sameIds(before.standardReviewerIds, next.standardReviewerIds) ||
+    before.threshold !== next.threshold ||
+    before.closeCallMargin !== next.closeCallMargin ||
+    before.secondReviewRate !== next.secondReviewRate
+  );
+}
+
+/** Audit trail for a routing change: user ids and numbers only. */
+async function logRoutingChange(
+  req: Request,
+  formId: number | undefined,
+  before: IFormRouting | null | undefined,
+  after: IFormRouting | null,
+  functionName: string,
+) {
+  const brief = (r: IFormRouting | null | undefined) =>
+    r
+      ? {
+          enabled: r.enabled,
+          seniorReviewerIds: r.seniorReviewerIds,
+          standardReviewerIds: r.standardReviewerIds,
+          threshold: r.threshold,
+          closeCallMargin: r.closeCallMargin,
+          secondReviewRate: r.secondReviewRate,
+        }
+      : null;
+  await logSuccess({
+    eventType: "Update",
+    description: `review routing changed on intake form ${formId}: before ${JSON.stringify(brief(before))}, after ${JSON.stringify(brief(after))}`,
+    functionName,
+    fileName: "intakeForm.ctrl.ts",
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+}
+
+/**
+ * Validate the routing block of a form body. `raw` is undefined when the
+ * body leaves routing alone and null when it clears it.
+ *
+ * `stored` is the form's current routing (null on create). A reviewer who
+ * has since lost the right to review stays in the stored lists and can
+ * still be kept on a save, because the editor cannot always show or remove
+ * them; only ids added by this request must be eligible. A list that
+ * changed, or any list when routing is being switched on, must keep at
+ * least one currently eligible reviewer so a lane is never left with
+ * nobody who can act.
+ */
+async function resolveFormRouting(
+  raw: unknown,
+  organizationId: number,
+  stored: IFormRouting | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  isAdmin: boolean,
+): Promise<
+  { value: IFormRouting | null | undefined; changed: boolean } | { error: string; status?: number }
+> {
+  if (raw === undefined) return { value: raw, changed: false };
+  if (raw === null) {
+    const changed = routingChanged(null, stored);
+    if (changed && !isAdmin) return { error: t(ROUTING_FORBIDDEN_MESSAGE), status: 403 };
+    return { value: raw, changed };
+  }
+  const parsed = validateRoutingSettings(raw);
+  if (!parsed.ok) return { error: t(parsed.i18nKey, parsed.i18nVars) };
+  const next = parsed.value;
+  const changed = routingChanged(next, stored);
+  if (changed && !isAdmin) return { error: t(ROUTING_FORBIDDEN_MESSAGE), status: 403 };
+
+  const ids = [...new Set([...next.seniorReviewerIds, ...next.standardReviewerIds])];
+  const storedIds = new Set([
+    ...(stored?.seniorReviewerIds ?? []),
+    ...(stored?.standardReviewerIds ?? []),
+  ]);
+  const eligible = new Set(await getEligibleReviewerIdsQuery(organizationId, ids));
+  if (ids.some((id) => !storedIds.has(id) && !eligible.has(id))) {
+    return { error: t(INELIGIBLE_REVIEWERS_MESSAGE) };
+  }
+
+  if (next.enabled) {
+    const turnedOn = !stored?.enabled;
+    const lanes: Array<[number[], number[] | undefined]> = [
+      [next.seniorReviewerIds, stored?.seniorReviewerIds],
+      [next.standardReviewerIds, stored?.standardReviewerIds],
+    ];
+    const emptyLane = lanes.some(
+      ([list, before]) =>
+        (turnedOn || !before || !sameIds(list, before)) && !list.some((id) => eligible.has(id)),
+    );
+    if (emptyLane) return { error: t(EMPTY_LANE_MESSAGE) };
+  }
+  return { value: next, changed };
+}
+
+/** The 403 (not allowed to change routing) or 400 (invalid settings) for a refused routing block. */
+function sendRoutingError(res: Response, routing: { error: string; status?: number }) {
+  return res
+    .status(routing.status ?? 400)
+    .json(
+      routing.status === 403 ? STATUS_CODE[403](routing.error) : STATUS_CODE[400](routing.error),
+    );
+}
+
+/**
+ * Users who can be picked as reviewers in a form's routing settings
+ */
+export async function getEligibleReviewers(req: Request, res: Response) {
+  try {
+    const reviewers = await getEligibleReviewersQuery(req.organizationId!);
+    return res.status(200).json(reviewers);
+  } catch (error) {
+    await logFailure({
+      eventType: "Read",
+      description: "failed to list eligible intake reviewers",
+      functionName: "getEligibleReviewers",
+      fileName: "intakeForm.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
 /**
  * Create new intake form
  */
@@ -845,6 +1108,18 @@ export async function createIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](llmKey.error));
     }
 
+    const routing = await resolveFormRouting(
+      req.body.routing,
+      req.organizationId!,
+      null,
+      req.t!,
+      isAdminRequest(req),
+    );
+    if ("error" in routing) {
+      await transaction.rollback();
+      return sendRoutingError(res, routing);
+    }
+
     const form = await createIntakeFormQuery(
       {
         name,
@@ -862,6 +1137,7 @@ export async function createIntakeForm(req: Request, res: Response) {
         suggestedQuestionsEnabled,
         euAiActRiskStepEnabled: riskStep.enabled,
         designSettings,
+        routing: routing.value,
         createdBy: req.userId!,
       },
       req.organizationId!,
@@ -869,6 +1145,10 @@ export async function createIntakeForm(req: Request, res: Response) {
     );
 
     await transaction.commit();
+
+    if (routing.changed) {
+      await logRoutingChange(req, form.id, null, routing.value ?? null, "createIntakeForm");
+    }
 
     await logSuccess({
       eventType: "Create",
@@ -995,6 +1275,18 @@ export async function updateIntakeForm(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](llmKey.error));
     }
 
+    const routing = await resolveFormRouting(
+      req.body.routing,
+      req.organizationId!,
+      existingForm.routing,
+      req.t!,
+      isAdminRequest(req),
+    );
+    if ("error" in routing) {
+      await transaction.rollback();
+      return sendRoutingError(res, routing);
+    }
+
     const form = await updateIntakeFormQuery(
       formId,
       {
@@ -1013,12 +1305,23 @@ export async function updateIntakeForm(req: Request, res: Response) {
         suggestedQuestionsEnabled,
         euAiActRiskStepEnabled: riskStep.enabled,
         designSettings,
+        routing: routing.value,
       },
       req.organizationId!,
       transaction,
     );
 
     await transaction.commit();
+
+    if (routing.changed) {
+      await logRoutingChange(
+        req,
+        formId,
+        existingForm.routing,
+        routing.value ?? null,
+        "updateIntakeForm",
+      );
+    }
 
     await logSuccess({
       eventType: "Update",
@@ -1028,6 +1331,24 @@ export async function updateIntakeForm(req: Request, res: Response) {
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
+
+    // The save is committed; a failed re-route must not turn it into a 500.
+    // Switching routing off needs no pass: routeSubmission writes nothing then.
+    if (form && routing.changed && routing.value?.enabled) {
+      try {
+        await rerouteFormPending(form, req.organizationId!);
+      } catch (error) {
+        await logFailure({
+          eventType: "Update",
+          description: `failed to re-route pending submissions of intake form: ${formId}`,
+          functionName: "updateIntakeForm",
+          fileName: "intakeForm.ctrl.ts",
+          error: error as Error,
+          userId: req.userId!,
+          organizationId: req.organizationId!,
+        });
+      }
+    }
 
     return res.status(200).json(STATUS_CODE[200](form));
   } catch (error) {
@@ -1180,7 +1501,35 @@ export async function getPendingSubmissions(req: Request, res: Response) {
 
   try {
     const status = req.query.status as IntakeSubmissionStatus | undefined;
-    const submissions = await getPendingSubmissionsQuery(req.organizationId!, status);
+    const rows = await getPendingSubmissionsQuery(req.organizationId!, status);
+    // The list shows who can decide each row's stored lane, not the form's whole routing.
+    // Senior reviewers who can still act on a second review that is open, or
+    // missed and not yet resolved, other than the approver. They stay senior
+    // reviewers of the form even when routing has since been turned off.
+    const needsSecondReview = (r: { routing?: ISubmissionRouting | null }) => {
+      const second = r.routing?.secondReview;
+      return (
+        !!second && (second.status === "open" || (second.status === "missed" && !second.resolvedAt))
+      );
+    };
+    const seniorIds = [
+      ...new Set(
+        rows.filter(needsSecondReview).flatMap((r) => r.formRouting?.seniorReviewerIds ?? []),
+      ),
+    ];
+    const eligible = new Set(
+      seniorIds.length > 0 ? await getEligibleReviewerIdsQuery(req.organizationId!, seniorIds) : [],
+    );
+    const submissions = rows.map(({ formRouting, ...row }) => ({
+      ...row,
+      routingEnabled: formRouting?.enabled ?? false,
+      laneReviewerIds: laneReviewerIdsFor(row.routing?.lane ?? null, formRouting ?? null),
+      secondReviewerIds: needsSecondReview(row)
+        ? (formRouting?.seniorReviewerIds ?? []).filter(
+            (id) => eligible.has(id) && id !== row.reviewedBy,
+          )
+        : [],
+    }));
     return res.status(200).json(STATUS_CODE[200](submissions));
   } catch (error) {
     await logFailure({
@@ -1300,6 +1649,54 @@ export async function getSubmissionStats(req: Request, res: Response) {
 }
 
 /**
+ * Oversight figures for the intake page: lanes, decision times, reviewers,
+ * second reviews and what needs attention over the last 4, 8 or 12 weeks.
+ */
+export async function getIntakeOversight(req: Request, res: Response) {
+  const weeksParam = req.query.weeks;
+  const weeks = weeksParam === undefined ? 8 : toId(weeksParam);
+  if (!OVERSIGHT_WEEKS.includes(weeks)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Weeks must be 4, 8 or 12")));
+  }
+  const formIdParam = req.query.formId;
+  const hasFormId = formIdParam !== undefined && formIdParam !== "";
+  const formId = hasFormId ? toId(formIdParam) : undefined;
+  if (hasFormId && (formId === undefined || isNaN(formId) || formId <= 0)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid form ID")));
+  }
+
+  logProcessing({
+    description: "fetching intake oversight figures",
+    functionName: "getIntakeOversight",
+    fileName: "intakeForm.ctrl.ts",
+    userId: req.userId!,
+    organizationId: req.organizationId!,
+  });
+
+  try {
+    if (formId !== undefined) {
+      const form = await getIntakeFormByIdQuery(formId, req.organizationId!);
+      if (!form) {
+        return res.status(404).json(STATUS_CODE[404](req.t!("Form not found")));
+      }
+    }
+    const oversight = await getIntakeOversightQuery(req.organizationId!, weeks, formId);
+    return res.status(200).json(STATUS_CODE[200](oversight));
+  } catch (error) {
+    await logFailure({
+      eventType: "Read",
+      description: "failed to retrieve intake oversight figures",
+      functionName: "getIntakeOversight",
+      fileName: "intakeForm.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
  * Get submission preview for approval flow
  */
 export async function getSubmissionPreview(req: Request, res: Response) {
@@ -1349,6 +1746,31 @@ export async function getSubmissionPreview(req: Request, res: Response) {
 
     const assessment = isAssessmentV2(submission.riskAssessment) ? submission.riskAssessment : null;
 
+    // Who may decide, by the stored lane (or, with none yet, the current
+    // values); approve re-checks it on what the decision would make true.
+    const routingCfg = form.routing ?? null;
+    const previewBand = asBand(submission.riskOverride?.tier);
+    const { lane } = laneOnRecord(submission.routing ?? null, routingCfg, {
+      level: entityLevel(submission.entityType, rescored?.result.level ?? null, entityData),
+      finalScore: assessment?.finalScore ?? null,
+      scoringStatus: assessment?.status ?? null,
+      bandInForce: usesScoreBands(submission) && isScoreBand(previewBand) ? previewBand : null,
+    });
+    const canDecide = canDecideLane(lane, req.userId!, isAdminRequest(req), routingCfg);
+    const laneReviewerIds = laneReviewerIdsFor(lane, routingCfg);
+    const laneReviewers =
+      laneReviewerIds.length > 0
+        ? (await getEligibleReviewersQuery(req.organizationId!, laneReviewerIds)).map((u) => ({
+            id: u.id,
+            name: [u.name, u.surname].filter(Boolean).join(" "),
+          }))
+        : [];
+    const decideBlockedReason = canDecide
+      ? null
+      : lane === "senior"
+        ? req.t!("This submission is assigned to senior reviewers")
+        : req.t!("This submission is assigned to the form's reviewers");
+
     return res.status(200).json(
       STATUS_CODE[200]({
         submission,
@@ -1370,6 +1792,12 @@ export async function getSubmissionPreview(req: Request, res: Response) {
         // when the questionnaire changed after scoring.
         ruleMinimumPreview: ruleMinimumFor(rescored?.result.level ?? null),
         assessedLevel: assessment?.classificationLevel ?? null,
+        routing: submission.routing ?? null,
+        routingEnabled: routingCfg?.enabled ?? false,
+        canDecide,
+        decideBlockedReason,
+        laneReviewers,
+        isSeniorReviewer: routingCfg?.seniorReviewerIds.includes(req.userId!) ?? false,
       }),
     );
   } catch (error) {
@@ -1528,6 +1956,14 @@ export async function overrideSubmissionRisk(req: Request, res: Response) {
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
+
+    // The override is saved; a failure to raise the lane must not undo that.
+    try {
+      const form = await getIntakeFormByIdQuery(submission.formId, req.organizationId!);
+      if (form) await raiseForOverride(submission, form, tier, req.organizationId!);
+    } catch (error) {
+      logger.error(`Error raising the lane after override of submission ${submissionId}:`, error);
+    }
 
     return res
       .status(200)
@@ -1864,9 +2300,13 @@ export async function approveSubmission(req: Request, res: Response) {
     // approved at, which a reviewer may have changed; running stages are
     // closed. Risk_tier keeps an override's band (see the query).
     const approvedLevel = (classification?.finalLevel ?? null) as ClassificationLevel | null;
-    await settleAssessmentOnDecision(submission, approvedLevel, req.organizationId!, transaction, {
-      refloor: true,
-    });
+    const settledAssessment = await settleAssessmentOnDecision(
+      submission,
+      approvedLevel,
+      req.organizationId!,
+      transaction,
+      { refloor: true },
+    );
 
     // The band override, from this request or saved earlier through
     // PATCH /risk-override: on an AI-scored (or not yet scored) submission
@@ -1904,6 +2344,76 @@ export async function approveSubmission(req: Request, res: Response) {
         req.organizationId!,
         transaction,
       );
+    }
+
+    // Who may approve depends on the lane this approval would make true: a
+    // standard reviewer can't approve while setting a Prohibited level or a
+    // band that routes to senior review.
+    const routingCfg = form.routing ?? null;
+    const storedRouting = submission.routing ?? null;
+    // Without a scorable run, the level is the one the entity gets.
+    const decidedLevel = entityLevel(submission.entityType, approvedLevel, entityData);
+    const decision = laneAtDecision(storedRouting, routingCfg, {
+      level: decidedLevel,
+      finalScore: settledAssessment?.finalScore ?? null,
+      scoringStatus: settledAssessment?.status ?? null,
+      bandInForce: bandsApply && isScoreBand(bandToCheck) ? bandToCheck : null,
+    });
+    if (!canDecideLane(decision.lane, req.userId!, isAdminRequest(req), routingCfg)) {
+      await transaction.rollback();
+      return res.status(403).json(
+        STATUS_CODE[403](
+          decision.lane === "senior"
+            ? req.t!("A senior reviewer has to decide this: {reason}", {
+                reason: routingReasonText(req, decision.reason),
+              })
+            : req.t!("This submission is assigned to the form's reviewers"),
+        ),
+      );
+    }
+
+    const overrideInForce = requestOverride
+      ? { tier: bandToCheck, overriddenBy: req.userId! }
+      : storedOverride?.tier
+        ? { tier: bandToCheck, overriddenBy: storedOverride.overriddenBy }
+        : null;
+    await setDecisionRecordQuery(
+      submissionId,
+      buildDecisionRecord({
+        level: decidedLevel,
+        assessment: settledAssessment,
+        override: overrideInForce,
+        lane: decision.lane,
+      }),
+      req.organizationId!,
+      transaction,
+    );
+
+    // A share of standard-lane approvals by non-seniors is sampled for a
+    // second review. The write only lands on the routing read above.
+    const pickedForSecondReview =
+      decision.lane === "standard" &&
+      storedRouting !== null &&
+      routingCfg !== null &&
+      !routingCfg.seniorReviewerIds.includes(req.userId!) &&
+      pickSecondReview(routingCfg.secondReviewRate);
+    if (pickedForSecondReview) {
+      const written = await updateSubmissionRoutingQuery(
+        submissionId,
+        {
+          ...storedRouting,
+          secondReview: { status: "open", selectedAt: new Date().toISOString() },
+        },
+        req.organizationId!,
+        transaction,
+        storedRouting,
+      );
+      if (!written) {
+        await transaction.rollback();
+        return res
+          .status(409)
+          .json(STATUS_CODE[409](req.t!("This submission changed. Reload and try again.")));
+      }
     }
 
     // Create the entity based on entity type
@@ -2052,6 +2562,23 @@ export async function approveSubmission(req: Request, res: Response) {
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
+    await logIfOutsideLane(req, submissionId, decision.lane, routingCfg, "approveSubmission");
+    if (pickedForSecondReview && routingCfg) {
+      sendSecondReviewRequestEmail(
+        req.organizationId!,
+        submissionId,
+        routingCfg.seniorReviewerIds,
+        req.lang,
+      ).catch((err) => logger.error("Failed to send second review request email:", err));
+      await logSuccess({
+        eventType: "Update",
+        description: `submission ${submissionId} picked for second review`,
+        functionName: "approveSubmission",
+        fileName: "intakeForm.ctrl.ts",
+        userId: req.userId!,
+        organizationId: req.organizationId!,
+      });
+    }
 
     return res.status(200).json(STATUS_CODE[200](updatedSubmission));
   } catch (error) {
@@ -2124,14 +2651,50 @@ export async function rejectSubmission(req: Request, res: Response) {
 
     // Close any assessment stage still running; the job's later writes are
     // ignored once the submission is decided.
-    const runningScore =
-      isAssessmentV2(submission.riskAssessment) && submission.riskAssessment.status === "pending";
-    await settleAssessmentOnDecision(
+    const level = await currentRulesLevel(submissionId, req.organizationId!, transaction);
+    const settledAssessment = await settleAssessmentOnDecision(
       submission,
-      runningScore ? await currentRulesLevel(submissionId, req.organizationId!, transaction) : null,
+      level,
       req.organizationId!,
       transaction,
       { refloor: false },
+    );
+    const storedOverride = submission.riskOverride;
+
+    // Rejecting creates nothing, so a stored lane is not re-checked; without
+    // one, the lane comes from the current values.
+    const routingCfg = form?.routing ?? null;
+    const storedBand = asBand(storedOverride?.tier);
+    const { lane } = laneOnRecord(submission.routing ?? null, routingCfg, {
+      level,
+      finalScore: settledAssessment?.finalScore ?? null,
+      scoringStatus: settledAssessment?.status ?? null,
+      bandInForce: usesScoreBands(submission) && isScoreBand(storedBand) ? storedBand : null,
+    });
+    if (!canDecideLane(lane, req.userId!, isAdminRequest(req), routingCfg)) {
+      await transaction.rollback();
+      return res
+        .status(403)
+        .json(
+          STATUS_CODE[403](
+            lane === "senior"
+              ? req.t!("This submission is assigned to senior reviewers")
+              : req.t!("This submission is assigned to the form's reviewers"),
+          ),
+        );
+    }
+    await setDecisionRecordQuery(
+      submissionId,
+      buildDecisionRecord({
+        level,
+        assessment: settledAssessment,
+        override: storedOverride?.tier
+          ? { tier: asBand(storedOverride.tier), overriddenBy: storedOverride.overriddenBy }
+          : null,
+        lane,
+      }),
+      req.organizationId!,
+      transaction,
     );
 
     const updatedSubmission = await rejectSubmissionQuery(
@@ -2182,6 +2745,7 @@ export async function rejectSubmission(req: Request, res: Response) {
       userId: req.userId!,
       organizationId: req.organizationId!,
     });
+    await logIfOutsideLane(req, submissionId, lane, routingCfg, "rejectSubmission");
 
     return res.status(200).json(STATUS_CODE[200](updatedSubmission));
   } catch (error) {
@@ -2190,6 +2754,108 @@ export async function rejectSubmission(req: Request, res: Response) {
       eventType: "Update",
       description: `failed to reject submission: ${submissionId}`,
       functionName: "rejectSubmission",
+      fileName: "intakeForm.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Send a standard-lane submission to senior review by hand. Automatic
+ * re-routing leaves it alone afterwards.
+ * POST /intake/submissions/:id/escalate
+ */
+export async function escalateSubmission(req: Request, res: Response) {
+  const submissionId = parseId(req.params.id);
+  if (isNaN(submissionId)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid submission ID")));
+  }
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  if (!reason || reason.length > 1000) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400](req.t!("A reason of 1 to 1000 characters is required")));
+  }
+
+  try {
+    const submission = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+    if (!submission) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
+    }
+    const form = await getIntakeFormByIdQuery(submission.formId, req.organizationId!);
+    if (!form) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Form not found")));
+    }
+
+    const cfg = form.routing;
+    const current = submission.routing;
+    if (
+      submission.status !== IntakeSubmissionStatus.PENDING ||
+      !cfg?.enabled ||
+      current?.lane !== "standard"
+    ) {
+      return res
+        .status(409)
+        .json(
+          STATUS_CODE[409](
+            req.t!("Only pending submissions in standard review can be sent to senior review"),
+          ),
+        );
+    }
+    const userId = req.userId!;
+    if (
+      !isAdminRequest(req) &&
+      !cfg.standardReviewerIds.includes(userId) &&
+      !cfg.seniorReviewerIds.includes(userId)
+    ) {
+      return res
+        .status(403)
+        .json(
+          STATUS_CODE[403](
+            req.t!("Only this form's reviewers can send a submission to senior review"),
+          ),
+        );
+    }
+
+    const at = new Date().toISOString();
+    const routing: ISubmissionRouting = {
+      ...current,
+      lane: "senior",
+      reason: "escalated",
+      routedAt: at,
+      escalation: { by: userId, at, reason },
+    };
+    const written = await updateSubmissionRoutingQuery(
+      submissionId,
+      routing,
+      req.organizationId!,
+      undefined,
+      current,
+    );
+    if (!written) {
+      return res
+        .status(409)
+        .json(STATUS_CODE[409](req.t!("This submission changed. Reload and try again.")));
+    }
+
+    await logSuccess({
+      eventType: "Update",
+      description: `submission ${submissionId} escalated to senior review`,
+      functionName: "escalateSubmission",
+      fileName: "intakeForm.ctrl.ts",
+      userId,
+      organizationId: req.organizationId!,
+    });
+
+    return res.status(200).json(STATUS_CODE[200](routing));
+  } catch (error) {
+    await logFailure({
+      eventType: "Update",
+      description: `failed to escalate submission: ${submissionId}`,
+      functionName: "escalateSubmission",
       fileName: "intakeForm.ctrl.ts",
       error: error as Error,
       userId: req.userId!,
@@ -2597,7 +3263,7 @@ export async function submitPublicFormByPublicId(req: Request, res: Response) {
         organizationId: tenantInfo.orgId,
         submissionId: submission.id!,
         lang: req.lang,
-        recipientIds: (fullForm?.recipients as number[]) || [],
+        form: fullForm,
         adminFallback: false,
         formId: form.id,
         formName: form.name,
@@ -2937,7 +3603,7 @@ export async function submitPublicForm(req: Request, res: Response) {
         organizationId: tenantInfo.id,
         submissionId: submission.id!,
         lang: req.lang,
-        recipientIds: (fullForm?.recipients as number[]) || [],
+        form: fullForm,
         adminFallback: true,
         formId: form.id,
         formName: form.name,
@@ -2994,4 +3660,173 @@ export async function getCaptcha(_req: Request, res: Response) {
   const token = createSignedToken({ answer, timestamp: Date.now() });
 
   return res.status(200).json(STATUS_CODE[200]({ question, token }));
+}
+
+const SECOND_REVIEW_NOTE_MAX = 2000;
+
+/**
+ * Load an approved submission with an open or missed second review and check
+ * the caller may act on it: a senior reviewer of the form or an Admin, never
+ * the person who approved it. Sends the error response and returns null when
+ * not; the caller still checks the review's state.
+ */
+async function loadSecondReview(req: Request, res: Response, submissionId: number) {
+  const submission = await getSubmissionByIdQuery(submissionId, req.organizationId!);
+  if (!submission) {
+    res.status(404).json(STATUS_CODE[404](req.t!("Submission not found")));
+    return null;
+  }
+  const form = await getIntakeFormByIdQuery(submission.formId, req.organizationId!);
+  const isSenior = form?.routing?.seniorReviewerIds.includes(req.userId!) ?? false;
+  if (!isSenior && !isAdminRequest(req)) {
+    res
+      .status(403)
+      .json(STATUS_CODE[403](req.t!("Only a senior reviewer of this form can do a second review")));
+    return null;
+  }
+  if (submission.reviewedBy === req.userId) {
+    res.status(403).json(STATUS_CODE[403](req.t!("You can't second-review your own approval")));
+    return null;
+  }
+  return submission;
+}
+
+function secondReviewConflict(req: Request, res: Response) {
+  return res
+    .status(409)
+    .json(STATUS_CODE[409](req.t!("This second review changed. Reload and try again.")));
+}
+
+/** The trimmed note ("" when blank), or null when it is not a string or is too long. */
+function parseSecondReviewNote(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const note = raw.trim();
+  return note.length <= SECOND_REVIEW_NOTE_MAX ? note : null;
+}
+
+/**
+ * A senior reviewer records the outcome of a sampled second review.
+ * Changes nothing about the approval itself.
+ * POST /intake/submissions/:id/second-review
+ */
+export async function recordSecondReview(req: Request, res: Response) {
+  const submissionId = parseId(req.params.id);
+  if (isNaN(submissionId)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid submission ID")));
+  }
+  const outcome = req.body?.outcome;
+  if (outcome !== "agreed" && outcome !== "missed") {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Outcome must be agreed or missed")));
+  }
+  const rawNote = req.body?.note;
+  const note = rawNote === undefined || rawNote === null ? "" : parseSecondReviewNote(rawNote);
+  if (note === null || (outcome === "missed" && note === "")) {
+    return res
+      .status(400)
+      .json(
+        STATUS_CODE[400](
+          outcome === "missed"
+            ? req.t!("A note of 1 to 2000 characters is required when something was missed")
+            : req.t!("A note can be at most 2000 characters"),
+        ),
+      );
+  }
+
+  try {
+    const submission = await loadSecondReview(req, res, submissionId);
+    if (!submission) return;
+    if (submission.routing?.secondReview?.status !== "open") {
+      return secondReviewConflict(req, res);
+    }
+
+    const routing = await updateSecondReviewQuery(
+      submissionId,
+      req.organizationId!,
+      { status: "open" },
+      {
+        status: outcome,
+        reviewedBy: req.userId!,
+        reviewedAt: new Date().toISOString(),
+        ...(note ? { note } : {}),
+      },
+    );
+    if (!routing) return secondReviewConflict(req, res);
+
+    await logSuccess({
+      eventType: "Update",
+      description: `submission ${submissionId} second review: ${outcome}`,
+      functionName: "recordSecondReview",
+      fileName: "intakeForm.ctrl.ts",
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(200).json(STATUS_CODE[200](routing));
+  } catch (error) {
+    await logFailure({
+      eventType: "Update",
+      description: `failed to record second review: ${submissionId}`,
+      functionName: "recordSecondReview",
+      fileName: "intakeForm.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Close a missed second review once the follow-up is done. Changes nothing
+ * about the approval or the entity it created.
+ * POST /intake/submissions/:id/second-review/resolve
+ */
+export async function resolveSecondReviewMiss(req: Request, res: Response) {
+  const submissionId = parseId(req.params.id);
+  if (isNaN(submissionId)) {
+    return res.status(400).json(STATUS_CODE[400](req.t!("Invalid submission ID")));
+  }
+  const note = parseSecondReviewNote(req.body?.note);
+  if (!note) {
+    return res
+      .status(400)
+      .json(STATUS_CODE[400](req.t!("A note of 1 to 2000 characters is required")));
+  }
+
+  try {
+    const submission = await loadSecondReview(req, res, submissionId);
+    if (!submission) return;
+    const current = submission.routing?.secondReview;
+    if (current?.status !== "missed" || current.resolvedAt) {
+      return secondReviewConflict(req, res);
+    }
+
+    const routing = await updateSecondReviewQuery(
+      submissionId,
+      req.organizationId!,
+      { status: "missed", unresolved: true },
+      { resolvedBy: req.userId!, resolvedAt: new Date().toISOString(), resolutionNote: note },
+    );
+    if (!routing) return secondReviewConflict(req, res);
+
+    await logSuccess({
+      eventType: "Update",
+      description: `submission ${submissionId} missed second review resolved`,
+      functionName: "resolveSecondReviewMiss",
+      fileName: "intakeForm.ctrl.ts",
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(200).json(STATUS_CODE[200](routing));
+  } catch (error) {
+    await logFailure({
+      eventType: "Update",
+      description: `failed to resolve second review: ${submissionId}`,
+      functionName: "resolveSecondReviewMiss",
+      fileName: "intakeForm.ctrl.ts",
+      error: error as Error,
+      userId: req.userId!,
+      organizationId: req.organizationId!,
+    });
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
 }

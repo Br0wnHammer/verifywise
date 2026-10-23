@@ -113,6 +113,7 @@ function harness(
       state.submission = { ...state.submission, suggestedRisks: b };
     }),
     claimNotification: jest.fn(async () => claims.shift() ?? false),
+    getEligibleIds: jest.fn(async (_org: number, ids?: number[]) => ids ?? []),
     sendNotification: jest.fn(async () => undefined),
     generateImpl: fakeLlm(64),
     now: () => NOW,
@@ -313,6 +314,56 @@ describe("runIntakeAssessment", () => {
     await run;
   });
 
+  it("routes once from the re-read submission after scoring settles", async () => {
+    const routeSubmission = jest.fn(async () => null);
+    const h = harness(submission(), { routeSubmission: routeSubmission as any });
+    await runIntakeAssessment(job({ notify: false }), h.deps);
+    expect(routeSubmission).toHaveBeenCalledTimes(1);
+    const [routed, routedForm, org] = routeSubmission.mock.calls[0] as any[];
+    expect(routed.riskAssessment).toMatchObject({ version: 2, status: "complete" });
+    expect(routedForm.id).toBe(5);
+    expect(org).toBe(ORG);
+  });
+
+  it("routes after a failed scoring stage as well", async () => {
+    const routeSubmission = jest.fn(async () => null);
+    const h = harness(submission(), {
+      routeSubmission: routeSubmission as any,
+      generateImpl: fakeLlm(64, { failScoring: true }),
+    });
+    await runIntakeAssessment(job({ notify: false }), h.deps);
+    expect(routeSubmission).toHaveBeenCalledTimes(1);
+    expect((routeSubmission.mock.calls[0] as any[])[0].riskAssessment.status).toBe("ai_failed");
+  });
+
+  it("a suggestions-only job does not route", async () => {
+    const routeSubmission = jest.fn(async () => null);
+    const h = harness(submission(), { routeSubmission: routeSubmission as any });
+    await runIntakeAssessment(job({ stages: ["suggestions"], notify: false }), h.deps);
+    expect(routeSubmission).not.toHaveBeenCalled();
+  });
+
+  it("routes after a setup failure too, since scoring settled as failed", async () => {
+    const routeSubmission = jest.fn(async () => null);
+    const h = harness(submission(), {
+      routeSubmission: routeSubmission as any,
+      getClassification: jest.fn(async () => {
+        throw new Error("db down");
+      }),
+    });
+    await runIntakeAssessment(job({ notify: false }), h.deps);
+    expect(routeSubmission).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs a routing error and still finishes the job", async () => {
+    const routeSubmission = jest.fn(async () => {
+      throw new Error("route down");
+    });
+    const h = harness(submission(), { routeSubmission: routeSubmission as any });
+    await expect(runIntakeAssessment(job({ notify: false }), h.deps)).resolves.toBeUndefined();
+    expect(finalBlock(h).status).toBe("complete");
+  });
+
   it("scoring-only runs never touch suggestions", async () => {
     const block: ISuggestedRisksBlock = {
       status: "complete",
@@ -443,6 +494,74 @@ describe("sendIntakeNotificationOnce", () => {
       h.deps,
     );
     expect((h.deps.sendNotification as jest.Mock).mock.calls[0][0]).toBe(ORG);
+  });
+});
+
+describe("sendIntakeNotificationOnce: lanes", () => {
+  const cfg = {
+    enabled: true,
+    seniorReviewerIds: [1, 9],
+    standardReviewerIds: [2],
+    threshold: 50,
+    closeCallMargin: 10,
+    secondReviewRate: 10,
+  };
+  const lane = (l: "senior" | "standard", reason: string) =>
+    ({
+      lane: l,
+      reason,
+      score: 52,
+      threshold: 50,
+      closeCallMargin: 10,
+      routedAt: "x",
+    }) as any;
+  const send = async (formOverrides: object, routing: unknown) => {
+    const h = harness({ ...settled(), routing } as never, {
+      getForm: jest.fn(async () => form({ recipients: [1], ...formOverrides })),
+    });
+    await sendIntakeNotificationOnce(ORG, 11, "en", { capReached: false }, h.deps);
+    return (h.deps.sendNotification as jest.Mock).mock.calls[0];
+  };
+
+  it("a senior-lane submission also goes to the senior reviewers, once each", async () => {
+    const call = await send({ routing: cfg }, lane("senior", "close_call"));
+    expect(call[0]).toEqual([1, 9]);
+    expect(call[8]).toBe("Senior review: close call");
+  });
+
+  it("a standard-lane submission goes to the standard reviewers", async () => {
+    const call = await send({ routing: cfg }, lane("standard", "below_threshold"));
+    expect(call[0]).toEqual([1, 2]);
+    expect(call[8]).toBe("Standard review");
+  });
+
+  it("no lane yet goes to both lanes and says it isn't routed", async () => {
+    const call = await send({ routing: cfg }, null);
+    expect(call[0]).toEqual([1, 9, 2]);
+    expect(call[8]).toBe("Not routed yet: scoring is still running");
+  });
+
+  it("routing off or disabled notifies the form recipients only, with no lane line", async () => {
+    for (const routing of [null, { ...cfg, enabled: false }]) {
+      const call = await send({ routing }, lane("senior", "close_call"));
+      expect(call[0]).toEqual([1]);
+      expect(call[8]).toBeUndefined();
+    }
+  });
+
+  it("drops stale or ineligible lane ids but keeps the form recipients", async () => {
+    const h = harness({ ...settled(), routing: lane("senior", "close_call") } as never, {
+      getForm: jest.fn(async () => form({ recipients: [1, 77], routing: cfg })),
+      getEligibleIds: jest.fn(async () => [9]),
+    });
+    await sendIntakeNotificationOnce(ORG, 11, "en", { capReached: false }, h.deps);
+    expect(h.deps.getEligibleIds).toHaveBeenCalledWith(ORG, [1, 9]);
+    expect((h.deps.sendNotification as jest.Mock).mock.calls[0][0]).toEqual([1, 77, 9]);
+  });
+
+  it("a form with no recipients still emails the lane's reviewers", async () => {
+    const call = await send({ recipients: [], routing: cfg }, lane("standard", "below_threshold"));
+    expect(call[0]).toEqual([2]);
   });
 });
 
