@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Box, Typography, Tooltip, Divider, CircularProgress, useTheme } from "@mui/material";
+import {
+  Box,
+  Typography,
+  Tooltip,
+  Divider,
+  CircularProgress,
+  IconButton,
+  useTheme,
+} from "@mui/material";
 import { X, Plus, Trash2, Sparkles } from "lucide-react";
 import Field from "../../components/Inputs/Field";
 import Select from "../../components/Inputs/Select";
@@ -88,56 +96,55 @@ function OptionsEditor({ options, onChange }: OptionsEditorProps) {
               alignItems: "center",
               gap: "8px",
               p: "8px",
-              minWidth: 0,
               backgroundColor: theme.palette.background.accent,
               borderRadius: "4px",
               border: `1px solid ${theme.palette.border.dark}`,
             }}
           >
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Field
-                id={`option-label-${index}`}
-                label=""
-                placeholder="Label"
-                value={option.label}
-                onChange={(e) => handleUpdateOption(index, "label", e.target.value)}
-                sx={{ "minWidth": 0, "& .MuiOutlinedInput-root": { height: 32, fontSize: "13px" } }}
-              />
-            </Box>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Field
-                id={`option-value-${index}`}
-                label=""
-                placeholder="Value"
-                value={option.value}
-                onChange={(e) => handleUpdateOption(index, "value", e.target.value)}
-                sx={{ "minWidth": 0, "& .MuiOutlinedInput-root": { height: 32, fontSize: "13px" } }}
-              />
-            </Box>
+            {/* minWidth: 0 overrides the Field's 220px minimum so two inputs fit the panel */}
+            <Field
+              id={`option-label-${index}`}
+              label=""
+              placeholder="Label"
+              value={option.label}
+              onChange={(e) => handleUpdateOption(index, "label", e.target.value)}
+              sx={{
+                "flex": 1,
+                "minWidth": 0,
+                "& .MuiOutlinedInput-root": { height: 32, fontSize: "13px" },
+              }}
+            />
+            <Field
+              id={`option-value-${index}`}
+              label=""
+              placeholder="Value"
+              value={option.value}
+              onChange={(e) => handleUpdateOption(index, "value", e.target.value)}
+              sx={{
+                "flex": 1,
+                "minWidth": 0,
+                "& .MuiOutlinedInput-root": { height: 32, fontSize: "13px" },
+              }}
+            />
             <Tooltip title={options.length <= 1 ? "" : "Remove option"}>
-              <Box
-                onClick={() => handleRemoveOption(index)}
-                sx={{
-                  "cursor": options.length <= 1 ? "default" : "pointer",
-                  "opacity": options.length <= 1 ? 0.3 : 1,
-                  "display": "flex",
-                  "alignItems": "center",
-                  "flexShrink": 0,
-                  "p": "4px",
-                  "borderRadius": "4px",
-                  "&:hover":
-                    options.length > 1 ? { backgroundColor: theme.palette.status.error.bg } : {},
-                }}
-              >
-                <Trash2
-                  size={14}
-                  color={
-                    options.length <= 1
-                      ? theme.palette.text.accent
-                      : theme.palette.status.error.text
-                  }
-                />
-              </Box>
+              {/* span keeps the tooltip working while the button is disabled */}
+              <span style={{ display: "flex", flexShrink: 0 }}>
+                <IconButton
+                  size="small"
+                  aria-label="Remove option"
+                  disabled={options.length <= 1}
+                  onClick={() => handleRemoveOption(index)}
+                  sx={{
+                    "p": "4px",
+                    "borderRadius": "4px",
+                    "color": theme.palette.status.error.text,
+                    "&:hover": { backgroundColor: theme.palette.status.error.bg },
+                    "&.Mui-disabled": { color: theme.palette.text.accent, opacity: 0.3 },
+                  }}
+                >
+                  <Trash2 size={14} />
+                </IconButton>
+              </span>
             </Tooltip>
           </Box>
         ))}
@@ -326,7 +333,7 @@ export function FieldEditor({
       </Box>
 
       {/* Content */}
-      <Box sx={{ flex: 1, overflowY: "auto", overflowX: "hidden", p: "8px" }}>
+      <Box sx={{ flex: 1, overflowY: "auto", p: "8px" }}>
         <Box sx={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {logicErrors.length > 0 && (
             <Box role="alert" sx={{ display: "flex", flexDirection: "column", gap: "4px" }}>
