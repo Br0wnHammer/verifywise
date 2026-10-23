@@ -346,10 +346,22 @@ function startIntakeAssessment(params: {
     );
     try {
       // Same audience as the job's email: recipients plus the lane reviewers
-      // (no lane is stored yet, so both lanes while routing is on).
-      const { recipients, laneText } = form
-        ? await notificationAudience(form, { routing: null }, lang, organizationId)
-        : { recipients: [] as number[], laneText: undefined };
+      // (no lane is stored yet, so both lanes while routing is on). If that
+      // lookup fails, still email the form's recipients.
+      let recipients: number[] = form?.recipients ?? [];
+      let laneText: string | undefined;
+      if (form) {
+        try {
+          ({ recipients, laneText } = await notificationAudience(
+            form,
+            { routing: null },
+            lang,
+            organizationId,
+          ));
+        } catch (err) {
+          logger.error(`Could not resolve reviewers for submission ${submissionId}:`, err);
+        }
+      }
       if (recipients.length === 0 && !adminFallback) {
         logger.warn(
           `No recipients configured for form ${params.formId}, skipping admin notification`,

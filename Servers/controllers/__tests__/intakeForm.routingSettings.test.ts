@@ -202,6 +202,17 @@ describe("updateIntakeForm routing settings", () => {
     expect(rerouteFormPending).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 5);
   });
 
+  it("re-routes when an enabled routing's threshold changes", async () => {
+    intake.getIntakeFormByIdQuery.mockResolvedValue({ ...EXISTING, routing: ROUTING });
+    const r = res();
+    await ctrl.updateIntakeForm(
+      req({ body: { routing: { ...ROUTING, threshold: 60 } } }) as any,
+      r,
+    );
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(rerouteFormPending).toHaveBeenCalledTimes(1);
+  });
+
   it("does not re-route when the saved routing is unchanged", async () => {
     intake.getIntakeFormByIdQuery.mockResolvedValue({ ...EXISTING, routing: ROUTING });
     const r = res();

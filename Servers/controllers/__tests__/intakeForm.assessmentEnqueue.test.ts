@@ -191,6 +191,14 @@ describe("public submit queues the assessment", () => {
     expect(emails.sendNewSubmissionAdminNotification.mock.calls[0][0]).toEqual([3, 7, 9]);
   });
 
+  it("fallback still emails the form's recipients when the reviewer lookup fails", async () => {
+    enqueueIntakeAssessment.mockRejectedValue(new Error("redis down"));
+    routing = { enabled: true, seniorReviewerIds: [7], standardReviewerIds: [] };
+    intake.getEligibleReviewerIdsQuery.mockRejectedValue(new Error("db down"));
+    await submit("byId");
+    expect(emails.sendNewSubmissionAdminNotification.mock.calls[0][0]).toEqual([3]);
+  });
+
   it("does not send the fallback email when it was already claimed", async () => {
     enqueueIntakeAssessment.mockRejectedValue(new Error("redis down"));
     intake.claimSubmissionNotificationQuery.mockResolvedValue(false);
