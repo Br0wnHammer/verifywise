@@ -99,7 +99,9 @@ All use `authorize("intakeForm.edit")`.
 Fields added to existing responses:
 
 - Form create and update bodies, and form responses, carry `routing`.
-- `GET /intake/submissions` rows carry `routing`, `routingEnabled` and `laneReviewerIds` (who can decide the row's stored lane).
+- `GET /intake/submissions` rows carry `routing`, `routingEnabled`, `laneReviewerIds` (who can decide the row's stored lane) and `secondReviewerIds`: the form's senior reviewers who are currently eligible (`getEligibleReviewerIdsQuery`, org-scoped), only for a row whose second review is open or missed and not yet resolved, else `[]`. They are listed even when routing has since been turned off.
+- Submissions list filters (client, `laneFilter.ts`): "Second review" shows rows with an open or unresolved-missed second review and is not blocked for routing-off forms. Picking it resets a pending, rejected or superseded status filter to All, since second reviews sit on approved rows. "Assigned to me" also matches such a row when the user is in `secondReviewerIds` and did not approve it; Admins are not added unless they are listed. Those rows also get a "Second review" chip.
+- The second-review email links to `/intake-forms/submissions?submission=<id>` (only that email; the others still link to `/intake-forms`). The list page validates the id as a positive integer, opens the preview modal for it whatever the filters show (it asks the preview endpoint, so an approved row works), clears the param, and shows "That submission could not be found" for an invalid or unknown id.
 - `GET /intake/submissions/:id/preview` adds `routing`, `routingEnabled`, `canDecide`, `decideBlockedReason`, `laneReviewers` (`[{ id, name }]`) and `isSeniorReviewer`.
 - Approve and reject return 403 when the caller may not decide the lane.
 

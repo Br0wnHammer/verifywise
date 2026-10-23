@@ -796,6 +796,10 @@ export const intakeFormsContent: ArticleContent = {
       text: 'After a standard reviewer approves a submission, it is picked for a second review with a chance equal to the form\'s second review share. Approvals by senior reviewers, and approvals in the senior lane, are not picked. The senior reviewers get an email, and the review modal shows a Second review panel.',
     },
     {
+      type: 'paragraph',
+      text: 'The email you get when a second review is waiting opens the submission directly. You can also find these submissions in the submissions list: choose **Second review** in the lane filter to see every open one, or **Assigned to me** to see the ones you can review.',
+    },
+    {
       type: 'ordered-list',
       items: [
         { text: 'A senior reviewer, or an Admin, opens the submission. The person who approved it can\'t do the second review.' },

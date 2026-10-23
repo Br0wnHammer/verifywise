@@ -276,6 +276,8 @@ export interface IntakeSubmission {
   routing?: SubmissionRouting | null;
   /** Ids of the assigned lane's reviewers, from the list endpoint. */
   laneReviewerIds?: number[];
+  /** Senior reviewers who can act on an open or unresolved-missed second review. */
+  secondReviewerIds?: number[];
   /** Whether the submission's form routes by risk score. */
   routingEnabled?: boolean;
   createdAt: Date;

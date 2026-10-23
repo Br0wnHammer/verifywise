@@ -42,6 +42,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Pending too long": "Zu lange ausstehend",
     "No active reviewer": "Kein aktiver Prüfer",
     "Former user": "Ehemaliger Benutzer",
+    "That submission could not be found": "Diese Einreichung wurde nicht gefunden",
     "Only an Admin can change review routing.":
       "Nur ein Administrator kann die Prüfungszuweisung ändern.",
     "All forms": "Alle Formulare",
@@ -10886,6 +10887,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Pending too long": "En attente depuis trop longtemps",
     "No active reviewer": "Aucun relecteur actif",
     "Former user": "Ancien utilisateur",
+    "That submission could not be found": "Cette soumission est introuvable",
     "Only an Admin can change review routing.":
       "Seul un administrateur peut modifier l'acheminement des révisions.",
     "All forms": "Tous les formulaires",
@@ -21664,6 +21666,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Pending too long": "Pendiente demasiado tiempo",
     "No active reviewer": "Ningún revisor activo",
     "Former user": "Usuario anterior",
+    "That submission could not be found": "No se encontró ese envío",
     "Only an Admin can change review routing.":
       "Solo un administrador puede cambiar la asignación de revisiones.",
     "All forms": "Todos los formularios",

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router";
+import { useNavigate, useLocation, useSearchParams } from "react-router";
 import {
   Box,
   Typography,
@@ -44,6 +44,7 @@ import {
   deleteIntakeForm,
   archiveIntakeForm,
   getPendingSubmissions,
+  getSubmissionPreview,
   IntakeForm,
   IntakeSubmission,
   IntakeFormStatus,
@@ -52,7 +53,12 @@ import {
 import { SubmissionPreviewModal } from "./SubmissionPreviewModal";
 import RiskTierChip from "./assessment/RiskTierChip";
 import { LaneChip } from "./routing/LaneSection";
-import { LANE_FILTER_ITEMS, matchesLaneFilter, type LaneFilter } from "./routing/laneFilter";
+import {
+  LANE_FILTER_ITEMS,
+  hasPendingSecondReview,
+  matchesLaneFilter,
+  type LaneFilter,
+} from "./routing/laneFilter";
 import { useAuth } from "../../../application/hooks/useAuth";
 import { useHasPermission } from "../../../application/hooks/useMyPermissions";
 import { OversightTab } from "./oversight/OversightTab";
@@ -115,6 +121,7 @@ const SelectorVertical = (props: React.SVGAttributes<SVGSVGElement>) => (
 export function IntakeFormsListPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
   const formatDate = useFormattedDate();
   const { userId } = useAuth();
@@ -203,6 +210,36 @@ export function IntakeFormsListPage() {
       setIsLoadingSubmissions(false);
     }
   }, [submissionStatusFilter]);
+
+  // Deep link from the second-review email: /intake-forms/submissions?submission=<id>.
+  // Opens that submission whatever the list filters show, then drops the param
+  // so a refresh or closing the modal does not reopen it.
+  const deepLinkParam = searchParams.get("submission");
+  useEffect(() => {
+    if (deepLinkParam === null) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("submission");
+    setSearchParams(next, { replace: true });
+    const id = Number(deepLinkParam);
+    if (!Number.isSafeInteger(id) || id <= 0 || !/^\d+$/.test(deepLinkParam)) {
+      setSnackbar({ open: true, message: "That submission could not be found", severity: "error" });
+      return;
+    }
+    getSubmissionPreview(id)
+      .then(() => {
+        setSelectedSubmissionId(id);
+        setPreviewOpen(true);
+      })
+      .catch(() => {
+        setSnackbar({
+          open: true,
+          message: "That submission could not be found",
+          severity: "error",
+        });
+      });
+    // Runs once per param value; searchParams is read to keep other params.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkParam]);
 
   // Always load submissions so the tab badge count is accurate
   useEffect(() => {
@@ -635,7 +672,19 @@ export function IntakeFormsListPage() {
               <Select
                 id="submission-lane-filter"
                 value={laneFilter}
-                onChange={(e) => setLaneFilter(e.target.value as LaneFilter)}
+                onChange={(e) => {
+                  const next = e.target.value as LaneFilter;
+                  setLaneFilter(next);
+                  // Second reviews sit on approved rows, so a pending-only,
+                  // rejected-only or superseded-only view would always be empty.
+                  if (
+                    next === "second_review" &&
+                    submissionStatusFilter !== "all" &&
+                    submissionStatusFilter !== "approved"
+                  ) {
+                    setSubmissionStatusFilter("all");
+                  }
+                }}
                 items={LANE_FILTER_ITEMS}
                 sx={{ width: 160, backgroundColor: theme.palette.background.main }}
               />
@@ -728,6 +777,9 @@ export function IntakeFormsListPage() {
                             <Chip label={submission.status} />
                             {submission.resubmissionCount > 0 &&
                               submission.status !== "superseded" && <Chip label="resubmitted" />}
+                            {hasPendingSecondReview(submission) && (
+                              <Chip label="Second review" variant="info" uppercase={false} />
+                            )}
                           </Stack>
                         </TableCell>
                         <TableCell sx={singleTheme.tableStyles.primary.body.cell}>

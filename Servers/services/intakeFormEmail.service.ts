@@ -314,7 +314,7 @@ export async function sendSecondReviewRequestEmail(
       return;
     }
 
-    const reviewLink = buildFrontendUrl(`/intake-forms`);
+    const reviewLink = buildFrontendUrl(`/intake-forms/submissions?submission=${submissionId}`);
     const subject = translate(lang, "Second review requested: {formName}", { formName });
     for (const recipient of recipients) {
       try {

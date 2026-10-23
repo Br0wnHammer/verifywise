@@ -16,6 +16,7 @@ jest.mock("../../utils/intakeForm.utils", () => ({
   setDecisionRecordQuery: jest.fn<any>().mockResolvedValue(undefined),
   updateSubmissionRoutingQuery: jest.fn<any>().mockResolvedValue(true),
   getEligibleReviewersQuery: jest.fn<any>().mockResolvedValue([]),
+  getEligibleReviewerIdsQuery: jest.fn<any>().mockResolvedValue([]),
   getPendingSubmissionsQuery: jest.fn(),
 }));
 jest.mock("../../utils/euAiActClassification.utils", () => ({
@@ -580,15 +581,22 @@ describe("getPendingSubmissions: lane reviewers", () => {
     expect(r.status).toBe(200);
     expect(intake.getPendingSubmissionsQuery).toHaveBeenCalledWith(ORG, undefined);
     expect(r.body.data).toEqual([
-      { id: 1, routing: SENIOR_LANE, routingEnabled: true, laneReviewerIds: [SENIOR] },
+      {
+        id: 1,
+        routing: SENIOR_LANE,
+        routingEnabled: true,
+        laneReviewerIds: [SENIOR],
+        secondReviewerIds: [],
+      },
       {
         id: 2,
         routing: STANDARD_LANE,
         routingEnabled: true,
         laneReviewerIds: [STANDARD, SENIOR],
+        secondReviewerIds: [],
       },
-      { id: 3, routing: null, routingEnabled: true, laneReviewerIds: [] },
-      { id: 4, routing: null, routingEnabled: false, laneReviewerIds: [] },
+      { id: 3, routing: null, routingEnabled: true, laneReviewerIds: [], secondReviewerIds: [] },
+      { id: 4, routing: null, routingEnabled: false, laneReviewerIds: [], secondReviewerIds: [] },
     ]);
   });
 
@@ -598,8 +606,60 @@ describe("getPendingSubmissions: lane reviewers", () => {
     ]);
     const r = await list();
     expect(r.body.data).toEqual([
-      { id: 5, routing: STANDARD_LANE, routingEnabled: false, laneReviewerIds: [] },
+      {
+        id: 5,
+        routing: STANDARD_LANE,
+        routingEnabled: false,
+        laneReviewerIds: [],
+        secondReviewerIds: [],
+      },
     ]);
+  });
+});
+
+describe("getPendingSubmissions: second reviewers", () => {
+  const list = () => call(ctrl.getPendingSubmissions, { ...request(SENIOR), query: {} });
+  const second = (over: any = {}) => ({
+    ...STANDARD_LANE,
+    secondReview: { status: "open", selectedAt: "2026-10-20T00:00:00Z", ...over },
+  });
+
+  it("lists the form's currently eligible senior reviewers on an open second review", async () => {
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([SENIOR]);
+    intake.getPendingSubmissionsQuery.mockResolvedValue([
+      { id: 1, routing: second(), formRouting: routingCfg({ seniorReviewerIds: [SENIOR, 99] }) },
+    ]);
+    const r = await list();
+    expect(r.body.data[0].secondReviewerIds).toEqual([SENIOR]);
+    expect(intake.getEligibleReviewerIdsQuery).toHaveBeenCalledWith(ORG, [SENIOR, 99]);
+  });
+
+  it("still lists them when routing has been turned off, and for a missed unresolved review", async () => {
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([SENIOR]);
+    intake.getPendingSubmissionsQuery.mockResolvedValue([
+      {
+        id: 2,
+        routing: second({ status: "missed" }),
+        formRouting: routingCfg({ enabled: false }),
+      },
+    ]);
+    const r = await list();
+    expect(r.body.data[0].secondReviewerIds).toEqual([SENIOR]);
+  });
+
+  it("is empty for an agreed or resolved review and makes no lookup", async () => {
+    intake.getEligibleReviewerIdsQuery.mockClear();
+    intake.getPendingSubmissionsQuery.mockResolvedValue([
+      { id: 3, routing: second({ status: "agreed" }), formRouting: routingCfg() },
+      {
+        id: 4,
+        routing: second({ status: "missed", resolvedAt: "2026-10-21T00:00:00Z" }),
+        formRouting: routingCfg(),
+      },
+    ]);
+    const r = await list();
+    expect(r.body.data.map((x: any) => x.secondReviewerIds)).toEqual([[], []]);
+    expect(intake.getEligibleReviewerIdsQuery).not.toHaveBeenCalled();
   });
 });
 

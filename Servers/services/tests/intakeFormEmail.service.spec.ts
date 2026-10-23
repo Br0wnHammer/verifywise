@@ -381,7 +381,7 @@ describe("intakeFormEmail.service", () => {
           submissionId: "11",
           entityType: "Model",
           approverName: "Sam",
-          reviewLink: "https://app.example.com/intake-forms",
+          reviewLink: "https://app.example.com/intake-forms/submissions?submission=11",
         }),
       );
       expect(mockSendEmail.mock.calls[1][3]).toMatchObject({ reviewerName: "bo" });
