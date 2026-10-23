@@ -1485,8 +1485,8 @@ export async function getPendingSubmissions(req: Request, res: Response) {
     const rows = await getPendingSubmissionsQuery(req.organizationId!, status);
     // The list shows who can decide each row's stored lane, not the form's whole routing.
     // Senior reviewers who can still act on a second review that is open, or
-    // missed and not yet resolved. They stay senior reviewers of the form
-    // even when routing has since been turned off.
+    // missed and not yet resolved, other than the approver. They stay senior
+    // reviewers of the form even when routing has since been turned off.
     const needsSecondReview = (r: { routing?: ISubmissionRouting | null }) => {
       const second = r.routing?.secondReview;
       return (
@@ -1506,7 +1506,9 @@ export async function getPendingSubmissions(req: Request, res: Response) {
       routingEnabled: formRouting?.enabled ?? false,
       laneReviewerIds: laneReviewerIdsFor(row.routing?.lane ?? null, formRouting ?? null),
       secondReviewerIds: needsSecondReview(row)
-        ? (formRouting?.seniorReviewerIds ?? []).filter((id) => eligible.has(id))
+        ? (formRouting?.seniorReviewerIds ?? []).filter(
+            (id) => eligible.has(id) && id !== row.reviewedBy,
+          )
         : [],
     }));
     return res.status(200).json(STATUS_CODE[200](submissions));

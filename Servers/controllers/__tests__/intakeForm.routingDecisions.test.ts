@@ -647,6 +647,20 @@ describe("getPendingSubmissions: second reviewers", () => {
     expect(r.body.data[0].secondReviewerIds).toEqual([SENIOR]);
   });
 
+  it("leaves out the senior reviewer who approved the submission", async () => {
+    intake.getEligibleReviewerIdsQuery.mockResolvedValue([SENIOR, 99]);
+    intake.getPendingSubmissionsQuery.mockResolvedValue([
+      {
+        id: 5,
+        routing: second(),
+        reviewedBy: SENIOR,
+        formRouting: routingCfg({ seniorReviewerIds: [SENIOR, 99] }),
+      },
+    ]);
+    const r = await list();
+    expect(r.body.data[0].secondReviewerIds).toEqual([99]);
+  });
+
   it("is empty for an agreed or resolved review and makes no lookup", async () => {
     intake.getEligibleReviewerIdsQuery.mockClear();
     intake.getPendingSubmissionsQuery.mockResolvedValue([
