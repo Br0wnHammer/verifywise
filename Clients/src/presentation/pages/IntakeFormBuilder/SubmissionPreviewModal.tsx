@@ -68,7 +68,9 @@ interface SubmissionPreviewModalProps {
   onClose: () => void;
   submissionId: number | null;
   onApproved: () => void;
-  onRejected?: () => void;
+  onRejected: () => void;
+  // A change that is not a decision (escalation, second review): refresh only
+  onChanged: () => void;
 }
 
 interface PreviewData {
@@ -303,6 +305,7 @@ function SubmissionPreviewModal({
   submissionId,
   onApproved,
   onRejected,
+  onChanged,
 }: SubmissionPreviewModalProps) {
   const theme = useTheme();
   const formatDate = useFormattedDate();
@@ -490,7 +493,7 @@ function SubmissionPreviewModal({
 
   // Handle approve
   async function handleApprove() {
-    if (submissionId === null) return;
+    if (submissionId === null || isApproving || isRejecting) return;
 
     // Validate override if expanded — justification is required
     if (overrideExpanded) {
@@ -553,7 +556,7 @@ function SubmissionPreviewModal({
 
   // Handle reject
   async function handleReject() {
-    if (submissionId === null) return;
+    if (submissionId === null || isApproving || isRejecting) return;
     if (!rejectReason.trim()) {
       setApproveError("Please provide a reason for rejection.");
       return;
@@ -568,8 +571,7 @@ function SubmissionPreviewModal({
 
     try {
       await rejectSubmission(submissionId, rejectReason.trim());
-      onRejected?.();
-      onApproved(); // Also triggers list refresh
+      onRejected();
       onClose();
     } catch {
       setApproveError("Failed to reject submission. Please try again.");
@@ -723,7 +725,7 @@ function SubmissionPreviewModal({
               laneReviewers={laneReviewers}
               canEscalate={canEscalate}
               onEscalated={() => {
-                onApproved();
+                onChanged();
                 onClose();
               }}
             />
@@ -736,7 +738,7 @@ function SubmissionPreviewModal({
               onChange={(next) => {
                 setPreviewData((prev) => (prev ? { ...prev, routing: next } : prev));
                 // The list chip and the oversight figures read this routing too
-                onApproved();
+                onChanged();
               }}
             />
           )}
