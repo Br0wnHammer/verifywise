@@ -361,6 +361,42 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'heading',
+      id: 'review-routing',
+      level: 3,
+      text: 'Review routing',
+    },
+    {
+      type: 'paragraph',
+      text: 'Review routing is off by default. Turn it on in the form settings to send each scored submission to a **senior** or **standard** review lane. With routing off, anyone who can edit intake forms can decide every submission.',
+    },
+    {
+      type: 'bullet-list',
+      items: [
+        { text: '**Senior reviewers** and **Standard reviewers**: pick at least one of each. Only users whose role can edit intake forms are listed.' },
+        { text: '**Threshold**: the risk score that separates the lanes, from 1 to 99. The default is 50.' },
+        { text: '**Close-call margin**: how many points either side of the threshold count as a close call, from 0 to 25. The default is 10.' },
+        { text: '**Second review share %**: the share of standard approvals that are checked again, from 0 to 100. The default is 10.' },
+      ],
+    },
+    {
+      type: 'paragraph',
+      text: 'A submission goes to the senior lane if any of these is true, checked in this order. Otherwise it goes to the standard lane.',
+    },
+    {
+      type: 'ordered-list',
+      items: [
+        { text: 'The EU AI Act level is Prohibited.' },
+        { text: 'There is no usable score, for example because the AI scoring failed or the form has no LLM key and the rules give no minimum.' },
+        { text: 'The score is within the close-call margin of the threshold.' },
+        { text: 'The score is at or above the threshold.' },
+      ],
+    },
+    {
+      type: 'paragraph',
+      text: 'Saving the form routes its pending submissions again with the new settings. A reviewer who is removed from your organization or loses the right to edit intake forms stays in the list until you change it. Admins can still decide, and the Oversight tab flags the form under **No active reviewer**.',
+    },
+    {
+      type: 'heading',
       id: 'risk-tier-system',
       level: 3,
       text: 'Risk score bands',
@@ -728,7 +764,70 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'Resubmissions create a new submission record linked to the original. The original submission is preserved for audit purposes.',
+      text: 'Resubmissions create a new submission record linked to the original. The original submission is preserved for audit purposes. A resubmission is routed on its own once it has been scored. Nothing is carried over from the original.',
+    },
+    {
+      type: 'heading',
+      id: 'lanes-and-second-review',
+      level: 2,
+      text: 'Lanes and second reviews',
+    },
+    {
+      type: 'paragraph',
+      text: 'When a form has review routing on, the review modal shows the lane and why the submission is in it, for example "Within 10 points of the threshold" or "Prohibited practice". A submission with no score yet shows "No score yet" instead of a number.',
+    },
+    {
+      type: 'bullet-list',
+      items: [
+        { text: 'Only a reviewer of the right lane, or an Admin, can approve or reject. Senior reviewers can decide in both lanes. Others see which reviewers can decide.' },
+        { text: 'A standard reviewer can\'t approve a submission while setting a Prohibited level or a band that sends it to the senior lane.' },
+        { text: 'If you raise the score band with an override and the new band alone would send the submission to the senior lane, it moves there. A band override never moves a submission to the standard lane.' },
+        { text: 'Use **Send to senior review** to hand a standard submission to the senior lane. You must give a reason. It stays in the senior lane afterwards.' },
+      ],
+    },
+    {
+      type: 'heading',
+      id: 'second-review',
+      level: 3,
+      text: 'Second review',
+    },
+    {
+      type: 'paragraph',
+      text: 'After a standard reviewer approves a submission, it is picked for a second review with a chance equal to the form\'s second review share. Approvals by senior reviewers, and approvals in the senior lane, are not picked. The senior reviewers get an email, and the review modal shows a Second review panel.',
+    },
+    {
+      type: 'ordered-list',
+      items: [
+        { text: 'A senior reviewer, or an Admin, opens the submission. The person who approved it can\'t do the second review.' },
+        { text: 'Click **Agree** if the approval was right, or **Missed something** and write a note saying what was missed. The note is required for a miss.' },
+        { text: 'For a miss, do the follow-up, then click **Mark resolved** and write what was done.' },
+      ],
+    },
+    {
+      type: 'paragraph',
+      text: 'A second review does not change the approval or the use case or model it created.',
+    },
+    {
+      type: 'heading',
+      id: 'oversight',
+      level: 3,
+      text: 'Oversight tab',
+    },
+    {
+      type: 'paragraph',
+      text: 'The **Oversight** tab on the intake forms page is for users who can edit intake forms. Choose the last 4, 8 or 12 weeks, and one form or all forms. Weeks start on Monday, UTC.',
+    },
+    {
+      type: 'bullet-list',
+      items: [
+        { text: '**Submissions**: how many came in, and how many went to each lane. Close calls, submissions not routed yet and submissions on forms with routing off are counted separately.' },
+        { text: '**Median time to decision**: from submission to approval or rejection, overall and per lane.' },
+        { text: '**Redlines caught**: submissions at the Prohibited or High risk level.' },
+        { text: '**Second reviews**: how many were missed out of those completed, and how many are still open.' },
+        { text: '**Reviewers**: decisions, how often each reviewer changed the score band, and median time. A **Check** flag appears for a reviewer with at least 10 decisions who never changed a band. It is a prompt to look, not a finding.' },
+        { text: '**Band kept**: the share of decisions where the band stayed as computed, overall and in the senior lane. **Suggested risks accepted** is the share of suggestions reviewers accepted.' },
+        { text: '**Needs attention**: up to 20 items. A second review open for more than 3 days, a missed second review not yet resolved, a pending Prohibited submission, a submission pending for more than 7 days, and a form with no active reviewer in a lane.' },
+      ],
     },
     {
       type: 'heading',

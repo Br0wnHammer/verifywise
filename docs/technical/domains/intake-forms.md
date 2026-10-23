@@ -1,8 +1,10 @@
-# Intake forms: AI scoring and suggested risks
+# Intake forms: AI scoring, suggested risks, routing and oversight
 
 Public intake submissions get a rule-floored risk score and up to 10 suggested risks, computed in the background. Reviewers see both in the review modal. Accepted suggestions become real risks when the submission is approved.
 
-Design spec: `docs/superpowers/specs/2026-10-21-ai-intake-classification-design.md`.
+A form can also route each scored submission to a senior or standard review lane, sample some standard approvals for a second review, and feed an Oversight tab. See Routing, Second review and Oversight below.
+
+Design specs: `docs/superpowers/specs/2026-10-21-ai-intake-classification-design.md` (scoring) and `docs/superpowers/specs/2026-10-22-intake-routing-oversight-design.md` (routing and oversight).
 
 ## Where the code lives
 
@@ -17,6 +19,9 @@ Design spec: `docs/superpowers/specs/2026-10-21-ai-intake-classification-design.
 | Storage queries | `Servers/utils/intakeForm.utils.ts` |
 | Migration | `Servers/database/migrations/20261021120000-intake-ai-assessment.js` |
 | Review UI | `Clients/src/presentation/pages/IntakeFormBuilder/assessment/` |
+| Lane rules, decision gate, routing writes | `Servers/services/intakeRouting/routingRules.ts`, `decisionGate.ts`, `routingService.ts` |
+| Oversight figures | `Servers/services/intakeRouting/oversight.ts` |
+| Routing and oversight UI | `Clients/src/presentation/pages/IntakeFormBuilder/routing/`, `oversight/` |
 
 ## Score
 
@@ -79,7 +84,101 @@ All new writes use `authorize("intakeForm.edit")`.
 | `POST /intake/submissions/:id/suggested-risks/accept-all` | Accepts open suggestions that have a mitigation plan. Returns `{ accepted, skipped, items }`, with items as stored. 409 when the submission isn't pending, including one decided during the call |
 | `PATCH /intake/submissions/:id/risk-override` | Pending submissions only (409 otherwise). A pre-v2 tier name is stored as its band (`bandOfTier`). For v2, or a submission not scored yet, the tier must be a band at or above the band of the current rule minimum |
 
+## Routing endpoints
+
+All use `authorize("intakeForm.edit")`.
+
+| Route | Purpose |
+|---|---|
+| `GET /intake/routing/eligible-reviewers` | Users of the organization whose role has `intakeForm.edit`: `[{ id, name, surname, email }]`. The form builder fills its reviewer pickers from it |
+| `POST /intake/submissions/:id/escalate` | Body `{ reason }`, 1 to 1000 characters (400 otherwise). Moves a pending standard-lane submission to senior with reason `escalated`. 404 for an unknown submission or form. 409 when it isn't pending, routing is off, it isn't in the standard lane, or it changed meanwhile. 403 unless the caller is an Admin or a reviewer listed on the form. Returns the new routing |
+| `POST /intake/submissions/:id/second-review` | Body `{ outcome: "agreed" or "missed", note? }`. The note is at most 2,000 characters and required for `missed` (400). 403 unless the caller is a senior reviewer of the form or an Admin, or if they approved the submission themselves. 404 for an unknown submission. 409 when the review isn't open. Returns the new routing |
+| `POST /intake/submissions/:id/second-review/resolve` | Body `{ note }`, 1 to 2,000 characters (400 otherwise). Same 403 and 404 rules. 409 unless the review is missed and not yet resolved. Returns the new routing |
+| `GET /intake/oversight?weeks=4, 8 or 12&formId=` | See Oversight. `weeks` defaults to 8 |
+
+Fields added to existing responses:
+
+- Form create and update bodies, and form responses, carry `routing`.
+- `GET /intake/submissions` rows carry `routing`, `routingEnabled` and `laneReviewerIds` (who can decide the row's stored lane).
+- `GET /intake/submissions/:id/preview` adds `routing`, `routingEnabled`, `canDecide`, `decideBlockedReason`, `laneReviewers` (`[{ id, name }]`) and `isSeniorReviewer`.
+- Approve and reject return 403 when the caller may not decide the lane.
+
+## Routing
+
+Routing is opt-in per form. It is stored in `intake_forms.routing` (JSONB) and, per submission, in `intake_submissions.routing`. A form with no routing block, or `enabled: false`, behaves as before: any user with `intakeForm.edit` can decide.
+
+Form settings (`routing` in the body of `POST /intake/forms` and `PATCH /intake/forms/:id`, validated by `validateRoutingSettings`):
+
+| Field | Rule | Default |
+|---|---|---|
+| `enabled` | boolean, required | |
+| `seniorReviewerIds`, `standardReviewerIds` | arrays of positive integer user ids, repeats dropped. Both need at least one entry when `enabled` is true | `[]` |
+| `threshold` | whole number, 1 to 99 | 50 |
+| `closeCallMargin` | whole number, 0 to 25 | 10 |
+| `secondReviewRate` | whole number, 0 to 100, a percent | 10 |
+
+Omitting `routing` leaves it alone and sending `null` clears it. Every listed id must belong to a user of the organization whose role has `intakeForm.edit` (`getEligibleReviewerIdsQuery`), otherwise the save is refused with 400. After a save that sets routing, `rerouteFormPending` routes the form's pending submissions again. A failure there is logged and does not fail the save.
+
+### Lane rules
+
+`laneFor` in `routingRules.ts`. The first match wins:
+
+| Order | Condition | Lane | Reason |
+|---|---|---|---|
+| 1 | EU AI Act level is Prohibited | senior | `prohibited` |
+| 2 | `finalScore` is null, or scoring status is `ai_failed` | senior | `no_score` |
+| 3 | `abs(score - threshold) < closeCallMargin` | senior | `close_call` |
+| 4 | `score >= threshold` | senior | `at_or_above_threshold` |
+| 5 | otherwise | standard | `below_threshold` |
+
+Two more reasons are set outside `laneFor`: `override_raised` and `escalated`.
+
+- `routeSubmission` runs once a submission's scoring has settled (status other than `pending`) and stores `{ lane, reason, score, threshold, closeCallMargin, routedAt }`. It writes only while the stored routing is still the value it read, and does nothing for a decided submission or one a reviewer escalated. A rejected submission that is resubmitted becomes a new row with `routing = NULL` and is routed on its own when its scoring settles.
+- `raiseForOverride` runs after `PATCH /intake/submissions/:id/risk-override`. If the override band, taken at its lower bound (Low 0, Medium 26, High 51, Critical 76), would route to senior, the submission moves to senior with reason `override_raised`. It never lowers a lane, and a later re-route keeps a raised submission in senior.
+- Escalation moves a standard submission to senior with reason `escalated` and stores `escalation: { by, at, reason }`. Re-routing leaves an escalated submission alone.
+
+### Who may decide
+
+`canDecideLane`: with routing off, or no lane yet, any user with `intakeForm.edit`. With routing on, an Admin can always decide, a senior reviewer can decide in either lane, and a standard reviewer only in the standard lane.
+
+Approve checks the lane the approval would make true (`laneAtDecision`): the stored lane, raised to senior when the level and score after the reviewer's changes route there. It never lowers a stored lane. A standard reviewer who sets a Prohibited level or a band that routes to senior gets 403. Reject uses the stored lane (`laneOnRecord`). When an Admin decides in a lane the lists would not have let them into, the controller logs it (`logIfOutsideLane`).
+
+A reviewer who is deleted, or who loses `intakeForm.edit`, stays in the form's lists. Admins can still decide, the form shows as "No active reviewer" in the Oversight tab, and saving the form with the stale id is refused with 400.
+
+### Decision record
+
+Approve and reject both write `intake_submissions.decision_record` through `buildDecisionRecord`: `{ level, computedBand, bandInForce, bandChanged, overriddenBy, lane }`. `bandChanged` is true when the band in force at the decision differs from the computed one. Oversight reads it.
+
+## Second review
+
+When a non-senior reviewer approves a standard-lane submission, `pickSecondReview` selects it with probability `secondReviewRate` percent (`crypto.randomInt`). A selected submission gets `routing.secondReview = { status: "open", selectedAt }` inside the approval transaction, and the form's senior reviewers get an email. Approvals by senior reviewers, and approvals in the senior lane, are never sampled.
+
+- `POST /intake/submissions/:id/second-review` closes an open review as `agreed` or `missed`. A `missed` outcome needs a note.
+- `POST /intake/submissions/:id/second-review/resolve` closes a missed review with a resolution note, once the follow-up is done.
+
+Neither endpoint changes the approval or the entity it created. Writes are guarded on the current review state (`updateSecondReviewQuery`), so when two reviewers act at once the second gets a 409.
+
+## Oversight
+
+`GET /intake/oversight` returns figures for the last 4, 8 or 12 weeks, optionally for one form. `aggregateOversight` in `oversight.ts` is a pure function over the rows `ROWS_SQL` returns, so it is tested without a database. The query filters by `organization_id`. Weeks start on Monday, UTC (`date_trunc('week', created_at AT TIME ZONE 'UTC')`), and `byWeek` has one entry for every week in the period, including empty ones.
+
+| Figure | What it counts |
+|---|---|
+| `totals` | Submissions created in the period. Each lands in exactly one of `routingOff` (form has routing off), `notRouted` (routing on, no lane yet), `senior` or `standard`. `closeCalls` is the part of `senior` with reason `close_call` |
+| `byWeek` | The same split per week. Close calls are counted in `closeCall` and not again in `senior` |
+| `medianDecisionHours` | Median hours from `created_at` to `reviewed_at` for decided submissions, overall and by lane. A rejected submission that was resubmitted counts as decided. Null when there are none |
+| `redlines` | Decided and pending submissions whose EU AI Act level is Prohibited or High risk. The level is the one at decision for decided rows |
+| `secondReviews` | `completed` (agreed or missed), `missed`, `open` |
+| `reviewers` | Per decision maker: decisions, decisions that changed the band, median hours. `check` is true at 10 or more decisions with a known band outcome and none changed |
+| `bandKept` | Decisions where the band in force equalled the computed band, out of decisions with a known outcome, and the same for the senior lane. Legacy assessments with no computed band compare the override with the stored tier, and are skipped when there is no tier |
+| `suggestions` | Accepted suggested risks over suggested ones, for decided submissions whose suggestion stage completed |
+| `needsAttention` | At most 20 rows, newest first: an open second review older than 3 days, a missed review not yet resolved, a pending Prohibited submission, a pending submission older than 7 days, and routed forms whose senior or standard list has no eligible reviewer left |
+
+An empty period returns zero counts and null medians, and the client shows a rate only when its denominator is above zero. `weeks` outside 4, 8 and 12 is a 400, and a `formId` from another organization is a 404.
+
 ## Approval
+
+Approve also checks the lane (see Routing) and may select a second review.
 
 Inside the existing approval transaction:
 
@@ -94,3 +193,5 @@ The migration adds `suggested_risks` and `notification_sent_at` and sets the def
 ## Tests
 
 Server: `Servers/services/intakeScoring/__tests__/`, `Servers/utils/__tests__/intakeForm.assessment.utils.test.ts`, `Servers/controllers/__tests__/intakeForm.{assessmentEnqueue,review,approveRisks}.test.ts`. Client: `Clients/src/presentation/pages/IntakeFormBuilder/__tests__/{ScoreSection,SuggestedRisksSection,OverrideBandFloor,RiskTierChip}.test.tsx`.
+
+Routing and oversight: `Servers/services/intakeRouting/__tests__/` (`routingRules`, `routingService`, `decisionGate`, `oversight`). Client, in the same `__tests__` folder: `{RoutingSettingsSection,LaneSection,SecondReviewPanel,OversightTab,SubmissionPreviewModal.lane,laneFilter,IntakeFormsListPage.oversight}`.
