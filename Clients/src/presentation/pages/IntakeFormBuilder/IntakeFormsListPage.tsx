@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router";
 import {
   Box,
@@ -110,6 +110,9 @@ const ENTITY_LABELS: Record<string, string> = {
 
 const INTAKE_FORMS_ROWS_PER_PAGE_KEY = "verifywise_intake_forms_rows_per_page";
 
+// How long a reviewed submission row stays green, as on other tables
+const FLASH_DURATION_MS = 3000;
+
 const SelectorVertical = (props: React.SVGAttributes<SVGSVGElement>) => (
   <ChevronsUpDown size={16} {...props} />
 );
@@ -174,12 +177,15 @@ export function IntakeFormsListPage() {
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<number | null>(null);
   const [flashSubmissionId, setFlashSubmissionId] = useState<number | null>(null);
 
-  // Green row flash after a successful review, consistent with other tables
-  const FLASH_DURATION_MS = 3000;
+  // Green row flash after a successful review. A new flash cancels the previous
+  // timer so it cannot cut the new one short.
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flashSubmissionRow = useCallback((submissionId: number) => {
+    clearTimeout(flashTimerRef.current);
     setFlashSubmissionId(submissionId);
-    setTimeout(() => setFlashSubmissionId(null), FLASH_DURATION_MS);
+    flashTimerRef.current = setTimeout(() => setFlashSubmissionId(null), FLASH_DURATION_MS);
   }, []);
+  useEffect(() => () => clearTimeout(flashTimerRef.current), []);
 
   // ============================================================================
   // Data loading
@@ -218,6 +224,18 @@ export function IntakeFormsListPage() {
       setIsLoadingSubmissions(false);
     }
   }, [submissionStatusFilter]);
+
+  // The list chips and the Oversight tab both read what the review modal changes
+  const refreshAfterReview = () => {
+    loadSubmissions();
+    setOversightRefresh((n) => n + 1);
+  };
+
+  const handleSubmissionDecided = (message: string) => {
+    if (selectedSubmissionId !== null) flashSubmissionRow(selectedSubmissionId);
+    refreshAfterReview();
+    setSnackbar({ open: true, message, severity: "success" });
+  };
 
   // Deep link from the second-review email: /intake-forms/submissions?submission=<id>.
   // Opens that submission whatever the list filters show, then drops the param
@@ -762,8 +780,11 @@ export function IntakeFormsListPage() {
                             "&:nth-of-type(even)": {
                               backgroundColor: singleTheme.flashColors.background,
                             },
-                            "&:hover td": {
+                            "&:hover": {
                               backgroundColor: singleTheme.flashColors.backgroundHover,
+                            },
+                            "&:hover td": {
+                              backgroundColor: "transparent",
                             },
                           }),
                           cursor: submission.status === "superseded" ? "default" : "pointer",
@@ -1034,18 +1055,9 @@ export function IntakeFormsListPage() {
           setSelectedSubmissionId(null);
         }}
         submissionId={selectedSubmissionId}
-        onApproved={() => {
-          if (selectedSubmissionId !== null) flashSubmissionRow(selectedSubmissionId);
-          loadSubmissions();
-          setOversightRefresh((n) => n + 1);
-          setSnackbar({ open: true, message: "Submission approved", severity: "success" });
-        }}
-        onRejected={() => {
-          if (selectedSubmissionId !== null) flashSubmissionRow(selectedSubmissionId);
-          loadSubmissions();
-          setOversightRefresh((n) => n + 1);
-          setSnackbar({ open: true, message: "Submission rejected", severity: "success" });
-        }}
+        onApproved={() => handleSubmissionDecided("Submission approved")}
+        onRejected={() => handleSubmissionDecided("Submission rejected")}
+        onChanged={refreshAfterReview}
       />
 
       {/* Snackbar */}

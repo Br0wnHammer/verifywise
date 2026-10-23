@@ -68,7 +68,9 @@ interface SubmissionPreviewModalProps {
   onClose: () => void;
   submissionId: number | null;
   onApproved: () => void;
-  onRejected?: () => void;
+  onRejected: () => void;
+  // A change that is not a decision (escalation, second review): refresh only
+  onChanged: () => void;
 }
 
 interface PreviewData {
@@ -303,6 +305,7 @@ function SubmissionPreviewModal({
   submissionId,
   onApproved,
   onRejected,
+  onChanged,
 }: SubmissionPreviewModalProps) {
   const theme = useTheme();
   const formatDate = useFormattedDate();
@@ -568,7 +571,7 @@ function SubmissionPreviewModal({
 
     try {
       await rejectSubmission(submissionId, rejectReason.trim());
-      onRejected?.();
+      onRejected();
       onClose();
     } catch {
       setApproveError("Failed to reject submission. Please try again.");
@@ -722,7 +725,7 @@ function SubmissionPreviewModal({
               laneReviewers={laneReviewers}
               canEscalate={canEscalate}
               onEscalated={() => {
-                onApproved();
+                onChanged();
                 onClose();
               }}
             />
@@ -735,7 +738,7 @@ function SubmissionPreviewModal({
               onChange={(next) => {
                 setPreviewData((prev) => (prev ? { ...prev, routing: next } : prev));
                 // The list chip and the oversight figures read this routing too
-                onApproved();
+                onChanged();
               }}
             />
           )}

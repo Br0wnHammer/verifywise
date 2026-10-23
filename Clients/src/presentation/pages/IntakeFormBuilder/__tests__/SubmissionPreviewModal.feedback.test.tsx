@@ -5,15 +5,22 @@ import {
   getSubmissionPreview,
   approveSubmission,
   rejectSubmission,
+  escalateSubmission,
 } from "../../../../application/repository/intakeForm.repository";
 
 vi.mock("../../../../application/repository/intakeForm.repository", () => ({
   getSubmissionPreview: vi.fn(),
   approveSubmission: vi.fn(),
   rejectSubmission: vi.fn(),
+  escalateSubmission: vi.fn(),
 }));
 
-function mockPreview() {
+// User 1 is a standard-lane reviewer, so Send to senior review shows when routing is on
+vi.mock("../../../../application/hooks/useAuth", () => ({
+  useAuth: () => ({ userId: 1, userRoleName: "Reviewer" }),
+}));
+
+function mockPreview(extra: Record<string, unknown> = {}) {
   vi.mocked(getSubmissionPreview).mockResolvedValue({
     data: {
       submission: { status: "pending" },
@@ -29,6 +36,7 @@ function mockPreview() {
         },
       },
       euAiActClassification: null,
+      ...extra,
     },
   } as never);
 }
@@ -36,6 +44,7 @@ function mockPreview() {
 function renderModal(props: {
   onApproved?: () => void;
   onRejected?: () => void;
+  onChanged?: () => void;
   onClose?: () => void;
 }) {
   return renderWithProviders(
@@ -44,7 +53,8 @@ function renderModal(props: {
       onClose={props.onClose ?? vi.fn()}
       submissionId={5}
       onApproved={props.onApproved ?? vi.fn()}
-      onRejected={props.onRejected}
+      onRejected={props.onRejected ?? vi.fn()}
+      onChanged={props.onChanged ?? vi.fn()}
     />,
   );
 }
@@ -126,7 +136,37 @@ describe("SubmissionPreviewModal review feedback", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("ignores a second approve while the first is still in flight", async () => {
+  it("reports an escalation as a change, never as an approval", async () => {
+    vi.mocked(escalateSubmission).mockResolvedValue({ data: {} } as never);
+    const onApproved = vi.fn();
+    const onRejected = vi.fn();
+    const onChanged = vi.fn();
+    mockPreview({
+      routing: {
+        lane: "standard",
+        reason: "below_threshold",
+        score: 20,
+        threshold: 50,
+        closeCallMargin: 10,
+        routedAt: "2026-10-22T00:00:00.000Z",
+      },
+      routingEnabled: true,
+      canDecide: true,
+      laneReviewers: [{ id: 1, name: "Sam Standard" }],
+    });
+    renderModal({ onApproved, onRejected, onChanged });
+    fireEvent.click(await screen.findByRole("button", { name: "Send to senior review" }));
+    fireEvent.change(document.getElementById("escalate-reason")!, {
+      target: { value: "Touches hiring decisions." },
+    });
+    const sendButtons = screen.getAllByRole("button", { name: "Send to senior review" });
+    fireEvent.click(sendButtons[sendButtons.length - 1]);
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(onApproved).not.toHaveBeenCalled();
+    expect(onRejected).not.toHaveBeenCalled();
+  });
+
+  it("sends one approval when approve is clicked twice", async () => {
     type ApproveResult = Awaited<ReturnType<typeof approveSubmission>>;
     let resolveApprove!: (value: ApproveResult) => void;
     vi.mocked(approveSubmission).mockImplementation(
