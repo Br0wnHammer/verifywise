@@ -5831,7 +5831,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Status breakdown": "Statusaufschlüsselung",
     "Status is controlled by the approval workflow and cannot be changed manually.":
       "Der Status wird durch den Genehmigungsablauf gesteuert und kann nicht manuell geändert werden.",
+    "Submission approved": "Einreichung genehmigt",
     "Submission received": "Einreichung empfangen",
+    "Submission rejected": "Einreichung abgelehnt",
     "Submission responses will be emailed to selected recipients":
       "Einreichungsantworten werden per E-Mail an ausgewählte Empfänger gesendet",
     "Successful": "Erfolgreich",
@@ -16512,7 +16514,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Status breakdown": "Répartition par statut",
     "Status is controlled by the approval workflow and cannot be changed manually.":
       "Le statut est contrôlé par le flux d'approbation et ne peut pas être modifié manuellement.",
+    "Submission approved": "Soumission approuvée",
     "Submission received": "Soumission reçue",
+    "Submission rejected": "Soumission rejetée",
     "Submission responses will be emailed to selected recipients":
       "Les réponses de soumission seront envoyées par e-mail aux destinataires sélectionnés",
     "Successful": "Réussi",
@@ -25296,7 +25300,9 @@ export const translations: Record<string, Record<string, string>> = {
     "State Comparison (Hover, Active, Disabled)":
       "Comparación de estados (al pasar el cursor, activo, deshabilitado)",
     "Status breakdown": "Desglose por estado",
+    "Submission approved": "Envío aprobado",
     "Submission received": "Envío recibido",
+    "Submission rejected": "Envío rechazado",
     "Successful": "Correcto",
     "Suggested questions": "Preguntas sugeridas",
     "Summary": "Resumen",
