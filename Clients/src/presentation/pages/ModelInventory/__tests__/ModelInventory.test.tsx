@@ -212,5 +212,10 @@ describe("ModelInventory", () => {
       "Failed to load model inventory data. Please try again later.",
     );
     expect(within(wrapper).queryByTestId("model-inventory-table")).not.toBeInTheDocument();
+    // The inline alert replaces the global toast for this request only.
+    expect(getAllEntities).toHaveBeenCalledWith({
+      routeUrl: "/modelInventory",
+      suppressGlobalErrorToast: true,
+    });
   });
 });

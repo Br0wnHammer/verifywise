@@ -152,5 +152,10 @@ describe("TrainingRegistar", () => {
       "Failed to load training data. Please try again later.",
     );
     expect(within(wrapper).queryByTestId("training-table")).not.toBeInTheDocument();
+    // The inline alert replaces the global toast for this request only.
+    expect(getAllEntities).toHaveBeenCalledWith({
+      routeUrl: "/training",
+      suppressGlobalErrorToast: true,
+    });
   });
 });

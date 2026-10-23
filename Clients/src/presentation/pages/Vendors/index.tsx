@@ -165,9 +165,11 @@ const Vendors = () => {
     isLoading: isVendorsLoading,
     error: vendorsError,
     refetch: refetchVendors,
-  } = useVendors({
-    projectId: selectedProjectId,
-  });
+  } = useVendors(
+    { projectId: selectedProjectId },
+    // The vendor list renders its own inline error state.
+    { suppressGlobalErrorToast: true },
+  );
   const { vendorRisksSummary, refetchVendorRisks, vendorRisks, loadingVendorRisks } =
     useVendorRisks({
       projectId: selectedProjectId?.toString(),
@@ -1272,7 +1274,12 @@ const Vendors = () => {
             items={filteredVendors}
             isLoading={isVendorsLoading}
             loadingLabel="Loading vendors"
-            errorMessage={vendorsError ? "Failed to load vendors. Please try again later." : null}
+            errorMessage={
+              // A failed background refetch keeps the cached vendors on screen.
+              vendorsError && !vendors.length
+                ? "Failed to load vendors. Please try again later."
+                : null
+            }
             emptyState={
               <TableWithPlaceholder
                 vendors={[]}

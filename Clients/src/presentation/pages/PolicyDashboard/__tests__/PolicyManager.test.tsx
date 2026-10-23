@@ -21,12 +21,16 @@ vi.mock("../../../../application/hooks/useUsers", () => ({
 let mockPolicies: PolicyManagerModel[] = [];
 let mockPoliciesLoading = false;
 let mockPoliciesError: Error | null = null;
+const mockUsePolicies = vi.fn();
 vi.mock("../../../../application/hooks/usePolicies", () => ({
-  usePolicies: () => ({
-    data: mockPolicies,
-    isLoading: mockPoliciesLoading,
-    error: mockPoliciesError,
-  }),
+  usePolicies: (...args: unknown[]) => {
+    mockUsePolicies(...args);
+    return {
+      data: mockPolicies,
+      isLoading: mockPoliciesLoading,
+      error: mockPoliciesError,
+    };
+  },
   policyQueryKeys: {
     all: ["policies"],
     lists: () => ["policies", "list"],
@@ -179,6 +183,20 @@ describe("PolicyManager", () => {
       "Failed to load policies. Please try again later.",
     );
     expect(screen.queryByText(/No policies yet/)).not.toBeInTheDocument();
+  });
+
+  it("asks for the policy list without the global toast (the page shows the error inline)", () => {
+    renderWithProviders(<PolicyManager tags={[]} />, { route: "/policies" });
+    expect(mockUsePolicies).toHaveBeenCalledWith({ suppressGlobalErrorToast: true });
+  });
+
+  it("keeps cached policies on screen when a background refetch fails", () => {
+    mockPoliciesError = new Error("network error");
+    renderWithProviders(<PolicyManager tags={[]} />, { route: "/policies" });
+
+    expect(screen.queryByText("Failed to load policies. Please try again later.")).toBeNull();
+    expect(screen.getByTestId("policy-table")).toBeInTheDocument();
+    expect(screen.getByTestId("policy-row-count").textContent).toBe("2");
   });
 
   it("shows an empty state when there are no policies", () => {

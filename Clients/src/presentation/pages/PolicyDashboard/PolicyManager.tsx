@@ -72,7 +72,12 @@ const PolicyManager: React.FC<PolicyManagerProps> = ({ tags: _tags }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: policies = [], isLoading, error: policiesError } = usePolicies();
+  // The policy list renders its own inline error state.
+  const {
+    data: policies = [],
+    isLoading,
+    error: policiesError,
+  } = usePolicies({ suppressGlobalErrorToast: true });
   const deletePolicyMutation = useDeletePolicy();
   const [flashRowId, setFlashRowId] = useState<number | null>(null);
   const { userRoleName } = useAuth();
@@ -677,7 +682,10 @@ const PolicyManager: React.FC<PolicyManagerProps> = ({ tags: _tags }) => {
               isLoading={isLoading}
               loadingLabel="Loading policies"
               errorMessage={
-                policiesError ? "Failed to load policies. Please try again later." : null
+                // A failed background refetch keeps the cached policies on screen.
+                policiesError && !policies.length
+                  ? "Failed to load policies. Please try again later."
+                  : null
               }
               emptyState={
                 <TableEmptyStateLayout

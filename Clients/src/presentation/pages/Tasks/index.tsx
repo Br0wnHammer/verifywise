@@ -89,19 +89,22 @@ const Tasks: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [includeArchived, setIncludeArchived] = useState(false);
   const queryClient = useQueryClient();
+  // The task list renders its own inline error state.
   const {
     data: rawTasks = [],
     isLoading,
     error: queryError,
     refetch,
-  } = useTasks({ includeArchived });
+  } = useTasks({ includeArchived, suppressGlobalErrorToast: true });
   const tasks = useMemo(() => rawTasks.map((task) => new TaskModel(task)), [rawTasks]);
   const updateTaskStatusMutation = useUpdateTaskStatus();
   const updateTaskPriorityMutation = useUpdateTaskPriority();
   const createTaskMutation = useCreateTask();
   const updateTaskMutation = useUpdateTask();
   const archiveTaskMutation = useArchiveTask();
-  const error = queryError ? "Failed to load tasks. Please try again later." : null;
+  // A failed background refetch keeps the cached tasks on screen.
+  const error =
+    queryError && !rawTasks.length ? "Failed to load tasks. Please try again later." : null;
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<ITask | null>(null);
   const [searchQuery, setSearchQuery] = useState("");

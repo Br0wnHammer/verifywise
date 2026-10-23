@@ -171,5 +171,9 @@ describe("Tasks", () => {
       "Failed to load tasks. Please try again later.",
     );
     expect(within(wrapper).queryByTestId("tasks-table")).not.toBeInTheDocument();
+    // The inline alert replaces the global toast for this request only.
+    expect(getAllTasks).toHaveBeenCalledWith(
+      expect.objectContaining({ suppressGlobalErrorToast: true }),
+    );
   });
 });

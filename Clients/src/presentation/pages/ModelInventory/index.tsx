@@ -852,7 +852,11 @@ const ModelInventory: React.FC = () => {
     }
     setModelInventoryError(null);
     try {
-      const response = await getAllEntities({ routeUrl: "/modelInventory" });
+      const response = await getAllEntities({
+        routeUrl: "/modelInventory",
+        // The model list renders its own inline error state.
+        suppressGlobalErrorToast: true,
+      });
       if (response?.data) {
         setModelInventoryData(response.data);
         // Only force table re-render if we're not in an optimistic update scenario

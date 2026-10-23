@@ -220,7 +220,11 @@ const Training: React.FC = () => {
     setIsLoading(true);
     setTrainingError(null);
     try {
-      const response = await getAllEntities({ routeUrl: "/training" });
+      const response = await getAllEntities({
+        routeUrl: "/training",
+        // The training list renders its own inline error state.
+        suppressGlobalErrorToast: true,
+      });
       if (response?.data) {
         setTrainingData(response.data);
       }
