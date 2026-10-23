@@ -480,7 +480,7 @@ function SubmissionPreviewModal({
 
   // Handle approve
   async function handleApprove() {
-    if (submissionId === null) return;
+    if (submissionId === null || isApproving || isRejecting) return;
 
     // Validate override if expanded — justification is required
     if (overrideExpanded) {
@@ -543,7 +543,7 @@ function SubmissionPreviewModal({
 
   // Handle reject
   async function handleReject() {
-    if (submissionId === null) return;
+    if (submissionId === null || isApproving || isRejecting) return;
     if (!rejectReason.trim()) {
       setApproveError("Please provide a reason for rejection.");
       return;
@@ -559,7 +559,6 @@ function SubmissionPreviewModal({
     try {
       await rejectSubmission(submissionId, rejectReason.trim());
       onRejected?.();
-      onApproved(); // Also triggers list refresh
       onClose();
     } catch {
       setApproveError("Failed to reject submission. Please try again.");
