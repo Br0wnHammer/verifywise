@@ -277,6 +277,26 @@ describe("aggregateOversight", () => {
       ]);
     });
 
+    it("lists overdue items older than the window without counting them in the figures", () => {
+      const out = run([
+        row({ in_window: false, created_at: "2025-01-05T00:00:00Z", week_start: "2025-01-05" }),
+        row({
+          in_window: false,
+          status: "approved",
+          created_at: "2025-01-06T00:00:00Z",
+          routing: routing("senior", "close_call", {
+            secondReview: { status: "open", selectedAt: "2025-01-06T00:00:00Z" },
+          }),
+        }),
+      ]);
+      expect(out.needsAttention.map((n) => n.kind).sort()).toEqual([
+        "pending_old",
+        "second_review_open",
+      ]);
+      expect(out.totals.submissions).toBe(0);
+      expect(out.secondReviews).toEqual({ completed: 0, missed: 0, open: 0 });
+    });
+
     it("includes empty-lane forms, sorts newest first and caps at 20", () => {
       const rows = Array.from({ length: 25 }, (_, i) =>
         row({ created_at: new Date(Date.parse("2026-09-01T00:00:00Z") + i * HOUR).toISOString() }),

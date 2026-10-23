@@ -64,6 +64,8 @@ export interface IOversightRow {
   routing_on: boolean;
   status: string;
   created_at: Date | string;
+  /** False for older rows pulled in only because they still need attention. Defaults to true. */
+  in_window?: boolean;
   reviewed_at: Date | string | null;
   reviewed_by: number | null;
   week_start: string;
@@ -174,6 +176,51 @@ export function aggregateOversight(input: {
   const title = (row: IOversightRow) => row.form_name ?? `Form ${row.form_id}`;
 
   for (const row of rows) {
+    const second = row.routing?.secondReview;
+    if (
+      second?.status === "open" &&
+      nowMs - ms(second.selectedAt) > SECOND_REVIEW_OPEN_DAYS * DAY_MS
+    ) {
+      attention.push({
+        kind: "second_review_open",
+        submissionId: row.id,
+        formId: row.form_id,
+        title: title(row),
+        at: iso(second.selectedAt),
+      });
+    }
+    if (second?.status === "missed" && !second.resolvedAt) {
+      attention.push({
+        kind: "second_review_missed",
+        submissionId: row.id,
+        formId: row.form_id,
+        title: title(row),
+        at: iso(second.reviewedAt ?? second.selectedAt),
+      });
+    }
+    if (row.status === "pending") {
+      if (row.level === "Prohibited") {
+        attention.push({
+          kind: "prohibited_pending",
+          submissionId: row.id,
+          formId: row.form_id,
+          title: title(row),
+          at: iso(row.created_at),
+        });
+      } else if (nowMs - ms(row.created_at) > PENDING_OLD_DAYS * DAY_MS) {
+        attention.push({
+          kind: "pending_old",
+          submissionId: row.id,
+          formId: row.form_id,
+          title: title(row),
+          at: iso(row.created_at),
+        });
+      }
+    }
+
+    // Older rows are here only for the attention list; the period figures stay windowed
+    if (row.in_window === false) continue;
+
     totals.submissions += 1;
     const bucket = byWeek[weekIndex.get(row.week_start) ?? -1];
 
@@ -196,53 +243,11 @@ export function aggregateOversight(input: {
       if (bucket) bucket.standard += 1;
     }
 
-    const second = row.routing?.secondReview;
     if (second) {
-      if (second.status === "open") {
-        secondReviews.open += 1;
-        if (nowMs - ms(second.selectedAt) > SECOND_REVIEW_OPEN_DAYS * DAY_MS) {
-          attention.push({
-            kind: "second_review_open",
-            submissionId: row.id,
-            formId: row.form_id,
-            title: title(row),
-            at: iso(second.selectedAt),
-          });
-        }
-      } else {
+      if (second.status === "open") secondReviews.open += 1;
+      else {
         secondReviews.completed += 1;
-        if (second.status === "missed") {
-          secondReviews.missed += 1;
-          if (!second.resolvedAt) {
-            attention.push({
-              kind: "second_review_missed",
-              submissionId: row.id,
-              formId: row.form_id,
-              title: title(row),
-              at: iso(second.reviewedAt ?? second.selectedAt),
-            });
-          }
-        }
-      }
-    }
-
-    if (row.status === "pending") {
-      if (row.level === "Prohibited") {
-        attention.push({
-          kind: "prohibited_pending",
-          submissionId: row.id,
-          formId: row.form_id,
-          title: title(row),
-          at: iso(row.created_at),
-        });
-      } else if (nowMs - ms(row.created_at) > PENDING_OLD_DAYS * DAY_MS) {
-        attention.push({
-          kind: "pending_old",
-          submissionId: row.id,
-          formId: row.form_id,
-          title: title(row),
-          at: iso(row.created_at),
-        });
+        if (second.status === "missed") secondReviews.missed += 1;
       }
     }
 
@@ -340,6 +345,7 @@ const ROWS_SQL = `
     COALESCE((f.routing->>'enabled')::boolean, false) AS routing_on,
     s.status,
     s.created_at,
+    s.created_at >= :since AS in_window,
     s.reviewed_at,
     s.reviewed_by,
     to_char(date_trunc('week', s.created_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS week_start,
@@ -358,7 +364,13 @@ const ROWS_SQL = `
   FROM intake_submissions s
   LEFT JOIN intake_forms f ON f.id = s.form_id AND f.organization_id = s.organization_id
   WHERE s.organization_id = :organizationId
-    AND s.created_at >= :since
+    AND (
+      s.created_at >= :since
+      OR s.status = 'pending'
+      OR s.routing->'secondReview'->>'status' = 'open'
+      OR (s.routing->'secondReview'->>'status' = 'missed'
+          AND s.routing->'secondReview'->>'resolvedAt' IS NULL)
+    )
     AND (CAST(:formId AS INTEGER) IS NULL OR s.form_id = CAST(:formId AS INTEGER))
   ORDER BY s.created_at DESC, s.id DESC`;
 
