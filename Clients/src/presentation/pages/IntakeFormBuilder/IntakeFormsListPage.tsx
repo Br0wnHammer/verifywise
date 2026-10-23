@@ -54,6 +54,8 @@ import RiskTierChip from "./assessment/RiskTierChip";
 import { LaneChip } from "./routing/LaneSection";
 import { LANE_FILTER_ITEMS, matchesLaneFilter, type LaneFilter } from "./routing/laneFilter";
 import { useAuth } from "../../../application/hooks/useAuth";
+import { useHasPermission } from "../../../application/hooks/useMyPermissions";
+import { OversightTab } from "./oversight/OversightTab";
 import { CustomizableButton } from "../../components/button/customizable-button";
 import StandardModal from "../../components/Modals/StandardModal";
 import Chip from "../../components/Chip";
@@ -118,7 +120,12 @@ export function IntakeFormsListPage() {
   const { userId } = useAuth();
 
   // Main tab derived from URL path
-  const mainTab = location.pathname.includes("/intake-forms/submissions") ? "submissions" : "forms";
+  const canSeeOversight = useHasPermission("intakeForm.edit");
+  const mainTab = location.pathname.includes("/intake-forms/submissions")
+    ? "submissions"
+    : location.pathname.includes("/intake-forms/oversight") && canSeeOversight
+      ? "oversight"
+      : "forms";
 
   // --- Forms state ---
   const [forms, setForms] = useState<IntakeForm[]>([]);
@@ -386,10 +393,19 @@ export function IntakeFormsListPage() {
               count: submissions.length,
               isLoading: isLoadingSubmissions,
             },
+            ...(canSeeOversight
+              ? [{ label: "Oversight", value: "oversight", icon: "Activity" as const }]
+              : []),
           ]}
           activeTab={mainTab}
           onChange={(_, value) =>
-            navigate(value === "submissions" ? "/intake-forms/submissions" : "/intake-forms")
+            navigate(
+              value === "submissions"
+                ? "/intake-forms/submissions"
+                : value === "oversight"
+                  ? "/intake-forms/oversight"
+                  : "/intake-forms",
+            )
           }
         />
       </TabContext>
@@ -580,6 +596,17 @@ export function IntakeFormsListPage() {
       {/* ================================================================ */}
       {/* Submissions tab                                                  */}
       {/* ================================================================ */}
+      {mainTab === "oversight" && (
+        <OversightTab
+          forms={forms}
+          onOpenSubmission={(id) => {
+            setSelectedSubmissionId(id);
+            setPreviewOpen(true);
+          }}
+          onOpenForm={(id) => navigate(`/intake-forms/${id}/edit`)}
+        />
+      )}
+
       {mainTab === "submissions" && (
         <>
           {/* Filter + Search */}
