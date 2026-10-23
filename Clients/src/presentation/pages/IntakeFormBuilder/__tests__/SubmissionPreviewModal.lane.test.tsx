@@ -1,7 +1,10 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import SubmissionPreviewModal from "../SubmissionPreviewModal";
-import { getSubmissionPreview } from "../../../../application/repository/intakeForm.repository";
+import {
+  getSubmissionPreview,
+  recordSecondReview,
+} from "../../../../application/repository/intakeForm.repository";
 
 vi.mock("../../../../application/repository/intakeForm.repository", () => ({
   getSubmissionPreview: vi.fn(),
@@ -39,9 +42,9 @@ function mockPreview(extra: Record<string, unknown>, submission: Record<string, 
   } as never);
 }
 
-const renderModal = () =>
+const renderModal = (onApproved = vi.fn()) =>
   renderWithProviders(
-    <SubmissionPreviewModal isOpen onClose={vi.fn()} submissionId={11} onApproved={vi.fn()} />,
+    <SubmissionPreviewModal isOpen onClose={vi.fn()} submissionId={11} onApproved={onApproved} />,
   );
 
 describe("SubmissionPreviewModal lane", () => {
@@ -100,5 +103,30 @@ describe("SubmissionPreviewModal lane", () => {
     );
     renderModal();
     expect(await screen.findByRole("button", { name: "Agree" })).toBeInTheDocument();
+  });
+
+  it("tells the parent when a second review is recorded so the list refreshes", async () => {
+    const openSecond = { status: "open", selectedAt: "2026-10-22T00:00:00.000Z" };
+    mockPreview(
+      {
+        routing: { ...SENIOR_LANE, lane: "standard", secondReview: openSecond },
+        routingEnabled: true,
+        canDecide: true,
+        laneReviewers: [{ id: 1, name: "Sam Senior" }],
+        isSeniorReviewer: true,
+      },
+      { status: "approved", reviewedBy: 2 },
+    );
+    vi.mocked(recordSecondReview).mockResolvedValue({
+      data: {
+        ...SENIOR_LANE,
+        lane: "standard",
+        secondReview: { ...openSecond, status: "agreed", reviewedAt: "2026-10-23T00:00:00.000Z" },
+      },
+    } as never);
+    const onApproved = vi.fn();
+    renderModal(onApproved);
+    fireEvent.click(await screen.findByRole("button", { name: "Agree" }));
+    await waitFor(() => expect(onApproved).toHaveBeenCalledTimes(1));
   });
 });

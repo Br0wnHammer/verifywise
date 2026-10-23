@@ -733,9 +733,11 @@ function SubmissionPreviewModal({
               submissionId={submissionId}
               secondReview={lane.secondReview}
               canReview={canSecondReview}
-              onChange={(next) =>
-                setPreviewData((prev) => (prev ? { ...prev, routing: next } : prev))
-              }
+              onChange={(next) => {
+                setPreviewData((prev) => (prev ? { ...prev, routing: next } : prev));
+                // The list chip and the oversight figures read this routing too
+                onApproved();
+              }}
             />
           )}
           {/* ------------------------------------------------------------------ */}

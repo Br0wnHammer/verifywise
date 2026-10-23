@@ -35,6 +35,7 @@ import {
   IntakeEntityType,
 } from "../../../application/repository/intakeForm.repository";
 import CustomAxios from "../../../infrastructure/api/customAxios";
+import { useAuth } from "../../../application/hooks/useAuth";
 import { invalidateLLMKeyQueries, useLLMKeys } from "../../../application/hooks/useLLMKeys";
 import { validateSchemaLogic } from "../../../application/utils/intakeFormLogic";
 import { getClientErrorReason, isClientError } from "../../../application/utils/apiErrorReason";
@@ -105,6 +106,9 @@ export function IntakeFormBuilder() {
   // the default form cannot be saved over the stored one.
   const [loadFailed, setLoadFailed] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  // Only an Admin may change routing; everyone else's saves leave it to the server's copy
+  const { userRoleName } = useAuth();
+  const canEditRouting = userRoleName === "Admin";
   // Shared, per-organization cache: refreshed wherever a key changes. A failed
   // load leaves the picker with only "None", as before.
   const { keys: llmKeys, loading: llmKeysLoading, isError: llmKeysError } = useLLMKeys();
@@ -339,7 +343,7 @@ export function IntakeFormBuilder() {
       });
       return null;
     }
-    if (Object.keys(getRoutingErrors(form.routing ?? null)).length > 0) {
+    if (canEditRouting && Object.keys(getRoutingErrors(form.routing ?? null)).length > 0) {
       setSnackbar({
         open: true,
         message: "Fix the routing settings before saving",
@@ -369,6 +373,7 @@ export function IntakeFormBuilder() {
         llmKeyId: activeLlmKeyId,
         suggestedQuestionsEnabled: form.suggestedQuestionsEnabled ?? false,
         euAiActRiskStepEnabled: form.euAiActRiskStepEnabled ?? false,
+        ...(canEditRouting ? {} : { routing: undefined }),
       };
       if (isEditing && formId) {
         const response = await updateIntakeForm(parseInt(formId), formData);
@@ -417,7 +422,7 @@ export function IntakeFormBuilder() {
       });
       return;
     }
-    if (Object.keys(getRoutingErrors(form.routing ?? null)).length > 0) {
+    if (canEditRouting && Object.keys(getRoutingErrors(form.routing ?? null)).length > 0) {
       setSnackbar({
         open: true,
         message: "Fix the routing settings before publishing",
@@ -435,6 +440,7 @@ export function IntakeFormBuilder() {
         llmKeyId: activeLlmKeyId,
         suggestedQuestionsEnabled: form.suggestedQuestionsEnabled ?? false,
         euAiActRiskStepEnabled: form.euAiActRiskStepEnabled ?? false,
+        ...(canEditRouting ? {} : { routing: undefined }),
         status: IntakeFormStatus.ACTIVE,
       };
       const formIdNum = isEditing && formId ? parseInt(formId) : undefined;
