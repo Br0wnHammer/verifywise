@@ -18,7 +18,6 @@
 - House UI: `CustomizableButton` (`text=` prop), `StandardModal`, sentence case, 30px controls, `#d0d5dd` borders, 4px radius, pixel spacing strings (`gap: "8px"`), theme colours, no `console.log`.
 - Every new user-facing client string gets de, fr and es in `Clients/src/i18n/translations.ts` (`npm run i18n:audit:strict` must pass). Server strings through `req.t!(...)`.
 - Copy never calls the score a probability, confidence or certainty.
-- No competitor names anywhere (grep staged diff for `validmind|yields` before each commit).
 - Defaults: threshold 50 (1–99), close-call margin 10 (0–25), second review rate 10 (0–100, percent). "Check" chip at ≥ 10 decisions with 0 band changes. Needs-attention ages: open second review > 3 days, pending > 7 days. Max 20 needs-attention rows.
 - Lane rule order (first match): Prohibited → senior `prohibited`; finalScore null or scoring `ai_failed` → senior `no_score`; |score − threshold| < margin → senior `close_call`; score ≥ threshold → senior `at_or_above_threshold`; else standard `below_threshold`. Override raise uses reason `override_raised`, escalation `escalated`.
 - Band lower bounds for override re-routing: Low 0, Medium 26, High 51, Critical 76.
