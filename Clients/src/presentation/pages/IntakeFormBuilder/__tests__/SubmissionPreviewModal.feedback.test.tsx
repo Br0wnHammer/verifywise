@@ -127,16 +127,17 @@ describe("SubmissionPreviewModal review feedback", () => {
   });
 
   it("ignores a second approve while the first is still in flight", async () => {
-    let resolveApprove!: (value: { data: Record<string, never> }) => void;
+    type ApproveResult = Awaited<ReturnType<typeof approveSubmission>>;
+    let resolveApprove!: (value: ApproveResult) => void;
     vi.mocked(approveSubmission).mockImplementation(
-      () => new Promise((resolve) => (resolveApprove = resolve)),
+      () => new Promise<ApproveResult>((resolve) => (resolveApprove = resolve)),
     );
     mockPreview();
     renderModal({});
     await screen.findByText("Intake risk score");
     clickApprove();
     clickApprove();
-    resolveApprove({ data: {} });
+    resolveApprove({ data: { submission: {} as never, createdEntity: null } });
     await waitFor(() => expect(approveSubmission).toHaveBeenCalledTimes(1));
   });
 });
