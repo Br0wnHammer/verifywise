@@ -36,8 +36,8 @@ jest.mock("../../services/intakeFormEmail.service", () => ({
   sendSubmissionApprovedEmail: jest.fn<any>().mockResolvedValue(undefined),
   sendSubmissionRejectedEmail: jest.fn<any>().mockResolvedValue(undefined),
 }));
-jest.mock("../../services/intakeRiskScoring.service", () => ({
-  calculateSubmissionRisk: jest.fn<any>().mockResolvedValue({}),
+jest.mock("../../services/intakeScoring/enqueue", () => ({
+  enqueueIntakeAssessment: jest.fn<any>().mockResolvedValue(undefined),
 }));
 jest.mock("../../services/intakeLLM.service", () => ({
   generateSuggestedQuestions: jest.fn(),
@@ -75,7 +75,7 @@ jest.mock("../../database/db", () => ({
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ctrl = require("../intakeForm.ctrl") as typeof import("../intakeForm.ctrl");
 const intake = require("../../utils/intakeForm.utils");
-const scoring = require("../../services/intakeRiskScoring.service");
+const enqueue = require("../../services/intakeScoring/enqueue");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 /** Same format as the controller's private createSignedToken. */
@@ -196,11 +196,10 @@ describe("public submit with form logic", () => {
       expect(r.status).toHaveBeenCalledWith(201);
       const stored = intake.createSubmissionQuery.mock.calls[0][0].data;
       expect({ ...stored }).toEqual({ q: "no", cost: "10", total: 120 });
-      expect({ ...scoring.calculateSubmissionRisk.mock.calls[0][0] }).toEqual({
-        q: "no",
-        cost: "10",
-        total: 120,
-      });
+      // The assessment job scores what was stored, so it sees the same data.
+      expect(enqueue.enqueueIntakeAssessment).toHaveBeenCalledWith(
+        expect.objectContaining({ submissionId: 99 }),
+      );
     },
   );
 

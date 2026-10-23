@@ -6,6 +6,7 @@ import { QueryTypes } from "sequelize";
 import logger from "../utils/logger/fileLogger";
 import { getUsersByIds } from "../utils/intakeForm.utils";
 import { translate } from "../utils/i18n.utils";
+import { escapeHtml } from "../utils/sanitization.utils";
 
 // `lang?: string` on each helper below currently uses the *requester's* locale
 // (req.lang). For known recipients we should prefer their stored preference via
@@ -109,9 +110,53 @@ export async function sendSubmissionReceivedEmail(
   }
 }
 
+/** The initial assessment shown in the new-submission email. */
+export interface IntakeNotificationResults {
+  /** EU AI Act level from the rules; null when the submission was not rule-checked. */
+  level: string | null;
+  /** Already worded, e.g. "64 (High)", "at least 70 (rules only)", "No score yet". */
+  scoreText: string;
+  suggestionCount: number;
+  /** The 2-minute wait ran out before both stages finished. */
+  capReached: boolean;
+}
+
+/**
+ * The email's results block as HTML. Every value is escaped; the block goes in
+ * through a raw-HTML template key. When the wait ran out, only a note is shown,
+ * so no half-finished number reaches the reviewer.
+ */
+export function renderIntakeResultsHtml(
+  results: IntakeNotificationResults | undefined,
+  lang?: string,
+): string {
+  if (!results) return "";
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    escapeHtml(translate(lang, key, vars));
+  const title = `<p class="box-title">${t("Initial assessment")}</p>`;
+  if (results.capReached) {
+    return `<div class="box box-primary">${title}<p class="box-subtitle">${t(
+      "Scoring was still running when this email was sent. Open the submission to see the results.",
+    )}</p></div>`;
+  }
+  const row = (label: string, value: string) =>
+    `<p class="box-subtitle" style="margin-bottom: 6px;"><strong>${t(label)}</strong> ${value}</p>`;
+  return (
+    `<div class="box box-primary">${title}` +
+    row(
+      "EU AI Act level:",
+      results.level ? escapeHtml(translate(lang, results.level)) : t("Not rule-checked"),
+    ) +
+    row("Risk score:", escapeHtml(results.scoreText)) +
+    row("Suggested risks:", escapeHtml(String(results.suggestionCount))) +
+    `</div>`
+  );
+}
+
 /**
  * Send notification email to designated recipients (or org admins as fallback)
- * Accepts either an array of user IDs or an organization ID for fallback
+ * Accepts either an array of user IDs or an organization ID for fallback.
+ * `results` adds the initial assessment; without it the email is unchanged.
  */
 export async function sendNewSubmissionAdminNotification(
   recipientsOrOrgId: number[] | number,
@@ -121,6 +166,7 @@ export async function sendNewSubmissionAdminNotification(
   submissionId: number,
   entityType: IntakeEntityType,
   lang?: string,
+  results?: IntakeNotificationResults,
 ): Promise<void> {
   try {
     let recipients: Array<{ id: number; name: string; email: string }>;
@@ -142,6 +188,7 @@ export async function sendNewSubmissionAdminNotification(
     const entityTypeDisplay = getEntityTypeDisplayName(entityType);
 
     const subject = translate(lang, "New submission pending review: {formName}", { formName });
+    const resultsHtml = renderIntakeResultsHtml(results, lang);
     for (const recipient of recipients) {
       try {
         await sendEmail(recipient.email, subject, EMAIL_TEMPLATES.INTAKE_NEW_SUBMISSION_ADMIN, {
@@ -152,6 +199,7 @@ export async function sendNewSubmissionAdminNotification(
           submissionId: String(submissionId),
           entityType: entityTypeDisplay,
           reviewLink,
+          resultsHtml,
         });
       } catch (error) {
         logger.error(`Failed to send admin notification to ${recipient.email}:`, error);

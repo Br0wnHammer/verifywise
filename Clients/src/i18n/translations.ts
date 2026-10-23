@@ -64,6 +64,93 @@ export const translations: Record<string, Record<string, string>> = {
     ...incidentsDe,
     ...tasksDe,
     ...trainingDe,
+    "No risk score was recorded for this submission.":
+      "Für diese Einreichung wurde kein Risikowert erfasst.",
+    "set to": "gesetzt auf",
+    "band set to": "Stufe gesetzt auf",
+    // AI intake assessment
+    "Scoring…": "Bewertung läuft…",
+    "No score yet": "Noch keine Bewertung",
+    "at least": "mindestens",
+    "(rules only)": "(nur Regeln)",
+    "AI scores ranged": "KI-Bewertungen lagen zwischen",
+    "The AI median set this score.": "Der KI-Median hat diesen Wert bestimmt.",
+    "The rule minimum set this score. The AI scored it lower.":
+      "Das Regelminimum hat diesen Wert bestimmt. Die KI hat niedriger bewertet.",
+    "Band set to": "Stufe gesetzt auf",
+    "by": "von",
+    "AI scoring isn't set up for this form.":
+      "Die KI-Bewertung ist für dieses Formular nicht eingerichtet.",
+    "AI scoring failed. The score shown comes from the rules only.":
+      "Die KI-Bewertung ist fehlgeschlagen. Der angezeigte Wert stammt nur aus den Regeln.",
+    "Not rule-checked. EU AI Act questions apply to use cases, not models.":
+      "Nicht regelbasiert geprüft. Die Fragen zum EU AI Act gelten für Anwendungsfälle, nicht für Modelle.",
+    "Not rule-checked. This form doesn't ask the EU AI Act questions.":
+      "Nicht regelbasiert geprüft. Dieses Formular stellt die Fragen zum EU AI Act nicht.",
+    "Minimum based on your level change": "Minimum basiert auf Ihrer Stufenänderung",
+    "Rules updated since this was scored": "Regeln wurden seit der Bewertung aktualisiert",
+    "How this score is built": "So entsteht dieser Wert",
+    "EU AI Act level": "Stufe nach EU AI Act",
+    "EU AI Act questions apply to use cases, not models.":
+      "Die Fragen zum EU AI Act gelten für Anwendungsfälle, nicht für Modelle.",
+    "Not rule-checked: this form doesn't ask the EU AI Act questions.":
+      "Nicht regelbasiert geprüft: Dieses Formular stellt die Fragen zum EU AI Act nicht.",
+    "Rule minimum": "Regelminimum",
+    "AI scores": "KI-Bewertungen",
+    "failed": "fehlgeschlagen",
+    "Median": "Median",
+    "Range": "Spanne",
+    "No AI scores": "Keine KI-Bewertungen",
+    "The final score is the higher of the rule minimum and the AI median. The AI can raise the score but never lower it.":
+      "Der endgültige Wert ist der höhere aus Regelminimum und KI-Median. Die KI kann den Wert erhöhen, aber nie senken.",
+    "Reasons": "Gründe",
+    "Band override": "Manuelle Stufe",
+    "Suggesting risks…": "Risiken werden vorgeschlagen…",
+    "AI scoring isn't set up for this form, so no risks are suggested.":
+      "Die KI-Bewertung ist für dieses Formular nicht eingerichtet, daher werden keine Risiken vorgeschlagen.",
+    "Risk suggestions failed. Use Retry in the score section to try again.":
+      "Die Risikovorschläge sind fehlgeschlagen. Nutzen Sie „Erneut versuchen“ im Bewertungsbereich.",
+    "Risk suggestions haven't started. Use Retry in the score section to start them.":
+      "Die Risikovorschläge wurden noch nicht gestartet. Nutzen Sie „Erneut versuchen“ im Bewertungsbereich, um sie zu starten.",
+    "No risks were suggested for this submission.":
+      "Für diese Einreichung wurden keine Risiken vorgeschlagen.",
+    "accepted": "angenommen",
+    "dismissed": "verworfen",
+    "Accept all": "Alle annehmen",
+    "From the risk catalog": "Aus dem Risikokatalog",
+    "Likelihood:": "Wahrscheinlichkeit:",
+    "Severity:": "Schweregrad:",
+    "Add a mitigation plan before accepting this risk.":
+      "Fügen Sie einen Minderungsplan hinzu, bevor Sie dieses Risiko annehmen.",
+    "Accept": "Annehmen",
+    "lower-rated suggestions not shown": "niedriger bewertete Vorschläge werden nicht angezeigt",
+    "not accepted: they need a mitigation plan first":
+      "nicht angenommen: Sie brauchen zuerst einen Minderungsplan",
+    "Couldn't save the change. Please try again.":
+      "Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+    "Couldn't accept the suggestions. Please try again.":
+      "Die Vorschläge konnten nicht angenommen werden. Bitte versuchen Sie es erneut.",
+    "Couldn't retry the assessment. Please try again.":
+      "Die Bewertung konnte nicht wiederholt werden. Bitte versuchen Sie es erneut.",
+    "Accepted risks are added to the register when you approve.":
+      "Angenommene Risiken werden beim Genehmigen in das Register übernommen.",
+    "Model risk category": "Modellrisikokategorie",
+    "Model risk level": "Modellrisikostufe",
+    "(default: 90 days after approval)": "(Standard: 90 Tage nach Genehmigung)",
+    "Name must be at most 200 characters": "Der Name darf höchstens 200 Zeichen lang sein",
+    "Must be at most 1000 characters": "Darf höchstens 1000 Zeichen lang sein",
+    "An accepted risk needs a mitigation plan":
+      "Ein angenommenes Risiko braucht einen Minderungsplan",
+    "Override band": "Stufe überschreiben",
+    "Can't be lower than the rule minimum allows":
+      "Darf nicht unter dem liegen, was das Regelminimum erlaubt",
+    "Risk score:": "Risikowert:",
+    "EU AI Act questions are off. Submissions won't get a rule-based EU AI Act classification, so their risk score has no rule-based minimum and is marked \"not rule-checked\". Use cases approved from this form won't get an EU AI Act classification either.":
+      "Die Fragen zum EU AI Act sind deaktiviert. Einreichungen erhalten keine regelbasierte Einstufung nach dem EU AI Act, daher hat ihr Risikowert kein regelbasiertes Minimum und wird als „nicht regelbasiert geprüft“ markiert. Anwendungsfälle, die aus diesem Formular genehmigt werden, erhalten ebenfalls keine Einstufung nach dem EU AI Act.",
+    "Used to score submissions and suggest risks. You can also generate suggested questions and field guidance text with AI.":
+      "Wird verwendet, um Einreichungen zu bewerten und Risiken vorzuschlagen. Sie können mit KI auch Fragenvorschläge und Hilfetexte für Felder erstellen.",
+    "Used to score submissions and suggest risks. Without a key, reviewers see the rule-based classification only. Add a key in Settings > LLM keys.":
+      "Wird verwendet, um Einreichungen zu bewerten und Risiken vorzuschlagen. Ohne Schlüssel sehen Prüfer nur die regelbasierte Einstufung. Fügen Sie einen Schlüssel unter Einstellungen > LLM-Schlüssel hinzu.",
     // Jira incidents extension
     "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
       "Importiert werden nur Vorgänge, die nach dieser Einrichtung in Jira erstellt werden. VerifyWise erstellt keine Jira-Vorgänge.",
@@ -731,6 +818,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Agent not found": "Agent nicht gefunden",
     "Could not load this agent.": "Dieser Agent konnte nicht geladen werden.",
     "Back to AI agents": "Zurück zu KI-Agenten",
+    "Back to MCP servers": "Zurück zu MCP-Servern",
     "Accountable owners": "Verantwortliche Eigentümer",
     "Manually entered": "Manuell erfasst",
     "Inactive 30+ days": "Seit über 30 Tagen inaktiv",
@@ -9469,6 +9557,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Die Gruppierung läuft noch. Öffnen Sie diesen Tab erneut, um neue Vorschläge zu sehen.",
     "Scanning {count} risks. Links will appear as the scan completes.":
       "{count} Risiken werden gescannt. Verknüpfungen erscheinen, sobald der Scan abgeschlossen ist.",
+    "Scanning {count} risk. Links will appear as the scan completes.":
+      "{count} Risiko wird gescannt. Verknüpfungen erscheinen, sobald der Scan abgeschlossen ist.",
+    "Related risks": "Verwandte Risiken",
+    "How is this risk connected?": "Wie ist dieses Risiko verbunden?",
+    "Where is the parent risk?": "Wo befindet sich das übergeordnete Risiko?",
+    "The two risks are connected, but neither depends on the other.":
+      "Die beiden Risiken sind verbunden, aber keines hängt vom anderen ab.",
+    "This risk is part of a broader parent risk. When the parent's level changes, this risk is flagged for review.":
+      "Dieses Risiko ist Teil eines übergeordneten Risikos. Ändert sich dessen Stufe, wird dieses Risiko zur Prüfung markiert.",
+    "The other risk becomes a child of this one and is flagged when this risk's level changes.":
+      "Das andere Risiko wird diesem untergeordnet und markiert, wenn sich die Stufe dieses Risikos ändert.",
+    "Another risk in the risk register.": "Ein anderes Risiko im Risikoregister.",
+    "A risk recorded on a model.": "Ein Risiko, das zu einem Modell erfasst ist.",
+    "A risk recorded on a vendor.": "Ein Risiko, das zu einem Anbieter erfasst ist.",
+    "Grouping {count} cluster of related risks. Suggestions appear here as they finish.":
+      "{count} Cluster verwandter Risiken wird gruppiert. Vorschläge erscheinen hier, sobald sie fertig sind.",
+    "{count} cluster was too large to group in one pass.":
+      "{count} Cluster war zu groß, um ihn in einem Durchgang zu gruppieren.",
+    "Link this risk to others it is connected to. VerifyWise also suggests links from what risks have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion to keep it, or dismiss it.":
+      "Verknüpfen Sie dieses Risiko mit anderen, mit denen es zusammenhängt. VerifyWise schlägt außerdem Verknüpfungen anhand von Gemeinsamkeiten vor, etwa Kategorie, Kontrollen, Lebenszyklusphase oder Projekt. Bestätigen Sie einen Vorschlag, um ihn zu behalten, oder verwerfen Sie ihn.",
+    "Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm.":
+      "Schlägt mit KI über- und untergeordnete Verknüpfungen zwischen bereits verwandten Risiken vor. Die Vorschläge erscheinen in dieser Liste zur Bestätigung.",
     "Grouping {count} clusters of related risks. Suggestions appear here as they finish.":
       "{count} Cluster verwandter Risiken werden gruppiert. Vorschläge erscheinen hier, sobald sie fertig sind.",
     "{count} clusters were too large to group in one pass.":
@@ -9499,6 +9609,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Verwandte Anbieterrisiken erscheinen, sobald Anbieterrisiken gespeichert werden oder ein Administrator einen Scan ausführt.",
     "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
       "{count} Anbieterrisiken werden gescannt. Verwandte Anbieterrisiken erscheinen hier, sobald der Scan abgeschlossen ist.",
+    "Scanning {count} vendor risk. Related vendor risks appear here as the scan completes.":
+      "{count} Anbieterrisiko wird gescannt. Verwandte Anbieterrisiken erscheinen hier, sobald der Scan abgeschlossen ist.",
     "Scan finished. No related vendor risks found.":
       "Scan abgeschlossen. Keine verwandten Anbieterrisiken gefunden.",
     "Search vendor risks": "Anbieterrisiken suchen",
@@ -10369,6 +10481,25 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence graded": "Mit",
     "counts as low quality. Files with no AI analysis are not counted as adequate.":
       "bewertete Nachweise gelten als von geringer Qualität. Dateien ohne KI-Analyse zählen nicht als ausreichend.",
+    // Super admin MCP connect
+    "Connect Claude Code to this deployment": "Claude Code mit dieser Bereitstellung verbinden",
+    "Download the config file": "Konfigurationsdatei herunterladen",
+    "Token expires in": "Token läuft ab in",
+    "Config file downloaded": "Konfigurationsdatei heruntergeladen",
+    "Add it to Claude Code": "Zu Claude Code hinzufügen",
+    "Check it worked": "Prüfen, ob es funktioniert hat",
+    "What the file contains": "Was die Datei enthält",
+    "Tools it adds": "Hinzugefügte Tools",
+    "Download config file": "Konfigurationsdatei herunterladen",
+    "Preparing...": "Wird vorbereitet...",
+    "7 days": "7 Tage",
+    "30 days": "30 Tage",
+    "60 days": "60 Tage",
+    "90 days": "90 Tage",
+    "180 days": "180 Tage",
+    "Failed to create the config file.": "Die Konfigurationsdatei konnte nicht erstellt werden.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Beim Herunterladen wird das zuletzt hier ausgestellte Token widerrufen. Alles, was mit der vorherigen Datei eingerichtet wurde, auf diesem oder einem anderen Rechner, funktioniert sofort nicht mehr.",
   },
 
   fr: {
@@ -10383,6 +10514,93 @@ export const translations: Record<string, Record<string, string>> = {
     ...incidentsFr,
     ...tasksFr,
     ...trainingFr,
+    "No risk score was recorded for this submission.":
+      "Aucun score de risque n'a été enregistré pour cette soumission.",
+    "set to": "fixé à",
+    "band set to": "niveau fixé à",
+    // AI intake assessment
+    "Scoring…": "Évaluation en cours…",
+    "No score yet": "Pas encore de score",
+    "at least": "au moins",
+    "(rules only)": "(règles uniquement)",
+    "AI scores ranged": "Les scores de l'IA allaient de",
+    "The AI median set this score.": "La médiane de l'IA a fixé ce score.",
+    "The rule minimum set this score. The AI scored it lower.":
+      "Le minimum des règles a fixé ce score. L'IA l'a évalué plus bas.",
+    "Band set to": "Niveau fixé à",
+    "by": "par",
+    "AI scoring isn't set up for this form.":
+      "L'évaluation par IA n'est pas configurée pour ce formulaire.",
+    "AI scoring failed. The score shown comes from the rules only.":
+      "L'évaluation par IA a échoué. Le score affiché provient uniquement des règles.",
+    "Not rule-checked. EU AI Act questions apply to use cases, not models.":
+      "Non vérifié par les règles. Les questions sur l'AI Act de l'UE s'appliquent aux cas d'usage, pas aux modèles.",
+    "Not rule-checked. This form doesn't ask the EU AI Act questions.":
+      "Non vérifié par les règles. Ce formulaire ne pose pas les questions sur l'AI Act de l'UE.",
+    "Minimum based on your level change": "Minimum basé sur votre changement de niveau",
+    "Rules updated since this was scored": "Règles mises à jour depuis l'évaluation",
+    "How this score is built": "Comment ce score est calculé",
+    "EU AI Act level": "Niveau selon l'AI Act de l'UE",
+    "EU AI Act questions apply to use cases, not models.":
+      "Les questions sur l'AI Act de l'UE s'appliquent aux cas d'usage, pas aux modèles.",
+    "Not rule-checked: this form doesn't ask the EU AI Act questions.":
+      "Non vérifié par les règles : ce formulaire ne pose pas les questions sur l'AI Act de l'UE.",
+    "Rule minimum": "Minimum des règles",
+    "AI scores": "Scores de l'IA",
+    "failed": "échec",
+    "Median": "Médiane",
+    "Range": "Plage",
+    "No AI scores": "Aucun score de l'IA",
+    "The final score is the higher of the rule minimum and the AI median. The AI can raise the score but never lower it.":
+      "Le score final est le plus élevé entre le minimum des règles et la médiane de l'IA. L'IA peut augmenter le score, jamais le baisser.",
+    "Reasons": "Raisons",
+    "Band override": "Niveau modifié",
+    "Suggesting risks…": "Suggestion des risques…",
+    "AI scoring isn't set up for this form, so no risks are suggested.":
+      "L'évaluation par IA n'est pas configurée pour ce formulaire, aucun risque n'est donc suggéré.",
+    "Risk suggestions failed. Use Retry in the score section to try again.":
+      "Les suggestions de risques ont échoué. Utilisez « Réessayer » dans la section du score.",
+    "Risk suggestions haven't started. Use Retry in the score section to start them.":
+      "Les suggestions de risques n'ont pas démarré. Utilisez « Réessayer » dans la section du score pour les lancer.",
+    "No risks were suggested for this submission.":
+      "Aucun risque n'a été suggéré pour cette soumission.",
+    "accepted": "acceptés",
+    "dismissed": "écartés",
+    "Accept all": "Tout accepter",
+    "From the risk catalog": "Du catalogue de risques",
+    "Likelihood:": "Probabilité :",
+    "Severity:": "Gravité :",
+    "Add a mitigation plan before accepting this risk.":
+      "Ajoutez un plan d'atténuation avant d'accepter ce risque.",
+    "Accept": "Accepter",
+    "lower-rated suggestions not shown": "suggestions moins bien notées non affichées",
+    "not accepted: they need a mitigation plan first":
+      "non acceptés : ils ont d'abord besoin d'un plan d'atténuation",
+    "Couldn't save the change. Please try again.":
+      "Impossible d'enregistrer la modification. Veuillez réessayer.",
+    "Couldn't accept the suggestions. Please try again.":
+      "Impossible d'accepter les suggestions. Veuillez réessayer.",
+    "Couldn't retry the assessment. Please try again.":
+      "Impossible de relancer l'évaluation. Veuillez réessayer.",
+    "Accepted risks are added to the register when you approve.":
+      "Les risques acceptés sont ajoutés au registre lorsque vous approuvez.",
+    "Model risk category": "Catégorie de risque du modèle",
+    "Model risk level": "Niveau de risque du modèle",
+    "(default: 90 days after approval)": "(par défaut : 90 jours après l'approbation)",
+    "Name must be at most 200 characters": "Le nom doit comporter 200 caractères au maximum",
+    "Must be at most 1000 characters": "Doit comporter 1000 caractères au maximum",
+    "An accepted risk needs a mitigation plan":
+      "Un risque accepté a besoin d'un plan d'atténuation",
+    "Override band": "Modifier le niveau",
+    "Can't be lower than the rule minimum allows":
+      "Ne peut pas être inférieur à ce que permet le minimum des règles",
+    "Risk score:": "Score de risque :",
+    "EU AI Act questions are off. Submissions won't get a rule-based EU AI Act classification, so their risk score has no rule-based minimum and is marked \"not rule-checked\". Use cases approved from this form won't get an EU AI Act classification either.":
+      "Les questions sur l'AI Act de l'UE sont désactivées. Les soumissions n'obtiendront pas de classification fondée sur les règles de l'AI Act de l'UE : leur score de risque n'a donc pas de minimum fondé sur les règles et est marqué « non vérifié par les règles ». Les cas d'usage approuvés depuis ce formulaire n'obtiendront pas non plus de classification selon l'AI Act de l'UE.",
+    "Used to score submissions and suggest risks. You can also generate suggested questions and field guidance text with AI.":
+      "Sert à évaluer les soumissions et à suggérer des risques. Vous pouvez aussi générer avec l'IA des questions suggérées et des textes d'aide pour les champs.",
+    "Used to score submissions and suggest risks. Without a key, reviewers see the rule-based classification only. Add a key in Settings > LLM keys.":
+      "Sert à évaluer les soumissions et à suggérer des risques. Sans clé, les réviseurs ne voient que la classification fondée sur les règles. Ajoutez une clé dans Paramètres > Clés LLM.",
     // Jira incidents extension
     "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
       "Seuls les tickets créés dans Jira après cette configuration sont importés. VerifyWise ne crée pas de tickets Jira.",
@@ -11046,6 +11264,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Agent not found": "Agent introuvable",
     "Could not load this agent.": "Impossible de charger cet agent.",
     "Back to AI agents": "Retour aux agents IA",
+    "Back to MCP servers": "Retour aux serveurs MCP",
     "Accountable owners": "Propriétaires responsables",
     "Manually entered": "Saisi manuellement",
     "Inactive 30+ days": "Inactif depuis plus de 30 jours",
@@ -19730,6 +19949,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Regroupement en cours. Rouvrez cet onglet pour voir les nouvelles suggestions.",
     "Scanning {count} risks. Links will appear as the scan completes.":
       "Analyse de {count} risques en cours. Les liens apparaîtront à la fin de l'analyse.",
+    "Scanning {count} risk. Links will appear as the scan completes.":
+      "Analyse de {count} risque en cours. Les liens apparaîtront à la fin de l'analyse.",
+    "Related risks": "Risques connexes",
+    "How is this risk connected?": "Comment ce risque est-il lié ?",
+    "Where is the parent risk?": "Où se trouve le risque parent ?",
+    "The two risks are connected, but neither depends on the other.":
+      "Les deux risques sont liés, mais aucun ne dépend de l'autre.",
+    "This risk is part of a broader parent risk. When the parent's level changes, this risk is flagged for review.":
+      "Ce risque fait partie d'un risque parent plus large. Quand le niveau du parent change, ce risque est signalé pour révision.",
+    "The other risk becomes a child of this one and is flagged when this risk's level changes.":
+      "L'autre risque devient un enfant de celui-ci et est signalé quand le niveau de ce risque change.",
+    "Another risk in the risk register.": "Un autre risque du registre des risques.",
+    "A risk recorded on a model.": "Un risque enregistré sur un modèle.",
+    "A risk recorded on a vendor.": "Un risque enregistré sur un fournisseur.",
+    "Grouping {count} cluster of related risks. Suggestions appear here as they finish.":
+      "Regroupement de {count} groupe de risques connexes. Les suggestions apparaîtront ici au fur et à mesure.",
+    "{count} cluster was too large to group in one pass.":
+      "{count} groupe était trop volumineux pour être regroupé en une seule passe.",
+    "Link this risk to others it is connected to. VerifyWise also suggests links from what risks have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion to keep it, or dismiss it.":
+      "Liez ce risque aux autres risques avec lesquels il est en relation. VerifyWise suggère aussi des liens à partir de ce que les risques ont en commun, comme la catégorie, les contrôles, la phase du cycle de vie ou le projet. Confirmez une suggestion pour la garder, ou ignorez-la.",
+    "Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm.":
+      "Utilise l'IA pour proposer des liens parent-enfant entre des risques déjà liés. Les suggestions apparaissent dans cette liste pour que vous les confirmiez.",
     "Grouping {count} clusters of related risks. Suggestions appear here as they finish.":
       "Regroupement de {count} groupes de risques connexes. Les suggestions apparaîtront ici au fur et à mesure.",
     "{count} clusters were too large to group in one pass.":
@@ -19760,6 +20001,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Les risques fournisseurs connexes apparaissent à l'enregistrement des risques fournisseurs, ou après une analyse lancée par un administrateur.",
     "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
       "Analyse de {count} risques fournisseurs en cours. Les risques fournisseurs connexes apparaîtront ici à la fin de l'analyse.",
+    "Scanning {count} vendor risk. Related vendor risks appear here as the scan completes.":
+      "Analyse de {count} risque fournisseur en cours. Les risques fournisseurs connexes apparaîtront ici à la fin de l'analyse.",
     "Scan finished. No related vendor risks found.":
       "Analyse terminée. Aucun risque fournisseur connexe trouvé.",
     "Search vendor risks": "Rechercher des risques fournisseurs",
@@ -20626,6 +20869,25 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence graded": "Les preuves notées",
     "counts as low quality. Files with no AI analysis are not counted as adequate.":
       "sont considérées comme de faible qualité. Les fichiers sans analyse IA ne comptent pas comme suffisants.",
+    // Super admin MCP connect
+    "Connect Claude Code to this deployment": "Connecter Claude Code à ce déploiement",
+    "Download the config file": "Télécharger le fichier de configuration",
+    "Token expires in": "Le jeton expire dans",
+    "Config file downloaded": "Fichier de configuration téléchargé",
+    "Add it to Claude Code": "L'ajouter à Claude Code",
+    "Check it worked": "Vérifier que cela fonctionne",
+    "What the file contains": "Contenu du fichier",
+    "Tools it adds": "Outils ajoutés",
+    "Download config file": "Télécharger le fichier de configuration",
+    "Preparing...": "Préparation...",
+    "7 days": "7 jours",
+    "30 days": "30 jours",
+    "60 days": "60 jours",
+    "90 days": "90 jours",
+    "180 days": "180 jours",
+    "Failed to create the config file.": "Impossible de créer le fichier de configuration.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Le téléchargement révoque le jeton émis ici la dernière fois. Tout ce qui a été configuré avec le fichier précédent, sur cette machine ou une autre, cesse immédiatement de fonctionner.",
   },
   es: {
     ...aiAuditEs,
@@ -20639,6 +20901,91 @@ export const translations: Record<string, Record<string, string>> = {
     ...incidentsEs,
     ...tasksEs,
     ...trainingEs,
+    "No risk score was recorded for this submission.":
+      "No se registró ninguna puntuación de riesgo para este envío.",
+    "set to": "fijado en",
+    "band set to": "banda fijada en",
+    // AI intake assessment
+    "Scoring…": "Calculando la puntuación…",
+    "No score yet": "Aún no hay puntuación",
+    "at least": "al menos",
+    "(rules only)": "(solo reglas)",
+    "AI scores ranged": "Las puntuaciones de la IA oscilaron entre",
+    "The AI median set this score.": "La mediana de la IA fijó esta puntuación.",
+    "The rule minimum set this score. The AI scored it lower.":
+      "El mínimo de las reglas fijó esta puntuación. La IA la puntuó más baja.",
+    "Band set to": "Banda fijada en",
+    "by": "por",
+    "AI scoring isn't set up for this form.":
+      "La puntuación con IA no está configurada para este formulario.",
+    "AI scoring failed. The score shown comes from the rules only.":
+      "La puntuación con IA falló. La puntuación mostrada procede solo de las reglas.",
+    "Not rule-checked. EU AI Act questions apply to use cases, not models.":
+      "Sin comprobación de reglas. Las preguntas de la Ley de IA de la UE se aplican a los casos de uso, no a los modelos.",
+    "Not rule-checked. This form doesn't ask the EU AI Act questions.":
+      "Sin comprobación de reglas. Este formulario no hace las preguntas de la Ley de IA de la UE.",
+    "Minimum based on your level change": "Mínimo basado en tu cambio de nivel",
+    "Rules updated since this was scored": "Las reglas cambiaron desde que se puntuó",
+    "How this score is built": "Cómo se calcula esta puntuación",
+    "EU AI Act level": "Nivel según la Ley de IA de la UE",
+    "EU AI Act questions apply to use cases, not models.":
+      "Las preguntas de la Ley de IA de la UE se aplican a los casos de uso, no a los modelos.",
+    "Not rule-checked: this form doesn't ask the EU AI Act questions.":
+      "Sin comprobación de reglas: este formulario no hace las preguntas de la Ley de IA de la UE.",
+    "Rule minimum": "Mínimo de las reglas",
+    "AI scores": "Puntuaciones de la IA",
+    "failed": "fallida",
+    "Median": "Mediana",
+    "Range": "Rango",
+    "No AI scores": "Sin puntuaciones de la IA",
+    "The final score is the higher of the rule minimum and the AI median. The AI can raise the score but never lower it.":
+      "La puntuación final es la mayor entre el mínimo de las reglas y la mediana de la IA. La IA puede subir la puntuación, pero nunca bajarla.",
+    "Reasons": "Motivos",
+    "Band override": "Banda modificada",
+    "Suggesting risks…": "Sugiriendo riesgos…",
+    "AI scoring isn't set up for this form, so no risks are suggested.":
+      "La puntuación con IA no está configurada para este formulario, así que no se sugieren riesgos.",
+    "Risk suggestions failed. Use Retry in the score section to try again.":
+      "Las sugerencias de riesgos fallaron. Usa «Reintentar» en la sección de puntuación.",
+    "Risk suggestions haven't started. Use Retry in the score section to start them.":
+      "Las sugerencias de riesgos no se han iniciado. Usa «Reintentar» en la sección de puntuación para iniciarlas.",
+    "No risks were suggested for this submission.": "No se sugirieron riesgos para este envío.",
+    "accepted": "aceptados",
+    "dismissed": "descartados",
+    "Accept all": "Aceptar todos",
+    "From the risk catalog": "Del catálogo de riesgos",
+    "Likelihood:": "Probabilidad:",
+    "Severity:": "Gravedad:",
+    "Add a mitigation plan before accepting this risk.":
+      "Añade un plan de mitigación antes de aceptar este riesgo.",
+    "Accept": "Aceptar",
+    "lower-rated suggestions not shown": "sugerencias con menor puntuación no se muestran",
+    "not accepted: they need a mitigation plan first":
+      "no aceptados: primero necesitan un plan de mitigación",
+    "Couldn't save the change. Please try again.":
+      "No se pudo guardar el cambio. Inténtalo de nuevo.",
+    "Couldn't accept the suggestions. Please try again.":
+      "No se pudieron aceptar las sugerencias. Inténtalo de nuevo.",
+    "Couldn't retry the assessment. Please try again.":
+      "No se pudo reintentar la evaluación. Inténtalo de nuevo.",
+    "Accepted risks are added to the register when you approve.":
+      "Los riesgos aceptados se añaden al registro cuando apruebas.",
+    "Model risk category": "Categoría de riesgo del modelo",
+    "Model risk level": "Nivel de riesgo del modelo",
+    "(default: 90 days after approval)": "(por defecto: 90 días después de la aprobación)",
+    "Name must be at most 200 characters": "El nombre debe tener como máximo 200 caracteres",
+    "Must be at most 1000 characters": "Debe tener como máximo 1000 caracteres",
+    "An accepted risk needs a mitigation plan": "Un riesgo aceptado necesita un plan de mitigación",
+    "Override band": "Cambiar la banda",
+    "Can't be lower than the rule minimum allows":
+      "No puede ser inferior a lo que permite el mínimo de las reglas",
+    "Risk score:": "Puntuación de riesgo:",
+    "EU AI Act questions are off. Submissions won't get a rule-based EU AI Act classification, so their risk score has no rule-based minimum and is marked \"not rule-checked\". Use cases approved from this form won't get an EU AI Act classification either.":
+      "Las preguntas de la Ley de IA de la UE están desactivadas. Los envíos no obtendrán una clasificación basada en reglas de la Ley de IA de la UE, así que su puntuación de riesgo no tiene un mínimo basado en reglas y se marca como «sin comprobación de reglas». Los casos de uso aprobados desde este formulario tampoco obtendrán una clasificación de la Ley de IA de la UE.",
+    "Used to score submissions and suggest risks. You can also generate suggested questions and field guidance text with AI.":
+      "Se usa para puntuar envíos y sugerir riesgos. También puedes generar con IA preguntas sugeridas y textos de ayuda para los campos.",
+    "Used to score submissions and suggest risks. Without a key, reviewers see the rule-based classification only. Add a key in Settings > LLM keys.":
+      "Se usa para puntuar envíos y sugerir riesgos. Sin clave, los revisores solo ven la clasificación basada en reglas. Añade una clave en Configuración > Claves LLM.",
     // Jira incidents extension
     "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
       "Solo se importan las incidencias creadas en Jira después de esta configuración. VerifyWise no crea incidencias en Jira.",
@@ -21090,6 +21437,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Agent not found": "Agente no encontrado",
     "Could not load this agent.": "No se pudo cargar este agente.",
     "Back to AI agents": "Volver a agentes de IA",
+    "Back to MCP servers": "Volver a servidores MCP",
     "Accountable owners": "Propietarios responsables",
     "Manually entered": "Introducido manualmente",
     "Inactive 30+ days": "Inactivo desde hace más de 30 días",
@@ -29901,6 +30249,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Aún se está agrupando. Vuelve a abrir esta pestaña para ver nuevas sugerencias.",
     "Scanning {count} risks. Links will appear as the scan completes.":
       "Analizando {count} riesgos. Los vínculos aparecerán cuando termine el análisis.",
+    "Scanning {count} risk. Links will appear as the scan completes.":
+      "Analizando {count} riesgo. Los vínculos aparecerán cuando termine el análisis.",
+    "Related risks": "Riesgos relacionados",
+    "How is this risk connected?": "¿Cómo está conectado este riesgo?",
+    "Where is the parent risk?": "¿Dónde está el riesgo principal?",
+    "The two risks are connected, but neither depends on the other.":
+      "Los dos riesgos están conectados, pero ninguno depende del otro.",
+    "This risk is part of a broader parent risk. When the parent's level changes, this risk is flagged for review.":
+      "Este riesgo forma parte de un riesgo principal más amplio. Cuando cambia el nivel del principal, este riesgo se marca para revisión.",
+    "The other risk becomes a child of this one and is flagged when this risk's level changes.":
+      "El otro riesgo pasa a depender de este y se marca cuando cambia el nivel de este riesgo.",
+    "Another risk in the risk register.": "Otro riesgo del registro de riesgos.",
+    "A risk recorded on a model.": "Un riesgo registrado en un modelo.",
+    "A risk recorded on a vendor.": "Un riesgo registrado en un proveedor.",
+    "Grouping {count} cluster of related risks. Suggestions appear here as they finish.":
+      "Agrupando {count} grupo de riesgos relacionados. Las sugerencias aparecerán aquí a medida que terminen.",
+    "{count} cluster was too large to group in one pass.":
+      "{count} grupo era demasiado grande para agruparse en una sola pasada.",
+    "Link this risk to others it is connected to. VerifyWise also suggests links from what risks have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion to keep it, or dismiss it.":
+      "Vincule este riesgo con otros con los que está conectado. VerifyWise también sugiere vínculos según lo que los riesgos tienen en común, como la categoría, los controles, la fase del ciclo de vida o el proyecto. Confirme una sugerencia para conservarla o descártela.",
+    "Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm.":
+      "Usa IA para proponer vínculos principal-secundario entre riesgos ya relacionados. Las sugerencias aparecen en esta lista para que las confirme.",
     "Grouping {count} clusters of related risks. Suggestions appear here as they finish.":
       "Agrupando {count} grupos de riesgos relacionados. Las sugerencias aparecerán aquí a medida que terminen.",
     "{count} clusters were too large to group in one pass.":
@@ -29931,6 +30301,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Los riesgos de proveedor relacionados aparecen al guardar los riesgos de proveedor, o después de que un administrador ejecute un análisis.",
     "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
       "Analizando {count} riesgos de proveedor. Los riesgos de proveedor relacionados aparecerán aquí cuando termine el análisis.",
+    "Scanning {count} vendor risk. Related vendor risks appear here as the scan completes.":
+      "Analizando {count} riesgo de proveedor. Los riesgos de proveedor relacionados aparecerán aquí cuando termine el análisis.",
     "Scan finished. No related vendor risks found.":
       "Análisis finalizado. No se encontraron riesgos de proveedor relacionados.",
     "Search vendor risks": "Buscar riesgos de proveedor",
@@ -30795,5 +31167,24 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence graded": "La evidencia calificada",
     "counts as low quality. Files with no AI analysis are not counted as adequate.":
       "se considera de baja calidad. Los archivos sin análisis de IA no cuentan como suficientes.",
+    // Super admin MCP connect
+    "Connect Claude Code to this deployment": "Conectar Claude Code a esta implementación",
+    "Download the config file": "Descargar el archivo de configuración",
+    "Token expires in": "El token caduca en",
+    "Config file downloaded": "Archivo de configuración descargado",
+    "Add it to Claude Code": "Añadirlo a Claude Code",
+    "Check it worked": "Comprobar que funcionó",
+    "What the file contains": "Qué contiene el archivo",
+    "Tools it adds": "Herramientas que añade",
+    "Download config file": "Descargar el archivo de configuración",
+    "Preparing...": "Preparando...",
+    "7 days": "7 días",
+    "30 days": "30 días",
+    "60 days": "60 días",
+    "90 days": "90 días",
+    "180 days": "180 días",
+    "Failed to create the config file.": "No se pudo crear el archivo de configuración.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Al descargarlo se revoca el token emitido aquí la última vez. Todo lo que se configuró con el archivo anterior, en este equipo o en otro, deja de funcionar de inmediato.",
   },
 };

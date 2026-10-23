@@ -37,6 +37,7 @@ jest.mock("../../utils/logger/fileLogger", () => ({
 import {
   sendSubmissionReceivedEmail,
   sendNewSubmissionAdminNotification,
+  renderIntakeResultsHtml,
   sendSubmissionApprovedEmail,
   sendSubmissionRejectedEmail,
 } from "../intakeFormEmail.service";
@@ -256,6 +257,86 @@ describe("intakeFormEmail.service", () => {
       );
 
       expect(mockSendEmail).toHaveBeenCalledTimes(2);
+    });
+
+    it("sends an empty results block when no results are given", async () => {
+      mockGetUsersByIds.mockResolvedValue([{ id: 1, name: "Admin", email: "a@test.com" }] as any);
+      mockSendEmail.mockResolvedValue(undefined);
+
+      await sendNewSubmissionAdminNotification(
+        [1],
+        "Form",
+        "S",
+        "s@test.com",
+        42,
+        IntakeEntityType.USE_CASE,
+      );
+
+      expect((mockSendEmail.mock.calls[0][3] as Record<string, string>).resultsHtml).toBe("");
+    });
+
+    it("includes the results block when results are given", async () => {
+      mockGetUsersByIds.mockResolvedValue([{ id: 1, name: "Admin", email: "a@test.com" }] as any);
+      mockSendEmail.mockResolvedValue(undefined);
+
+      await sendNewSubmissionAdminNotification(
+        [1],
+        "Form",
+        "S",
+        "s@test.com",
+        42,
+        IntakeEntityType.USE_CASE,
+        "en",
+        { level: "High risk", scoreText: "70 (High)", suggestionCount: 3, capReached: false },
+      );
+
+      const html = (mockSendEmail.mock.calls[0][3] as Record<string, string>).resultsHtml;
+      expect(html).toContain("70 (High)");
+      expect(html).toContain("High risk");
+      expect(html).toContain("</strong> 3</p>");
+    });
+  });
+
+  describe("renderIntakeResultsHtml", () => {
+    it("is empty without results", () => {
+      expect(renderIntakeResultsHtml(undefined)).toBe("");
+    });
+
+    it("shows level, score and suggestion count, escaped", () => {
+      const html = renderIntakeResultsHtml({
+        level: null,
+        scoreText: "<b>64</b> (High)",
+        suggestionCount: 0,
+        capReached: false,
+      });
+      expect(html).toContain("Initial assessment");
+      expect(html).toContain("Not rule-checked");
+      expect(html).toContain("&lt;b&gt;64&lt;/b&gt; (High)");
+      expect(html).not.toContain("<b>64</b>");
+      expect(html).toContain("Suggested risks:");
+    });
+
+    it("shows only a still-running note when the wait ran out", () => {
+      const html = renderIntakeResultsHtml({
+        level: "High risk",
+        scoreText: "70 (High)",
+        suggestionCount: 2,
+        capReached: true,
+      });
+      expect(html).toContain("Scoring was still running");
+      expect(html).not.toContain("70 (High)");
+    });
+
+    it("never words the score as a probability, confidence or certainty", () => {
+      for (const capReached of [true, false]) {
+        const html = renderIntakeResultsHtml({
+          level: "High risk",
+          scoreText: "70 (High)",
+          suggestionCount: 1,
+          capReached,
+        }).toLowerCase();
+        expect(html).not.toMatch(/probability|confidence|certainty/);
+      }
     });
   });
 
