@@ -13,6 +13,9 @@ import type {
 import type {
   FieldType,
   FormDesignSettings,
+  FormRouting,
+  IntakeOversight,
+  SubmissionRouting,
 } from "../../presentation/pages/IntakeFormBuilder/types";
 import type { Visibility } from "../utils/intakeFormLogic";
 import type { ClassificationLevel, ScoreBand, ScoreSource } from "../utils/intakeScoring/scoreMath";
@@ -114,6 +117,7 @@ export interface IntakeForm {
   suggestedQuestionsEnabled?: boolean;
   euAiActRiskStepEnabled?: boolean;
   designSettings?: FormDesignSettings | null;
+  routing?: FormRouting | null;
   createdBy: number;
   createdAt: Date;
   updatedAt: Date;
@@ -268,6 +272,14 @@ export interface IntakeSubmission {
   riskTier?: string | null;
   riskOverride?: RiskOverride | null;
   suggestedRisks?: SuggestedRisksBlock | null;
+  /** The lane decision, null until the submission is routed. */
+  routing?: SubmissionRouting | null;
+  /** Ids of the assigned lane's reviewers, from the list endpoint. */
+  laneReviewerIds?: number[];
+  /** Senior reviewers who can act on an open or unresolved-missed second review. */
+  secondReviewerIds?: number[];
+  /** Whether the submission's form routes by risk score. */
+  routingEnabled?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -332,6 +344,7 @@ export async function createIntakeForm(
     suggestedQuestionsEnabled?: boolean;
     euAiActRiskStepEnabled?: boolean;
     designSettings?: FormDesignSettings | null;
+    routing?: FormRouting | null;
   },
   signal?: AbortSignal,
 ): Promise<{ data: IntakeForm }> {
@@ -358,6 +371,7 @@ export async function updateIntakeForm(
     suggestedQuestionsEnabled?: boolean;
     euAiActRiskStepEnabled?: boolean;
     designSettings?: FormDesignSettings | null;
+    routing?: FormRouting | null;
   },
   signal?: AbortSignal,
 ): Promise<{ data: IntakeForm }> {
@@ -445,6 +459,13 @@ export interface SubmissionPreview {
   ruleMinimumPreview?: number | null;
   /** The level the AI was given when the score was computed. */
   assessedLevel?: ClassificationLevel | null;
+  routing?: SubmissionRouting | null;
+  routingEnabled?: boolean;
+  canDecide?: boolean;
+  decideBlockedReason?: string | null;
+  /** Reviewers of the assigned lane. */
+  laneReviewers?: Array<{ id: number; name: string }>;
+  isSeniorReviewer?: boolean;
 }
 
 /**
@@ -819,4 +840,74 @@ export async function submitPublicFormById(
   return response.data as {
     data: { submissionId: number; resubmissionToken: string; message: string };
   };
+}
+
+// ============================================================================
+// Review routing
+// ============================================================================
+
+/**
+ * Users who can be picked as senior or standard reviewers of a form
+ */
+export async function getEligibleReviewers(
+  signal?: AbortSignal,
+): Promise<Array<{ id: number; name: string; surname: string; email: string }>> {
+  const response = await apiServices.get(`${BASE_URL}/routing/eligible-reviewers`, { signal });
+  return response.data as Array<{ id: number; name: string; surname: string; email: string }>;
+}
+
+/**
+ * Send a pending submission to the senior lane
+ */
+export async function escalateSubmission(
+  submissionId: number,
+  reason: string,
+): Promise<{ data: SubmissionRouting }> {
+  const response = await apiServices.post(`${BASE_URL}/submissions/${submissionId}/escalate`, {
+    reason,
+  });
+  return response.data as { data: SubmissionRouting };
+}
+
+/**
+ * Record the outcome of a second review on a standard-lane decision
+ */
+export async function recordSecondReview(
+  submissionId: number,
+  outcome: "agreed" | "missed",
+  note?: string,
+): Promise<{ data: SubmissionRouting }> {
+  const response = await apiServices.post(`${BASE_URL}/submissions/${submissionId}/second-review`, {
+    outcome,
+    ...(note ? { note } : {}),
+  });
+  return response.data as { data: SubmissionRouting };
+}
+
+/**
+ * Close a missed second review with a resolution note
+ */
+export async function resolveSecondReviewMiss(
+  submissionId: number,
+  note: string,
+): Promise<{ data: SubmissionRouting }> {
+  const response = await apiServices.post(
+    `${BASE_URL}/submissions/${submissionId}/second-review/resolve`,
+    { note },
+  );
+  return response.data as { data: SubmissionRouting };
+}
+
+/**
+ * Routing and decision figures for the oversight tab
+ */
+export async function getIntakeOversight(
+  weeks: 4 | 8 | 12,
+  formId?: number,
+  signal?: AbortSignal,
+): Promise<{ data: IntakeOversight }> {
+  const params = new URLSearchParams({ weeks: String(weeks) });
+  if (formId !== undefined) params.append("formId", String(formId));
+  const response = await apiServices.get(`${BASE_URL}/oversight?${params}`, { signal });
+  return response.data as { data: IntakeOversight };
 }
