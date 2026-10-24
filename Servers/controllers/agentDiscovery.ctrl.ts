@@ -61,8 +61,8 @@ function parseOwnerId(value: unknown): number | null {
 /** Longest description an agent can have. */
 const MAX_DESCRIPTION_LENGTH = 5000;
 
-/** A parsed request field, or the message for a 400. */
-type Parsed<T> = { value: T } | { error: string };
+/** A parsed request field, or the message (and its variables) for a 400. */
+type Parsed<T> = { value: T } | { error: string; vars?: Record<string, number> };
 
 /**
  * Read `description`: undefined when not sent, null when blank (clears it),
@@ -74,7 +74,10 @@ function parseDescription(value: unknown): Parsed<string | null | undefined> {
   if (typeof value !== "string") return { error: "description must be text" };
   const text = value.trim();
   if (text.length > MAX_DESCRIPTION_LENGTH) {
-    return { error: "description must be at most 5000 characters" };
+    return {
+      error: "description must be at most {max} characters",
+      vars: { max: MAX_DESCRIPTION_LENGTH },
+    };
   }
   return { value: text || null };
 }
@@ -142,7 +145,7 @@ async function invalidLinkMessage(
     projectId !== current.linked_project_id &&
     !(await useCaseInOrganizationQuery(projectId, organizationId, transaction))
   ) {
-    return "Linked use case was not found";
+    return LINKED_USE_CASE_NOT_FOUND;
   }
   return null;
 }
@@ -261,11 +264,8 @@ async function ownersBelongToOrganization(
   return ownerIds.every((id) => found.includes(id));
 }
 
-/**
- * True for a foreign-key violation on agent_primitive_owners.user_id: an owner
- * whose user was deleted after the membership check, before the insert.
- */
-function isOwnerUserForeignKeyViolation(error: unknown): boolean {
+/** True for a foreign-key violation on `table`.`column`. */
+function isForeignKeyViolation(error: unknown, table: string, column: string): boolean {
   const err = error as {
     index?: string;
     table?: string;
@@ -273,10 +273,26 @@ function isOwnerUserForeignKeyViolation(error: unknown): boolean {
   } | null;
   const isFkViolation = error instanceof ForeignKeyConstraintError || err?.parent?.code === "23503";
   if (!isFkViolation) return false;
-  const table = err?.table ?? err?.parent?.table;
+  const errorTable = err?.table ?? err?.parent?.table;
   const constraint = err?.index ?? err?.parent?.constraint ?? "";
-  return table === "agent_primitive_owners" && constraint.includes("user_id");
+  return errorTable === table && constraint.includes(column);
 }
+
+/**
+ * True for a foreign-key violation on agent_primitive_owners.user_id: an owner
+ * whose user was deleted after the membership check, before the insert.
+ */
+const isOwnerUserForeignKeyViolation = (error: unknown) =>
+  isForeignKeyViolation(error, "agent_primitive_owners", "user_id");
+
+/**
+ * True for a foreign-key violation on agent_primitives.linked_project_id: a
+ * use case deleted after the link check, before the write.
+ */
+const isLinkedUseCaseForeignKeyViolation = (error: unknown) =>
+  isForeignKeyViolation(error, "agent_primitives", "linked_project_id");
+
+const LINKED_USE_CASE_NOT_FOUND = "Linked use case was not found";
 
 const sameOwnerSet = (a: string[], b: string[]) =>
   a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
@@ -418,7 +434,7 @@ export async function createAgentPrimitive(req: Request, res: Response) {
     }
     const details = parseAgentDetailFields(req.body);
     if ("error" in details) {
-      return res.status(400).json(STATUS_CODE[400](req.t!(details.error)));
+      return res.status(400).json(STATUS_CODE[400](req.t!(details.error, details.vars)));
     }
 
     // Owners: an owner_ids array (multi-owner, primary first) and/or the legacy
@@ -470,6 +486,9 @@ export async function createAgentPrimitive(req: Request, res: Response) {
     } catch (error) {
       await transaction.rollback();
       if (isOwnerUserForeignKeyViolation(error)) return notInOrganization();
+      if (isLinkedUseCaseForeignKeyViolation(error)) {
+        return res.status(400).json(STATUS_CODE[400](req.t!(LINKED_USE_CASE_NOT_FOUND)));
+      }
       throw error;
     }
     (primitive as any).owner_ids = owners;
@@ -508,7 +527,7 @@ export async function updateAgentPrimitive(req: Request, res: Response) {
     const { display_name, primitive_type, owner_id, owner_ids, metadata } = req.body;
     const details = parseAgentDetailFields(req.body);
     if ("error" in details) {
-      return res.status(400).json(STATUS_CODE[400](req.t!(details.error)));
+      return res.status(400).json(STATUS_CODE[400](req.t!(details.error, details.vars)));
     }
     const { description, linked_model_inventory_id, linked_project_id } = details.value;
 
@@ -671,6 +690,10 @@ export async function updateAgentPrimitive(req: Request, res: Response) {
           .status(400)
           .json(STATUS_CODE[400](req.t!("Owners must be users in your organization")));
       }
+      // The new use case deleted between the link check and the update.
+      if (isLinkedUseCaseForeignKeyViolation(error)) {
+        return res.status(400).json(STATUS_CODE[400](req.t!(LINKED_USE_CASE_NOT_FOUND)));
+      }
       throw error;
     }
 
@@ -773,14 +796,23 @@ export async function linkModelToAgent(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid agent primitive ID")));
     }
 
-    const { model_id } = req.body;
-    if (!model_id) {
+    if (req.body.model_id == null || req.body.model_id === "") {
       return res.status(400).json(STATUS_CODE[400](req.t!("model_id is required")));
+    }
+    const model_id = parseOwnerId(req.body.model_id);
+    if (model_id === null) {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Linked model must be a valid ID")));
     }
 
     const existing = await getAgentPrimitiveByIdQuery(id, req.organizationId!);
     if (!existing) {
       return res.status(404).json(STATUS_CODE[404](req.t!("Agent primitive not found")));
+    }
+    // Same check as the add/edit drawer: only a model of this organization.
+    if (!(await modelInOrganizationQuery(model_id, req.organizationId!))) {
+      return res
+        .status(400)
+        .json(STATUS_CODE[400](req.t!("Linked model was not found in your model inventory")));
     }
 
     const primitive = await linkModelQuery(id, model_id, req.organizationId!);

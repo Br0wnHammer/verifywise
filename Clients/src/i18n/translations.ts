@@ -5380,6 +5380,9 @@ export const translations: Record<string, Record<string, string>> = {
     "What this agent does": "Was dieser Agent macht",
     "No use cases": "Keine Anwendungsfälle",
     "No models in the inventory": "Keine Modelle im Inventar",
+    "Could not load models": "Modelle konnten nicht geladen werden",
+    "Description must be at most {max} characters.":
+      "Die Beschreibung darf höchstens {max} Zeichen lang sein.",
     "All users selected": "Alle Benutzer ausgewählt",
     "No users": "Keine Benutzer",
     "Linked risks": "Verknüpfte Risiken",
@@ -15895,6 +15898,9 @@ export const translations: Record<string, Record<string, string>> = {
     "What this agent does": "Ce que fait cet agent",
     "No use cases": "Aucun cas d'usage",
     "No models in the inventory": "Aucun modèle dans l'inventaire",
+    "Could not load models": "Impossible de charger les modèles",
+    "Description must be at most {max} characters.":
+      "La description ne doit pas dépasser {max} caractères.",
     "All users selected": "Tous les utilisateurs sont sélectionnés",
     "No users": "Aucun utilisateur",
     "Linked risks": "Risques liés",
@@ -24736,6 +24742,9 @@ export const translations: Record<string, Record<string, string>> = {
     "What this agent does": "Qué hace este agente",
     "No use cases": "No hay casos de uso",
     "No models in the inventory": "No hay modelos en el inventario",
+    "Could not load models": "No se pudieron cargar los modelos",
+    "Description must be at most {max} characters.":
+      "La descripción debe tener como máximo {max} caracteres.",
     "All users selected": "Todos los usuarios seleccionados",
     "No users": "No hay usuarios",
     "Linked risks": "Riesgos vinculados",

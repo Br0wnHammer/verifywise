@@ -11,12 +11,12 @@ import { getClientErrorReason } from "../../../../application/utils/apiErrorReas
 import { useUserNames } from "../../../pages/AgentDiscovery/useUserNames";
 import {
   formatModelLabel,
+  formatUseCaseLabel,
   getAgentOwnerIds,
   isUserIdLike,
-  ModelLabelSource,
 } from "../../../pages/AgentDiscovery/agentLabels";
-import { getAllEntities } from "../../../../application/repository/entity.repository";
 import { useProjects } from "../../../../application/hooks/useProjects";
+import { useModelInventories } from "../../../../application/hooks/useModelInventories";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
 import { fill } from "../../../../i18n/fill";
 import { AgentPrimitiveRow } from "../../../../domain/interfaces/i.agentDiscovery";
@@ -108,8 +108,16 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
   // Optional links. Like the owners, an edit sends each only when it changed.
   const [linkedModelId, setLinkedModelId] = useState<number | null>(null);
   const [linkedProjectId, setLinkedProjectId] = useState<number | null>(null);
-  const [models, setModels] = useState<PickerOption[]>([]);
-  const { approvedProjects } = useProjects();
+  // Both lists are cached and fetched only while the drawer is open.
+  const { approvedProjects } = useProjects({ enabled: isOpen });
+  const { data: inventory, isError: modelsFailed } = useModelInventories({ enabled: isOpen });
+  const models = useMemo<PickerOption[]>(
+    () =>
+      (inventory ?? [])
+        .filter((m): m is typeof m & { id: number } => m.id != null)
+        .map((m) => ({ id: Number(m.id), name: formatModelLabel(m) })),
+    [inventory],
+  );
   const useCases = useMemo<PickerOption[]>(() => {
     const options = approvedProjects
       .filter((p) => !p.is_organizational)
@@ -117,8 +125,8 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
     // Keep the current link selectable even when it is not in the list (e.g. a
     // use case awaiting approval), so opening the form never drops it.
     const current = agent?.linked_project_id;
-    if (current && !options.some((o) => o.id === current)) {
-      options.push({ id: current, name: agent?.linked_project_title || `Use case #${current}` });
+    if (agent && current && !options.some((o) => o.id === current)) {
+      options.push({ id: current, name: formatUseCaseLabel(agent) });
     }
     return options;
   }, [approvedProjects, agent]);
@@ -139,10 +147,12 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
       primitive_type: (v: unknown) => (!v ? "Type is required." : ""),
       description: (v: unknown) =>
         ((v as string) ?? "").trim().length > MAX_DESCRIPTION_LENGTH
-          ? `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`
+          ? fill(t("Description must be at most {max} characters."), {
+              max: MAX_DESCRIPTION_LENGTH,
+            })
           : "",
     }),
-    [],
+    [t],
   );
   const { errors, validateAll, clearFieldError, resetErrors } =
     useFormValidation<typeof formData>(validators);
@@ -186,26 +196,6 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
       cancelled = true;
     };
   }, [isOpen, agent, refreshUsers]);
-
-  // The model inventory, for the linked model picker.
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await getAllEntities({ routeUrl: "/modelInventory" });
-        const data: ModelLabelSource[] = response?.data || [];
-        if (!cancelled) {
-          setModels(data.map((m) => ({ id: Number(m.id), name: formatModelLabel(m) })));
-        }
-      } catch {
-        // The picker stays empty; the current link is still shown.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen]);
 
   // Once the refreshed users have loaded, find owner ids that are still not
   // users. They are left out of the picker (it cannot show them), and only
@@ -419,7 +409,7 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
           options={modelOptions}
           getOptionLabel={(m) => m.name}
           isOptionEqualToValue={(a, b) => a.id === b.id}
-          noOptionsText="No models in the inventory"
+          noOptionsText={modelsFailed ? "Could not load models" : "No models in the inventory"}
           onChange={(_e, selected) => setLinkedModelId(selected ? selected.id : null)}
         />
 

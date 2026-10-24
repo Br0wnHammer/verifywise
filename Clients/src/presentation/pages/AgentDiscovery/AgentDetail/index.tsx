@@ -18,7 +18,7 @@ import {
 import useFormattedDate from "../../../../application/hooks/useFormattedDate";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
 import { getAgentLifecycle } from "../agentLifecycle";
-import { formatSourceLabel, getAgentOwnerIds } from "../agentLabels";
+import { formatSourceLabel, formatUseCaseLabel, getAgentOwnerIds } from "../agentLabels";
 import { useUserNames } from "../useUserNames";
 import { useLinkedModelLabel } from "../useLinkedModelLabel";
 import ReviewAgentModal from "../../../components/Modals/AgentDiscovery/ReviewAgentModal";
@@ -399,7 +399,7 @@ export default function AgentDetail() {
                     "&:hover": { textDecoration: "underline" },
                   }}
                 >
-                  {agent.linked_project_title || `Use case #${agent.linked_project_id}`}
+                  {formatUseCaseLabel(agent)}
                 </Typography>
               ) : (
                 <Typography sx={{ fontSize: 13, color: palette.text.secondary }}>

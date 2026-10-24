@@ -78,9 +78,21 @@ const projectsState = vi.hoisted(() => ({
     { id: 5, project_title: "Claims triage", is_organizational: false },
     { id: 6, project_title: "Organization ISO 42001", is_organizational: true },
   ],
+  enabledCalls: [] as (boolean | undefined)[],
 }));
 vi.mock("../../../../../application/hooks/useProjects", () => ({
-  useProjects: () => ({ approvedProjects: projectsState.projects }),
+  useProjects: (options?: { enabled?: boolean }) => {
+    projectsState.enabledCalls.push(options?.enabled);
+    return { approvedProjects: projectsState.projects };
+  },
+}));
+// Models come from the shared model inventory query.
+const modelsState = vi.hoisted(() => ({
+  models: [] as { id: number; provider: string; model: string }[],
+  isError: false,
+}));
+vi.mock("../../../../../application/hooks/useModelInventories", () => ({
+  useModelInventories: () => ({ data: modelsState.models, isError: modelsState.isError }),
 }));
 // Users come from the shared, cached users hook. refreshUsers is stable across
 // renders, like the real hook's; a test can make it load a different list.
@@ -148,6 +160,9 @@ beforeEach(() => {
   usersState.users = [...BASE_USERS];
   usersState.refreshUsers.mockReset();
   usersState.refreshUsers.mockImplementation(async () => {});
+  modelsState.models = [];
+  modelsState.isError = false;
+  projectsState.enabledCalls = [];
   vi.mocked(apiServices.patch).mockClear();
   vi.mocked(apiServices.post).mockClear();
 });
@@ -404,18 +419,39 @@ describe("ManualAgentModal", () => {
   });
 
   it("links a model from the inventory", async () => {
-    vi.mocked(getAllEntities).mockResolvedValueOnce({
-      data: [{ id: 7, provider: "OpenAI", model: "gpt-4o", version: "" }],
-    });
+    modelsState.models = [{ id: 7, provider: "OpenAI", model: "gpt-4o" }];
     renderWithProviders(<ManualAgentModal isOpen={true} setIsOpen={vi.fn()} onSuccess={vi.fn()} />);
     const picker = screen.getByTestId("autocomplete-linked_model_inventory_id");
-    await vi.waitFor(() => expect(picker).toHaveAttribute("data-options", "[7]"));
+    expect(picker).toHaveAttribute("data-options", "[7]");
     fireEvent.click(picker);
     fireEvent.click(screen.getByText("Add agent"));
     await vi.waitFor(() => expect(apiServices.post).toHaveBeenCalled());
     expect(vi.mocked(apiServices.post).mock.calls[0][1]).toEqual(
       expect.objectContaining({ linked_model_inventory_id: 7 }),
     );
+  });
+
+  it("fetches the pickers' lists only while the drawer is open", () => {
+    renderWithProviders(
+      <ManualAgentModal isOpen={false} setIsOpen={vi.fn()} onSuccess={vi.fn()} />,
+    );
+    expect(projectsState.enabledCalls).not.toContain(true);
+    expect(projectsState.enabledCalls).toContain(false);
+  });
+
+  it("keeps a current model link when the inventory fails to load", () => {
+    modelsState.isError = true;
+    renderWithProviders(
+      <ManualAgentModal
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        onSuccess={vi.fn()}
+        agent={{ ...mockAgent, linked_model_inventory_id: 9 }}
+      />,
+    );
+    const picker = screen.getByTestId("autocomplete-linked_model_inventory_id");
+    expect(picker).toHaveAttribute("data-options", "[9]");
+    expect(picker).toHaveAttribute("data-value", "9");
   });
 
   it("sends no description or link fields on an edit that leaves them alone", async () => {
