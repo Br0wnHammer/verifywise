@@ -1,15 +1,15 @@
 # Core
-fastapi>=0.143.0
+fastapi>=0.143.2
 uvicorn>=0.54.0
 python-dotenv>=1.2.4
-pydantic>=2.14.0
-pydantic-settings>=2.15.0
+pydantic>=2.14.1
+pydantic-settings>=2.16.0
 redis>=8.1.0
 cryptography>=50.0.2
 httpx>=0.28.1
 
 # Database (async PostgreSQL)
-sqlalchemy[asyncio]>=2.1.1
+sqlalchemy[asyncio]>=2.1.4
 asyncpg>=0.32.0
 
 # LiteLLM SDK (MIT licensed)
@@ -17,7 +17,7 @@ asyncpg>=0.32.0
 litellm==1.102.1
 
 # Database migrations (Alembic)
-sqlalchemy[asyncio]>=2.1.1
+sqlalchemy[asyncio]>=2.1.4
 asyncpg>=0.29.0
 alembic>=1.20.0
 
@@ -36,7 +36,7 @@ spacy>=3.8.16,<3.9.0
 en_core_web_md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl#sha256=5e6329fe3fecedb1d1a02c3ea2172ee0fede6cea6e4aefb6a02d832dba78a310
 
 # MCP Gateway — Model Context Protocol SDK
-mcp>=2.2.0
+mcp>=2.3.0
 
 # Observability — OpenTelemetry metrics + logs (pushed to central OTLP collector)
 opentelemetry-api>=1.44.0

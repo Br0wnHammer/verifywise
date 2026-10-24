@@ -1,6 +1,6 @@
 # VerifyWise - Development Guide
 
-> **Last Updated:** 2026-10-17
+> **Last Updated:** 2026-10-21
 
 This document contains cross-cutting rules for the VerifyWise codebase. Directory-scoped guides load automatically when working in each area:
 
@@ -8,7 +8,7 @@ This document contains cross-cutting rules for the VerifyWise codebase. Director
 - **Frontend:** `Clients/CLAUDE.md` — clean architecture, component patterns
 - **EvalServer:** `EvalServer/CLAUDE.md` — Alembic migrations, FastAPI patterns
 - **AI Gateway:** `AIGateway/CLAUDE.md` — LLM proxy, guardrails, spend tracking
-- **MCP Server:** `MCPServer/README.md` — MCP server for super-admin org/user administration across deployments
+- **MCP Server:** `Servers/mcp/` — the deployment's own MCP server, served over Streamable HTTP at `POST /api/mcp` for super-admin org/user administration. Tools call `Servers/services/superAdmin.service.ts`, the same code the REST controllers use. Connect a client with `claude mcp add --transport http verifywise https://<deployment>/api/mcp --header "Authorization: Bearer <api token>"`.
 
 ### Custom Agents
 
@@ -224,6 +224,7 @@ Read the relevant file BEFORE implementing changes in that area:
 | Datasets | `docs/technical/domains/datasets.md` |
 | Tasks | `docs/technical/domains/tasks.md` |
 | Incidents | `docs/technical/domains/incidents.md` |
+| Intake forms (AI scoring with rule minimums, suggested risks, assessment job, one-time email, approval risks) | `docs/technical/domains/intake-forms.md` |
 | Evidence hub | `docs/technical/domains/evidence.md` |
 | Training registry | `docs/technical/domains/training.md` |
 | Search | `docs/technical/domains/search.md` |
