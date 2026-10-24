@@ -8,7 +8,7 @@ import { AI_LIFECYCLE_PHASE_ENUM } from "../../utils/validations/riskValidation.
  * description or existing risk name must not smuggle a multi-paragraph
  * instruction set past the system rules below.
  */
-const MAX_USE_CASE_FIELD_CHARS = 1000;
+export const MAX_USE_CASE_FIELD_CHARS = 1000;
 const MAX_EXISTING_RISK_NAME_CHARS = 150;
 const MAX_EXISTING_RISK_NAMES = 100;
 const MAX_CONTEXT_CHARS = 30000;

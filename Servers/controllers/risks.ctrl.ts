@@ -961,17 +961,14 @@ export async function suggestRisksWithAI(req: Request, res: Response): Promise<a
       .map((risk) => risk.risk_name)
       .filter((name): name is string => Boolean(name));
 
-    // The description goes to the model as well as the purpose, not only when
-    // the use case has no goal or purpose; skip it when it repeats the purpose.
-    const purpose = project.goal || project.use_case_purpose || undefined;
-    const description = project.description?.trim() || undefined;
-
+    // The service decides how purpose and description combine (fallback and
+    // repeat handling): see resolvePurposeAndDescription.
     const result = await suggestRisksForUseCase({
       model,
       useCase: {
         name: project.project_title,
-        purpose: purpose ?? description,
-        description: purpose && description !== purpose.trim() ? description : undefined,
+        purpose: project.goal?.trim() || project.use_case_purpose?.trim() || undefined,
+        description: project.description || undefined,
         technology:
           technologySummary || project.deployment_context || project.use_case_category || undefined,
       },

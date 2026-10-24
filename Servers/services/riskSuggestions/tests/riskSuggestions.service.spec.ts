@@ -16,10 +16,13 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
 import {
   hydrateMatched,
   processSuggested,
+  resolvePurposeAndDescription,
   RiskSuggestionError,
   suggestRisksForUseCase,
 } from "../riskSuggestions.service";
-import { buildRiskSuggestionSystemPrompt } from "../prompts";
+import type { UseCaseInput } from "../riskSuggestions.service";
+import { buildRiskSuggestionSystemPrompt, MAX_USE_CASE_FIELD_CHARS } from "../prompts";
+import { rankCatalogCandidates } from "../candidates";
 import { riskSuggestionOutputSchema } from "../schema";
 import { MIT_RISK_CATALOG } from "../../../structures/risk-catalogs/mit";
 import { IBM_RISK_CATALOG } from "../../../structures/risk-catalogs/ibm";
@@ -447,6 +450,75 @@ describe("suggestRisksForUseCase context block", () => {
     });
     const prompt: string = generateImpl.mock.calls[0][0].prompt;
     expect(prompt).not.toContain("- description:");
+  });
+
+  it.each([
+    [
+      "no purpose: description stands in",
+      { purpose: undefined, description: "A chatbot" },
+      { purpose: "A chatbot" },
+    ],
+    [
+      "whitespace purpose counts as missing",
+      { purpose: "   ", description: "A chatbot" },
+      { purpose: "A chatbot" },
+    ],
+    [
+      "both sent when different",
+      { purpose: "Deflect tickets", description: "A chatbot" },
+      { purpose: "Deflect tickets", description: "A chatbot" },
+    ],
+    [
+      "repeat ignoring case and punctuation",
+      { purpose: "Deflect support tickets", description: " deflect support tickets. " },
+      { purpose: "Deflect support tickets" },
+    ],
+    [
+      "whitespace description dropped",
+      { purpose: "Deflect tickets", description: "   " },
+      { purpose: "Deflect tickets" },
+    ],
+    ["neither given", { purpose: undefined, description: undefined }, { purpose: undefined }],
+  ])("resolvePurposeAndDescription: %s", (_label, input, expected) => {
+    expect(resolvePurposeAndDescription({ name: "x", ...input })).toEqual(expected);
+  });
+
+  it("ranks MIT candidates on the description too, capped at the prompt's field length", async () => {
+    const description = "deepfake impersonation voice cloning fraud";
+    const promptCandidateIds = async (useCase: UseCaseInput): Promise<number[]> => {
+      const generateImpl = genReturning({ matched: [], suggested: [] });
+      await suggestRisksForUseCase({
+        model: FAKE_MODEL,
+        useCase,
+        existingRiskNames: [],
+        generateImpl,
+      });
+      const prompt: string = generateImpl.mock.calls[0][0].prompt;
+      const mitSection = prompt
+        .split('candidates (source "mit"):')[1]
+        .split("IBM AI Risk Atlas")[0];
+      return [...mitSection.matchAll(/- id (\d+):/g)].map((m) => Number(m[1]));
+    };
+    const idsOf = (text: string) =>
+      rankCatalogCandidates(MIT_RISK_CATALOG, text).map((entry) => entry.id);
+
+    const withDescription = await promptCandidateIds({
+      name: "Support assistant",
+      purpose: "Deflect tickets",
+      description,
+    });
+    expect(withDescription).toEqual(idsOf(`Support assistant Deflect tickets ${description}`));
+    expect(withDescription).not.toEqual(idsOf("Support assistant Deflect tickets"));
+
+    // Words past the cap never reach the prompt, so they must not steer ranking.
+    const padded = await promptCandidateIds({
+      name: "Support assistant",
+      purpose: "Deflect tickets",
+      description: `${"x".repeat(MAX_USE_CASE_FIELD_CHARS)} ${description}`,
+    });
+    expect(padded).toEqual(
+      idsOf(`Support assistant Deflect tickets ${"x".repeat(MAX_USE_CASE_FIELD_CHARS)}`),
+    );
   });
 
   it("uses a fresh delimiter nonce on every call", async () => {

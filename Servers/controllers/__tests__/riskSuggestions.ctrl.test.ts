@@ -244,7 +244,7 @@ describe("suggestRisksWithAI", () => {
     expect((res as any).json.mock.calls[0][0].data.suppressed_count).toBe(1);
   });
 
-  it("uses the description as the purpose when the project has no goal or purpose", async () => {
+  it("passes no purpose but still the description when the project has no goal or purpose", async () => {
     setupHappyPath();
     mockGetProjectById.mockResolvedValue({ ...PROJECT, goal: null, use_case_purpose: null });
 
@@ -253,21 +253,23 @@ describe("suggestRisksWithAI", () => {
     await suggestRisksWithAI(req, res);
 
     const useCase = mockSuggest.mock.calls[0][0].useCase;
-    expect(useCase.purpose).toBe("A chatbot for the help centre.");
-    expect(useCase.description).toBeUndefined();
+    expect(useCase.purpose).toBeUndefined();
+    expect(useCase.description).toBe("A chatbot for the help centre.");
   });
 
-  it("omits the description when it repeats the purpose", async () => {
+  it("skips a whitespace-only goal and falls back to the use case purpose", async () => {
     setupHappyPath();
-    mockGetProjectById.mockResolvedValue({ ...PROJECT, description: "Deflect support tickets " });
+    mockGetProjectById.mockResolvedValue({
+      ...PROJECT,
+      goal: "   ",
+      use_case_purpose: "Answer billing questions",
+    });
 
     const req = createMockReq({ body: { projectId: 5 } }) as Request;
     const res = createMockRes() as Response;
     await suggestRisksWithAI(req, res);
 
-    const useCase = mockSuggest.mock.calls[0][0].useCase;
-    expect(useCase.purpose).toBe("Deflect support tickets");
-    expect(useCase.description).toBeUndefined();
+    expect(mockSuggest.mock.calls[0][0].useCase.purpose).toBe("Answer billing questions");
   });
 
   it("prefers a request technologySummary over the project's deployment context", async () => {
