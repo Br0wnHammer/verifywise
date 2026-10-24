@@ -937,6 +937,11 @@ const StartHere = () => {
             >
               {[
                 {
+                  name: "Ioana Polmolea",
+                  photo: "/images/ioanapolmolea.jpg",
+                  role: "AI governance expert",
+                },
+                {
                   name: "Ulas Ozguven",
                   photo: "https://verifywise.ai/images/team/ulas.jpeg",
                   role: "AI governance expert",

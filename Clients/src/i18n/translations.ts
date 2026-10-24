@@ -8279,6 +8279,7 @@ export const translations: Record<string, Record<string, string>> = {
     "USE CASE": "ANWENDUNGSFALL",
     "USER (ID)": "BENUTZER (ID)",
     "Ulas Ozguven": "Ulas Ozguven",
+    "Ioana Polmolea": "Ioana Polmolea",
     "Unable to edit metadata. File data not available.":
       "Metadaten können nicht bearbeitet werden. Dateidaten nicht verfügbar.",
     "Unable to preview file. Metadata not available.":
@@ -18784,6 +18785,7 @@ export const translations: Record<string, Record<string, string>> = {
     "USE CASE": "CAS D'USAGE",
     "USER (ID)": "UTILISATEUR (ID)",
     "Ulas Ozguven": "Ulas Ozguven",
+    "Ioana Polmolea": "Ioana Polmolea",
     "Unable to edit metadata. File data not available.":
       "Impossible de modifier les métadonnées. Données du fichier non disponibles.",
     "Unable to preview file. Metadata not available.":
@@ -26281,6 +26283,7 @@ export const translations: Record<string, Record<string, string>> = {
     "USE CASE": "CASO DE USO",
     "USER (ID)": "USUARIO (ID)",
     "Ulas Ozguven": "Ulas Ozguven",
+    "Ioana Polmolea": "Ioana Polmolea",
     "Unacceptable risk": "Riesgo inaceptable",
     "Unclear": "Poco claro",
     "Unexpected Impact Integration": "Integración de impacto inesperado",
