@@ -3,13 +3,20 @@ import { Drawer, Stack, Typography, Divider, IconButton } from "@mui/material";
 import { X } from "lucide-react";
 import Field from "../../Inputs/Field";
 import SelectComponent from "../../Inputs/Select";
-import MultiSelect from "../../Inputs/MultiSelect";
+import AutoCompleteField from "../../Inputs/Autocomplete";
 import { CustomizableButton } from "../../button/customizable-button";
 import Alert from "../../Alert";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import { getClientErrorReason } from "../../../../application/utils/apiErrorReason";
 import { useUserNames } from "../../../pages/AgentDiscovery/useUserNames";
-import { getAgentOwnerIds, isUserIdLike } from "../../../pages/AgentDiscovery/agentLabels";
+import {
+  formatModelLabel,
+  getAgentOwnerIds,
+  isUserIdLike,
+  ModelLabelSource,
+} from "../../../pages/AgentDiscovery/agentLabels";
+import { getAllEntities } from "../../../../application/repository/entity.repository";
+import { useProjects } from "../../../../application/hooks/useProjects";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
 import { fill } from "../../../../i18n/fill";
 import { AgentPrimitiveRow } from "../../../../domain/interfaces/i.agentDiscovery";
@@ -33,6 +40,18 @@ const PRIMITIVE_TYPES = [
   { _id: "function", name: "Function" },
   { _id: "other", name: "Other" },
 ];
+
+/** One choice in the owner, model and use case pickers. */
+interface PickerOption {
+  id: number;
+  name: string;
+}
+
+/** The selected value in a single picker, at the same size as the other fields. */
+const singlePickerSx = { "& .MuiAutocomplete-input": { fontSize: "13px" } };
+
+/** Longest description the server accepts. */
+const MAX_DESCRIPTION_LENGTH = 5000;
 
 /** The agent's owners that are user ids (everything but legacy text). */
 function getOwnerUserIds(agent: AgentPrimitiveRow): number[] {
@@ -68,15 +87,48 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
     () => (agent ? (getAgentOwnerIds(agent).find((v) => !isUserIdLike(v)) ?? null) : null),
     [agent],
   );
-  const users = useMemo(
-    () => orgUsers.map((u) => ({ _id: u.id, name: formatUser(u.id) })),
+  const users = useMemo<PickerOption[]>(
+    () => orgUsers.map((u) => ({ id: Number(u.id), name: formatUser(u.id) })),
     [orgUsers, formatUser],
+  );
+  // The picker shows the selected owners in their saved order, primary first.
+  const selectedOwners = useMemo(
+    () =>
+      ownerIds
+        .map((id) => users.find((u) => u.id === id))
+        .filter((u): u is PickerOption => u !== undefined),
+    [ownerIds, users],
   );
   const [formData, setFormData] = useState({
     display_name: "",
     primitive_type: "",
+    description: "",
     notes: "",
   });
+  // Optional links. Like the owners, an edit sends each only when it changed.
+  const [linkedModelId, setLinkedModelId] = useState<number | null>(null);
+  const [linkedProjectId, setLinkedProjectId] = useState<number | null>(null);
+  const [models, setModels] = useState<PickerOption[]>([]);
+  const { approvedProjects } = useProjects();
+  const useCases = useMemo<PickerOption[]>(() => {
+    const options = approvedProjects
+      .filter((p) => !p.is_organizational)
+      .map((p) => ({ id: Number(p.id), name: p.project_title }));
+    // Keep the current link selectable even when it is not in the list (e.g. a
+    // use case awaiting approval), so opening the form never drops it.
+    const current = agent?.linked_project_id;
+    if (current && !options.some((o) => o.id === current)) {
+      options.push({ id: current, name: agent?.linked_project_title || `Use case #${current}` });
+    }
+    return options;
+  }, [approvedProjects, agent]);
+  const modelOptions = useMemo<PickerOption[]>(() => {
+    const current = agent?.linked_model_inventory_id;
+    if (current && !models.some((m) => m.id === current)) {
+      return [...models, { id: current, name: `Model #${current}` }];
+    }
+    return models;
+  }, [models, agent]);
 
   const validators = useMemo(
     () => ({
@@ -85,6 +137,10 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
         return r.accepted ? "" : r.message;
       },
       primitive_type: (v: unknown) => (!v ? "Type is required." : ""),
+      description: (v: unknown) =>
+        ((v as string) ?? "").trim().length > MAX_DESCRIPTION_LENGTH
+          ? `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`
+          : "",
     }),
     [],
   );
@@ -102,9 +158,12 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
       setFormData({
         display_name: agent.display_name || "",
         primitive_type: agent.primitive_type || "",
+        description: agent.description || "",
         notes: agent.metadata?.notes || "",
       });
       setOwnerIds(getOwnerUserIds(agent));
+      setLinkedModelId(agent.linked_model_inventory_id ?? null);
+      setLinkedProjectId(agent.linked_project_id ?? null);
     }
     // Only an edit with owners needs fresh users: refetch them, so an owner who
     // was added since the list was cached is not mistaken for an unknown one.
@@ -128,6 +187,26 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
     };
   }, [isOpen, agent, refreshUsers]);
 
+  // The model inventory, for the linked model picker.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await getAllEntities({ routeUrl: "/modelInventory" });
+        const data: ModelLabelSource[] = response?.data || [];
+        if (!cancelled) {
+          setModels(data.map((m) => ({ id: Number(m.id), name: formatModelLabel(m) })));
+        }
+      } catch {
+        // The picker stays empty; the current link is still shown.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
   // Once the refreshed users have loaded, find owner ids that are still not
   // users. They are left out of the picker (it cannot show them), and only
   // reach the saved owners if the selection is not changed. An empty list
@@ -146,8 +225,10 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
 
   const handleClose = () => {
     setIsOpen(false);
-    setFormData({ display_name: "", primitive_type: "", notes: "" });
+    setFormData({ display_name: "", primitive_type: "", description: "", notes: "" });
     setOwnerIds([]);
+    setLinkedModelId(null);
+    setLinkedProjectId(null);
     setOwnersChanged(false);
     setSaveError(null);
     setUnknownOwnerIds([]);
@@ -168,6 +249,18 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
       // A new agent always gets its owners; an edit sends them only when the
       // owner selection was changed, so other edits leave the owners as they are.
       if (!isEditMode || ownersChanged) payload.owner_ids = ownerIds;
+      // The same for the description and links: an edit sends only what changed,
+      // so it never overwrites a link set elsewhere since the form was opened.
+      const description = formData.description.trim() || null;
+      if (!isEditMode || description !== (agent?.description || null)) {
+        payload.description = description;
+      }
+      if (!isEditMode || linkedModelId !== (agent?.linked_model_inventory_id ?? null)) {
+        payload.linked_model_inventory_id = linkedModelId;
+      }
+      if (!isEditMode || linkedProjectId !== (agent?.linked_project_id ?? null)) {
+        payload.linked_project_id = linkedProjectId;
+      }
 
       if (isEditMode && agent) {
         await apiServices.patch(`/agent-primitives/${agent.id}`, payload);
@@ -246,14 +339,34 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
           }}
         />
 
-        <MultiSelect
+        <Field
+          id="description"
+          label="Description"
+          type="description"
+          rows={3}
+          isOptional
+          placeholder="What this agent does"
+          value={formData.description}
+          onChange={(e) => {
+            setFormData((prev) => ({ ...prev, description: e.target.value }));
+            clearFieldError("description");
+          }}
+          error={errors.description}
+        />
+
+        <AutoCompleteField<PickerOption, true>
+          multiple
+          filterSelectedOptions
           id="owner_ids"
           label="Owners"
-          placeholder="Select owners"
-          value={ownerIds}
-          items={users}
-          onChange={(e) => {
-            setOwnerIds(e.target.value as number[]);
+          placeholder={selectedOwners.length === 0 ? "Select owners" : undefined}
+          value={selectedOwners}
+          options={users}
+          getOptionLabel={(u) => u.name}
+          isOptionEqualToValue={(a, b) => a.id === b.id}
+          noOptionsText={users.length > 0 ? "All users selected" : "No users"}
+          onChange={(_e, selected) => {
+            setOwnerIds(selected.map((u) => u.id));
             setOwnersChanged(true);
           }}
         />
@@ -281,6 +394,34 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
             owners.
           </Typography>
         )}
+
+        <AutoCompleteField<PickerOption>
+          id="linked_project_id"
+          sx={singlePickerSx}
+          label="Linked use case"
+          isOptional
+          placeholder="Select a use case"
+          value={useCases.find((u) => u.id === linkedProjectId) ?? null}
+          options={useCases}
+          getOptionLabel={(u) => u.name}
+          isOptionEqualToValue={(a, b) => a.id === b.id}
+          noOptionsText="No use cases"
+          onChange={(_e, selected) => setLinkedProjectId(selected ? selected.id : null)}
+        />
+
+        <AutoCompleteField<PickerOption>
+          id="linked_model_inventory_id"
+          sx={singlePickerSx}
+          label="Linked model"
+          isOptional
+          placeholder="Select a model"
+          value={modelOptions.find((m) => m.id === linkedModelId) ?? null}
+          options={modelOptions}
+          getOptionLabel={(m) => m.name}
+          isOptionEqualToValue={(a, b) => a.id === b.id}
+          noOptionsText="No models in the inventory"
+          onChange={(_e, selected) => setLinkedModelId(selected ? selected.id : null)}
+        />
 
         <Field
           id="notes"
