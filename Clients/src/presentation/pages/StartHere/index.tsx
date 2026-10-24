@@ -988,6 +988,8 @@ const StartHere = () => {
                       height: 56,
                       borderRadius: "50%",
                       objectFit: "cover",
+                      // Photos come in mixed colour; show them all in black and white
+                      filter: "grayscale(100%)",
                     }}
                   />
                   <Typography sx={{ fontSize: 13, fontWeight: 600, textAlign: "center" }}>
