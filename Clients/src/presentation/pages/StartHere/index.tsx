@@ -933,7 +933,13 @@ const StartHere = () => {
             <Stack
               direction="row"
               alignItems="flex-start"
-              sx={{ gap: "12px", position: "relative", width: "fit-content" }}
+              sx={{
+                gap: "12px",
+                position: "relative",
+                width: "fit-content",
+                maxWidth: "100%",
+                flexWrap: "wrap",
+              }}
             >
               {[
                 {
