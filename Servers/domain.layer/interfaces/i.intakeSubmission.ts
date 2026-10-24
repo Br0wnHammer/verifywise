@@ -82,6 +82,57 @@ export function isAssessmentV2(
   );
 }
 
+export type ReviewLane = "senior" | "standard";
+
+export type RoutingReason =
+  | "prohibited"
+  | "no_score"
+  | "close_call"
+  | "at_or_above_threshold"
+  | "below_threshold"
+  | "override_raised"
+  | "escalated";
+
+/**
+ * Second-review sample taken from a standard-lane decision
+ */
+export interface ISecondReview {
+  status: "open" | "agreed" | "missed";
+  selectedAt: string;
+  reviewedBy?: number;
+  reviewedAt?: string;
+  note?: string;
+  resolvedBy?: number;
+  resolvedAt?: string;
+  resolutionNote?: string;
+}
+
+/**
+ * Lane decision for one submission (intake_submissions.routing JSONB)
+ */
+export interface ISubmissionRouting {
+  lane: ReviewLane;
+  reason: RoutingReason;
+  score: number | null;
+  threshold: number;
+  closeCallMargin: number;
+  routedAt: string;
+  escalation?: { by: number; at: string; reason: string };
+  secondReview?: ISecondReview;
+}
+
+/**
+ * Computed vs. in-force band frozen at decision time (decision_record JSONB)
+ */
+export interface IDecisionRecord {
+  level: string | null;
+  computedBand: string | null;
+  bandInForce: string | null;
+  bandChanged: boolean;
+  overriddenBy: number | null;
+  lane: ReviewLane | null;
+}
+
 /**
  * Suggested risks block stored on submission (suggested_risks JSONB)
  */
@@ -127,6 +178,8 @@ export interface IIntakeSubmission {
   riskTier: string | null;
   riskOverride: IRiskOverride | null;
   suggestedRisks: ISuggestedRisksBlock | null;
+  routing: ISubmissionRouting | null;
+  decisionRecord: IDecisionRecord | null;
   notificationSentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

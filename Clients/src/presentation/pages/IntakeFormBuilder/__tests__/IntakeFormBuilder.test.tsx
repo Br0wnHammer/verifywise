@@ -31,6 +31,7 @@ vi.mock("../../../../application/repository/intakeForm.repository", () => ({
   getIntakeForm: vi.fn().mockResolvedValue({ data: null }),
   createIntakeForm: vi.fn().mockResolvedValue({ data: {} }),
   updateIntakeForm: vi.fn().mockResolvedValue({ data: {} }),
+  getEligibleReviewers: vi.fn().mockResolvedValue([]),
   IntakeFormStatus: {
     DRAFT: "draft",
     ACTIVE: "active",

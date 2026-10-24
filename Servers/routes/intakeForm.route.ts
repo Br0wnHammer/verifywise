@@ -12,13 +12,18 @@ import {
   deleteIntakeForm,
   archiveIntakeForm,
   previewForm,
+  getEligibleReviewers,
   // Submission controllers (admin)
   getPendingSubmissions,
   getFormSubmissions,
   getSubmissionById,
   getSubmissionStats,
+  getIntakeOversight,
   approveSubmission,
   rejectSubmission,
+  escalateSubmission,
+  recordSecondReview,
+  resolveSecondReviewMiss,
   getSubmissionPreview,
   overrideSubmissionRisk,
   retrySubmissionAssessment,
@@ -49,6 +54,14 @@ router.delete("/forms/:id", authenticateJWT, authorize("intakeForm.edit"), delet
 router.post("/forms/:id/archive", authenticateJWT, authorize("intakeForm.edit"), archiveIntakeForm);
 router.get("/forms/:id/preview", authenticateJWT, previewForm);
 
+// Routing settings — reviewers a form can route to
+router.get(
+  "/routing/eligible-reviewers",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  getEligibleReviewers,
+);
+
 // LLM features — Admin & Editor
 router.post(
   "/forms/suggested-questions",
@@ -64,6 +77,7 @@ router.post(
 );
 
 // Submissions
+router.get("/oversight", authenticateJWT, authorize("intakeForm.edit"), getIntakeOversight);
 router.get("/submissions", authenticateJWT, getPendingSubmissions);
 router.get("/submissions/stats", authenticateJWT, getSubmissionStats);
 router.get("/submissions/by-entity/:entityType/:entityId", authenticateJWT, getSubmissionByEntity);
@@ -106,6 +120,24 @@ router.post(
   authenticateJWT,
   authorize("intakeForm.edit"),
   rejectSubmission,
+);
+router.post(
+  "/submissions/:id/escalate",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  escalateSubmission,
+);
+router.post(
+  "/submissions/:id/second-review",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  recordSecondReview,
+);
+router.post(
+  "/submissions/:id/second-review/resolve",
+  authenticateJWT,
+  authorize("intakeForm.edit"),
+  resolveSecondReviewMiss,
 );
 
 // ============================================================================

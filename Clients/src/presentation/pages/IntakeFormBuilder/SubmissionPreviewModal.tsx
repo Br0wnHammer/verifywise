@@ -10,7 +10,6 @@ import {
 } from "@mui/material";
 import { ChevronDown, ChevronUp, ShieldAlert } from "lucide-react";
 import StandardModal from "../../components/Modals/StandardModal";
-import CustomException from "../../../infrastructure/exceptions/customeException";
 import Field from "../../components/Inputs/Field";
 import Select from "../../components/Inputs/Select";
 import Chip from "../../components/Chip";
@@ -27,6 +26,7 @@ import {
   FormSchema,
 } from "../../../application/repository/intakeForm.repository";
 import useUsers from "../../../application/hooks/useUsers";
+import { useAuth } from "../../../application/hooks/useAuth";
 import { isAssessmentV2 } from "../../../application/utils/intakeScoring/isAssessmentV2";
 import {
   asBand,
@@ -51,6 +51,10 @@ import {
 import EuAiActClassificationPanel, {
   type EuAiActClassificationData,
 } from "./EuAiActClassificationPanel";
+import LaneSection from "./routing/LaneSection";
+import SecondReviewPanel from "./routing/SecondReviewPanel";
+import { serverErrorMessage } from "./routing/serverErrorMessage";
+import type { SubmissionRouting } from "./types";
 
 /** The entity mapping for the use case's high-risk roles (the key saved forms use). */
 const ROLE_MAPPING = "type_of_high_risk_role";
@@ -59,21 +63,14 @@ const ROLE_MAPPING = "type_of_high_risk_role";
 // Types
 // ============================================================================
 
-/** The message the server sent with a failed request, if any. */
-function serverErrorMessage(err: unknown): string | null {
-  if (!(err instanceof CustomException) || !err.status) return null;
-  const payload = err.response?.data;
-  if (typeof payload === "string" && payload.trim()) return payload;
-  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message;
-  return null;
-}
-
 interface SubmissionPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   submissionId: number | null;
   onApproved: () => void;
-  onRejected?: () => void;
+  onRejected: () => void;
+  // A change that is not a decision (escalation, second review): refresh only
+  onChanged: () => void;
 }
 
 interface PreviewData {
@@ -89,6 +86,13 @@ interface PreviewData {
   suggestedRisks: SuggestedRisksBlock | null;
   assessedLevel: ClassificationLevel | null;
   riskOverride: RiskOverride | null;
+  routing: SubmissionRouting | null;
+  routingEnabled: boolean;
+  canDecide: boolean;
+  decideBlockedReason: string | null;
+  laneReviewers: Array<{ id: number; name: string }>;
+  isSeniorReviewer: boolean;
+  reviewedBy: number | null;
 }
 
 /** How often, and for how long, the modal re-reads a running assessment. */
@@ -301,10 +305,12 @@ function SubmissionPreviewModal({
   submissionId,
   onApproved,
   onRejected,
+  onChanged,
 }: SubmissionPreviewModalProps) {
   const theme = useTheme();
   const formatDate = useFormattedDate();
   const { users } = useUsers();
+  const { userId, userRoleName } = useAuth();
   // Fetch state
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -387,6 +393,13 @@ function SubmissionPreviewModal({
           suggestedRisks: response.data.suggestedRisks ?? null,
           assessedLevel: response.data.assessedLevel ?? null,
           riskOverride: response.data.riskOverride ?? null,
+          routing: response.data.routing ?? null,
+          routingEnabled: response.data.routingEnabled ?? false,
+          canDecide: response.data.canDecide ?? true,
+          decideBlockedReason: response.data.decideBlockedReason ?? null,
+          laneReviewers: response.data.laneReviewers ?? [],
+          isSeniorReviewer: response.data.isSeniorReviewer ?? false,
+          reviewedBy: sub?.reviewedBy ?? null,
         });
         setEuAiActLevel(response.data.euAiActClassification?.current.level ?? "");
         // A band override saved earlier opens in the override panel, so a
@@ -480,7 +493,7 @@ function SubmissionPreviewModal({
 
   // Handle approve
   async function handleApprove() {
-    if (submissionId === null) return;
+    if (submissionId === null || isApproving || isRejecting) return;
 
     // Validate override if expanded — justification is required
     if (overrideExpanded) {
@@ -543,7 +556,7 @@ function SubmissionPreviewModal({
 
   // Handle reject
   async function handleReject() {
-    if (submissionId === null) return;
+    if (submissionId === null || isApproving || isRejecting) return;
     if (!rejectReason.trim()) {
       setApproveError("Please provide a reason for rejection.");
       return;
@@ -558,8 +571,7 @@ function SubmissionPreviewModal({
 
     try {
       await rejectSubmission(submissionId, rejectReason.trim());
-      onRejected?.();
-      onApproved(); // Also triggers list refresh
+      onRejected();
       onClose();
     } catch {
       setApproveError("Failed to reject submission. Please try again.");
@@ -602,6 +614,24 @@ function SubmissionPreviewModal({
   // ============================================================================
   // Render
   const isPending = previewData?.submissionStatus === "pending";
+
+  // Lane and second review. A form with routing off keeps any stored lane as a
+  // record only, so the lane section and Send to senior review stay hidden.
+  const isAdmin = userRoleName === "Admin";
+  const canDecide = previewData?.canDecide ?? true;
+  const lane = previewData?.routing ?? null;
+  const laneReviewers = previewData?.laneReviewers ?? [];
+  const routingEnabled = previewData?.routingEnabled ?? false;
+  const showLane = routingEnabled;
+  // Mirrors the server: pending and in the standard lane, for the form's reviewers or an Admin.
+  const canEscalate =
+    isPending &&
+    routingEnabled &&
+    lane?.lane === "standard" &&
+    (isAdmin || (userId !== null && laneReviewers.some((r) => r.id === userId)));
+  const canSecondReview =
+    (!!previewData?.isSeniorReviewer || isAdmin) &&
+    (userId === null || previewData?.reviewedBy !== userId);
 
   // AI-scored (v2) submissions: the score follows the level the reviewer has
   // selected, and so does the lowest band an override may set.
@@ -654,7 +684,9 @@ function SubmissionPreviewModal({
             : "Review the intake risk score and entity data before approving or rejecting"
           : `This submission has been ${previewData?.submissionStatus ?? "processed"}`
       }
-      onSubmit={isPending ? (showRejectForm ? handleReject : handleApprove) : undefined}
+      onSubmit={
+        isPending && canDecide ? (showRejectForm ? handleReject : handleApprove) : undefined
+      }
       submitButtonText={
         !isPending
           ? undefined
@@ -684,6 +716,32 @@ function SubmissionPreviewModal({
         </Alert>
       ) : (
         <Box sx={{ display: "flex", flexDirection: "column", gap: "24px", p: 1 }}>
+          {showLane && submissionId !== null && (
+            <LaneSection
+              submissionId={submissionId}
+              routing={lane}
+              canDecide={canDecide || !isPending}
+              decideBlockedReason={previewData?.decideBlockedReason}
+              laneReviewers={laneReviewers}
+              canEscalate={canEscalate}
+              onEscalated={() => {
+                onChanged();
+                onClose();
+              }}
+            />
+          )}
+          {lane?.secondReview && submissionId !== null && (
+            <SecondReviewPanel
+              submissionId={submissionId}
+              secondReview={lane.secondReview}
+              canReview={canSecondReview}
+              onChange={(next) => {
+                setPreviewData((prev) => (prev ? { ...prev, routing: next } : prev));
+                // The list chip and the oversight figures read this routing too
+                onChanged();
+              }}
+            />
+          )}
           {/* ------------------------------------------------------------------ */}
           {/* Section 1: Risk assessment                                          */}
           {/* ------------------------------------------------------------------ */}
@@ -962,7 +1020,7 @@ function SubmissionPreviewModal({
           )}
 
           {/* Reject toggle + reason — only for pending submissions */}
-          {isPending && (
+          {isPending && canDecide && (
             <>
               {!showRejectForm ? (
                 <Box
