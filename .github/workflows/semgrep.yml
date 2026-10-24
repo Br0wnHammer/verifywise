@@ -94,10 +94,18 @@ jobs:
 
           with open("semgrep.sarif") as f:
               sarif = json.load(f)
+          # A suppression only counts when its status is absent or "accepted";
+          # "underReview" and "rejected" leave the result active (SARIF 2.1.0).
+          def suppressed(result):
+              return any(
+                  s.get("status", "accepted") == "accepted"
+                  for s in result.get("suppressions", [])
+              )
+
           dropped = 0
           for run in sarif.get("runs", []):
               results = run.get("results", [])
-              kept = [r for r in results if not r.get("suppressions")]
+              kept = [r for r in results if not suppressed(r)]
               dropped += len(results) - len(kept)
               run["results"] = kept
           with open("semgrep.sarif", "w") as f:
