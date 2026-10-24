@@ -1031,6 +1031,27 @@ const Vendors = () => {
     });
   }, [vendorRisks, vendors, users]);
 
+  // GroupedTableView renders the table's own placeholder for an empty list, so the
+  // same element serves as the empty state and the table stays mounted (keeping
+  // its page and sort) when a search briefly matches nothing.
+  const vendorList = (
+    <GroupedTableView
+      groupedData={groupedVendors}
+      ungroupedData={filteredVendors}
+      renderTable={(data, options) => (
+        <TableWithPlaceholder
+          vendors={data}
+          users={users}
+          onDelete={handleDeleteVendor}
+          onEdit={handleEditVendor}
+          hidePagination={options?.hidePagination}
+          vendorRisks={vendorRisks}
+          visibleColumns={vendorVisibleColumns}
+        />
+      )}
+    />
+  );
+
   return (
     <PageHeaderExtended
       title={value === "1" ? "Vendor list" : "Vendor risks list"}
@@ -1280,32 +1301,9 @@ const Vendors = () => {
                 ? "Failed to load vendors. Please try again later."
                 : null
             }
-            emptyState={
-              <TableWithPlaceholder
-                vendors={[]}
-                users={users}
-                onDelete={handleDeleteVendor}
-                onEdit={handleEditVendor}
-                vendorRisks={vendorRisks}
-                visibleColumns={vendorVisibleColumns}
-              />
-            }
+            emptyState={vendorList}
           >
-            <GroupedTableView
-              groupedData={groupedVendors}
-              ungroupedData={filteredVendors}
-              renderTable={(data, options) => (
-                <TableWithPlaceholder
-                  vendors={data}
-                  users={users}
-                  onDelete={handleDeleteVendor}
-                  onEdit={handleEditVendor}
-                  hidePagination={options?.hidePagination}
-                  vendorRisks={vendorRisks}
-                  visibleColumns={vendorVisibleColumns}
-                />
-              )}
-            />
+            {vendorList}
           </ListStateWrapper>
         </TabPanel>
         <TabPanel value="2" sx={tabPanelStyle}>

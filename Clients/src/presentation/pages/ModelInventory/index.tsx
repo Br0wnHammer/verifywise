@@ -2083,6 +2083,32 @@ const ModelInventory: React.FC = () => {
     [selectedRiskLevel],
   );
 
+  // GroupedTableView renders the table's own placeholder for an empty list, so the
+  // same element serves as the empty state and the table stays mounted (keeping
+  // its page and sort) when a search briefly matches nothing.
+  const modelInventoryList = (
+    <GroupedTableView
+      groupedData={groupedModelInventory}
+      ungroupedData={filteredData}
+      renderTable={(data, options) => (
+        <ModelInventoryTable
+          key={tableKey}
+          data={data}
+          isLoading={false}
+          onEdit={handleEditModelInventory}
+          onDelete={handleDeleteModelInventory}
+          onCheckModelHasRisks={handleCheckModelHasRisks}
+          onViewDetails={handleViewModelDetails}
+          deletingId={deletingId}
+          hidePagination={options?.hidePagination}
+          modelRisks={modelRisksData}
+          flashRowId={flashRowId}
+          visibleColumns={modelVisibleColumns}
+        />
+      )}
+    />
+  );
+
   return (
     <Stack className="vwhome" sx={mainStackStyle}>
       {/* Replace Share Link Confirmation Modal */}
@@ -2344,43 +2370,11 @@ const ModelInventory: React.FC = () => {
               items={filteredData}
               isLoading={isLoading}
               loadingLabel="Loading model inventory"
-              errorMessage={modelInventoryError}
-              emptyState={
-                <ModelInventoryTable
-                  key={tableKey}
-                  data={[]}
-                  isLoading={false}
-                  onEdit={handleEditModelInventory}
-                  onDelete={handleDeleteModelInventory}
-                  onCheckModelHasRisks={handleCheckModelHasRisks}
-                  onViewDetails={handleViewModelDetails}
-                  deletingId={deletingId}
-                  modelRisks={modelRisksData}
-                  flashRowId={flashRowId}
-                  visibleColumns={modelVisibleColumns}
-                />
-              }
+              // A failed silent refresh (after an edit or delete) keeps the loaded models on screen.
+              errorMessage={modelInventoryData.length ? null : modelInventoryError}
+              emptyState={modelInventoryList}
             >
-              <GroupedTableView
-                groupedData={groupedModelInventory}
-                ungroupedData={filteredData}
-                renderTable={(data, options) => (
-                  <ModelInventoryTable
-                    key={tableKey}
-                    data={data}
-                    isLoading={false}
-                    onEdit={handleEditModelInventory}
-                    onDelete={handleDeleteModelInventory}
-                    onCheckModelHasRisks={handleCheckModelHasRisks}
-                    onViewDetails={handleViewModelDetails}
-                    deletingId={deletingId}
-                    hidePagination={options?.hidePagination}
-                    modelRisks={modelRisksData}
-                    flashRowId={flashRowId}
-                    visibleColumns={modelVisibleColumns}
-                  />
-                )}
-              />
+              {modelInventoryList}
             </ListStateWrapper>
           </>
         )}

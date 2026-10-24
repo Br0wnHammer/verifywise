@@ -863,6 +863,26 @@ const Training: React.FC = () => {
     });
   }, [filteredEvidence, trainingNameById, formatDate]);
 
+  // GroupedTableView renders the table's own placeholder for an empty list, so the
+  // same element serves as the empty state and the table stays mounted (keeping
+  // its page and sort) when a search briefly matches nothing.
+  const trainingList = (
+    <GroupedTableView
+      groupedData={groupedTraining}
+      ungroupedData={filteredTraining}
+      renderTable={(data, options) => (
+        <TrainingTable
+          data={data}
+          isLoading={false}
+          onEdit={handleEditTraining}
+          onDelete={handleDeleteTraining}
+          hidePagination={options?.hidePagination}
+          visibleColumns={visibleColumns as Set<string>}
+        />
+      )}
+    />
+  );
+
   return (
     <PageHeaderExtended
       title="AI Training Registry"
@@ -998,31 +1018,11 @@ const Training: React.FC = () => {
             items={filteredTraining}
             isLoading={isLoading}
             loadingLabel="Loading training records"
-            errorMessage={trainingError}
-            emptyState={
-              <TrainingTable
-                data={[]}
-                isLoading={false}
-                onEdit={handleEditTraining}
-                onDelete={handleDeleteTraining}
-                visibleColumns={visibleColumns as Set<string>}
-              />
-            }
+            // A failed refresh after a save keeps the loaded records on screen.
+            errorMessage={trainingData.length ? null : trainingError}
+            emptyState={trainingList}
           >
-            <GroupedTableView
-              groupedData={groupedTraining}
-              ungroupedData={filteredTraining}
-              renderTable={(data, options) => (
-                <TrainingTable
-                  data={data}
-                  isLoading={false}
-                  onEdit={handleEditTraining}
-                  onDelete={handleDeleteTraining}
-                  hidePagination={options?.hidePagination}
-                  visibleColumns={visibleColumns as Set<string>}
-                />
-              )}
-            />
+            {trainingList}
           </ListStateWrapper>
         </>
       )}
