@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
-import { e2eBaseUrl, isDeployedTarget } from "./e2e/helpers/target.helper";
+import { CANARY_AUTH_STATE_PATH, e2eBaseUrl, isDeployedTarget } from "./e2e/helpers/target.helper";
 
 dotenv.config({ quiet: true });
 
@@ -189,7 +189,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         channel: browserChannel,
-        storageState: DEPLOYED_TARGET ? "e2e/.auth/canary.json" : "e2e/.auth/admin.json",
+        storageState: DEPLOYED_TARGET ? CANARY_AUTH_STATE_PATH : "e2e/.auth/admin.json",
       },
     },
     // Quarantined specs (currently only plugins.spec.ts, see the file's

@@ -1,6 +1,6 @@
 import { test as setup } from "@playwright/test";
 import { loginAs } from "./helpers/auth.helper";
-import { e2eBaseUrl, isDeployedTarget } from "./helpers/target.helper";
+import { assertNotDeployed } from "./helpers/target.helper";
 import { seedAdminInOrg } from "./helpers/seedAdmin.helper";
 import { createApiContext, orgs, projects, projectRisks, tasks } from "./factories/api.factory";
 
@@ -29,12 +29,7 @@ const SETUP_ORG_NAME = "E2E Global Setup Org";
 
 setup("authenticate", async ({ page }) => {
   // This setup deletes and recreates an organization; never against staging or production
-  if (isDeployedTarget() && process.env.E2E_ALLOW_DEPLOYED_SETUP !== "1") {
-    throw new Error(
-      `global.setup refuses to run against ${e2eBaseUrl()}: it deletes and recreates organizations. ` +
-        "Run the canary project for deployed environments, or set E2E_ALLOW_DEPLOYED_SETUP=1 for a disposable one.",
-    );
-  }
+  assertNotDeployed("global.setup");
 
   // 1. Login as the default super-admin and save state.
   await loginAs(page, TEST_EMAIL, TEST_PASSWORD, /\/(super-admin)?$/);

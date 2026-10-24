@@ -39,28 +39,26 @@ which `playwright.config.ts` reads for `use.baseURL` (fallback:
 
 ## Deployed targets
 
-Any `E2E_BASE_URL` whose host is not `localhost` / `127.0.0.1` counts as a
-deployed environment (`e2e/helpers/target.helper.ts`). There:
+Any `E2E_BASE_URL` whose host is not loopback (`localhost`, `127.x.x.x`,
+`[::1]`, `0.0.0.0`) counts as a deployed environment
+(`e2e/helpers/target.helper.ts`). There:
 
 - The canary depends on `canary-setup` (`e2e/canary/canary.setup.ts`), which
   only signs in `E2E_EMAIL` and saves `e2e/.auth/canary.json`. It creates,
   seeds and deletes nothing.
-- `global.setup.ts` refuses to run, because it deletes and recreates the
-  "E2E Global Setup Org". Set `E2E_ALLOW_DEPLOYED_SETUP=1` only for a
-  disposable environment.
+- `global.setup.ts` and `risk-inheritance.setup.ts` refuse to run, because
+  they delete, recreate and seed organizations. They also refuse when
+  `E2E_BACKEND_URL` (where their API calls go) is not loopback, even with a
+  local `E2E_BASE_URL`. Set `E2E_ALLOW_DEPLOYED_SETUP=1` only for a disposable
+  environment, or for a local stack reached by a container hostname.
 - No local Vite server is started.
 - Point `E2E_EMAIL` / `E2E_PASSWORD` at a dedicated smoke-test account that is
   an in-org user (an Admin works). A super-admin is sent to `/super-admin` and
   fails the journey.
 
-## Workflows
+## Workflow
 
-Both invoke `npx playwright test --project=canary --grep @canary`:
-
-- `.github/workflows/canary.yml`, every 30 minutes: repo variable
-  `CANARY_BASE_URL`, secrets `CANARY_EMAIL` / `CANARY_PASSWORD`. Skipped with
-  a warning until all three exist.
-- The post-deploy gate in `.github/workflows/deploy-to-production.yml`:
-  variable `PROD_APP_URL`, secrets `PROD_E2E_EMAIL` / `PROD_E2E_PASSWORD`.
-  Skipped with a warning until all three exist; a canary failure there rolls
-  production back.
+`.github/workflows/canary.yml` runs
+`npx playwright test --project=canary --grep @canary` every 30 minutes, with
+repo variable `CANARY_BASE_URL` and secrets `CANARY_EMAIL` /
+`CANARY_PASSWORD`. Until all three exist the run is skipped with a warning.

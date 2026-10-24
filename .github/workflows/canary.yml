@@ -19,20 +19,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  canary:
-    name: Canary critical journey (@canary)
+  # Configure CANARY_BASE_URL as a repo variable and CANARY_EMAIL /
+  # CANARY_PASSWORD as secrets for the target environment. The account must be
+  # an in-org user, not a super-admin. Until all three exist the canary job is
+  # skipped with a warning instead of failing every 30 minutes.
+  config:
+    name: Check canary configuration
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # Single worker on purpose: the canary is a fast, deterministic signal;
-    # parallelism would only multiply logins against the rate limiter.
-
+    outputs:
+      available: ${{ steps.cfg.outputs.available }}
     steps:
-      # Configure CANARY_BASE_URL as a repo variable and CANARY_EMAIL /
-      # CANARY_PASSWORD as secrets for the target environment. The account
-      # must be an in-org user, not a super-admin. Until all three exist the
-      # run is skipped with a warning instead of failing every 30 minutes.
-      - name: Check canary configuration
-        id: cfg
+      - id: cfg
         env:
           CANARY_BASE_URL: ${{ vars.CANARY_BASE_URL }}
           CANARY_EMAIL: ${{ secrets.CANARY_EMAIL }}
@@ -45,11 +42,19 @@ jobs:
             echo "::warning::CANARY_BASE_URL, CANARY_EMAIL or CANARY_PASSWORD is not set - skipping the canary."
           fi
 
+  canary:
+    name: Canary critical journey (@canary)
+    needs: config
+    if: needs.config.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Single worker on purpose: the canary is a fast, deterministic signal;
+    # parallelism would only multiply logins against the rate limiter.
+
+    steps:
       - uses: actions/checkout@v7
-        if: steps.cfg.outputs.available == 'true'
 
       - name: Set up Node
-        if: steps.cfg.outputs.available == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: '22'
@@ -57,12 +62,10 @@ jobs:
           cache-dependency-path: Clients/package-lock.json
 
       - name: Install frontend dependencies
-        if: steps.cfg.outputs.available == 'true'
         working-directory: Clients
         run: npm ci --legacy-peer-deps
 
       - name: Cache Playwright browsers
-        if: steps.cfg.outputs.available == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
@@ -71,7 +74,6 @@ jobs:
             playwright-browsers-${{ runner.os }}-
 
       - name: Install Playwright browsers
-        if: steps.cfg.outputs.available == 'true'
         working-directory: Clients
         run: npx playwright install --with-deps chromium
 
@@ -79,7 +81,6 @@ jobs:
       # (e2e/canary/canary.setup.ts) and never runs global.setup.ts, which
       # deletes and recreates organizations.
       - name: Run canary suite
-        if: steps.cfg.outputs.available == 'true'
         working-directory: Clients
         env:
           E2E_BASE_URL: ${{ vars.CANARY_BASE_URL }}
@@ -88,7 +89,7 @@ jobs:
         run: npx playwright test --project=canary --grep @canary
 
       - name: Upload Playwright report
-        if: always() && steps.cfg.outputs.available == 'true'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: canary-playwright-report

@@ -1,5 +1,6 @@
 import { test as setup } from "@playwright/test";
 import { loginAs } from "../helpers/auth.helper";
+import { CANARY_AUTH_STATE_PATH } from "../helpers/target.helper";
 
 /**
  * Canary login for a deployed environment (staging, production).
@@ -9,8 +10,6 @@ import { loginAs } from "../helpers/auth.helper";
  * org Admin (or any in-org role), not a super-admin: ProtectedRoute sends
  * super-admins to /super-admin, so the canary journey could not load.
  */
-
-const CANARY_AUTH_STATE_PATH = "e2e/.auth/canary.json";
 
 setup("canary login", async ({ page }) => {
   const email = process.env.E2E_EMAIL;
