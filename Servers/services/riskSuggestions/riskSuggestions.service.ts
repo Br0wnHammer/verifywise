@@ -56,6 +56,8 @@ export class RiskSuggestionError extends Error {
 export interface UseCaseInput {
   name: string;
   purpose?: string;
+  /** The use case's free-text description, sent alongside the purpose. */
+  description?: string;
   technology?: string;
   /** Untrusted extra text (e.g. intake answers); fenced as data in the prompt. */
   context?: string;
@@ -253,7 +255,9 @@ export async function suggestRisksForUseCase(params: {
 }): Promise<RiskSuggestionResult> {
   const { model, useCase, existingRiskNames, generateImpl } = params;
 
-  const useCaseText = [useCase.name, useCase.purpose, useCase.technology].filter(Boolean).join(" ");
+  const useCaseText = [useCase.name, useCase.purpose, useCase.description, useCase.technology]
+    .filter(Boolean)
+    .join(" ");
   const mitCandidates = rankCatalogCandidates(MIT_RISK_CATALOG, useCaseText);
 
   let output: RiskSuggestionOutput;

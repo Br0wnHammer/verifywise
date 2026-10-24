@@ -234,6 +234,7 @@ describe("suggestRisksWithAI", () => {
       useCase: {
         name: "Customer support assistant",
         purpose: "Deflect support tickets",
+        description: "A chatbot for the help centre.",
         technology: "SaaS help centre",
       },
       existingRiskNames: ["Existing data leak risk", "Existing outage risk"],
@@ -241,6 +242,32 @@ describe("suggestRisksWithAI", () => {
     expect((res as any).status).toHaveBeenCalledWith(200);
     expect((res as any).json).toHaveBeenCalledWith({ message: "OK", data: SERVICE_RESULT });
     expect((res as any).json.mock.calls[0][0].data.suppressed_count).toBe(1);
+  });
+
+  it("uses the description as the purpose when the project has no goal or purpose", async () => {
+    setupHappyPath();
+    mockGetProjectById.mockResolvedValue({ ...PROJECT, goal: null, use_case_purpose: null });
+
+    const req = createMockReq({ body: { projectId: 5 } }) as Request;
+    const res = createMockRes() as Response;
+    await suggestRisksWithAI(req, res);
+
+    const useCase = mockSuggest.mock.calls[0][0].useCase;
+    expect(useCase.purpose).toBe("A chatbot for the help centre.");
+    expect(useCase.description).toBeUndefined();
+  });
+
+  it("omits the description when it repeats the purpose", async () => {
+    setupHappyPath();
+    mockGetProjectById.mockResolvedValue({ ...PROJECT, description: "Deflect support tickets " });
+
+    const req = createMockReq({ body: { projectId: 5 } }) as Request;
+    const res = createMockRes() as Response;
+    await suggestRisksWithAI(req, res);
+
+    const useCase = mockSuggest.mock.calls[0][0].useCase;
+    expect(useCase.purpose).toBe("Deflect support tickets");
+    expect(useCase.description).toBeUndefined();
   });
 
   it("prefers a request technologySummary over the project's deployment context", async () => {
