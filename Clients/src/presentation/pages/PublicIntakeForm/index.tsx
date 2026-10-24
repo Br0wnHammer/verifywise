@@ -614,18 +614,6 @@ export function PublicIntakeForm() {
                       placeholder="Your name"
                       value={submitterName}
                       onChange={(e) => setSubmitterName(e.target.value)}
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          "borderRadius": "8px",
-                          "fontSize": "15px",
-                          "& fieldset": { borderColor: "#e2e8f0" },
-                          "&:hover fieldset": { borderColor: "#cbd5e1" },
-                          "&.Mui-focused fieldset": { borderColor: ds.colorTheme },
-                        },
-                        "& .MuiOutlinedInput-input": {
-                          padding: "12px 14px",
-                        },
-                      }}
                     />
                     <Field
                       id="submitter-email"
@@ -638,20 +626,6 @@ export function PublicIntakeForm() {
                         setEmailError(null);
                       }}
                       error={emailError || undefined}
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          "borderRadius": "8px",
-                          "fontSize": "15px",
-                          "& fieldset": { borderColor: emailError ? "#ef4444" : "#e2e8f0" },
-                          "&:hover fieldset": { borderColor: emailError ? "#ef4444" : "#cbd5e1" },
-                          "&.Mui-focused fieldset": {
-                            borderColor: emailError ? "#ef4444" : ds.colorTheme,
-                          },
-                        },
-                        "& .MuiOutlinedInput-input": {
-                          padding: "12px 14px",
-                        },
-                      }}
                     />
                     <FormFieldHint text="We'll send you updates about your submission" />
                   </Box>
