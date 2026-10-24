@@ -14,6 +14,7 @@ import Alert from "../../components/Alert";
 import ConfirmationModal from "../../components/Dialogs/ConfirmationModal";
 import StandardModal from "../../components/Modals/StandardModal";
 import VWTooltip from "../../components/VWTooltip";
+import { EXPERIMENT_ACTION_TOOLTIPS } from "../../components/Table/ExperimentTable/actionTooltips";
 import {
   X,
   Pencil,
@@ -46,9 +47,11 @@ import {
   findMetricEntry,
   entryError,
   entryReason,
-  lowerIsBetter,
+  entryThreshold,
   METRIC_STATUS_COLORS,
   metricStatus,
+  SCORE_BAND_COLORS,
+  scoreBand,
   type MetricScoreEntry,
 } from "./metricScore";
 
@@ -410,6 +413,38 @@ export default function ExperimentDetailContent({
   const failureReason =
     experiment.status === "failed" ? experiment.error_message?.trim() || undefined : undefined;
 
+  const rerunDisabled = rerunLoading || experiment.status === "running";
+  const rerunButton = (
+    <CustomizableButton
+      variant="contained"
+      onClick={handleRerunExperiment}
+      isDisabled={rerunDisabled}
+      startIcon={<RotateCcw size={14} />}
+      sx={{
+        "backgroundColor": palette.brand.primary,
+        "border": `1px solid ${palette.brand.primary}`,
+        "&:hover": {
+          backgroundColor: palette.brand.primaryHover,
+          border: `1px solid ${palette.brand.primaryHover}`,
+        },
+      }}
+    >
+      {rerunLoading ? "Starting…" : "Rerun"}
+    </CustomizableButton>
+  );
+
+  // Prompts of a finished run with no numeric score (e.g. the model returned nothing).
+  // They are logged but left out of the averages, so the header shows both numbers.
+  const unscoredPrompts =
+    experiment.status === "completed"
+      ? logs.filter(
+          (log) =>
+            !Object.values(
+              (log.metadata?.metric_scores ?? {}) as Record<string, MetricScoreEntry>,
+            ).some((entry) => entryScore(entry) !== null),
+        ).length
+      : 0;
+
   return (
     <Box>
       {alert && (
@@ -538,81 +573,103 @@ export default function ExperimentDetailContent({
 
         {/* Action buttons */}
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 3 }}>
-          <CustomizableButton
-            variant="outlined"
-            onClick={async () => {
-              try {
-                const blob = new Blob([JSON.stringify({ experiment, logs }, null, 2)], {
-                  type: "application/json",
-                });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `${experiment.id}_results.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-              } catch (err) {
-                console.error("Failed to download:", err);
-              }
-            }}
-            startIcon={<Download size={14} />}
-            sx={{
-              "borderColor": palette.border.dark,
-              "color": palette.text.secondary,
-              "&:hover": {
-                borderColor: palette.brand.primary,
-                color: palette.brand.primary,
-                backgroundColor: palette.status.success.bg,
-              },
-            }}
+          <VWTooltip
+            content={EXPERIMENT_ACTION_TOOLTIPS.downloadFull}
+            placement="bottom"
+            maxWidth={280}
+            describeChild
           >
-            Download
-          </CustomizableButton>
-          <CustomizableButton
-            variant="outlined"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(JSON.stringify({ experiment, logs }, null, 2));
-                setAlert({ variant: "success", body: "Results copied to clipboard" });
-                setTimeout(() => setAlert(null), 3000);
-              } catch (err) {
-                console.error("Failed to copy:", err);
-              }
-            }}
-            startIcon={<Copy size={14} />}
-            sx={{
-              "borderColor": palette.border.dark,
-              "color": palette.text.secondary,
-              "&:hover": {
-                borderColor: palette.brand.primary,
-                color: palette.brand.primary,
-                backgroundColor: palette.status.success.bg,
-              },
-            }}
+            <CustomizableButton
+              variant="outlined"
+              onClick={async () => {
+                try {
+                  const blob = new Blob([JSON.stringify({ experiment, logs }, null, 2)], {
+                    type: "application/json",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${experiment.id}_results.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                } catch (err) {
+                  console.error("Failed to download:", err);
+                }
+              }}
+              startIcon={<Download size={14} />}
+              sx={{
+                "borderColor": palette.border.dark,
+                "color": palette.text.secondary,
+                "&:hover": {
+                  borderColor: palette.brand.primary,
+                  color: palette.brand.primary,
+                  backgroundColor: palette.status.success.bg,
+                },
+              }}
+            >
+              Download
+            </CustomizableButton>
+          </VWTooltip>
+          <VWTooltip
+            content={EXPERIMENT_ACTION_TOOLTIPS.copyFull}
+            placement="bottom"
+            maxWidth={280}
+            describeChild
           >
-            Copy
-          </CustomizableButton>
+            <CustomizableButton
+              variant="outlined"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(
+                    JSON.stringify({ experiment, logs }, null, 2),
+                  );
+                  setAlert({ variant: "success", body: "Results copied to clipboard" });
+                  setTimeout(() => setAlert(null), 3000);
+                } catch (err) {
+                  console.error("Failed to copy:", err);
+                }
+              }}
+              startIcon={<Copy size={14} />}
+              sx={{
+                "borderColor": palette.border.dark,
+                "color": palette.text.secondary,
+                "&:hover": {
+                  borderColor: palette.brand.primary,
+                  color: palette.brand.primary,
+                  backgroundColor: palette.status.success.bg,
+                },
+              }}
+            >
+              Copy
+            </CustomizableButton>
+          </VWTooltip>
           <Box
             sx={{ width: "1px", height: "24px", backgroundColor: palette.border.light, mx: 0.5 }}
           />
-          <CustomizableButton
-            variant="contained"
-            onClick={handleRerunExperiment}
-            isDisabled={rerunLoading || experiment.status === "running"}
-            startIcon={<RotateCcw size={14} />}
-            sx={{
-              "backgroundColor": palette.brand.primary,
-              "border": `1px solid ${palette.brand.primary}`,
-              "&:hover": {
-                backgroundColor: palette.brand.primaryHover,
-                border: `1px solid ${palette.brand.primaryHover}`,
-              },
-            }}
+          <VWTooltip
+            content={
+              experiment.status === "running"
+                ? EXPERIMENT_ACTION_TOOLTIPS.rerunWhileRunning
+                : EXPERIMENT_ACTION_TOOLTIPS.rerun
+            }
+            placement="bottom-end"
+            maxWidth={280}
+            describeChild
           >
-            {rerunLoading ? "Starting…" : "Rerun"}
-          </CustomizableButton>
+            {/* While the experiment runs, the disabled button fires no hover events, so a
+                span carries the tooltip; otherwise the button takes it directly, so it is
+                described. Not keyed on rerunLoading: clicking Rerun must not remount the
+                hovered button (the brief "Starting…" state just shows no tooltip). */}
+            {experiment.status === "running" ? (
+              <Box component="span" sx={{ display: "inline-flex" }}>
+                {rerunButton}
+              </Box>
+            ) : (
+              rerunButton
+            )}
+          </VWTooltip>
         </Stack>
       </Box>
 
@@ -834,18 +891,38 @@ export default function ExperimentDetailContent({
               >
                 Prompts
               </Typography>
-              <Typography
-                sx={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color:
-                    experiment.status === "completed"
-                      ? palette.status.success.text
-                      : palette.text.secondary,
-                }}
-              >
-                {logs.length}
-              </Typography>
+              {unscoredPrompts > 0 ? (
+                <VWTooltip
+                  content={`${unscoredPrompts} of ${logs.length} prompts got no score, usually because the model returned no response or an error. They are left out of the averages.`}
+                  placement="bottom"
+                  maxWidth={280}
+                >
+                  <Typography
+                    data-testid="experiment-scored-prompts"
+                    sx={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: palette.status.success.text,
+                      cursor: "help",
+                    }}
+                  >
+                    {logs.length} · {logs.length - unscoredPrompts} scored
+                  </Typography>
+                </VWTooltip>
+              ) : (
+                <Typography
+                  sx={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color:
+                      experiment.status === "completed"
+                        ? palette.status.success.text
+                        : palette.text.secondary,
+                  }}
+                >
+                  {logs.length}
+                </Typography>
+              )}
             </Box>
             <Box sx={{ textAlign: "center" }}>
               <Typography
@@ -896,6 +973,23 @@ export default function ExperimentDetailContent({
             "Coherence": "coherence",
             "Tonality": "tonality",
             "Safety": "safety",
+            // Names the evaluator stores today (EvaluationModule deepeval_evaluator.py)
+            "Relevance": "answerRelevancy",
+            "Correctness": "correctness",
+            "Completeness": "completeness",
+            "Instruction Following": "instructionFollowing",
+            // Same keys as results.avg_scores (run_evaluation metric_config_map)
+            "Context Relevancy": "contextRelevancy",
+            "Context Precision": "contextPrecision",
+            "Context Recall": "contextRecall",
+            "Tool Selection": "toolSelection",
+            "Action Relevance": "actionRelevance",
+            "Planning Quality": "planningQuality",
+            // Not enabled by run_evaluation, but other evaluator entry points emit it
+            "Plan Quality": "planQuality",
+            "Plan Adherence": "planAdherence",
+            "Argument Correctness": "argumentCorrectness",
+            "Step Efficiency": "stepEfficiency",
             // Conversational metrics (multi-turn)
             "Turn Relevancy": "turnRelevancy",
             "Knowledge Retention": "knowledgeRetention",
@@ -910,7 +1004,11 @@ export default function ExperimentDetailContent({
           };
 
           // Calculate overall averages and per-sample scores for sparklines
-          const metricsSum: Record<string, { sum: number; count: number; scores: number[] }> = {};
+          // threshold = the first one stored on the metric's entries (the run uses one).
+          const metricsSum: Record<
+            string,
+            { sum: number; count: number; scores: number[]; threshold: number | null }
+          > = {};
           logs.forEach((log) => {
             if (log.metadata?.metric_scores) {
               Object.entries(log.metadata.metric_scores).forEach(([rawKey, value]) => {
@@ -918,10 +1016,12 @@ export default function ExperimentDetailContent({
                 const key = displayNameToKey[rawKey] || rawKey;
                 const score = entryScore(value as MetricScoreEntry);
                 if (score !== null) {
-                  if (!metricsSum[key]) metricsSum[key] = { sum: 0, count: 0, scores: [] };
+                  if (!metricsSum[key])
+                    metricsSum[key] = { sum: 0, count: 0, scores: [], threshold: null };
                   metricsSum[key].sum += score;
                   metricsSum[key].count += 1;
                   metricsSum[key].scores.push(score);
+                  metricsSum[key].threshold ??= entryThreshold(value as MetricScoreEntry);
                 }
               });
             }
@@ -948,6 +1048,14 @@ export default function ExperimentDetailContent({
               category: "quality",
               singleTurnOnly: true,
             },
+            // Universal core G-Eval metrics (single-turn)
+            correctness: { label: "Correctness", category: "quality", singleTurnOnly: true },
+            completeness: { label: "Completeness", category: "quality", singleTurnOnly: true },
+            instructionFollowing: {
+              label: "Instruction Following",
+              category: "quality",
+              singleTurnOnly: true,
+            },
             faithfulness: { label: "Faithfulness", category: "quality", singleTurnOnly: true },
             contextualRelevancy: {
               label: "Contextual Relevancy",
@@ -964,10 +1072,49 @@ export default function ExperimentDetailContent({
               category: "quality",
               singleTurnOnly: true,
             },
+            // RAG metrics as the evaluator names them today
+            contextRelevancy: {
+              label: "Context Relevancy",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            contextPrecision: {
+              label: "Context Precision",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            contextRecall: { label: "Context Recall", category: "quality", singleTurnOnly: true },
             hallucination: { label: "Hallucination", category: "safety", singleTurnOnly: true },
             // Agent metrics (single-turn)
             toolCorrectness: {
               label: "Tool Correctness",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            toolSelection: { label: "Tool Selection", category: "quality", singleTurnOnly: true },
+            actionRelevance: {
+              label: "Action Relevance",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            planningQuality: {
+              label: "Planning Quality",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            planQuality: { label: "Plan Quality", category: "quality", singleTurnOnly: true },
+            planAdherence: {
+              label: "Plan Adherence",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            argumentCorrectness: {
+              label: "Argument Correctness",
+              category: "quality",
+              singleTurnOnly: true,
+            },
+            stepEfficiency: {
+              label: "Step Efficiency",
               category: "quality",
               singleTurnOnly: true,
             },
@@ -1006,10 +1153,10 @@ export default function ExperimentDetailContent({
               category: "conversational",
               multiTurnOnly: true,
             },
+            // Scored for conversations and for single-turn (agent) runs alike.
             taskCompletion: {
               label: "Task Completion",
-              category: "conversational",
-              multiTurnOnly: true,
+              category: isMultiTurnExperiment ? "conversational" : "quality",
             },
             conversationSafety: {
               label: "Conversation Safety",
@@ -1039,58 +1186,22 @@ export default function ExperimentDetailContent({
             },
           };
 
-          // Get score color based on value thresholds.
-          // Bias, Toxicity and Hallucination are stored lower is better (0 = none found = best).
-          const getScoreColor = (score: number | undefined, metricKey?: string) => {
+          // Colour the average against the metric's pass line (see scoreBand).
+          const getScoreColor = (
+            score: number | undefined,
+            metricName: string,
+            threshold: number | null,
+            passFailOnly: boolean,
+          ) => {
             if (score === undefined)
               return {
                 bg: palette.status.default.bg,
                 text: palette.status.default.text,
                 icon: palette.status.default.text,
               };
-
-            // Lower-is-better metrics: hallucination, bias, toxicity
-            const isInverse = metricKey && lowerIsBetter(metricKey);
-
-            if (isInverse) {
-              // For inverse metrics: low = good (green), high = bad (red)
-              if (score <= 0.3)
-                return {
-                  bg: palette.status.success.bg,
-                  text: palette.status.success.text,
-                  icon: palette.status.success.text,
-                };
-              if (score <= 0.6)
-                return {
-                  bg: palette.status.warning.bg,
-                  text: palette.status.warning.text,
-                  icon: palette.status.warning.text,
-                };
-              return {
-                bg: palette.status.error.bg,
-                text: palette.status.error.text,
-                icon: palette.status.error.text,
-              };
-            }
-
-            // Normal metrics: high = good (green), low = bad (red)
-            if (score >= 0.7)
-              return {
-                bg: palette.status.success.bg,
-                text: palette.status.success.text,
-                icon: palette.status.success.text,
-              };
-            if (score >= 0.4)
-              return {
-                bg: palette.status.warning.bg,
-                text: palette.status.warning.text,
-                icon: palette.status.warning.text,
-              };
-            return {
-              bg: palette.status.error.bg,
-              text: palette.status.error.text,
-              icon: palette.status.error.text,
-            };
+            const band = scoreBand(metricName, score, threshold, { passFailOnly });
+            const { bg, text } = SCORE_BAND_COLORS[band];
+            return { bg, text, icon: text };
           };
 
           // Simple SVG sparkline component
@@ -1226,7 +1337,13 @@ export default function ExperimentDetailContent({
               metricsSum[metric.key];
             const avgValue = entry ? entry.sum / Math.max(1, entry.count) : undefined;
             const scores = entry?.scores || [];
-            const colors = getScoreColor(avgValue, metric.label);
+            // Custom scorers use their own score scale, so they get pass/fail colours only.
+            const colors = getScoreColor(
+              avgValue,
+              metric.label,
+              entry?.threshold ?? null,
+              metric.category === "scorer",
+            );
             const BackgroundIcon = getMetricIcon(metric.key);
 
             return (

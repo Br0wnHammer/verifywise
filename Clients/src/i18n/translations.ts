@@ -25,6 +25,203 @@ export type Lang = "en" | "de" | "fr" | "es";
 
 export const translations: Record<string, Record<string, string>> = {
   de: {
+    "senior": "leitend",
+    "standard": "Standard",
+    "close calls": "Grenzfälle",
+    "not routed": "nicht zugewiesen",
+    "routing off": "Weiterleitung aus",
+    "days": "Tage",
+    "missed of completed": "übersehen von abgeschlossen",
+    "open": "offen",
+    "prohibited": "verboten",
+    "high risk": "hohes Risiko",
+    "decisions": "Entscheidungen",
+    "Second review open": "Zweitprüfung offen",
+    "Second review missed": "Zweitprüfung: etwas übersehen",
+    "Prohibited, pending": "Verboten, ausstehend",
+    "Pending too long": "Zu lange ausstehend",
+    "No active reviewer": "Kein aktiver Prüfer",
+    "Former user": "Ehemaliger Benutzer",
+    "That submission could not be found": "Diese Einreichung wurde nicht gefunden",
+    "Only an Admin can change review routing.":
+      "Nur ein Administrator kann die Prüfungszuweisung ändern.",
+    "All forms": "Alle Formulare",
+    "Band changed": "Stufe geändert",
+    "Band kept": "Stufe beibehalten",
+    "Band kept, senior lane": "Stufe beibehalten, leitender Bereich",
+    "Check": "Prüfen",
+    "Close call": "Grenzfall",
+    "Counts the band in force at decision": "Zählt die Stufe, die bei der Entscheidung galt",
+    "Decisions": "Entscheidungen",
+    "Failed to load the oversight figures.":
+      "Die Kennzahlen zur Aufsicht konnten nicht geladen werden.",
+    "Last 12 weeks": "Letzte 12 Wochen",
+    "Last 4 weeks": "Letzte 4 Wochen",
+    "Last 8 weeks": "Letzte 8 Wochen",
+    "Median time": "Mediane Zeit",
+    "Median time to decision": "Mediane Zeit bis zur Entscheidung",
+    "Needs attention": "Erfordert Aufmerksamkeit",
+    "Never changed a band in": "Keine Stufe geändert in",
+    "No decisions in this period.": "Keine Entscheidungen in diesem Zeitraum.",
+    "No submissions in this period.": "Keine Einreichungen in diesem Zeitraum.",
+    "Oversight": "Aufsicht",
+    "Redlines caught": "Erkannte rote Linien",
+    "Second reviews": "Zweitprüfungen",
+    "Submissions by lane": "Einreichungen nach Bereich",
+    "Suggested risks accepted": "Übernommene Risikovorschläge",
+    "Routing off": "Weiterleitung aus",
+    "Failed to send to senior review. Please try again.":
+      "Übergabe an die leitende Prüfung fehlgeschlagen. Bitte versuchen Sie es erneut.",
+    "Failed to save the second review. Please try again.":
+      "Die Zweitprüfung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+    "Within": "Innerhalb von",
+    "points of the threshold": "Punkten um den Schwellenwert",
+    "Prohibited practice": "Verbotene Praktik",
+    "No usable score": "Keine verwertbare Bewertung",
+    "threshold": "Schwellenwert",
+    "below": "unter",
+    "Band raised by a reviewer": "Stufe von einem Prüfer erhöht",
+    "Sent to senior review:": "An die leitende Prüfung übergeben:",
+    "Senior review": "Prüfung durch leitende Prüfer",
+    "Standard review": "Standardprüfung",
+    "Not routed yet": "Noch nicht zugewiesen",
+    "Only": "Nur",
+    "can decide this submission.": "können über diese Einreichung entscheiden.",
+    "Send to senior review": "An leitende Prüfer übergeben",
+    "Senior reviewers will decide this submission. Say why it needs a closer look.":
+      "Leitende Prüfer entscheiden über diese Einreichung. Nennen Sie den Grund für eine genauere Prüfung.",
+    "Why does this need a senior reviewer?": "Warum braucht dies einen leitenden Prüfer?",
+    "Second review": "Zweitprüfung",
+    "A senior reviewer will check this approval.":
+      "Ein leitender Prüfer wird diese Genehmigung prüfen.",
+    "Required when something was missed": "Erforderlich, wenn etwas übersehen wurde",
+    "Agree": "Zustimmen",
+    "Missed something": "Etwas übersehen",
+    "Agreed with the approval": "Der Genehmigung zugestimmt",
+    "Something was missed": "Etwas wurde übersehen",
+    "Note:": "Hinweis:",
+    "Resolution:": "Lösung:",
+    "Resolution note": "Hinweis zur Lösung",
+    "What was done about it?": "Was wurde dagegen unternommen?",
+    "Mark resolved": "Als gelöst markieren",
+    "Lane": "Bereich",
+    "Senior": "Leitend",
+    "Not routed": "Nicht zugewiesen",
+    "Assigned to me": "Mir zugewiesen",
+    "Scores of": "Bewertungen ab",
+    "or more, prohibited practices and scores within":
+      "oder mehr, verbotene Praktiken und Bewertungen innerhalb von",
+    "points of": "Punkten um",
+    "go to senior reviewers.": "gehen an leitende Prüfer.",
+    "Route by risk score": "Nach Risikobewertung weiterleiten",
+    "Send submissions to senior or standard reviewers based on their risk score.":
+      "Einreichungen anhand ihrer Risikobewertung an leitende oder Standard-Prüfer weiterleiten.",
+    "Senior reviewers": "Leitende Prüfer",
+    "Standard reviewers": "Standard-Prüfer",
+    "Select senior reviewers": "Leitende Prüfer auswählen",
+    "Select standard reviewers": "Standard-Prüfer auswählen",
+    "Pick at least one senior reviewer": "Wählen Sie mindestens einen leitenden Prüfer",
+    "Pick at least one standard reviewer": "Wählen Sie mindestens einen Standard-Prüfer",
+    "Close-call margin": "Spanne für Grenzfälle",
+    "Second review share %": "Anteil der Zweitprüfungen in %",
+    "Risk score that separates the lanes": "Risikobewertung, die die Bereiche trennt",
+    "Points either side of the threshold": "Punkte auf beiden Seiten des Schwellenwerts",
+    "Share of standard decisions checked again":
+      "Anteil der Standardentscheidungen, die erneut geprüft werden",
+    "Use a number from 1 to 99": "Verwenden Sie eine Zahl von 1 bis 99",
+    "Use a number from 0 to 25": "Verwenden Sie eine Zahl von 0 bis 25",
+    "Use a number from 0 to 100": "Verwenden Sie eine Zahl von 0 bis 100",
+    "Fix the routing settings before saving":
+      "Korrigieren Sie die Weiterleitungseinstellungen vor dem Speichern",
+    "Fix the routing settings before publishing":
+      "Korrigieren Sie die Weiterleitungseinstellungen vor dem Veröffentlichen",
+    "No risk score was recorded for this submission.":
+      "Für diese Einreichung wurde kein Risikowert erfasst.",
+    "set to": "gesetzt auf",
+    "band set to": "Stufe gesetzt auf",
+    // AI intake assessment
+    "Scoring…": "Bewertung läuft…",
+    "No score yet": "Noch keine Bewertung",
+    "at least": "mindestens",
+    "(rules only)": "(nur Regeln)",
+    "AI scores ranged": "KI-Bewertungen lagen zwischen",
+    "The AI median set this score.": "Der KI-Median hat diesen Wert bestimmt.",
+    "The rule minimum set this score. The AI scored it lower.":
+      "Das Regelminimum hat diesen Wert bestimmt. Die KI hat niedriger bewertet.",
+    "Band set to": "Stufe gesetzt auf",
+    "by": "von",
+    "AI scoring isn't set up for this form.":
+      "Die KI-Bewertung ist für dieses Formular nicht eingerichtet.",
+    "AI scoring failed. The score shown comes from the rules only.":
+      "Die KI-Bewertung ist fehlgeschlagen. Der angezeigte Wert stammt nur aus den Regeln.",
+    "Not rule-checked. EU AI Act questions apply to use cases, not models.":
+      "Nicht regelbasiert geprüft. Die Fragen zum EU AI Act gelten für Anwendungsfälle, nicht für Modelle.",
+    "Not rule-checked. This form doesn't ask the EU AI Act questions.":
+      "Nicht regelbasiert geprüft. Dieses Formular stellt die Fragen zum EU AI Act nicht.",
+    "Minimum based on your level change": "Minimum basiert auf Ihrer Stufenänderung",
+    "Rules updated since this was scored": "Regeln wurden seit der Bewertung aktualisiert",
+    "How this score is built": "So entsteht dieser Wert",
+    "EU AI Act level": "Stufe nach EU AI Act",
+    "EU AI Act questions apply to use cases, not models.":
+      "Die Fragen zum EU AI Act gelten für Anwendungsfälle, nicht für Modelle.",
+    "Not rule-checked: this form doesn't ask the EU AI Act questions.":
+      "Nicht regelbasiert geprüft: Dieses Formular stellt die Fragen zum EU AI Act nicht.",
+    "Rule minimum": "Regelminimum",
+    "AI scores": "KI-Bewertungen",
+    "failed": "fehlgeschlagen",
+    "Median": "Median",
+    "Range": "Spanne",
+    "No AI scores": "Keine KI-Bewertungen",
+    "The final score is the higher of the rule minimum and the AI median. The AI can raise the score but never lower it.":
+      "Der endgültige Wert ist der höhere aus Regelminimum und KI-Median. Die KI kann den Wert erhöhen, aber nie senken.",
+    "Reasons": "Gründe",
+    "Band override": "Manuelle Stufe",
+    "Suggesting risks…": "Risiken werden vorgeschlagen…",
+    "AI scoring isn't set up for this form, so no risks are suggested.":
+      "Die KI-Bewertung ist für dieses Formular nicht eingerichtet, daher werden keine Risiken vorgeschlagen.",
+    "Risk suggestions failed. Use Retry in the score section to try again.":
+      "Die Risikovorschläge sind fehlgeschlagen. Nutzen Sie „Erneut versuchen“ im Bewertungsbereich.",
+    "Risk suggestions haven't started. Use Retry in the score section to start them.":
+      "Die Risikovorschläge wurden noch nicht gestartet. Nutzen Sie „Erneut versuchen“ im Bewertungsbereich, um sie zu starten.",
+    "No risks were suggested for this submission.":
+      "Für diese Einreichung wurden keine Risiken vorgeschlagen.",
+    "accepted": "angenommen",
+    "dismissed": "verworfen",
+    "Accept all": "Alle annehmen",
+    "From the risk catalog": "Aus dem Risikokatalog",
+    "Likelihood:": "Wahrscheinlichkeit:",
+    "Severity:": "Schweregrad:",
+    "Add a mitigation plan before accepting this risk.":
+      "Fügen Sie einen Minderungsplan hinzu, bevor Sie dieses Risiko annehmen.",
+    "Accept": "Annehmen",
+    "lower-rated suggestions not shown": "niedriger bewertete Vorschläge werden nicht angezeigt",
+    "not accepted: they need a mitigation plan first":
+      "nicht angenommen: Sie brauchen zuerst einen Minderungsplan",
+    "Couldn't save the change. Please try again.":
+      "Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+    "Couldn't accept the suggestions. Please try again.":
+      "Die Vorschläge konnten nicht angenommen werden. Bitte versuchen Sie es erneut.",
+    "Couldn't retry the assessment. Please try again.":
+      "Die Bewertung konnte nicht wiederholt werden. Bitte versuchen Sie es erneut.",
+    "Accepted risks are added to the register when you approve.":
+      "Angenommene Risiken werden beim Genehmigen in das Register übernommen.",
+    "Model risk category": "Modellrisikokategorie",
+    "Model risk level": "Modellrisikostufe",
+    "(default: 90 days after approval)": "(Standard: 90 Tage nach Genehmigung)",
+    "Name must be at most 200 characters": "Der Name darf höchstens 200 Zeichen lang sein",
+    "Must be at most 1000 characters": "Darf höchstens 1000 Zeichen lang sein",
+    "An accepted risk needs a mitigation plan":
+      "Ein angenommenes Risiko braucht einen Minderungsplan",
+    "Override band": "Stufe überschreiben",
+    "Can't be lower than the rule minimum allows":
+      "Darf nicht unter dem liegen, was das Regelminimum erlaubt",
+    "Risk score:": "Risikowert:",
+    "EU AI Act questions are off. Submissions won't get a rule-based EU AI Act classification, so their risk score has no rule-based minimum and is marked \"not rule-checked\". Use cases approved from this form won't get an EU AI Act classification either.":
+      "Die Fragen zum EU AI Act sind deaktiviert. Einreichungen erhalten keine regelbasierte Einstufung nach dem EU AI Act, daher hat ihr Risikowert kein regelbasiertes Minimum und wird als „nicht regelbasiert geprüft“ markiert. Anwendungsfälle, die aus diesem Formular genehmigt werden, erhalten ebenfalls keine Einstufung nach dem EU AI Act.",
+    "Used to score submissions and suggest risks. You can also generate suggested questions and field guidance text with AI.":
+      "Wird verwendet, um Einreichungen zu bewerten und Risiken vorzuschlagen. Sie können mit KI auch Fragenvorschläge und Hilfetexte für Felder erstellen.",
+    "Used to score submissions and suggest risks. Without a key, reviewers see the rule-based classification only. Add a key in Settings > LLM keys.":
+      "Wird verwendet, um Einreichungen zu bewerten und Risiken vorzuschlagen. Ohne Schlüssel sehen Prüfer nur die regelbasierte Einstufung. Fügen Sie einen Schlüssel unter Einstellungen > LLM-Schlüssel hinzu.",
     // Jira incidents extension
     "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
       "Importiert werden nur Vorgänge, die nach dieser Einrichtung in Jira erstellt werden. VerifyWise erstellt keine Jira-Vorgänge.",
@@ -152,6 +349,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Server switched on": "Server eingeschaltet",
     "The server offered no tools": "Der Server hat keine Tools angeboten",
     "One tool found": "Ein Tool gefunden",
+    "Tools updated": "Tools aktualisiert",
+    "No changes": "Keine Änderungen",
+    "View tools": "Tools anzeigen",
+    "{count} tools found": "{count} Tools gefunden",
+    "{count} new": "{count} neu",
+    "{count} removed": "{count} entfernt",
+    "{count} changed": "{count} geändert",
+    "View {count} tools": "{count} Tools anzeigen",
+    "View one tool": "Ein Tool anzeigen",
     "Discovery failed": "Erkennung fehlgeschlagen",
     "Server saved, but discovery failed":
       "Server gespeichert, aber die Erkennung ist fehlgeschlagen",
@@ -683,6 +889,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Agent not found": "Agent nicht gefunden",
     "Could not load this agent.": "Dieser Agent konnte nicht geladen werden.",
     "Back to AI agents": "Zurück zu KI-Agenten",
+    "Back to MCP servers": "Zurück zu MCP-Servern",
     "Accountable owners": "Verantwortliche Eigentümer",
     "Manually entered": "Manuell erfasst",
     "Inactive 30+ days": "Seit über 30 Tagen inaktiv",
@@ -2268,6 +2475,15 @@ export const translations: Record<string, Record<string, string>> = {
     "API key": "API-Schlüssel",
     "API Key": "API-Schlüssel",
     "API key may not be configured": "API-Schlüssel ist möglicherweise nicht konfiguriert",
+    "The provider refused this model": "Der Anbieter hat dieses Modell abgelehnt",
+    "The provider refused the saved API key":
+      "Der Anbieter hat den gespeicherten API-Schlüssel abgelehnt",
+    "The provider refused this request": "Der Anbieter hat diese Anfrage abgelehnt",
+    "Saved models": "Gespeicherte Modelle",
+    "Find a model or type its ID": "Modell suchen oder ID eingeben",
+    "Self-hosted model": "Selbst gehostetes Modell",
+    "Search or type a model ID": "Modell-ID suchen oder eingeben",
+    "Search or type an ID, e.g. openai/gpt-4o": "ID suchen oder eingeben, z. B. openai/gpt-4o",
     "API keys": "API-Schlüssel",
     "Applicability:": "Anwendbarkeit:",
     "Applicable": "Anwendbar",
@@ -2958,6 +3174,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Risikoname schreiben",
     "You can use": "Sie können",
     "Your app": "Ihre App",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "Der Anbieter hat den gespeicherten API-Schlüssel abgelehnt. Geben Sie einen funktionierenden Schlüssel ein. Er wird als neuer Schlüssel gespeichert, und ein Admin kann den alten in den AI Gateway-Einstellungen entfernen.",
     "Your key will be saved securely for future experiments":
       "Ihr Schlüssel wird für zukünftige Experimente sicher gespeichert",
     "Your name": "Ihr Name",
@@ -3011,6 +3229,9 @@ export const translations: Record<string, Record<string, string>> = {
     "No members have been assigned to the use case":
       "Dem Anwendungsfall wurden keine Mitglieder zugewiesen",
     "No models found": "Keine Modelle gefunden",
+    "Updating model list…": "Modellliste wird aktualisiert…",
+    "Choose a judge model to save this scorer":
+      "Wählen Sie ein Bewertungsmodell, um diesen Scorer zu speichern",
     "No models found. Model preferences are automatically saved when you run an experiment.":
       "Keine Modelle gefunden. Modellpräferenzen werden automatisch gespeichert, wenn Sie ein Experiment ausführen.",
     "No models match your filters.": "Keine Modelle entsprechen Ihren Filtern.",
@@ -4959,6 +5180,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "Kopiert!",
     "Copy": "Kopieren",
     "Copy results to clipboard": "Ergebnisse in die Zwischenablage kopieren",
+    "You can rerun this experiment once it finishes.":
+      "Sie können dieses Experiment erneut ausführen, sobald es abgeschlossen ist.",
+    "Save this experiment's settings, average scores and up to 10 samples as a JSON file. For more samples, open the experiment and use Download there.":
+      "Die Einstellungen, Durchschnittswerte und bis zu 10 Stichproben dieses Experiments als JSON-Datei speichern. Für weitere Stichproben öffnen Sie das Experiment und verwenden Sie dort „Herunterladen“.",
+    "Copy this experiment's settings, average scores and up to 10 samples as JSON. For more samples, open the experiment and use Copy there.":
+      "Die Einstellungen, Durchschnittswerte und bis zu 10 Stichproben dieses Experiments als JSON kopieren. Für weitere Stichproben öffnen Sie das Experiment und verwenden Sie dort „Kopieren“.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to the 1,000 most recent samples are included.":
+      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON-Datei speichern. Es werden bis zu 1.000 der neuesten Stichproben einbezogen.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to the 1,000 most recent samples are included.":
+      "Die Einstellungen dieses Experiments sowie Eingabe, Ausgabe und Bewertungen jeder Stichprobe als JSON in die Zwischenablage kopieren. Es werden bis zu 1.000 der neuesten Stichproben einbezogen.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Ein neues Experiment mit denselben Einstellungen starten. Dieses Experiment bleibt erhalten, und jeder Prompt wird erneut ausgeführt und bewertet.",
     "Copy this key now. You won't be able to see it again.":
       "Kopieren Sie diesen Schlüssel jetzt. Sie können ihn nicht mehr einsehen.",
     "Core definition test (EU AI Act)": "Kerndefinitionstest (EU-KI-Verordnung)",
@@ -5708,7 +5941,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Status breakdown": "Statusaufschlüsselung",
     "Status is controlled by the approval workflow and cannot be changed manually.":
       "Der Status wird durch den Genehmigungsablauf gesteuert und kann nicht manuell geändert werden.",
+    "Submission approved": "Einreichung genehmigt",
     "Submission received": "Einreichung empfangen",
+    "Submission rejected": "Einreichung abgelehnt",
     "Submission responses will be emailed to selected recipients":
       "Einreichungsantworten werden per E-Mail an ausgewählte Empfänger gesendet",
     "Successful": "Erfolgreich",
@@ -7630,6 +7865,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Menschen mit Behinderungen",
     "Plan Adherence": "Plantreue",
     "Plan Quality": "Planqualität",
+    "Planning Quality": "Planungsqualität",
+    "Bias (lower is better)": "Bias (niedriger ist besser)",
+    "Toxicity (lower is better)": "Toxizität (niedriger ist besser)",
+    "Hallucination (lower is better)": "Halluzination (niedriger ist besser)",
     "Plan responses to AI system risks, including defining risk tolerance and mitigation strategies.":
       "Planen Sie Reaktionen auf KI-Systemrisiken, einschließlich der Festlegung von Risikotoleranz und Minderungsstrategien.",
     "Please add at least one recipient to the Send Email action before saving.":
@@ -8575,6 +8814,13 @@ export const translations: Record<string, Record<string, string>> = {
       "Sie können dieses Onboarding jederzeit aus Ihrem Profilmenü erneut aufrufen.",
     "Your AI governance and compliance platform. In 3 minutes, we":
       "Ihre KI-Governance- und Compliance-Plattform. In 3 Minuten",
+    "Your approval is recorded.": "Ihre Genehmigung wurde erfasst.",
+    "Your approval is recorded. Waiting on 1 more approver for this step.":
+      "Ihre Genehmigung wurde erfasst. Für diesen Schritt fehlt noch 1 Genehmiger.",
+    "Your approval is recorded. Waiting on {count} more approvers for this step.":
+      "Ihre Genehmigung wurde erfasst. Für diesen Schritt fehlen noch {count} Genehmiger.",
+    "Your approval is recorded. The request moved to the next step.":
+      "Ihre Genehmigung wurde erfasst. Die Anfrage ist zum nächsten Schritt übergegangen.",
     "Your changes have been saved.": "Ihre Änderungen wurden gespeichert.",
     "Your name, email and personal details":
       "Ihr Name, Ihre E-Mail-Adresse und persönlichen Angaben",
@@ -9671,6 +9917,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Die Gruppierung läuft noch. Öffnen Sie diesen Tab erneut, um neue Vorschläge zu sehen.",
     "Scanning {count} risks. Links will appear as the scan completes.":
       "{count} Risiken werden gescannt. Verknüpfungen erscheinen, sobald der Scan abgeschlossen ist.",
+    "Scanning {count} risk. Links will appear as the scan completes.":
+      "{count} Risiko wird gescannt. Verknüpfungen erscheinen, sobald der Scan abgeschlossen ist.",
+    "Related risks": "Verwandte Risiken",
+    "How is this risk connected?": "Wie ist dieses Risiko verbunden?",
+    "Where is the parent risk?": "Wo befindet sich das übergeordnete Risiko?",
+    "The two risks are connected, but neither depends on the other.":
+      "Die beiden Risiken sind verbunden, aber keines hängt vom anderen ab.",
+    "This risk is part of a broader parent risk. When the parent's level changes, this risk is flagged for review.":
+      "Dieses Risiko ist Teil eines übergeordneten Risikos. Ändert sich dessen Stufe, wird dieses Risiko zur Prüfung markiert.",
+    "The other risk becomes a child of this one and is flagged when this risk's level changes.":
+      "Das andere Risiko wird diesem untergeordnet und markiert, wenn sich die Stufe dieses Risikos ändert.",
+    "Another risk in the risk register.": "Ein anderes Risiko im Risikoregister.",
+    "A risk recorded on a model.": "Ein Risiko, das zu einem Modell erfasst ist.",
+    "A risk recorded on a vendor.": "Ein Risiko, das zu einem Anbieter erfasst ist.",
+    "Grouping {count} cluster of related risks. Suggestions appear here as they finish.":
+      "{count} Cluster verwandter Risiken wird gruppiert. Vorschläge erscheinen hier, sobald sie fertig sind.",
+    "{count} cluster was too large to group in one pass.":
+      "{count} Cluster war zu groß, um ihn in einem Durchgang zu gruppieren.",
+    "Link this risk to others it is connected to. VerifyWise also suggests links from what risks have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion to keep it, or dismiss it.":
+      "Verknüpfen Sie dieses Risiko mit anderen, mit denen es zusammenhängt. VerifyWise schlägt außerdem Verknüpfungen anhand von Gemeinsamkeiten vor, etwa Kategorie, Kontrollen, Lebenszyklusphase oder Projekt. Bestätigen Sie einen Vorschlag, um ihn zu behalten, oder verwerfen Sie ihn.",
+    "Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm.":
+      "Schlägt mit KI über- und untergeordnete Verknüpfungen zwischen bereits verwandten Risiken vor. Die Vorschläge erscheinen in dieser Liste zur Bestätigung.",
     "Grouping {count} clusters of related risks. Suggestions appear here as they finish.":
       "{count} Cluster verwandter Risiken werden gruppiert. Vorschläge erscheinen hier, sobald sie fertig sind.",
     "{count} clusters were too large to group in one pass.":
@@ -9701,6 +9969,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Verwandte Anbieterrisiken erscheinen, sobald Anbieterrisiken gespeichert werden oder ein Administrator einen Scan ausführt.",
     "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
       "{count} Anbieterrisiken werden gescannt. Verwandte Anbieterrisiken erscheinen hier, sobald der Scan abgeschlossen ist.",
+    "Scanning {count} vendor risk. Related vendor risks appear here as the scan completes.":
+      "{count} Anbieterrisiko wird gescannt. Verwandte Anbieterrisiken erscheinen hier, sobald der Scan abgeschlossen ist.",
     "Scan finished. No related vendor risks found.":
       "Scan abgeschlossen. Keine verwandten Anbieterrisiken gefunden.",
     "Search vendor risks": "Anbieterrisiken suchen",
@@ -10580,9 +10850,223 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence graded": "Mit",
     "counts as low quality. Files with no AI analysis are not counted as adequate.":
       "bewertete Nachweise gelten als von geringer Qualität. Dateien ohne KI-Analyse zählen nicht als ausreichend.",
+    // Super admin MCP connect
+    "Connect Claude Code to this deployment": "Claude Code mit dieser Bereitstellung verbinden",
+    "Download the config file": "Konfigurationsdatei herunterladen",
+    "Token expires in": "Token läuft ab in",
+    "Config file downloaded": "Konfigurationsdatei heruntergeladen",
+    "Add it to Claude Code": "Zu Claude Code hinzufügen",
+    "Check it worked": "Prüfen, ob es funktioniert hat",
+    "What the file contains": "Was die Datei enthält",
+    "Tools it adds": "Hinzugefügte Tools",
+    "Download config file": "Konfigurationsdatei herunterladen",
+    "Preparing...": "Wird vorbereitet...",
+    "7 days": "7 Tage",
+    "30 days": "30 Tage",
+    "60 days": "60 Tage",
+    "90 days": "90 Tage",
+    "180 days": "180 Tage",
+    "Failed to create the config file.": "Die Konfigurationsdatei konnte nicht erstellt werden.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Beim Herunterladen wird das zuletzt hier ausgestellte Token widerrufen. Alles, was mit der vorherigen Datei eingerichtet wurde, auf diesem oder einem anderen Rechner, funktioniert sofort nicht mehr.",
   },
 
   fr: {
+    "senior": "senior",
+    "standard": "standard",
+    "close calls": "cas limites",
+    "not routed": "non attribué",
+    "routing off": "acheminement désactivé",
+    "days": "jours",
+    "missed of completed": "manquées sur terminées",
+    "open": "ouvertes",
+    "prohibited": "interdit",
+    "high risk": "risque élevé",
+    "decisions": "décisions",
+    "Second review open": "Seconde revue ouverte",
+    "Second review missed": "Seconde revue : élément manqué",
+    "Prohibited, pending": "Interdit, en attente",
+    "Pending too long": "En attente depuis trop longtemps",
+    "No active reviewer": "Aucun relecteur actif",
+    "Former user": "Ancien utilisateur",
+    "That submission could not be found": "Cette soumission est introuvable",
+    "Only an Admin can change review routing.":
+      "Seul un administrateur peut modifier l'acheminement des révisions.",
+    "All forms": "Tous les formulaires",
+    "Band changed": "Niveau modifié",
+    "Band kept": "Niveau conservé",
+    "Band kept, senior lane": "Niveau conservé, voie senior",
+    "Check": "À vérifier",
+    "Close call": "Cas limite",
+    "Counts the band in force at decision": "Compte le niveau en vigueur au moment de la décision",
+    "Decisions": "Décisions",
+    "Failed to load the oversight figures.": "Impossible de charger les chiffres de supervision.",
+    "Last 12 weeks": "12 dernières semaines",
+    "Last 4 weeks": "4 dernières semaines",
+    "Last 8 weeks": "8 dernières semaines",
+    "Median time": "Délai médian",
+    "Median time to decision": "Délai médian de décision",
+    "Needs attention": "À examiner",
+    "Never changed a band in": "N'a jamais modifié un niveau sur",
+    "No decisions in this period.": "Aucune décision sur cette période.",
+    "No submissions in this period.": "Aucune soumission sur cette période.",
+    "Oversight": "Supervision",
+    "Redlines caught": "Lignes rouges détectées",
+    "Second reviews": "Secondes revues",
+    "Submissions by lane": "Soumissions par voie",
+    "Suggested risks accepted": "Risques suggérés acceptés",
+    "Routing off": "Acheminement désactivé",
+    "Failed to send to senior review. Please try again.":
+      "Échec de l'envoi à la revue senior. Veuillez réessayer.",
+    "Failed to save the second review. Please try again.":
+      "Échec de l'enregistrement de la seconde revue. Veuillez réessayer.",
+    "Within": "À moins de",
+    "points of the threshold": "points du seuil",
+    "Prohibited practice": "Pratique interdite",
+    "No usable score": "Aucun score exploitable",
+    "threshold": "seuil",
+    "below": "inférieur à",
+    "Band raised by a reviewer": "Niveau relevé par un réviseur",
+    "Sent to senior review:": "Envoyé à la revue senior :",
+    "Senior review": "Revue senior",
+    "Standard review": "Revue standard",
+    "Not routed yet": "Pas encore acheminé",
+    "Only": "Seuls",
+    "can decide this submission.": "peuvent décider de cette soumission.",
+    "Send to senior review": "Envoyer à la revue senior",
+    "Senior reviewers will decide this submission. Say why it needs a closer look.":
+      "Les réviseurs seniors décideront de cette soumission. Indiquez pourquoi elle demande un examen plus approfondi.",
+    "Why does this need a senior reviewer?": "Pourquoi faut-il un réviseur senior ?",
+    "Second review": "Seconde revue",
+    "A senior reviewer will check this approval.":
+      "Un réviseur senior vérifiera cette approbation.",
+    "Required when something was missed": "Obligatoire si un point a été manqué",
+    "Agree": "D'accord",
+    "Missed something": "Point manqué",
+    "Agreed with the approval": "D'accord avec l'approbation",
+    "Something was missed": "Un point a été manqué",
+    "Note:": "Note :",
+    "Resolution:": "Résolution :",
+    "Resolution note": "Note de résolution",
+    "What was done about it?": "Qu'a-t-on fait à ce sujet ?",
+    "Mark resolved": "Marquer comme résolu",
+    "Lane": "Voie",
+    "Senior": "Senior",
+    "Not routed": "Non acheminé",
+    "Assigned to me": "Assignées à moi",
+    "Scores of": "Les scores de",
+    "or more, prohibited practices and scores within":
+      "ou plus, les pratiques interdites et les scores à moins de",
+    "points of": "points de",
+    "go to senior reviewers.": "vont aux réviseurs seniors.",
+    "Route by risk score": "Acheminer selon le score de risque",
+    "Send submissions to senior or standard reviewers based on their risk score.":
+      "Envoyer les soumissions aux réviseurs seniors ou standard selon leur score de risque.",
+    "Senior reviewers": "Réviseurs seniors",
+    "Standard reviewers": "Réviseurs standard",
+    "Select senior reviewers": "Sélectionner les réviseurs seniors",
+    "Select standard reviewers": "Sélectionner les réviseurs standard",
+    "Pick at least one senior reviewer": "Choisissez au moins un réviseur senior",
+    "Pick at least one standard reviewer": "Choisissez au moins un réviseur standard",
+    "Close-call margin": "Marge des cas limites",
+    "Second review share %": "Part des secondes révisions en %",
+    "Risk score that separates the lanes": "Score de risque qui sépare les filières",
+    "Points either side of the threshold": "Points de part et d'autre du seuil",
+    "Share of standard decisions checked again": "Part des décisions standard revérifiées",
+    "Use a number from 1 to 99": "Utilisez un nombre de 1 à 99",
+    "Use a number from 0 to 25": "Utilisez un nombre de 0 à 25",
+    "Use a number from 0 to 100": "Utilisez un nombre de 0 à 100",
+    "Fix the routing settings before saving":
+      "Corrigez les paramètres d'acheminement avant d'enregistrer",
+    "Fix the routing settings before publishing":
+      "Corrigez les paramètres d'acheminement avant de publier",
+    "No risk score was recorded for this submission.":
+      "Aucun score de risque n'a été enregistré pour cette soumission.",
+    "set to": "fixé à",
+    "band set to": "niveau fixé à",
+    // AI intake assessment
+    "Scoring…": "Évaluation en cours…",
+    "No score yet": "Pas encore de score",
+    "at least": "au moins",
+    "(rules only)": "(règles uniquement)",
+    "AI scores ranged": "Les scores de l'IA allaient de",
+    "The AI median set this score.": "La médiane de l'IA a fixé ce score.",
+    "The rule minimum set this score. The AI scored it lower.":
+      "Le minimum des règles a fixé ce score. L'IA l'a évalué plus bas.",
+    "Band set to": "Niveau fixé à",
+    "by": "par",
+    "AI scoring isn't set up for this form.":
+      "L'évaluation par IA n'est pas configurée pour ce formulaire.",
+    "AI scoring failed. The score shown comes from the rules only.":
+      "L'évaluation par IA a échoué. Le score affiché provient uniquement des règles.",
+    "Not rule-checked. EU AI Act questions apply to use cases, not models.":
+      "Non vérifié par les règles. Les questions sur l'AI Act de l'UE s'appliquent aux cas d'usage, pas aux modèles.",
+    "Not rule-checked. This form doesn't ask the EU AI Act questions.":
+      "Non vérifié par les règles. Ce formulaire ne pose pas les questions sur l'AI Act de l'UE.",
+    "Minimum based on your level change": "Minimum basé sur votre changement de niveau",
+    "Rules updated since this was scored": "Règles mises à jour depuis l'évaluation",
+    "How this score is built": "Comment ce score est calculé",
+    "EU AI Act level": "Niveau selon l'AI Act de l'UE",
+    "EU AI Act questions apply to use cases, not models.":
+      "Les questions sur l'AI Act de l'UE s'appliquent aux cas d'usage, pas aux modèles.",
+    "Not rule-checked: this form doesn't ask the EU AI Act questions.":
+      "Non vérifié par les règles : ce formulaire ne pose pas les questions sur l'AI Act de l'UE.",
+    "Rule minimum": "Minimum des règles",
+    "AI scores": "Scores de l'IA",
+    "failed": "échec",
+    "Median": "Médiane",
+    "Range": "Plage",
+    "No AI scores": "Aucun score de l'IA",
+    "The final score is the higher of the rule minimum and the AI median. The AI can raise the score but never lower it.":
+      "Le score final est le plus élevé entre le minimum des règles et la médiane de l'IA. L'IA peut augmenter le score, jamais le baisser.",
+    "Reasons": "Raisons",
+    "Band override": "Niveau modifié",
+    "Suggesting risks…": "Suggestion des risques…",
+    "AI scoring isn't set up for this form, so no risks are suggested.":
+      "L'évaluation par IA n'est pas configurée pour ce formulaire, aucun risque n'est donc suggéré.",
+    "Risk suggestions failed. Use Retry in the score section to try again.":
+      "Les suggestions de risques ont échoué. Utilisez « Réessayer » dans la section du score.",
+    "Risk suggestions haven't started. Use Retry in the score section to start them.":
+      "Les suggestions de risques n'ont pas démarré. Utilisez « Réessayer » dans la section du score pour les lancer.",
+    "No risks were suggested for this submission.":
+      "Aucun risque n'a été suggéré pour cette soumission.",
+    "accepted": "acceptés",
+    "dismissed": "écartés",
+    "Accept all": "Tout accepter",
+    "From the risk catalog": "Du catalogue de risques",
+    "Likelihood:": "Probabilité :",
+    "Severity:": "Gravité :",
+    "Add a mitigation plan before accepting this risk.":
+      "Ajoutez un plan d'atténuation avant d'accepter ce risque.",
+    "Accept": "Accepter",
+    "lower-rated suggestions not shown": "suggestions moins bien notées non affichées",
+    "not accepted: they need a mitigation plan first":
+      "non acceptés : ils ont d'abord besoin d'un plan d'atténuation",
+    "Couldn't save the change. Please try again.":
+      "Impossible d'enregistrer la modification. Veuillez réessayer.",
+    "Couldn't accept the suggestions. Please try again.":
+      "Impossible d'accepter les suggestions. Veuillez réessayer.",
+    "Couldn't retry the assessment. Please try again.":
+      "Impossible de relancer l'évaluation. Veuillez réessayer.",
+    "Accepted risks are added to the register when you approve.":
+      "Les risques acceptés sont ajoutés au registre lorsque vous approuvez.",
+    "Model risk category": "Catégorie de risque du modèle",
+    "Model risk level": "Niveau de risque du modèle",
+    "(default: 90 days after approval)": "(par défaut : 90 jours après l'approbation)",
+    "Name must be at most 200 characters": "Le nom doit comporter 200 caractères au maximum",
+    "Must be at most 1000 characters": "Doit comporter 1000 caractères au maximum",
+    "An accepted risk needs a mitigation plan":
+      "Un risque accepté a besoin d'un plan d'atténuation",
+    "Override band": "Modifier le niveau",
+    "Can't be lower than the rule minimum allows":
+      "Ne peut pas être inférieur à ce que permet le minimum des règles",
+    "Risk score:": "Score de risque :",
+    "EU AI Act questions are off. Submissions won't get a rule-based EU AI Act classification, so their risk score has no rule-based minimum and is marked \"not rule-checked\". Use cases approved from this form won't get an EU AI Act classification either.":
+      "Les questions sur l'AI Act de l'UE sont désactivées. Les soumissions n'obtiendront pas de classification fondée sur les règles de l'AI Act de l'UE : leur score de risque n'a donc pas de minimum fondé sur les règles et est marqué « non vérifié par les règles ». Les cas d'usage approuvés depuis ce formulaire n'obtiendront pas non plus de classification selon l'AI Act de l'UE.",
+    "Used to score submissions and suggest risks. You can also generate suggested questions and field guidance text with AI.":
+      "Sert à évaluer les soumissions et à suggérer des risques. Vous pouvez aussi générer avec l'IA des questions suggérées et des textes d'aide pour les champs.",
+    "Used to score submissions and suggest risks. Without a key, reviewers see the rule-based classification only. Add a key in Settings > LLM keys.":
+      "Sert à évaluer les soumissions et à suggérer des risques. Sans clé, les réviseurs ne voient que la classification fondée sur les règles. Ajoutez une clé dans Paramètres > Clés LLM.",
     // Jira incidents extension
     "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
       "Seuls les tickets créés dans Jira après cette configuration sont importés. VerifyWise ne crée pas de tickets Jira.",
@@ -10708,6 +11192,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Server switched on": "Serveur activé",
     "The server offered no tools": "Le serveur n'a proposé aucun outil",
     "One tool found": "Un outil trouvé",
+    "Tools updated": "Outils mis à jour",
+    "No changes": "Aucune modification",
+    "View tools": "Voir les outils",
+    "{count} tools found": "{count} outils trouvés",
+    "{count} new": "{count} nouveau(x)",
+    "{count} removed": "{count} supprimé(s)",
+    "{count} changed": "{count} modifié(s)",
+    "View {count} tools": "Voir les {count} outils",
+    "View one tool": "Voir l'outil",
     "Discovery failed": "Échec de la découverte",
     "Server saved, but discovery failed": "Serveur enregistré, mais la découverte a échoué",
     "Server switched on, but discovery failed": "Serveur activé, mais la découverte a échoué",
@@ -11237,6 +11730,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Agent not found": "Agent introuvable",
     "Could not load this agent.": "Impossible de charger cet agent.",
     "Back to AI agents": "Retour aux agents IA",
+    "Back to MCP servers": "Retour aux serveurs MCP",
     "Accountable owners": "Propriétaires responsables",
     "Manually entered": "Saisi manuellement",
     "Inactive 30+ days": "Inactif depuis plus de 30 jours",
@@ -12939,6 +13433,14 @@ export const translations: Record<string, Record<string, string>> = {
     "API key": "Clé API",
     "API Key": "Clé API",
     "API key may not be configured": "La clé API n'est peut-être pas configurée",
+    "The provider refused this model": "Le fournisseur a refusé ce modèle",
+    "The provider refused the saved API key": "Le fournisseur a refusé la clé API enregistrée",
+    "The provider refused this request": "Le fournisseur a refusé cette requête",
+    "Saved models": "Modèles enregistrés",
+    "Find a model or type its ID": "Rechercher un modèle ou saisir son ID",
+    "Self-hosted model": "Modèle auto-hébergé",
+    "Search or type a model ID": "Rechercher ou saisir un ID de modèle",
+    "Search or type an ID, e.g. openai/gpt-4o": "Rechercher ou saisir un ID, p. ex. openai/gpt-4o",
     "API keys": "Clés API",
     "Applicability:": "Applicabilité :",
     "Applicable": "Applicable",
@@ -13626,6 +14128,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Write risk name": "Rédiger le nom du risque",
     "You can use": "Vous pouvez utiliser",
     "Your app": "Votre application",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "Le fournisseur a refusé la clé API enregistrée. Saisissez une clé valide. Elle est enregistrée comme nouvelle clé, et un administrateur peut supprimer l'ancienne dans les paramètres d'AI Gateway.",
     "Your key will be saved securely for future experiments":
       "Votre clé sera enregistrée de manière sécurisée pour de futures expériences",
     "Your name": "Votre nom",
@@ -13677,6 +14181,9 @@ export const translations: Record<string, Record<string, string>> = {
     "No members have been assigned to the use case":
       "Aucun membre n'a été assigné à ce cas d'usage",
     "No models found": "Aucun modèle trouvé",
+    "Updating model list…": "Mise à jour de la liste des modèles…",
+    "Choose a judge model to save this scorer":
+      "Choisissez un modèle juge pour enregistrer ce scorer",
     "No models found. Model preferences are automatically saved when you run an experiment.":
       "Aucun modèle trouvé. Les préférences de modèles sont automatiquement enregistrées lorsque vous lancez une expérience.",
     "No models match your filters.": "Aucun modèle ne correspond à vos filtres.",
@@ -15463,6 +15970,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "Copié !",
     "Copy": "Copier",
     "Copy results to clipboard": "Copier les résultats dans le presse-papiers",
+    "You can rerun this experiment once it finishes.":
+      "Vous pourrez réexécuter cette expérience une fois qu'elle sera terminée.",
+    "Save this experiment's settings, average scores and up to 10 samples as a JSON file. For more samples, open the experiment and use Download there.":
+      "Enregistrer les paramètres, les scores moyens et jusqu'à 10 échantillons de cette expérience dans un fichier JSON. Pour plus d'échantillons, ouvrez l'expérience et utilisez « Télécharger » depuis celle-ci.",
+    "Copy this experiment's settings, average scores and up to 10 samples as JSON. For more samples, open the experiment and use Copy there.":
+      "Copier les paramètres, les scores moyens et jusqu'à 10 échantillons de cette expérience au format JSON. Pour plus d'échantillons, ouvrez l'expérience et utilisez « Copier » depuis celle-ci.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to the 1,000 most recent samples are included.":
+      "Enregistrer les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon dans un fichier JSON. Jusqu'aux 1 000 échantillons les plus récents sont inclus.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to the 1,000 most recent samples are included.":
+      "Copier dans le presse-papiers, au format JSON, les paramètres de cette expérience ainsi que l'entrée, la sortie et les scores de chaque échantillon. Jusqu'aux 1 000 échantillons les plus récents sont inclus.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Lancer une nouvelle expérience avec les mêmes paramètres. Cette expérience est conservée, et chaque prompt est de nouveau exécuté et évalué.",
     "Copy this key now. You won't be able to see it again.":
       "Copiez cette clé maintenant. Vous ne pourrez plus la voir.",
     "Core definition test (EU AI Act)": "Test de définition centrale (Règlement IA de l'UE)",
@@ -16213,7 +16732,9 @@ export const translations: Record<string, Record<string, string>> = {
     "Status breakdown": "Répartition par statut",
     "Status is controlled by the approval workflow and cannot be changed manually.":
       "Le statut est contrôlé par le flux d'approbation et ne peut pas être modifié manuellement.",
+    "Submission approved": "Soumission approuvée",
     "Submission received": "Soumission reçue",
+    "Submission rejected": "Soumission rejetée",
     "Submission responses will be emailed to selected recipients":
       "Les réponses de soumission seront envoyées par e-mail aux destinataires sélectionnés",
     "Successful": "Réussi",
@@ -18132,6 +18653,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Personnes handicapées",
     "Plan Adherence": "Respect du plan",
     "Plan Quality": "Qualité du plan",
+    "Planning Quality": "Qualité de la planification",
+    "Bias (lower is better)": "Biais (plus bas est meilleur)",
+    "Toxicity (lower is better)": "Toxicité (plus bas est meilleur)",
+    "Hallucination (lower is better)": "Hallucination (plus bas est meilleur)",
     "Plan responses to AI system risks, including defining risk tolerance and mitigation strategies.":
       "Planifiez les réponses aux risques du système IA, y compris la définition de la tolérance au risque et des stratégies d'atténuation.",
     "Please add at least one recipient to the Send Email action before saving.":
@@ -19076,6 +19601,13 @@ export const translations: Record<string, Record<string, string>> = {
       "Vous pouvez toujours revoir cette intégration depuis le menu de votre profil.",
     "Your AI governance and compliance platform. In 3 minutes, we":
       "Votre plateforme de gouvernance et de conformité IA. En 3 minutes, nous",
+    "Your approval is recorded.": "Votre approbation est enregistrée.",
+    "Your approval is recorded. Waiting on 1 more approver for this step.":
+      "Votre approbation est enregistrée. Il manque encore 1 approbateur pour cette étape.",
+    "Your approval is recorded. Waiting on {count} more approvers for this step.":
+      "Votre approbation est enregistrée. Il manque encore {count} approbateurs pour cette étape.",
+    "Your approval is recorded. The request moved to the next step.":
+      "Votre approbation est enregistrée. La demande est passée à l’étape suivante.",
     "Your changes have been saved.": "Vos modifications ont été enregistrées.",
     "Your name, email and personal details": "Vos nom, e-mail et coordonnées personnelles",
     "Your new task has been added.": "Votre nouvelle tâche a été ajoutée.",
@@ -20171,6 +20703,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Regroupement en cours. Rouvrez cet onglet pour voir les nouvelles suggestions.",
     "Scanning {count} risks. Links will appear as the scan completes.":
       "Analyse de {count} risques en cours. Les liens apparaîtront à la fin de l'analyse.",
+    "Scanning {count} risk. Links will appear as the scan completes.":
+      "Analyse de {count} risque en cours. Les liens apparaîtront à la fin de l'analyse.",
+    "Related risks": "Risques connexes",
+    "How is this risk connected?": "Comment ce risque est-il lié ?",
+    "Where is the parent risk?": "Où se trouve le risque parent ?",
+    "The two risks are connected, but neither depends on the other.":
+      "Les deux risques sont liés, mais aucun ne dépend de l'autre.",
+    "This risk is part of a broader parent risk. When the parent's level changes, this risk is flagged for review.":
+      "Ce risque fait partie d'un risque parent plus large. Quand le niveau du parent change, ce risque est signalé pour révision.",
+    "The other risk becomes a child of this one and is flagged when this risk's level changes.":
+      "L'autre risque devient un enfant de celui-ci et est signalé quand le niveau de ce risque change.",
+    "Another risk in the risk register.": "Un autre risque du registre des risques.",
+    "A risk recorded on a model.": "Un risque enregistré sur un modèle.",
+    "A risk recorded on a vendor.": "Un risque enregistré sur un fournisseur.",
+    "Grouping {count} cluster of related risks. Suggestions appear here as they finish.":
+      "Regroupement de {count} groupe de risques connexes. Les suggestions apparaîtront ici au fur et à mesure.",
+    "{count} cluster was too large to group in one pass.":
+      "{count} groupe était trop volumineux pour être regroupé en une seule passe.",
+    "Link this risk to others it is connected to. VerifyWise also suggests links from what risks have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion to keep it, or dismiss it.":
+      "Liez ce risque aux autres risques avec lesquels il est en relation. VerifyWise suggère aussi des liens à partir de ce que les risques ont en commun, comme la catégorie, les contrôles, la phase du cycle de vie ou le projet. Confirmez une suggestion pour la garder, ou ignorez-la.",
+    "Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm.":
+      "Utilise l'IA pour proposer des liens parent-enfant entre des risques déjà liés. Les suggestions apparaissent dans cette liste pour que vous les confirmiez.",
     "Grouping {count} clusters of related risks. Suggestions appear here as they finish.":
       "Regroupement de {count} groupes de risques connexes. Les suggestions apparaîtront ici au fur et à mesure.",
     "{count} clusters were too large to group in one pass.":
@@ -20201,6 +20755,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Les risques fournisseurs connexes apparaissent à l'enregistrement des risques fournisseurs, ou après une analyse lancée par un administrateur.",
     "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
       "Analyse de {count} risques fournisseurs en cours. Les risques fournisseurs connexes apparaîtront ici à la fin de l'analyse.",
+    "Scanning {count} vendor risk. Related vendor risks appear here as the scan completes.":
+      "Analyse de {count} risque fournisseur en cours. Les risques fournisseurs connexes apparaîtront ici à la fin de l'analyse.",
     "Scan finished. No related vendor risks found.":
       "Analyse terminée. Aucun risque fournisseur connexe trouvé.",
     "Search vendor risks": "Rechercher des risques fournisseurs",
@@ -21076,8 +21632,220 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence graded": "Les preuves notées",
     "counts as low quality. Files with no AI analysis are not counted as adequate.":
       "sont considérées comme de faible qualité. Les fichiers sans analyse IA ne comptent pas comme suffisants.",
+    // Super admin MCP connect
+    "Connect Claude Code to this deployment": "Connecter Claude Code à ce déploiement",
+    "Download the config file": "Télécharger le fichier de configuration",
+    "Token expires in": "Le jeton expire dans",
+    "Config file downloaded": "Fichier de configuration téléchargé",
+    "Add it to Claude Code": "L'ajouter à Claude Code",
+    "Check it worked": "Vérifier que cela fonctionne",
+    "What the file contains": "Contenu du fichier",
+    "Tools it adds": "Outils ajoutés",
+    "Download config file": "Télécharger le fichier de configuration",
+    "Preparing...": "Préparation...",
+    "7 days": "7 jours",
+    "30 days": "30 jours",
+    "60 days": "60 jours",
+    "90 days": "90 jours",
+    "180 days": "180 jours",
+    "Failed to create the config file.": "Impossible de créer le fichier de configuration.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Le téléchargement révoque le jeton émis ici la dernière fois. Tout ce qui a été configuré avec le fichier précédent, sur cette machine ou une autre, cesse immédiatement de fonctionner.",
   },
   es: {
+    "senior": "sénior",
+    "standard": "estándar",
+    "close calls": "casos límite",
+    "not routed": "sin asignar",
+    "routing off": "enrutamiento desactivado",
+    "days": "días",
+    "missed of completed": "omitidas de completadas",
+    "open": "abiertas",
+    "prohibited": "prohibido",
+    "high risk": "riesgo alto",
+    "decisions": "decisiones",
+    "Second review open": "Segunda revisión abierta",
+    "Second review missed": "Segunda revisión: algo omitido",
+    "Prohibited, pending": "Prohibido, pendiente",
+    "Pending too long": "Pendiente demasiado tiempo",
+    "No active reviewer": "Ningún revisor activo",
+    "Former user": "Usuario anterior",
+    "That submission could not be found": "No se encontró ese envío",
+    "Only an Admin can change review routing.":
+      "Solo un administrador puede cambiar la asignación de revisiones.",
+    "All forms": "Todos los formularios",
+    "Band changed": "Nivel cambiado",
+    "Band kept": "Nivel mantenido",
+    "Band kept, senior lane": "Nivel mantenido, vía sénior",
+    "Check": "Revisar",
+    "Close call": "Caso límite",
+    "Counts the band in force at decision": "Cuenta el nivel vigente en el momento de la decisión",
+    "Decisions": "Decisiones",
+    "Failed to load the oversight figures.": "No se pudieron cargar las cifras de supervisión.",
+    "Last 12 weeks": "Últimas 12 semanas",
+    "Last 4 weeks": "Últimas 4 semanas",
+    "Last 8 weeks": "Últimas 8 semanas",
+    "Median time": "Tiempo mediano",
+    "Median time to decision": "Tiempo mediano hasta la decisión",
+    "Needs attention": "Requiere atención",
+    "Never changed a band in": "Nunca cambió un nivel en",
+    "No decisions in this period.": "Ninguna decisión en este período.",
+    "No submissions in this period.": "Ningún envío en este período.",
+    "Oversight": "Supervisión",
+    "Redlines caught": "Líneas rojas detectadas",
+    "Second reviews": "Segundas revisiones",
+    "Submissions by lane": "Envíos por vía",
+    "Suggested risks accepted": "Riesgos sugeridos aceptados",
+    "Routing off": "Enrutamiento desactivado",
+    "Failed to send to senior review. Please try again.":
+      "No se pudo enviar a revisión sénior. Inténtelo de nuevo.",
+    "Failed to save the second review. Please try again.":
+      "No se pudo guardar la segunda revisión. Inténtelo de nuevo.",
+    "Within": "A menos de",
+    "points of the threshold": "puntos del umbral",
+    "Prohibited practice": "Práctica prohibida",
+    "No usable score": "Sin puntuación utilizable",
+    "threshold": "umbral",
+    "below": "por debajo de",
+    "Band raised by a reviewer": "Nivel elevado por un revisor",
+    "Sent to senior review:": "Enviado a revisión sénior:",
+    "Senior review": "Revisión sénior",
+    "Standard review": "Revisión estándar",
+    "Not routed yet": "Aún sin enrutar",
+    "Only": "Solo",
+    "can decide this submission.": "pueden decidir sobre este envío.",
+    "Send to senior review": "Enviar a revisión sénior",
+    "Senior reviewers will decide this submission. Say why it needs a closer look.":
+      "Los revisores sénior decidirán sobre este envío. Indique por qué requiere un examen más detallado.",
+    "Why does this need a senior reviewer?": "¿Por qué necesita un revisor sénior?",
+    "Second review": "Segunda revisión",
+    "A senior reviewer will check this approval.": "Un revisor sénior comprobará esta aprobación.",
+    "Required when something was missed": "Obligatoria si se pasó algo por alto",
+    "Agree": "De acuerdo",
+    "Missed something": "Se pasó algo por alto",
+    "Agreed with the approval": "De acuerdo con la aprobación",
+    "Something was missed": "Se pasó algo por alto",
+    "Note:": "Nota:",
+    "Resolution:": "Resolución:",
+    "Resolution note": "Nota de resolución",
+    "What was done about it?": "¿Qué se hizo al respecto?",
+    "Mark resolved": "Marcar como resuelto",
+    "Lane": "Carril",
+    "Senior": "Sénior",
+    "Not routed": "Sin enrutar",
+    "Assigned to me": "Asignados a mí",
+    "Scores of": "Las puntuaciones de",
+    "or more, prohibited practices and scores within":
+      "o más, las prácticas prohibidas y las puntuaciones a menos de",
+    "points of": "puntos de",
+    "go to senior reviewers.": "pasan a los revisores sénior.",
+    "Route by risk score": "Enrutar según la puntuación de riesgo",
+    "Send submissions to senior or standard reviewers based on their risk score.":
+      "Enviar los envíos a revisores sénior o estándar según su puntuación de riesgo.",
+    "Senior reviewers": "Revisores sénior",
+    "Standard reviewers": "Revisores estándar",
+    "Select senior reviewers": "Seleccionar revisores sénior",
+    "Select standard reviewers": "Seleccionar revisores estándar",
+    "Pick at least one senior reviewer": "Elija al menos un revisor sénior",
+    "Pick at least one standard reviewer": "Elija al menos un revisor estándar",
+    "Close-call margin": "Margen de casos límite",
+    "Second review share %": "Porcentaje de segundas revisiones",
+    "Risk score that separates the lanes": "Puntuación de riesgo que separa los carriles",
+    "Points either side of the threshold": "Puntos a cada lado del umbral",
+    "Share of standard decisions checked again":
+      "Porcentaje de decisiones estándar que se revisan de nuevo",
+    "Use a number from 1 to 99": "Use un número del 1 al 99",
+    "Use a number from 0 to 25": "Use un número del 0 al 25",
+    "Use a number from 0 to 100": "Use un número del 0 al 100",
+    "Fix the routing settings before saving":
+      "Corrija la configuración de enrutamiento antes de guardar",
+    "Fix the routing settings before publishing":
+      "Corrija la configuración de enrutamiento antes de publicar",
+    "No risk score was recorded for this submission.":
+      "No se registró ninguna puntuación de riesgo para este envío.",
+    "set to": "fijado en",
+    "band set to": "banda fijada en",
+    // AI intake assessment
+    "Scoring…": "Calculando la puntuación…",
+    "No score yet": "Aún no hay puntuación",
+    "at least": "al menos",
+    "(rules only)": "(solo reglas)",
+    "AI scores ranged": "Las puntuaciones de la IA oscilaron entre",
+    "The AI median set this score.": "La mediana de la IA fijó esta puntuación.",
+    "The rule minimum set this score. The AI scored it lower.":
+      "El mínimo de las reglas fijó esta puntuación. La IA la puntuó más baja.",
+    "Band set to": "Banda fijada en",
+    "by": "por",
+    "AI scoring isn't set up for this form.":
+      "La puntuación con IA no está configurada para este formulario.",
+    "AI scoring failed. The score shown comes from the rules only.":
+      "La puntuación con IA falló. La puntuación mostrada procede solo de las reglas.",
+    "Not rule-checked. EU AI Act questions apply to use cases, not models.":
+      "Sin comprobación de reglas. Las preguntas de la Ley de IA de la UE se aplican a los casos de uso, no a los modelos.",
+    "Not rule-checked. This form doesn't ask the EU AI Act questions.":
+      "Sin comprobación de reglas. Este formulario no hace las preguntas de la Ley de IA de la UE.",
+    "Minimum based on your level change": "Mínimo basado en tu cambio de nivel",
+    "Rules updated since this was scored": "Las reglas cambiaron desde que se puntuó",
+    "How this score is built": "Cómo se calcula esta puntuación",
+    "EU AI Act level": "Nivel según la Ley de IA de la UE",
+    "EU AI Act questions apply to use cases, not models.":
+      "Las preguntas de la Ley de IA de la UE se aplican a los casos de uso, no a los modelos.",
+    "Not rule-checked: this form doesn't ask the EU AI Act questions.":
+      "Sin comprobación de reglas: este formulario no hace las preguntas de la Ley de IA de la UE.",
+    "Rule minimum": "Mínimo de las reglas",
+    "AI scores": "Puntuaciones de la IA",
+    "failed": "fallida",
+    "Median": "Mediana",
+    "Range": "Rango",
+    "No AI scores": "Sin puntuaciones de la IA",
+    "The final score is the higher of the rule minimum and the AI median. The AI can raise the score but never lower it.":
+      "La puntuación final es la mayor entre el mínimo de las reglas y la mediana de la IA. La IA puede subir la puntuación, pero nunca bajarla.",
+    "Reasons": "Motivos",
+    "Band override": "Banda modificada",
+    "Suggesting risks…": "Sugiriendo riesgos…",
+    "AI scoring isn't set up for this form, so no risks are suggested.":
+      "La puntuación con IA no está configurada para este formulario, así que no se sugieren riesgos.",
+    "Risk suggestions failed. Use Retry in the score section to try again.":
+      "Las sugerencias de riesgos fallaron. Usa «Reintentar» en la sección de puntuación.",
+    "Risk suggestions haven't started. Use Retry in the score section to start them.":
+      "Las sugerencias de riesgos no se han iniciado. Usa «Reintentar» en la sección de puntuación para iniciarlas.",
+    "No risks were suggested for this submission.": "No se sugirieron riesgos para este envío.",
+    "accepted": "aceptados",
+    "dismissed": "descartados",
+    "Accept all": "Aceptar todos",
+    "From the risk catalog": "Del catálogo de riesgos",
+    "Likelihood:": "Probabilidad:",
+    "Severity:": "Gravedad:",
+    "Add a mitigation plan before accepting this risk.":
+      "Añade un plan de mitigación antes de aceptar este riesgo.",
+    "Accept": "Aceptar",
+    "lower-rated suggestions not shown": "sugerencias con menor puntuación no se muestran",
+    "not accepted: they need a mitigation plan first":
+      "no aceptados: primero necesitan un plan de mitigación",
+    "Couldn't save the change. Please try again.":
+      "No se pudo guardar el cambio. Inténtalo de nuevo.",
+    "Couldn't accept the suggestions. Please try again.":
+      "No se pudieron aceptar las sugerencias. Inténtalo de nuevo.",
+    "Couldn't retry the assessment. Please try again.":
+      "No se pudo reintentar la evaluación. Inténtalo de nuevo.",
+    "Accepted risks are added to the register when you approve.":
+      "Los riesgos aceptados se añaden al registro cuando apruebas.",
+    "Model risk category": "Categoría de riesgo del modelo",
+    "Model risk level": "Nivel de riesgo del modelo",
+    "(default: 90 days after approval)": "(por defecto: 90 días después de la aprobación)",
+    "Name must be at most 200 characters": "El nombre debe tener como máximo 200 caracteres",
+    "Must be at most 1000 characters": "Debe tener como máximo 1000 caracteres",
+    "An accepted risk needs a mitigation plan": "Un riesgo aceptado necesita un plan de mitigación",
+    "Override band": "Cambiar la banda",
+    "Can't be lower than the rule minimum allows":
+      "No puede ser inferior a lo que permite el mínimo de las reglas",
+    "Risk score:": "Puntuación de riesgo:",
+    "EU AI Act questions are off. Submissions won't get a rule-based EU AI Act classification, so their risk score has no rule-based minimum and is marked \"not rule-checked\". Use cases approved from this form won't get an EU AI Act classification either.":
+      "Las preguntas de la Ley de IA de la UE están desactivadas. Los envíos no obtendrán una clasificación basada en reglas de la Ley de IA de la UE, así que su puntuación de riesgo no tiene un mínimo basado en reglas y se marca como «sin comprobación de reglas». Los casos de uso aprobados desde este formulario tampoco obtendrán una clasificación de la Ley de IA de la UE.",
+    "Used to score submissions and suggest risks. You can also generate suggested questions and field guidance text with AI.":
+      "Se usa para puntuar envíos y sugerir riesgos. También puedes generar con IA preguntas sugeridas y textos de ayuda para los campos.",
+    "Used to score submissions and suggest risks. Without a key, reviewers see the rule-based classification only. Add a key in Settings > LLM keys.":
+      "Se usa para puntuar envíos y sugerir riesgos. Sin clave, los revisores solo ven la clasificación basada en reglas. Añade una clave en Configuración > Claves LLM.",
     // Jira incidents extension
     "Only issues created in Jira after this is set up are imported. VerifyWise doesn't create Jira issues.":
       "Solo se importan las incidencias creadas en Jira después de esta configuración. VerifyWise no crea incidencias en Jira.",
@@ -21202,6 +21970,15 @@ export const translations: Record<string, Record<string, string>> = {
     "Server switched on": "Servidor activado",
     "The server offered no tools": "El servidor no ofreció herramientas",
     "One tool found": "Se encontró una herramienta",
+    "Tools updated": "Herramientas actualizadas",
+    "No changes": "Sin cambios",
+    "View tools": "Ver herramientas",
+    "{count} tools found": "Se encontraron {count} herramientas",
+    "{count} new": "{count} nueva(s)",
+    "{count} removed": "{count} eliminada(s)",
+    "{count} changed": "{count} modificada(s)",
+    "View {count} tools": "Ver las {count} herramientas",
+    "View one tool": "Ver la herramienta",
     "Discovery failed": "Error en la detección",
     "Server saved, but discovery failed": "Servidor guardado, pero la detección falló",
     "Server switched on, but discovery failed": "Servidor activado, pero la detección falló",
@@ -21520,6 +22297,7 @@ export const translations: Record<string, Record<string, string>> = {
     "Agent not found": "Agente no encontrado",
     "Could not load this agent.": "No se pudo cargar este agente.",
     "Back to AI agents": "Volver a agentes de IA",
+    "Back to MCP servers": "Volver a servidores MCP",
     "Accountable owners": "Propietarios responsables",
     "Manually entered": "Introducido manualmente",
     "Inactive 30+ days": "Inactivo desde hace más de 30 días",
@@ -22844,6 +23622,14 @@ export const translations: Record<string, Record<string, string>> = {
     "API key": "Clave de API",
     "API Key": "Clave de API",
     "API key may not be configured": "Es posible que la clave de API no esté configurada",
+    "The provider refused this model": "El proveedor rechazó este modelo",
+    "The provider refused the saved API key": "El proveedor rechazó la clave de API guardada",
+    "The provider refused this request": "El proveedor rechazó esta solicitud",
+    "Saved models": "Modelos guardados",
+    "Find a model or type its ID": "Busca un modelo o escribe su ID",
+    "Self-hosted model": "Modelo autoalojado",
+    "Search or type a model ID": "Busca o escribe un ID de modelo",
+    "Search or type an ID, e.g. openai/gpt-4o": "Busca o escribe un ID, p. ej., openai/gpt-4o",
     "API keys": "Claves de API",
     "Applicability:": "Aplicabilidad:",
     "Applicable": "Aplicable",
@@ -23515,6 +24301,8 @@ export const translations: Record<string, Record<string, string>> = {
     "No label": "Sin etiqueta",
     "No linked items found.": "No se han encontrado elementos vinculados.",
     "No models found": "No se han encontrado modelos",
+    "Updating model list…": "Actualizando la lista de modelos…",
+    "Choose a judge model to save this scorer": "Elija un modelo juez para guardar este evaluador",
     "No models match your filters.": "Ningún modelo coincide con tus filtros.",
     "No more questions.": "No hay más preguntas.",
     "No policies found": "No se han encontrado políticas",
@@ -24345,6 +25133,18 @@ export const translations: Record<string, Record<string, string>> = {
     "Copied!": "¡Copiado!",
     "Copy": "Copiar",
     "Copy results to clipboard": "Copiar resultados al portapapeles",
+    "You can rerun this experiment once it finishes.":
+      "Podrás volver a ejecutar este experimento cuando termine.",
+    "Save this experiment's settings, average scores and up to 10 samples as a JSON file. For more samples, open the experiment and use Download there.":
+      "Guardar la configuración, las puntuaciones medias y hasta 10 muestras de este experimento como archivo JSON. Para ver más muestras, abre el experimento y usa «Descargar» allí.",
+    "Copy this experiment's settings, average scores and up to 10 samples as JSON. For more samples, open the experiment and use Copy there.":
+      "Copiar la configuración, las puntuaciones medias y hasta 10 muestras de este experimento como JSON. Para ver más muestras, abre el experimento y usa «Copiar» allí.",
+    "Save this experiment's settings and each sample's input, output and scores as a JSON file. Up to the 1,000 most recent samples are included.":
+      "Guardar la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra como archivo JSON. Se incluyen hasta las 1000 muestras más recientes.",
+    "Copy this experiment's settings and each sample's input, output and scores to the clipboard as JSON. Up to the 1,000 most recent samples are included.":
+      "Copiar al portapapeles como JSON la configuración de este experimento y la entrada, la salida y las puntuaciones de cada muestra. Se incluyen hasta las 1000 muestras más recientes.",
+    "Start a new experiment with the same settings. This experiment is kept, and every prompt is run and scored again.":
+      "Iniciar un nuevo experimento con la misma configuración. Este experimento se conserva, y cada prompt se ejecuta y se evalúa de nuevo.",
     "Core definition test (EU AI Act)": "Prueba de definición básica (EU AI Act)",
     "Create Scorer": "Crear evaluador",
     "Create VerifyWise user account": "Crear cuenta de usuario de VerifyWise",
@@ -24826,7 +25626,9 @@ export const translations: Record<string, Record<string, string>> = {
     "State Comparison (Hover, Active, Disabled)":
       "Comparación de estados (al pasar el cursor, activo, deshabilitado)",
     "Status breakdown": "Desglose por estado",
+    "Submission approved": "Envío aprobado",
     "Submission received": "Envío recibido",
+    "Submission rejected": "Envío rechazado",
     "Successful": "Correcto",
     "Suggested questions": "Preguntas sugeridas",
     "Summary": "Resumen",
@@ -25816,6 +26618,10 @@ export const translations: Record<string, Record<string, string>> = {
     "Persons with disabilities": "Personas con discapacidad",
     "Plan Adherence": "Cumplimiento del plan",
     "Plan Quality": "Calidad del plan",
+    "Planning Quality": "Calidad de la planificación",
+    "Bias (lower is better)": "Sesgo (más bajo es mejor)",
+    "Toxicity (lower is better)": "Toxicidad (más bajo es mejor)",
+    "Hallucination (lower is better)": "Alucinación (más bajo es mejor)",
     "Please enter a token": "Introduce un token",
     "Please enter a token to test": "Introduce un token para probar",
     "Please enter an email address": "Introduce una dirección de correo electrónico",
@@ -26217,6 +27023,13 @@ export const translations: Record<string, Record<string, string>> = {
     "Workflow": "Flujo de trabajo",
     "Yes/No": "Sí/No",
     "You are ready to work with VerifyWise": "Ya está listo para trabajar con VerifyWise",
+    "Your approval is recorded.": "Tu aprobación se ha registrado.",
+    "Your approval is recorded. Waiting on 1 more approver for this step.":
+      "Tu aprobación se ha registrado. Falta 1 aprobador más en este paso.",
+    "Your approval is recorded. Waiting on {count} more approvers for this step.":
+      "Tu aprobación se ha registrado. Faltan {count} aprobadores más en este paso.",
+    "Your approval is recorded. The request moved to the next step.":
+      "Tu aprobación se ha registrado. La solicitud pasó al siguiente paso.",
     "Your changes have been saved.": "Sus cambios se han guardado.",
     "Your new task has been added.": "Su nueva tarea se ha añadido.",
     "Your report is being generated.": "Su informe se está generando.",
@@ -26794,6 +27607,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Lo que sus barreras de protección detectaron en este periodo",
     "Whose name and role appear on the declaration document":
       "Cuyo nombre y cargo aparecen en el documento de declaración",
+    "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":
+      "El proveedor rechazó la clave de API guardada. Introduzca una clave válida. Se guarda como una clave nueva, y un administrador puede eliminar la anterior en la configuración de AI Gateway.",
     "Your key will be saved securely for future experiments":
       "Su clave se guardará de forma segura para futuros experimentos",
     "No AI tools detected yet. Connect a data source to monitor AI tool usage.":
@@ -30585,6 +31400,28 @@ export const translations: Record<string, Record<string, string>> = {
       "Aún se está agrupando. Vuelve a abrir esta pestaña para ver nuevas sugerencias.",
     "Scanning {count} risks. Links will appear as the scan completes.":
       "Analizando {count} riesgos. Los vínculos aparecerán cuando termine el análisis.",
+    "Scanning {count} risk. Links will appear as the scan completes.":
+      "Analizando {count} riesgo. Los vínculos aparecerán cuando termine el análisis.",
+    "Related risks": "Riesgos relacionados",
+    "How is this risk connected?": "¿Cómo está conectado este riesgo?",
+    "Where is the parent risk?": "¿Dónde está el riesgo principal?",
+    "The two risks are connected, but neither depends on the other.":
+      "Los dos riesgos están conectados, pero ninguno depende del otro.",
+    "This risk is part of a broader parent risk. When the parent's level changes, this risk is flagged for review.":
+      "Este riesgo forma parte de un riesgo principal más amplio. Cuando cambia el nivel del principal, este riesgo se marca para revisión.",
+    "The other risk becomes a child of this one and is flagged when this risk's level changes.":
+      "El otro riesgo pasa a depender de este y se marca cuando cambia el nivel de este riesgo.",
+    "Another risk in the risk register.": "Otro riesgo del registro de riesgos.",
+    "A risk recorded on a model.": "Un riesgo registrado en un modelo.",
+    "A risk recorded on a vendor.": "Un riesgo registrado en un proveedor.",
+    "Grouping {count} cluster of related risks. Suggestions appear here as they finish.":
+      "Agrupando {count} grupo de riesgos relacionados. Las sugerencias aparecerán aquí a medida que terminen.",
+    "{count} cluster was too large to group in one pass.":
+      "{count} grupo era demasiado grande para agruparse en una sola pasada.",
+    "Link this risk to others it is connected to. VerifyWise also suggests links from what risks have in common, such as category, controls, lifecycle phase or project. Confirm a suggestion to keep it, or dismiss it.":
+      "Vincule este riesgo con otros con los que está conectado. VerifyWise también sugiere vínculos según lo que los riesgos tienen en común, como la categoría, los controles, la fase del ciclo de vida o el proyecto. Confirme una sugerencia para conservarla o descártela.",
+    "Uses AI to propose parent and child links among risks that are already related. Suggestions appear in this list for you to confirm.":
+      "Usa IA para proponer vínculos principal-secundario entre riesgos ya relacionados. Las sugerencias aparecen en esta lista para que las confirme.",
     "Grouping {count} clusters of related risks. Suggestions appear here as they finish.":
       "Agrupando {count} grupos de riesgos relacionados. Las sugerencias aparecerán aquí a medida que terminen.",
     "{count} clusters were too large to group in one pass.":
@@ -30615,6 +31452,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Los riesgos de proveedor relacionados aparecen al guardar los riesgos de proveedor, o después de que un administrador ejecute un análisis.",
     "Scanning {count} vendor risks. Related vendor risks appear here as the scan completes.":
       "Analizando {count} riesgos de proveedor. Los riesgos de proveedor relacionados aparecerán aquí cuando termine el análisis.",
+    "Scanning {count} vendor risk. Related vendor risks appear here as the scan completes.":
+      "Analizando {count} riesgo de proveedor. Los riesgos de proveedor relacionados aparecerán aquí cuando termine el análisis.",
     "Scan finished. No related vendor risks found.":
       "Análisis finalizado. No se encontraron riesgos de proveedor relacionados.",
     "Search vendor risks": "Buscar riesgos de proveedor",
@@ -31488,5 +32327,24 @@ export const translations: Record<string, Record<string, string>> = {
     "Evidence graded": "La evidencia calificada",
     "counts as low quality. Files with no AI analysis are not counted as adequate.":
       "se considera de baja calidad. Los archivos sin análisis de IA no cuentan como suficientes.",
+    // Super admin MCP connect
+    "Connect Claude Code to this deployment": "Conectar Claude Code a esta implementación",
+    "Download the config file": "Descargar el archivo de configuración",
+    "Token expires in": "El token caduca en",
+    "Config file downloaded": "Archivo de configuración descargado",
+    "Add it to Claude Code": "Añadirlo a Claude Code",
+    "Check it worked": "Comprobar que funcionó",
+    "What the file contains": "Qué contiene el archivo",
+    "Tools it adds": "Herramientas que añade",
+    "Download config file": "Descargar el archivo de configuración",
+    "Preparing...": "Preparando...",
+    "7 days": "7 días",
+    "30 days": "30 días",
+    "60 days": "60 días",
+    "90 days": "90 días",
+    "180 days": "180 días",
+    "Failed to create the config file.": "No se pudo crear el archivo de configuración.",
+    "Downloading revokes the token issued here last time. Anything set up with the previous file, on this machine or another, stops working immediately.":
+      "Al descargarlo se revoca el token emitido aquí la última vez. Todo lo que se configuró con el archivo anterior, en este equipo o en otro, deja de funcionar de inmediato.",
   },
 };

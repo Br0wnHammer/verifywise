@@ -6,6 +6,14 @@ import litellm
 from services.cost_service import _safe_cost, calculate_stream_cost, tool_definitions, whole_tokens
 
 
+class ProviderCallError(Exception):
+    """The provider call itself failed; `cause` is LiteLLM's exception (or whatever it raised)."""
+
+    def __init__(self, cause: Exception):
+        super().__init__(str(cause))
+        self.cause = cause
+
+
 async def chat_completion(
     model: str,
     messages: list[dict],
@@ -42,7 +50,12 @@ async def chat_completion(
             {"model": m, "api_key": api_key} for m in fallback_models
         ]
 
-    response = await litellm.acompletion(**call_kwargs)
+    # Only the provider call counts as a provider failure; a bug in the bookkeeping below
+    # must surface as the gateway's own error
+    try:
+        response = await litellm.acompletion(**call_kwargs)
+    except Exception as exc:
+        raise ProviderCallError(exc) from exc
 
     try:
         cost = litellm.completion_cost(completion_response=response)

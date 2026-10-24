@@ -261,6 +261,9 @@ export const API_KEY_PROVIDERS = [
 
 const API_KEY_PROVIDER_IDS = new Set(API_KEY_PROVIDERS.map((p) => p._id));
 
+type ModelItem = { _id: string; name: string };
+const NO_MODEL_ITEMS: ModelItem[] = [];
+
 /**
  * Hook: fetch models from the AI Gateway (LiteLLM registry) and provide
  * provider → model cascading data for Select components.
@@ -313,14 +316,30 @@ export function useGatewayModels() {
     return () => ctrl.abort();
   }, [load]);
 
-  /** Get Select-compatible items for a given provider (memoized) */
+  /**
+   * Select-compatible items per provider, built once per load.
+   * LiteLLM lists some models with the provider prefix ("gemini/gemini-2.5-flash")
+   * and some without ("gpt-4o"), and a few both ways. The value is always
+   * "<provider>/<model>" exactly once, and each model appears once.
+   */
+  const itemsByProvider = useMemo(() => {
+    const result: Record<string, ModelItem[]> = {};
+    for (const [provider, models] of Object.entries(modelsByProvider)) {
+      const prefix = `${provider}/`;
+      const items = new Map<string, ModelItem>();
+      for (const m of models) {
+        const name = m.id.startsWith(prefix) ? m.id.slice(prefix.length) : m.id;
+        items.set(name, { _id: `${prefix}${name}`, name });
+      }
+      result[provider] = [...items.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return result;
+  }, [modelsByProvider]);
+
+  /** Get Select-compatible items for a given provider (stable array identity) */
   const getModelsForProvider = useCallback(
-    (provider: string) =>
-      (modelsByProvider[provider] || []).map((m) => ({
-        _id: `${provider}/${m.id}`,
-        name: m.id,
-      })),
-    [modelsByProvider],
+    (provider: string) => itemsByProvider[provider] ?? NO_MODEL_ITEMS,
+    [itemsByProvider],
   );
 
   /** Get Select-compatible provider items (memoized) */
@@ -345,13 +364,26 @@ export function slugify(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+/**
+ * Base URL users put in front of /v1 in their own code. An explicit backend URL
+ * wins (local development points at the backend on :3000). Otherwise it is the
+ * page's own origin, port included: deployments serve /v1 on the same host and
+ * port as the app, and the backend port itself is not reachable from outside.
+ */
+export function resolveGatewayUrl(
+  env: { VITE_APP_API_URL?: string; VITE_APP_API_BASE_URL?: string },
+  origin: string | undefined,
+): string {
+  const apiUrl = env.VITE_APP_API_URL || env.VITE_APP_API_BASE_URL;
+  if (apiUrl) return apiUrl.replace(/\/+$/, "").replace(/\/api$/, "");
+  return origin || "https://your-verifywise-host";
+}
+
 /** Gateway base URL for code examples */
-export const GATEWAY_URL = (() => {
-  const apiUrl = (import.meta as any)?.env?.VITE_APP_API_URL as string | undefined;
-  if (apiUrl) return apiUrl.replace(/\/api\/?$/, "");
-  if (typeof window !== "undefined") return window.location.origin.replace(/:\d+$/, ":3000");
-  return "https://your-verifywise-host";
-})();
+export const GATEWAY_URL = resolveGatewayUrl(
+  (import.meta as any)?.env ?? {},
+  typeof window !== "undefined" ? window.location.origin : undefined,
+);
 
 /** Color constants for code blocks and warning banners */
 export const CODE_BLOCK_BG = "#1E1E1E";
@@ -508,3 +540,9 @@ export async function streamPromptTest(
 
   return { content, tokens, cost, latency: Date.now() - startTime };
 }
+
+/** Navigation state the MCP servers page sends when it opens the tools catalog. */
+export const FROM_MCP_SERVERS = { from: "mcp-servers" } as const;
+
+export const cameFromMcpServers = (state: unknown): boolean =>
+  (state as { from?: unknown } | null)?.from === FROM_MCP_SERVERS.from;
