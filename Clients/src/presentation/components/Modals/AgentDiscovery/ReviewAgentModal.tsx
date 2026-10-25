@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Drawer, Stack, Box, Typography, Divider, IconButton } from "@mui/material";
 import { X, Link as LinkIcon, Unlink, Pencil } from "lucide-react";
 import VWChip from "../../Chip";
@@ -37,10 +37,13 @@ const ReviewAgentModal: React.FC<ReviewAgentModalProps> = ({
 }) => {
   const formatUserDate = useFormattedDate();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [linkKind, setLinkKind] = useState<AgentLinkKind | null>(null);
-  // The drawer keeps its last kind while it animates closed.
-  const lastLinkKind = useRef<AgentLinkKind>("model");
-  if (linkKind) lastLinkKind.current = linkKind;
+  const [isLinkOpen, setIsLinkOpen] = useState(false);
+  // Set only when the link drawer opens, so it keeps its kind while it closes.
+  const [linkKind, setLinkKind] = useState<AgentLinkKind>("model");
+  const openLink = (kind: AgentLinkKind) => {
+    setLinkKind(kind);
+    setIsLinkOpen(true);
+  };
   const [actionError, setActionError] = useState<string | null>(null);
   // Review, link, unlink and edit need the agentDiscovery.admin permission
   // (Admins by default) on the server; everyone else gets a read-only view.
@@ -83,17 +86,22 @@ const ReviewAgentModal: React.FC<ReviewAgentModalProps> = ({
   };
 
   const handleUnlink = async (path: "unlink-model" | "unlink-use-case") => {
+    // One request at a time: a double click must not send a second unlink.
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setActionError(null);
     try {
       await apiServices.patch(`/agent-primitives/${agent.id}/${path}`);
       onSuccess();
     } catch (error) {
       setActionError(getClientErrorReason(error) ?? "Could not update the agent. Try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleLinkSuccess = () => {
-    setLinkKind(null);
+    setIsLinkOpen(false);
     onSuccess();
   };
 
@@ -231,7 +239,8 @@ const ReviewAgentModal: React.FC<ReviewAgentModalProps> = ({
             canManage={canManage}
             linkText="Link to use case"
             unlinkTitle="Unlink use case"
-            onLink={() => setLinkKind("useCase")}
+            disabled={isSubmitting}
+            onLink={() => openLink("useCase")}
             onUnlink={() => handleUnlink("unlink-use-case")}
           />
           <LinkSection
@@ -240,7 +249,8 @@ const ReviewAgentModal: React.FC<ReviewAgentModalProps> = ({
             canManage={canManage}
             linkText="Link to model"
             unlinkTitle="Unlink model"
-            onLink={() => setLinkKind("model")}
+            disabled={isSubmitting}
+            onLink={() => openLink("model")}
             onUnlink={() => handleUnlink("unlink-model")}
           />
 
@@ -335,10 +345,10 @@ const ReviewAgentModal: React.FC<ReviewAgentModalProps> = ({
       </Drawer>
 
       <LinkAgentModal
-        isOpen={linkKind !== null}
-        setIsOpen={(open) => !open && setLinkKind(null)}
+        isOpen={isLinkOpen}
+        setIsOpen={setIsLinkOpen}
         agentId={agent.id}
-        kind={lastLinkKind.current}
+        kind={linkKind}
         onSuccess={handleLinkSuccess}
       />
     </>
@@ -352,9 +362,10 @@ const LinkSection: React.FC<{
   canManage: boolean;
   linkText: string;
   unlinkTitle: string;
+  disabled: boolean;
   onLink: () => void;
   onUnlink: () => void;
-}> = ({ label, linkedName, canManage, linkText, unlinkTitle, onLink, onUnlink }) => (
+}> = ({ label, linkedName, canManage, linkText, unlinkTitle, disabled, onLink, onUnlink }) => (
   <Box>
     <Typography fontSize={12} fontWeight={600} color="text.secondary" mb="8px">
       {label}
@@ -363,7 +374,13 @@ const LinkSection: React.FC<{
       <Stack direction="row" alignItems="center" gap="8px">
         <Typography fontSize={13}>{linkedName}</Typography>
         {canManage && (
-          <IconButton size="small" onClick={onUnlink} title={unlinkTitle} aria-label={unlinkTitle}>
+          <IconButton
+            size="small"
+            onClick={onUnlink}
+            disabled={disabled}
+            title={unlinkTitle}
+            aria-label={unlinkTitle}
+          >
             <Unlink size={14} strokeWidth={1.5} />
           </IconButton>
         )}
@@ -376,6 +393,7 @@ const LinkSection: React.FC<{
         sx={{ border: `1px solid ${palette.border.dark}` }}
         icon={<LinkIcon size={14} strokeWidth={1.5} />}
         text={linkText}
+        isDisabled={disabled}
         onClick={onLink}
       />
     )}

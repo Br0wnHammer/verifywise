@@ -53,6 +53,7 @@ vi.mock("../../../Inputs/Autocomplete", () => ({
           props.multiple ? props.value.map((o: any) => o.id) : (props.value?.id ?? null),
         )}
         data-options={JSON.stringify(props.options.map((o: any) => o.id))}
+        data-no-options={props.noOptionsText}
         onClick={() =>
           props.onChange(
             {},
@@ -79,11 +80,12 @@ const projectsState = vi.hoisted(() => ({
     { id: 6, project_title: "Organization ISO 42001", is_organizational: true },
   ],
   enabledCalls: [] as (boolean | undefined)[],
+  isError: false,
 }));
 vi.mock("../../../../../application/hooks/useProjects", () => ({
   useProjects: (options?: { enabled?: boolean }) => {
     projectsState.enabledCalls.push(options?.enabled);
-    return { approvedProjects: projectsState.projects };
+    return { approvedProjects: projectsState.projects, isError: projectsState.isError };
   },
 }));
 // Models come from the shared model inventory query.
@@ -163,6 +165,7 @@ beforeEach(() => {
   modelsState.models = [];
   modelsState.isError = false;
   projectsState.enabledCalls = [];
+  projectsState.isError = false;
   vi.mocked(apiServices.patch).mockClear();
   vi.mocked(apiServices.post).mockClear();
 });
@@ -226,6 +229,22 @@ describe("LinkAgentModal", () => {
       />,
     );
     expect(screen.getByText("Link use case")).toBeDisabled();
+  });
+
+  it("says the list could not be loaded instead of showing it as empty", () => {
+    projectsState.isError = true;
+    renderWithProviders(
+      <LinkAgentModal
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        agentId={1}
+        kind="useCase"
+        onSuccess={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByTestId("autocomplete-link-use-case-select").getAttribute("data-no-options"),
+    ).toBe("Could not load use cases");
   });
 
   it("shows the server's reason and stays open when the link fails", async () => {
@@ -680,6 +699,26 @@ describe("ReviewAgentModal", () => {
     });
     expect(apiServices.patch).toHaveBeenCalledWith("/agent-primitives/1/unlink-use-case");
     expect(onSuccess).toHaveBeenCalled();
+  });
+
+  it("sends one unlink even when the icon is clicked twice", async () => {
+    let resolve: (v: unknown) => void = () => {};
+    vi.mocked(apiServices.patch).mockImplementationOnce(
+      () => new Promise((r) => (resolve = r)) as any,
+    );
+    renderWithProviders(
+      <ReviewAgentModal
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        agent={{ ...mockAgent, is_manual: false, linked_project_id: 5, linked_project_title: "X" }}
+        onSuccess={vi.fn()}
+      />,
+    );
+    const unlink = screen.getByLabelText("Unlink use case");
+    fireEvent.click(unlink);
+    fireEvent.click(unlink);
+    await act(async () => resolve({}));
+    expect(apiServices.patch).toHaveBeenCalledTimes(1);
   });
 
   it("returns null when agent is null", () => {

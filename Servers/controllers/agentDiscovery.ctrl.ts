@@ -6,8 +6,6 @@ import {
   updateAgentPrimitiveQuery,
   deleteAgentPrimitiveByIdQuery,
   updateReviewStatusQuery,
-  linkModelQuery,
-  unlinkModelQuery,
   getAgentStatsQuery,
   getSyncLogsQuery,
   getLatestSyncStatusQuery,
@@ -19,7 +17,8 @@ import {
   lockAgentPrimitiveQuery,
   modelInOrganizationQuery,
   useCaseInOrganizationQuery,
-  setLinkedUseCaseQuery,
+  setAgentLinkQuery,
+  AgentLinkColumn,
 } from "../utils/agentDiscovery.utils";
 import { ForeignKeyConstraintError, Transaction } from "sequelize";
 import { sequelize } from "../database/db";
@@ -784,66 +783,59 @@ export async function reviewAgentPrimitive(req: Request, res: Response) {
   }
 }
 
-/**
- * Link agent primitive to a model inventory item
- */
-export async function linkModelToAgent(req: Request, res: Response) {
-  const functionName = "linkModelToAgent";
-  logStructured("processing", "linking model to agent", functionName, fileName);
-
-  try {
-    const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-    if (isNaN(id)) {
-      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid agent primitive ID")));
-    }
-
-    if (req.body.model_id == null || req.body.model_id === "") {
-      return res.status(400).json(STATUS_CODE[400](req.t!("model_id is required")));
-    }
-    const model_id = parseOwnerId(req.body.model_id);
-    if (model_id === null) {
-      return res.status(400).json(STATUS_CODE[400](req.t!("Linked model must be a valid ID")));
-    }
-
-    const existing = await getAgentPrimitiveByIdQuery(id, req.organizationId!);
-    if (!existing) {
-      return res.status(404).json(STATUS_CODE[404](req.t!("Agent primitive not found")));
-    }
-    // Same check as the add/edit drawer: only a model of this organization.
-    if (!(await modelInOrganizationQuery(model_id, req.organizationId!))) {
-      return res
-        .status(400)
-        .json(STATUS_CODE[400](req.t!("Linked model was not found in your model inventory")));
-    }
-
-    const primitive = await linkModelQuery(id, model_id, req.organizationId!);
-
-    await createAuditLogQuery(
-      {
-        agent_primitive_id: id,
-        action: "model_linked",
-        field_changed: "linked_model_inventory_id",
-        old_value: existing.linked_model_inventory_id?.toString() || null,
-        new_value: model_id.toString(),
-        performed_by: req.userId!,
-      },
-      req.organizationId!,
-    );
-
-    logStructured("successful", "model linked to agent", functionName, fileName);
-    return res.status(200).json(STATUS_CODE[200](primitive));
-  } catch (error) {
-    logStructured("error", "failed to link model to agent", functionName, fileName);
-    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
-  }
+/** What one link endpoint changes, and how it checks and audits it. */
+interface AgentLinkSpec {
+  column: AgentLinkColumn;
+  /** Request body field holding the id to link. */
+  bodyKey: "model_id" | "project_id";
+  requiredMessage: string;
+  invalidMessage: string;
+  notFoundMessage: string;
+  inOrganization: (
+    id: number,
+    organizationId: number,
+    transaction: Transaction,
+  ) => Promise<boolean>;
+  linkedAction: string;
+  unlinkedAction: string;
+  label: string;
 }
 
+const MODEL_LINK: AgentLinkSpec = {
+  column: "linked_model_inventory_id",
+  bodyKey: "model_id",
+  requiredMessage: "model_id is required",
+  invalidMessage: "Linked model must be a valid ID",
+  notFoundMessage: "Linked model was not found in your model inventory",
+  inOrganization: modelInOrganizationQuery,
+  linkedAction: "model_linked",
+  unlinkedAction: "model_unlinked",
+  label: "model",
+};
+
+const USE_CASE_LINK: AgentLinkSpec = {
+  column: "linked_project_id",
+  bodyKey: "project_id",
+  requiredMessage: "project_id is required",
+  invalidMessage: "Linked use case must be a valid ID",
+  notFoundMessage: LINKED_USE_CASE_NOT_FOUND,
+  inOrganization: useCaseInOrganizationQuery,
+  linkedAction: "use_case_linked",
+  unlinkedAction: "use_case_unlinked",
+  label: "use case",
+};
+
 /**
- * Unlink model from agent primitive
+ * Link (or, with `unlink`, unlink) an agent to a model or a use case. Works
+ * for synced agents too, unlike the edit endpoint. The row is locked for the
+ * check, write and audit entry, so concurrent changes audit the right old
+ * value and a link never lands without its entry. A request that changes
+ * nothing (unlink with no link, or the same link again) writes no audit entry.
  */
-export async function unlinkModelFromAgent(req: Request, res: Response) {
-  const functionName = "unlinkModelFromAgent";
-  logStructured("processing", "unlinking model from agent", functionName, fileName);
+async function applyAgentLink(req: Request, res: Response, spec: AgentLinkSpec, unlink: boolean) {
+  const verb = unlink ? "unlink" : "link";
+  const functionName = `${verb}AgentLink`;
+  logStructured("processing", `${verb}ing ${spec.label} for agent`, functionName, fileName);
 
   try {
     const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
@@ -851,134 +843,97 @@ export async function unlinkModelFromAgent(req: Request, res: Response) {
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid agent primitive ID")));
     }
 
-    const existing = await getAgentPrimitiveByIdQuery(id, req.organizationId!);
-    if (!existing) {
-      return res.status(404).json(STATUS_CODE[404](req.t!("Agent primitive not found")));
+    let target: number | null = null;
+    if (!unlink) {
+      const raw = req.body?.[spec.bodyKey];
+      if (raw == null || raw === "") {
+        return res.status(400).json(STATUS_CODE[400](req.t!(spec.requiredMessage)));
+      }
+      target = parseOwnerId(raw);
+      if (target === null) {
+        return res.status(400).json(STATUS_CODE[400](req.t!(spec.invalidMessage)));
+      }
     }
 
-    const primitive = await unlinkModelQuery(id, req.organizationId!);
-
-    await createAuditLogQuery(
-      {
-        agent_primitive_id: id,
-        action: "model_unlinked",
-        field_changed: "linked_model_inventory_id",
-        old_value: existing.linked_model_inventory_id?.toString() || null,
-        new_value: null,
-        performed_by: req.userId!,
-      },
-      req.organizationId!,
-    );
-
-    logStructured("successful", "model unlinked from agent", functionName, fileName);
-    return res.status(200).json(STATUS_CODE[200](primitive));
-  } catch (error) {
-    logStructured("error", "failed to unlink model from agent", functionName, fileName);
-    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
-  }
-}
-
-/**
- * Link agent primitive to a use case. Unlike the edit endpoint this works for
- * synced agents too, the same way the model link does.
- */
-export async function linkUseCaseToAgent(req: Request, res: Response) {
-  const functionName = "linkUseCaseToAgent";
-  logStructured("processing", "linking use case to agent", functionName, fileName);
-
-  try {
-    const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-    if (isNaN(id)) {
-      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid agent primitive ID")));
-    }
-
-    if (req.body.project_id == null || req.body.project_id === "") {
-      return res.status(400).json(STATUS_CODE[400](req.t!("project_id is required")));
-    }
-    const project_id = parseOwnerId(req.body.project_id);
-    if (project_id === null) {
-      return res.status(400).json(STATUS_CODE[400](req.t!("Linked use case must be a valid ID")));
-    }
-
-    const existing = await getAgentPrimitiveByIdQuery(id, req.organizationId!);
-    if (!existing) {
-      return res.status(404).json(STATUS_CODE[404](req.t!("Agent primitive not found")));
-    }
-    // Same check as the add/edit drawer: only a use case of this organization.
-    if (!(await useCaseInOrganizationQuery(project_id, req.organizationId!))) {
-      return res.status(400).json(STATUS_CODE[400](req.t!(LINKED_USE_CASE_NOT_FOUND)));
-    }
-
+    const transaction = await sequelize.transaction();
     let primitive;
     try {
-      primitive = await setLinkedUseCaseQuery(id, project_id, req.organizationId!);
+      const locked = await lockAgentPrimitiveQuery(id, req.organizationId!, transaction);
+      if (!locked) {
+        await transaction.rollback();
+        return res.status(404).json(STATUS_CODE[404](req.t!("Agent primitive not found")));
+      }
+      const current = locked[spec.column];
+
+      if (current === target) {
+        // Nothing to change, so nothing to audit.
+        await transaction.commit();
+        primitive = await getAgentPrimitiveByIdQuery(id, req.organizationId!);
+        return res.status(200).json(STATUS_CODE[200](primitive));
+      }
+
+      if (
+        target !== null &&
+        !(await spec.inOrganization(target, req.organizationId!, transaction))
+      ) {
+        await transaction.rollback();
+        return res.status(400).json(STATUS_CODE[400](req.t!(spec.notFoundMessage)));
+      }
+
+      primitive = await setAgentLinkQuery(
+        id,
+        spec.column,
+        target,
+        req.organizationId!,
+        transaction,
+      );
+
+      await createAuditLogQuery(
+        {
+          agent_primitive_id: id,
+          action: unlink ? spec.unlinkedAction : spec.linkedAction,
+          field_changed: spec.column,
+          old_value: current?.toString() ?? null,
+          new_value: target?.toString() ?? null,
+          performed_by: req.userId!,
+        },
+        req.organizationId!,
+        transaction,
+      );
+
+      await transaction.commit();
     } catch (error) {
-      // The use case was deleted between the check and the write.
-      if (isLinkedUseCaseForeignKeyViolation(error)) {
-        return res.status(400).json(STATUS_CODE[400](req.t!(LINKED_USE_CASE_NOT_FOUND)));
+      await transaction.rollback();
+      // The model or use case was deleted between the check and the write.
+      if (isForeignKeyViolation(error, "agent_primitives", spec.column)) {
+        return res.status(400).json(STATUS_CODE[400](req.t!(spec.notFoundMessage)));
       }
       throw error;
     }
 
-    await createAuditLogQuery(
-      {
-        agent_primitive_id: id,
-        action: "use_case_linked",
-        field_changed: "linked_project_id",
-        old_value: existing.linked_project_id?.toString() || null,
-        new_value: project_id.toString(),
-        performed_by: req.userId!,
-      },
-      req.organizationId!,
-    );
-
-    logStructured("successful", "use case linked to agent", functionName, fileName);
+    logStructured("successful", `${spec.label} ${verb}ed for agent`, functionName, fileName);
     return res.status(200).json(STATUS_CODE[200](primitive));
   } catch (error) {
-    logStructured("error", "failed to link use case to agent", functionName, fileName);
+    logStructured("error", `failed to ${verb} ${spec.label} for agent`, functionName, fileName);
     return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }
 
-/**
- * Unlink use case from agent primitive
- */
-export async function unlinkUseCaseFromAgent(req: Request, res: Response) {
-  const functionName = "unlinkUseCaseFromAgent";
-  logStructured("processing", "unlinking use case from agent", functionName, fileName);
+/** Link agent primitive to a model inventory item */
+export const linkModelToAgent = (req: Request, res: Response) =>
+  applyAgentLink(req, res, MODEL_LINK, false);
 
-  try {
-    const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-    if (isNaN(id)) {
-      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid agent primitive ID")));
-    }
+/** Unlink model from agent primitive */
+export const unlinkModelFromAgent = (req: Request, res: Response) =>
+  applyAgentLink(req, res, MODEL_LINK, true);
 
-    const existing = await getAgentPrimitiveByIdQuery(id, req.organizationId!);
-    if (!existing) {
-      return res.status(404).json(STATUS_CODE[404](req.t!("Agent primitive not found")));
-    }
+/** Link agent primitive to a use case */
+export const linkUseCaseToAgent = (req: Request, res: Response) =>
+  applyAgentLink(req, res, USE_CASE_LINK, false);
 
-    const primitive = await setLinkedUseCaseQuery(id, null, req.organizationId!);
-
-    await createAuditLogQuery(
-      {
-        agent_primitive_id: id,
-        action: "use_case_unlinked",
-        field_changed: "linked_project_id",
-        old_value: existing.linked_project_id?.toString() || null,
-        new_value: null,
-        performed_by: req.userId!,
-      },
-      req.organizationId!,
-    );
-
-    logStructured("successful", "use case unlinked from agent", functionName, fileName);
-    return res.status(200).json(STATUS_CODE[200](primitive));
-  } catch (error) {
-    logStructured("error", "failed to unlink use case from agent", functionName, fileName);
-    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
-  }
-}
+/** Unlink use case from agent primitive */
+export const unlinkUseCaseFromAgent = (req: Request, res: Response) =>
+  applyAgentLink(req, res, USE_CASE_LINK, true);
 
 /**
  * Get audit logs for an agent primitive

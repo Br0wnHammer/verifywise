@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Drawer, Stack, Typography, Divider, IconButton } from "@mui/material";
 import { X } from "lucide-react";
 import AutoCompleteField from "../../Inputs/Autocomplete";
@@ -6,18 +6,14 @@ import { CustomizableButton } from "../../button/customizable-button";
 import Alert from "../../Alert";
 import { apiServices } from "../../../../infrastructure/api/networkServices";
 import { getClientErrorReason } from "../../../../application/utils/apiErrorReason";
-import { useProjects } from "../../../../application/hooks/useProjects";
-import { useModelInventories } from "../../../../application/hooks/useModelInventories";
-import { formatModelLabel } from "../../../pages/AgentDiscovery/agentLabels";
+import {
+  AgentLinkOption,
+  useAgentLinkOptions,
+} from "../../../pages/AgentDiscovery/useAgentLinkOptions";
 import { palette } from "../../../themes/palette";
 
 /** What the drawer links the agent to. */
 export type AgentLinkKind = "model" | "useCase";
-
-interface PickerOption {
-  id: number;
-  name: string;
-}
 
 const COPY: Record<
   AgentLinkKind,
@@ -27,6 +23,7 @@ const COPY: Record<
     label: string;
     placeholder: string;
     empty: string;
+    loadFailed: string;
     submit: string;
     submitting: string;
     path: string;
@@ -39,6 +36,7 @@ const COPY: Record<
     label: "Model",
     placeholder: "Select a model",
     empty: "No models",
+    loadFailed: "Could not load models",
     submit: "Link model",
     submitting: "Linking...",
     path: "link-model",
@@ -50,6 +48,7 @@ const COPY: Record<
     label: "Use case",
     placeholder: "Select a use case",
     empty: "No use cases",
+    loadFailed: "Could not load use cases",
     submit: "Link use case",
     submitting: "Linking...",
     path: "link-use-case",
@@ -75,25 +74,18 @@ const LinkAgentModal: React.FC<LinkAgentModalProps> = ({
   onSuccess,
 }) => {
   const copy = COPY[kind];
-  const [selected, setSelected] = useState<PickerOption | null>(null);
+  const [selected, setSelected] = useState<AgentLinkOption | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Both lists are cached; only the one this drawer needs is fetched, and only
   // while it is open.
-  const { approvedProjects } = useProjects({ enabled: isOpen && kind === "useCase" });
-  const { data: inventory } = useModelInventories({ enabled: isOpen && kind === "model" });
-
-  const options = useMemo<PickerOption[]>(() => {
-    if (kind === "useCase") {
-      return approvedProjects
-        .filter((p) => !p.is_organizational)
-        .map((p) => ({ id: Number(p.id), name: p.project_title }));
-    }
-    return (inventory ?? [])
-      .filter((m): m is typeof m & { id: number } => m.id != null)
-      .map((m) => ({ id: Number(m.id), name: formatModelLabel(m) }));
-  }, [kind, approvedProjects, inventory]);
+  const links = useAgentLinkOptions({
+    useCases: isOpen && kind === "useCase",
+    models: isOpen && kind === "model",
+  });
+  const options = kind === "useCase" ? links.useCases : links.models;
+  const loadFailed = kind === "useCase" ? links.useCasesFailed : links.modelsFailed;
 
   const handleClose = () => {
     setIsOpen(false);
@@ -151,7 +143,7 @@ const LinkAgentModal: React.FC<LinkAgentModalProps> = ({
           {copy.intro}
         </Typography>
 
-        <AutoCompleteField<PickerOption>
+        <AutoCompleteField<AgentLinkOption>
           id={kind === "model" ? "link-model-select" : "link-use-case-select"}
           sx={singlePickerSx}
           label={copy.label}
@@ -161,7 +153,7 @@ const LinkAgentModal: React.FC<LinkAgentModalProps> = ({
           options={options}
           getOptionLabel={(o) => o.name}
           isOptionEqualToValue={(a, b) => a.id === b.id}
-          noOptionsText={copy.empty}
+          noOptionsText={loadFailed ? copy.loadFailed : copy.empty}
           onChange={(_e, option) => setSelected(option ?? null)}
         />
 

@@ -438,48 +438,33 @@ export const updateReviewStatusQuery = async (
   return (results as AgentPrimitive[])[0] || null;
 };
 
-export const linkModelQuery = async (
-  id: number,
-  modelId: number,
-  organizationId: number,
-): Promise<AgentPrimitive | null> => {
-  const [results] = await sequelize.query(
-    `UPDATE agent_primitives
-     SET linked_model_inventory_id = :modelId, updated_at = NOW()
+/** The agent_primitives columns that link an agent to another record. */
+export type AgentLinkColumn = "linked_model_inventory_id" | "linked_project_id";
+
+// One fixed statement per column, so no identifier is ever interpolated.
+const SET_AGENT_LINK_SQL: Record<AgentLinkColumn, string> = {
+  linked_model_inventory_id: `UPDATE agent_primitives
+     SET linked_model_inventory_id = :value, updated_at = NOW()
      WHERE organization_id = :organizationId AND id = :id
      RETURNING *`,
-    { replacements: { organizationId, id, modelId } },
-  );
-  return (results as AgentPrimitive[])[0] || null;
+  linked_project_id: `UPDATE agent_primitives
+     SET linked_project_id = :value, updated_at = NOW()
+     WHERE organization_id = :organizationId AND id = :id
+     RETURNING *`,
 };
 
-export const unlinkModelQuery = async (
+/** Set one link column (a model or a use case), or clear it when `value` is null. */
+export const setAgentLinkQuery = async (
   id: number,
+  column: AgentLinkColumn,
+  value: number | null,
   organizationId: number,
+  transaction?: Transaction,
 ): Promise<AgentPrimitive | null> => {
-  const [results] = await sequelize.query(
-    `UPDATE agent_primitives
-     SET linked_model_inventory_id = NULL, updated_at = NOW()
-     WHERE organization_id = :organizationId AND id = :id
-     RETURNING *`,
-    { replacements: { organizationId, id } },
-  );
-  return (results as AgentPrimitive[])[0] || null;
-};
-
-/** Link the agent to a use case, or remove the link when `projectId` is null. */
-export const setLinkedUseCaseQuery = async (
-  id: number,
-  projectId: number | null,
-  organizationId: number,
-): Promise<AgentPrimitive | null> => {
-  const [results] = await sequelize.query(
-    `UPDATE agent_primitives
-     SET linked_project_id = :projectId, updated_at = NOW()
-     WHERE organization_id = :organizationId AND id = :id
-     RETURNING *`,
-    { replacements: { organizationId, id, projectId } },
-  );
+  const [results] = await sequelize.query(SET_AGENT_LINK_SQL[column], {
+    replacements: { organizationId, id, value },
+    transaction,
+  });
   return (results as AgentPrimitive[])[0] || null;
 };
 

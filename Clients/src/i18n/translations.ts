@@ -5386,6 +5386,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No use cases": "Keine Anwendungsfälle",
     "No models in the inventory": "Keine Modelle im Inventar",
     "Could not load models": "Modelle konnten nicht geladen werden",
+    "Could not load use cases": "Anwendungsfälle konnten nicht geladen werden",
     "Description must be at most {max} characters.":
       "Die Beschreibung darf höchstens {max} Zeichen lang sein.",
     "All users selected": "Alle Benutzer ausgewählt",
@@ -15914,6 +15915,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No use cases": "Aucun cas d'usage",
     "No models in the inventory": "Aucun modèle dans l'inventaire",
     "Could not load models": "Impossible de charger les modèles",
+    "Could not load use cases": "Impossible de charger les cas d'usage",
     "Description must be at most {max} characters.":
       "La description ne doit pas dépasser {max} caractères.",
     "All users selected": "Tous les utilisateurs sont sélectionnés",
@@ -24766,6 +24768,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No use cases": "No hay casos de uso",
     "No models in the inventory": "No hay modelos en el inventario",
     "Could not load models": "No se pudieron cargar los modelos",
+    "Could not load use cases": "No se pudieron cargar los casos de uso",
     "Description must be at most {max} characters.":
       "La descripción debe tener como máximo {max} caracteres.",
     "All users selected": "Todos los usuarios seleccionados",
