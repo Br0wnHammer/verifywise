@@ -10,10 +10,12 @@ import { appendToAuditLedger } from "../../utils/auditLedger.utils";
  * _item_people / _item_approvals / _change_history) are declared in the
  * extensions migration.
  *
- * Note on file cleanup: on phase/item delete the extension unlinks and
- * hard-deletes any `files` rows attached via item_files — otherwise the
- * cascade would orphan the file blobs. Detaching one file from one item
- * (`detachFile`) only removes the link; the file stays in the File Manager.
+ * Note on files: the extension never deletes a `files` row. An attached file
+ * may be evidence or a policy document that other records point to, so
+ * detaching it (`detachFile`) or deleting its phase/item only removes the
+ * item_files link (phase/item delete via ON DELETE CASCADE through
+ * model_lifecycle_values). The file stays in the File Manager, which owns
+ * deleting it.
  */
 
 // ---------------------------------------------------------------------------
@@ -119,15 +121,6 @@ export async function updatePhase(
 }
 
 export async function deletePhase(organizationId: number, phaseId: number): Promise<void> {
-  await unlinkAndDeleteFiles(organizationId, {
-    linkedFilesQuery: `
-      SELECT DISTINCT lf.file_id
-        FROM model_lifecycle_item_files lf
-        JOIN model_lifecycle_values v ON lf.value_id = v.id
-        JOIN model_lifecycle_items i  ON v.item_id  = i.id
-       WHERE i.organization_id = :organizationId AND i.phase_id = :phaseId;`,
-    replacements: { organizationId, phaseId },
-  });
   await sequelize.query(
     `DELETE FROM model_lifecycle_phases
       WHERE organization_id = :organizationId AND id = :phaseId;`,
@@ -371,14 +364,6 @@ export async function updateItem(
 }
 
 export async function deleteItem(organizationId: number, itemId: number): Promise<void> {
-  await unlinkAndDeleteFiles(organizationId, {
-    linkedFilesQuery: `
-      SELECT DISTINCT lf.file_id
-        FROM model_lifecycle_item_files lf
-        JOIN model_lifecycle_values v ON lf.value_id = v.id
-       WHERE v.organization_id = :organizationId AND v.item_id = :itemId;`,
-    replacements: { organizationId, itemId },
-  });
   await sequelize.query(
     `DELETE FROM model_lifecycle_items
       WHERE organization_id = :organizationId AND id = :itemId;`,
@@ -789,24 +774,4 @@ export async function updateApprovalStatus(
     },
   )) as unknown as [any[], number];
   return (rows[0] as any)?.[0] ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// Shared helper — unlink and hard-delete files attached under a subtree
-// ---------------------------------------------------------------------------
-
-async function unlinkAndDeleteFiles(
-  organizationId: number,
-  params: { linkedFilesQuery: string; replacements: Record<string, unknown> },
-): Promise<void> {
-  const linked = (await sequelize.query(params.linkedFilesQuery, {
-    replacements: params.replacements,
-    type: QueryTypes.SELECT,
-  })) as Array<{ file_id: number }>;
-  if (linked.length === 0) return;
-  const fileIds = linked.map((r) => r.file_id);
-  await sequelize.query(
-    `DELETE FROM files WHERE organization_id = :organizationId AND id IN (:fileIds);`,
-    { replacements: { organizationId, fileIds } },
-  );
 }

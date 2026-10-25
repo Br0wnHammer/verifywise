@@ -452,6 +452,7 @@
   "No annex controls found": "Aucun contrôle d'annexe trouvé",
   "No fields to update": "Aucun champ à mettre à jour",
   "No file provided": "Aucun fichier fourni",
+  "Invalid file source": "Source de fichier invalide",
   "No file provided for update": "Aucun fichier fourni pour la mise à jour",
   "No file uploaded": "Aucun fichier téléversé",
   "No GitHub token found": "Aucun jeton GitHub trouvé",

@@ -291,6 +291,7 @@ function DocumentsFieldRenderer({
 }) {
   const files = Array.isArray(value?.files) ? value.files : [];
   const [uploading, setUploading] = useState(false);
+  const [removeFailed, setRemoveFailed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = useCallback(
@@ -328,6 +329,7 @@ function DocumentsFieldRenderer({
 
   const handleRemoveFile = useCallback(
     async (fileId: number) => {
+      setRemoveFailed(false);
       try {
         await apiServices.delete(
           `/extensions/model-lifecycle/models/${modelId}/lifecycle/items/${item.id}/files/${fileId}`,
@@ -336,9 +338,11 @@ function DocumentsFieldRenderer({
       } catch (error) {
         // 404: the link is already gone (removed in another tab, or a double
         // click), so refresh to drop the stale row. Anything else: keep the
-        // row so the user can retry.
+        // row and say so, so the user can retry.
         if ((error as CustomException | undefined)?.status === 404) {
           onValueChanged?.();
+        } else {
+          setRemoveFailed(true);
         }
       }
     },
@@ -384,6 +388,18 @@ function DocumentsFieldRenderer({
             </Stack>
           ))}
         </Stack>
+      )}
+      {removeFailed && (
+        <Typography
+          role="alert"
+          sx={{
+            fontFamily: VW_TYPOGRAPHY.fontFamily,
+            fontSize: "13px",
+            color: VW_COLORS.error,
+          }}
+        >
+          Could not remove the file. Try again.
+        </Typography>
       )}
       <Box
         sx={{

@@ -16,7 +16,7 @@ jest.mock("../../../utils/auditLedger.utils", () => ({
 
 import { sequelize } from "../../../database/db";
 import { appendToAuditLedger } from "../../../utils/auditLedger.utils";
-import { detachFile, updateItem } from "../modelLifecycle.service";
+import { deleteItem, deletePhase, detachFile, updateItem } from "../modelLifecycle.service";
 
 const mockQuery = sequelize.query as jest.Mock;
 
@@ -172,6 +172,39 @@ describe("detachFile", () => {
       fileId: 99,
     });
     // The file may be linked elsewhere; the File Manager owns its deletion.
+    expect(fileDeletes()).toHaveLength(0);
+  });
+});
+
+// Deleting a phase or item used to hard-delete every `files` row linked under
+// it, including shared evidence or policy files other records still use.
+describe("deletePhase / deleteItem", () => {
+  beforeEach(() => {
+    mockQuery.mockReset().mockResolvedValue([]);
+  });
+
+  const fileDeletes = () =>
+    mockQuery.mock.calls.filter((call) => /DELETE\s+FROM\s+files\b/i.test(String(call[0])));
+
+  it("deletes only the phase, scoped to the organization, and never a file", async () => {
+    await deletePhase(1, 3);
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, options] = mockQuery.mock.calls[0];
+    expect(String(sql)).toMatch(/DELETE FROM model_lifecycle_phases/);
+    expect(String(sql)).toMatch(/organization_id = :organizationId/);
+    expect(options.replacements).toEqual({ organizationId: 1, phaseId: 3 });
+    expect(fileDeletes()).toHaveLength(0);
+  });
+
+  it("deletes only the item, scoped to the organization, and never a file", async () => {
+    await deleteItem(1, 5);
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, options] = mockQuery.mock.calls[0];
+    expect(String(sql)).toMatch(/DELETE FROM model_lifecycle_items/);
+    expect(String(sql)).toMatch(/organization_id = :organizationId/);
+    expect(options.replacements).toEqual({ organizationId: 1, itemId: 5 });
     expect(fileDeletes()).toHaveLength(0);
   });
 });

@@ -1,4 +1,4 @@
-import { check } from "express-validator";
+import { check, param } from "express-validator";
 import { handleValidationErrors } from "../../middleware/validate.middleware";
 
 /**
@@ -14,6 +14,13 @@ export const validateId = (paramName = "id") => [
   check(paramName).isInt(ID_RANGE).withMessage(`${paramName} must be a positive integer`),
   handleValidationErrors,
 ];
+
+/**
+ * The same bound on a path parameter only, as a bare chain for callers that
+ * run it themselves (router.param).
+ */
+export const idParamCheck = (paramName = "id") =>
+  param(paramName).isInt(ID_RANGE).withMessage(`${paramName} must be a positive integer`);
 
 /**
  * Same check, but the field may be absent entirely — for an id that only

@@ -57,12 +57,23 @@ describe("LifecycleItemField documents: remove file", () => {
     expect(onValueChanged).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the row for any other error so the user can retry", async () => {
+  it("keeps the row and shows an error for any other failure so the user can retry", async () => {
     api.delete.mockRejectedValueOnce(new CustomException("Internal server error", 500, {}));
     const onValueChanged = vi.fn();
 
     await removeFile(onValueChanged);
 
     expect(onValueChanged).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not remove the file. Try again.",
+    );
+  });
+
+  it("shows no error after a successful detach", async () => {
+    api.delete.mockResolvedValueOnce({ status: 200 });
+
+    await removeFile(vi.fn());
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
