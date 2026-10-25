@@ -15101,10 +15101,10 @@ paths:
           description: 'File linked to the item'
         '400':
           description: 'fileId (body) or a path id is not a positive integer up to 2147483647'
-        '404':
-          description: 'File not found in this organization'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'File not found in this organization'
         '500':
           description: 'Internal server error'
       tags:

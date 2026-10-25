@@ -4317,8 +4317,8 @@ export const extensionEndpoints: Endpoint[] = [
     responses: [
       { status: 201, description: "File linked to the item" },
       { status: 400, description: "fileId (body) or a path id is not a positive integer up to 2147483647" },
-      { status: 404, description: "File not found in this organization" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
+      { status: 404, description: "File not found in this organization" },
       { status: 500, description: "Internal server error" },
     ],
     tag: "Extensions",
