@@ -23953,6 +23953,34 @@ paths:
         '500':
           description: 'Internal server error'
       description: 'Requires role: Admin'
+  '/agent-primitives/{id}/link-use-case':
+    patch:
+      summary: 'Link Use Case To Agent'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Agent Discovery'
+      operationId: linkUseCaseToAgent
+      security:
+        -
+          bearerAuth: []
+  '/agent-primitives/{id}/unlink-use-case':
+    patch:
+      summary: 'Unlink Use Case From Agent'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Agent Discovery'
+      operationId: unlinkUseCaseFromAgent
+      security:
+        -
+          bearerAuth: []
   '/agent-primitives/{id}/audit-logs':
     get:
       tags:

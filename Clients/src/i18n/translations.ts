@@ -947,7 +947,7 @@ export const translations: Record<string, Record<string, string>> = {
       "Keine Agenten gefunden. Stellen Sie sicher, dass die Erweiterung Azure AI Foundry aktiviert und konfiguriert ist.",
     "Sync failed. Check that the Azure AI Foundry extension is enabled and configured.":
       "Synchronisierung fehlgeschlagen. Prüfen Sie, ob die Erweiterung Azure AI Foundry aktiviert und konfiguriert ist.",
-    "Agent review status updated.": "Prüfstatus des Agenten aktualisiert.",
+    "Agent updated.": "Agent aktualisiert.",
     "Agent updated successfully.": "Agent erfolgreich aktualisiert.",
     "Agent added successfully.": "Agent erfolgreich hinzugefügt.",
     "Agent deleted successfully.": "Agent erfolgreich gelöscht.",
@@ -2238,6 +2238,11 @@ export const translations: Record<string, Record<string, string>> = {
     "Link tasks to controls or risks": "Aufgaben mit Kontrollen oder Risiken verknüpfen",
     "Link to governance artifacts": "Mit Governance-Artefakten verknüpfen",
     "Link to model": "Mit Modell verknüpfen",
+    "Link to use case": "Mit Anwendungsfall verknüpfen",
+    "Link use case": "Anwendungsfall verknüpfen",
+    "Select the use case this agent belongs to.":
+      "Wählen Sie den Anwendungsfall, zu dem dieser Agent gehört.",
+    "Unlink use case": "Anwendungsfallverknüpfung aufheben",
     "Lock": "Sperren",
     "Login": "Anmelden",
     "Logout": "Abmelden",
@@ -5381,6 +5386,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No use cases": "Keine Anwendungsfälle",
     "No models in the inventory": "Keine Modelle im Inventar",
     "Could not load models": "Modelle konnten nicht geladen werden",
+    "Could not load use cases": "Anwendungsfälle konnten nicht geladen werden",
     "Description must be at most {max} characters.":
       "Die Beschreibung darf höchstens {max} Zeichen lang sein.",
     "All users selected": "Alle Benutzer ausgewählt",
@@ -11521,7 +11527,7 @@ export const translations: Record<string, Record<string, string>> = {
       "Aucun agent trouvé. Vérifiez que l'extension Azure AI Foundry est activée et configurée.",
     "Sync failed. Check that the Azure AI Foundry extension is enabled and configured.":
       "Échec de la synchronisation. Vérifiez que l'extension Azure AI Foundry est activée et configurée.",
-    "Agent review status updated.": "Statut de relecture de l'agent mis à jour.",
+    "Agent updated.": "Agent mis à jour.",
     "Agent updated successfully.": "Agent mis à jour avec succès.",
     "Agent added successfully.": "Agent ajouté avec succès.",
     "Agent deleted successfully.": "Agent supprimé avec succès.",
@@ -12945,6 +12951,11 @@ export const translations: Record<string, Record<string, string>> = {
     "Link tasks to controls or risks": "Relier les tâches aux contrôles ou risques",
     "Link to governance artifacts": "Relier aux artefacts de gouvernance",
     "Link to model": "Relier au modèle",
+    "Link to use case": "Relier au cas d'usage",
+    "Link use case": "Relier le cas d'usage",
+    "Select the use case this agent belongs to.":
+      "Sélectionnez le cas d'usage auquel cet agent appartient.",
+    "Unlink use case": "Dissocier le cas d'usage",
     "Make your first request": "Envoyez votre première requête",
     "Mark all as read": "Tout marquer comme lu",
     "Move down": "Déplacer vers le bas",
@@ -15904,6 +15915,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No use cases": "Aucun cas d'usage",
     "No models in the inventory": "Aucun modèle dans l'inventaire",
     "Could not load models": "Impossible de charger les modèles",
+    "Could not load use cases": "Impossible de charger les cas d'usage",
     "Description must be at most {max} characters.":
       "La description ne doit pas dépasser {max} caractères.",
     "All users selected": "Tous les utilisateurs sont sélectionnés",
@@ -21820,7 +21832,7 @@ export const translations: Record<string, Record<string, string>> = {
       "No se encontraron agentes. Asegúrese de que la extensión Azure AI Foundry esté habilitada y configurada.",
     "Sync failed. Check that the Azure AI Foundry extension is enabled and configured.":
       "La sincronización falló. Compruebe que la extensión Azure AI Foundry esté habilitada y configurada.",
-    "Agent review status updated.": "Estado de revisión del agente actualizado.",
+    "Agent updated.": "Agente actualizado.",
     "Agent updated successfully.": "Agente actualizado correctamente.",
     "Agent added successfully.": "Agente añadido correctamente.",
     "Agent deleted successfully.": "Agente eliminado correctamente.",
@@ -22883,6 +22895,11 @@ export const translations: Record<string, Record<string, string>> = {
     "Link tasks to controls or risks": "Vincular tareas a controles o riesgos",
     "Link to governance artifacts": "Vincular a artefactos de gobernanza",
     "Link to model": "Vincular al modelo",
+    "Link to use case": "Vincular al caso de uso",
+    "Link use case": "Vincular caso de uso",
+    "Select the use case this agent belongs to.":
+      "Seleccione el caso de uso al que pertenece este agente.",
+    "Unlink use case": "Desvincular caso de uso",
     "Lock": "Bloquear",
     "Login": "Iniciar sesión",
     "Logout": "Cerrar sesión",
@@ -24751,6 +24768,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No use cases": "No hay casos de uso",
     "No models in the inventory": "No hay modelos en el inventario",
     "Could not load models": "No se pudieron cargar los modelos",
+    "Could not load use cases": "No se pudieron cargar los casos de uso",
     "Description must be at most {max} characters.":
       "La descripción debe tener como máximo {max} caracteres.",
     "All users selected": "Todos los usuarios seleccionados",

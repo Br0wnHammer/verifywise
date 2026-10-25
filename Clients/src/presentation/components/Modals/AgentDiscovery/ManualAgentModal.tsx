@@ -10,13 +10,11 @@ import { apiServices } from "../../../../infrastructure/api/networkServices";
 import { getClientErrorReason } from "../../../../application/utils/apiErrorReason";
 import { useUserNames } from "../../../pages/AgentDiscovery/useUserNames";
 import {
-  formatModelLabel,
   formatUseCaseLabel,
   getAgentOwnerIds,
   isUserIdLike,
 } from "../../../pages/AgentDiscovery/agentLabels";
-import { useProjects } from "../../../../application/hooks/useProjects";
-import { useModelInventories } from "../../../../application/hooks/useModelInventories";
+import { useAgentLinkOptions } from "../../../pages/AgentDiscovery/useAgentLinkOptions";
 import { useTranslation } from "../../../../application/hooks/useTranslation";
 import { fill } from "../../../../i18n/fill";
 import { AgentPrimitiveRow } from "../../../../domain/interfaces/i.agentDiscovery";
@@ -109,27 +107,20 @@ const ManualAgentModal: React.FC<ManualAgentModalProps> = ({
   const [linkedModelId, setLinkedModelId] = useState<number | null>(null);
   const [linkedProjectId, setLinkedProjectId] = useState<number | null>(null);
   // Both lists are cached and fetched only while the drawer is open.
-  const { approvedProjects } = useProjects({ enabled: isOpen });
-  const { data: inventory, isError: modelsFailed } = useModelInventories({ enabled: isOpen });
-  const models = useMemo<PickerOption[]>(
-    () =>
-      (inventory ?? [])
-        .filter((m): m is typeof m & { id: number } => m.id != null)
-        .map((m) => ({ id: Number(m.id), name: formatModelLabel(m) })),
-    [inventory],
-  );
+  const {
+    useCases: useCaseChoices,
+    models,
+    modelsFailed,
+  } = useAgentLinkOptions({ useCases: isOpen, models: isOpen });
   const useCases = useMemo<PickerOption[]>(() => {
-    const options = approvedProjects
-      .filter((p) => !p.is_organizational)
-      .map((p) => ({ id: Number(p.id), name: p.project_title }));
     // Keep the current link selectable even when it is not in the list (e.g. a
     // use case awaiting approval), so opening the form never drops it.
     const current = agent?.linked_project_id;
-    if (agent && current && !options.some((o) => o.id === current)) {
-      options.push({ id: current, name: formatUseCaseLabel(agent) });
+    if (agent && current && !useCaseChoices.some((o) => o.id === current)) {
+      return [...useCaseChoices, { id: current, name: formatUseCaseLabel(agent) }];
     }
-    return options;
-  }, [approvedProjects, agent]);
+    return useCaseChoices;
+  }, [useCaseChoices, agent]);
   const modelOptions = useMemo<PickerOption[]>(() => {
     const current = agent?.linked_model_inventory_id;
     if (current && !models.some((m) => m.id === current)) {

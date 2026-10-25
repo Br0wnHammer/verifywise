@@ -9,8 +9,6 @@ jest.mock("../../utils/agentDiscovery.utils", () => ({
   updateAgentPrimitiveQuery: jest.fn(),
   deleteAgentPrimitiveByIdQuery: jest.fn(),
   updateReviewStatusQuery: jest.fn(),
-  linkModelQuery: jest.fn(),
-  unlinkModelQuery: jest.fn(),
   getAgentStatsQuery: jest.fn(),
   getSyncLogsQuery: jest.fn(),
   getLatestSyncStatusQuery: jest.fn(),
@@ -22,6 +20,7 @@ jest.mock("../../utils/agentDiscovery.utils", () => ({
   lockAgentPrimitiveQuery: jest.fn(),
   modelInOrganizationQuery: jest.fn(),
   useCaseInOrganizationQuery: jest.fn(),
+  setAgentLinkQuery: jest.fn(),
 }));
 
 jest.mock("../../services/agentDiscovery/agentDiscoverySync.service", () => ({
@@ -60,6 +59,9 @@ import {
   getAgentPrimitiveById,
   getAllAgentPrimitives,
   linkModelToAgent,
+  linkUseCaseToAgent,
+  unlinkModelFromAgent,
+  unlinkUseCaseFromAgent,
   updateAgentPrimitive,
 } from "../agentDiscovery.ctrl";
 import {
@@ -72,9 +74,9 @@ import {
   getAgentOwnersQuery,
   getUserIdsInOrganizationQuery,
   lockAgentPrimitiveQuery,
-  linkModelQuery,
   modelInOrganizationQuery,
   useCaseInOrganizationQuery,
+  setAgentLinkQuery,
 } from "../../utils/agentDiscovery.utils";
 
 const mockGetAll = getAllAgentPrimitivesQuery as jest.MockedFunction<any>;
@@ -88,7 +90,7 @@ const mockUsersInOrg = getUserIdsInOrganizationQuery as jest.MockedFunction<any>
 const mockLock = lockAgentPrimitiveQuery as jest.MockedFunction<any>;
 const mockModelInOrg = modelInOrganizationQuery as jest.MockedFunction<any>;
 const mockUseCaseInOrg = useCaseInOrganizationQuery as jest.MockedFunction<any>;
-const mockLinkModel = linkModelQuery as jest.MockedFunction<any>;
+const mockSetLink = setAgentLinkQuery as jest.MockedFunction<any>;
 
 /** The organization's models and use cases, for the link checks. */
 const ORG_MODELS = [7, 8];
@@ -958,30 +960,185 @@ describe("agent description and links", () => {
   });
 });
 
-describe("linkModelToAgent", () => {
-  const linkReq = (model_id: unknown) =>
-    createReq({ params: { id: "10" } as any, body: { model_id } });
+// Shared by the model and use case link endpoints, which synced agents use
+// because they cannot open the edit drawer.
+const tx = expect.objectContaining({ commit: expect.any(Function) });
+const fkError = (column: string) =>
+  Object.assign(new Error("fk"), {
+    parent: {
+      code: "23503",
+      table: "agent_primitives",
+      constraint: `agent_primitives_${column}_fkey`,
+    },
+  });
 
-  it("links a model of the organization", async () => {
-    givenAgent();
-    mockLinkModel.mockResolvedValue({ id: 10, linked_model_inventory_id: 7 });
+describe.each([
+  {
+    kind: "model",
+    link: linkModelToAgent,
+    unlink: unlinkModelFromAgent,
+    bodyKey: "model_id",
+    column: "linked_model_inventory_id",
+    inOrg: () => mockModelInOrg,
+    validId: 7,
+    otherValidId: 8,
+    required: "model_id is required",
+    invalid: "Linked model must be a valid ID",
+    notFound: "Linked model was not found in your model inventory",
+    linkedAction: "model_linked",
+    unlinkedAction: "model_unlinked",
+  },
+  {
+    kind: "use case",
+    link: linkUseCaseToAgent,
+    unlink: unlinkUseCaseFromAgent,
+    bodyKey: "project_id",
+    column: "linked_project_id",
+    inOrg: () => mockUseCaseInOrg,
+    validId: 5,
+    otherValidId: 6,
+    required: "project_id is required",
+    invalid: "Linked use case must be a valid ID",
+    notFound: "Linked use case was not found",
+    linkedAction: "use_case_linked",
+    unlinkedAction: "use_case_unlinked",
+  },
+])("$kind link endpoints", (c) => {
+  const linkReq = (value: unknown) =>
+    createReq({ params: { id: "10" } as any, body: { [c.bodyKey]: value } });
+  const unlinkReq = () => createReq({ params: { id: "10" } as any });
+  const synced = (linked: number | null = null) =>
+    givenAgent({ is_manual: false, [c.column]: linked });
+
+  beforeEach(() => {
+    mockSetLink.mockImplementation(async (id: number, column: string, value: number | null) => ({
+      id,
+      [column]: value,
+    }));
+  });
+
+  it("links a synced agent inside one transaction and audits the change", async () => {
+    synced(null);
     const res = createRes();
-    await linkModelToAgent(linkReq("7"), res);
+    await c.link(linkReq(String(c.validId)), res);
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(mockModelInOrg).toHaveBeenCalledWith(7, ORG_ID);
-    expect(mockLinkModel).toHaveBeenCalledWith(10, 7, ORG_ID);
+    expect(mockLock).toHaveBeenCalledWith(10, ORG_ID, tx);
+    expect(c.inOrg()).toHaveBeenCalledWith(c.validId, ORG_ID, tx);
+    expect(mockSetLink).toHaveBeenCalledWith(10, c.column, c.validId, ORG_ID, tx);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent_primitive_id: 10,
+        action: c.linkedAction,
+        field_changed: c.column,
+        old_value: null,
+        new_value: String(c.validId),
+        performed_by: 99,
+      }),
+      ORG_ID,
+      tx,
+    );
+    expect(mockCommit).toHaveBeenCalled();
+  });
+
+  it("audits the locked old value when replacing a link", async () => {
+    synced(c.validId);
+    const res = createRes();
+    await c.link(linkReq(c.otherValidId), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ old_value: String(c.validId), new_value: String(c.otherValidId) }),
+      ORG_ID,
+      tx,
+    );
   });
 
   it.each([
-    ["a missing model id", undefined, "model_id is required"],
-    ["a malformed model id", "abc", "Linked model must be a valid ID"],
-    ["a model outside the organization", 500, "Linked model was not found in your model inventory"],
-  ])("rejects %s with 400", async (_label, modelId, message) => {
-    givenAgent();
+    ["a missing id", undefined, "required"],
+    ["a malformed id", "abc", "invalid"],
+    ["an oversized id", 2147483648, "invalid"],
+  ] as const)("rejects %s with 400 before opening a transaction", async (_l, value, key) => {
+    synced();
     const res = createRes();
-    await linkModelToAgent(linkReq(modelId), res);
+    await c.link(linkReq(value), res);
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: message }));
-    expect(mockLinkModel).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: c[key] }));
+    expect(mockLock).not.toHaveBeenCalled();
+    expect(mockSetLink).not.toHaveBeenCalled();
+  });
+
+  it("rejects a target outside the organization and rolls back", async () => {
+    synced();
+    const res = createRes();
+    await c.link(linkReq(500), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: c.notFound }));
+    expect(mockSetLink).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+    expect(mockRollback).toHaveBeenCalled();
+  });
+
+  it("answers 404 for an agent outside the organization", async () => {
+    mockLock.mockResolvedValue(null);
+    const res = createRes();
+    await c.link(linkReq(c.validId), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockSetLink).not.toHaveBeenCalled();
+    expect(mockRollback).toHaveBeenCalled();
+  });
+
+  it("maps a target deleted before the write (FK violation) to 400", async () => {
+    synced();
+    mockSetLink.mockRejectedValueOnce(fkError(c.column));
+    const res = createRes();
+    await c.link(linkReq(c.validId), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: c.notFound }));
+    expect(mockAudit).not.toHaveBeenCalled();
+    expect(mockRollback).toHaveBeenCalled();
+  });
+
+  it("rolls the link back when the audit entry cannot be written", async () => {
+    synced();
+    mockAudit.mockRejectedValueOnce(new Error("audit down"));
+    const res = createRes();
+    await c.link(linkReq(c.validId), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(mockRollback).toHaveBeenCalled();
+    expect(mockCommit).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing when the same link is set again", async () => {
+    synced(c.validId);
+    const res = createRes();
+    await c.link(linkReq(c.validId), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockSetLink).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it("clears the link and audits the old value", async () => {
+    synced(c.validId);
+    const res = createRes();
+    await c.unlink(unlinkReq(), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockSetLink).toHaveBeenCalledWith(10, c.column, null, ORG_ID, tx);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: c.unlinkedAction,
+        old_value: String(c.validId),
+        new_value: null,
+      }),
+      ORG_ID,
+      tx,
+    );
+  });
+
+  it("writes no audit entry when unlinking an agent that has no link", async () => {
+    synced(null);
+    const res = createRes();
+    await c.unlink(unlinkReq(), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockSetLink).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 });
