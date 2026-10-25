@@ -20,12 +20,17 @@ jest.mock("../modelLifecycle.service", () => ({
   deletePhase: jest.fn(),
   deleteItem: jest.fn(),
   removeApprover: jest.fn(),
+  createItem: jest.fn(),
+  updatePhase: jest.fn(),
+  removePerson: jest.fn(),
+  updateApprovalStatus: jest.fn(),
 }));
 
 import * as svc from "../modelLifecycle.service";
 import lifecycleRoutes from "../modelLifecycle.route";
 
 const app = express();
+app.use(express.json());
 app.use("/api/extensions/model-lifecycle", lifecycleRoutes);
 
 const detachPath = (id: string, itemId: string, fileId: string) =>
@@ -74,10 +79,51 @@ describe("id bounds on every lifecycle route", () => {
       `${base}/models/1/lifecycle/items/1/approvals/${tooBig}`,
       "removeApprover",
     ],
+    ["phase update", "put", `${base}/phases/${tooBig}`, "updatePhase"],
+    ["item create (phase id)", "post", `${base}/phases/${tooBig}/items`, "createItem"],
+    [
+      "person removal (user id)",
+      "delete",
+      `${base}/models/1/lifecycle/items/1/people/${tooBig}`,
+      "removePerson",
+    ],
+    [
+      "approval status (user id)",
+      "put",
+      `${base}/models/1/lifecycle/items/1/approvals/${tooBig}`,
+      "updateApprovalStatus",
+    ],
   ] as const)("answers 400 for %s and calls nothing", async (_label, method, path, fn) => {
     const res = await request(app)[method](path);
 
     expect(res.status).toBe(400);
     expect((svc as any)[fn]).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST .../lifecycle/items/:itemId/files body", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const attachPath = "/api/extensions/model-lifecycle/models/1/lifecycle/items/2/files";
+
+  it.each([
+    ["a missing file id", {}],
+    ["a non-numeric file id", { fileId: "abc" }],
+    ["a negative file id", { fileId: -1 }],
+    ["a file id beyond INTEGER", { fileId: 2147483648 }],
+  ])("answers 400 for %s and attaches nothing", async (_label, body) => {
+    const res = await request(app).post(attachPath).send(body);
+
+    expect(res.status).toBe(400);
+    expect(svc.attachFile).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 when the file is not in the organization", async () => {
+    (svc.attachFile as jest.Mock).mockResolvedValueOnce(null);
+
+    const res = await request(app).post(attachPath).send({ fileId: 99 });
+
+    expect(res.status).toBe(404);
+    expect(svc.attachFile).toHaveBeenCalledWith(42, 1, 2, 9, 99);
   });
 });

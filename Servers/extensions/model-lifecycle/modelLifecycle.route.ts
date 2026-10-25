@@ -1,7 +1,7 @@
 import express from "express";
 import authenticateJWT from "../../middleware/auth.middleware";
 import { requireExtensionEnabled } from "../../middleware/requireExtensionEnabled.middleware";
-import { idParamCheck } from "../../domain.layer/validations/id.valid";
+import { idParamCheck, validateId } from "../../domain.layer/validations/id.valid";
 import { handleValidationErrors } from "../../middleware/validate.middleware";
 import {
   addApproverCtrl,
@@ -60,7 +60,8 @@ router.get("/models/:id/lifecycle/progress", getProgressCtrl);
 router.put("/models/:id/lifecycle/items/:itemId", upsertValueCtrl);
 
 // ---- Files ------------------------------------------------------------
-router.post("/models/:id/lifecycle/items/:itemId/files", attachFileCtrl);
+// fileId is in the body here, so router.param does not see it.
+router.post("/models/:id/lifecycle/items/:itemId/files", validateId("fileId"), attachFileCtrl);
 router.delete("/models/:id/lifecycle/items/:itemId/files/:fileId", detachFileCtrl);
 
 // ---- People -----------------------------------------------------------

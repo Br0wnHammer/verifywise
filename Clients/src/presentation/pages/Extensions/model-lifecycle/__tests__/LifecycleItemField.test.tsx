@@ -77,3 +77,66 @@ describe("LifecycleItemField documents: remove file", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+async function uploadFiles(onValueChanged: () => void, names: string[]) {
+  const { container } = render(
+    <LifecycleItemField modelId={10} item={documentsItem} onValueChanged={onValueChanged} />,
+  );
+  const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: names.map((n) => new File(["x"], n, { type: "application/pdf" })) },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe("LifecycleItemField documents: upload", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("shows an error and refreshes the files that did attach when a later attach fails", async () => {
+    api.post
+      .mockResolvedValueOnce({ data: { data: { id: 1 } } }) // upload a
+      .mockResolvedValueOnce({ status: 201 }) // attach a
+      .mockResolvedValueOnce({ data: { data: { id: 2 } } }) // upload b
+      .mockRejectedValueOnce(new CustomException("Internal server error", 500, {})); // attach b
+    const onValueChanged = vi.fn();
+
+    await uploadFiles(onValueChanged, ["a.pdf", "b.pdf"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not upload the file. Try again.",
+    );
+    expect(onValueChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows an error without refreshing when nothing attached", async () => {
+    api.post.mockRejectedValueOnce(new CustomException("Internal server error", 500, {}));
+    const onValueChanged = vi.fn();
+
+    await uploadFiles(onValueChanged, ["a.pdf"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not upload the file. Try again.",
+    );
+    expect(onValueChanged).not.toHaveBeenCalled();
+  });
+
+  it("clears an earlier remove error when an upload succeeds", async () => {
+    api.delete.mockRejectedValueOnce(new CustomException("Internal server error", 500, {}));
+    api.post
+      .mockResolvedValueOnce({ data: { data: { id: 3 } } })
+      .mockResolvedValueOnce({ status: 201 });
+    const onValueChanged = vi.fn();
+    const { container } = render(
+      <LifecycleItemField modelId={10} item={documentsItem} onValueChanged={onValueChanged} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove file" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["x"], "c.pdf")] } });
+
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(onValueChanged).toHaveBeenCalledTimes(1);
+  });
+});

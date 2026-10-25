@@ -4315,7 +4315,9 @@ export const extensionEndpoints: Endpoint[] = [
       { name: 'itemId', in: 'path', type: 'integer', required: true, description: "The itemId" },
     ],
     responses: [
-      { status: 200, description: "Success" },
+      { status: 201, description: "File linked to the item" },
+      { status: 400, description: "fileId (body) or a path id is not a positive integer up to 2147483647" },
+      { status: 404, description: "File not found in this organization" },
       { status: 403, description: "Extension not enabled for this organization, or role not allowed" },
       { status: 500, description: "Internal server error" },
     ],

@@ -441,7 +441,7 @@ export async function getLifecycleForModel(
         `SELECT lf.id, lf.value_id, lf.file_id, lf.created_at,
                 f.filename, f.type AS mimetype
            FROM model_lifecycle_item_files lf
-           JOIN files f ON lf.file_id = f.id
+           JOIN files f ON lf.file_id = f.id AND f.organization_id = lf.organization_id
           WHERE lf.organization_id = :organizationId AND lf.value_id IN (:valueIds);`,
         {
           replacements: { organizationId, valueIds },
@@ -605,13 +605,24 @@ async function ensureValueRow(
 // Files
 // ---------------------------------------------------------------------------
 
+/**
+ * Link a file to a lifecycle item. Returns null when the file is not in the
+ * caller's organization (the foreign key alone accepts any tenant's file), so
+ * the caller can answer 404 without revealing whether the id exists.
+ */
 export async function attachFile(
   organizationId: number,
   modelId: number,
   itemId: number,
   userId: number,
   fileId: number,
-): Promise<any> {
+): Promise<any | null> {
+  const owned = (await sequelize.query(
+    `SELECT 1 FROM files WHERE id = :fileId AND organization_id = :organizationId;`,
+    { replacements: { fileId, organizationId }, type: QueryTypes.SELECT },
+  )) as unknown[];
+  if (owned.length === 0) return null;
+
   const valueId = await ensureValueRow(organizationId, modelId, itemId, userId);
   const rows = (await sequelize.query(
     `INSERT INTO model_lifecycle_item_files (organization_id, value_id, file_id)

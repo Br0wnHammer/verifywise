@@ -16,7 +16,13 @@ jest.mock("../../../utils/auditLedger.utils", () => ({
 
 import { sequelize } from "../../../database/db";
 import { appendToAuditLedger } from "../../../utils/auditLedger.utils";
-import { deleteItem, deletePhase, detachFile, updateItem } from "../modelLifecycle.service";
+import {
+  attachFile,
+  deleteItem,
+  deletePhase,
+  detachFile,
+  updateItem,
+} from "../modelLifecycle.service";
 
 const mockQuery = sequelize.query as jest.Mock;
 
@@ -206,5 +212,38 @@ describe("deletePhase / deleteItem", () => {
     expect(String(sql)).toMatch(/organization_id = :organizationId/);
     expect(options.replacements).toEqual({ organizationId: 1, itemId: 5 });
     expect(fileDeletes()).toHaveLength(0);
+  });
+});
+
+// The foreign key accepts any tenant's file, so attach must check ownership
+// itself or one org could link (and then read the name of) another's file.
+describe("attachFile", () => {
+  beforeEach(() => mockQuery.mockReset());
+
+  it("refuses a file outside the organization and writes nothing", async () => {
+    mockQuery.mockResolvedValueOnce([]); // ownership SELECT: no row
+
+    const link = await attachFile(1, 10, 20, 7, 99);
+
+    expect(link).toBeNull();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, options] = mockQuery.mock.calls[0];
+    expect(String(sql)).toMatch(
+      /FROM files WHERE id = :fileId AND organization_id = :organizationId/,
+    );
+    expect(options.replacements).toEqual({ fileId: 99, organizationId: 1 });
+  });
+
+  it("links a file the organization owns", async () => {
+    mockQuery
+      .mockResolvedValueOnce([{ "?column?": 1 }]) // ownership SELECT
+      .mockResolvedValueOnce(undefined) // ensureValueRow INSERT
+      .mockResolvedValueOnce([{ id: 55 }]) // ensureValueRow SELECT
+      .mockResolvedValueOnce([[{ id: 3, value_id: 55, file_id: 99 }], 1]); // link INSERT
+
+    const link = await attachFile(1, 10, 20, 7, 99);
+
+    expect(link).toEqual({ id: 3, value_id: 55, file_id: 99 });
+    expect(String(mockQuery.mock.calls[3][0])).toMatch(/INSERT INTO model_lifecycle_item_files/);
   });
 });

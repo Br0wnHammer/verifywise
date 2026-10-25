@@ -194,6 +194,9 @@ export async function attachFileCtrl(req: Request, res: Response): Promise<any> 
       uid(req),
       Number(fileId),
     );
+    if (!link) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("File not found")));
+    }
     return res.status(201).json(STATUS_CODE[201](link));
   } catch (err) {
     return fail(res, err, req, "attachFile");

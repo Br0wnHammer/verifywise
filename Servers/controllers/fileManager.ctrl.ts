@@ -262,6 +262,15 @@ export const uploadFile = async (req: Request, res: Response): Promise<any> => {
     // its Admin delete removes. Only report generation may write one, so an
     // upload labelled as a report cannot become deletable from there.
     if (isReportFileSource(source)) {
+      await logFailure({
+        eventType: "Error",
+        description: `Upload refused: report file source "${source}"`,
+        functionName: "uploadFile",
+        fileName: "fileManager.ctrl.ts",
+        error: new Error("Report file source on upload"),
+        userId,
+        organizationId: orgId,
+      });
       return res.status(400).json(STATUS_CODE[400](req.t!("Invalid file source")));
     }
 
