@@ -131,7 +131,7 @@ import {
   getAllEntities,
   getEntityById,
 } from "../../../../../application/repository/entity.repository";
-import LinkModelModal from "../LinkModelModal";
+import LinkAgentModal from "../LinkAgentModal";
 import ManualAgentModal from "../ManualAgentModal";
 import ReviewAgentModal from "../ReviewAgentModal";
 
@@ -167,27 +167,87 @@ beforeEach(() => {
   vi.mocked(apiServices.post).mockClear();
 });
 
-describe("LinkModelModal", () => {
-  it("renders without crashing when open", () => {
+describe("LinkAgentModal", () => {
+  it("links a model with the model picker", async () => {
+    modelsState.models = [{ id: 7, provider: "OpenAI", model: "gpt-4o" }];
+    const onSuccess = vi.fn();
     renderWithProviders(
-      <LinkModelModal isOpen={true} setIsOpen={vi.fn()} agentId={1} onSuccess={vi.fn()} />,
+      <LinkAgentModal
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        agentId={1}
+        kind="model"
+        onSuccess={onSuccess}
+      />,
     );
     expect(screen.getByText("Link to model")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("autocomplete-link-model-select"));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Link model"));
+    });
+    expect(apiServices.patch).toHaveBeenCalledWith("/agent-primitives/1/link-model", {
+      model_id: 7,
+    });
+    expect(onSuccess).toHaveBeenCalled();
   });
 
-  it("renders select for model", () => {
+  it("links a use case and offers only use cases, not framework projects", async () => {
+    const onSuccess = vi.fn();
     renderWithProviders(
-      <LinkModelModal isOpen={true} setIsOpen={vi.fn()} agentId={1} onSuccess={vi.fn()} />,
+      <LinkAgentModal
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        agentId={1}
+        kind="useCase"
+        onSuccess={onSuccess}
+      />,
     );
-    expect(screen.getByTestId("select-model-select")).toBeInTheDocument();
+    expect(screen.getByText("Link to use case")).toBeInTheDocument();
+    const picker = screen.getByTestId("autocomplete-link-use-case-select");
+    expect(JSON.parse(picker.getAttribute("data-options")!)).toEqual([5]);
+    fireEvent.click(picker);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Link use case"));
+    });
+    expect(apiServices.patch).toHaveBeenCalledWith("/agent-primitives/1/link-use-case", {
+      project_id: 5,
+    });
+    expect(onSuccess).toHaveBeenCalled();
   });
 
-  it("renders cancel and link buttons", () => {
+  it("keeps the link button disabled until something is picked", () => {
     renderWithProviders(
-      <LinkModelModal isOpen={true} setIsOpen={vi.fn()} agentId={1} onSuccess={vi.fn()} />,
+      <LinkAgentModal
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        agentId={1}
+        kind="useCase"
+        onSuccess={vi.fn()}
+      />,
     );
-    expect(screen.getByText("Cancel")).toBeInTheDocument();
-    expect(screen.getByText("Link model")).toBeInTheDocument();
+    expect(screen.getByText("Link use case")).toBeDisabled();
+  });
+
+  it("shows the server's reason and stays open when the link fails", async () => {
+    vi.mocked(apiServices.patch).mockRejectedValueOnce(
+      new CustomException("Linked use case was not found", 400, {}),
+    );
+    const onSuccess = vi.fn();
+    renderWithProviders(
+      <LinkAgentModal
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        agentId={1}
+        kind="useCase"
+        onSuccess={onSuccess}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("autocomplete-link-use-case-select"));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Link use case"));
+    });
+    expect(await screen.findByText("Linked use case was not found")).toBeInTheDocument();
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 });
 
@@ -556,8 +616,9 @@ describe("ReviewAgentModal", () => {
       expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
       expect(screen.queryByText("Reject")).not.toBeInTheDocument();
       expect(screen.queryByText("Link to model")).not.toBeInTheDocument();
+      expect(screen.queryByText("Link to use case")).not.toBeInTheDocument();
       expect(screen.queryByText("Edit")).not.toBeInTheDocument();
-      expect(screen.getByText("Not linked")).toBeInTheDocument();
+      expect(screen.getAllByText("Not linked")).toHaveLength(2);
     } finally {
       permissionState.canManage = true;
     }
@@ -581,6 +642,44 @@ describe("ReviewAgentModal", () => {
       await screen.findByText("You do not have permission to review agents"),
     ).toBeInTheDocument();
     expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("lets a synced agent, which has no Edit, link a use case", () => {
+    renderWithProviders(
+      <ReviewAgentModal
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        agent={{ ...mockAgent, is_manual: false, source_system: "azure_ai_foundry" }}
+        onSuccess={vi.fn()}
+        onEdit={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Link to use case"));
+    expect(screen.getByTestId("autocomplete-link-use-case-select")).toBeInTheDocument();
+  });
+
+  it("shows the linked use case and unlinks it", async () => {
+    const onSuccess = vi.fn();
+    renderWithProviders(
+      <ReviewAgentModal
+        isOpen={true}
+        setIsOpen={vi.fn()}
+        agent={{
+          ...mockAgent,
+          is_manual: false,
+          linked_project_id: 5,
+          linked_project_title: "Claims triage",
+        }}
+        onSuccess={onSuccess}
+      />,
+    );
+    expect(screen.getByText("Claims triage")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Unlink use case"));
+    });
+    expect(apiServices.patch).toHaveBeenCalledWith("/agent-primitives/1/unlink-use-case");
+    expect(onSuccess).toHaveBeenCalled();
   });
 
   it("returns null when agent is null", () => {

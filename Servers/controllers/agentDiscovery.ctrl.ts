@@ -19,6 +19,7 @@ import {
   lockAgentPrimitiveQuery,
   modelInOrganizationQuery,
   useCaseInOrganizationQuery,
+  setLinkedUseCaseQuery,
 } from "../utils/agentDiscovery.utils";
 import { ForeignKeyConstraintError, Transaction } from "sequelize";
 import { sequelize } from "../database/db";
@@ -873,6 +874,108 @@ export async function unlinkModelFromAgent(req: Request, res: Response) {
     return res.status(200).json(STATUS_CODE[200](primitive));
   } catch (error) {
     logStructured("error", "failed to unlink model from agent", functionName, fileName);
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Link agent primitive to a use case. Unlike the edit endpoint this works for
+ * synced agents too, the same way the model link does.
+ */
+export async function linkUseCaseToAgent(req: Request, res: Response) {
+  const functionName = "linkUseCaseToAgent";
+  logStructured("processing", "linking use case to agent", functionName, fileName);
+
+  try {
+    const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid agent primitive ID")));
+    }
+
+    if (req.body.project_id == null || req.body.project_id === "") {
+      return res.status(400).json(STATUS_CODE[400](req.t!("project_id is required")));
+    }
+    const project_id = parseOwnerId(req.body.project_id);
+    if (project_id === null) {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Linked use case must be a valid ID")));
+    }
+
+    const existing = await getAgentPrimitiveByIdQuery(id, req.organizationId!);
+    if (!existing) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Agent primitive not found")));
+    }
+    // Same check as the add/edit drawer: only a use case of this organization.
+    if (!(await useCaseInOrganizationQuery(project_id, req.organizationId!))) {
+      return res.status(400).json(STATUS_CODE[400](req.t!(LINKED_USE_CASE_NOT_FOUND)));
+    }
+
+    let primitive;
+    try {
+      primitive = await setLinkedUseCaseQuery(id, project_id, req.organizationId!);
+    } catch (error) {
+      // The use case was deleted between the check and the write.
+      if (isLinkedUseCaseForeignKeyViolation(error)) {
+        return res.status(400).json(STATUS_CODE[400](req.t!(LINKED_USE_CASE_NOT_FOUND)));
+      }
+      throw error;
+    }
+
+    await createAuditLogQuery(
+      {
+        agent_primitive_id: id,
+        action: "use_case_linked",
+        field_changed: "linked_project_id",
+        old_value: existing.linked_project_id?.toString() || null,
+        new_value: project_id.toString(),
+        performed_by: req.userId!,
+      },
+      req.organizationId!,
+    );
+
+    logStructured("successful", "use case linked to agent", functionName, fileName);
+    return res.status(200).json(STATUS_CODE[200](primitive));
+  } catch (error) {
+    logStructured("error", "failed to link use case to agent", functionName, fileName);
+    return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * Unlink use case from agent primitive
+ */
+export async function unlinkUseCaseFromAgent(req: Request, res: Response) {
+  const functionName = "unlinkUseCaseFromAgent";
+  logStructured("processing", "unlinking use case from agent", functionName, fileName);
+
+  try {
+    const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json(STATUS_CODE[400](req.t!("Invalid agent primitive ID")));
+    }
+
+    const existing = await getAgentPrimitiveByIdQuery(id, req.organizationId!);
+    if (!existing) {
+      return res.status(404).json(STATUS_CODE[404](req.t!("Agent primitive not found")));
+    }
+
+    const primitive = await setLinkedUseCaseQuery(id, null, req.organizationId!);
+
+    await createAuditLogQuery(
+      {
+        agent_primitive_id: id,
+        action: "use_case_unlinked",
+        field_changed: "linked_project_id",
+        old_value: existing.linked_project_id?.toString() || null,
+        new_value: null,
+        performed_by: req.userId!,
+      },
+      req.organizationId!,
+    );
+
+    logStructured("successful", "use case unlinked from agent", functionName, fileName);
+    return res.status(200).json(STATUS_CODE[200](primitive));
+  } catch (error) {
+    logStructured("error", "failed to unlink use case from agent", functionName, fileName);
     return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
   }
 }

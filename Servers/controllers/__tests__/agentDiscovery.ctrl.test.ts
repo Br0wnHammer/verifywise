@@ -22,6 +22,7 @@ jest.mock("../../utils/agentDiscovery.utils", () => ({
   lockAgentPrimitiveQuery: jest.fn(),
   modelInOrganizationQuery: jest.fn(),
   useCaseInOrganizationQuery: jest.fn(),
+  setLinkedUseCaseQuery: jest.fn(),
 }));
 
 jest.mock("../../services/agentDiscovery/agentDiscoverySync.service", () => ({
@@ -60,6 +61,8 @@ import {
   getAgentPrimitiveById,
   getAllAgentPrimitives,
   linkModelToAgent,
+  linkUseCaseToAgent,
+  unlinkUseCaseFromAgent,
   updateAgentPrimitive,
 } from "../agentDiscovery.ctrl";
 import {
@@ -75,6 +78,7 @@ import {
   linkModelQuery,
   modelInOrganizationQuery,
   useCaseInOrganizationQuery,
+  setLinkedUseCaseQuery,
 } from "../../utils/agentDiscovery.utils";
 
 const mockGetAll = getAllAgentPrimitivesQuery as jest.MockedFunction<any>;
@@ -89,6 +93,7 @@ const mockLock = lockAgentPrimitiveQuery as jest.MockedFunction<any>;
 const mockModelInOrg = modelInOrganizationQuery as jest.MockedFunction<any>;
 const mockUseCaseInOrg = useCaseInOrganizationQuery as jest.MockedFunction<any>;
 const mockLinkModel = linkModelQuery as jest.MockedFunction<any>;
+const mockSetUseCase = setLinkedUseCaseQuery as jest.MockedFunction<any>;
 
 /** The organization's models and use cases, for the link checks. */
 const ORG_MODELS = [7, 8];
@@ -983,5 +988,100 @@ describe("linkModelToAgent", () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: message }));
     expect(mockLinkModel).not.toHaveBeenCalled();
+  });
+});
+
+// Synced agents cannot use the edit endpoint, so these are their only way to
+// link a use case. The checks match the edit drawer's.
+describe("linkUseCaseToAgent", () => {
+  const syncedAgent = () => givenAgent({ is_manual: false, linked_project_id: null });
+  const linkReq = (project_id: unknown) =>
+    createReq({ params: { id: "10" } as any, body: { project_id } });
+
+  it("links a use case of the organization to a synced agent and audits it", async () => {
+    syncedAgent();
+    mockSetUseCase.mockResolvedValue({ id: 10, linked_project_id: 5 });
+    const res = createRes();
+    await linkUseCaseToAgent(linkReq("5"), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockUseCaseInOrg).toHaveBeenCalledWith(5, ORG_ID);
+    expect(mockSetUseCase).toHaveBeenCalledWith(10, 5, ORG_ID);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent_primitive_id: 10,
+        action: "use_case_linked",
+        field_changed: "linked_project_id",
+        old_value: null,
+        new_value: "5",
+        performed_by: 99,
+      }),
+      ORG_ID,
+    );
+  });
+
+  it.each([
+    ["a missing use case id", undefined, "project_id is required"],
+    ["a malformed use case id", "abc", "Linked use case must be a valid ID"],
+    ["an oversized use case id", 2147483648, "Linked use case must be a valid ID"],
+    ["a use case outside the organization", 500, "Linked use case was not found"],
+  ])("rejects %s with 400", async (_label, projectId, message) => {
+    syncedAgent();
+    const res = createRes();
+    await linkUseCaseToAgent(linkReq(projectId), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: message }));
+    expect(mockSetUseCase).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 for an agent outside the organization", async () => {
+    mockGetById.mockResolvedValue(null);
+    const res = createRes();
+    await linkUseCaseToAgent(linkReq(5), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockSetUseCase).not.toHaveBeenCalled();
+  });
+
+  it("maps a use case deleted before the write (FK violation) to 400", async () => {
+    syncedAgent();
+    mockSetUseCase.mockRejectedValueOnce(
+      Object.assign(new Error("fk"), {
+        parent: {
+          code: "23503",
+          table: "agent_primitives",
+          constraint: "agent_primitives_linked_project_id_fkey",
+        },
+      }),
+    );
+    const res = createRes();
+    await linkUseCaseToAgent(linkReq(5), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ data: "Linked use case was not found" }),
+    );
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+});
+
+describe("unlinkUseCaseFromAgent", () => {
+  it("clears the link and audits the old value", async () => {
+    givenAgent({ is_manual: false, linked_project_id: 6 });
+    mockSetUseCase.mockResolvedValue({ id: 10, linked_project_id: null });
+    const res = createRes();
+    await unlinkUseCaseFromAgent(createReq({ params: { id: "10" } as any }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockSetUseCase).toHaveBeenCalledWith(10, null, ORG_ID);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "use_case_unlinked", old_value: "6", new_value: null }),
+      ORG_ID,
+    );
+  });
+
+  it("answers 404 for an agent outside the organization", async () => {
+    mockGetById.mockResolvedValue(null);
+    const res = createRes();
+    await unlinkUseCaseFromAgent(createReq({ params: { id: "10" } as any }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockSetUseCase).not.toHaveBeenCalled();
   });
 });

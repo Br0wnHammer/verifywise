@@ -467,6 +467,22 @@ export const unlinkModelQuery = async (
   return (results as AgentPrimitive[])[0] || null;
 };
 
+/** Link the agent to a use case, or remove the link when `projectId` is null. */
+export const setLinkedUseCaseQuery = async (
+  id: number,
+  projectId: number | null,
+  organizationId: number,
+): Promise<AgentPrimitive | null> => {
+  const [results] = await sequelize.query(
+    `UPDATE agent_primitives
+     SET linked_project_id = :projectId, updated_at = NOW()
+     WHERE organization_id = :organizationId AND id = :id
+     RETURNING *`,
+    { replacements: { organizationId, id, projectId } },
+  );
+  return (results as AgentPrimitive[])[0] || null;
+};
+
 export const upsertAgentPrimitivesQuery = async (
   primitives: Array<{
     source_system: string;

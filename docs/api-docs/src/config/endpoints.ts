@@ -219,6 +219,28 @@ export const agentDiscoveryEndpoints: Endpoint[] = [
     tag: "Agent Discovery",
   },
   {
+    method: 'PATCH',
+    path: '/agent-primitives/{id}/link-use-case',
+    summary: "Link Use Case To Agent",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Agent Discovery",
+  },
+  {
+    method: 'PATCH',
+    path: '/agent-primitives/{id}/unlink-use-case',
+    summary: "Unlink Use Case From Agent",
+    requiresAuth: true,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Agent Discovery",
+  },
+  {
     method: 'GET',
     path: '/agent-primitives/{id}/audit-logs',
     summary: "Get Agent Audit Logs",
