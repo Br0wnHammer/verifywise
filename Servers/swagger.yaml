@@ -15097,10 +15097,14 @@ paths:
     post:
       summary: 'Attach File Ctrl'
       responses:
-        '200':
-          description: Success
+        '201':
+          description: 'File linked to the item'
+        '400':
+          description: 'fileId (body) or a path id is not a positive integer up to 2147483647'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'File not found in this organization'
         '500':
           description: 'Internal server error'
       tags:
@@ -15130,9 +15134,13 @@ paths:
       summary: 'Detach File Ctrl'
       responses:
         '200':
-          description: Success
+          description: 'Link removed. The file itself is kept and stays in the File Manager.'
+        '400':
+          description: 'id, itemId or fileId is not a positive integer up to 2147483647'
         '403':
           description: 'Extension not enabled for this organization, or role not allowed'
+        '404':
+          description: 'The lifecycle item has no link to this file'
         '500':
           description: 'Internal server error'
       tags:
@@ -16591,6 +16599,7 @@ paths:
       tags:
         - Reporting
       summary: 'Delete Generated Report By Id'
+      description: 'Admin only. Deletes a generated report file; any other file id answers 404.'
       operationId: deleteGeneratedReportById
       security:
         -
@@ -16605,8 +16614,14 @@ paths:
       responses:
         '200':
           description: 'Deleted successfully'
+        '400':
+          description: 'id is not a positive integer up to 2147483647'
         '401':
           description: Unauthorized
+        '403':
+          description: 'Role not allowed to delete reports'
+        '404':
+          description: 'No generated report with this id in the organization'
         '500':
           description: 'Internal server error'
   /dashboard:

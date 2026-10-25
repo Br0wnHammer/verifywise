@@ -9912,6 +9912,10 @@ export const translations: Record<string, Record<string, string>> = {
     'Click "Add to Slack" above to connect your first workspace.':
       'Klicken Sie oben auf "Zu Slack hinzufügen", um Ihren ersten Workspace zu verbinden.',
     "Click to upload documents": "Zum Hochladen von Dokumenten klicken",
+    "Could not remove the file. Try again.":
+      "Die Datei konnte nicht entfernt werden. Versuchen Sie es erneut.",
+    "Could not upload the file. Try again.":
+      "Die Datei konnte nicht hochgeladen werden. Versuchen Sie es erneut.",
     "Configuration saved.": "Konfiguration gespeichert.",
     "Configure Model Lifecycle": "Modelllebenszyklus konfigurieren",
     "Configure Phases": "Phasen konfigurieren",
@@ -20425,6 +20429,8 @@ export const translations: Record<string, Record<string, string>> = {
     'Click "Add to Slack" above to connect your first workspace.':
       "Cliquez sur « Ajouter à Slack » ci-dessus pour connecter votre premier espace de travail.",
     "Click to upload documents": "Cliquez pour téléverser des documents",
+    "Could not remove the file. Try again.": "Impossible de supprimer le fichier. Réessayez.",
+    "Could not upload the file. Try again.": "Impossible de téléverser le fichier. Réessayez.",
     "Configuration saved.": "Configuration enregistrée.",
     "Configure Model Lifecycle": "Configurer le cycle de vie du modèle",
     "Configure Phases": "Configurer les phases",
@@ -30850,6 +30856,8 @@ export const translations: Record<string, Record<string, string>> = {
     'Click "Add to Slack" above to connect your first workspace.':
       'Haga clic en "Añadir a Slack" arriba para conectar su primer espacio de trabajo.',
     "Click to upload documents": "Haga clic para cargar documentos",
+    "Could not remove the file. Try again.": "No se pudo quitar el archivo. Inténtelo de nuevo.",
+    "Could not upload the file. Try again.": "No se pudo cargar el archivo. Inténtelo de nuevo.",
     "Configuration saved.": "Configuración guardada.",
     "Configure Model Lifecycle": "Configurar el ciclo de vida del modelo",
     "Configure Phases": "Configurar fases",

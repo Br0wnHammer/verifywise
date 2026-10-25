@@ -452,6 +452,7 @@
   "No annex controls found": "Keine Anhangskontrollen gefunden",
   "No fields to update": "Keine Felder zu aktualisieren",
   "No file provided": "Keine Datei bereitgestellt",
+  "Invalid file source": "Ungültige Dateiquelle",
   "No file provided for update": "Keine Datei zur Aktualisierung bereitgestellt",
   "No file uploaded": "Keine Datei hochgeladen",
   "No GitHub token found": "Kein GitHub-Token gefunden",
