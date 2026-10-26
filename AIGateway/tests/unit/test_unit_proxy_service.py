@@ -317,6 +317,51 @@ async def test_run_guardrails_block_raises_400(monkeypatch):
     assert logged and logged[0]["action_taken"] == "blocked"
 
 
+async def test_run_guardrails_logs_a_mask_as_masked(monkeypatch):
+    """The stats count action_taken = 'masked'; the raw "mask" was never counted."""
+    from services.guardrail_service import ScanResult, Detection
+
+    result = ScanResult(
+        blocked=False,
+        detections=[Detection(guardrail_id=2, guardrail_type="pii", entity_type="EMAIL_ADDRESS",
+                              action="mask", matched_text="a@b.co", start=0, end=6)],
+        masked_text="<EMAIL_ADDRESS>",
+        execution_time_ms=2,
+    )
+    monkeypatch.setattr(proxy_service, "scan_text_async", lambda **_k: _result(result))
+    logged = []
+    monkeypatch.setattr(proxy_service, "_log_guardrail_detection", _logged(logged))
+
+    await proxy_service.run_guardrails(7, [{"role": "user", "content": "a@b.co"}], 3, config=(RULES, SETTINGS))
+    assert [entry["action_taken"] for entry in logged] == ["masked"]
+
+
+async def test_run_guardrails_blocked_request_keeps_each_detections_own_action(monkeypatch):
+    """One block in a message must not relabel that message's mask detections as blocked."""
+    from services.guardrail_service import ScanResult, Detection
+
+    result = ScanResult(
+        blocked=True,
+        block_reason="content_filter: codename detected",
+        detections=[
+            Detection(guardrail_id=1, guardrail_type="content_filter", entity_type="codename",
+                      action="block", matched_text="bluebird", start=0, end=8),
+            Detection(guardrail_id=2, guardrail_type="pii", entity_type="EMAIL_ADDRESS",
+                      action="mask", matched_text="a@b.co", start=9, end=15),
+        ],
+        execution_time_ms=3,
+    )
+    monkeypatch.setattr(proxy_service, "scan_text_async", lambda **_k: _result(result))
+    logged = []
+    monkeypatch.setattr(proxy_service, "_log_guardrail_detection", _logged(logged))
+
+    with pytest.raises(HTTPException):
+        await proxy_service.run_guardrails(
+            7, [{"role": "user", "content": "bluebird a@b.co"}], 3, config=(RULES, SETTINGS)
+        )
+    assert [entry["action_taken"] for entry in logged] == ["blocked", "masked"]
+
+
 async def _result(value):
     return value
 

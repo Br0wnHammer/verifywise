@@ -15,6 +15,7 @@ from utils.change_history import record_guardrail_change
 from utils.notifications import config_event, notify_config_change
 
 from crud.guardrails import (
+    count_guardrail_logs,
     create_guardrail,
     delete_guardrail,
     get_active_guardrails,
@@ -263,7 +264,10 @@ async def read_guardrail_logs(
     org_id = get_org_id(request)
 
     logs = await get_guardrail_logs(org_id, limit=limit, offset=offset)
-    return {"logs": logs, "limit": limit, "offset": offset}
+    # The Logs page builds its pagination from total; without it the page only
+    # knew the rows on screen and never offered a second page.
+    total = await count_guardrail_logs(org_id)
+    return {"logs": logs, "total": total, "limit": limit, "offset": offset}
 
 
 # ---------------------------------------------------------------------------

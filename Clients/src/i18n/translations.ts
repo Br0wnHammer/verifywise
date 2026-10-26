@@ -3083,8 +3083,10 @@ export const translations: Record<string, Record<string, string>> = {
     "What is an eval project?": "Was ist ein Bewertungsprojekt?",
     "What should the conversation achieve?": "Was soll das Gespräch erreichen?",
     "What type of entity will this form create?": "Welchen Entitätstyp erstellt dieses Formular?",
-    "What your guardrails caught in this period":
-      "Was Ihre Guardrails in diesem Zeitraum erkannt haben",
+    "What your guardrails caught in this period, counted per detection. A request with several matches counts once for each.":
+      "Was Ihre Guardrails in diesem Zeitraum erkannt haben, gezählt pro Erkennung. Eine Anfrage mit mehreren Treffern zählt für jeden Treffer einmal.",
+    "Daily trend of blocked and masked detections. A request counts once for each match, so one request can add several. Rising detections may indicate increased PII exposure or attack attempts.":
+      "Täglicher Verlauf blockierter und maskierter Erkennungen. Eine Anfrage zählt für jeden Treffer einmal und kann daher mehrere hinzufügen. Steigende Erkennungen können auf eine erhöhte Offenlegung personenbezogener Daten oder auf Angriffsversuche hinweisen.",
     "What's new?": "Was gibt es Neues?",
     "Who is a Signatory?": "Wer ist ein Unterzeichner?",
     "Whose name and role appear on the declaration document":
@@ -13777,8 +13779,10 @@ export const translations: Record<string, Record<string, string>> = {
     "What is an eval project?": "Qu'est-ce qu'un projet d'évaluation ?",
     "What should the conversation achieve?": "Que doit accomplir la conversation ?",
     "What type of entity will this form create?": "Quel type d'entité ce formulaire créera-t-il ?",
-    "What your guardrails caught in this period":
-      "Ce que vos garde-fous ont détecté sur cette période",
+    "What your guardrails caught in this period, counted per detection. A request with several matches counts once for each.":
+      "Ce que vos garde-fous ont détecté sur cette période, compté par détection. Une requête avec plusieurs correspondances compte une fois pour chacune.",
+    "Daily trend of blocked and masked detections. A request counts once for each match, so one request can add several. Rising detections may indicate increased PII exposure or attack attempts.":
+      "Tendance quotidienne des détections bloquées et masquées. Une requête compte une fois par correspondance et peut donc en ajouter plusieurs. Une hausse des détections peut indiquer une exposition accrue des données personnelles ou des tentatives d'attaque.",
     "What's new?": "Quoi de neuf ?",
     "Who is a Signatory?": "Qui est signataire ?",
     "Whose name and role appear on the declaration document":
@@ -26943,8 +26947,10 @@ export const translations: Record<string, Record<string, string>> = {
       "Gasto total en todos los endpoints durante este periodo",
     "Total tool invocations in the selected period":
       "Total de invocaciones de herramientas en el periodo seleccionado",
-    "What your guardrails caught in this period":
-      "Lo que sus barreras de protección detectaron en este periodo",
+    "What your guardrails caught in this period, counted per detection. A request with several matches counts once for each.":
+      "Lo que sus barreras de protección detectaron en este periodo, contado por detección. Una solicitud con varias coincidencias cuenta una vez por cada una.",
+    "Daily trend of blocked and masked detections. A request counts once for each match, so one request can add several. Rising detections may indicate increased PII exposure or attack attempts.":
+      "Tendencia diaria de detecciones bloqueadas y enmascaradas. Una solicitud cuenta una vez por cada coincidencia, por lo que puede sumar varias. Un aumento de detecciones puede indicar una mayor exposición de datos personales o intentos de ataque.",
     "Whose name and role appear on the declaration document":
       "Cuyo nombre y cargo aparecen en el documento de declaración",
     "The provider rejected the saved API key. Enter a working key. It is saved as a new key, and an Admin can remove the old one in AI Gateway settings.":

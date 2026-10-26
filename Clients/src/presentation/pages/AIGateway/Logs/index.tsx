@@ -185,7 +185,7 @@ export default function LogsPage() {
       const res = await apiServices.get<Record<string, any>>(`/ai-gateway/guardrails/logs?limit=${grRowsPerPage}&offset=${grPage * grRowsPerPage}`);
       const data = res?.data || {};
       setGrLogs(data.logs || data?.data?.logs || []);
-      setGrTotal(data.total || data.logs?.length || 0);
+      setGrTotal(data.total ?? data.logs?.length ?? 0);
     } catch {
       setGrError("Failed to load guardrail logs. Please try again.");
     } finally {
