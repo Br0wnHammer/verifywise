@@ -234,6 +234,14 @@ const SidebarShell: FC<SidebarShellProps> = ({
   const renderMenuItem = (item: SidebarMenuItem, showTooltip = true) => {
     const isActive = checkIsActive(item);
     const isDisabled = item.disabled;
+    // WCAG 2.5.3 (label-content-name-mismatch): when the count chip is
+    // rendered, its text is visible inside the button, so the accessible name
+    // must contain it. Axe 4.14+ enforces this rule.
+    const count = item.count ?? 0;
+    const showsCountChip = !collapsed && count > 0 && !isDisabled;
+    const accessibleLabel = showsCountChip
+      ? `${item.label} ${count > 99 ? "99+" : count}`
+      : item.label;
 
     const tooltipSlotProps = {
       popper: {
@@ -248,7 +256,7 @@ const SidebarShell: FC<SidebarShellProps> = ({
           className={isActive ? "selected-path" : "unselected"}
           onClick={() => handleItemClick(item)}
           disabled={isDisabled}
-          aria-label={item.label}
+          aria-label={accessibleLabel}
           sx={{
             "height": "32px",
             "gap": collapsed ? 0 : theme.spacing(4),
@@ -374,7 +382,7 @@ const SidebarShell: FC<SidebarShellProps> = ({
         className={isActive ? "selected-path" : "unselected"}
         onClick={() => handleItemClick(item)}
         disabled={isDisabled}
-        aria-label={item.label}
+        aria-label={accessibleLabel}
         sx={{
           "height": "32px",
           "gap": collapsed ? 0 : theme.spacing(4),
