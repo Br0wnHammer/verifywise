@@ -203,6 +203,29 @@ export async function analyzeCriticalAndSeriousViolations(
 
   writeReport(options.reportName, results, disabled, page.url());
 
+  // TEMPORARY DEBUG (revert before merge): dump full node HTML + axe internals
+  // for label-content-name-mismatch violations.
+  for (const violation of results.violations) {
+    if (violation.id !== "label-content-name-mismatch") continue;
+    for (const node of violation.nodes) {
+      const debug = await page.evaluate((target) => {
+        const el = document.querySelector(String(target));
+        if (!el || !(window as any).axe) return { error: "not found", target };
+        const axeMod = (window as any).axe;
+        axeMod.setup(document);
+        const vn = axeMod.utils.getNodeFromTree(el);
+        return {
+          outer: el.outerHTML,
+          accText: axeMod.commons.text.accessibleText(el),
+          visibleText: axeMod.commons.text.visibleVirtual(vn, false, false, {
+            ignoreIconLigature: true,
+          }),
+        };
+      }, node.target[0]);
+      console.log("[A11Y-DEBUG]", JSON.stringify(debug));
+    }
+  }
+
   return results.violations.filter(
     (violation) => violation.impact === "critical" || violation.impact === "serious",
   );
