@@ -3142,7 +3142,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No experiments run yet. Create an experiment to evaluate model performance.":
       "Noch keine Experimente ausgeführt. Erstellen Sie ein Experiment, um die Modellleistung zu bewerten.",
     "No flags": "Keine Markierungen",
-    "No guardrail detections in this period.": "Keine Guardrail-Erkennungen in diesem Zeitraum.",
+    "No guardrail detections yet.": "Noch keine Guardrail-Erkennungen.",
     "No items yet": "Noch keine Elemente",
     "No label": "Kein Label",
     "No linked items found.": "Keine verknüpften Elemente gefunden.",
@@ -5207,8 +5207,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Evaluation Reports": "Bewertungsberichte",
     "Evaluation criteria": "Bewertungskriterien",
     "Event Frequency (annualized)": "Ereignishäufigkeit (annualisiert)",
-    "Every blocked or masked request across all endpoints for the last 30 days.":
-      "Jede blockierte oder maskierte Anfrage über alle Endpunkte hinweg in den letzten 30 Tagen.",
+    "Every guardrail detection across all endpoints, newest first. A request with several matches has one row for each.":
+      "Jede Guardrail-Erkennung über alle Endpunkte hinweg, neueste zuerst. Eine Anfrage mit mehreren Treffern hat für jeden Treffer eine Zeile.",
     "Evidence Examples:": "Nachweisbeispiele:",
     "Evidence Status:": "Nachweisstatus:",
     "Evidence files": "Nachweisdateien",
@@ -13836,7 +13836,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No experiments run yet. Create an experiment to evaluate model performance.":
       "Aucune expérience exécutée pour le moment. Créez-en une pour évaluer la performance du modèle.",
     "No flags": "Aucun signalement",
-    "No guardrail detections in this period.": "Aucune détection de garde-fou sur cette période.",
+    "No guardrail detections yet.": "Aucune détection de garde-fou pour le moment.",
     "No items yet": "Aucun élément pour le moment",
     "No label": "Aucun libellé",
     "No linked items found.": "Aucun élément lié trouvé.",
@@ -15738,8 +15738,8 @@ export const translations: Record<string, Record<string, string>> = {
     "Evaluation Reports": "Rapports d'évaluation",
     "Evaluation criteria": "Critères d'évaluation",
     "Event Frequency (annualized)": "Fréquence d'événement (annualisée)",
-    "Every blocked or masked request across all endpoints for the last 30 days.":
-      "Chaque requête bloquée ou masquée sur tous les points de terminaison au cours des 30 derniers jours.",
+    "Every guardrail detection across all endpoints, newest first. A request with several matches has one row for each.":
+      "Chaque détection de garde-fou sur tous les points de terminaison, les plus récentes en premier. Une requête avec plusieurs correspondances a une ligne pour chacune.",
     "Evidence Examples:": "Exemples de preuves :",
     "Evidence Status:": "Statut de la preuve :",
     "Evidence files": "Fichiers de preuve",
@@ -23725,8 +23725,7 @@ export const translations: Record<string, Record<string, string>> = {
     "No evidence found.": "No se ha encontrado evidencia.",
     "No execution history yet.": "Aún no hay historial de ejecución.",
     "No flags": "Sin marcas",
-    "No guardrail detections in this period.":
-      "No hay detecciones de barreras de protección en este periodo.",
+    "No guardrail detections yet.": "Todavía no hay detecciones de barreras de protección.",
     "No items yet": "Aún no hay elementos",
     "No label": "Sin etiqueta",
     "No linked items found.": "No se han encontrado elementos vinculados.",
@@ -28051,8 +28050,8 @@ export const translations: Record<string, Record<string, string>> = {
       "Evalúe la generación aumentada por recuperación, incluyendo exhaustividad, precisión, relevancia y fidelidad.",
     "Evaluate single and multi-turn conversational experiences for coherence, correctness and safety.":
       "Evalúe experiencias conversacionales de un solo turno y de varios turnos en cuanto a coherencia, corrección y seguridad.",
-    "Every blocked or masked request across all endpoints for the last 30 days.":
-      "Cada solicitud bloqueada o enmascarada en todos los endpoints durante los últimos 30 días.",
+    "Every guardrail detection across all endpoints, newest first. A request with several matches has one row for each.":
+      "Cada detección de barreras de protección en todos los endpoints, de la más reciente a la más antigua. Una solicitud con varias coincidencias tiene una fila por cada una.",
     "Experiments run evaluations on your models using datasets and scorers. Track performance metrics over time and compare different model configurations.":
       "Los experimentos ejecutan evaluaciones de sus modelos utilizando conjuntos de datos y evaluadores. Haga un seguimiento de las métricas de rendimiento a lo largo del tiempo y compare distintas configuraciones de modelos.",
     "Failed to get AI response. Check LLM key in settings.":

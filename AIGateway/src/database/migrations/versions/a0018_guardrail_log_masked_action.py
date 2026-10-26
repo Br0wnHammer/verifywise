@@ -6,10 +6,11 @@ action_taken = 'masked', so the dashboard never counted a masked detection.
 The proxy now saves "masked" (services/proxy_service.py _ACTION_TAKEN). This
 migration rewrites the rows saved before that.
 
-Rows saved as "blocked" are left alone. Before this change every detection in a
-blocked message was saved as "blocked", including detections whose own rule was
-mask, and the row does not record which rule action it came from, so those rows
-cannot be told apart.
+Rows saved as "blocked" are correct and left alone: every detection in a blocked
+message is stored as "blocked", since that message was never masked.
+
+One UPDATE, unbatched: it touches only the "mask" rows, new inserts do not wait
+on it, and retention keeps the table bounded.
 
 There is no downgrade: "mask" was never a value the stats or the Logs page read.
 

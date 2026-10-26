@@ -415,9 +415,15 @@ async def _log_guardrail_detection(
 _SCANNED_ROLES = ("user", "tool", "function")
 
 # A detection's rule action ("block" | "mask") as stored in action_taken, the
-# values the guardrail stats count. Each detection keeps its own action: one
-# block in a message does not turn that message's masks into blocks.
+# values the guardrail stats count. A blocked message is never masked, so every
+# detection in it is stored as "blocked": its matched text was stopped with it.
 _ACTION_TAKEN = {"block": "blocked", "mask": "masked"}
+
+
+def _action_taken(action: str, message_blocked: bool) -> str:
+    if message_blocked:
+        return "blocked"
+    return _ACTION_TAKEN.get(action, action or "allowed")
 
 
 async def run_guardrails(
@@ -459,7 +465,7 @@ async def run_guardrails(
                 guardrail_id=getattr(detection, "guardrail_id", None),
                 endpoint_id=endpoint_id,
                 guardrail_type=getattr(detection, "guardrail_type", ""),
-                action_taken=_ACTION_TAKEN.get(getattr(detection, "action", ""), "allowed"),
+                action_taken=_action_taken(getattr(detection, "action", ""), result.blocked),
                 matched_text=getattr(detection, "matched_text", ""),
                 entity_type=getattr(detection, "entity_type", ""),
                 execution_time_ms=result.execution_time_ms or 0,

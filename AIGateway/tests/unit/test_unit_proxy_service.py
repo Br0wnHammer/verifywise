@@ -336,8 +336,8 @@ async def test_run_guardrails_logs_a_mask_as_masked(monkeypatch):
     assert [entry["action_taken"] for entry in logged] == ["masked"]
 
 
-async def test_run_guardrails_blocked_request_keeps_each_detections_own_action(monkeypatch):
-    """One block in a message must not relabel that message's mask detections as blocked."""
+async def test_run_guardrails_blocked_message_stores_every_detection_as_blocked(monkeypatch):
+    """A blocked message is never masked: its mask matches were stopped with it, not masked."""
     from services.guardrail_service import ScanResult, Detection
 
     result = ScanResult(
@@ -359,7 +359,12 @@ async def test_run_guardrails_blocked_request_keeps_each_detections_own_action(m
         await proxy_service.run_guardrails(
             7, [{"role": "user", "content": "bluebird a@b.co"}], 3, config=(RULES, SETTINGS)
         )
-    assert [entry["action_taken"] for entry in logged] == ["blocked", "masked"]
+    assert [entry["action_taken"] for entry in logged] == ["blocked", "blocked"]
+
+
+def test_action_taken_keeps_an_unknown_action_as_is():
+    assert proxy_service._action_taken("redact", message_blocked=False) == "redact"
+    assert proxy_service._action_taken("", message_blocked=False) == "allowed"
 
 
 async def _result(value):
