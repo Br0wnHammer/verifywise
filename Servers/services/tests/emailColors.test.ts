@@ -1,10 +1,32 @@
 import { brand } from "../../../shared/design-tokens/palette";
-import { applyColorTokens, emailColorTokens } from "../../tools/emailColors";
+import {
+  applyColorTokens,
+  colorTokenRoot,
+  emailColorTokens,
+  emailCssVariables,
+} from "../../tools/emailColors";
 import { compileMjmlToHtml } from "../../tools/mjmlCompiler";
 
 describe("email color tokens", () => {
   it("reads the shared brand primary", () => {
     expect(emailColorTokens.colorBrandPrimary).toBe(brand.primary);
+  });
+
+  it("sets the report CSS variables from the shared palette", () => {
+    expect(emailCssVariables["--color-background"]).toBe(emailColorTokens.colorBackground);
+    expect(emailCssVariables["--color-primary"]).toBe(brand.primary);
+
+    const css = colorTokenRoot();
+    expect(css).toContain(`--color-background: ${emailColorTokens.colorBackground}`);
+    expect(css).toContain(`--color-primary: ${brand.primary}`);
+  });
+
+  it("uses a hex brand override and ignores anything else", () => {
+    expect(colorTokenRoot("#112233")).toContain("--color-primary: #112233");
+
+    const rejected = colorTokenRoot("red; } body { background: url(evil)");
+    expect(rejected).toContain(`--color-primary: ${brand.primary}`);
+    expect(rejected).not.toContain("evil");
   });
 
   it("substitutes a color placeholder and leaves other placeholders", () => {
