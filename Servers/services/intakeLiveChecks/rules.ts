@@ -41,8 +41,11 @@ const termPattern = (term: string): RegExp => {
 const NEGATION_WINDOW = 80;
 
 const isNegated = (answer: string, index: number): boolean => {
+  const start = Math.max(0, index - NEGATION_WINDOW);
+  let before = answer.slice(start, index);
+  // A window that starts inside a word drops that fragment ("no" from "piano").
+  if (start > 0 && /[a-z']/i.test(answer[start - 1])) before = before.replace(/^[a-z']+/i, "");
   // The window stops at the end of the previous sentence or clause.
-  const before = answer.slice(Math.max(0, index - NEGATION_WINDOW), index);
   const sentence = before.slice(
     Math.max(...[".", "!", "?", ";"].map((mark) => before.lastIndexOf(mark))) + 1,
   );

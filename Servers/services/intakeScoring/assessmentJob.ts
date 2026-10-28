@@ -421,13 +421,20 @@ export async function runIntakeAssessment(
   if (!isPending && !liveChecks) return;
   const form = await d.getForm(submission.formId, organizationId);
   if (!form) {
-    // The form is gone: close the live checks so the backfill stops listing them.
-    if (liveChecks) {
-      await d.saveLiveChecksAi(submissionId, organizationId, {
-        ...liveChecks.ai,
-        status: "skipped",
-        hints: [],
-      });
+    // The form is gone: close pending live checks so the backfill stops listing
+    // them. A failed record is not listed, so it keeps its status.
+    if (liveChecks?.ai.status === "pending") {
+      try {
+        await d.saveLiveChecksAi(submissionId, organizationId, {
+          ...liveChecks.ai,
+          status: "skipped",
+          hints: [],
+        });
+      } catch (error) {
+        logger.error(
+          `Could not close live checks for submission ${submissionId}: ${errorMessage(error)}`,
+        );
+      }
     }
     return;
   }

@@ -16,7 +16,7 @@ import type { FormSchema } from "../intakeRiskScoring.service";
 import { newDelimiterNonce } from "../intakeScoring/prompts";
 import { toLiveCheckLanguage, type LiveCheckLanguage } from "./aiChecks";
 import { isDocxWithinLimits } from "./docxGuard";
-import { callModelOnce, normaliseForMatch } from "./modelCall";
+import { callModelOnce, MIN_EXCERPT_CHARS, normaliseForMatch } from "./modelCall";
 import {
   buildPrefillSystemPrompt,
   buildPrefillUserPrompt,
@@ -29,8 +29,7 @@ export const PREFILL_TIMEOUT_MS = 30_000;
 export const PREFILL_TOKEN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** Extraction gets at most this much of the 30 second budget. */
 export const PREFILL_EXTRACT_TIMEOUT_MS = 15_000;
-/** A shorter quote would match almost any document. */
-export const PREFILL_MIN_EXCERPT_CHARS = 15;
+export const PREFILL_MIN_EXCERPT_CHARS = MIN_EXCERPT_CHARS;
 
 const TOKEN_KIND = "intake_prefill";
 const MAX_FILE_NAME_CHARS = 200;

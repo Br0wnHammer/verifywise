@@ -433,9 +433,9 @@ describe("POST prefill", () => {
     expect(liveChecks.runPrefill).not.toHaveBeenCalled();
   });
 
-  it("accepts answers over 200 KB in the data field", async () => {
+  it("accepts answers up to the JSON body limit in the data field", async () => {
     generate.mockResolvedValue({ object: { suggestions: [] } });
-    const data = JSON.stringify({ users: "x".repeat(500_000) });
+    const data = JSON.stringify({ users: "x".repeat(3_000_000) });
     const res = await prefill(pdf(), { data });
     expect(res.status).toBe(200);
   });

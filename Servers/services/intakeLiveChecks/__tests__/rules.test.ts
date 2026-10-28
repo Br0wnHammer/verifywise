@@ -53,6 +53,16 @@ describe("intake live checks: rules", () => {
     expect(hint.excerpt).toBe("Scrape, faces");
   });
 
+  it("ignores the tail of a word cut by the negation lookback", () => {
+    // The 80-character lookback starts inside "piano"; its "no" is not a negation.
+    const answer = `piano ${"x".repeat(76)} subliminal cues`;
+    const hints = runRuleChecks(
+      { version: "1", fields: [{ id: "q", type: "textarea", label: "Q" }] },
+      { q: answer },
+    );
+    expect(hints.some((h) => h.ruleId === "art5_manipulation")).toBe(true);
+  });
+
   it("stays fast on a very long answer full of negated matches", () => {
     // Every "subliminal" is negated, so each match is checked; the lookback must not rescan the answer.
     const answer = "not subliminal ".repeat(30_000);

@@ -7,6 +7,7 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
   __esModule: true,
   default: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
 }));
+jest.mock("../../intakeScoring/enqueue", () => ({ enqueueIntakeAssessment: jest.fn() }));
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { buildSubmitLiveChecks, recordSubmitLiveChecks } =
@@ -182,11 +183,13 @@ describe("recordSubmitLiveChecks", () => {
     );
   });
 
-  it("answers at the deadline when the write hangs, and still asks for the stage", async () => {
+  it("answers at the deadline, then queues the stage itself once the slow write lands", async () => {
     jest.useFakeTimers();
     try {
-      const save = jest.fn(() => new Promise<void>(() => {}));
-      const { run } = record({}, { save, deadlineMs: 50 });
+      let finish: () => void = () => undefined;
+      const save = jest.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+      const queueStage = jest.fn(async () => undefined);
+      const { run } = record({}, { save, queueStage, deadlineMs: 50 });
       let settled = false;
       void run.then(() => {
         settled = true;
@@ -194,9 +197,32 @@ describe("recordSubmitLiveChecks", () => {
       await jest.advanceTimersByTimeAsync(49);
       expect(settled).toBe(false);
       await jest.advanceTimersByTimeAsync(1);
-      expect(settled).toBe(true);
-      expect(await run).toBe(true);
-      expect(save).toHaveBeenCalled();
+      // The submit's own job leaves the stage out; the write has not stored it yet.
+      expect(await run).toBe(false);
+      expect(queueStage).not.toHaveBeenCalled();
+      finish();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(queueStage).toHaveBeenCalledWith(4, 99);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("does not queue the stage for a late write that stored it skipped", async () => {
+    jest.useFakeTimers();
+    try {
+      let finish: () => void = () => undefined;
+      const save = jest.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+      const queueStage = jest.fn(async () => undefined);
+      const { run } = record(
+        {},
+        { save, queueStage, deadlineMs: 50, aiAvailable: jest.fn(async () => false) },
+      );
+      await jest.advanceTimersByTimeAsync(50);
+      expect(await run).toBe(false);
+      finish();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(queueStage).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }

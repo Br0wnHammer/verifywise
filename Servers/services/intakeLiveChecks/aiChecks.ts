@@ -9,7 +9,7 @@ import type { GenerateObjectImpl } from "../../advisor/llmSelfCorrect";
 import type { ILiveChecks, LiveCheckHint } from "../../domain.layer/interfaces/i.intakeLiveChecks";
 import { newDelimiterNonce } from "../intakeScoring/prompts";
 import type { ScoringAnswer } from "../intakeScoring/scoringInput";
-import { callModelOnce, normaliseForMatch as normalise } from "./modelCall";
+import { callModelOnce, MIN_EXCERPT_CHARS, normaliseForMatch as normalise } from "./modelCall";
 import { buildLiveCheckSystemPrompt, buildLiveCheckUserPrompt } from "./prompts";
 
 export type LiveCheckLanguage = NonNullable<ILiveChecks["ai"]["language"]>;
@@ -64,9 +64,6 @@ const hintId = (
     .update(kind + questionId + alsoQuestionId + excerpt)
     .digest("hex")
     .slice(0, 12)}`;
-
-/** Shortest excerpt a hint may quote, unless the whole answer is shorter. */
-const MIN_EXCERPT_CHARS = 15;
 
 function validHints(output: LiveCheckOutput, answers: ScoringAnswer[]): LiveCheckHint[] {
   const textById = new Map(answers.map((a) => [a.questionId, normalise(a.text)]));

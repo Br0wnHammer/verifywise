@@ -608,7 +608,8 @@ rules, AI and prefill.
 - **AI checks.** `POST /api/intake/public/by-id/:publicId/live-checks` and
   `/public/:tenantSlug/:formSlug/live-checks` (no JWT). Visible answers only,
   capped by `buildScoringAnswers`; one model call, 15 s, at most 8 hints; output
-  quoting text that is not in the answer is dropped. Errors answer 200 with
+  quoting text that is not in the answer, or a quote under 15 characters (unless
+  the answer is shorter), is dropped. Errors answer 200 with
   `error: "unavailable"`.
 - **Prefill.** `POST .../prefill`, multipart, PDF or DOCX up to 10 MB, held in
   memory only. DOCX zip size and entry count are checked before extraction,
@@ -617,8 +618,12 @@ rules, AI and prefill.
   provenance.
 - **Rate limits.** Per visitor and form (in memory): live checks 10/min, prefill
   3 per 10 min. Per form (Redis, hourly key, 300 ms timeout, fails closed):
-  live checks 300, prefill 20.
+  live checks 300, prefill 20. The count is refused outright while Redis is
+  disconnected, so the client's offline queue never replays refused calls.
 - **Storage.** `intake_submissions.live_checks` (JSONB): server-run rule hints
   and verified prefill at submit; AI hints from the `liveChecks` stage of the
   assessment job (`ai.status` pending, done, failed or skipped). The review
   preview returns it as `liveChecks`.
+- **Submit.** Submit waits at most 2 s for the live-check write. A slower
+  write carries on after the response and queues the `liveChecks` stage itself
+  once it has stored a pending status.

@@ -138,8 +138,12 @@ export async function requirePrefillAvailable(req: Request, res: Response, next:
   }
 }
 
-/** Largest `data` text field (the current answers as JSON) a prefill upload may carry. */
-const PREFILL_DATA_MAX_BYTES = 2_000_000;
+/**
+ * Largest `data` text field (the current answers as JSON) a prefill upload may
+ * carry: the JSON body limit in app.ts, so answers live checks accept never
+ * fail an upload.
+ */
+const PREFILL_DATA_MAX_BYTES = 10 * 1024 * 1024;
 
 // Held in memory only: the document is never written to disk or the database.
 const prefillUpload = multer({

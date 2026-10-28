@@ -592,6 +592,27 @@ describe("runIntakeAssessment: live checks stage", () => {
     expect(liveCalls(generateImpl)).toHaveLength(0);
   });
 
+  it("keeps a failed record and never throws when the form is gone", async () => {
+    const gone = { getForm: jest.fn(async () => null) };
+    const approved = IntakeSubmissionStatus.APPROVED;
+    const failed = harness(
+      submission({ status: approved, liveChecks: pendingLive({ status: "failed" }) }),
+      gone,
+    );
+    await runIntakeAssessment(job({ stages: ["liveChecks"] }), failed.deps);
+    expect(failed.deps.saveLiveChecksAi).not.toHaveBeenCalled();
+
+    const broken = harness(submission({ status: approved, liveChecks: pendingLive() }), {
+      ...gone,
+      saveLiveChecksAi: jest.fn(async () => {
+        throw new Error("db down");
+      }),
+    });
+    await expect(
+      runIntakeAssessment(job({ stages: ["liveChecks"] }), broken.deps),
+    ).resolves.toBeUndefined();
+  });
+
   it("does nothing for the stage when the submission has no live checks stored", async () => {
     const generateImpl = withLiveChecks();
     const h = harness(submission({ liveChecks: null }), { generateImpl });

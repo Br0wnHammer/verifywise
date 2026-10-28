@@ -5,6 +5,7 @@
 // answer within REDIS_TIMEOUT_MS counts as over the limit.
 import redisClient from "../../database/redis";
 import logger from "../../utils/logger/fileLogger";
+import { TIMED_OUT, withDeadline } from "./deadline";
 
 export type FormBudgetEndpoint = "checks" | "prefill";
 
@@ -28,20 +29,6 @@ export function formBudgetKey(formId: number, endpoint: FormBudgetEndpoint, now:
   return `intake:livechecks:${endpoint}:${formId}:${hour}`;
 }
 
-const TIMED_OUT = Symbol("timed out");
-
-async function withinRedisTimeout<T>(work: Promise<T>): Promise<T | typeof TIMED_OUT> {
-  let timer: NodeJS.Timeout | undefined;
-  const deadline = new Promise<typeof TIMED_OUT>((resolve) => {
-    timer = setTimeout(() => resolve(TIMED_OUT), REDIS_TIMEOUT_MS);
-  });
-  try {
-    return await Promise.race([work, deadline]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /**
  * Counts one call against the form's hourly budget. True while the count is
  * within `limit`; false when it is over, when Redis errors, when Redis is not
@@ -62,8 +49,9 @@ export async function consumeFormBudget(
   const key = formBudgetKey(formId, endpoint, now);
   try {
     // One transaction, so the key never outlives the hour without an expiry.
-    const replies = await withinRedisTimeout(
+    const replies = await withDeadline(
       redisClient.multi().incr(key).expire(key, HOUR_SECONDS).exec(),
+      REDIS_TIMEOUT_MS,
     );
     if (replies === TIMED_OUT) {
       logger.warn(

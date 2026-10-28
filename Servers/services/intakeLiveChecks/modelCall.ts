@@ -12,6 +12,9 @@ export type ModelCallResult<T> = { ok: true; data: T } | { ok: false; error: str
 export const normaliseForMatch = (value: string): string =>
   value.replace(/\s+/g, " ").trim().toLowerCase();
 
+/** Shortest verbatim quote a hint or suggestion may give; a shorter one matches almost anything. */
+export const MIN_EXCERPT_CHARS = 15;
+
 const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 export async function callModelOnce<T>(params: {
