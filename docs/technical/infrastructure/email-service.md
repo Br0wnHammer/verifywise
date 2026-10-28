@@ -170,10 +170,10 @@ Templates are stored in `Servers/templates/` as `.mjml` files.
 
 ### Template Structure
 
-Templates share one `<mj-head>` (fonts, default attributes and the CSS classes below) through `Servers/templates/partials/email-head.mjml`. Colors come from the shared palette as `{{color...}}` tokens, never as hex.
+Templates on the shared palette use one `<mj-head>` (fonts, default attributes and the CSS classes below) through `Servers/templates/partials/email-head.mjml`. Colors come from the shared palette as `{{color...}}` tokens, never as hex. Not every template is migrated yet: the account, access, approval, review and training emails are; others (for example `pmm-*`, `mrm-*`, `intake-*`, `task-*`) still carry their own head and hex colors until they move over.
 
 ```xml
-<!-- Example: pmm-reminder.mjml -->
+<!-- Illustrative template using the shared head -->
 <mjml>
 <mj-include path="./partials/email-head.mjml" />
   <mj-body background-color="{{colorPageBackground}}">
