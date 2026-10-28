@@ -25,7 +25,10 @@ export const PLACEHOLDER_ANSWERS = [
 /** A textarea answer shorter than this, after trimming, is too short. */
 export const MIN_TEXTAREA_LENGTH = 20;
 
-/** A match is ignored when one of these is among the three words before it (Article 5 and Annex III only). */
+/**
+ * A match is ignored when one of these is among the three words before it in
+ * the same sentence (Article 5 and Annex III only).
+ */
 export const NEGATION_WORDS = ["no", "not", "never", "without"];
 
 const WORK_OR_EDUCATION = [
@@ -73,13 +76,16 @@ export const ARTICLE_5_TERMS: Record<string, string[][]> = {
     ["predict", "forecast"],
     ["crime", "criminal", "offence", "offense", "reoffend"],
   ],
-  facial_scraping: [["scrap"], ["face", "facial"]],
+  facial_scraping: [
+    ["scrape$", "scrapes$", "scraped$", "scraper", "scraping"],
+    ["face$", "faces$", "facial"],
+  ],
   emotion_workplace_education: [
     ["emotion", "mood", "enthusiasm", "facial expression", "affect recognition"],
     WORK_OR_EDUCATION,
   ],
   biometric_categorisation: [
-    ["biometric", "face", "facial", "voiceprint"],
+    ["biometric", "face$", "faces$", "facial", "voiceprint"],
     [
       "race$",
       "racial",
@@ -182,7 +188,12 @@ export const ANNEX_III_TERMS: Record<string, string[]> = {
   ],
 };
 
-/** Phrases that describe a decision made with no person involved. Not negation-checked: several contain "no" or "without". */
+/**
+ * Phrases that describe a decision made with no person involved. Not
+ * negation-checked: the spec limits negation to Article 5 and Annex III, and
+ * these phrases already name the risky case, so a "not" before one (rare) still
+ * gives a hint. Hints are non-blocking.
+ */
 export const GDPR_ART22_TERMS = [
   "automatically reject",
   "auto-reject",

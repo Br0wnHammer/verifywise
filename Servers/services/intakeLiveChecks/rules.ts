@@ -39,11 +39,12 @@ const termPattern = (term: string): RegExp => {
 };
 
 const isNegated = (answer: string, index: number): boolean => {
-  const words =
-    answer
-      .slice(0, index)
-      .toLowerCase()
-      .match(/[a-z']+/g) ?? [];
+  // The window stops at the end of the previous sentence or clause.
+  const before = answer.slice(0, index);
+  const sentence = before.slice(
+    Math.max(...[".", "!", "?", ";"].map((mark) => before.lastIndexOf(mark))) + 1,
+  );
+  const words = sentence.toLowerCase().match(/[a-z']+/g) ?? [];
   return words.slice(-3).some((word) => NEGATION_WORDS.includes(word));
 };
 
@@ -121,7 +122,7 @@ export function runRuleChecks(schema: FormSchema, data: Record<string, unknown>)
   const logicSchema = schema as unknown as LogicSchema;
   const { visibleIds, effectiveAnswers } = evaluateForm(logicSchema, data ?? {});
   const hints: LiveCheckHint[] = [];
-  for (const field of sortFields(logicSchema.fields ?? [])) {
+  for (const field of sortFields(Array.isArray(logicSchema?.fields) ? logicSchema.fields : [])) {
     const answer = effectiveAnswers[field.id];
     if (!visibleIds.has(field.id) || !CHECKED_TYPES.includes(field.type)) continue;
     if (typeof answer !== "string" || answer.trim() === "") continue;

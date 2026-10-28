@@ -18,7 +18,7 @@
     "expected": [{ "ruleId": "placeholder", "questionId": "desc", "kind": "vague" }]
   },
   {
-    "name": "every placeholder value is caught",
+    "name": "every placeholder value is caught, and trailing punctuation is not a placeholder",
     "schema": {
       "version": "1",
       "fields": [
@@ -235,5 +235,61 @@
     },
     "data": {},
     "expected": []
+  },
+  {
+    "name": "scraping Facebook pages is not face scraping",
+    "schema": {
+      "version": "1",
+      "fields": [{ "id": "desc", "type": "textarea", "label": "Description", "order": 0 }]
+    },
+    "data": { "desc": "Scrapes public Facebook pages for brand mentions" },
+    "expected": []
+  },
+  {
+    "name": "Facebook is not a face for biometric categorisation",
+    "schema": {
+      "version": "1",
+      "fields": [{ "id": "desc", "type": "textarea", "label": "Description", "order": 0 }]
+    },
+    "data": { "desc": "Runs political ads on Facebook" },
+    "expected": []
+  },
+  {
+    "name": "faced is not a face",
+    "schema": {
+      "version": "1",
+      "fields": [{ "id": "desc", "type": "textarea", "label": "Description", "order": 0 }]
+    },
+    "data": { "desc": "We faced political pressure last year" },
+    "expected": []
+  },
+  {
+    "name": "scrapped is not scraping",
+    "schema": {
+      "version": "1",
+      "fields": [{ "id": "desc", "type": "textarea", "label": "Description", "order": 0 }]
+    },
+    "data": { "desc": "We scrapped the old face matching project" },
+    "expected": []
+  },
+  {
+    "name": "faces with a sensitive trait is biometric categorisation",
+    "schema": {
+      "version": "1",
+      "fields": [{ "id": "desc", "type": "textarea", "label": "Description", "order": 0 }]
+    },
+    "data": { "desc": "Uses faces to infer ethnic origin of visitors" },
+    "expected": [
+      { "ruleId": "art5_biometric_categorisation", "questionId": "desc", "kind": "prohibited" }
+    ]
+  },
+  {
+    "name": "negation does not cross a sentence end",
+    "schema": {
+      "version": "1",
+      "fields": [{ "id": "desc", "type": "textarea", "label": "Description", "order": 0 }]
+    },
+    "data": { "desc": "We do not store data. CVs are screened." },
+    "expected": [{ "ruleId": "annex3_employment_use", "questionId": "desc", "kind": "regulation" }]
   }
 ]
