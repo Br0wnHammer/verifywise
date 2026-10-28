@@ -44,3 +44,19 @@ export interface ILiveChecks {
   };
   prefill: Record<string, PrefillProvenance>;
 }
+
+/** One answer the server read from an uploaded document. */
+export interface PrefillSuggestion {
+  questionId: string;
+  value: string;
+  location: string;
+  excerpt: string;
+  /** Signed by the server; echoed back on submit so provenance can be verified. */
+  token: string;
+}
+
+/** What the submit payload carries for a prefilled answer. */
+export interface PrefillSubmitEntry {
+  token: string;
+  confirmed: boolean;
+}
