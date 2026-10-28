@@ -12,8 +12,8 @@ jest.mock("../../database/db", () => ({
   sequelize: { query: jest.fn() },
 }));
 
-jest.mock("../emailService", () => ({
-  sendEmail: jest.fn(),
+jest.mock("../notificationService", () => ({
+  notificationService: { sendEmailWithTemplate: jest.fn() },
 }));
 
 jest.mock("../../constants/emailTemplates", () => ({
@@ -46,7 +46,7 @@ import {
   sendSubmissionApprovedEmail,
   sendSubmissionRejectedEmail,
 } from "../intakeFormEmail.service";
-import { sendEmail } from "../emailService";
+import { notificationService } from "../notificationService";
 import {
   getEligibleReviewerIdsQuery,
   getIntakeFormByIdQuery,
@@ -56,7 +56,11 @@ import {
 import { sequelize } from "../../database/db";
 import { IntakeEntityType } from "../../domain.layer/enums/intake-entity-type.enum";
 
-const mockSendEmail = sendEmail as jest.MockedFunction<typeof sendEmail>;
+// Intake emails pass a template file name, so they go through the service
+// that reads the file; emailService.sendEmail expects MJML source.
+const mockSendEmail = notificationService.sendEmailWithTemplate as jest.MockedFunction<
+  typeof notificationService.sendEmailWithTemplate
+>;
 const mockGetUsersByIds = getUsersByIds as jest.MockedFunction<typeof getUsersByIds>;
 const mockQuery = sequelize.query as jest.MockedFunction<typeof sequelize.query>;
 
