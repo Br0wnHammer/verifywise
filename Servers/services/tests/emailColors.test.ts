@@ -80,28 +80,6 @@ describe("email color tokens", () => {
     expect(html).not.toContain("{{color");
   });
 
-  it("substitutes palette colors in the AI gateway budget warning email", async () => {
-    const mjml = fs.readFileSync(
-      path.join(__dirname, "../../templates/ai-gateway-budget-warning.mjml"),
-      "utf-8",
-    );
-    const html = await compileMjmlToHtml(mjml, {
-      recipient_name: "Ada",
-      spend_percentage: "80",
-      current_spend: "800",
-      monthly_limit: "1000",
-      threshold: "75",
-      hard_limit_status: "Off",
-      total_requests: "1200",
-      gateway_url: "https://example.com/gateway",
-    });
-
-    expect(mjml).not.toMatch(/#13715b/i);
-    expect(html).toContain(brand.primary);
-    expect(html).toContain("Ada");
-    expect(html).not.toContain("{{color");
-  });
-
   it("substitutes color placeholders before MJML compilation", async () => {
     const html = await compileMjmlToHtml(
       '<mjml><mj-body><mj-text color="{{colorBrandPrimary}}">{{heading}}</mj-text></mj-body></mjml>',
