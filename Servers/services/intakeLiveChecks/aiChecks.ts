@@ -5,11 +5,11 @@
 // model invents (or is talked into by an answer) is dropped.
 import { createHash } from "crypto";
 import { z } from "zod";
-import { generateObjectWithSelfCorrection, GenerateObjectImpl } from "../../advisor/llmSelfCorrect";
-import logger from "../../utils/logger/fileLogger";
+import type { GenerateObjectImpl } from "../../advisor/llmSelfCorrect";
 import type { ILiveChecks, LiveCheckHint } from "../../domain.layer/interfaces/i.intakeLiveChecks";
 import { newDelimiterNonce } from "../intakeScoring/prompts";
 import type { ScoringAnswer } from "../intakeScoring/scoringInput";
+import { callModelOnce, normaliseForMatch as normalise } from "./modelCall";
 import { buildLiveCheckSystemPrompt, buildLiveCheckUserPrompt } from "./prompts";
 
 export type LiveCheckLanguage = NonNullable<ILiveChecks["ai"]["language"]>;
@@ -53,8 +53,6 @@ const liveCheckOutputSchema = z
   .strict();
 
 type LiveCheckOutput = z.infer<typeof liveCheckOutputSchema>;
-
-const normalise = (value: string): string => value.replace(/\s+/g, " ").trim().toLowerCase();
 
 const hintId = (
   kind: string,
@@ -103,8 +101,6 @@ function validHints(output: LiveCheckOutput, answers: ScoringAnswer[]): LiveChec
   return kept;
 }
 
-const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
-
 export async function runAiChecks(params: {
   answers: ScoringAnswer[];
   language: LiveCheckLanguage;
@@ -119,44 +115,15 @@ export async function runAiChecks(params: {
   const system = buildLiveCheckSystemPrompt(nonce, toLiveCheckLanguage(language));
   const prompt = buildLiveCheckUserPrompt(answers, nonce);
 
-  let timer: NodeJS.Timeout | undefined;
-  // The abort signal stops a well-behaved provider; this race also bounds a
-  // call that ignores it.
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("Timed out waiting for the model")), timeoutMs);
+  const result = await callModelOnce({
+    model,
+    schema: liveCheckOutputSchema,
+    system,
+    prompt,
+    timeoutMs,
+    generate,
+    logLabel: "intake live checks",
   });
-
-  try {
-    const { object } = await Promise.race([
-      generateObjectWithSelfCorrection(
-        {
-          model,
-          schema: liveCheckOutputSchema,
-          system,
-          prompt,
-          temperature: 0,
-          // Exactly one model call per run.
-          innerMaxRetries: 0,
-          maxSelfCorrectionAttempts: 0,
-          timeoutMs,
-        },
-        generate,
-      ),
-      deadline,
-    ]);
-    // The real SDK validates already; an injected generate may not.
-    const parsed = liveCheckOutputSchema.safeParse(object);
-    if (!parsed.success) {
-      logger.warn("intake live checks: model output did not match the schema");
-      return { ok: false, hints: [], error: "Model output did not match the schema" };
-    }
-    return { ok: true, hints: validHints(parsed.data, answers) };
-  } catch (err) {
-    const message = errorMessage(err);
-    // The message only: never the prompt, the answers or the key.
-    logger.warn(`intake live checks: AI check failed: ${message}`);
-    return { ok: false, hints: [], error: message };
-  } finally {
-    clearTimeout(timer);
-  }
+  if (!result.ok) return { ok: false, hints: [], error: result.error };
+  return { ok: true, hints: validHints(result.data, answers) };
 }

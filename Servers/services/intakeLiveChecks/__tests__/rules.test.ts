@@ -4,7 +4,8 @@
  */
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { RULE_COPY, runRuleChecks } from "..";
+import { runRuleChecks } from "../rules";
+import { RULE_COPY } from "../ruleTerms";
 import type { FormSchema } from "../../intakeRiskScoring.service";
 import type { HintKind } from "../../../domain.layer/interfaces/i.intakeLiveChecks";
 

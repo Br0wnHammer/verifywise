@@ -4,7 +4,7 @@ jest.mock("../../../utils/logger/fileLogger", () => ({
 }));
 
 import { ZodError } from "zod";
-import { LIVE_CHECK_TIMEOUT_MS, MAX_AI_HINTS, runAiChecks, toLiveCheckLanguage } from "..";
+import { LIVE_CHECK_TIMEOUT_MS, MAX_AI_HINTS, runAiChecks, toLiveCheckLanguage } from "../aiChecks";
 import type { ScoringAnswer } from "../../intakeScoring/scoringInput";
 
 const MODEL = { apiKey: "sk-fake" } as any;
