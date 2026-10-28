@@ -594,3 +594,31 @@ Intake forms support calculated fields, show/hide rules and risk dimension tags
   answers, option labels and ticked checkbox labels. A dimension uses its tagged
   answers when they match any keyword, and all answers otherwise; high-risk
   keywords in any untagged answer set a floor the tagged score cannot go below.
+## Intake live checks
+
+Hints on the public intake form while the submitter types, plus vendor document
+prefill (spec: `docs/superpowers/specs/2026-10-28-intake-live-checks-design.md`).
+One per-form toggle, `intake_forms.live_checks_enabled` (default true), covers
+rules, AI and prefill.
+
+- **Rule checks.** `Servers/services/intakeLiveChecks/rules.ts`, mirrored line
+  for line in `Clients/src/application/utils/intakeLiveChecks/`. Both run the
+  same fixtures (`__fixtures__/ruleCases.json`, `ruleCopy.json`). Kinds in order:
+  `prohibited`, `regulation`, `contradiction`, `vague`. English keywords only.
+- **AI checks.** `POST /api/intake/public/by-id/:publicId/live-checks` and
+  `/public/:tenantSlug/:formSlug/live-checks` (no JWT). Visible answers only,
+  capped by `buildScoringAnswers`; one model call, 15 s, at most 8 hints; output
+  quoting text that is not in the answer is dropped. Errors answer 200 with
+  `error: "unavailable"`.
+- **Prefill.** `POST .../prefill`, multipart, PDF or DOCX up to 10 MB, held in
+  memory only. DOCX zip size and entry count are checked before extraction,
+  which has its own deadline. Each suggestion carries a signed token
+  (`utils/signedToken.utils.ts`); at submit only a verified token becomes
+  provenance.
+- **Rate limits.** Per visitor and form (in memory): live checks 10/min, prefill
+  3 per 10 min. Per form (Redis, hourly key, 300 ms timeout, fails closed):
+  live checks 300, prefill 20.
+- **Storage.** `intake_submissions.live_checks` (JSONB): server-run rule hints
+  and verified prefill at submit; AI hints from the `liveChecks` stage of the
+  assessment job (`ai.status` pending, done, failed or skipped). The review
+  preview returns it as `liveChecks`.

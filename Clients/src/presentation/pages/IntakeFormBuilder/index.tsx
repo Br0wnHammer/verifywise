@@ -67,6 +67,7 @@ import StandardModal from "../../components/Modals/StandardModal";
 import Select from "../../components/Inputs/Select";
 import Checkbox from "../../components/Inputs/Checkbox";
 import EuAiActStepToggle from "./EuAiActStepToggle";
+import LiveChecksToggle from "./LiveChecksToggle";
 import Chip from "../../components/Chip";
 import { PageBreadcrumbs } from "../../components/breadcrumbs/PageBreadcrumbs";
 
@@ -1343,6 +1344,11 @@ export function IntakeFormBuilder() {
                                 : {}),
                             })
                           }
+                        />
+
+                        <LiveChecksToggle
+                          enabled={form.liveChecksEnabled ?? true}
+                          onToggle={(enabled) => updateForm({ liveChecksEnabled: enabled })}
                         />
                       </Box>
                     </Collapse>

@@ -3,6 +3,16 @@
 // application/utils/intakeLiveChecks/ruleTerms.ts word for word.
 
 export const de: Record<string, string> = {
+  // Reviewer view and form builder
+  "Intake checks": "Intake-Prüfungen",
+  "No answers were flagged.": "Keine Antworten wurden markiert.",
+  "AI checks still running": "KI-Prüfungen laufen noch",
+  "AI checks unavailable": "KI-Prüfungen nicht verfügbar",
+  "AI-suggested from": "KI-Vorschlag aus",
+  "Not confirmed": "Nicht bestätigt",
+  "Check answers while the submitter types": "Antworten während der Eingabe prüfen",
+  "AI checks and vendor document prefill need the form's LLM key. Rule checks match English answers.":
+    "KI-Prüfungen und das Ausfüllen aus Anbieterdokumenten benötigen den LLM-Schlüssel des Formulars. Regelprüfungen erkennen englische Antworten.",
   // Public form
   "Your answers are checked by AI as you type to help you complete this form.":
     "Ihre Antworten werden während der Eingabe von KI geprüft, damit Sie dieses Formular vollständig ausfüllen können.",
@@ -90,6 +100,16 @@ export const de: Record<string, string> = {
 };
 
 export const fr: Record<string, string> = {
+  // Reviewer view and form builder
+  "Intake checks": "Vérifications de la demande",
+  "No answers were flagged.": "Aucune réponse n'a été signalée.",
+  "AI checks still running": "Vérifications IA en cours",
+  "AI checks unavailable": "Vérifications IA indisponibles",
+  "AI-suggested from": "Suggéré par l'IA à partir de",
+  "Not confirmed": "Non confirmé",
+  "Check answers while the submitter types": "Vérifier les réponses pendant la saisie",
+  "AI checks and vendor document prefill need the form's LLM key. Rule checks match English answers.":
+    "Les vérifications IA et le remplissage à partir d'un document fournisseur nécessitent la clé LLM du formulaire. Les vérifications par règles reconnaissent les réponses en anglais.",
   // Public form
   "Your answers are checked by AI as you type to help you complete this form.":
     "Vos réponses sont vérifiées par l'IA pendant la saisie pour vous aider à remplir ce formulaire.",
@@ -177,6 +197,16 @@ export const fr: Record<string, string> = {
 };
 
 export const es: Record<string, string> = {
+  // Reviewer view and form builder
+  "Intake checks": "Comprobaciones de la solicitud",
+  "No answers were flagged.": "No se marcó ninguna respuesta.",
+  "AI checks still running": "Comprobaciones de IA en curso",
+  "AI checks unavailable": "Comprobaciones de IA no disponibles",
+  "AI-suggested from": "Sugerido por IA a partir de",
+  "Not confirmed": "No confirmado",
+  "Check answers while the submitter types": "Comprobar las respuestas mientras se escribe",
+  "AI checks and vendor document prefill need the form's LLM key. Rule checks match English answers.":
+    "Las comprobaciones de IA y el relleno desde un documento del proveedor necesitan la clave LLM del formulario. Las comprobaciones por reglas reconocen respuestas en inglés.",
   // Public form
   "Your answers are checked by AI as you type to help you complete this form.":
     "La IA revisa sus respuestas mientras escribe para ayudarle a completar este formulario.",

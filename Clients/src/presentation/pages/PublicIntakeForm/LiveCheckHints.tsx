@@ -1,14 +1,6 @@
 import { Box, Typography } from "@mui/material";
-import type { HintKind, LiveCheckHint } from "../../../domain/types/intakeLiveChecks";
-import { status } from "../../themes/palette";
-
-/** Text, background and border colors for each hint kind: red, amber, amber, blue. */
-export const HINT_KIND_COLORS: Record<HintKind, { text: string; bg: string; border: string }> = {
-  prohibited: status.error,
-  regulation: status.warning,
-  contradiction: status.warning,
-  vague: status.info,
-};
+import type { LiveCheckHint } from "../../../domain/types/intakeLiveChecks";
+import { HINT_KIND_COLORS } from "../../components/IntakeLiveChecks/hintKinds";
 
 /** The field border a set of hints asks for: red for prohibited, amber for regulation or contradiction. */
 export function fieldToneFor(hints: LiveCheckHint[]): "error" | "warning" | undefined {

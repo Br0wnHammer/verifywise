@@ -1,18 +1,7 @@
 import { Box, ButtonBase, Typography } from "@mui/material";
-import {
-  HINT_KIND_ORDER,
-  type HintKind,
-  type LiveCheckHint,
-} from "../../../domain/types/intakeLiveChecks";
+import { HINT_KIND_ORDER, type LiveCheckHint } from "../../../domain/types/intakeLiveChecks";
 import { border } from "../../themes/palette";
-import { HINT_KIND_COLORS } from "./LiveCheckHints";
-
-const KIND_LABELS: Record<HintKind, string> = {
-  prohibited: "Possible prohibited practice",
-  regulation: "Possible regulated use",
-  contradiction: "Conflicting answers",
-  vague: "Needs more detail",
-};
+import { HINT_KIND_COLORS, HINT_KIND_LABELS } from "../../components/IntakeLiveChecks/hintKinds";
 
 /**
  * "Intake assistant": counts per hint kind, the open hints (each jumps to its
@@ -79,7 +68,7 @@ export function IntakeAssistantPanel({
                 component="span"
                 sx={{ fontSize: "13px", color: "text.primary", flex: 1 }}
               >
-                {KIND_LABELS[kind]}
+                {HINT_KIND_LABELS[kind]}
               </Typography>
               <Typography component="span" sx={{ fontSize: "13px", fontWeight: 600 }}>
                 {count}
