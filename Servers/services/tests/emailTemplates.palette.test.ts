@@ -48,6 +48,15 @@ describe("email templates and the shared palette", () => {
     expect(html).toContain(emailColorTokens.colorButtonText);
   });
 
+  it.each(templates.filter(({ source }) => source.includes(INCLUDE)))(
+    "$name keeps the shared head styles",
+    async ({ source }) => {
+      // Only the shared head supplies the card border color, so a dropped head fails here.
+      const html = await compileMjmlToHtml(source, {});
+      expect(html.toLowerCase()).toContain(emailColorTokens.colorBorderLight.toLowerCase());
+    },
+  );
+
   it("expands the shared head before applying color tokens", async () => {
     const html = await compileMjmlToHtml(
       '<mjml><mj-include path="./partials/email-head.mjml" /><mj-body background-color="{{colorPageBackground}}"><mj-section><mj-column><mj-button href="https://example.com">{{label}}</mj-button></mj-column></mj-section></mj-body></mjml>',
@@ -62,6 +71,31 @@ describe("email templates and the shared palette", () => {
     await expect(
       compileMjmlToHtml('<mjml><mj-include path="./partials/missing.mjml" /></mjml>', {}),
     ).rejects.toThrow();
+  });
+
+  it.each([
+    "<mj-include path='./partials/email-head.mjml' />",
+    '<mj-include path="./partials/email-head.mjml"></mj-include>',
+    '<mj-include path="./partials/email-head.mjml" type="mjml" />',
+  ])("expands the shared head written as %s", async (include) => {
+    const html = await compileMjmlToHtml(
+      `<mjml>${include}<mj-body><mj-section><mj-column><mj-text>Hi</mj-text></mj-column></mj-section></mj-body></mjml>`,
+      {},
+    );
+    // The mj-text color comes only from the shared head's mj-attributes.
+    expect(html.toLowerCase()).toContain(emailColorTokens.colorTextSecondary.toLowerCase());
+    expect(html).not.toContain("mj-include");
+  });
+
+  it.each([
+    '<mj-include path="./partials/Email_Head.mjml" />',
+    '<mj-include path="../templates/partials/email-head.mjml" />',
+    '<mj-include path="/etc/passwd" />',
+    "<mj-include />",
+  ])("refuses an include it cannot expand: %s", async (include) => {
+    await expect(compileMjmlToHtml(`<mjml>${include}</mjml>`, {})).rejects.toThrow(
+      "Unsupported mj-include",
+    );
   });
 
   it("leaves an unknown color token in place and logs it once", () => {

@@ -7,7 +7,7 @@
 import { background, border, brand, risk, status, text } from "./design-tokens/palette";
 import logger from "../utils/logger/fileLogger";
 
-export const emailColorTokens: Record<string, string> = {
+export const emailColorTokens = {
   // Email roles. Templates use these for page and button colors, so a change
   // to a general palette token (page background, status text) does not move a
   // button fill or label by accident. Change the mapping here, in one place.
@@ -55,7 +55,10 @@ export const emailColorTokens: Record<string, string> = {
   colorRiskLowText: risk.low.text,
   colorRiskVeryLowBg: risk.veryLow.bg,
   colorRiskVeryLowText: risk.veryLow.text,
-};
+} as const satisfies Record<string, string>;
+
+const isColorToken = (key: string): key is keyof typeof emailColorTokens =>
+  Object.prototype.hasOwnProperty.call(emailColorTokens, key);
 
 const COLOR_PLACEHOLDER = /{{(color[A-Za-z0-9]+)}}/g;
 
@@ -100,8 +103,7 @@ const reportedUnknownTokens = new Set<string>();
  */
 export function applyColorTokens(source: string): string {
   return source.replace(COLOR_PLACEHOLDER, (placeholder, key: string) => {
-    const value = emailColorTokens[key];
-    if (value !== undefined) return value;
+    if (isColorToken(key)) return emailColorTokens[key];
     if (!reportedUnknownTokens.has(key)) {
       reportedUnknownTokens.add(key);
       logger.warn(`Unknown email color token {{${key}}} left in template`);
