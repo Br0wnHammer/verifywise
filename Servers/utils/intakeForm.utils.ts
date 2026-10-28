@@ -879,7 +879,11 @@ export const claimSubmissionNotificationQuery = async (
  * also over 10 minutes old (past the 2-minute cap, so the job or cap was
  * lost), for a direct send when no stage needs re-running; a live job keeps
  * its own email and language. A form without recipients, which never claims,
- * is not listed again and again.
+ * is not listed again and again. needsLiveChecks: the AI live checks are
+ * still "pending" after 10 minutes. Listed whatever the submission's status,
+ * since that stage writes for decided submissions too; the other flags are
+ * for pending submissions only. A null live_checks (made before the feature,
+ * or checks off) is never listed.
  */
 export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
   Array<{
@@ -887,26 +891,29 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
     organizationId: number;
     needsScoring: boolean;
     needsSuggestions: boolean;
+    needsLiveChecks: boolean;
     emailUnclaimed: boolean;
     needsNotification: boolean;
   }>
 > => {
   const rows = await sequelize.query(
-    `SELECT id, "organizationId", "needsScoring", "needsSuggestions", "emailUnclaimed",
+    `SELECT id, "organizationId", "needsScoring", "needsSuggestions", "needsLiveChecks",
+      "emailUnclaimed",
       ("emailUnclaimed" AND created_at < NOW() - interval '10 minutes') AS "needsNotification"
     FROM (
       SELECT id, organization_id AS "organizationId", created_at,
         (
-          notification_sent_at IS NULL
+          status = :status
+          AND notification_sent_at IS NULL
           AND EXISTS (
-            SELECT 1 FROM intake_forms f
+            SELECT 1 FROM verifywise.intake_forms f
             WHERE f.id = intake_submissions.form_id
               AND f.organization_id = intake_submissions.organization_id
               AND jsonb_typeof(f.recipients) = 'array'
               AND f.recipients <> '[]'::jsonb
           )
         ) AS "emailUnclaimed",
-        COALESCE(
+        status = :status AND COALESCE(
           risk_assessment IS NULL
           OR risk_assessment->>'version' IS NULL
           OR (
@@ -915,19 +922,25 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
           ),
           false
         ) AS "needsScoring",
-        COALESCE(
+        status = :status AND COALESCE(
           suggested_risks IS NULL
           OR (
             suggested_risks->>'status' = 'pending'
             AND (suggested_risks->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes'
           ),
           false
-        ) AS "needsSuggestions"
-      FROM intake_submissions
-      WHERE status = :status
+        ) AS "needsSuggestions",
+        COALESCE(
+          live_checks->'ai'->>'status' = 'pending'
+          AND (live_checks->'ai'->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes',
+          false
+        ) AS "needsLiveChecks"
+      FROM verifywise.intake_submissions
+      WHERE status = :status OR live_checks->'ai'->>'status' = 'pending'
     ) s
     WHERE "needsScoring" OR "needsSuggestions"
       OR ("emailUnclaimed" AND created_at < NOW() - interval '10 minutes')
+      OR "needsLiveChecks"
     ORDER BY id`,
     {
       replacements: { status: IntakeSubmissionStatus.PENDING },
@@ -940,6 +953,7 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
     organizationId: number;
     needsScoring: boolean;
     needsSuggestions: boolean;
+    needsLiveChecks: boolean;
     emailUnclaimed: boolean;
     needsNotification: boolean;
   }>;

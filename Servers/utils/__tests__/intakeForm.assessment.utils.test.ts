@@ -233,6 +233,17 @@ describe("getSubmissionsNeedingAssessmentQuery", () => {
     expect(sql).toContain("suggested_risks IS NULL");
     expect(sql).toContain('WHERE "needsScoring" OR "needsSuggestions"');
   });
+
+  it("lists AI live checks only when stored and pending past the stale limit", async () => {
+    mockQuery.mockResolvedValue([] as any);
+    await getSubmissionsNeedingAssessmentQuery();
+    const sql = sqlOf().replace(/\s+/g, " ");
+    // A null live_checks (before the feature, or checks off) gives NULL, coalesced to false.
+    expect(sql).toContain(
+      "COALESCE( live_checks->'ai'->>'status' = 'pending' AND (live_checks->'ai'->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes', false ) AS \"needsLiveChecks\"",
+    );
+    expect(sql).toContain('OR "needsLiveChecks"');
+  });
 });
 
 describe("submission row mapping", () => {
@@ -251,7 +262,12 @@ describe("live checks queries", () => {
   });
 
   it("updateLiveChecksQuery stores the block, scoped to the organization", async () => {
-    const lc = { version: 1, rules: [], ai: { status: "skipped", hints: [] }, prefill: {} } as const;
+    const lc = {
+      version: 1,
+      rules: [],
+      ai: { status: "skipped", hints: [] },
+      prefill: {},
+    } as const;
     await updateLiveChecksQuery(4, 9, lc as any);
     expect(sqlOf()).toContain("verifywise.intake_submissions");
     expect(sqlOf()).toContain("organization_id = :organizationId");

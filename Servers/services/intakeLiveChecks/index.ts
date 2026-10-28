@@ -23,3 +23,5 @@ export {
   type PrefillOutcome,
   type PrefillSuggestion,
 } from "./prefill";
+export { visibleScoringAnswers } from "./answers";
+export { buildSubmitLiveChecks, recordSubmitLiveChecks } from "./submit";

@@ -143,6 +143,7 @@ import type {
 } from "../domain.layer/interfaces/i.intakeForm";
 import { createSignedToken, verifySignedToken } from "../utils/signedToken.utils";
 import { formAiAvailable } from "../services/intakeLiveChecks/availability";
+import { recordSubmitLiveChecks } from "../services/intakeLiveChecks/submit";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
 
@@ -320,6 +321,8 @@ function startIntakeAssessment(params: {
   form: IIntakeForm | null;
   /** Email the organization's admins when the form has no recipients. */
   adminFallback: boolean;
+  /** Also run the AI live checks (stored pending at submit). */
+  liveChecks: boolean;
   formId: number;
   formName: string;
   submitterName: string;
@@ -330,7 +333,9 @@ function startIntakeAssessment(params: {
   return enqueueIntakeAssessment({
     organizationId,
     submissionId,
-    stages: ["scoring", "suggestions"],
+    stages: params.liveChecks
+      ? ["scoring", "suggestions", "liveChecks"]
+      : ["scoring", "suggestions"],
     notify: true,
     lang,
     adminFallback,
@@ -1996,10 +2001,12 @@ export async function retrySubmissionAssessment(req: Request, res: Response) {
         .json(STATUS_CODE[409](req.t!("Only pending submissions can be changed")));
     }
 
+    // The live checks stage reads the submitter's stored language, not this request's.
     const stages = selectRetryStages(
       submission.riskAssessment,
       submission.suggestedRisks,
       new Date(),
+      submission.liveChecks,
     );
     if (stages.length === 0) {
       return res.status(409).json(STATUS_CODE[409](req.t!("Nothing to retry")));
@@ -3260,10 +3267,21 @@ export async function submitPublicFormByPublicId(req: Request, res: Response) {
       // Get full form with recipients to send notifications
       const fullForm = await getIntakeFormByIdQuery(form.id, tenantInfo.orgId);
 
+      // After the commit and never thrown: a failed write leaves the submission as is.
+      const liveChecks = await recordSubmitLiveChecks({
+        form: fullFormForValidation,
+        organizationId: tenantInfo.orgId,
+        submissionId: submission.id!,
+        data: cleanedData,
+        prefill: req.body.prefill,
+        language: req.lang,
+      });
+
       void startIntakeAssessment({
         organizationId: tenantInfo.orgId,
         submissionId: submission.id!,
         lang: req.lang,
+        liveChecks,
         form: fullForm,
         adminFallback: false,
         formId: form.id,
@@ -3601,10 +3619,21 @@ export async function submitPublicForm(req: Request, res: Response) {
       // Use per-form recipients; this route falls back to org admins without them
       const fullForm = await getIntakeFormByIdQuery(form.id, tenantInfo.id);
 
+      // After the commit and never thrown: a failed write leaves the submission as is.
+      const liveChecks = await recordSubmitLiveChecks({
+        form: fullFormForValidation,
+        organizationId: tenantInfo.id,
+        submissionId: submission.id!,
+        data: cleanedData,
+        prefill: req.body.prefill,
+        language: req.lang,
+      });
+
       void startIntakeAssessment({
         organizationId: tenantInfo.id,
         submissionId: submission.id!,
         lang: req.lang,
+        liveChecks,
         form: fullForm,
         adminFallback: true,
         formId: form.id,

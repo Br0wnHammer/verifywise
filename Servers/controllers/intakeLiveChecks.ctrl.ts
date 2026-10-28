@@ -9,7 +9,6 @@ import { NextFunction, Request, Response } from "express";
 import multer from "multer";
 import { createModelFromKey, LLMKeyRow } from "../advisor/llmModelFactory";
 import type { ResolvedIntakeForm } from "../middleware/intakePublicForm.middleware";
-import { cleanSubmission, type LogicSchema } from "../services/intakeFormLogic";
 import {
   isAllowedPrefillFile,
   LIVE_CHECK_TIMEOUT_MS,
@@ -18,6 +17,7 @@ import {
   runPrefill,
   toLiveCheckLanguage,
 } from "../services/intakeLiveChecks";
+import { visibleScoringAnswers } from "../services/intakeLiveChecks/answers";
 import { formAiAvailable } from "../services/intakeLiveChecks/availability";
 import {
   consumeFormBudget,
@@ -25,7 +25,6 @@ import {
   type FormBudgetEndpoint,
 } from "../services/intakeLiveChecks/formBudget";
 import type { FormSchema } from "../services/intakeRiskScoring.service";
-import { buildScoringAnswers, type ScoringAnswer } from "../services/intakeScoring/scoringInput";
 import { getLLMKeyWithKeyByIdQuery } from "../utils/llmKey.utils";
 import logger from "../utils/logger/fileLogger";
 import { STATUS_CODE } from "../utils/statusCode.utils";
@@ -62,12 +61,6 @@ async function loadFormModel({ form, organizationId }: ResolvedIntakeForm): Prom
   return row ? createModelFromKey(row as unknown as LLMKeyRow) : null;
 }
 
-/** Visible answers only (hidden and unknown keys dropped), capped by buildScoringAnswers. */
-function visibleAnswers(schema: unknown, data: Record<string, unknown>): ScoringAnswer[] {
-  const { data: visible } = cleanSubmission(schema as LogicSchema, data);
-  return buildScoringAnswers(visible, schema as FormSchema);
-}
-
 /** Counts one call against the form's hourly budget; answers 429 and returns false when spent. */
 async function spendFormBudget(
   req: Request,
@@ -100,7 +93,7 @@ export async function postPublicLiveChecks(req: Request, res: Response) {
     const model = await loadFormModel(resolved);
     if (!model) return res.status(200).json(STATUS_CODE[200]({ aiAvailable: false, hints: [] }));
 
-    const answers = visibleAnswers(resolved.form.schema, data);
+    const answers = visibleScoringAnswers(resolved.form.schema, data);
     if (answers.length === 0) {
       return res.status(200).json(STATUS_CODE[200]({ aiAvailable: true, hints: [] }));
     }
