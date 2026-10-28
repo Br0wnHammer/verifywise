@@ -880,7 +880,8 @@ export const claimSubmissionNotificationQuery = async (
  * lost), for a direct send when no stage needs re-running; a live job keeps
  * its own email and language. A form without recipients, which never claims,
  * is not listed again and again. needsLiveChecks: the AI live checks are
- * still "pending" after 10 minutes. Listed whatever the submission's status,
+ * still "pending" 10 minutes after the stage started (or after submit, when
+ * the stage never started). Listed whatever the submission's status,
  * since that stage writes for decided submissions too; the other flags are
  * for pending submissions only. A null live_checks (made before the feature,
  * or checks off) is never listed.
@@ -906,7 +907,7 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
           status = :status
           AND notification_sent_at IS NULL
           AND EXISTS (
-            SELECT 1 FROM verifywise.intake_forms f
+            SELECT 1 FROM intake_forms f
             WHERE f.id = intake_submissions.form_id
               AND f.organization_id = intake_submissions.organization_id
               AND jsonb_typeof(f.recipients) = 'array'
@@ -932,10 +933,11 @@ export const getSubmissionsNeedingAssessmentQuery = async (): Promise<
         ) AS "needsSuggestions",
         COALESCE(
           live_checks->'ai'->>'status' = 'pending'
-          AND (live_checks->'ai'->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes',
+          AND COALESCE((live_checks->'ai'->>'stageStartedAt')::timestamptz, created_at)
+            < NOW() - interval '10 minutes',
           false
         ) AS "needsLiveChecks"
-      FROM verifywise.intake_submissions
+      FROM intake_submissions
       WHERE status = :status OR live_checks->'ai'->>'status' = 'pending'
     ) s
     WHERE "needsScoring" OR "needsSuggestions"
@@ -1372,7 +1374,7 @@ export const updateLiveChecksQuery = async (
   transaction?: Transaction,
 ): Promise<void> => {
   await sequelize.query(
-    `UPDATE verifywise.intake_submissions
+    `UPDATE intake_submissions
     SET live_checks = :liveChecks, updated_at = NOW()
     WHERE organization_id = :organizationId AND id = :submissionId`,
     {
@@ -1393,7 +1395,7 @@ export const setLiveChecksAiQuery = async (
   ai: ILiveChecks["ai"],
 ): Promise<void> => {
   await sequelize.query(
-    `UPDATE verifywise.intake_submissions
+    `UPDATE intake_submissions
     SET live_checks = jsonb_set(live_checks, '{ai}', :ai::jsonb), updated_at = NOW()
     WHERE organization_id = :organizationId AND id = :submissionId
       AND live_checks IS NOT NULL`,

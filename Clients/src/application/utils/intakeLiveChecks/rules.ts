@@ -37,9 +37,12 @@ const termPattern = (term: string): RegExp => {
   return pattern;
 };
 
+/** Characters looked back from a match for a negation word; plenty for three words, and it keeps the check linear on long answers. */
+const NEGATION_WINDOW = 80;
+
 const isNegated = (answer: string, index: number): boolean => {
   // The window stops at the end of the previous sentence or clause.
-  const before = answer.slice(0, index);
+  const before = answer.slice(Math.max(0, index - NEGATION_WINDOW), index);
   const sentence = before.slice(
     Math.max(...[".", "!", "?", ";"].map((mark) => before.lastIndexOf(mark))) + 1,
   );

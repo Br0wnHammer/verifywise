@@ -87,6 +87,10 @@ export const translate = (
  * Defensive against missing `req.t` (would only happen if i18nMiddleware did
  * not run on this request — falls back to the English translator).
  */
+/** Translate a fixed message with the request translator; English when `req.t` is missing. */
+export const translateRequest = (req: { t?: Translator }, message: string): string =>
+  (req.t ?? translators.en)(message);
+
 export const translateError = (req: { t?: Translator }, error: unknown): string => {
   const t = req.t ?? translators.en;
   if (error && typeof error === "object") {

@@ -13,6 +13,7 @@ import {
   getTenantByPublicId,
   getTenantHashBySlug,
 } from "../utils/intakeForm.utils";
+import { translateRequest } from "../utils/i18n.utils";
 import { STATUS_CODE } from "../utils/statusCode.utils";
 import logger from "../utils/logger/fileLogger";
 
@@ -23,8 +24,6 @@ export interface ResolvedIntakeForm {
 
 const param = (value: string | string[] | undefined): string =>
   Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
-
-const translate = (req: Request, message: string): string => (req.t ? req.t(message) : message);
 
 async function findActivePublicForm(
   req: Request,
@@ -51,7 +50,7 @@ export async function resolvePublicIntakeForm(req: Request, res: Response, next:
     if (!found || !form || form.status !== IntakeFormStatus.ACTIVE) {
       return res
         .status(404)
-        .json(STATUS_CODE[404](translate(req, "Form not found or not available")));
+        .json(STATUS_CODE[404](translateRequest(req, "Form not found or not available")));
     }
     const resolved: ResolvedIntakeForm = { form, organizationId: found.organizationId };
     res.locals.intakeForm = resolved;
@@ -62,7 +61,7 @@ export async function resolvePublicIntakeForm(req: Request, res: Response, next:
       .status(500)
       .json(
         STATUS_CODE[500](
-          translate(req, "An error occurred while loading the form. Please try again."),
+          translateRequest(req, "An error occurred while loading the form. Please try again."),
         ),
       );
   }

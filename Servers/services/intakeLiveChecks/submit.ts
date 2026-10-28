@@ -12,12 +12,10 @@ import { updateLiveChecksQuery } from "../../utils/intakeForm.utils";
 import logger from "../../utils/logger/fileLogger";
 import type { FormSchema } from "../intakeRiskScoring.service";
 import { toLiveCheckLanguage } from "./aiChecks";
+import { isPlainObject } from "./answers";
 import { formAiAvailable } from "./availability";
 import { verifyPrefillToken } from "./prefill";
 import { runRuleChecks } from "./rules";
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
  * Prefill entries whose token verifies for this form, question and submitted
@@ -71,25 +69,54 @@ export function buildSubmitLiveChecks(params: {
   };
 }
 
+/** How long submit waits for the live-check writes before it answers anyway. */
+export const SUBMIT_LIVE_CHECKS_DEADLINE_MS = 2000;
+
 export interface RecordSubmitLiveChecksDeps {
   aiAvailable: typeof formAiAvailable;
   save: typeof updateLiveChecksQuery;
   now: () => number;
+  deadlineMs: number;
 }
 
 const defaultDeps: RecordSubmitLiveChecksDeps = {
   aiAvailable: formAiAvailable,
   save: updateLiveChecksQuery,
   now: () => Date.now(),
+  deadlineMs: SUBMIT_LIVE_CHECKS_DEADLINE_MS,
 };
 
 /**
  * Build and store a new submission's live checks, after the submission is
- * committed (a failed write never rolls it back). Returns true only when the
- * checks were stored with the AI stage pending, so the job should run it.
- * Never throws: on any error it logs and stores nothing.
+ * committed (a failed write never rolls it back). Returns true when the job
+ * should run the AI stage. Never throws: on any error it logs and stores
+ * nothing. Waits at most `deadlineMs`; past that the write carries on in the
+ * background and the stage is queued anyway (it does nothing unless the
+ * stored AI status is pending, and the backfill picks up a late write).
  */
 export async function recordSubmitLiveChecks(
+  params: Parameters<typeof storeSubmitLiveChecks>[0],
+  deps: Partial<RecordSubmitLiveChecksDeps> = {},
+): Promise<boolean> {
+  if (!params.form?.liveChecksEnabled || !params.form.schema) return false;
+  const deadlineMs = deps.deadlineMs ?? defaultDeps.deadlineMs;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), deadlineMs);
+  });
+  try {
+    const result = await Promise.race([storeSubmitLiveChecks(params, deps), deadline]);
+    if (result !== "timeout") return result;
+    logger.warn(
+      `Live checks for submission ${params.submissionId} took over ${deadlineMs} ms; submit did not wait`,
+    );
+    return true;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function storeSubmitLiveChecks(
   params: {
     /** The full saved form (with schema and LLM key), not the public form. */
     form: IIntakeForm | null;

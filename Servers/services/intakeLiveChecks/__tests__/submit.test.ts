@@ -182,6 +182,26 @@ describe("recordSubmitLiveChecks", () => {
     );
   });
 
+  it("answers at the deadline when the write hangs, and still asks for the stage", async () => {
+    jest.useFakeTimers();
+    try {
+      const save = jest.fn(() => new Promise<void>(() => {}));
+      const { run } = record({}, { save, deadlineMs: 50 });
+      let settled = false;
+      void run.then(() => {
+        settled = true;
+      });
+      await jest.advanceTimersByTimeAsync(49);
+      expect(settled).toBe(false);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(true);
+      expect(await run).toBe(true);
+      expect(save).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("stores a skipped AI stage and does not ask for it without a key", async () => {
     const { run, save } = record({}, { aiAvailable: jest.fn(async () => false) });
     expect(await run).toBe(false);

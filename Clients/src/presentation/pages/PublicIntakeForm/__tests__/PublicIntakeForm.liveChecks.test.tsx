@@ -3,7 +3,7 @@ import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { Route, Routes } from "react-router";
 import { renderWithProviders } from "../../../../test/renderWithProviders";
 import { PublicIntakeForm } from "..";
-import { fieldToneFor } from "../LiveCheckHints";
+import { LiveCheckHints, fieldToneFor } from "../LiveCheckHints";
 import type { LiveCheckHint } from "../../../../domain/types/intakeLiveChecks";
 import { RULE_COPY } from "../../../../application/utils/intakeLiveChecks";
 import * as liveCheckStrings from "../../../../i18n/modules/intakeLiveChecks";
@@ -129,6 +129,23 @@ describe("public form live checks", () => {
     expect(fieldToneFor([hint("contradiction")])).toBe("warning");
     expect(fieldToneFor([hint("regulation")])).toBe("warning");
     expect(fieldToneFor([hint("vague")])).toBeUndefined();
+  });
+
+  it("dims an AI contradiction under either question once one of them changes", () => {
+    const contradiction = {
+      id: "c1",
+      kind: "contradiction",
+      source: "ai",
+      questionId: "auto",
+      alsoQuestionId: "humans",
+      title: "Answers may conflict",
+      text: "Check both answers.",
+    } as LiveCheckHint;
+    // Rendered under "humans" (the other question); only "auto" was edited.
+    renderWithProviders(
+      <LiveCheckHints hints={[contradiction]} staleQuestionIds={new Set(["auto"])} />,
+    );
+    expect(screen.getByTestId("live-check-hint-contradiction")).toHaveStyle({ opacity: "0.5" });
   });
 
   it("shows the AI notice and the prefill card only when AI is available", async () => {

@@ -53,6 +53,18 @@ describe("intake live checks: rules", () => {
     expect(hint.excerpt).toBe("Scrape, faces");
   });
 
+  it("stays fast on a very long answer full of negated matches", () => {
+    // Every "subliminal" is negated, so each match is checked; the lookback must not rescan the answer.
+    const answer = "not subliminal ".repeat(30_000);
+    const started = Date.now();
+    const hints = runRuleChecks(
+      { version: "1", fields: [{ id: "q", type: "textarea", label: "Q" }] },
+      { q: answer },
+    );
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(hints.some((h) => h.ruleId === "art5_manipulation")).toBe(false);
+  });
+
   it("matches the shared copy fixture", () => {
     expect(RULE_COPY).toEqual(readFixture("ruleCopy.json"));
   });

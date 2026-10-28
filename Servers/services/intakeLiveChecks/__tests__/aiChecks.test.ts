@@ -139,12 +139,25 @@ describe("runAiChecks", () => {
   });
 
   it("dedupes identical hints and caps the list at 8", async () => {
-    const words = ["We", "use", "AI", "for", "various", "things", "in", "HR"];
-    const many = words.map((w) => vague({ excerpt: w }));
+    const sentences = [
+      "It screens job applications.",
+      "It ranks candidates by fit.",
+      "It drafts interview questions.",
+      "It schedules interview slots.",
+      "It summarises reference calls.",
+      "It flags missing documents.",
+      "It answers candidate emails.",
+      "It forecasts hiring needs.",
+    ];
+    const longAnswers = [{ ...ANSWERS[0], text: sentences.join(" ") }, ...ANSWERS.slice(1)];
+    const many = sentences.map((s) => vague({ excerpt: s }));
     // Same kind, question and quote: one hint, whatever the title says.
     const r1 = await run(jest.fn(async () => out([vague(), vague({ title: "Other title" })])));
     expect(r1.hints).toHaveLength(1);
-    const r2 = await run(jest.fn(async () => out(many)));
+    const r2 = await run(
+      jest.fn(async () => out(many)),
+      longAnswers,
+    );
     expect(r2.hints).toHaveLength(MAX_AI_HINTS);
     expect(new Set(r2.hints.map((h) => h.id)).size).toBe(MAX_AI_HINTS);
     // More than 8 from the model is schema-invalid and gives nothing.

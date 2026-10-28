@@ -24,10 +24,34 @@ jest.mock("../../utils/llmKey.utils", () => ({
 jest.mock("../../advisor/llmModelFactory", () => ({
   createModelFromKey: jest.fn(() => ({ fake: "model" })),
 }));
-jest.mock("../../database/redis", () => ({
-  __esModule: true,
-  default: { incr: jest.fn(), expire: jest.fn() },
-}));
+jest.mock("../../database/redis", () => {
+  const client = {
+    status: "ready",
+    incr: jest.fn(),
+    expire: jest.fn(),
+    // A MULTI of incr + expire, reported as ioredis does: [error, result] per command.
+    multi: () => {
+      const ops: Array<() => Promise<unknown>> = [];
+      const chain = {
+        incr: (key: string) => (ops.push(() => client.incr(key)), chain),
+        expire: (key: string, s: number) => (ops.push(() => client.expire(key, s)), chain),
+        exec: async () => {
+          const replies: Array<[unknown, unknown]> = [];
+          for (const op of ops) {
+            try {
+              replies.push([null, await op()]);
+            } catch (error) {
+              replies.push([error, null]);
+            }
+          }
+          return replies;
+        },
+      };
+      return chain;
+    },
+  };
+  return { __esModule: true, default: client };
+});
 jest.mock("../../services/fileIngestion/textExtractor", () => ({
   ...(jest.requireActual("../../services/fileIngestion/textExtractor") as object),
   extractText: jest.fn(),
@@ -230,7 +254,7 @@ describe("POST live-checks", () => {
             questionId: "purpose",
             title: "Say what it does",
             text: "This answer may be too general.",
-            excerpt: "some things",
+            excerpt: "use it for some things",
           },
         ],
       },
@@ -407,6 +431,13 @@ describe("POST prefill", () => {
     const res = await prefill(pdf(big));
     expect(res.status).toBe(413);
     expect(liveChecks.runPrefill).not.toHaveBeenCalled();
+  });
+
+  it("accepts answers over 200 KB in the data field", async () => {
+    generate.mockResolvedValue({ object: { suggestions: [] } });
+    const data = JSON.stringify({ users: "x".repeat(500_000) });
+    const res = await prefill(pdf(), { data });
+    expect(res.status).toBe(200);
   });
 
   it("answers 400 when data is not a JSON object", async () => {

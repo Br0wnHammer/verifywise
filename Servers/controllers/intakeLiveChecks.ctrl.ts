@@ -17,7 +17,7 @@ import {
   runPrefill,
   toLiveCheckLanguage,
 } from "../services/intakeLiveChecks";
-import { visibleScoringAnswers } from "../services/intakeLiveChecks/answers";
+import { isPlainObject, visibleScoringAnswers } from "../services/intakeLiveChecks/answers";
 import { formAiAvailable } from "../services/intakeLiveChecks/availability";
 import {
   consumeFormBudget,
@@ -27,6 +27,7 @@ import {
 import type { FormSchema } from "../services/intakeRiskScoring.service";
 import { getLLMKeyWithKeyByIdQuery } from "../utils/llmKey.utils";
 import logger from "../utils/logger/fileLogger";
+import { translateRequest } from "../utils/i18n.utils";
 import { STATUS_CODE } from "../utils/statusCode.utils";
 
 const PREFILL_MODEL_FAILED_MESSAGE =
@@ -46,13 +47,8 @@ const BUDGET_MESSAGES: Record<FormBudgetEndpoint, string> = {
   prefill: "Reading documents is paused for this form. Please try again later.",
 };
 
-const translate = (req: Request, message: string): string => (req.t ? req.t(message) : message);
-
 const resolvedForm = (res: Response): ResolvedIntakeForm =>
   res.locals.intakeForm as ResolvedIntakeForm;
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** The form's model, or null when live checks are off or the key is gone. */
 async function loadFormModel({ form, organizationId }: ResolvedIntakeForm): Promise<unknown> {
@@ -73,7 +69,7 @@ async function spendFormBudget(
   const secondsToNextHour = 3600 - (Math.floor(Date.now() / 1000) % 3600);
   res.set("Retry-After", String(secondsToNextHour));
   res.set("RateLimit-Reset", String(secondsToNextHour));
-  res.status(429).json(STATUS_CODE[429](translate(req, BUDGET_MESSAGES[endpoint])));
+  res.status(429).json(STATUS_CODE[429](translateRequest(req, BUDGET_MESSAGES[endpoint])));
   return false;
 }
 
@@ -86,7 +82,7 @@ export async function postPublicLiveChecks(req: Request, res: Response) {
   const resolved = resolvedForm(res);
   const data = req.body?.data;
   if (!isPlainObject(data)) {
-    return res.status(400).json(STATUS_CODE[400](translate(req, DATA_NOT_OBJECT_MESSAGE)));
+    return res.status(400).json(STATUS_CODE[400](translateRequest(req, DATA_NOT_OBJECT_MESSAGE)));
   }
 
   try {
@@ -133,17 +129,22 @@ export async function requirePrefillAvailable(req: Request, res: Response, next:
   const { form, organizationId } = resolvedForm(res);
   try {
     if (await formAiAvailable(form, organizationId)) return next();
-    return res.status(404).json(STATUS_CODE[404](translate(req, PREFILL_NOT_AVAILABLE_MESSAGE)));
+    return res
+      .status(404)
+      .json(STATUS_CODE[404](translateRequest(req, PREFILL_NOT_AVAILABLE_MESSAGE)));
   } catch (error) {
     logger.error(`Error checking prefill availability for form ${form.id}`, error);
-    return res.status(500).json(STATUS_CODE[500](translate(req, PREFILL_ERROR_MESSAGE)));
+    return res.status(500).json(STATUS_CODE[500](translateRequest(req, PREFILL_ERROR_MESSAGE)));
   }
 }
+
+/** Largest `data` text field (the current answers as JSON) a prefill upload may carry. */
+const PREFILL_DATA_MAX_BYTES = 2_000_000;
 
 // Held in memory only: the document is never written to disk or the database.
 const prefillUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: PREFILL_MAX_BYTES, files: 1, fields: 2, fieldSize: 200_000 },
+  limits: { fileSize: PREFILL_MAX_BYTES, files: 1, fields: 2, fieldSize: PREFILL_DATA_MAX_BYTES },
 }).single("file");
 
 /** Multipart parsing for prefill: 413 over 10 MB, 400 for any other upload error. */
@@ -151,12 +152,16 @@ export function receivePrefillUpload(req: Request, res: Response, next: NextFunc
   prefillUpload(req, res, (err: unknown) => {
     if (!err) return next();
     if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-      return res.status(413).json(STATUS_CODE[413](translate(req, PREFILL_TOO_LARGE_MESSAGE)));
+      return res
+        .status(413)
+        .json(STATUS_CODE[413](translateRequest(req, PREFILL_TOO_LARGE_MESSAGE)));
     }
     logger.warn(
       `Prefill upload refused: ${err instanceof multer.MulterError ? err.code : "parse error"}`,
     );
-    return res.status(400).json(STATUS_CODE[400](translate(req, PREFILL_BAD_UPLOAD_MESSAGE)));
+    return res
+      .status(400)
+      .json(STATUS_CODE[400](translateRequest(req, PREFILL_BAD_UPLOAD_MESSAGE)));
   });
 }
 
@@ -176,9 +181,12 @@ function parsePrefillData(raw: unknown): Record<string, unknown> | undefined {
 export async function postPublicPrefill(req: Request, res: Response) {
   const resolved = resolvedForm(res);
   const file = req.file;
-  if (!file) return res.status(400).json(STATUS_CODE[400](translate(req, PREFILL_NO_FILE_MESSAGE)));
+  if (!file)
+    return res.status(400).json(STATUS_CODE[400](translateRequest(req, PREFILL_NO_FILE_MESSAGE)));
   if (file.buffer.length === 0) {
-    return res.status(422).json(STATUS_CODE[422](translate(req, PREFILL_UNREADABLE_MESSAGE)));
+    return res
+      .status(422)
+      .json(STATUS_CODE[422](translateRequest(req, PREFILL_UNREADABLE_MESSAGE)));
   }
   const prefillFile = {
     originalname: file.originalname,
@@ -186,15 +194,20 @@ export async function postPublicPrefill(req: Request, res: Response) {
     buffer: file.buffer,
   };
   if (!isAllowedPrefillFile(prefillFile)) {
-    return res.status(415).json(STATUS_CODE[415](translate(req, PREFILL_WRONG_TYPE_MESSAGE)));
+    return res
+      .status(415)
+      .json(STATUS_CODE[415](translateRequest(req, PREFILL_WRONG_TYPE_MESSAGE)));
   }
   const data = parsePrefillData(req.body?.data);
-  if (!data) return res.status(400).json(STATUS_CODE[400](translate(req, DATA_NOT_OBJECT_MESSAGE)));
+  if (!data)
+    return res.status(400).json(STATUS_CODE[400](translateRequest(req, DATA_NOT_OBJECT_MESSAGE)));
 
   try {
     const model = await loadFormModel(resolved);
     if (!model) {
-      return res.status(404).json(STATUS_CODE[404](translate(req, PREFILL_NOT_AVAILABLE_MESSAGE)));
+      return res
+        .status(404)
+        .json(STATUS_CODE[404](translateRequest(req, PREFILL_NOT_AVAILABLE_MESSAGE)));
     }
     if (!(await spendFormBudget(req, res, resolved.form.id, "prefill"))) return res;
 
@@ -208,8 +221,10 @@ export async function postPublicPrefill(req: Request, res: Response) {
     });
     if (!outcome.ok) {
       return outcome.reason === "unreadable"
-        ? res.status(422).json(STATUS_CODE[422](translate(req, PREFILL_UNREADABLE_MESSAGE)))
-        : res.status(502).json(STATUS_CODE[502](translate(req, PREFILL_MODEL_FAILED_MESSAGE)));
+        ? res.status(422).json(STATUS_CODE[422](translateRequest(req, PREFILL_UNREADABLE_MESSAGE)))
+        : res
+            .status(502)
+            .json(STATUS_CODE[502](translateRequest(req, PREFILL_MODEL_FAILED_MESSAGE)));
     }
     return res
       .status(200)
@@ -220,6 +235,6 @@ export async function postPublicPrefill(req: Request, res: Response) {
         error instanceof Error ? error.message : String(error)
       }`,
     );
-    return res.status(500).json(STATUS_CODE[500](translate(req, PREFILL_ERROR_MESSAGE)));
+    return res.status(500).json(STATUS_CODE[500](translateRequest(req, PREFILL_ERROR_MESSAGE)));
   }
 }

@@ -439,7 +439,7 @@ describe("runIntakeAssessment: live checks stage", () => {
     questionId: "q1",
     title: "Unklar",
     text: "Mehr Details",
-    excerpt: "Screening job",
+    excerpt: "Screening job applicants",
   };
   // The live-check prompt's opening; the scoring prompts mention intake forms too.
   const isLiveCheck = (args: { system: string }) =>
@@ -579,6 +579,17 @@ describe("runIntakeAssessment: live checks stage", () => {
     expect(h.deps.saveSuggestions).not.toHaveBeenCalled();
     expect(h.deps.sendNotification).not.toHaveBeenCalled();
     expect(generateImpl.mock.calls).toHaveLength(1);
+  });
+
+  it("closes pending live checks as skipped when the form is gone", async () => {
+    const generateImpl = withLiveChecks();
+    const h = harness(
+      submission({ status: IntakeSubmissionStatus.APPROVED, liveChecks: pendingLive() }),
+      { generateImpl, getForm: jest.fn(async () => null) },
+    );
+    await runIntakeAssessment(job({ stages: ["liveChecks"] }), h.deps);
+    expect(finalLive(h).status).toBe("skipped");
+    expect(liveCalls(generateImpl)).toHaveLength(0);
   });
 
   it("does nothing for the stage when the submission has no live checks stored", async () => {

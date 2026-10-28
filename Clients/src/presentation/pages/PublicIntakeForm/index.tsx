@@ -822,7 +822,6 @@ export function PublicIntakeForm() {
                             <LiveCheckHints
                               hints={fieldHints}
                               staleQuestionIds={staleQuestionIds}
-                              questionId={field.id}
                             />
                           </>
                         )}

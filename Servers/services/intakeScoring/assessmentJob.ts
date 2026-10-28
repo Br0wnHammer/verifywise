@@ -420,7 +420,17 @@ export async function runIntakeAssessment(
   // A decided submission still gets its live checks: they only inform the reviewer.
   if (!isPending && !liveChecks) return;
   const form = await d.getForm(submission.formId, organizationId);
-  if (!form) return;
+  if (!form) {
+    // The form is gone: close the live checks so the backfill stops listing them.
+    if (liveChecks) {
+      await d.saveLiveChecksAi(submissionId, organizationId, {
+        ...liveChecks.ai,
+        status: "skipped",
+        hints: [],
+      });
+    }
+    return;
+  }
 
   const startedAt = d.now().toISOString();
   if (liveChecks) {

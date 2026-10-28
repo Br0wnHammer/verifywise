@@ -10,13 +10,39 @@ const incr = jest.fn(async (key: string) => {
   store.set(key, next);
   return next;
 });
-const expire = jest.fn(async () => 1);
+const expire = jest.fn(async (_key: string, _seconds: number) => 1);
+const connection = { status: "ready" };
+
+type Reply = [Error | null, unknown];
+// Runs the queued commands in order, the way ioredis reports a MULTI: one
+// [error, result] pair per command.
+const exec = jest.fn(async (ops: Array<() => Promise<unknown>>): Promise<Reply[]> => {
+  const replies: Reply[] = [];
+  for (const op of ops) {
+    try {
+      replies.push([null, await op()]);
+    } catch (error) {
+      replies.push([error as Error, null]);
+    }
+  }
+  return replies;
+});
 
 jest.mock("../../../database/redis", () => ({
   __esModule: true,
   default: {
-    incr: (key: string) => incr(key),
-    expire: (key: string, seconds: number) => expire(key, seconds),
+    get status() {
+      return connection.status;
+    },
+    multi: () => {
+      const ops: Array<() => Promise<unknown>> = [];
+      const chain = {
+        incr: (key: string) => (ops.push(() => incr(key)), chain),
+        expire: (key: string, seconds: number) => (ops.push(() => expire(key, seconds)), chain),
+        exec: () => exec(ops),
+      };
+      return chain;
+    },
   },
 }));
 
@@ -33,6 +59,8 @@ beforeEach(() => {
   store.clear();
   incr.mockClear();
   expire.mockClear();
+  exec.mockClear();
+  connection.status = "ready";
 });
 
 describe("formBudgetKey", () => {
@@ -56,11 +84,19 @@ describe("consumeFormBudget", () => {
     expect(await consumeFormBudget(7, "checks", 300, NOW)).toBe(false);
   });
 
-  it("sets a one hour expiry on the first hit only", async () => {
+  it("sets the one hour expiry in the same transaction as every count", async () => {
     await consumeFormBudget(7, "prefill", 20, NOW);
     await consumeFormBudget(7, "prefill", 20, NOW);
-    expect(expire).toHaveBeenCalledTimes(1);
+    expect(exec).toHaveBeenCalledTimes(2);
+    expect(expire).toHaveBeenCalledTimes(2);
     expect(expire).toHaveBeenCalledWith("intake:livechecks:prefill:7:2026102814", 3600);
+  });
+
+  it("refuses without queuing a count while Redis is not connected", async () => {
+    connection.status = "reconnecting";
+    expect(await consumeFormBudget(7, "checks", 300, NOW)).toBe(false);
+    expect(exec).not.toHaveBeenCalled();
+    expect(incr).not.toHaveBeenCalled();
   });
 
   it("counts each form, endpoint and hour separately", async () => {
@@ -71,9 +107,19 @@ describe("consumeFormBudget", () => {
     expect(await consumeFormBudget(7, "prefill", 20, new Date("2026-10-28T15:01:00Z"))).toBe(true);
   });
 
-  it("refuses when Redis errors", async () => {
-    incr.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+  it("refuses when the count errors", async () => {
+    incr.mockRejectedValueOnce(new Error("WRONGTYPE"));
     expect(await consumeFormBudget(7, "checks", 300, NOW)).toBe(false);
+  });
+
+  it("refuses when the transaction fails", async () => {
+    exec.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    expect(await consumeFormBudget(7, "checks", 300, NOW)).toBe(false);
+  });
+
+  it("still allows a counted call when only the expiry errors", async () => {
+    expire.mockRejectedValueOnce(new Error("expire failed"));
+    expect(await consumeFormBudget(7, "checks", 300, NOW)).toBe(true);
   });
 
   describe("with a Redis that never answers", () => {
@@ -90,19 +136,12 @@ describe("consumeFormBudget", () => {
     };
 
     it("refuses at 300 ms, not before", async () => {
-      incr.mockImplementationOnce(() => new Promise<number>(() => undefined));
+      exec.mockImplementationOnce(() => new Promise<Reply[]>(() => undefined));
       const pending = consumeFormBudget(7, "checks", 300, NOW);
       await jest.advanceTimersByTimeAsync(REDIS_TIMEOUT_MS - 1);
       expect(await settled(pending)).toBeUndefined();
       await jest.advanceTimersByTimeAsync(1);
       expect(await pending).toBe(false);
-    });
-
-    it("still allows the call when only the expiry hangs", async () => {
-      expire.mockImplementationOnce(() => new Promise<number>(() => undefined));
-      const pending = consumeFormBudget(9, "checks", 300, NOW);
-      await jest.advanceTimersByTimeAsync(REDIS_TIMEOUT_MS);
-      expect(await pending).toBe(true);
     });
   });
 });

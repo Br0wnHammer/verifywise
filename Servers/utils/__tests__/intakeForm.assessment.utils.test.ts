@@ -239,8 +239,9 @@ describe("getSubmissionsNeedingAssessmentQuery", () => {
     await getSubmissionsNeedingAssessmentQuery();
     const sql = sqlOf().replace(/\s+/g, " ");
     // A null live_checks (before the feature, or checks off) gives NULL, coalesced to false.
+    // A pending stage that never started (submit stopped waiting) ages from created_at.
     expect(sql).toContain(
-      "COALESCE( live_checks->'ai'->>'status' = 'pending' AND (live_checks->'ai'->>'stageStartedAt')::timestamptz < NOW() - interval '10 minutes', false ) AS \"needsLiveChecks\"",
+      "COALESCE( live_checks->'ai'->>'status' = 'pending' AND COALESCE((live_checks->'ai'->>'stageStartedAt')::timestamptz, created_at) < NOW() - interval '10 minutes', false ) AS \"needsLiveChecks\"",
     );
     expect(sql).toContain('OR "needsLiveChecks"');
   });
@@ -269,7 +270,7 @@ describe("live checks queries", () => {
       prefill: {},
     } as const;
     await updateLiveChecksQuery(4, 9, lc as any);
-    expect(sqlOf()).toContain("verifywise.intake_submissions");
+    expect(sqlOf()).toMatch(/UPDATE intake_submissions\b/);
     expect(sqlOf()).toContain("organization_id = :organizationId");
     expect(optsOf().replacements).toMatchObject({
       organizationId: 9,

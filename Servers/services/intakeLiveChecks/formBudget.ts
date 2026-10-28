@@ -44,8 +44,8 @@ async function withinRedisTimeout<T>(work: Promise<T>): Promise<T | typeof TIMED
 
 /**
  * Counts one call against the form's hourly budget. True while the count is
- * within `limit`; false when it is over, when Redis errors, or when Redis does
- * not answer in time.
+ * within `limit`; false when it is over, when Redis errors, when Redis is not
+ * connected, or when Redis does not answer in time.
  */
 export async function consumeFormBudget(
   formId: number,
@@ -53,23 +53,28 @@ export async function consumeFormBudget(
   limit: number,
   now: Date = new Date(),
 ): Promise<boolean> {
+  // The client queues commands while disconnected and replays them on
+  // reconnect, which would charge refused calls to the form's budget.
+  if (redisClient.status !== "ready") {
+    logger.warn(`Intake ${endpoint} budget: Redis not connected, refusing AI for form ${formId}`);
+    return false;
+  }
   const key = formBudgetKey(formId, endpoint, now);
   try {
-    const count = await withinRedisTimeout(redisClient.incr(key));
-    if (count === TIMED_OUT) {
+    // One transaction, so the key never outlives the hour without an expiry.
+    const replies = await withinRedisTimeout(
+      redisClient.multi().incr(key).expire(key, HOUR_SECONDS).exec(),
+    );
+    if (replies === TIMED_OUT) {
       logger.warn(
         `Intake ${endpoint} budget: Redis did not answer, refusing AI for form ${formId}`,
       );
       return false;
     }
-    if (count === 1) {
-      // The hour is in the key, so a missed expiry only leaves a stale key.
-      const expired = await withinRedisTimeout(redisClient.expire(key, HOUR_SECONDS)).catch(
-        () => TIMED_OUT,
-      );
-      if (expired === TIMED_OUT) logger.warn(`Intake ${endpoint} budget: expiry not confirmed`);
-    }
-    return count <= limit;
+    const [incrReply, expireReply] = replies ?? [];
+    if (!incrReply || incrReply[0]) throw incrReply?.[0] ?? new Error("no reply to INCR");
+    if (expireReply?.[0]) logger.warn(`Intake ${endpoint} budget: expiry not set`);
+    return Number(incrReply[1]) <= limit;
   } catch (error) {
     logger.warn(
       `Intake ${endpoint} budget: Redis error, refusing AI for form ${formId}: ${

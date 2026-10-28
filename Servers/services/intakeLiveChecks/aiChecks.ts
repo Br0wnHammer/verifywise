@@ -65,6 +65,9 @@ const hintId = (
     .digest("hex")
     .slice(0, 12)}`;
 
+/** Shortest excerpt a hint may quote, unless the whole answer is shorter. */
+const MIN_EXCERPT_CHARS = 15;
+
 function validHints(output: LiveCheckOutput, answers: ScoringAnswer[]): LiveCheckHint[] {
   const textById = new Map(answers.map((a) => [a.questionId, normalise(a.text)]));
   const seen = new Set<string>();
@@ -76,6 +79,8 @@ function validHints(output: LiveCheckOutput, answers: ScoringAnswer[]): LiveChec
     const excerpt = normalise(hint.excerpt);
     const source = textById.get(hint.questionId);
     if (!title || !text || !excerpt || source === undefined || !source.includes(excerpt)) continue;
+    // A one-word quote would let an answer steer the hint text; short answers may be quoted whole.
+    if (excerpt.length < Math.min(MIN_EXCERPT_CHARS, source.length)) continue;
 
     let alsoQuestionId: string | undefined;
     if (hint.kind === "contradiction") {

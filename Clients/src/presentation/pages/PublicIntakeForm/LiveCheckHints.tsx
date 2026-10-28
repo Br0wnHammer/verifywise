@@ -12,16 +12,15 @@ export function fieldToneFor(hints: LiveCheckHint[]): "error" | "warning" | unde
 /**
  * Hints under one question, most serious first. Rule hint copy is English and
  * translated by the page translator; AI hints arrive in the submitter's
- * language, so they are excluded from translation.
+ * language, so they are excluded from translation. An AI hint dims once either
+ * question it is about has changed, whichever of the two it is shown under.
  */
 export function LiveCheckHints({
   hints,
   staleQuestionIds,
-  questionId,
 }: {
   hints: LiveCheckHint[];
   staleQuestionIds: Set<string>;
-  questionId: string;
 }) {
   if (hints.length === 0) return null;
   return (
@@ -43,7 +42,7 @@ export function LiveCheckHints({
         const isAi = hint.source === "ai";
         const stale =
           isAi &&
-          (staleQuestionIds.has(questionId) ||
+          (staleQuestionIds.has(hint.questionId) ||
             (hint.alsoQuestionId !== undefined && staleQuestionIds.has(hint.alsoQuestionId)));
         return (
           <Box

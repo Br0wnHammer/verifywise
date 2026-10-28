@@ -6,6 +6,10 @@ import { cleanSubmission, type LogicSchema } from "../intakeFormLogic";
 import type { FormSchema } from "../intakeRiskScoring.service";
 import { buildScoringAnswers, type ScoringAnswer } from "../intakeScoring/scoringInput";
 
+/** A JSON object: not null, not an array. */
+export const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 export function visibleScoringAnswers(
   schema: unknown,
   data: Record<string, unknown>,
