@@ -15,6 +15,7 @@ import { evaluateForm, isEmptyAnswer, sortFields, type LogicSchema } from "../in
 import type { FormSchema } from "../intakeRiskScoring.service";
 import { newDelimiterNonce } from "../intakeScoring/prompts";
 import { toLiveCheckLanguage, type LiveCheckLanguage } from "./aiChecks";
+import { isDocxWithinLimits } from "./docxGuard";
 import { callModelOnce, normaliseForMatch } from "./modelCall";
 import {
   buildPrefillSystemPrompt,
@@ -26,6 +27,10 @@ export const PREFILL_MAX_BYTES = 10 * 1024 * 1024;
 export const PREFILL_MAX_CHARS = 60_000;
 export const PREFILL_TIMEOUT_MS = 30_000;
 export const PREFILL_TOKEN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** Extraction gets at most this much of the 30 second budget. */
+export const PREFILL_EXTRACT_TIMEOUT_MS = 15_000;
+/** A shorter quote would match almost any document. */
+export const PREFILL_MIN_EXCERPT_CHARS = 15;
 
 const TOKEN_KIND = "intake_prefill";
 const MAX_FILE_NAME_CHARS = 200;
@@ -35,6 +40,10 @@ const MAX_EXCERPT_CHARS = 500;
 const MAX_VALUE_CHARS = 2000;
 /** Tokens are checked on the server that may not have issued them. */
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+/** C0 and C1 controls and bidi marks, embeddings, overrides and isolates. */
+const UNSAFE_CHARS = /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+const stripUnsafe = (value: string): string => value.replace(UNSAFE_CHARS, "");
 
 const PDF_MIME = "application/pdf";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -170,13 +179,16 @@ function keptSuggestions(
     const value = s.value.trim();
     // Whitespace collapsed first, so the cap never cuts the quote mid-gap.
     const excerpt = s.excerpt.replace(/\s+/g, " ").trim().slice(0, MAX_EXCERPT_CHARS).trim();
-    if (!value || !excerpt || !source.includes(normaliseForMatch(excerpt))) continue;
+    if (!value || excerpt.length < PREFILL_MIN_EXCERPT_CHARS) continue;
+    if (!source.includes(normaliseForMatch(excerpt))) continue;
     if (question.options && !question.options.some((o) => o.value === value)) continue;
     seen.add(s.questionId);
     kept.push({
       questionId: s.questionId,
       value,
-      location: (s.location ?? "").trim().slice(0, MAX_LOCATION_CHARS),
+      location: stripUnsafe(s.location ?? "")
+        .trim()
+        .slice(0, MAX_LOCATION_CHARS),
       excerpt,
     });
   }
@@ -192,16 +204,22 @@ export async function runPrefill(params: {
   model: unknown;
   generate?: GenerateObjectImpl;
   now?: () => number;
+  /** Tests only: a shorter extraction deadline. */
+  extractTimeoutMs?: number;
 }): Promise<PrefillOutcome> {
   const { formId, schema, data, file, language, model, generate } = params;
   const now = params.now ?? Date.now;
+  const startedAt = Date.now();
   if (!isAllowedPrefillFile(file)) return { ok: false, reason: "unreadable" };
 
-  const raw = await extractText(file.buffer, file.mimetype);
+  const raw = await extractWithinDeadline(
+    file,
+    Math.min(params.extractTimeoutMs ?? PREFILL_EXTRACT_TIMEOUT_MS, PREFILL_TIMEOUT_MS),
+  );
   const documentText = normalizeText(raw ?? "", PREFILL_MAX_CHARS);
   if (!documentText) return { ok: false, reason: "unreadable" };
 
-  const fileName = String(file.originalname).trim().slice(0, MAX_FILE_NAME_CHARS);
+  const fileName = stripUnsafe(String(file.originalname)).trim().slice(0, MAX_FILE_NAME_CHARS);
   const questions = promptQuestions(schema, data);
   if (questions.length === 0) return { ok: true, fileName, suggestions: [] };
 
@@ -211,7 +229,8 @@ export async function runPrefill(params: {
     schema: prefillOutputSchema,
     system: buildPrefillSystemPrompt(nonce, toLiveCheckLanguage(language)),
     prompt: buildPrefillUserPrompt(questions, documentText, nonce),
-    timeoutMs: PREFILL_TIMEOUT_MS,
+    // Extraction and the model call share one 30 second budget.
+    timeoutMs: Math.max(1_000, PREFILL_TIMEOUT_MS - (Date.now() - startedAt)),
     generate,
     logLabel: "intake prefill",
   });
@@ -226,13 +245,34 @@ export async function runPrefill(params: {
 }
 
 /**
+ * Text of an allowed file, or null when a DOCX breaks the zip caps, the
+ * extractor fails, or the guard and extraction together pass `timeoutMs`.
+ * The race bounds the request; it cannot stop a parser already running.
+ */
+async function extractWithinDeadline(file: PrefillFile, timeoutMs: number): Promise<string | null> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), timeoutMs);
+  });
+  const work = (async () => {
+    if (file.mimetype === DOCX_MIME && !(await isDocxWithinLimits(file.buffer))) return null;
+    return extractText(file.buffer, file.mimetype);
+  })().catch(() => null);
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * The provenance a prefill token vouches for, or null when the token is not a
  * valid, unexpired prefill token for this form and question whose value still
  * matches the submitted answer.
  */
 export function verifyPrefillToken(
   token: string,
-  formId: number,
+  formId: number | string,
   questionId: string,
   submittedValue: unknown,
   now: number = Date.now(),
@@ -240,7 +280,10 @@ export function verifyPrefillToken(
   if (typeof token !== "string" || token === "") return null;
   const p = verifySignedToken<Partial<PrefillTokenPayload>>(token);
   if (!p || typeof p !== "object" || p.kind !== TOKEN_KIND) return null;
-  if (p.formId !== formId || p.questionId !== questionId) return null;
+  // Route params arrive as strings.
+  const expectedFormId = Number(formId);
+  if (!Number.isSafeInteger(expectedFormId) || expectedFormId <= 0) return null;
+  if (p.formId !== expectedFormId || p.questionId !== questionId) return null;
   if (
     typeof p.value !== "string" ||
     typeof p.fileName !== "string" ||

@@ -17,6 +17,7 @@ const { extractText } =
   require("../../fileIngestion/textExtractor") as typeof import("../../fileIngestion/textExtractor");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
+import JSZip from "jszip";
 import type { FormSchema } from "../../intakeRiskScoring.service";
 
 const {
@@ -24,6 +25,7 @@ const {
   PREFILL_MAX_CHARS,
   PREFILL_TIMEOUT_MS,
   PREFILL_TOKEN_MAX_AGE_MS,
+  PREFILL_MIN_EXCERPT_CHARS,
   isAllowedPrefillFile,
   prefillTargets,
   runPrefill,
@@ -453,5 +455,167 @@ describe("verifyPrefillToken", () => {
     expect(verifyPrefillToken(other, 7, "purpose", "Scores tickets", NOW)).toBeNull();
     const none = createSignedToken({ ...payload, kind: undefined });
     expect(verifyPrefillToken(none, 7, "purpose", "Scores tickets", NOW)).toBeNull();
+  });
+});
+
+describe("DOCX zip bomb guard", () => {
+  const docxFile = (buffer: Buffer) => ({
+    originalname: "answers.docx",
+    mimetype: DOCX_MIME,
+    buffer,
+  });
+
+  const makeZip = async (files: Record<string, string | Buffer>): Promise<Buffer> => {
+    const zip = new JSZip();
+    for (const [name, content] of Object.entries(files)) zip.file(name, content);
+    return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  };
+
+  /** Rewrite one entry's declared uncompressed size in its local and central headers. */
+  const setDeclaredSize = (zip: Buffer, name: string, size: number): Buffer => {
+    const out = Buffer.from(zip);
+    const nameBuf = Buffer.from(name);
+    for (let i = 0; i < out.length - 4; i++) {
+      const sig = out.readUInt32LE(i);
+      if (sig === 0x04034b50 && out.subarray(i + 30, i + 30 + nameBuf.length).equals(nameBuf)) {
+        out.writeUInt32LE(size, i + 22);
+      }
+      if (sig === 0x02014b50 && out.subarray(i + 46, i + 46 + nameBuf.length).equals(nameBuf)) {
+        out.writeUInt32LE(size, i + 24);
+      }
+    }
+    return out;
+  };
+
+  it("reads a normal DOCX", async () => {
+    const buffer = await makeZip({
+      "[Content_Types].xml": "<Types/>",
+      "word/document.xml": "<w:document>Acme</w:document>",
+    });
+    const gen = jest.fn(async () => out([suggestion()]));
+    const r = await run(gen, { file: docxFile(buffer) });
+    expect(extractMock).toHaveBeenCalledWith(buffer, DOCX_MIME);
+    expect(r.ok && r.suggestions.map((s) => s.questionId)).toEqual(["purpose"]);
+  });
+
+  it("refuses a DOCX whose declared document size is over the cap, without extracting it", async () => {
+    const small = await makeZip({ "word/document.xml": "<w:document>Acme</w:document>" });
+    const buffer = setDeclaredSize(small, "word/document.xml", 60 * 1024 * 1024);
+    const gen = jest.fn(async () => out([]));
+    expect(await run(gen, { file: docxFile(buffer) })).toEqual({
+      ok: false,
+      reason: "unreadable",
+    });
+    expect(extractMock).not.toHaveBeenCalled();
+    expect(gen).not.toHaveBeenCalled();
+  });
+
+  it("refuses a DOCX that inflates past the cap while declaring a small size", async () => {
+    const bomb = await makeZip({ "word/document.xml": Buffer.alloc(60 * 1024 * 1024) });
+    expect(bomb.length).toBeLessThan(PREFILL_MAX_BYTES);
+    const buffer = setDeclaredSize(bomb, "word/document.xml", 1000);
+    const gen = jest.fn(async () => out([]));
+    expect(await run(gen, { file: docxFile(buffer) })).toEqual({
+      ok: false,
+      reason: "unreadable",
+    });
+    expect(extractMock).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it("refuses a DOCX with too many entries", async () => {
+    const files: Record<string, string> = { "word/document.xml": "<w:document/>" };
+    for (let i = 0; i < 1000; i++) files[`word/media/f${i}.xml`] = "x";
+    const buffer = await makeZip(files);
+    const gen = jest.fn(async () => out([]));
+    expect(await run(gen, { file: docxFile(buffer) })).toEqual({
+      ok: false,
+      reason: "unreadable",
+    });
+    expect(extractMock).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it("refuses a file that starts with PK but is not a zip", async () => {
+    const buffer = Buffer.concat([PK_HEAD, Buffer.from("this is not really a zip archive")]);
+    const gen = jest.fn(async () => out([]));
+    expect(await run(gen, { file: docxFile(buffer) })).toEqual({
+      ok: false,
+      reason: "unreadable",
+    });
+    expect(extractMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("extraction deadline", () => {
+  it("gives unreadable when extraction never finishes", async () => {
+    extractMock.mockReturnValue(new Promise<string | null>(() => undefined));
+    const gen = jest.fn(async () => out([]));
+    const started = Date.now();
+    expect(await run(gen, { extractTimeoutMs: 50 })).toEqual({ ok: false, reason: "unreadable" });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(gen).not.toHaveBeenCalled();
+  });
+
+  it("gives unreadable when extraction throws", async () => {
+    extractMock.mockRejectedValue(new Error("bad xref table"));
+    const gen = jest.fn(async () => out([]));
+    expect(await run(gen)).toEqual({ ok: false, reason: "unreadable" });
+  });
+});
+
+describe("prefill hardening", () => {
+  it("drops excerpts shorter than 15 characters after whitespace is collapsed", async () => {
+    expect(PREFILL_MIN_EXCERPT_CHARS).toBe(15);
+    const gen = jest.fn(async () =>
+      out([
+        suggestion({ excerpt: "the" }),
+        suggestion({ questionId: "vendor", value: "Acme", excerpt: "  support \n  ticket " }),
+        suggestion({ questionId: "hosting", value: "eu", excerpt: "support tickets" }),
+      ]),
+    );
+    const r = await run(gen);
+    expect(r.ok && r.suggestions.map((s) => [s.questionId, s.excerpt])).toEqual([
+      ["hosting", "support tickets"],
+    ]);
+  });
+
+  it("strips control and bidi characters from the file name and location before signing", async () => {
+    const gen = jest.fn(async () =>
+      out([suggestion({ location: "\u202ESection\u0007 2\u2066\u200F\u0085" })]),
+    );
+    const r = await run(gen, {
+      file: pdfFile(PDF_HEAD, "ven\u202Edor\u0000\u200E\u009B\u2069.pdf"),
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.fileName).toBe("vendor.pdf");
+    const s = r.suggestions[0];
+    expect(s.location).toBe("Section 2");
+    expect(verifyPrefillToken(s.token, 7, "purpose", s.value, NOW)).toEqual({
+      fileName: "vendor.pdf",
+      location: "Section 2",
+      excerpt: s.excerpt,
+    });
+  });
+
+  it("accepts a form id given as a string and refuses ids that are not numbers", () => {
+    const token = createSignedToken({
+      kind: "intake_prefill",
+      formId: 7,
+      questionId: "purpose",
+      value: "Scores tickets",
+      fileName: "vendor.pdf",
+      location: "",
+      excerpt: "scores inbound support tickets",
+      issuedAt: NOW,
+    });
+    const check = (id: any) => verifyPrefillToken(token, id, "purpose", "Scores tickets", NOW);
+    expect(check("7")).toEqual({
+      fileName: "vendor.pdf",
+      location: "",
+      excerpt: "scores inbound support tickets",
+    });
+    for (const bad of ["8", "abc", "", " ", "7.5", NaN, -7, null, undefined]) {
+      expect(check(bad)).toBeNull();
+    }
   });
 });

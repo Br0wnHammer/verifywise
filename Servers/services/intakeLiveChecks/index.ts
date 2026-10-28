@@ -17,6 +17,8 @@ export {
   PREFILL_MAX_CHARS,
   PREFILL_TIMEOUT_MS,
   PREFILL_TOKEN_MAX_AGE_MS,
+  PREFILL_EXTRACT_TIMEOUT_MS,
+  PREFILL_MIN_EXCERPT_CHARS,
   type PrefillFile,
   type PrefillOutcome,
   type PrefillSuggestion,
