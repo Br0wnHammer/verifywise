@@ -48,6 +48,38 @@ export const emailColorTokens: Record<string, string> = {
 
 const COLOR_PLACEHOLDER = /{{(color[A-Za-z0-9]+)}}/g;
 
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+/** CSS variables for templates that should stay valid CSS. Names match pdf.css. */
+export const emailCssVariables: Record<string, string> = {
+  "--color-primary": emailColorTokens.colorBrandPrimary,
+  "--color-background": emailColorTokens.colorBackground,
+  "--color-success": emailColorTokens.colorSuccessText,
+  "--color-error": emailColorTokens.colorErrorText,
+  "--color-error-bg": emailColorTokens.colorErrorBg,
+  "--color-warning": emailColorTokens.colorWarningText,
+  "--color-warning-bg": emailColorTokens.colorWarningBg,
+  "--color-risk-high": emailColorTokens.colorRiskHighText,
+  "--color-risk-high-bg": emailColorTokens.colorRiskHighBg,
+  "--color-risk-medium": emailColorTokens.colorRiskMediumText,
+  "--color-risk-medium-bg": emailColorTokens.colorRiskMediumBg,
+  "--color-risk-low": emailColorTokens.colorRiskLowText,
+  "--color-risk-low-bg": emailColorTokens.colorRiskLowBg,
+};
+
+/** `:root` block inserted into a report stylesheet at render time. */
+export function colorTokenRoot(primaryColor?: string): string {
+  const variables = { ...emailCssVariables };
+  const primary = primaryColor?.trim();
+  if (primary && HEX_COLOR.test(primary)) {
+    variables["--color-primary"] = primary;
+  }
+  const declarations = Object.entries(variables)
+    .map(([name, value]) => `      ${name}: ${value};`)
+    .join("\n");
+  return `:root {\n${declarations}\n    }`;
+}
+
 /** Replace {{color...}} placeholders. Any other placeholder is left in place. */
 export function applyColorTokens(source: string): string {
   return source.replace(COLOR_PLACEHOLDER, (placeholder, key: string) => {
