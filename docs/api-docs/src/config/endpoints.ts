@@ -6298,6 +6298,50 @@ export const intakeFormEndpoints: Endpoint[] = [
     tag: "Intake Forms",
   },
   {
+    method: 'POST',
+    path: '/intake/public/by-id/{publicId}/live-checks',
+    summary: "Post Public Live Checks",
+    requiresAuth: false,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Intake Forms",
+  },
+  {
+    method: 'POST',
+    path: '/intake/public/by-id/{publicId}/prefill',
+    summary: "Post Public Prefill",
+    requiresAuth: false,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Intake Forms",
+  },
+  {
+    method: 'POST',
+    path: '/intake/public/{tenantSlug}/{formSlug}/live-checks',
+    summary: "Post Public Live Checks",
+    requiresAuth: false,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Intake Forms",
+  },
+  {
+    method: 'POST',
+    path: '/intake/public/{tenantSlug}/{formSlug}/prefill',
+    summary: "Post Public Prefill",
+    requiresAuth: false,
+    responses: [
+      { status: 200, description: "Success" },
+      { status: 500, description: "Internal server error" },
+    ],
+    tag: "Intake Forms",
+  },
+  {
     method: 'GET',
     path: '/intake/public/by-id/{publicId}',
     summary: "Get Public Form By Public Id",

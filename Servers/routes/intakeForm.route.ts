@@ -161,25 +161,24 @@ router.get("/public/captcha", generalApiLimiter, getCaptcha);
 // Live checks and vendor-document prefill. The by-id routes come first:
 // "/public/:tenantSlug/:formSlug/live-checks" would also match
 // "/public/by-id/X/live-checks". The form is resolved before the visitor
-// limiters so they key on the form id, not the URL.
-const liveCheckChain = [
+// limiters so they key on the form id, not the URL. The handler stays the
+// last named argument so generate:swagger can name the operation.
+const liveCheckGuards = [
   generalApiLimiter,
   resolvePublicIntakeForm,
   intakeLiveChecksVisitorLimiter,
-  postPublicLiveChecks,
 ];
-const prefillChain = [
+const prefillGuards = [
   generalApiLimiter,
   resolvePublicIntakeForm,
   intakePrefillVisitorLimiter,
   requirePrefillAvailable,
   receivePrefillUpload,
-  postPublicPrefill,
 ];
-router.post("/public/by-id/:publicId/live-checks", ...liveCheckChain);
-router.post("/public/by-id/:publicId/prefill", ...prefillChain);
-router.post("/public/:tenantSlug/:formSlug/live-checks", ...liveCheckChain);
-router.post("/public/:tenantSlug/:formSlug/prefill", ...prefillChain);
+router.post("/public/by-id/:publicId/live-checks", ...liveCheckGuards, postPublicLiveChecks);
+router.post("/public/by-id/:publicId/prefill", ...prefillGuards, postPublicPrefill);
+router.post("/public/:tenantSlug/:formSlug/live-checks", ...liveCheckGuards, postPublicLiveChecks);
+router.post("/public/:tenantSlug/:formSlug/prefill", ...prefillGuards, postPublicPrefill);
 
 // New URL format: /{publicId}/use-case-form-intake
 router.get("/public/by-id/:publicId", generalApiLimiter, getPublicFormByPublicId);

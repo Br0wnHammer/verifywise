@@ -24792,6 +24792,50 @@ paths:
           description: Success
         '500':
           description: 'Internal server error'
+  '/intake/public/by-id/{publicId}/live-checks':
+    post:
+      summary: 'Post Public Live Checks'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Intake Forms'
+      operationId: postPublicLiveChecks
+  '/intake/public/by-id/{publicId}/prefill':
+    post:
+      summary: 'Post Public Prefill'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Intake Forms'
+      operationId: postPublicPrefill
+  '/intake/public/{tenantSlug}/{formSlug}/live-checks':
+    post:
+      summary: 'Post Public Live Checks'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Intake Forms'
+      operationId: intake_postPublicLiveChecks
+  '/intake/public/{tenantSlug}/{formSlug}/prefill':
+    post:
+      summary: 'Post Public Prefill'
+      responses:
+        '200':
+          description: Success
+        '500':
+          description: 'Internal server error'
+      tags:
+        - 'Intake Forms'
+      operationId: intake_postPublicPrefill
   '/intake/public/by-id/{publicId}':
     get:
       tags:
