@@ -508,12 +508,11 @@ export function FormFieldRenderer({ field, control, errors, tone }: FormFieldRen
       sx={
         toneColor
           ? {
-              // "&&" doubles the class so this outranks the field's own
-              // ".MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline" border.
-              // The page keeps its green focus border while the field is focused.
-              "&& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline": {
-                borderColor: toneColor,
-              },
+              // "&&&" repeats the class so this outranks the field's own border at
+              // rest and the page's hover border (getInputStyles, which scores
+              // 0,5,1). The page keeps its green focus border (!important).
+              "&&& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline, &&& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline":
+                { borderColor: toneColor },
             }
           : undefined
       }

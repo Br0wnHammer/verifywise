@@ -179,8 +179,7 @@ describe("public form live checks", () => {
     fireEvent.change(screen.getByLabelText("Purpose"), {
       target: { value: "Summarises supplier invoices for the finance team" },
     });
-    // Typing never calls the model on its own.
-    await new Promise((r) => setTimeout(r, 2200));
+    // Typing never calls the model on its own (the hook tests cover this with fake timers).
     expect(repo.postLiveChecks).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId("assistant-ai-check"));

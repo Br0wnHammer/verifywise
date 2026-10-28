@@ -4,28 +4,31 @@ import { HINT_KIND_ORDER, type LiveCheckHint } from "../../../domain/types/intak
 import { border } from "../../themes/palette";
 import { HINT_KIND_COLORS, HINT_KIND_LABELS } from "../../components/IntakeLiveChecks/hintKinds";
 import { CustomizableButton } from "../../components/button/customizable-button";
+import type { AiCheckBlock, AiCheckStatus } from "../../../application/hooks/useIntakeLiveChecks";
 
 export interface AssistantAiCheck {
-  status: "idle" | "running" | "done" | "error";
-  canRun: boolean;
+  status: AiCheckStatus;
+  blockedBy: AiCheckBlock | null;
   onCheck: () => void;
 }
 
-const AI_BUTTON_TEXT: Record<AssistantAiCheck["status"], string> = {
+const AI_BUTTON_TEXT: Record<AiCheckStatus, string> = {
   idle: "Check my answers",
   running: "Checking answers",
   done: "Check again",
   error: "Check again",
 };
 
-/** One line under the AI button saying what the last check did, or why it cannot run. */
-function aiCheckNote(ai: AssistantAiCheck, aiPaused: boolean, aiHintCount: number): string | null {
-  if (aiPaused || ai.status === "running") return null;
-  if (ai.status === "error") return "This check didn't work. You can try again.";
-  if (ai.status === "done" && !ai.canRun) {
+/** One line under the AI button: why it cannot run, or what the last check did. */
+function aiCheckNote(ai: AssistantAiCheck, aiHintCount: number): string | null {
+  // "paused" has its own line in the panel; "running" shows on the button.
+  if (ai.blockedBy === "short") return "Write a sentence or two first";
+  if (ai.blockedBy === "checked") {
     return aiHintCount === 0 ? "Nothing else to flag" : "Checked. Edit an answer to check again.";
   }
-  if (ai.status === "idle" && !ai.canRun) return "Write a sentence or two first";
+  if (ai.blockedBy === null && ai.status === "error") {
+    return "This check didn't work. You can try again.";
+  }
   return null;
 }
 
@@ -51,9 +54,7 @@ export function IntakeAssistantPanel({
   questionLabel: (questionId: string) => string;
   onSelect: (questionId: string) => void;
 }) {
-  const aiNote = ai
-    ? aiCheckNote(ai, aiPaused, hints.filter((h) => h.source === "ai").length)
-    : null;
+  const aiNote = ai ? aiCheckNote(ai, hints.filter((h) => h.source === "ai").length) : null;
   const counts = HINT_KIND_ORDER.map((kind) => ({
     kind,
     count: hints.filter((h) => h.kind === kind).length,
@@ -178,25 +179,32 @@ export function IntakeAssistantPanel({
       )}
 
       {ai && (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        <Box sx={{ display: "flex", flexDirection: "column" }}>
           <CustomizableButton
             variant="outlined"
             fullWidth
             startIcon={<Sparkles size={14} strokeWidth={1.5} />}
             text={AI_BUTTON_TEXT[ai.status]}
             loading={ai.status === "running"}
-            isDisabled={!ai.canRun}
+            isDisabled={ai.blockedBy !== null}
             onClick={ai.onCheck}
             testId="assistant-ai-check"
+            sx={{ height: "30px", minHeight: "30px" }}
           />
-          {aiNote && (
-            <Typography
-              data-testid="assistant-ai-note"
-              sx={{ fontSize: "12px", color: "text.tertiary", lineHeight: 1.5 }}
-            >
-              {aiNote}
-            </Typography>
-          )}
+          {/* Always rendered, empty when there is nothing to say, so screen readers announce each result. */}
+          <Typography
+            role="status"
+            aria-live="polite"
+            data-testid="assistant-ai-note"
+            sx={{
+              fontSize: "12px",
+              color: "text.tertiary",
+              lineHeight: 1.5,
+              mt: aiNote ? "6px" : 0,
+            }}
+          >
+            {aiNote}
+          </Typography>
         </Box>
       )}
 

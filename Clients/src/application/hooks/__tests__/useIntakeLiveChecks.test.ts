@@ -15,6 +15,7 @@ const schema = {
   fields: [
     { id: "q1", type: "textarea", label: "Purpose", order: 1 },
     { id: "q2", type: "text", label: "Data", order: 2 },
+    { id: "q3", type: "select", label: "Mode", order: 3 },
   ],
 } as unknown as FormSchema;
 const ref = { publicId: "abc" };
@@ -67,7 +68,7 @@ describe("useIntakeLiveChecks", () => {
   it("runs one AI check on the current answers when asked", async () => {
     postLiveChecks.mockResolvedValue({ aiAvailable: true, hints: [aiHint("a1")] });
     const { result } = setup({ values: { q1: LONG } });
-    expect(result.current.aiCheck).toEqual({ status: "idle", canRun: true });
+    expect(result.current.aiCheck).toEqual({ status: "idle", blockedBy: null });
     act(() => result.current.checkWithAi());
     expect(result.current.aiCheck.status).toBe("running");
     await flush(0);
@@ -75,7 +76,7 @@ describe("useIntakeLiveChecks", () => {
     expect(postLiveChecks.mock.calls[0][0]).toEqual(ref);
     expect(postLiveChecks.mock.calls[0][1]).toEqual({ q1: LONG });
     expect(result.current.hints.some((h) => h.id === "a1")).toBe(true);
-    expect(result.current.aiCheck).toEqual({ status: "done", canRun: false });
+    expect(result.current.aiCheck).toEqual({ status: "done", blockedBy: "checked" });
   });
 
   it("sends one request however often it is asked while one is running", async () => {
@@ -88,34 +89,35 @@ describe("useIntakeLiveChecks", () => {
     act(() => result.current.checkWithAi());
     await flush(0);
     expect(postLiveChecks).toHaveBeenCalledTimes(1);
-    expect(result.current.aiCheck.canRun).toBe(false);
+    expect(result.current.aiCheck.blockedBy).toBe("running");
   });
 
-  it("can check again only once a text answer has changed", async () => {
+  it("can check again only once an answer has changed", async () => {
     postLiveChecks.mockResolvedValue({ aiAvailable: true, hints: [] });
     const { result, rerender } = setup({ values: { q1: LONG, q3: "x" } });
     act(() => result.current.checkWithAi());
     await flush(0);
-    expect(result.current.aiCheck.canRun).toBe(false);
+    expect(result.current.aiCheck.blockedBy).toBe("checked");
     act(() => result.current.checkWithAi());
     await flush(0);
     expect(postLiveChecks).toHaveBeenCalledTimes(1);
-    rerender({ values: { q1: LONG + " now", q3: "x" } });
-    expect(result.current.aiCheck).toEqual({ status: "done", canRun: true });
+    // A select counts too: the model reads every visible answer.
+    rerender({ values: { q1: LONG, q3: "y" } });
+    expect(result.current.aiCheck).toEqual({ status: "done", blockedBy: null });
     act(() => result.current.checkWithAi());
     await flush(0);
     expect(postLiveChecks).toHaveBeenCalledTimes(2);
   });
 
   it("cannot run when every answer is under 20 chars, AI is unavailable or checks are off", async () => {
-    const cases: Props[] = [
-      { values: { q1: "short", q2: "tiny" } },
-      { values: { q1: LONG }, aiAvailable: false },
-      { values: { q1: LONG }, enabled: false },
+    const cases: Array<[Props, string]> = [
+      [{ values: { q1: "short", q2: "tiny" } }, "short"],
+      [{ values: { q1: LONG }, aiAvailable: false }, "off"],
+      [{ values: { q1: LONG }, enabled: false }, "off"],
     ];
-    for (const props of cases) {
+    for (const [props, reason] of cases) {
       const { result } = setup(props);
-      expect(result.current.aiCheck.canRun).toBe(false);
+      expect(result.current.aiCheck.blockedBy).toBe(reason);
       act(() => result.current.checkWithAi());
       await flush(0);
     }
@@ -147,13 +149,13 @@ describe("useIntakeLiveChecks", () => {
     await flush(0);
     expect(result.current.aiPaused).toBe(true);
     rerender({ values: { q1: LONG + " again" } });
-    expect(result.current.aiCheck.canRun).toBe(false);
+    expect(result.current.aiCheck.blockedBy).toBe("paused");
     act(() => result.current.checkWithAi());
     await flush(0);
     expect(postLiveChecks).toHaveBeenCalledTimes(1);
     await flush(60_000);
     expect(result.current.aiPaused).toBe(false);
-    expect(result.current.aiCheck.canRun).toBe(true);
+    expect(result.current.aiCheck.blockedBy).toBeNull();
   });
 
   it("keeps rule and earlier AI hints and reports an error when a check fails", async () => {
@@ -170,7 +172,7 @@ describe("useIntakeLiveChecks", () => {
     expect(result.current.hints.some((h) => h.source === "rule")).toBe(true);
     expect(result.current.aiPaused).toBe(false);
     // A failed check can be tried again on the same answers.
-    expect(result.current.aiCheck).toEqual({ status: "error", canRun: true });
+    expect(result.current.aiCheck).toEqual({ status: "error", blockedBy: null });
   });
 
   it("reports an error when the server answers unavailable", async () => {
@@ -178,6 +180,34 @@ describe("useIntakeLiveChecks", () => {
     const { result } = setup({ values: { q1: LONG } });
     act(() => result.current.checkWithAi());
     await flush(0);
-    expect(result.current.aiCheck).toEqual({ status: "error", canRun: true });
+    expect(result.current.aiCheck).toEqual({ status: "error", blockedBy: null });
+  });
+
+  it("reports an error, not a clean check, when the form lost its key", async () => {
+    postLiveChecks.mockResolvedValueOnce({ aiAvailable: true, hints: [aiHint("a1")] });
+    const { result, rerender } = setup({ values: { q1: LONG } });
+    act(() => result.current.checkWithAi());
+    await flush(0);
+    postLiveChecks.mockResolvedValueOnce({ aiAvailable: false, hints: [] });
+    rerender({ values: { q1: LONG + " more" } });
+    act(() => result.current.checkWithAi());
+    await flush(0);
+    expect(result.current.aiCheck.status).toBe("error");
+    expect(result.current.hints.map((h) => h.id)).toContain("a1");
+  });
+
+  it("gives up on a check that hangs for 20 s and allows another", async () => {
+    postLiveChecks.mockImplementation(
+      (_r: unknown, _d: unknown, _l: unknown, signal: AbortSignal) =>
+        new Promise((_, reject) =>
+          signal.addEventListener("abort", () => reject(new Error("aborted"))),
+        ),
+    );
+    const { result } = setup({ values: { q1: LONG } });
+    act(() => result.current.checkWithAi());
+    await flush(19_000);
+    expect(result.current.aiCheck.status).toBe("running");
+    await flush(1_000);
+    expect(result.current.aiCheck).toEqual({ status: "error", blockedBy: null });
   });
 });
