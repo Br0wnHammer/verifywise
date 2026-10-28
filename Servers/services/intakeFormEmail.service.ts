@@ -206,6 +206,7 @@ export async function sendNewSubmissionAdminNotification(
           translate(lang, "Review lane:"),
         )}</strong> ${escapeHtml(laneText)}</p>`
       : "";
+    let sent = 0;
     for (const recipient of recipients) {
       try {
         await notificationService.sendEmailWithTemplate(
@@ -224,12 +225,15 @@ export async function sendNewSubmissionAdminNotification(
             resultsHtml,
           },
         );
+        sent += 1;
       } catch (error) {
         logger.error(`Failed to send admin notification to ${recipient.email}:`, error);
       }
     }
 
-    logger.info(`Admin notification emails sent for submission #${submissionId}`);
+    logger.info(
+      `Admin notification emails sent for submission #${submissionId}: ${sent} of ${recipients.length}`,
+    );
   } catch (error) {
     logger.error("Failed to send admin notification emails:", error);
   }
@@ -336,6 +340,7 @@ export async function sendSecondReviewRequestEmail(
 
     const reviewLink = buildFrontendUrl(`/intake-forms/submissions?submission=${submissionId}`);
     const subject = translate(lang, "Second review requested: {formName}", { formName });
+    let sent = 0;
     for (const recipient of recipients) {
       try {
         await notificationService.sendEmailWithTemplate(
@@ -351,12 +356,15 @@ export async function sendSecondReviewRequestEmail(
             reviewLink,
           },
         );
+        sent += 1;
       } catch (error) {
         logger.error(`Failed to send second review request to ${recipient.email}:`, error);
       }
     }
 
-    logger.info(`Second review request emails sent for submission #${submissionId}`);
+    logger.info(
+      `Second review request emails sent for submission #${submissionId}: ${sent} of ${recipients.length}`,
+    );
   } catch (error) {
     logger.error("Failed to send second review request emails:", error);
   }

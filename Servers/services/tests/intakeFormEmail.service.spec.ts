@@ -58,7 +58,7 @@ import { IntakeEntityType } from "../../domain.layer/enums/intake-entity-type.en
 
 // Intake emails pass a template file name, so they go through the service
 // that reads the file; emailService.sendEmail expects MJML source.
-const mockSendEmail = notificationService.sendEmailWithTemplate as jest.MockedFunction<
+const mockSendEmailWithTemplate = notificationService.sendEmailWithTemplate as jest.MockedFunction<
   typeof notificationService.sendEmailWithTemplate
 >;
 const mockGetUsersByIds = getUsersByIds as jest.MockedFunction<typeof getUsersByIds>;
@@ -79,7 +79,7 @@ describe("intakeFormEmail.service", () => {
 
   describe("sendSubmissionReceivedEmail", () => {
     it("should send email with resubmit link using publicId", async () => {
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendSubmissionReceivedEmail(
         "user@test.com",
@@ -90,7 +90,7 @@ describe("intakeFormEmail.service", () => {
         "pub-id-1",
       );
 
-      expect(mockSendEmail).toHaveBeenCalledWith(
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledWith(
         "user@test.com",
         "Submission received: AI Model Intake",
         "submission-received",
@@ -104,7 +104,7 @@ describe("intakeFormEmail.service", () => {
     });
 
     it("should build resubmit link using legacy format when no publicId", async () => {
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendSubmissionReceivedEmail(
         "user@test.com",
@@ -117,7 +117,7 @@ describe("intakeFormEmail.service", () => {
         "form-slug",
       );
 
-      expect(mockSendEmail).toHaveBeenCalledWith(
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledWith(
         "user@test.com",
         expect.any(String),
         expect.any(String),
@@ -128,11 +128,11 @@ describe("intakeFormEmail.service", () => {
     });
 
     it("should fallback to /intake-forms when no publicId or slugs", async () => {
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendSubmissionReceivedEmail("user@test.com", "John", "Form", 1, "token");
 
-      expect(mockSendEmail).toHaveBeenCalledWith(
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledWith(
         "user@test.com",
         expect.any(String),
         expect.any(String),
@@ -142,8 +142,8 @@ describe("intakeFormEmail.service", () => {
       );
     });
 
-    it("should not throw on sendEmail failure", async () => {
-      mockSendEmail.mockRejectedValue(new Error("SMTP error"));
+    it("should not throw on send failure", async () => {
+      mockSendEmailWithTemplate.mockRejectedValue(new Error("SMTP error"));
 
       await expect(
         sendSubmissionReceivedEmail("user@test.com", "John", "Form", 1, "token"),
@@ -156,7 +156,7 @@ describe("intakeFormEmail.service", () => {
       mockGetUsersByIds.mockResolvedValue([
         { id: 1, name: "Admin", email: "admin@test.com" },
       ] as any);
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendNewSubmissionAdminNotification(
         [1],
@@ -168,12 +168,12 @@ describe("intakeFormEmail.service", () => {
       );
 
       expect(mockGetUsersByIds).toHaveBeenCalledWith([1]);
-      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledTimes(1);
     });
 
     it("should fallback to org admins when number provided", async () => {
       mockQuery.mockResolvedValue([{ id: 1, name: "OrgAdmin", email: "orgadmin@test.com" }] as any);
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendNewSubmissionAdminNotification(
         10,
@@ -185,12 +185,12 @@ describe("intakeFormEmail.service", () => {
       );
 
       expect(mockQuery).toHaveBeenCalled();
-      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledTimes(1);
     });
 
     it("should not send when no recipients found", async () => {
       mockGetUsersByIds.mockResolvedValue([]);
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendNewSubmissionAdminNotification(
         [],
@@ -201,14 +201,14 @@ describe("intakeFormEmail.service", () => {
         IntakeEntityType.MODEL,
       );
 
-      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(mockSendEmailWithTemplate).not.toHaveBeenCalled();
     });
 
     it("should display Model entity type correctly", async () => {
       mockGetUsersByIds.mockResolvedValue([
         { id: 1, name: "Admin", email: "admin@test.com" },
       ] as any);
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendNewSubmissionAdminNotification(
         [1],
@@ -219,7 +219,7 @@ describe("intakeFormEmail.service", () => {
         IntakeEntityType.MODEL,
       );
 
-      expect(mockSendEmail).toHaveBeenCalledWith(
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledWith(
         "admin@test.com",
         expect.any(String),
         expect.any(String),
@@ -233,7 +233,7 @@ describe("intakeFormEmail.service", () => {
       mockGetUsersByIds.mockResolvedValue([
         { id: 1, name: "Admin", email: "admin@test.com" },
       ] as any);
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendNewSubmissionAdminNotification(
         [1],
@@ -244,7 +244,7 @@ describe("intakeFormEmail.service", () => {
         IntakeEntityType.USE_CASE,
       );
 
-      expect(mockSendEmail).toHaveBeenCalledWith(
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledWith(
         "admin@test.com",
         expect.any(String),
         expect.any(String),
@@ -259,7 +259,9 @@ describe("intakeFormEmail.service", () => {
         { id: 1, name: "Admin1", email: "admin1@test.com" },
         { id: 2, name: "Admin2", email: "admin2@test.com" },
       ] as any);
-      mockSendEmail.mockRejectedValueOnce(new Error("fail")).mockResolvedValueOnce(undefined);
+      mockSendEmailWithTemplate
+        .mockRejectedValueOnce(new Error("fail"))
+        .mockResolvedValueOnce(undefined);
 
       await sendNewSubmissionAdminNotification(
         [1, 2],
@@ -270,12 +272,12 @@ describe("intakeFormEmail.service", () => {
         IntakeEntityType.MODEL,
       );
 
-      expect(mockSendEmail).toHaveBeenCalledTimes(2);
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledTimes(2);
     });
 
     it("sends an empty results block when no results are given", async () => {
       mockGetUsersByIds.mockResolvedValue([{ id: 1, name: "Admin", email: "a@test.com" }] as any);
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendNewSubmissionAdminNotification(
         [1],
@@ -286,12 +288,14 @@ describe("intakeFormEmail.service", () => {
         IntakeEntityType.USE_CASE,
       );
 
-      expect((mockSendEmail.mock.calls[0][3] as Record<string, string>).resultsHtml).toBe("");
+      expect(
+        (mockSendEmailWithTemplate.mock.calls[0][3] as Record<string, string>).resultsHtml,
+      ).toBe("");
     });
 
     it("includes the results block when results are given", async () => {
       mockGetUsersByIds.mockResolvedValue([{ id: 1, name: "Admin", email: "a@test.com" }] as any);
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendNewSubmissionAdminNotification(
         [1],
@@ -304,7 +308,8 @@ describe("intakeFormEmail.service", () => {
         { level: "High risk", scoreText: "70 (High)", suggestionCount: 3, capReached: false },
       );
 
-      const html = (mockSendEmail.mock.calls[0][3] as Record<string, string>).resultsHtml;
+      const html = (mockSendEmailWithTemplate.mock.calls[0][3] as Record<string, string>)
+        .resultsHtml;
       expect(html).toContain("70 (High)");
       expect(html).toContain("High risk");
       expect(html).toContain("</strong> 3</p>");
@@ -368,14 +373,14 @@ describe("intakeFormEmail.service", () => {
           { id: 1, name: "Ann", email: "ann@test.com" },
           { id: 9, name: "", email: "bo@test.com" },
         ]);
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
       (getEligibleReviewerIdsQuery as jest.Mock).mockResolvedValue([1, 9]);
 
       await sendSecondReviewRequestEmail(7, 11, [1, 9], "en");
 
       expect(getSubmissionByIdQuery).toHaveBeenCalledWith(11, 7);
-      expect(mockSendEmail).toHaveBeenCalledTimes(2);
-      expect(mockSendEmail).toHaveBeenCalledWith(
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledTimes(2);
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledWith(
         "ann@test.com",
         "Second review requested: AI intake",
         "second-review",
@@ -388,7 +393,7 @@ describe("intakeFormEmail.service", () => {
           reviewLink: "https://app.example.com/intake-forms/submissions?submission=11",
         }),
       );
-      expect(mockSendEmail.mock.calls[1][3]).toMatchObject({ reviewerName: "bo" });
+      expect(mockSendEmailWithTemplate.mock.calls[1][3]).toMatchObject({ reviewerName: "bo" });
     });
 
     it("only looks up and emails eligible senior reviewers", async () => {
@@ -400,13 +405,13 @@ describe("intakeFormEmail.service", () => {
       (getIntakeFormByIdQuery as jest.Mock).mockResolvedValue({ name: "AI intake" });
       (getEligibleReviewerIdsQuery as jest.Mock).mockResolvedValue([1]);
       mockGetUsersByIds.mockResolvedValue([{ id: 1, name: "Ann", email: "ann@test.com" }]);
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendSecondReviewRequestEmail(7, 11, [1, 5], "en");
 
       expect(getEligibleReviewerIdsQuery).toHaveBeenCalledWith(7, [1, 5]);
       expect(mockGetUsersByIds).toHaveBeenLastCalledWith([1]);
-      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledTimes(1);
     });
 
     it("sends nothing when no senior reviewer is eligible", async () => {
@@ -421,19 +426,19 @@ describe("intakeFormEmail.service", () => {
 
       await sendSecondReviewRequestEmail(7, 11, [5], "en");
 
-      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(mockSendEmailWithTemplate).not.toHaveBeenCalled();
     });
 
     it("never throws when the lookup fails", async () => {
       (getSubmissionByIdQuery as jest.Mock).mockRejectedValue(new Error("db down"));
       await expect(sendSecondReviewRequestEmail(7, 11, [1], "en")).resolves.toBeUndefined();
-      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(mockSendEmailWithTemplate).not.toHaveBeenCalled();
     });
   });
 
   describe("sendSubmissionApprovedEmail", () => {
     it("should send approval email with entity type", async () => {
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendSubmissionApprovedEmail(
         "user@test.com",
@@ -443,7 +448,7 @@ describe("intakeFormEmail.service", () => {
         IntakeEntityType.MODEL,
       );
 
-      expect(mockSendEmail).toHaveBeenCalledWith(
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledWith(
         "user@test.com",
         "Submission approved: AI Model Intake",
         "submission-approved",
@@ -457,7 +462,7 @@ describe("intakeFormEmail.service", () => {
 
   describe("sendSubmissionRejectedEmail", () => {
     it("should send rejection email with reason and resubmit link", async () => {
-      mockSendEmail.mockResolvedValue(undefined);
+      mockSendEmailWithTemplate.mockResolvedValue(undefined);
 
       await sendSubmissionRejectedEmail(
         "user@test.com",
@@ -469,7 +474,7 @@ describe("intakeFormEmail.service", () => {
         "pub-id-1",
       );
 
-      expect(mockSendEmail).toHaveBeenCalledWith(
+      expect(mockSendEmailWithTemplate).toHaveBeenCalledWith(
         "user@test.com",
         "Submission requires changes: Form",
         "submission-rejected",
