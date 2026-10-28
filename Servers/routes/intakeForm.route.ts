@@ -2,7 +2,18 @@ import express from "express";
 const router = express.Router();
 import authenticateJWT from "../middleware/auth.middleware";
 import authorize from "../middleware/accessControl.middleware";
-import { generalApiLimiter } from "../middleware/rateLimit.middleware";
+import {
+  generalApiLimiter,
+  intakeLiveChecksVisitorLimiter,
+  intakePrefillVisitorLimiter,
+} from "../middleware/rateLimit.middleware";
+import { resolvePublicIntakeForm } from "../middleware/intakePublicForm.middleware";
+import {
+  postPublicLiveChecks,
+  postPublicPrefill,
+  receivePrefillUpload,
+  requirePrefillAvailable,
+} from "../controllers/intakeLiveChecks.ctrl";
 import {
   // Intake form controllers (admin)
   getAllIntakeForms,
@@ -146,6 +157,29 @@ router.post(
 
 // Get CAPTCHA question
 router.get("/public/captcha", generalApiLimiter, getCaptcha);
+
+// Live checks and vendor-document prefill. The by-id routes come first:
+// "/public/:tenantSlug/:formSlug/live-checks" would also match
+// "/public/by-id/X/live-checks". The form is resolved before the visitor
+// limiters so they key on the form id, not the URL.
+const liveCheckChain = [
+  generalApiLimiter,
+  resolvePublicIntakeForm,
+  intakeLiveChecksVisitorLimiter,
+  postPublicLiveChecks,
+];
+const prefillChain = [
+  generalApiLimiter,
+  resolvePublicIntakeForm,
+  intakePrefillVisitorLimiter,
+  requirePrefillAvailable,
+  receivePrefillUpload,
+  postPublicPrefill,
+];
+router.post("/public/by-id/:publicId/live-checks", ...liveCheckChain);
+router.post("/public/by-id/:publicId/prefill", ...prefillChain);
+router.post("/public/:tenantSlug/:formSlug/live-checks", ...liveCheckChain);
+router.post("/public/:tenantSlug/:formSlug/prefill", ...prefillChain);
 
 // New URL format: /{publicId}/use-case-form-intake
 router.get("/public/by-id/:publicId", generalApiLimiter, getPublicFormByPublicId);

@@ -136,8 +136,13 @@ import {
 } from "../services/intakeRouting/decisionGate";
 import { raiseForOverride, rerouteFormPending } from "../services/intakeRouting/routingService";
 import { getIntakeOversightQuery, OVERSIGHT_WEEKS } from "../services/intakeRouting/oversight";
-import type { IFormRouting, IIntakeForm } from "../domain.layer/interfaces/i.intakeForm";
+import type {
+  IFormRouting,
+  IIntakeForm,
+  IPublicIntakeForm,
+} from "../domain.layer/interfaces/i.intakeForm";
 import { createSignedToken, verifySignedToken } from "../utils/signedToken.utils";
+import { formAiAvailable } from "../services/intakeLiveChecks/availability";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
 
@@ -214,6 +219,26 @@ async function handleLlmKeyRequest(
     }
     logger.error(`Error in ${functionName}:`, error);
     return res.status(500).json(STATUS_CODE[500](translateError(req, error)));
+  }
+}
+
+/**
+ * What the public page needs to know about live checks before making any call.
+ * Reads the full form row for llmKeyId; the key id and provider are never sent.
+ */
+async function buildPublicLiveChecks(
+  form: IPublicIntakeForm,
+  organizationId: number,
+): Promise<{ enabled: boolean; aiAvailable: boolean }> {
+  const enabled = Boolean(form.liveChecksEnabled);
+  if (!enabled) return { enabled, aiAvailable: false };
+  try {
+    const full = await getIntakeFormByIdQuery(form.id, organizationId);
+    return { enabled, aiAvailable: full ? await formAiAvailable(full, organizationId) : false };
+  } catch (error) {
+    // Rules still run; only AI is withheld.
+    logger.error(`Error reading the LLM key of form ${form.id}`, error);
+    return { enabled, aiAvailable: false };
   }
 }
 
@@ -3020,6 +3045,7 @@ export async function getPublicFormByPublicId(req: Request, res: Response) {
         previousSubmitterName,
         previousSubmitterEmail,
         ...(await buildPublicRiskStep(form, previousSubmissionId, tenantInfo.orgId)),
+        liveChecks: await buildPublicLiveChecks(form, tenantInfo.orgId),
       }),
     );
   } catch (error) {
@@ -3359,6 +3385,7 @@ export async function getPublicForm(req: Request, res: Response) {
         previousSubmitterName,
         previousSubmitterEmail,
         ...(await buildPublicRiskStep(form, previousSubmissionId, tenantInfo.id)),
+        liveChecks: await buildPublicLiveChecks(form, tenantInfo.id),
       }),
     );
   } catch (error) {
