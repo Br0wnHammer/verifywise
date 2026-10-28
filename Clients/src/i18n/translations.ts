@@ -47,6 +47,11 @@ import {
 } from "./modules/eventTracker";
 import { de as incidentsDe, fr as incidentsFr, es as incidentsEs } from "./modules/incidents";
 import { de as tasksDe, fr as tasksFr, es as tasksEs } from "./modules/tasks";
+import {
+  de as intakeLiveChecksDe,
+  fr as intakeLiveChecksFr,
+  es as intakeLiveChecksEs,
+} from "./modules/intakeLiveChecks";
 import { de as trainingDe, fr as trainingFr, es as trainingEs } from "./modules/training";
 
 export type Lang = "en" | "de" | "fr" | "es";
@@ -63,6 +68,7 @@ export const translations: Record<string, Record<string, string>> = {
     ...eventTrackerDe,
     ...incidentsDe,
     ...tasksDe,
+    ...intakeLiveChecksDe,
     ...trainingDe,
     "senior": "leitend",
     "standard": "Standard",
@@ -10651,6 +10657,7 @@ export const translations: Record<string, Record<string, string>> = {
     ...eventTrackerFr,
     ...incidentsFr,
     ...tasksFr,
+    ...intakeLiveChecksFr,
     ...trainingFr,
     "senior": "senior",
     "standard": "standard",
@@ -21172,6 +21179,7 @@ export const translations: Record<string, Record<string, string>> = {
     ...eventTrackerEs,
     ...incidentsEs,
     ...tasksEs,
+    ...intakeLiveChecksEs,
     ...trainingEs,
     "senior": "sénior",
     "standard": "estándar",

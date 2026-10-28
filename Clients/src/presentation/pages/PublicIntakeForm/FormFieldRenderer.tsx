@@ -5,6 +5,7 @@ import Select from "../../components/Inputs/Select";
 import Checkbox from "../../components/Inputs/Checkbox";
 import { FormField } from "../IntakeFormBuilder/types";
 import { isEmptyAnswer } from "../../../application/utils/intakeFormLogic";
+import { status } from "../../themes/palette";
 
 /**
  * Renders a field label.
@@ -108,12 +109,14 @@ interface FormFieldRendererProps {
   field: FormField;
   control: Control<Record<string, unknown>>;
   errors: FieldErrors<Record<string, unknown>>;
+  /** Border color from live-check hints: red for a possible prohibited practice, amber for a regulated use or a conflict. */
+  tone?: "error" | "warning";
 }
 
 /**
  * Renders a single form field based on its type
  */
-export function FormFieldRenderer({ field, control, errors }: FormFieldRendererProps) {
+export function FormFieldRenderer({ field, control, errors, tone }: FormFieldRendererProps) {
   const error = errors[field.id];
   const errorMessage = error?.message as string | undefined;
   const isRequired = field.validation?.required;
@@ -499,7 +502,21 @@ export function FormFieldRenderer({ field, control, errors }: FormFieldRendererP
     }
   };
 
-  return <Box>{renderField()}</Box>;
+  const toneColor = tone ? status[tone].text : undefined;
+  return (
+    <Box
+      sx={
+        toneColor
+          ? {
+              "& .MuiOutlinedInput-notchedOutline, & .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline":
+                { borderColor: toneColor },
+            }
+          : undefined
+      }
+    >
+      {renderField()}
+    </Box>
+  );
 }
 
 export default FormFieldRenderer;
