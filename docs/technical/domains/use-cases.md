@@ -605,7 +605,10 @@ rules, AI and prefill.
   for line in `Clients/src/application/utils/intakeLiveChecks/`. Both run the
   same fixtures (`__fixtures__/ruleCases.json`, `ruleCopy.json`). Kinds in order:
   `prohibited`, `regulation`, `contradiction`, `vague`. English keywords only.
-- **AI checks.** `POST /api/intake/public/by-id/:publicId/live-checks` and
+- **AI checks.** Only on request: the submitter selects **Check my answers** in
+  the intake assistant (`useIntakeLiveChecks.checkWithAi`). The button is off
+  while a check runs and until a text answer changes, so typing never calls the
+  model. `POST /api/intake/public/by-id/:publicId/live-checks` and
   `/public/:tenantSlug/:formSlug/live-checks` (no JWT). Visible answers only,
   capped by `buildScoringAnswers`; one model call, 15 s, at most 8 hints; output
   quoting text that is not in the answer, or a quote under 15 characters (unless

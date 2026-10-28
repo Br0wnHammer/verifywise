@@ -105,7 +105,9 @@ describe("public form live checks", () => {
     fireEvent.change(await screen.findByLabelText("System name"), { target: { value: "TBD" } });
 
     expect(await within(questionBox("name")).findByText("Needs more detail")).toBeInTheDocument();
-    const panel = screen.getByTestId("intake-assistant-panel");
+    const panel = screen.getByRole("complementary", { name: "Intake assistant" });
+    // The app sidebar styles every <aside> globally, so the panel must not be one.
+    expect(panel.tagName).not.toBe("ASIDE");
     expect(within(panel).getByTestId("assistant-count-vague")).toHaveTextContent("1");
     expect(
       within(panel).getByText("These checks never block submission. Your reviewer sees them too."),
@@ -151,9 +153,49 @@ describe("public form live checks", () => {
   it("shows the AI notice and the prefill card only when AI is available", async () => {
     renderPage();
     expect(await screen.findByTestId("live-checks-ai-notice")).toHaveTextContent(
-      "Your answers are checked by AI as you type to help you complete this form.",
+      "AI can point out vague or conflicting answers when you select Check my answers. Your answers go to AI only when you ask.",
     );
     expect(screen.getByText("Fill from a vendor document")).toBeInTheDocument();
+  });
+
+  it("calls AI only from the button, once per set of answers", async () => {
+    repo.postLiveChecks.mockResolvedValue({
+      aiAvailable: true,
+      hints: [
+        {
+          id: "ai-1",
+          kind: "vague",
+          source: "ai",
+          questionId: "purpose",
+          title: "Purpose is unclear",
+          text: "Say which tasks it supports.",
+        },
+      ],
+    });
+    renderPage();
+    const button = await screen.findByTestId("assistant-ai-check");
+    expect(button).toBeDisabled();
+    expect(screen.getByText("Write a sentence or two first")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Purpose"), {
+      target: { value: "Summarises supplier invoices for the finance team" },
+    });
+    // Typing never calls the model on its own.
+    await new Promise((r) => setTimeout(r, 2200));
+    expect(repo.postLiveChecks).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("assistant-ai-check"));
+    expect(
+      await within(questionBox("purpose")).findByText("Purpose is unclear"),
+    ).toBeInTheDocument();
+    expect(repo.postLiveChecks).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Checked. Edit an answer to check again.")).toBeInTheDocument();
+    expect(screen.getByTestId("assistant-ai-check")).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Purpose"), {
+      target: { value: "Summarises supplier invoices for the finance team weekly" },
+    });
+    expect(screen.getByTestId("assistant-ai-check")).toHaveTextContent("Check again");
+    expect(screen.getByTestId("assistant-ai-check")).toBeEnabled();
   });
 
   it("runs rules but hides the AI notice and prefill card when the form has no AI", async () => {
@@ -163,6 +205,7 @@ describe("public form live checks", () => {
     expect(await within(questionBox("name")).findByText("Needs more detail")).toBeInTheDocument();
     expect(screen.queryByTestId("live-checks-ai-notice")).not.toBeInTheDocument();
     expect(screen.queryByTestId("vendor-prefill-card")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("assistant-ai-check")).not.toBeInTheDocument();
   });
 
   it("shows nothing and calls nothing when live checks are off", async () => {
@@ -255,7 +298,8 @@ describe("public form live checks", () => {
     fireEvent.change(await screen.findByLabelText("Purpose"), {
       target: { value: "Summarises supplier invoices for the finance team" },
     });
-    await waitFor(() => expect(repo.postLiveChecks).toHaveBeenCalled(), { timeout: 3500 });
+    fireEvent.click(screen.getByTestId("assistant-ai-check"));
+    await waitFor(() => expect(repo.postLiveChecks).toHaveBeenCalled());
     await uploadDocument();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "We couldn't read answers from this document.",

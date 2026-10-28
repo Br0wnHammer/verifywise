@@ -1,34 +1,70 @@
 import { Box, ButtonBase, Typography } from "@mui/material";
+import { Sparkles } from "lucide-react";
 import { HINT_KIND_ORDER, type LiveCheckHint } from "../../../domain/types/intakeLiveChecks";
 import { border } from "../../themes/palette";
 import { HINT_KIND_COLORS, HINT_KIND_LABELS } from "../../components/IntakeLiveChecks/hintKinds";
+import { CustomizableButton } from "../../components/button/customizable-button";
+
+export interface AssistantAiCheck {
+  status: "idle" | "running" | "done" | "error";
+  canRun: boolean;
+  onCheck: () => void;
+}
+
+const AI_BUTTON_TEXT: Record<AssistantAiCheck["status"], string> = {
+  idle: "Check my answers",
+  running: "Checking answers",
+  done: "Check again",
+  error: "Check again",
+};
+
+/** One line under the AI button saying what the last check did, or why it cannot run. */
+function aiCheckNote(ai: AssistantAiCheck, aiPaused: boolean, aiHintCount: number): string | null {
+  if (aiPaused || ai.status === "running") return null;
+  if (ai.status === "error") return "This check didn't work. You can try again.";
+  if (ai.status === "done" && !ai.canRun) {
+    return aiHintCount === 0 ? "Nothing else to flag" : "Checked. Edit an answer to check again.";
+  }
+  if (ai.status === "idle" && !ai.canRun) return "Write a sentence or two first";
+  return null;
+}
 
 /**
  * "Intake assistant": counts per hint kind, the open hints (each jumps to its
- * question), how many prefilled answers still need confirming, and the
- * promise that none of this blocks submission.
+ * question), the button for an AI check when the form has AI, how many
+ * prefilled answers still need confirming, and the promise that none of this
+ * blocks submission.
  */
 export function IntakeAssistantPanel({
   hints,
   unconfirmedCount,
   aiPaused,
+  ai,
   questionLabel,
   onSelect,
 }: {
   hints: LiveCheckHint[];
   unconfirmedCount: number;
   aiPaused: boolean;
+  /** Absent when the form has no AI checks. */
+  ai?: AssistantAiCheck;
   questionLabel: (questionId: string) => string;
   onSelect: (questionId: string) => void;
 }) {
+  const aiNote = ai
+    ? aiCheckNote(ai, aiPaused, hints.filter((h) => h.source === "ai").length)
+    : null;
   const counts = HINT_KIND_ORDER.map((kind) => ({
     kind,
     count: hints.filter((h) => h.kind === kind).length,
   })).filter((c) => c.count > 0);
 
   return (
+    // Not an <aside>: the app sidebar's global "aside" CSS would fix its width
+    // at 260px and shrink its text. role="complementary" keeps the landmark.
     <Box
-      component="aside"
+      component="section"
+      role="complementary"
       aria-label="Intake assistant"
       data-testid="intake-assistant-panel"
       sx={{
@@ -138,6 +174,29 @@ export function IntakeAssistantPanel({
               </ButtonBase>
             </li>
           ))}
+        </Box>
+      )}
+
+      {ai && (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <CustomizableButton
+            variant="outlined"
+            fullWidth
+            startIcon={<Sparkles size={14} strokeWidth={1.5} />}
+            text={AI_BUTTON_TEXT[ai.status]}
+            loading={ai.status === "running"}
+            isDisabled={!ai.canRun}
+            onClick={ai.onCheck}
+            testId="assistant-ai-check"
+          />
+          {aiNote && (
+            <Typography
+              data-testid="assistant-ai-note"
+              sx={{ fontSize: "12px", color: "text.tertiary", lineHeight: 1.5 }}
+            >
+              {aiNote}
+            </Typography>
+          )}
         </Box>
       )}
 

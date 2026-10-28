@@ -209,13 +209,15 @@ export function PublicIntakeForm() {
   // Checks run on the form step only; the EU AI Act risk step is unchanged.
   const checksOn = Boolean(formData) && liveChecks.enabled && step === "form";
   const aiOn = checksOn && liveChecks.aiAvailable;
-  const { hints, hintsFor, staleQuestionIds, aiPaused } = useIntakeLiveChecks({
-    ref: formRef,
-    schema: formData?.schema ?? EMPTY_SCHEMA,
-    values: watchedValues,
-    enabled: checksOn,
-    aiAvailable: liveChecks.aiAvailable,
-  });
+  const { hints, hintsFor, staleQuestionIds, aiPaused, checkWithAi, aiCheck } = useIntakeLiveChecks(
+    {
+      ref: formRef,
+      schema: formData?.schema ?? EMPTY_SCHEMA,
+      values: watchedValues,
+      enabled: checksOn,
+      aiAvailable: liveChecks.aiAvailable,
+    },
+  );
 
   // Editing a prefilled answer makes it the submitter's own: drop its line.
   const editedPrefillKey = Object.entries(prefill)
@@ -542,6 +544,7 @@ export function PublicIntakeForm() {
       hints={hints}
       unconfirmedCount={unconfirmedCount}
       aiPaused={aiOn && aiPaused}
+      ai={aiOn ? { ...aiCheck, onCheck: checkWithAi } : undefined}
       questionLabel={(id) => labelById.get(id) ?? ""}
       onSelect={focusQuestion}
     />
@@ -674,7 +677,8 @@ export function PublicIntakeForm() {
                   >
                     <Sparkles size={14} strokeWidth={1.5} style={{ flexShrink: 0 }} />
                     <Typography sx={{ fontSize: "13px", color: "text.secondary" }}>
-                      Your answers are checked by AI as you type to help you complete this form.
+                      AI can point out vague or conflicting answers when you select Check my
+                      answers. Your answers go to AI only when you ask.
                     </Typography>
                   </Box>
                 )}

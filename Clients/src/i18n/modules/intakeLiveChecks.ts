@@ -14,8 +14,17 @@ export const de: Record<string, string> = {
   "AI checks and vendor document prefill need the form's LLM key. Rule checks match English answers.":
     "KI-Prüfungen und das Ausfüllen aus Anbieterdokumenten benötigen den LLM-Schlüssel des Formulars. Regelprüfungen erkennen englische Antworten.",
   // Public form
-  "Your answers are checked by AI as you type to help you complete this form.":
-    "Ihre Antworten werden während der Eingabe von KI geprüft, damit Sie dieses Formular vollständig ausfüllen können.",
+  "AI can point out vague or conflicting answers when you select Check my answers. Your answers go to AI only when you ask.":
+    "KI kann auf vage oder widersprüchliche Antworten hinweisen, wenn Sie Meine Antworten prüfen wählen. Ihre Antworten gehen nur an die KI, wenn Sie das möchten.",
+  "Check my answers": "Meine Antworten prüfen",
+  "Checking answers": "Antworten werden geprüft",
+  "Check again": "Erneut prüfen",
+  "This check didn't work. You can try again.":
+    "Diese Prüfung hat nicht funktioniert. Sie können es erneut versuchen.",
+  "Nothing else to flag": "Keine weiteren Hinweise",
+  "Checked. Edit an answer to check again.":
+    "Geprüft. Ändern Sie eine Antwort, um erneut zu prüfen.",
+  "Write a sentence or two first": "Schreiben Sie zuerst ein oder zwei Sätze",
   "Intake assistant": "Intake-Assistent",
   "These checks never block submission. Your reviewer sees them too.":
     "Diese Prüfungen verhindern das Absenden nie. Ihr Prüfer sieht sie ebenfalls.",
@@ -111,8 +120,17 @@ export const fr: Record<string, string> = {
   "AI checks and vendor document prefill need the form's LLM key. Rule checks match English answers.":
     "Les vérifications IA et le remplissage à partir d'un document fournisseur nécessitent la clé LLM du formulaire. Les vérifications par règles reconnaissent les réponses en anglais.",
   // Public form
-  "Your answers are checked by AI as you type to help you complete this form.":
-    "Vos réponses sont vérifiées par l'IA pendant la saisie pour vous aider à remplir ce formulaire.",
+  "AI can point out vague or conflicting answers when you select Check my answers. Your answers go to AI only when you ask.":
+    "L'IA peut signaler les réponses vagues ou contradictoires lorsque vous sélectionnez Vérifier mes réponses. Vos réponses ne sont envoyées à l'IA que si vous le demandez.",
+  "Check my answers": "Vérifier mes réponses",
+  "Checking answers": "Vérification en cours",
+  "Check again": "Vérifier à nouveau",
+  "This check didn't work. You can try again.":
+    "Cette vérification n'a pas fonctionné. Vous pouvez réessayer.",
+  "Nothing else to flag": "Rien d'autre à signaler",
+  "Checked. Edit an answer to check again.":
+    "Vérifié. Modifiez une réponse pour vérifier à nouveau.",
+  "Write a sentence or two first": "Écrivez d'abord une ou deux phrases",
   "Intake assistant": "Assistant de saisie",
   "These checks never block submission. Your reviewer sees them too.":
     "Ces vérifications ne bloquent jamais l'envoi. Votre réviseur les voit aussi.",
@@ -208,8 +226,16 @@ export const es: Record<string, string> = {
   "AI checks and vendor document prefill need the form's LLM key. Rule checks match English answers.":
     "Las comprobaciones de IA y el relleno desde un documento del proveedor necesitan la clave LLM del formulario. Las comprobaciones por reglas reconocen respuestas en inglés.",
   // Public form
-  "Your answers are checked by AI as you type to help you complete this form.":
-    "La IA revisa sus respuestas mientras escribe para ayudarle a completar este formulario.",
+  "AI can point out vague or conflicting answers when you select Check my answers. Your answers go to AI only when you ask.":
+    "La IA puede señalar respuestas vagas o contradictorias cuando selecciona Revisar mis respuestas. Sus respuestas solo se envían a la IA cuando usted lo pide.",
+  "Check my answers": "Revisar mis respuestas",
+  "Checking answers": "Revisando respuestas",
+  "Check again": "Revisar de nuevo",
+  "This check didn't work. You can try again.":
+    "Esta revisión no ha funcionado. Puede intentarlo de nuevo.",
+  "Nothing else to flag": "Nada más que señalar",
+  "Checked. Edit an answer to check again.": "Revisado. Edite una respuesta para revisar de nuevo.",
+  "Write a sentence or two first": "Escriba primero una o dos frases",
   "Intake assistant": "Asistente de solicitud",
   "These checks never block submission. Your reviewer sees them too.":
     "Estas comprobaciones nunca bloquean el envío. Su revisor también las ve.",

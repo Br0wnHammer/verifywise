@@ -529,13 +529,13 @@ export const intakeFormsContent: ArticleContent = {
     },
     {
       type: 'paragraph',
-      text: 'While someone fills in the form, hints appear under answers that may need a second look. An **Intake assistant** panel counts them and jumps to each question. The hints never block submission.',
+      text: 'While someone fills in the form, hints appear under answers that may need a second look. An **Intake assistant** panel counts them, jumps to each question and runs AI checks on request. The hints never block submission.',
     },
     {
       type: 'bullet-list',
       items: [
         { bold: 'Rule checks', text: 'Run in the browser on every change. They flag placeholder or very short answers, answers that mention a practice prohibited under EU AI Act Article 5, uses listed as high-risk in Annex III and decisions made without human review (GDPR Article 22). The hint says what the answer mentions and why it may matter; it never says the system is prohibited. Rules match English answers; the hint text is shown in the submitter\'s language.' },
-        { bold: 'AI checks', text: 'With an LLM key, the form also asks the AI about vague answers and answers that contradict each other, 2 seconds after the submitter stops typing. A notice at the top of the form says that answers are checked by AI.' },
+        { bold: 'AI checks', text: 'With an LLM key, the panel has a **Check my answers** button. It asks the AI once about vague answers and answers that contradict each other. Answers go to the AI only when the submitter selects it, so typing never uses your key. After a check, the button stays off until an answer changes. A notice at the top of the form explains this.' },
         { bold: 'Fill from a vendor document', text: 'With an LLM key, the submitter can upload a PDF or Word file of up to 10 MB. The AI suggests answers for empty questions. Each one is marked **AI-suggested** with the file and section it was read from. A **Confirm** button sits next to it. Suggestions never replace an answer the submitter already gave. The file is not stored.' },
       ],
     },

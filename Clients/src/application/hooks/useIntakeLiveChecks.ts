@@ -10,9 +10,7 @@ import { HINT_KIND_ORDER, type LiveCheckHint } from "../../domain/types/intakeLi
 import { evaluateForm, sortFields } from "../utils/intakeFormLogic";
 import { runRuleChecks } from "../utils/intakeLiveChecks";
 
-/** Quiet time after the last text edit before the AI check runs. */
-const AI_DEBOUNCE_MS = 2000;
-/** The AI check only runs when some free-text answer has at least this many characters. */
+/** The AI check can only run when some free-text answer has at least this many characters. */
 const AI_MIN_ANSWER_CHARS = 20;
 const TEXT_TYPES = ["text", "textarea"];
 
@@ -38,18 +36,30 @@ interface Result {
   staleQuestionIds: Set<string>;
   /** True after a 429, until the server's reset time passes. */
   aiPaused: boolean;
+  /** Runs one AI check on the current answers; does nothing when `aiCheck.canRun` is false. */
+  checkWithAi: () => void;
+  aiCheck: {
+    /** The latest check: none yet, in flight, answered, or failed. */
+    status: "idle" | "running" | "done" | "error";
+    /** False while a check runs, after a 429, with no answer long enough, or once these answers were checked. */
+    canRun: boolean;
+  };
 }
 
+/**
+ * Rule hints on every change, in the browser. AI hints only when the submitter
+ * asks for them (one model call on the form's key per request), so token use
+ * follows deliberate checks rather than typing pauses.
+ */
 export function useIntakeLiveChecks({ ref, schema, values, enabled, aiAvailable }: Params): Result {
   const [ai, setAi] = useState<AiResult | null>(null);
   const [aiPaused, setAiPaused] = useState(false);
-  const seqRef = useRef(0);
-  const appliedSeqRef = useRef(0);
+  const [aiStatus, setAiStatus] = useState<Result["aiCheck"]["status"]>("idle");
+  /** The text answers of the last check that got an answer, so the same answers are not sent twice. */
+  const [checkedKey, setCheckedKey] = useState<string | null>(null);
+  // State updates land after the render, so two clicks in one tick both see "idle".
+  const runningRef = useRef(false);
   const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const valuesRef = useRef(values);
-  valuesRef.current = values;
-  const refRef = useRef(ref);
-  refRef.current = ref;
 
   const { visibleIds, hasLongAnswer, textKey } = useMemo(() => {
     const { visibleIds: ids, effectiveAnswers } = evaluateForm(schema, values);
@@ -68,33 +78,44 @@ export function useIntakeLiveChecks({ ref, schema, values, enabled, aiAvailable 
     };
   }, [schema, values]);
 
-  const callAi = enabled && aiAvailable && !aiPaused && hasLongAnswer;
+  const canRun =
+    enabled &&
+    aiAvailable &&
+    !aiPaused &&
+    hasLongAnswer &&
+    aiStatus !== "running" &&
+    checkedKey !== textKey;
 
-  useEffect(() => {
-    if (!callAi) return;
-    const timer = setTimeout(() => {
-      const seq = ++seqRef.current;
-      const snapshot = valuesRef.current;
-      postLiveChecks(refRef.current, snapshot, getLanguage())
-        .then((res) => {
-          // A slower, older response must not overwrite a newer one; a failed
-          // check leaves the hints already shown in place.
-          if (res.error || seq < appliedSeqRef.current) return;
-          appliedSeqRef.current = seq;
-          setAi({ hints: res.hints, snapshot });
-        })
-        .catch((error: unknown) => {
-          const e = error as { status?: number; retryAfterSeconds?: number };
-          if (e?.status === 429) {
-            setAiPaused(true);
-            const seconds = e.retryAfterSeconds ?? DEFAULT_RATE_LIMIT_PAUSE_SECONDS;
-            pauseTimerRef.current = setTimeout(() => setAiPaused(false), seconds * 1000);
-          }
-        });
-    }, AI_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-    // textKey changes only when a text answer does; other answers do not restart the wait.
-  }, [callAi, textKey]);
+  const checkWithAi = useCallback(() => {
+    if (!canRun || runningRef.current) return;
+    runningRef.current = true;
+    setAiStatus("running");
+    const snapshot = values;
+    const key = textKey;
+    postLiveChecks(ref, snapshot, getLanguage())
+      .then((res) => {
+        // A failed check leaves the hints already shown in place.
+        if (res.error) {
+          setAiStatus("error");
+          return;
+        }
+        setAi({ hints: res.hints, snapshot });
+        setCheckedKey(key);
+        setAiStatus("done");
+      })
+      .catch((error: unknown) => {
+        setAiStatus("error");
+        const e = error as { status?: number; retryAfterSeconds?: number };
+        if (e?.status === 429) {
+          setAiPaused(true);
+          const seconds = e.retryAfterSeconds ?? DEFAULT_RATE_LIMIT_PAUSE_SECONDS;
+          pauseTimerRef.current = setTimeout(() => setAiPaused(false), seconds * 1000);
+        }
+      })
+      .finally(() => {
+        runningRef.current = false;
+      });
+  }, [canRun, values, textKey, ref]);
 
   useEffect(
     () => () => {
@@ -130,5 +151,12 @@ export function useIntakeLiveChecks({ ref, schema, values, enabled, aiAvailable 
     [hints],
   );
 
-  return { hints, hintsFor, staleQuestionIds, aiPaused };
+  return {
+    hints,
+    hintsFor,
+    staleQuestionIds,
+    aiPaused,
+    checkWithAi,
+    aiCheck: { status: aiStatus, canRun },
+  };
 }
