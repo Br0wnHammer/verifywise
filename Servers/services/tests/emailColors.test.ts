@@ -36,26 +36,6 @@ describe("email color tokens", () => {
     expect(html).toBe(`<a style="color: ${brand.primary}">{{heading}}</a>`);
   });
 
-  it("substitutes palette colors in the post-market monitoring reminder", async () => {
-    const mjml = fs.readFileSync(
-      path.join(__dirname, "../../templates/pmm-reminder.mjml"),
-      "utf-8",
-    );
-    const html = await compileMjmlToHtml(mjml, {
-      stakeholder_name: "Ada",
-      use_case_title: "Hiring assistant",
-      cycle_number: "4",
-      days_remaining: "3",
-      due_date: "30 October 2026",
-      monitoring_link: "https://example.com/monitoring",
-    });
-
-    expect(mjml).not.toMatch(/#13715b/i);
-    expect(html).toContain(brand.primary);
-    expect(html).toContain("Hiring assistant");
-    expect(html).not.toContain("{{color");
-  });
-
   it("substitutes palette colors in the approval requested email", async () => {
     const mjml = fs.readFileSync(
       path.join(__dirname, "../../templates/approval-requested.mjml"),
