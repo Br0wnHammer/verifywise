@@ -17,6 +17,7 @@ import type {
   IntakeOversight,
   SubmissionRouting,
 } from "../../presentation/pages/IntakeFormBuilder/types";
+import type { ILiveChecks } from "../../domain/types/intakeLiveChecks";
 import type { Visibility } from "../utils/intakeFormLogic";
 import type { ClassificationLevel, ScoreBand, ScoreSource } from "../utils/intakeScoring/scoreMath";
 
@@ -116,6 +117,7 @@ export interface IntakeForm {
   llmKeyId?: number | null;
   suggestedQuestionsEnabled?: boolean;
   euAiActRiskStepEnabled?: boolean;
+  liveChecksEnabled?: boolean;
   designSettings?: FormDesignSettings | null;
   routing?: FormRouting | null;
   createdBy: number;
@@ -343,6 +345,7 @@ export async function createIntakeForm(
     llmKeyId?: number | null;
     suggestedQuestionsEnabled?: boolean;
     euAiActRiskStepEnabled?: boolean;
+    liveChecksEnabled?: boolean;
     designSettings?: FormDesignSettings | null;
     routing?: FormRouting | null;
   },
@@ -370,6 +373,7 @@ export async function updateIntakeForm(
     llmKeyId?: number | null;
     suggestedQuestionsEnabled?: boolean;
     euAiActRiskStepEnabled?: boolean;
+    liveChecksEnabled?: boolean;
     designSettings?: FormDesignSettings | null;
     routing?: FormRouting | null;
   },
@@ -460,6 +464,8 @@ export interface SubmissionPreview {
   /** The level the AI was given when the score was computed. */
   assessedLevel?: ClassificationLevel | null;
   routing?: SubmissionRouting | null;
+  /** The live-check hints the submitter saw, or null for older submissions. */
+  liveChecks?: ILiveChecks | null;
   routingEnabled?: boolean;
   canDecide?: boolean;
   decideBlockedReason?: string | null;

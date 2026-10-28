@@ -1,5 +1,4 @@
 import { Request, Response } from "express";
-import { createHmac, timingSafeEqual } from "crypto";
 import { Transaction } from "sequelize";
 import { sequelize } from "../database/db";
 import {
@@ -138,14 +137,9 @@ import {
 import { raiseForOverride, rerouteFormPending } from "../services/intakeRouting/routingService";
 import { getIntakeOversightQuery, OVERSIGHT_WEEKS } from "../services/intakeRouting/oversight";
 import type { IFormRouting, IIntakeForm } from "../domain.layer/interfaces/i.intakeForm";
+import { createSignedToken, verifySignedToken } from "../utils/signedToken.utils";
 /** Safely extract a single string from req.params (which may be string | string[]). */
 const paramStr = (val: string | string[]): string => (Array.isArray(val) ? val[0] : val);
-
-/** Secret key for signing CAPTCHA and resubmission tokens. */
-const TOKEN_SECRET = process.env.JWT_SECRET || process.env.ENCRYPTION_KEY;
-if (!TOKEN_SECRET) {
-  throw new Error("JWT_SECRET or ENCRYPTION_KEY must be set for intake form token signing");
-}
 
 /** Map lowercase form option values to valid AiRiskClassification enum values. */
 function mapToAiRiskClassification(value: string): AiRiskClassification | string {
@@ -162,30 +156,6 @@ function mapToAiRiskClassification(value: string): AiRiskClassification | string
     "out of scope": AiRiskClassification.OUT_OF_SCOPE,
   };
   return map[value?.toLowerCase()?.trim()] || value || "";
-}
-
-/** Create an HMAC-signed token from a payload object. */
-function createSignedToken(payload: Record<string, unknown>): string {
-  const data = JSON.stringify(payload);
-  const signature = createHmac("sha256", TOKEN_SECRET!).update(data).digest("hex");
-  return Buffer.from(JSON.stringify({ data, signature })).toString("base64");
-}
-
-/** Verify and decode an HMAC-signed token. Returns null if invalid. */
-function verifySignedToken<T = Record<string, unknown>>(token: string): T | null {
-  try {
-    const { data, signature } = JSON.parse(Buffer.from(token, "base64").toString());
-    const expectedSignature = createHmac("sha256", TOKEN_SECRET!).update(data).digest("hex");
-    // Use timing-safe comparison to prevent timing attacks
-    const sigBuf = Buffer.from(signature, "hex");
-    const expectedBuf = Buffer.from(expectedSignature, "hex");
-    if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) {
-      return null;
-    }
-    return JSON.parse(data) as T;
-  } catch {
-    return null;
-  }
 }
 
 /** Parse and validate an integer ID parameter. Returns NaN for invalid values. */
@@ -1051,6 +1021,7 @@ export async function createIntakeForm(req: Request, res: Response) {
       llmKeyId,
       suggestedQuestionsEnabled,
       euAiActRiskStepEnabled,
+      liveChecksEnabled,
       designSettings,
     } = req.body;
 
@@ -1136,6 +1107,7 @@ export async function createIntakeForm(req: Request, res: Response) {
         llmKeyId: llmKey.llmKeyId,
         suggestedQuestionsEnabled,
         euAiActRiskStepEnabled: riskStep.enabled,
+        liveChecksEnabled: liveChecksEnabled == null ? true : Boolean(liveChecksEnabled),
         designSettings,
         routing: routing.value,
         createdBy: req.userId!,
@@ -1217,6 +1189,7 @@ export async function updateIntakeForm(req: Request, res: Response) {
       llmKeyId,
       suggestedQuestionsEnabled,
       euAiActRiskStepEnabled,
+      liveChecksEnabled,
       designSettings,
     } = req.body;
 
@@ -1304,6 +1277,7 @@ export async function updateIntakeForm(req: Request, res: Response) {
         llmKeyId: llmKey.llmKeyId,
         suggestedQuestionsEnabled,
         euAiActRiskStepEnabled: riskStep.enabled,
+        liveChecksEnabled: liveChecksEnabled == null ? undefined : Boolean(liveChecksEnabled),
         designSettings,
         routing: routing.value,
       },
@@ -1784,6 +1758,7 @@ export async function getSubmissionPreview(req: Request, res: Response) {
         riskAssessment: submission.riskAssessment,
         riskTier: submission.riskTier,
         riskOverride: submission.riskOverride,
+        liveChecks: submission.liveChecks ?? null,
         entityPreview: entityData,
         euAiActClassification,
         assessment,

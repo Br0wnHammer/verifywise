@@ -20,6 +20,7 @@ import {
   ISubmissionRouting,
   IDecisionRecord,
 } from "../domain.layer/interfaces/i.intakeSubmission";
+import type { ILiveChecks } from "../domain.layer/interfaces/i.intakeLiveChecks";
 import { getRoleById } from "./roleMap";
 import { roleInfoHasPermission } from "./rolePermissions.utils";
 import { IntakeFormStatus } from "../domain.layer/enums/intake-form-status.enum";
@@ -42,6 +43,7 @@ const FORM_SELECT_COLUMNS = `
   llm_key_id as "llmKeyId",
   suggested_questions_enabled as "suggestedQuestionsEnabled",
   eu_ai_act_risk_step_enabled as "euAiActRiskStepEnabled",
+  live_checks_enabled as "liveChecksEnabled",
   design_settings as "designSettings",
   routing,
   created_by as "createdBy",
@@ -59,6 +61,7 @@ const SUBMISSION_SELECT_COLUMNS = `
   risk_override as "riskOverride",
   suggested_risks as "suggestedRisks",
   routing, decision_record as "decisionRecord",
+  live_checks AS "liveChecks",
   notification_sent_at as "notificationSentAt",
   created_at as "createdAt", updated_at as "updatedAt"
 `;
@@ -135,6 +138,7 @@ export const getActivePublicFormQuery = async (
       schema, submit_button_text as "submitButtonText",
       public_id as "publicId",
       eu_ai_act_risk_step_enabled as "euAiActRiskStepEnabled",
+      live_checks_enabled AS "liveChecksEnabled",
       design_settings as "designSettings"
     FROM intake_forms
     WHERE organization_id = :organizationId
@@ -162,6 +166,7 @@ export const getFormByPublicIdQuery = async (
       schema, submit_button_text as "submitButtonText",
       public_id as "publicId",
       eu_ai_act_risk_step_enabled as "euAiActRiskStepEnabled",
+      live_checks_enabled AS "liveChecksEnabled",
       design_settings as "designSettings"
     FROM intake_forms
     WHERE organization_id = :organizationId
@@ -192,11 +197,11 @@ export const createIntakeFormQuery = async (
     `INSERT INTO intake_forms
       (organization_id, name, description, slug, entity_type, schema, submit_button_text, status,
        ttl_expires_at, public_id, recipients, risk_tier_system, risk_assessment_config,
-       llm_key_id, suggested_questions_enabled, eu_ai_act_risk_step_enabled, design_settings, routing, created_by, created_at, updated_at)
+       llm_key_id, suggested_questions_enabled, eu_ai_act_risk_step_enabled, live_checks_enabled, design_settings, routing, created_by, created_at, updated_at)
     VALUES
       (:organizationId, :name, :description, :slug, :entityType, :schema, :submitButtonText, :status,
        :ttlExpiresAt, :publicId, :recipients, :riskTierSystem, :riskAssessmentConfig,
-       :llmKeyId, :suggestedQuestionsEnabled, :euAiActRiskStepEnabled, :designSettings, :routing, :createdBy, NOW(), NOW())
+       :llmKeyId, :suggestedQuestionsEnabled, :euAiActRiskStepEnabled, :liveChecksEnabled, :designSettings, :routing, :createdBy, NOW(), NOW())
     RETURNING ${FORM_SELECT_COLUMNS}`,
     {
       replacements: {
@@ -218,6 +223,7 @@ export const createIntakeFormQuery = async (
         llmKeyId: data.llmKeyId || null,
         suggestedQuestionsEnabled: data.suggestedQuestionsEnabled || false,
         euAiActRiskStepEnabled: data.euAiActRiskStepEnabled || false,
+        liveChecksEnabled: data.liveChecksEnabled ?? true,
         designSettings: data.designSettings ? JSON.stringify(data.designSettings) : null,
         routing: data.routing ? JSON.stringify(data.routing) : null,
         createdBy: data.createdBy,
@@ -298,6 +304,10 @@ export const updateIntakeFormQuery = async (
   if (data.euAiActRiskStepEnabled !== undefined) {
     updates.push("eu_ai_act_risk_step_enabled = :euAiActRiskStepEnabled");
     replacements.euAiActRiskStepEnabled = data.euAiActRiskStepEnabled;
+  }
+  if (data.liveChecksEnabled !== undefined) {
+    updates.push("live_checks_enabled = :liveChecksEnabled");
+    replacements.liveChecksEnabled = data.liveChecksEnabled;
   }
   if (data.designSettings !== undefined) {
     updates.push("design_settings = :designSettings");
@@ -452,6 +462,7 @@ export const getPendingSubmissionsQuery = async (
       s.risk_override as "riskOverride",
       s.suggested_risks as "suggestedRisks",
       s.routing, s.decision_record as "decisionRecord",
+      s.live_checks AS "liveChecks",
       s.notification_sent_at as "notificationSentAt",
       s.created_at as "createdAt", s.updated_at as "updatedAt",
       f.name as "formName", f.entity_type as "formEntityType",
@@ -1333,6 +1344,48 @@ export const setDecisionRecordQuery = async (
       replacements: { organizationId, id, record: JSON.stringify(record) },
       type: QueryTypes.UPDATE,
       transaction,
+    },
+  );
+};
+
+/**
+ * Store the live checks a submitter saw on a submission.
+ */
+export const updateLiveChecksQuery = async (
+  submissionId: number,
+  organizationId: number,
+  liveChecks: ILiveChecks,
+  transaction?: Transaction,
+): Promise<void> => {
+  await sequelize.query(
+    `UPDATE verifywise.intake_submissions
+    SET live_checks = :liveChecks, updated_at = NOW()
+    WHERE organization_id = :organizationId AND id = :submissionId`,
+    {
+      replacements: { organizationId, submissionId, liveChecks: JSON.stringify(liveChecks) },
+      type: QueryTypes.UPDATE,
+      transaction,
+    },
+  );
+};
+
+/**
+ * Replace only the `ai` block of a submission's live checks. A no-op when the
+ * submission has no live checks stored.
+ */
+export const setLiveChecksAiQuery = async (
+  submissionId: number,
+  organizationId: number,
+  ai: ILiveChecks["ai"],
+): Promise<void> => {
+  await sequelize.query(
+    `UPDATE verifywise.intake_submissions
+    SET live_checks = jsonb_set(live_checks, '{ai}', :ai::jsonb), updated_at = NOW()
+    WHERE organization_id = :organizationId AND id = :submissionId
+      AND live_checks IS NOT NULL`,
+    {
+      replacements: { organizationId, submissionId, ai: JSON.stringify(ai) },
+      type: QueryTypes.UPDATE,
     },
   );
 };

@@ -373,6 +373,7 @@ export function IntakeFormBuilder() {
         llmKeyId: activeLlmKeyId,
         suggestedQuestionsEnabled: form.suggestedQuestionsEnabled ?? false,
         euAiActRiskStepEnabled: form.euAiActRiskStepEnabled ?? false,
+        liveChecksEnabled: form.liveChecksEnabled ?? true,
         ...(canEditRouting ? {} : { routing: undefined }),
       };
       if (isEditing && formId) {
@@ -440,6 +441,7 @@ export function IntakeFormBuilder() {
         llmKeyId: activeLlmKeyId,
         suggestedQuestionsEnabled: form.suggestedQuestionsEnabled ?? false,
         euAiActRiskStepEnabled: form.euAiActRiskStepEnabled ?? false,
+        liveChecksEnabled: form.liveChecksEnabled ?? true,
         ...(canEditRouting ? {} : { routing: undefined }),
         status: IntakeFormStatus.ACTIVE,
       };

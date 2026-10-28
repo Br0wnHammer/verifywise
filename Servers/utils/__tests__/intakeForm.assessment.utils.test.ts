@@ -13,6 +13,8 @@ import {
   claimSubmissionNotificationQuery,
   getSubmissionsNeedingAssessmentQuery,
   getSubmissionByIdQuery,
+  updateLiveChecksQuery,
+  setLiveChecksAiQuery,
 } from "../intakeForm.utils";
 import {
   isAssessmentV2,
@@ -239,5 +241,38 @@ describe("submission row mapping", () => {
     await getSubmissionByIdQuery(5, 9);
     expect(sqlOf()).toContain('suggested_risks as "suggestedRisks"');
     expect(sqlOf()).toContain('notification_sent_at as "notificationSentAt"');
+  });
+});
+
+describe("live checks queries", () => {
+  beforeEach(() => {
+    mockQuery.mockReset();
+    mockQuery.mockResolvedValue([] as any);
+  });
+
+  it("updateLiveChecksQuery stores the block, scoped to the organization", async () => {
+    const lc = { version: 1, rules: [], ai: { status: "skipped", hints: [] }, prefill: {} } as const;
+    await updateLiveChecksQuery(4, 9, lc as any);
+    expect(sqlOf()).toContain("verifywise.intake_submissions");
+    expect(sqlOf()).toContain("organization_id = :organizationId");
+    expect(optsOf().replacements).toMatchObject({
+      organizationId: 9,
+      submissionId: 4,
+      liveChecks: JSON.stringify(lc),
+    });
+  });
+
+  it("setLiveChecksAiQuery only touches the ai key and skips rows without live checks", async () => {
+    const ai = { status: "done", hints: [] } as const;
+    await setLiveChecksAiQuery(4, 9, ai as any);
+    expect(sqlOf()).toContain("jsonb_set(live_checks, '{ai}'");
+    expect(sqlOf()).toContain("live_checks IS NOT NULL");
+    expect(sqlOf()).toContain("organization_id = :organizationId");
+    expect(optsOf().replacements.ai).toBe(JSON.stringify(ai));
+  });
+
+  it("the submission select returns live checks", async () => {
+    await getSubmissionByIdQuery(4, 9);
+    expect(sqlOf()).toContain('live_checks AS "liveChecks"');
   });
 });
