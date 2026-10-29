@@ -24,7 +24,7 @@ We are democratizing AI best practices with a solution that can be hosted on-pre
 ## Quick links
 
 - [Join our Discord channel](https://discord.com/invite/d3k3E4uEpR) to ask your questions and get the latest announcemnets.
-- [Need to talk to someone](https://verifywise.ai/contact)? Get with us to see the latest demo, or [click here](https://app.verifywise.ai) to experience the demo yourself.
+- [Need to talk to someone](https://verifywise.ai/contact)? Get with us to see the latest demo.
 - [Read our documentation](https://verifywise.ai/user-guide/) to understand features and capabilities
 
 ## Screenshots
