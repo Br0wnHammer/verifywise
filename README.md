@@ -7,7 +7,6 @@
 >
 > Questions? See the [licensing FAQ](LICENSING-FAQ.md) or write to hello@verifywise.ai. Thank you for using and supporting VerifyWise.
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/bluewave-labs/verifywise)
 ![](https://img.shields.io/github/repo-size/bluewave-labs/verifywise)
 ![](https://img.shields.io/github/commit-activity/m/bluewave-labs/verifywise)
 ![](https://img.shields.io/github/last-commit/bluewave-labs/verifywise)
