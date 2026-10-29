@@ -85,6 +85,21 @@ describe("migration 20261024110000: center left-aligned intake forms", () => {
     ]);
   });
 
+  it("still runs when a left-aligned form has no organization", async () => {
+    const { form } = await setup();
+    const orphan = await form("orphan", { alignment: "left" });
+    await sequelize.query(`UPDATE intake_forms SET organization_id = NULL WHERE id = :id`, {
+      replacements: { id: orphan },
+    });
+
+    await center.up(queryInterface);
+
+    expect(await designOf(orphan)).toEqual({ alignment: "center" });
+    expect(await recorded()).toEqual([
+      { form_id: orphan, organization_id: null, previous_alignment: "left" },
+    ]);
+  });
+
   it("restores one form's alignment by hand without undoing later design edits", async () => {
     const { form } = await setup();
     const left = await form("left", { alignment: "left", primaryColor: "#123456" });

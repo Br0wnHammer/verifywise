@@ -30,7 +30,9 @@ module.exports = {
         CREATE TABLE IF NOT EXISTS ${BACKUP} (
           form_id INTEGER PRIMARY KEY
             REFERENCES verifywise.intake_forms(id) ON DELETE CASCADE,
-          organization_id INTEGER NOT NULL,
+          -- Nullable like intake_forms.organization_id, so a legacy form
+          -- without one cannot stop the deploy.
+          organization_id INTEGER,
           previous_alignment TEXT NOT NULL,
           backed_up_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
@@ -65,8 +67,9 @@ module.exports = {
     });
   },
 
-  // Puts "left" back on the recorded forms that are still centered (an owner
-  // who has since picked an alignment keeps it), then drops the record.
+  // Puts "left" back on the recorded forms that are still centered, then drops
+  // the record. An owner who has since picked left or right keeps it; one who
+  // re-saved "center" cannot be told apart and goes back to left.
   async down(queryInterface) {
     await queryInterface.sequelize.transaction(async (transaction) => {
       const [present] = await queryInterface.sequelize.query(
