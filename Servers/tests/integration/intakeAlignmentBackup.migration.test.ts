@@ -1,12 +1,11 @@
 /**
- * The backup migration copies every left-aligned form before 20261024110000
- * centers it, and a copy restores the form.
+ * 20261024110000 centers left-aligned intake forms, records which ones it
+ * moved, and its down() puts them back.
  */
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../../database/db";
 import { cleanupDatabase, createTestOrganization, createTestUser } from "./helpers";
 
-const backup = require("../../database/migrations/20261024105900-backup-left-aligned-intake-forms.js");
 const center = require("../../database/migrations/20261024110000-intake-form-alignment-center.js");
 
 const queryInterface = { sequelize };
@@ -37,66 +36,95 @@ const designOf = async (id: number) =>
     )
   )[0].design_settings;
 
-const backedUp = async () =>
-  sequelize.query<{ form_id: number; design_settings: Record<string, unknown> }>(
-    `SELECT form_id, design_settings FROM intake_forms_alignment_backup ORDER BY form_id`,
+const setDesign = (id: number, design: object) =>
+  sequelize.query(
+    `UPDATE intake_forms SET design_settings = CAST(:design AS jsonb) WHERE id = :id`,
+    {
+      replacements: { id, design: JSON.stringify(design) },
+    },
+  );
+
+const recorded = () =>
+  sequelize.query<{ form_id: number; organization_id: number; previous_alignment: string }>(
+    `SELECT form_id, organization_id, previous_alignment
+       FROM intake_forms_alignment_backup ORDER BY form_id`,
     { type: QueryTypes.SELECT },
   );
 
-// cleanupDatabase restarts form ids but does not touch the backup table, so a
-// copy left by another test would shadow a new form with the same id.
-const emptyBackup = () => sequelize.query(`DELETE FROM intake_forms_alignment_backup`);
+const setup = async () => {
+  const suffix = Date.now();
+  const orgId = await createTestOrganization(`Org ${suffix}`);
+  const userId = await createTestUser(orgId, 1, `admin-${suffix}@test.com`, "Password123!");
+  return {
+    orgId,
+    form: (slug: string, design: object | null) =>
+      createForm(orgId, userId, `${slug}-${suffix}`, design),
+  };
+};
 
-beforeEach(emptyBackup);
+// The record table cascades from intake_forms, so cleanupDatabase empties it.
+afterEach(cleanupDatabase);
 
-afterEach(async () => {
-  await emptyBackup();
-  await cleanupDatabase();
-});
+// down() drops the record table; leave the schema as the migration left it.
+afterAll(() => center.up(queryInterface));
 
-describe("migration: back up left-aligned intake forms before centering", () => {
-  it("copies only the forms the centering changes, and the copy restores them", async () => {
-    const suffix = Date.now();
-    const orgId = await createTestOrganization(`Org ${suffix}`);
-    const userId = await createTestUser(orgId, 1, `admin-${suffix}@test.com`, "Password123!");
-    const leftDesign = { alignment: "left", primaryColor: "#123456" };
-    const left = await createForm(orgId, userId, `left-${suffix}`, leftDesign);
-    const centred = await createForm(orgId, userId, `center-${suffix}`, { alignment: "center" });
-    const unset = await createForm(orgId, userId, `unset-${suffix}`, null);
+describe("migration 20261024110000: center left-aligned intake forms", () => {
+  it("centers only left-aligned forms, keeps their other settings, and records them", async () => {
+    const { orgId, form } = await setup();
+    const left = await form("left", { alignment: "left", primaryColor: "#123456" });
+    const centred = await form("center", { alignment: "center" });
+    const unset = await form("unset", null);
 
-    await backup.up(queryInterface);
     await center.up(queryInterface);
 
-    expect(await backedUp()).toEqual([{ form_id: left, design_settings: leftDesign }]);
-    expect(await designOf(left)).toEqual({ ...leftDesign, alignment: "center" });
+    expect(await designOf(left)).toEqual({ alignment: "center", primaryColor: "#123456" });
     expect(await designOf(centred)).toEqual({ alignment: "center" });
     expect(await designOf(unset)).toBeNull();
+    expect(await recorded()).toEqual([
+      { form_id: left, organization_id: orgId, previous_alignment: "left" },
+    ]);
+  });
+
+  it("restores one form's alignment by hand without undoing later design edits", async () => {
+    const { form } = await setup();
+    const left = await form("left", { alignment: "left", primaryColor: "#123456" });
+    await center.up(queryInterface);
+    // The owner edits the form after the deploy.
+    await setDesign(left, { alignment: "center", primaryColor: "#ff0000", logo: "new.png" });
 
     // The restore documented in the migration header.
     await sequelize.query(
-      `UPDATE intake_forms f SET design_settings = b.design_settings
+      `UPDATE intake_forms f
+          SET design_settings = jsonb_set(f.design_settings, '{alignment}', to_jsonb(b.previous_alignment))
          FROM intake_forms_alignment_backup b
         WHERE f.id = b.form_id AND f.id = :id`,
       { replacements: { id: left } },
     );
-    expect(await designOf(left)).toEqual(leftDesign);
+
+    expect(await designOf(left)).toEqual({
+      alignment: "left",
+      primaryColor: "#ff0000",
+      logo: "new.png",
+    });
   });
 
-  it("keeps the first copy when it runs again", async () => {
-    const suffix = Date.now();
-    const orgId = await createTestOrganization(`Org ${suffix}`);
-    const userId = await createTestUser(orgId, 1, `admin-${suffix}@test.com`, "Password123!");
-    const form = await createForm(orgId, userId, `left-${suffix}`, { alignment: "left", v: 1 });
+  it("down() puts left back on recorded forms still centered, keeps owner choices, drops the record", async () => {
+    const { form } = await setup();
+    const stillCentred = await form("a", { alignment: "left", primaryColor: "#123456" });
+    const ownerPicked = await form("b", { alignment: "left" });
+    const alwaysCentred = await form("c", { alignment: "center" });
+    await center.up(queryInterface);
+    await setDesign(ownerPicked, { alignment: "right" });
 
-    await backup.up(queryInterface);
-    await sequelize.query(
-      `UPDATE intake_forms SET design_settings = '{"alignment":"left","v":2}'::jsonb WHERE id = :id`,
-      { replacements: { id: form } },
+    await center.down(queryInterface);
+
+    expect(await designOf(stillCentred)).toEqual({ alignment: "left", primaryColor: "#123456" });
+    expect(await designOf(ownerPicked)).toEqual({ alignment: "right" });
+    expect(await designOf(alwaysCentred)).toEqual({ alignment: "center" });
+    const [{ present }] = await sequelize.query<{ present: boolean }>(
+      `SELECT to_regclass('verifywise.intake_forms_alignment_backup') IS NOT NULL AS present`,
+      { type: QueryTypes.SELECT },
     );
-    await backup.up(queryInterface);
-
-    expect(await backedUp()).toEqual([
-      { form_id: form, design_settings: { alignment: "left", v: 1 } },
-    ]);
+    expect(present).toBe(false);
   });
 });
